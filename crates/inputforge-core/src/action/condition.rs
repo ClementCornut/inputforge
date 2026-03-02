@@ -38,7 +38,7 @@ pub enum Condition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{DeviceId, InputId};
+    use crate::types::{DeviceId, HatDirection, InputId};
 
     fn test_input_address() -> InputAddress {
         InputAddress {
@@ -93,10 +93,7 @@ mod tests {
                 device: DeviceId("dev-1".to_owned()),
                 input: InputId::Hat { index: 0 },
             },
-            directions: vec![
-                crate::types::HatDirection::N,
-                crate::types::HatDirection::NE,
-            ],
+            directions: vec![HatDirection::N, HatDirection::NE],
         };
         let json = serde_json::to_string(&cond).unwrap();
         assert!(json.contains("\"type\":\"hat_direction\""));

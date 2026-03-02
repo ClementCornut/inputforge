@@ -178,7 +178,7 @@ mod tests {
             self.axes.get(address).copied().unwrap_or(0.0)
         }
 
-        fn get_hat(&self, address: &InputAddress) -> crate::types::HatDirection {
+        fn get_hat(&self, _address: &InputAddress) -> crate::types::HatDirection {
             crate::types::HatDirection::Center
         }
     }
