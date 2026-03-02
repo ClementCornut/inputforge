@@ -2,9 +2,11 @@
 
 pub mod calibration;
 pub mod deadzone;
+pub mod inversion;
 
 pub use calibration::Calibration;
 pub use deadzone::DeadzoneConfig;
+pub use inversion::{invert_axis, invert_button};
 
 /// Linearly interpolate `value` from the range [`in_min`, `in_max`] to [`out_min`, `out_max`].
 ///
