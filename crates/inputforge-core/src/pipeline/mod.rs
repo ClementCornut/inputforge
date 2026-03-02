@@ -764,6 +764,72 @@ mod tests {
         }
     }
 
+    // -- Pedal merge integration: full pipeline --------------------------------
+
+    #[test]
+    fn pedal_merge_full_pipeline() {
+        // Simulate two pedal axes going through calibration + deadzone + merge + map.
+        // Left pedal raw value: -16384 (half depressed)
+        // Right pedal raw value cached as calibrated -0.25
+        //
+        // Pipeline for left pedal:
+        //   calibrate(-32768..32767) -> -0.5
+        //   deadzone (trivial, pass-through)
+        //   merge bidirectional with right pedal -> (-0.5) - (-0.25) = -0.25
+        //   map to vJoy X axis
+
+        let mut cache = MockCache::new();
+        let right_pedal = InputAddress {
+            device: DeviceId("pedals".to_owned()),
+            input: InputId::Axis { index: 1 },
+        };
+        // Right pedal already calibrated in cache at -0.25
+        cache.axes.insert(right_pedal.clone(), -0.25);
+
+        let calibration = Calibration::new(-32768.0, -100.0, 100.0, 32767.0, true).unwrap();
+        let deadzone = DeadzoneConfig::new(-1.0, 0.0, 0.0, 1.0).unwrap();
+        let output = OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::Rz },
+        };
+
+        let mut ctx = PipelineContext {
+            current_value: -16384.0,
+            input_value: InputValue::Axis {
+                value: AxisValue::raw(-16384.0),
+            },
+            outputs: Vec::new(),
+            input_cache: &cache,
+        };
+
+        let actions = [
+            Action::Calibrate {
+                config: calibration,
+            },
+            Action::Deadzone { config: deadzone },
+            Action::MergeAxis {
+                second_input: right_pedal,
+                operation: MergeOp::Bidirectional,
+            },
+            Action::MapToVJoy {
+                output: output.clone(),
+            },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+
+        assert_eq!(ctx.outputs.len(), 1);
+        if let PipelineOutput::SetAxis { value, output: out } = &ctx.outputs[0] {
+            assert_eq!(*out, output);
+            // calibrate: -16384 / 32767 ~= -0.5000..., merged: -0.5 - (-0.25) = -0.25
+            assert!(
+                (*value - (-0.25)).abs() < 0.01,
+                "expected ~-0.25, got {value}"
+            );
+        } else {
+            panic!("expected SetAxis");
+        }
+    }
+
     // -- Hat + MapToKeyboard --------------------------------------------------
 
     #[test]
