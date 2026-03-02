@@ -1,10 +1,12 @@
 // Rust guideline compliant 2026-03-02
 
 pub mod calibration;
+pub mod curves;
 pub mod deadzone;
 pub mod inversion;
 
 pub use calibration::Calibration;
+pub use curves::{BezierSegment, ResponseCurve};
 pub use deadzone::DeadzoneConfig;
 pub use inversion::{invert_axis, invert_button};
 
