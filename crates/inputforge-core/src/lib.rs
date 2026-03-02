@@ -6,4 +6,5 @@ pub mod error;
 pub mod mode;
 pub mod pipeline;
 pub mod processing;
+pub mod profile;
 pub mod types;

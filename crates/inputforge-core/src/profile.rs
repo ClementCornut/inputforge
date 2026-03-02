@@ -1,0 +1,676 @@
+// Rust guideline compliant 2026-03-02
+
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::action::Mapping;
+use crate::error::{EngineError, Result};
+use crate::mode::ModeTree;
+use crate::types::DeviceId;
+
+/// A stable profile identifier backed by UUID v4.
+///
+/// Auto-generated on creation, preserved across renames and saves.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ProfileId(String);
+
+impl ProfileId {
+    /// Generate a new random profile ID.
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::new_v4().to_string())
+    }
+
+    /// Return the string representation.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for ProfileId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// A device entry in the profile, associating a device GUID with a
+/// human-readable name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceEntry {
+    pub id: DeviceId,
+    pub name: String,
+}
+
+/// Profile-level settings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProfileSettings {
+    startup_mode: String,
+}
+
+impl ProfileSettings {
+    /// Return the startup mode name.
+    #[must_use]
+    pub fn startup_mode(&self) -> &str {
+        &self.startup_mode
+    }
+}
+
+/// A complete input mapping profile.
+///
+/// Profiles are persisted as TOML files. The file structure matches:
+///
+/// ```toml
+/// [profile]
+/// id = "550e8400-e29b-41d4-a716-446655440000"
+/// name = "My Profile"
+/// startup_mode = "Default"
+///
+/// [[devices]]
+/// id = "030000005e040000ea02000000007801"
+/// name = "VKB Gladiator NXT Left"
+///
+/// [modes]
+/// Default = ["Combat", "Landing"]
+/// Combat = ["Missiles", "Guns"]
+///
+/// [[mappings]]
+/// mode = "Default"
+/// # ...
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct Profile {
+    id: ProfileId,
+    name: String,
+    devices: Vec<DeviceEntry>,
+    modes: ModeTree,
+    mappings: Vec<Mapping>,
+    settings: ProfileSettings,
+}
+
+/// Internal TOML-level representation of the `[profile]` table.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ProfileMeta {
+    id: ProfileId,
+    name: String,
+    startup_mode: String,
+}
+
+/// Internal TOML-level representation of the full file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ProfileRaw {
+    profile: ProfileMeta,
+    #[serde(default)]
+    devices: Vec<DeviceEntry>,
+    modes: ModeTree,
+    #[serde(default)]
+    mappings: Vec<Mapping>,
+}
+
+impl Profile {
+    /// Create a new profile with a generated ID.
+    #[must_use]
+    pub fn new(
+        name: String,
+        devices: Vec<DeviceEntry>,
+        modes: ModeTree,
+        mappings: Vec<Mapping>,
+        startup_mode: String,
+    ) -> Self {
+        Self {
+            id: ProfileId::new(),
+            name,
+            devices,
+            modes,
+            mappings,
+            settings: ProfileSettings { startup_mode },
+        }
+    }
+
+    /// Parse a profile from a TOML string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::ProfileParse`] on invalid TOML, or
+    /// [`EngineError::InvalidConfig`] if validation fails (e.g., startup
+    /// mode not in tree, mapping references unknown mode).
+    pub fn from_toml(s: &str) -> Result<Self> {
+        let raw: ProfileRaw = toml::from_str(s)?;
+        Self::from_raw(raw)
+    }
+
+    /// Serialize the profile to a pretty-printed TOML string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::ProfileWrite`] on serialization failure.
+    pub fn to_toml(&self) -> Result<String> {
+        let raw = self.to_raw();
+        Ok(toml::to_string_pretty(&raw)?)
+    }
+
+    /// Load a profile from a TOML file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::ProfileNotFound`] if the file does not
+    /// exist, [`EngineError::Io`] on read errors, or parse/validation
+    /// errors.
+    pub fn load(path: &Path) -> Result<Self> {
+        if !path.exists() {
+            return Err(EngineError::ProfileNotFound {
+                path: path.to_path_buf(),
+            });
+        }
+        let contents = std::fs::read_to_string(path)?;
+        Self::from_toml(&contents)
+    }
+
+    /// Save the profile to a TOML file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::ProfileWrite`] on serialization failure,
+    /// or [`EngineError::Io`] on write errors.
+    pub fn save(&self, path: &Path) -> Result<()> {
+        let toml_str = self.to_toml()?;
+        std::fs::write(path, toml_str)?;
+        Ok(())
+    }
+
+    /// Return the profile ID.
+    #[must_use]
+    pub fn id(&self) -> &ProfileId {
+        &self.id
+    }
+
+    /// Return the profile name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Return the device entries.
+    #[must_use]
+    pub fn devices(&self) -> &[DeviceEntry] {
+        &self.devices
+    }
+
+    /// Return the mode tree.
+    #[must_use]
+    pub fn modes(&self) -> &ModeTree {
+        &self.modes
+    }
+
+    /// Return the mappings.
+    #[must_use]
+    pub fn mappings(&self) -> &[Mapping] {
+        &self.mappings
+    }
+
+    /// Return the profile settings.
+    #[must_use]
+    pub fn settings(&self) -> &ProfileSettings {
+        &self.settings
+    }
+
+    /// Validate and convert from the raw TOML representation.
+    fn from_raw(raw: ProfileRaw) -> Result<Self> {
+        // Validate startup_mode exists in the mode tree.
+        if !raw.modes.contains(&raw.profile.startup_mode) {
+            return Err(EngineError::InvalidConfig {
+                reason: format!(
+                    "startup_mode '{}' not found in mode tree",
+                    raw.profile.startup_mode
+                ),
+            });
+        }
+
+        // Validate all mapping mode names exist in the tree.
+        for mapping in &raw.mappings {
+            if !raw.modes.contains(&mapping.mode) {
+                return Err(EngineError::InvalidConfig {
+                    reason: format!("mapping references unknown mode '{}'", mapping.mode),
+                });
+            }
+        }
+
+        Ok(Self {
+            id: raw.profile.id,
+            name: raw.profile.name,
+            devices: raw.devices,
+            modes: raw.modes,
+            mappings: raw.mappings,
+            settings: ProfileSettings {
+                startup_mode: raw.profile.startup_mode,
+            },
+        })
+    }
+
+    /// Convert to the raw TOML representation for serialization.
+    fn to_raw(&self) -> ProfileRaw {
+        ProfileRaw {
+            profile: ProfileMeta {
+                id: self.id.clone(),
+                name: self.name.clone(),
+                startup_mode: self.settings.startup_mode.clone(),
+            },
+            devices: self.devices.clone(),
+            modes: self.modes.clone(),
+            mappings: self.mappings.clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::action::{Action, Condition, ModeChangeStrategy};
+    use crate::processing::DeadzoneConfig;
+    use crate::types::{
+        InputAddress, InputId, KeyCombo, KeyModifier, MergeOp, OutputAddress, OutputId, VJoyAxis,
+    };
+    use std::collections::HashMap;
+
+    fn test_modes() -> ModeTree {
+        let mut map = HashMap::new();
+        map.insert(
+            "Default".to_owned(),
+            vec!["Combat".to_owned(), "Landing".to_owned()],
+        );
+        map.insert(
+            "Combat".to_owned(),
+            vec!["Missiles".to_owned(), "Guns".to_owned()],
+        );
+        ModeTree::from_adjacency(&map).unwrap()
+    }
+
+    fn test_input() -> InputAddress {
+        InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        }
+    }
+
+    fn test_output() -> OutputAddress {
+        OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        }
+    }
+
+    fn minimal_profile() -> Profile {
+        let mut map = HashMap::new();
+        map.insert("Default".to_owned(), vec![]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        Profile::new(
+            "Test Profile".to_owned(),
+            vec![DeviceEntry {
+                id: DeviceId("dev-1".to_owned()),
+                name: "Test Stick".to_owned(),
+            }],
+            modes,
+            vec![Mapping {
+                input: test_input(),
+                mode: "Default".to_owned(),
+                actions: vec![Action::Invert],
+            }],
+            "Default".to_owned(),
+        )
+    }
+
+    // --- Roundtrip ---
+
+    #[test]
+    fn profile_toml_roundtrip() {
+        let profile = minimal_profile();
+        let toml_str = profile.to_toml().unwrap();
+        let back = Profile::from_toml(&toml_str).unwrap();
+        // IDs match since from_toml preserves the serialized ID.
+        assert_eq!(profile.id(), back.id());
+        assert_eq!(profile.name(), back.name());
+        assert_eq!(profile.devices(), back.devices());
+        assert_eq!(profile.modes(), back.modes());
+        assert_eq!(profile.mappings(), back.mappings());
+        assert_eq!(
+            profile.settings().startup_mode(),
+            back.settings().startup_mode()
+        );
+    }
+
+    #[test]
+    fn profile_from_toml_minimal() {
+        let toml_str = r#"
+[profile]
+id = "test-id-1234"
+name = "Minimal"
+startup_mode = "Default"
+
+[modes]
+Default = []
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "dev-1"
+
+[mappings.input.input]
+type = "axis"
+index = 0
+
+[[mappings.actions]]
+type = "invert"
+"#;
+        let profile = Profile::from_toml(toml_str).unwrap();
+        assert_eq!(profile.name(), "Minimal");
+        assert_eq!(profile.id().as_str(), "test-id-1234");
+        assert_eq!(profile.settings().startup_mode(), "Default");
+        assert!(profile.devices().is_empty());
+        assert_eq!(profile.mappings().len(), 1);
+    }
+
+    #[test]
+    fn profile_from_toml_with_devices() {
+        let toml_str = r#"
+[profile]
+id = "test-id"
+name = "With Devices"
+startup_mode = "Default"
+
+[[devices]]
+id = "guid-001"
+name = "Left Stick"
+
+[[devices]]
+id = "guid-002"
+name = "Right Stick"
+
+[modes]
+Default = []
+"#;
+        let profile = Profile::from_toml(toml_str).unwrap();
+        assert_eq!(profile.devices().len(), 2);
+        assert_eq!(profile.devices()[0].name, "Left Stick");
+        assert_eq!(profile.devices()[1].name, "Right Stick");
+    }
+
+    // --- Validation ---
+
+    #[test]
+    fn profile_invalid_startup_mode() {
+        let toml_str = r#"
+[profile]
+id = "test-id"
+name = "Bad"
+startup_mode = "NonExistent"
+
+[modes]
+Default = []
+"#;
+        let err = Profile::from_toml(toml_str).unwrap_err();
+        assert!(err.to_string().contains("startup_mode"));
+        assert!(err.to_string().contains("NonExistent"));
+    }
+
+    #[test]
+    fn profile_invalid_mapping_mode() {
+        let toml_str = r#"
+[profile]
+id = "test-id"
+name = "Bad"
+startup_mode = "Default"
+
+[modes]
+Default = []
+
+[[mappings]]
+mode = "Unknown"
+
+[mappings.input]
+device = "dev-1"
+
+[mappings.input.input]
+type = "axis"
+index = 0
+
+[[mappings.actions]]
+type = "invert"
+"#;
+        let err = Profile::from_toml(toml_str).unwrap_err();
+        assert!(err.to_string().contains("Unknown"));
+    }
+
+    #[test]
+    fn profile_invalid_toml_syntax() {
+        let result = Profile::from_toml("this is not toml [[[");
+        assert!(result.is_err());
+    }
+
+    // --- File I/O ---
+
+    #[test]
+    fn profile_load_nonexistent_file() {
+        let path = Path::new("nonexistent_profile.toml");
+        let err = Profile::load(path).unwrap_err();
+        assert!(err.to_string().contains("profile not found"));
+    }
+
+    #[test]
+    fn profile_save_and_load_roundtrip() {
+        let profile = minimal_profile();
+        let dir = std::env::temp_dir().join("inputforge_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test_profile.toml");
+
+        profile.save(&path).unwrap();
+        let loaded = Profile::load(&path).unwrap();
+
+        assert_eq!(profile.id(), loaded.id());
+        assert_eq!(profile.name(), loaded.name());
+        assert_eq!(profile.modes(), loaded.modes());
+        assert_eq!(profile.mappings(), loaded.mappings());
+
+        // Cleanup.
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    // --- Complex profiles ---
+
+    #[test]
+    fn profile_with_mode_tree() {
+        let modes = test_modes();
+        let profile = Profile::new(
+            "Complex".to_owned(),
+            vec![],
+            modes,
+            vec![
+                Mapping {
+                    input: test_input(),
+                    mode: "Default".to_owned(),
+                    actions: vec![Action::Invert],
+                },
+                Mapping {
+                    input: test_input(),
+                    mode: "Combat".to_owned(),
+                    actions: vec![],
+                },
+            ],
+            "Default".to_owned(),
+        );
+        let toml_str = profile.to_toml().unwrap();
+        let back = Profile::from_toml(&toml_str).unwrap();
+        assert_eq!(profile.modes(), back.modes());
+        assert_eq!(profile.mappings().len(), 2);
+    }
+
+    #[test]
+    fn profile_with_deadzone_action() {
+        let mut map = HashMap::new();
+        map.insert("Default".to_owned(), vec![]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let profile = Profile::new(
+            "Deadzone Test".to_owned(),
+            vec![],
+            modes,
+            vec![Mapping {
+                input: test_input(),
+                mode: "Default".to_owned(),
+                actions: vec![
+                    Action::Deadzone {
+                        config: DeadzoneConfig::default(),
+                    },
+                    Action::MapToVJoy {
+                        output: test_output(),
+                    },
+                ],
+            }],
+            "Default".to_owned(),
+        );
+        let toml_str = profile.to_toml().unwrap();
+        let back = Profile::from_toml(&toml_str).unwrap();
+        assert_eq!(profile.mappings(), back.mappings());
+    }
+
+    #[test]
+    fn profile_with_conditional_actions() {
+        let mut map = HashMap::new();
+        map.insert("Default".to_owned(), vec![]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let profile = Profile::new(
+            "Conditional Test".to_owned(),
+            vec![],
+            modes,
+            vec![Mapping {
+                input: InputAddress {
+                    device: DeviceId("dev-1".to_owned()),
+                    input: InputId::Button { index: 0 },
+                },
+                mode: "Default".to_owned(),
+                actions: vec![Action::Conditional {
+                    condition: Condition::ButtonPressed {
+                        input: InputAddress {
+                            device: DeviceId("dev-1".to_owned()),
+                            input: InputId::Button { index: 5 },
+                        },
+                    },
+                    if_true: vec![Action::MapToKeyboard {
+                        key: KeyCombo {
+                            key: "F1".to_owned(),
+                            modifiers: vec![KeyModifier::Ctrl],
+                        },
+                    }],
+                    if_false: Some(vec![Action::MapToKeyboard {
+                        key: KeyCombo {
+                            key: "F1".to_owned(),
+                            modifiers: vec![],
+                        },
+                    }]),
+                }],
+            }],
+            "Default".to_owned(),
+        );
+        let toml_str = profile.to_toml().unwrap();
+        let back = Profile::from_toml(&toml_str).unwrap();
+        assert_eq!(profile.mappings(), back.mappings());
+    }
+
+    #[test]
+    fn profile_with_change_mode_action() {
+        let modes = test_modes();
+        let profile = Profile::new(
+            "Mode Switch".to_owned(),
+            vec![],
+            modes,
+            vec![Mapping {
+                input: InputAddress {
+                    device: DeviceId("dev-1".to_owned()),
+                    input: InputId::Button { index: 1 },
+                },
+                mode: "Default".to_owned(),
+                actions: vec![Action::ChangeMode {
+                    strategy: ModeChangeStrategy::SwitchTo {
+                        mode: "Combat".to_owned(),
+                    },
+                }],
+            }],
+            "Default".to_owned(),
+        );
+        let toml_str = profile.to_toml().unwrap();
+        let back = Profile::from_toml(&toml_str).unwrap();
+        assert_eq!(profile.mappings(), back.mappings());
+    }
+
+    #[test]
+    fn profile_with_merge_axis_action() {
+        let mut map = HashMap::new();
+        map.insert("Default".to_owned(), vec![]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let profile = Profile::new(
+            "Merge Test".to_owned(),
+            vec![],
+            modes,
+            vec![Mapping {
+                input: test_input(),
+                mode: "Default".to_owned(),
+                actions: vec![
+                    Action::MergeAxis {
+                        second_input: InputAddress {
+                            device: DeviceId("dev-1".to_owned()),
+                            input: InputId::Axis { index: 1 },
+                        },
+                        operation: MergeOp::Bidirectional,
+                    },
+                    Action::MapToVJoy {
+                        output: test_output(),
+                    },
+                ],
+            }],
+            "Default".to_owned(),
+        );
+        let toml_str = profile.to_toml().unwrap();
+        let back = Profile::from_toml(&toml_str).unwrap();
+        assert_eq!(profile.mappings(), back.mappings());
+    }
+
+    // --- Type roundtrips ---
+
+    #[test]
+    fn profile_id_generates_unique() {
+        let id1 = ProfileId::new();
+        let id2 = ProfileId::new();
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn profile_id_default() {
+        let id = ProfileId::default();
+        assert!(!id.as_str().is_empty());
+    }
+
+    #[test]
+    fn device_entry_serde_roundtrip() {
+        let entry = DeviceEntry {
+            id: DeviceId("guid-001".to_owned()),
+            name: "Left Stick".to_owned(),
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        let back: DeviceEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(entry, back);
+    }
+
+    #[test]
+    fn profile_settings_getter() {
+        let settings = ProfileSettings {
+            startup_mode: "Default".to_owned(),
+        };
+        assert_eq!(settings.startup_mode(), "Default");
+    }
+}
