@@ -66,7 +66,7 @@
 - **Task 7**: Response curves (all 3 types + symmetry)
 - **Task 8**: Pipeline executor & action types
 
-**Phase 2 coverage checkpoint:** Run `rtk cargo llvm-cov --workspace` after completing Phase 2. Processing modules should have >95% coverage.
+**Phase 2 coverage checkpoint:** Run `rtk cargo llvm-cov --workspace` after completing Phase 2. Processing modules should have >95% coverage. ✅ 138 tests, 99.38% line coverage after code review fix.
 
 ### Phase 3: Profile & Mode System (Tasks 9-11)
 - **Task 9**: Profile TOML serialization
@@ -334,7 +334,7 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
 - `PipelineOutput` is NOT Serialize/Deserialize (transient output, not persisted)
 - `PipelineContext` has manual `Debug` impl (cannot derive due to `&dyn InputCache`)
 - `Mapping` placed in `action.rs` (not `types/mapping.rs`) to avoid circular dependency with `processing/`
-- Button inversion in pipeline checks `input_value` type: buttons toggle via threshold (`> 0.5`), axes negate
+- Button inversion in pipeline uses `invert_button()` from processing module; axes use `invert_axis()`
 - `merge_axes` Maximum returns the axis with greater absolute value, preserving sign
 - `MergeOp::Average` uses `f64::midpoint()` per clippy
 
@@ -345,6 +345,40 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
 - `test(core): cover all production code paths in pipeline and curves`
 
 **Phase 2 coverage results:** 118 tests, 99.11% total line coverage. All production code in `inputforge-core` is 100% covered. Only uncovered lines are `main.rs` (no integration tests) and test-only `panic!` branches.
+
+---
+
+### Phase 2 Code Review Fix [COMPLETED]
+
+**Goal:** Address 5 issues found in code review — 2 high-confidence bugs (score 85) sharing the same root cause (public struct fields with `Deserialize` but no validation, allowing division-by-zero in `lerp_range`), and 3 behavioral bugs in the pipeline executor.
+
+**Design decision:** Validation at construction time (constructors return `Result`). Once constructed, `apply()` and `evaluate()` remain infallible (`-> f64`), keeping the hot pipeline path allocation-free and error-free.
+
+**Files modified:**
+- `crates/inputforge-core/src/error.rs` -- added `InvalidConfig { reason: String }` variant to `EngineError`
+- `crates/inputforge-core/src/processing/deadzone.rs` -- private fields, `new() -> Result<Self>`, getters, `DeadzoneConfigRaw` + custom `Deserialize` impl via `TryFrom`
+- `crates/inputforge-core/src/processing/calibration.rs` -- same pattern: private fields, `new() -> Result<Self>`, getters, `CalibrationRaw` + `TryFrom`
+- `crates/inputforge-core/src/processing/curves.rs` -- `ResponseCurveRaw` enum for deserialization, factory methods (`piecewise_linear()`, `cubic_spline()`, `cubic_bezier()`) returning `Result`, `validate_points()` helper
+- `crates/inputforge-core/src/processing/mod.rs` -- added `debug_assert!(in_min < in_max)` in `lerp_range`
+- `crates/inputforge-core/src/pipeline.rs` -- `MapToKeyboard` now skips Hat inputs (mirrors `MapToVJoy`), `Invert` arm uses `invert_axis()`/`invert_button()` from processing module instead of inline reimplementation
+- `crates/inputforge-core/src/action.rs` -- reformatted only (struct literals updated by rustfmt)
+
+**Invariants enforced:**
+
+| Type | Invariant |
+|------|-----------|
+| DeadzoneConfig | `low < center_low <= center_high < high` |
+| Calibration | `physical_min < physical_center_low <= physical_center_high < physical_max` |
+| ResponseCurve points | `len >= 2`, x strictly increasing, x >= 0 when symmetric |
+| BezierSegment | `segments.len() >= 1` |
+
+**Serde pattern:** Each validated type uses `FooRaw` (Deserialize only) → `TryFrom<FooRaw> for Foo` → calls `Foo::new()` → validates → `Ok(Foo)` or `Err(EngineError)`. Custom `Deserialize` impl delegates to raw + `try_from` with `serde::de::Error::custom`. `Serialize` stays on the validated type.
+
+**Tests added:** 20 new tests — validation rejection tests for each invariant boundary, serde rejection tests for invalid input, zero-width center band acceptance tests, getter tests, `hat_input_map_to_keyboard_no_output` test. All existing tests updated to use constructors.
+
+**Post-fix coverage:** 138 tests, 99.38% line coverage, 100% function coverage, 98.75% region coverage.
+
+**Commit:** `fix(core): validate configs at construction to prevent division-by-zero`
 
 ---
 
@@ -458,6 +492,8 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
 - For cycle: validate no duplicate modes in cycle list
 - Detect if a temporary mode push would create a loop (same mode already on stack)
 
+> **Lesson from Phase 2 code review:** The `Cycle { modes: Vec<String> }` variant in `ModeChangeStrategy` has public fields. Apply the same validated-constructor pattern: make fields private, add a constructor that rejects empty or duplicate mode lists, add a `CycleRaw` serde bridge. Validate at construction time so runtime `cycle()` stays infallible.
+
 **Axis refresh:**
 - `ModeState` should track when a mode change occurs by returning a `ModeChanged` flag/event
 - The engine (Task 19) will use this flag to re-emit all cached axis values through the new mode's pipelines
@@ -502,13 +538,16 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
 - HatDirection condition matches any of multiple directions
 - Deeply nested All/Any/Not combinations
 
+> **Lesson from Phase 2 code review:** When adding the `HatDirection` condition variant, audit ALL match arms in `execute_pipeline` and `evaluate_condition` for completeness. The `MapToKeyboard` bug (missing Hat guard, fixed in Phase 2 review) was caused by a new `InputValue` variant not being handled in all match sites. After adding `get_hat()` to `InputCache`, verify every `match &ctx.input_value` block handles all variants correctly.
+
 **Steps:**
 1. Add HatDirection condition variant if missing
 2. Add corresponding evaluation logic
 3. Add InputCache method: `get_hat(&InputAddress) -> HatDirection`
-4. Write additional tests
-5. Run `rtk cargo test -p inputforge-core`
-6. Commit: `feat(core): add hat direction condition support`
+4. Audit all `match &ctx.input_value` and `match action` arms in pipeline.rs for completeness
+5. Write additional tests
+6. Run `rtk cargo test -p inputforge-core`
+7. Commit: `feat(core): add hat direction condition support`
 
 ---
 
@@ -644,6 +683,8 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
 - Map `HatDirection` to vJoy hat values (degrees * 100 or -1 for center)
 - Acquire/relinquish vJoy devices
 
+> **Lesson from Phase 2 code review:** The axis value conversion (-1..1 to 0x0000..0x7FFF) is a `lerp_range` operation. Reuse `lerp_range` from `processing::mod` (which now has a `debug_assert` safety net) rather than reimplementing the conversion inline. This avoids the same class of div-by-zero bugs and keeps the mapping logic in one place.
+
 **Tests:**
 - Create `MockOutputSink` implementing `OutputSink` that records calls
 - Test axis value conversion (float to vJoy integer range)
@@ -775,6 +816,8 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
      e. Check for button release -> fire callbacks
   5. Sleep to maintain target poll rate (~1ms)
 - On mode change: re-emit all cached axis values through new mode's pipelines (axis refresh, feature 30)
+
+> **Lesson from Phase 2 code review:** The engine wires together many modules. Two rules to follow: (1) Always delegate to processing module functions (`invert_axis`, `invert_button`, `lerp_range`, etc.) rather than reimplementing logic inline — the Phase 2 review caught an inline button inversion that diverged from the canonical implementation. (2) When processing `PipelineOutput`, handle all variants exhaustively — use `match` without a wildcard `_` arm so new variants cause compile errors rather than silent no-ops.
 
 **Tests (using mock implementations for all I/O):**
 - Engine processes an axis event through a mapping and produces vJoy output
@@ -948,6 +991,8 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
 - **Curve type selector**: tabs or dropdown to switch between Linear/Spline/Bezier
 - Add/remove control points: right-click to add, delete key to remove selected
 
+> **Lesson from Phase 2 code review:** Every point edit (drag, add, remove) must go through `ResponseCurve::piecewise_linear()` / `cubic_spline()` / `cubic_bezier()` factory methods, which validate invariants (>= 2 points, strictly increasing x, x >= 0 when symmetric, >= 1 bezier segment). Constrain drag handles to prevent crossing adjacent points (preserves x-monotonicity) and use the constructor as a safety net. On validation failure, revert the drag or show a user-facing error.
+
 **Steps:**
 1. Set up egui_plot widget with correct axis ranges and grid
 2. Implement curve polyline rendering (evaluate curve at many points, draw as line)
@@ -1026,6 +1071,8 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
 - Live axis value display during calibration
 - Manual override: edit 5 values directly
 - Enable/disable toggle
+
+> **Lesson from Phase 2 code review:** Both editors MUST go through validated constructors (`DeadzoneConfig::new()`, `Calibration::new()`) — the private fields enforce this at compile time. On every drag/edit, call the constructor and handle `Err` by showing a user-facing message (e.g., "center_low must be less than center_high") or by constraining drag handles to prevent invalid states (e.g., don't let center_low pass center_high). Same applies to numeric field edits: validate via constructor before applying.
 
 **Steps:**
 1. Implement mode panel with tree view and add/remove/rename
