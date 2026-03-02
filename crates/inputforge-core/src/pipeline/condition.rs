@@ -26,43 +26,9 @@ pub fn evaluate_condition(condition: &Condition, cache: &dyn InputCache) -> bool
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
+    use super::super::test_helpers::MockCache;
     use super::*;
-    use crate::types::{DeviceId, InputAddress, InputId};
-
-    struct MockCache {
-        buttons: HashMap<InputAddress, bool>,
-        axes: HashMap<InputAddress, f64>,
-        hats: HashMap<InputAddress, crate::types::HatDirection>,
-    }
-
-    impl MockCache {
-        fn new() -> Self {
-            Self {
-                buttons: HashMap::new(),
-                axes: HashMap::new(),
-                hats: HashMap::new(),
-            }
-        }
-    }
-
-    impl InputCache for MockCache {
-        fn get_button(&self, address: &InputAddress) -> bool {
-            self.buttons.get(address).copied().unwrap_or(false)
-        }
-
-        fn get_axis(&self, address: &InputAddress) -> f64 {
-            self.axes.get(address).copied().unwrap_or(0.0)
-        }
-
-        fn get_hat(&self, address: &InputAddress) -> crate::types::HatDirection {
-            self.hats
-                .get(address)
-                .copied()
-                .unwrap_or(crate::types::HatDirection::Center)
-        }
-    }
+    use crate::types::{DeviceId, HatDirection, InputAddress, InputId};
 
     fn button_input_address() -> InputAddress {
         InputAddress {
@@ -194,13 +160,11 @@ mod tests {
     fn hat_direction_matches_single() {
         let mut cache = MockCache::new();
         let addr = hat_input_address();
-        cache
-            .hats
-            .insert(addr.clone(), crate::types::HatDirection::N);
+        cache.hats.insert(addr.clone(), HatDirection::N);
 
         let condition = Condition::HatDirection {
             input: addr,
-            directions: vec![crate::types::HatDirection::N],
+            directions: vec![HatDirection::N],
         };
         assert!(evaluate_condition(&condition, &cache));
     }
@@ -209,17 +173,11 @@ mod tests {
     fn hat_direction_matches_any_of_multiple() {
         let mut cache = MockCache::new();
         let addr = hat_input_address();
-        cache
-            .hats
-            .insert(addr.clone(), crate::types::HatDirection::NE);
+        cache.hats.insert(addr.clone(), HatDirection::NE);
 
         let condition = Condition::HatDirection {
             input: addr,
-            directions: vec![
-                crate::types::HatDirection::N,
-                crate::types::HatDirection::NE,
-                crate::types::HatDirection::NW,
-            ],
+            directions: vec![HatDirection::N, HatDirection::NE, HatDirection::NW],
         };
         assert!(evaluate_condition(&condition, &cache));
     }
@@ -228,16 +186,11 @@ mod tests {
     fn hat_direction_no_match() {
         let mut cache = MockCache::new();
         let addr = hat_input_address();
-        cache
-            .hats
-            .insert(addr.clone(), crate::types::HatDirection::S);
+        cache.hats.insert(addr.clone(), HatDirection::S);
 
         let condition = Condition::HatDirection {
             input: addr,
-            directions: vec![
-                crate::types::HatDirection::N,
-                crate::types::HatDirection::NE,
-            ],
+            directions: vec![HatDirection::N, HatDirection::NE],
         };
         assert!(!evaluate_condition(&condition, &cache));
     }
@@ -247,9 +200,19 @@ mod tests {
         let cache = MockCache::new(); // hat defaults to Center
         let condition = Condition::HatDirection {
             input: hat_input_address(),
-            directions: vec![crate::types::HatDirection::Center],
+            directions: vec![HatDirection::Center],
         };
         assert!(evaluate_condition(&condition, &cache));
+    }
+
+    #[test]
+    fn hat_direction_empty_directions_never_matches() {
+        let cache = MockCache::new(); // hat defaults to Center
+        let condition = Condition::HatDirection {
+            input: hat_input_address(),
+            directions: vec![],
+        };
+        assert!(!evaluate_condition(&condition, &cache));
     }
 
     // -- Deeply nested conditions ---------------------------------------------

@@ -2,13 +2,15 @@
 
 mod condition;
 mod merge;
+#[cfg(test)]
+mod test_helpers;
 
 pub use condition::evaluate_condition;
 pub use merge::merge_axes;
 
 use crate::action::{Action, ModeChangeStrategy};
 use crate::processing::{invert_axis, invert_button};
-use crate::types::{InputAddress, InputValue, KeyCombo, OutputAddress};
+use crate::types::{HatDirection, InputAddress, InputValue, KeyCombo, OutputAddress};
 
 /// Output produced by the pipeline executor.
 ///
@@ -45,7 +47,7 @@ pub trait InputCache {
     fn get_axis(&self, address: &InputAddress) -> f64;
 
     /// Return the current hat direction at `address`.
-    fn get_hat(&self, address: &InputAddress) -> crate::types::HatDirection;
+    fn get_hat(&self, address: &InputAddress) -> HatDirection;
 }
 
 /// Mutable context carried through pipeline execution.
@@ -146,42 +148,15 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
+    use super::test_helpers::MockCache;
     use super::*;
     use crate::action::Condition;
     use crate::processing::{Calibration, DeadzoneConfig, ResponseCurve};
-    use crate::types::{AxisValue, DeviceId, InputId, KeyModifier, MergeOp, OutputId, VJoyAxis};
+    use crate::types::{
+        AxisValue, DeviceId, HatDirection, InputId, KeyModifier, MergeOp, OutputId, VJoyAxis,
+    };
 
     const TOLERANCE: f64 = 1e-6;
-
-    struct MockCache {
-        buttons: HashMap<InputAddress, bool>,
-        axes: HashMap<InputAddress, f64>,
-    }
-
-    impl MockCache {
-        fn new() -> Self {
-            Self {
-                buttons: HashMap::new(),
-                axes: HashMap::new(),
-            }
-        }
-    }
-
-    impl InputCache for MockCache {
-        fn get_button(&self, address: &InputAddress) -> bool {
-            self.buttons.get(address).copied().unwrap_or(false)
-        }
-
-        fn get_axis(&self, address: &InputAddress) -> f64 {
-            self.axes.get(address).copied().unwrap_or(0.0)
-        }
-
-        fn get_hat(&self, _address: &InputAddress) -> crate::types::HatDirection {
-            crate::types::HatDirection::Center
-        }
-    }
 
     fn button_input_address() -> InputAddress {
         InputAddress {
@@ -282,7 +257,7 @@ mod tests {
         let mut ctx = PipelineContext {
             current_value: 0.0,
             input_value: InputValue::Hat {
-                direction: crate::types::HatDirection::N,
+                direction: HatDirection::N,
             },
             outputs: Vec::new(),
             input_cache: &cache,
@@ -838,7 +813,7 @@ mod tests {
         let mut ctx = PipelineContext {
             current_value: 0.0,
             input_value: InputValue::Hat {
-                direction: crate::types::HatDirection::N,
+                direction: HatDirection::N,
             },
             outputs: Vec::new(),
             input_cache: &cache,
