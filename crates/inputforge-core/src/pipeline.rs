@@ -1,6 +1,7 @@
 // Rust guideline compliant 2026-03-02
 
 use crate::action::{Action, Condition, ModeChangeStrategy};
+use crate::processing::{invert_axis, invert_button};
 use crate::types::{InputAddress, InputValue, KeyCombo, MergeOp, OutputAddress};
 
 /// Output produced by the pipeline executor.
@@ -9,10 +10,21 @@ use crate::types::{InputAddress, InputValue, KeyCombo, MergeOp, OutputAddress};
 /// Not serializable -- they exist only during pipeline execution.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PipelineOutput {
-    SetAxis { output: OutputAddress, value: f64 },
-    SetButton { output: OutputAddress, pressed: bool },
-    SendKey { key: KeyCombo, pressed: bool },
-    ChangeMode { strategy: ModeChangeStrategy },
+    SetAxis {
+        output: OutputAddress,
+        value: f64,
+    },
+    SetButton {
+        output: OutputAddress,
+        pressed: bool,
+    },
+    SendKey {
+        key: KeyCombo,
+        pressed: bool,
+    },
+    ChangeMode {
+        strategy: ModeChangeStrategy,
+    },
 }
 
 /// Read-only access to the latest input values.
@@ -61,11 +73,11 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                 ctx.current_value = config.apply(ctx.current_value);
             }
             Action::Invert => match &ctx.input_value {
-                InputValue::Button { .. } => {
-                    ctx.current_value = if ctx.current_value > 0.5 { 0.0 } else { 1.0 };
+                InputValue::Button { pressed } => {
+                    ctx.current_value = if invert_button(*pressed) { 1.0 } else { 0.0 };
                 }
                 _ => {
-                    ctx.current_value = -ctx.current_value;
+                    ctx.current_value = invert_axis(ctx.current_value);
                 }
             },
 
@@ -85,12 +97,15 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                 }
                 InputValue::Hat { .. } => {}
             },
-            Action::MapToKeyboard { key } => {
-                ctx.outputs.push(PipelineOutput::SendKey {
-                    key: key.clone(),
-                    pressed: ctx.current_value > 0.5,
-                });
-            }
+            Action::MapToKeyboard { key } => match &ctx.input_value {
+                InputValue::Hat { .. } => {}
+                _ => {
+                    ctx.outputs.push(PipelineOutput::SendKey {
+                        key: key.clone(),
+                        pressed: ctx.current_value > 0.5,
+                    });
+                }
+            },
             Action::MergeAxis {
                 second_input,
                 operation,
@@ -130,12 +145,8 @@ pub fn evaluate_condition(condition: &Condition, cache: &dyn InputCache) -> bool
             let value = cache.get_axis(input);
             value >= *min && value <= *max
         }
-        Condition::All { conditions } => {
-            conditions.iter().all(|c| evaluate_condition(c, cache))
-        }
-        Condition::Any { conditions } => {
-            conditions.iter().any(|c| evaluate_condition(c, cache))
-        }
+        Condition::All { conditions } => conditions.iter().all(|c| evaluate_condition(c, cache)),
+        Condition::Any { conditions } => conditions.iter().any(|c| evaluate_condition(c, cache)),
         Condition::Not { condition } => !evaluate_condition(condition, cache),
     }
 }
@@ -412,13 +423,7 @@ mod tests {
         let mut ctx = axis_ctx(&cache, 32767.0);
         let actions = [
             Action::Calibrate {
-                config: Calibration {
-                    physical_min: -32768.0,
-                    physical_center_low: -100.0,
-                    physical_center_high: 100.0,
-                    physical_max: 32767.0,
-                    enabled: true,
-                },
+                config: Calibration::new(-32768.0, -100.0, 100.0, 32767.0, true).unwrap(),
             },
             Action::MapToVJoy {
                 output: test_output(),
@@ -426,7 +431,10 @@ mod tests {
         ];
         execute_pipeline(&actions, &mut ctx);
         if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
-            assert!((*value - 1.0).abs() < TOLERANCE, "expected 1.0, got {value}");
+            assert!(
+                (*value - 1.0).abs() < TOLERANCE,
+                "expected 1.0, got {value}"
+            );
         } else {
             panic!("expected SetAxis");
         }
@@ -440,10 +448,11 @@ mod tests {
         let mut ctx = axis_ctx(&cache, 0.6);
         let actions = [
             Action::ResponseCurve {
-                curve: ResponseCurve::PiecewiseLinear {
-                    points: vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
-                    symmetric: false,
-                },
+                curve: ResponseCurve::piecewise_linear(
+                    vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
+                    false,
+                )
+                .unwrap(),
             },
             Action::MapToVJoy {
                 output: test_output(),
@@ -451,7 +460,10 @@ mod tests {
         ];
         execute_pipeline(&actions, &mut ctx);
         if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
-            assert!((*value - 0.6).abs() < TOLERANCE, "expected 0.6, got {value}");
+            assert!(
+                (*value - 0.6).abs() < TOLERANCE,
+                "expected 0.6, got {value}"
+            );
         } else {
             panic!("expected SetAxis");
         }
@@ -468,16 +480,22 @@ mod tests {
             condition: Condition::ButtonPressed {
                 input: button_input_address(),
             },
-            if_true: vec![Action::Invert, Action::MapToVJoy {
-                output: test_output(),
-            }],
+            if_true: vec![
+                Action::Invert,
+                Action::MapToVJoy {
+                    output: test_output(),
+                },
+            ],
             if_false: Some(vec![Action::MapToVJoy {
                 output: test_output(),
             }]),
         }];
         execute_pipeline(&actions, &mut ctx);
         if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
-            assert!((*value - (-0.5)).abs() < TOLERANCE, "expected -0.5, got {value}");
+            assert!(
+                (*value - (-0.5)).abs() < TOLERANCE,
+                "expected -0.5, got {value}"
+            );
         } else {
             panic!("expected SetAxis");
         }
@@ -491,16 +509,22 @@ mod tests {
             condition: Condition::ButtonPressed {
                 input: button_input_address(),
             },
-            if_true: vec![Action::Invert, Action::MapToVJoy {
-                output: test_output(),
-            }],
+            if_true: vec![
+                Action::Invert,
+                Action::MapToVJoy {
+                    output: test_output(),
+                },
+            ],
             if_false: Some(vec![Action::MapToVJoy {
                 output: test_output(),
             }]),
         }];
         execute_pipeline(&actions, &mut ctx);
         if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
-            assert!((*value - 0.5).abs() < TOLERANCE, "expected 0.5, got {value}");
+            assert!(
+                (*value - 0.5).abs() < TOLERANCE,
+                "expected 0.5, got {value}"
+            );
         } else {
             panic!("expected SetAxis");
         }
@@ -545,7 +569,10 @@ mod tests {
         ];
         execute_pipeline(&actions, &mut ctx);
         if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
-            assert!((*value - 0.5).abs() < TOLERANCE, "expected 0.5, got {value}");
+            assert!(
+                (*value - 0.5).abs() < TOLERANCE,
+                "expected 0.5, got {value}"
+            );
         } else {
             panic!("expected SetAxis");
         }
@@ -571,7 +598,10 @@ mod tests {
         ];
         execute_pipeline(&actions, &mut ctx);
         if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
-            assert!((*value - 0.6).abs() < TOLERANCE, "expected 0.6, got {value}");
+            assert!(
+                (*value - 0.6).abs() < TOLERANCE,
+                "expected 0.6, got {value}"
+            );
         } else {
             panic!("expected SetAxis");
         }
@@ -598,7 +628,10 @@ mod tests {
         execute_pipeline(&actions, &mut ctx);
         // |-0.9| > |0.3|, so the result is -0.9
         if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
-            assert!((*value - (-0.9)).abs() < TOLERANCE, "expected -0.9, got {value}");
+            assert!(
+                (*value - (-0.9)).abs() < TOLERANCE,
+                "expected -0.9, got {value}"
+            );
         } else {
             panic!("expected SetAxis");
         }
@@ -625,7 +658,10 @@ mod tests {
         execute_pipeline(&actions, &mut ctx);
         // |-0.8| > |0.3|, so the result is -0.8 (first wins)
         if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
-            assert!((*value - (-0.8)).abs() < TOLERANCE, "expected -0.8, got {value}");
+            assert!(
+                (*value - (-0.8)).abs() < TOLERANCE,
+                "expected -0.8, got {value}"
+            );
         } else {
             panic!("expected SetAxis");
         }
@@ -749,10 +785,7 @@ mod tests {
         assert_eq!(ctx.outputs.len(), 1);
         assert_eq!(
             ctx.outputs[0],
-            PipelineOutput::SendKey {
-                key,
-                pressed: true,
-            }
+            PipelineOutput::SendKey { key, pressed: true }
         );
     }
 
@@ -770,10 +803,7 @@ mod tests {
         }];
         execute_pipeline(&actions, &mut ctx);
         assert_eq!(ctx.outputs.len(), 1);
-        assert_eq!(
-            ctx.outputs[0],
-            PipelineOutput::ChangeMode { strategy }
-        );
+        assert_eq!(ctx.outputs[0], PipelineOutput::ChangeMode { strategy });
     }
 
     // -- Multiple outputs -----------------------------------------------------
@@ -791,8 +821,12 @@ mod tests {
             output: OutputId::Axis { id: VJoyAxis::Y },
         };
         let actions = [
-            Action::MapToVJoy { output: output_x.clone() },
-            Action::MapToVJoy { output: output_y.clone() },
+            Action::MapToVJoy {
+                output: output_x.clone(),
+            },
+            Action::MapToVJoy {
+                output: output_y.clone(),
+            },
         ];
         execute_pipeline(&actions, &mut ctx);
         assert_eq!(ctx.outputs.len(), 2);
@@ -818,19 +852,8 @@ mod tests {
     fn full_chain_calibrate_deadzone_curve_invert_map() {
         let cache = MockCache::new();
         // Use a no-deadzone config (center at 0, no dead band)
-        let deadzone = DeadzoneConfig {
-            low: -1.0,
-            center_low: 0.0,
-            center_high: 0.0,
-            high: 1.0,
-        };
-        let calibration = Calibration {
-            physical_min: -100.0,
-            physical_center_low: 0.0,
-            physical_center_high: 0.0,
-            physical_max: 100.0,
-            enabled: true,
-        };
+        let deadzone = DeadzoneConfig::new(-1.0, 0.0, 0.0, 1.0).unwrap();
+        let calibration = Calibration::new(-100.0, 0.0, 0.0, 100.0, true).unwrap();
         // Raw value 50.0 → calibrate → 0.5 → deadzone → 0.5 → identity curve → 0.5 → invert → -0.5
         let mut ctx = PipelineContext {
             current_value: 50.0,
@@ -841,13 +864,16 @@ mod tests {
             input_cache: &cache,
         };
         let actions = [
-            Action::Calibrate { config: calibration },
+            Action::Calibrate {
+                config: calibration,
+            },
             Action::Deadzone { config: deadzone },
             Action::ResponseCurve {
-                curve: ResponseCurve::PiecewiseLinear {
-                    points: vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
-                    symmetric: false,
-                },
+                curve: ResponseCurve::piecewise_linear(
+                    vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
+                    false,
+                )
+                .unwrap(),
             },
             Action::Invert,
             Action::MapToVJoy {
@@ -864,5 +890,27 @@ mod tests {
         } else {
             panic!("expected SetAxis");
         }
+    }
+
+    // -- Hat + MapToKeyboard --------------------------------------------------
+
+    #[test]
+    fn hat_input_map_to_keyboard_no_output() {
+        let cache = MockCache::new();
+        let mut ctx = PipelineContext {
+            current_value: 0.0,
+            input_value: InputValue::Hat {
+                direction: crate::types::HatDirection::N,
+            },
+            outputs: Vec::new(),
+            input_cache: &cache,
+        };
+        let key = KeyCombo {
+            key: "Space".to_owned(),
+            modifiers: vec![],
+        };
+        let actions = [Action::MapToKeyboard { key }];
+        execute_pipeline(&actions, &mut ctx);
+        assert!(ctx.outputs.is_empty());
     }
 }

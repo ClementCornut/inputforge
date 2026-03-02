@@ -14,6 +14,7 @@ pub use inversion::{invert_axis, invert_button};
 ///
 /// Assumes `in_min < in_max`. Does NOT clamp the result.
 pub(crate) fn lerp_range(value: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64 {
+    debug_assert!(in_min < in_max, "lerp_range requires in_min < in_max");
     let t = (value - in_min) / (in_max - in_min);
     out_min + t * (out_max - out_min)
 }

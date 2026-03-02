@@ -2,8 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::{EngineError, Result};
+
 /// A response curve that transforms axis input to output.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+///
+/// Constructed via [`ResponseCurve::piecewise_linear`], [`ResponseCurve::cubic_spline`],
+/// or [`ResponseCurve::cubic_bezier`], which validate invariants at construction time.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ResponseCurve {
     PiecewiseLinear {
@@ -20,6 +25,53 @@ pub enum ResponseCurve {
     },
 }
 
+/// Raw deserialization target for [`ResponseCurve`].
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum ResponseCurveRaw {
+    PiecewiseLinear {
+        points: Vec<(f64, f64)>,
+        symmetric: bool,
+    },
+    CubicSpline {
+        points: Vec<(f64, f64)>,
+        symmetric: bool,
+    },
+    CubicBezier {
+        segments: Vec<BezierSegment>,
+        symmetric: bool,
+    },
+}
+
+impl TryFrom<ResponseCurveRaw> for ResponseCurve {
+    type Error = EngineError;
+
+    fn try_from(raw: ResponseCurveRaw) -> Result<Self> {
+        match raw {
+            ResponseCurveRaw::PiecewiseLinear { points, symmetric } => {
+                Self::piecewise_linear(points, symmetric)
+            }
+            ResponseCurveRaw::CubicSpline { points, symmetric } => {
+                Self::cubic_spline(points, symmetric)
+            }
+            ResponseCurveRaw::CubicBezier {
+                segments,
+                symmetric,
+            } => Self::cubic_bezier(segments, symmetric),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ResponseCurve {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = ResponseCurveRaw::deserialize(deserializer)?;
+        Self::try_from(raw).map_err(serde::de::Error::custom)
+    }
+}
+
 /// A single cubic bezier segment defined by four control points.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BezierSegment {
@@ -29,7 +81,82 @@ pub struct BezierSegment {
     pub end: (f64, f64),
 }
 
+/// Validate that points satisfy the response curve invariants.
+///
+/// Requires >= 2 points, strictly increasing x, and x >= 0 when symmetric.
+fn validate_points(points: &[(f64, f64)], symmetric: bool, kind: &str) -> Result<()> {
+    if points.len() < 2 {
+        return Err(EngineError::InvalidConfig {
+            reason: format!("{kind} requires at least 2 points, got {}", points.len()),
+        });
+    }
+    for window in points.windows(2) {
+        if window[0].0 >= window[1].0 {
+            return Err(EngineError::InvalidConfig {
+                reason: format!(
+                    "{kind} points must have strictly increasing x values, \
+                     found x={} followed by x={}",
+                    window[0].0, window[1].0
+                ),
+            });
+        }
+    }
+    if symmetric {
+        for &(x, _) in points {
+            if x < 0.0 {
+                return Err(EngineError::InvalidConfig {
+                    reason: format!("{kind} with symmetric=true requires all x >= 0, found x={x}"),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 impl ResponseCurve {
+    /// Create a validated piecewise linear response curve.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::InvalidConfig`] when:
+    /// - fewer than 2 points are provided
+    /// - x values are not strictly increasing
+    /// - symmetric is true but some x < 0
+    pub fn piecewise_linear(points: Vec<(f64, f64)>, symmetric: bool) -> Result<Self> {
+        validate_points(&points, symmetric, "PiecewiseLinear")?;
+        Ok(Self::PiecewiseLinear { points, symmetric })
+    }
+
+    /// Create a validated cubic spline response curve.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::InvalidConfig`] when:
+    /// - fewer than 2 points are provided
+    /// - x values are not strictly increasing
+    /// - symmetric is true but some x < 0
+    pub fn cubic_spline(points: Vec<(f64, f64)>, symmetric: bool) -> Result<Self> {
+        validate_points(&points, symmetric, "CubicSpline")?;
+        Ok(Self::CubicSpline { points, symmetric })
+    }
+
+    /// Create a validated cubic bezier response curve.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::InvalidConfig`] when segments is empty.
+    pub fn cubic_bezier(segments: Vec<BezierSegment>, symmetric: bool) -> Result<Self> {
+        if segments.is_empty() {
+            return Err(EngineError::InvalidConfig {
+                reason: "CubicBezier requires at least 1 segment".to_owned(),
+            });
+        }
+        Ok(Self::CubicBezier {
+            segments,
+            symmetric,
+        })
+    }
+
     /// Evaluate the curve at the given input value.
     #[must_use]
     pub fn evaluate(&self, input: f64) -> f64 {
@@ -42,7 +169,10 @@ impl ResponseCurve {
                 let pts = maybe_mirror_points(points, *symmetric);
                 evaluate_cubic_spline(&pts, input)
             }
-            Self::CubicBezier { segments, symmetric } => {
+            Self::CubicBezier {
+                segments,
+                symmetric,
+            } => {
                 let segs = if *symmetric {
                     mirror_bezier_segments(segments)
                 } else {
@@ -59,10 +189,7 @@ impl ResponseCurve {
 // ---------------------------------------------------------------------------
 
 fn evaluate_piecewise_linear(points: &[(f64, f64)], input: f64) -> f64 {
-    if points.len() < 2 {
-        return input;
-    }
-
+    // Invariant: validated at construction to have >= 2 points
     if input <= points[0].0 {
         return points[0].1;
     }
@@ -100,7 +227,9 @@ fn compute_spline_coefficients(points: &[(f64, f64)]) -> Vec<SplineCoeffs> {
     let seg_count = points.len() - 1;
 
     // Segment widths and slope differences
-    let widths: Vec<f64> = (0..seg_count).map(|i| points[i + 1].0 - points[i].0).collect();
+    let widths: Vec<f64> = (0..seg_count)
+        .map(|i| points[i + 1].0 - points[i].0)
+        .collect();
     let alpha: Vec<f64> = (1..seg_count)
         .map(|i| {
             3.0 * ((points[i + 1].1 - points[i].1) / widths[i]
@@ -114,8 +243,7 @@ fn compute_spline_coefficients(points: &[(f64, f64)]) -> Vec<SplineCoeffs> {
     let mut rhs = vec![0.0; seg_count + 1];
 
     for i in 1..seg_count {
-        lower_diag[i] =
-            2.0 * (points[i + 1].0 - points[i - 1].0) - widths[i - 1] * mu[i - 1];
+        lower_diag[i] = 2.0 * (points[i + 1].0 - points[i - 1].0) - widths[i - 1] * mu[i - 1];
         mu[i] = widths[i] / lower_diag[i];
         rhs[i] = (alpha[i - 1] - widths[i - 1] * rhs[i - 1]) / lower_diag[i];
     }
@@ -145,10 +273,7 @@ fn compute_spline_coefficients(points: &[(f64, f64)]) -> Vec<SplineCoeffs> {
 }
 
 fn evaluate_cubic_spline(points: &[(f64, f64)], input: f64) -> f64 {
-    if points.len() < 2 {
-        return input;
-    }
-
+    // Invariant: validated at construction to have >= 2 points
     if input <= points[0].0 {
         return points[0].1;
     }
@@ -233,10 +358,7 @@ fn find_t_for_x(seg: &BezierSegment, x: f64) -> f64 {
 }
 
 fn evaluate_cubic_bezier(segments: &[BezierSegment], input: f64) -> f64 {
-    if segments.is_empty() {
-        return input;
-    }
-
+    // Invariant: validated at construction to have >= 1 segment
     if input <= segments[0].start.0 {
         return segments[0].start.1;
     }
@@ -308,60 +430,60 @@ mod tests {
 
     #[test]
     fn piecewise_identity() {
-        let curve = ResponseCurve::PiecewiseLinear {
-            points: vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
-            symmetric: false,
-        };
+        let curve =
+            ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false)
+                .unwrap();
         assert!((curve.evaluate(0.5) - 0.5).abs() < TOLERANCE);
         assert!((curve.evaluate(-0.5) - (-0.5)).abs() < TOLERANCE);
     }
 
     #[test]
     fn piecewise_s_curve_midpoint() {
-        let curve = ResponseCurve::PiecewiseLinear {
-            points: vec![(-1.0, -1.0), (-0.5, -0.2), (0.0, 0.0), (0.5, 0.2), (1.0, 1.0)],
-            symmetric: false,
-        };
+        let curve = ResponseCurve::piecewise_linear(
+            vec![
+                (-1.0, -1.0),
+                (-0.5, -0.2),
+                (0.0, 0.0),
+                (0.5, 0.2),
+                (1.0, 1.0),
+            ],
+            false,
+        )
+        .unwrap();
         assert!((curve.evaluate(0.5) - 0.2).abs() < TOLERANCE);
         assert!((curve.evaluate(0.75) - 0.6).abs() < TOLERANCE);
     }
 
     #[test]
     fn piecewise_clamp_below() {
-        let curve = ResponseCurve::PiecewiseLinear {
-            points: vec![(-1.0, -1.0), (1.0, 1.0)],
-            symmetric: false,
-        };
+        let curve = ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (1.0, 1.0)], false).unwrap();
         assert!((curve.evaluate(-2.0) - (-1.0)).abs() < TOLERANCE);
     }
 
     #[test]
     fn piecewise_clamp_above() {
-        let curve = ResponseCurve::PiecewiseLinear {
-            points: vec![(-1.0, -1.0), (1.0, 1.0)],
-            symmetric: false,
-        };
+        let curve = ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (1.0, 1.0)], false).unwrap();
         assert!((curve.evaluate(2.0) - 1.0).abs() < TOLERANCE);
     }
 
     #[test]
-    fn piecewise_single_point_passthrough() {
-        let curve = ResponseCurve::PiecewiseLinear {
-            points: vec![(0.0, 0.0)],
-            symmetric: false,
-        };
-        assert!((curve.evaluate(0.5) - 0.5).abs() < TOLERANCE);
+    fn piecewise_single_point_rejected() {
+        let err = ResponseCurve::piecewise_linear(vec![(0.0, 0.0)], false).unwrap_err();
+        assert!(matches!(err, EngineError::InvalidConfig { .. }));
     }
 
     // -- Cubic spline -------------------------------------------------------
 
     #[test]
     fn spline_passes_through_points() {
-        let points = vec![(-1.0, -1.0), (-0.5, -0.2), (0.0, 0.0), (0.5, 0.2), (1.0, 1.0)];
-        let curve = ResponseCurve::CubicSpline {
-            points: points.clone(),
-            symmetric: false,
-        };
+        let points = vec![
+            (-1.0, -1.0),
+            (-0.5, -0.2),
+            (0.0, 0.0),
+            (0.5, 0.2),
+            (1.0, 1.0),
+        ];
+        let curve = ResponseCurve::cubic_spline(points.clone(), false).unwrap();
         for &(x, y) in &points {
             assert!(
                 (curve.evaluate(x) - y).abs() < TOLERANCE,
@@ -373,30 +495,24 @@ mod tests {
 
     #[test]
     fn spline_endpoints() {
-        let curve = ResponseCurve::CubicSpline {
-            points: vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
-            symmetric: false,
-        };
+        let curve =
+            ResponseCurve::cubic_spline(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false).unwrap();
         assert!((curve.evaluate(-1.0) - (-1.0)).abs() < TOLERANCE);
         assert!((curve.evaluate(1.0) - 1.0).abs() < TOLERANCE);
     }
 
     #[test]
     fn spline_identity_points() {
-        let curve = ResponseCurve::CubicSpline {
-            points: vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
-            symmetric: false,
-        };
+        let curve =
+            ResponseCurve::cubic_spline(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false).unwrap();
         // With 3 collinear points, natural spline should produce near-identity
         assert!((curve.evaluate(0.5) - 0.5).abs() < TOLERANCE);
     }
 
     #[test]
     fn spline_clamp_outside() {
-        let curve = ResponseCurve::CubicSpline {
-            points: vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
-            symmetric: false,
-        };
+        let curve =
+            ResponseCurve::cubic_spline(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false).unwrap();
         assert!((curve.evaluate(-2.0) - (-1.0)).abs() < TOLERANCE);
         assert!((curve.evaluate(2.0) - 1.0).abs() < TOLERANCE);
     }
@@ -411,48 +527,37 @@ mod tests {
             control2: (0.5, 0.5),
             end: (1.0, 1.0),
         };
-        let curve = ResponseCurve::CubicBezier {
-            segments: vec![seg],
-            symmetric: false,
-        };
+        let curve = ResponseCurve::cubic_bezier(vec![seg], false).unwrap();
         assert!((curve.evaluate(-1.0) - (-1.0)).abs() < TOLERANCE);
         assert!((curve.evaluate(1.0) - 1.0).abs() < TOLERANCE);
     }
 
     #[test]
     fn bezier_linear_control_points() {
-        // Control points on a straight line → linear output
+        // Control points on a straight line -> linear output
         let seg = BezierSegment {
             start: (0.0, 0.0),
             control1: (1.0 / 3.0, 1.0 / 3.0),
             control2: (2.0 / 3.0, 2.0 / 3.0),
             end: (1.0, 1.0),
         };
-        let curve = ResponseCurve::CubicBezier {
-            segments: vec![seg],
-            symmetric: false,
-        };
+        let curve = ResponseCurve::cubic_bezier(vec![seg], false).unwrap();
         assert!((curve.evaluate(0.5) - 0.5).abs() < TOLERANCE);
         assert!((curve.evaluate(0.25) - 0.25).abs() < TOLERANCE);
     }
 
     #[test]
-    fn bezier_empty_segments_passthrough() {
-        let curve = ResponseCurve::CubicBezier {
-            segments: vec![],
-            symmetric: false,
-        };
-        assert!((curve.evaluate(0.5) - 0.5).abs() < TOLERANCE);
+    fn bezier_empty_segments_rejected() {
+        let err = ResponseCurve::cubic_bezier(vec![], false).unwrap_err();
+        assert!(matches!(err, EngineError::InvalidConfig { .. }));
     }
 
     // -- Symmetry -----------------------------------------------------------
 
     #[test]
     fn symmetric_piecewise_antisymmetric() {
-        let curve = ResponseCurve::PiecewiseLinear {
-            points: vec![(0.0, 0.0), (0.5, 0.2), (1.0, 1.0)],
-            symmetric: true,
-        };
+        let curve = ResponseCurve::piecewise_linear(vec![(0.0, 0.0), (0.5, 0.2), (1.0, 1.0)], true)
+            .unwrap();
         for &x in &[0.25, 0.5, 0.75, 1.0] {
             let pos = curve.evaluate(x);
             let neg = curve.evaluate(-x);
@@ -465,10 +570,8 @@ mod tests {
 
     #[test]
     fn symmetric_spline_antisymmetric() {
-        let curve = ResponseCurve::CubicSpline {
-            points: vec![(0.0, 0.0), (0.5, 0.3), (1.0, 1.0)],
-            symmetric: true,
-        };
+        let curve =
+            ResponseCurve::cubic_spline(vec![(0.0, 0.0), (0.5, 0.3), (1.0, 1.0)], true).unwrap();
         for &x in &[0.25, 0.5, 0.75] {
             let pos = curve.evaluate(x);
             let neg = curve.evaluate(-x);
@@ -487,10 +590,7 @@ mod tests {
             control2: (0.7, 0.9),
             end: (1.0, 1.0),
         };
-        let curve = ResponseCurve::CubicBezier {
-            segments: vec![seg],
-            symmetric: true,
-        };
+        let curve = ResponseCurve::cubic_bezier(vec![seg], true).unwrap();
         for &x in &[0.25, 0.5, 0.75] {
             let pos = curve.evaluate(x);
             let neg = curve.evaluate(-x);
@@ -505,10 +605,9 @@ mod tests {
 
     #[test]
     fn piecewise_serde_roundtrip() {
-        let curve = ResponseCurve::PiecewiseLinear {
-            points: vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
-            symmetric: false,
-        };
+        let curve =
+            ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false)
+                .unwrap();
         let json = serde_json::to_string(&curve).unwrap();
         assert!(json.contains("\"kind\":\"piecewise_linear\""));
         let back: ResponseCurve = serde_json::from_str(&json).unwrap();
@@ -517,10 +616,8 @@ mod tests {
 
     #[test]
     fn spline_serde_roundtrip() {
-        let curve = ResponseCurve::CubicSpline {
-            points: vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
-            symmetric: true,
-        };
+        let curve =
+            ResponseCurve::cubic_spline(vec![(0.0, 0.0), (0.5, 0.3), (1.0, 1.0)], true).unwrap();
         let json = serde_json::to_string(&curve).unwrap();
         assert!(json.contains("\"kind\":\"cubic_spline\""));
         let back: ResponseCurve = serde_json::from_str(&json).unwrap();
@@ -535,35 +632,26 @@ mod tests {
             control2: (0.7, 0.9),
             end: (1.0, 1.0),
         };
-        let curve = ResponseCurve::CubicBezier {
-            segments: vec![seg],
-            symmetric: false,
-        };
+        let curve = ResponseCurve::cubic_bezier(vec![seg], false).unwrap();
         let json = serde_json::to_string(&curve).unwrap();
         assert!(json.contains("\"kind\":\"cubic_bezier\""));
         let back: ResponseCurve = serde_json::from_str(&json).unwrap();
         assert_eq!(curve, back);
     }
 
-    // -- Cubic spline edge cases ----------------------------------------------
+    // -- Cubic spline edge cases --------------------------------------------
 
     #[test]
-    fn spline_single_point_passthrough() {
-        let curve = ResponseCurve::CubicSpline {
-            points: vec![(0.0, 0.0)],
-            symmetric: false,
-        };
-        assert!((curve.evaluate(0.5) - 0.5).abs() < TOLERANCE);
+    fn spline_single_point_rejected() {
+        let err = ResponseCurve::cubic_spline(vec![(0.0, 0.0)], false).unwrap_err();
+        assert!(matches!(err, EngineError::InvalidConfig { .. }));
     }
 
-    // -- NaN input reaches fallback paths -------------------------------------
+    // -- NaN input reaches fallback paths ------------------------------------
 
     #[test]
     fn piecewise_nan_input_returns_last_point() {
-        let curve = ResponseCurve::PiecewiseLinear {
-            points: vec![(0.0, 0.0), (1.0, 1.0)],
-            symmetric: false,
-        };
+        let curve = ResponseCurve::piecewise_linear(vec![(0.0, 0.0), (1.0, 1.0)], false).unwrap();
         // NaN bypasses all comparisons, reaching the fallback return
         let result = curve.evaluate(f64::NAN);
         assert!((result - 1.0).abs() < TOLERANCE);
@@ -571,10 +659,8 @@ mod tests {
 
     #[test]
     fn spline_nan_input_returns_last_point() {
-        let curve = ResponseCurve::CubicSpline {
-            points: vec![(0.0, 0.0), (0.5, 0.5), (1.0, 1.0)],
-            symmetric: false,
-        };
+        let curve =
+            ResponseCurve::cubic_spline(vec![(0.0, 0.0), (0.5, 0.5), (1.0, 1.0)], false).unwrap();
         let result = curve.evaluate(f64::NAN);
         assert!((result - 1.0).abs() < TOLERANCE);
     }
@@ -587,15 +673,12 @@ mod tests {
             control2: (0.7, 0.7),
             end: (1.0, 1.0),
         };
-        let curve = ResponseCurve::CubicBezier {
-            segments: vec![seg],
-            symmetric: false,
-        };
+        let curve = ResponseCurve::cubic_bezier(vec![seg], false).unwrap();
         let result = curve.evaluate(f64::NAN);
         assert!((result - 1.0).abs() < TOLERANCE);
     }
 
-    // -- Bezier Newton break + bisection fallback -----------------------------
+    // -- Bezier Newton break + bisection fallback ----------------------------
 
     #[test]
     fn bezier_bisection_fallback() {
@@ -607,13 +690,53 @@ mod tests {
             control2: (0.0, 0.7),
             end: (1.0, 1.0),
         };
-        let curve = ResponseCurve::CubicBezier {
-            segments: vec![seg],
-            symmetric: false,
-        };
+        let curve = ResponseCurve::cubic_bezier(vec![seg], false).unwrap();
         // Query x=0.3 forces Newton break at dx=0 then bisection
         let result = curve.evaluate(0.3);
         // Result should be between 0 and 1 (valid y value)
-        assert!(result >= 0.0 && result <= 1.0, "expected y in [0,1], got {result}");
+        assert!(
+            result >= 0.0 && result <= 1.0,
+            "expected y in [0,1], got {result}"
+        );
+    }
+
+    // -- Validation rejection tests -----------------------------------------
+
+    #[test]
+    fn reject_non_increasing_x() {
+        let err = ResponseCurve::piecewise_linear(vec![(0.0, 0.0), (0.0, 1.0)], false).unwrap_err();
+        assert!(matches!(err, EngineError::InvalidConfig { .. }));
+    }
+
+    #[test]
+    fn reject_decreasing_x() {
+        let err = ResponseCurve::cubic_spline(vec![(1.0, 1.0), (0.0, 0.0)], false).unwrap_err();
+        assert!(matches!(err, EngineError::InvalidConfig { .. }));
+    }
+
+    #[test]
+    fn reject_symmetric_with_negative_x() {
+        let err =
+            ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0)], true).unwrap_err();
+        assert!(matches!(err, EngineError::InvalidConfig { .. }));
+    }
+
+    #[test]
+    fn reject_empty_points_piecewise() {
+        let err = ResponseCurve::piecewise_linear(vec![], false).unwrap_err();
+        assert!(matches!(err, EngineError::InvalidConfig { .. }));
+    }
+
+    #[test]
+    fn reject_empty_points_spline() {
+        let err = ResponseCurve::cubic_spline(vec![], false).unwrap_err();
+        assert!(matches!(err, EngineError::InvalidConfig { .. }));
+    }
+
+    #[test]
+    fn reject_invalid_serde_input() {
+        let json = r#"{"kind":"piecewise_linear","points":[[0.0,0.0]],"symmetric":false}"#;
+        let result: std::result::Result<ResponseCurve, _> = serde_json::from_str(json);
+        assert!(result.is_err());
     }
 }

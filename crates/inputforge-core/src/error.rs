@@ -31,6 +31,9 @@ pub enum EngineError {
     #[error("device not found: {device_id:?}")]
     DeviceNotFound { device_id: DeviceId },
 
+    #[error("invalid config: {reason}")]
+    InvalidConfig { reason: String },
+
     #[error("invalid mapping: {reason}")]
     InvalidMapping { reason: String },
 
@@ -65,6 +68,14 @@ mod tests {
             device_id: DeviceId("abc".to_owned()),
         };
         assert!(err.to_string().contains("abc"));
+    }
+
+    #[test]
+    fn engine_error_display_invalid_config() {
+        let err = EngineError::InvalidConfig {
+            reason: "low >= center_low".to_owned(),
+        };
+        assert!(err.to_string().contains("low >= center_low"));
     }
 
     #[test]

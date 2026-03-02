@@ -64,12 +64,26 @@ pub enum ModeChangeStrategy {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Condition {
-    ButtonPressed { input: InputAddress },
-    ButtonReleased { input: InputAddress },
-    AxisInRange { input: InputAddress, min: f64, max: f64 },
-    All { conditions: Vec<Condition> },
-    Any { conditions: Vec<Condition> },
-    Not { condition: Box<Condition> },
+    ButtonPressed {
+        input: InputAddress,
+    },
+    ButtonReleased {
+        input: InputAddress,
+    },
+    AxisInRange {
+        input: InputAddress,
+        min: f64,
+        max: f64,
+    },
+    All {
+        conditions: Vec<Condition>,
+    },
+    Any {
+        conditions: Vec<Condition>,
+    },
+    Not {
+        condition: Box<Condition>,
+    },
 }
 
 /// A mapping from a physical input to a sequence of processing actions.
