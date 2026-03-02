@@ -383,7 +383,13 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
 
 ---
 
-## Phase 3: Profile & Mode System [IN PROGRESS]
+## Phase 3: Profile & Mode System [COMPLETE]
+
+> **Completed 2026-03-02.** All 3 tasks implemented, refactored into module directories. 211 tests, 98.60% region / 99.11% line coverage.
+> - Task 9: Profile TOML serialization with validation (profile/)
+> - Task 10: Mode tree with inheritance-based mapping resolution (mode/)
+> - Task 11: Mode state machine with CycleModes validation, temporary mode stack, cycle detection (mode/state.rs, action.rs)
+> - Refactored mode.rs, profile.rs, pipeline.rs into module directories following existing patterns
 
 ### Task 9: Profile TOML Serialization
 
@@ -486,14 +492,16 @@ Combat = ["Missiles", "Guns"]
 
 **Goal:** Implement mode state machine with all switching strategies.
 
-**Files to create:**
-- `crates/inputforge-core/src/mode_state.rs`
+**Files created:**
+- `crates/inputforge-core/src/mode/state.rs` -- ModeState struct (placed inside mode/ module directory)
 
-**Files to modify:**
-- `crates/inputforge-core/src/lib.rs` -- add `pub mod mode_state;`
+**Files modified:**
+- `crates/inputforge-core/src/mode/mod.rs` -- add `mod state; pub use state::ModeState;`
+- `crates/inputforge-core/src/action.rs` -- add `CycleModes` validated newtype, change `Cycle { modes: Vec<String> }` to `Cycle { modes: CycleModes }`
 
-**Types to define:**
-- `ModeState` struct: holds current mode name, mode stack (for temporary modes), cycle index (for Cycle strategy)
+**Types defined:**
+- `ModeState` struct: holds current mode name, mode stack (for temporary modes)
+- `CycleModes(Vec<String>)`: validated newtype, rejects <2 modes or duplicates, custom Serialize/Deserialize
 
 **Methods to implement:**
 - `ModeState::new(initial: String) -> Self`
