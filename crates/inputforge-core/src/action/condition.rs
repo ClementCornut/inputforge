@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::InputAddress;
+use crate::types::{HatDirection, InputAddress};
 
 /// A condition that can be evaluated against the current input state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -18,6 +18,11 @@ pub enum Condition {
         input: InputAddress,
         min: f64,
         max: f64,
+    },
+    /// True when the hat at `input` is pointing in any of `directions`.
+    HatDirection {
+        input: InputAddress,
+        directions: Vec<HatDirection>,
     },
     All {
         conditions: Vec<Condition>,
@@ -77,6 +82,24 @@ mod tests {
             max: 0.5,
         };
         let json = serde_json::to_string(&cond).unwrap();
+        let back: Condition = serde_json::from_str(&json).unwrap();
+        assert_eq!(cond, back);
+    }
+
+    #[test]
+    fn condition_hat_direction_serde_roundtrip() {
+        let cond = Condition::HatDirection {
+            input: InputAddress {
+                device: DeviceId("dev-1".to_owned()),
+                input: InputId::Hat { index: 0 },
+            },
+            directions: vec![
+                crate::types::HatDirection::N,
+                crate::types::HatDirection::NE,
+            ],
+        };
+        let json = serde_json::to_string(&cond).unwrap();
+        assert!(json.contains("\"type\":\"hat_direction\""));
         let back: Condition = serde_json::from_str(&json).unwrap();
         assert_eq!(cond, back);
     }

@@ -43,6 +43,9 @@ pub trait InputCache {
 
     /// Return the current axis value at `address`.
     fn get_axis(&self, address: &InputAddress) -> f64;
+
+    /// Return the current hat direction at `address`.
+    fn get_hat(&self, address: &InputAddress) -> crate::types::HatDirection;
 }
 
 /// Mutable context carried through pipeline execution.
@@ -173,6 +176,10 @@ mod tests {
 
         fn get_axis(&self, address: &InputAddress) -> f64 {
             self.axes.get(address).copied().unwrap_or(0.0)
+        }
+
+        fn get_hat(&self, address: &InputAddress) -> crate::types::HatDirection {
+            crate::types::HatDirection::Center
         }
     }
 
