@@ -1,8 +1,14 @@
 // Rust guideline compliant 2026-03-02
 
-use crate::action::{Action, Condition, ModeChangeStrategy};
+mod condition;
+mod merge;
+
+pub use condition::evaluate_condition;
+pub use merge::merge_axes;
+
+use crate::action::{Action, ModeChangeStrategy};
 use crate::processing::{invert_axis, invert_button};
-use crate::types::{InputAddress, InputValue, KeyCombo, MergeOp, OutputAddress};
+use crate::types::{InputAddress, InputValue, KeyCombo, OutputAddress};
 
 /// Output produced by the pipeline executor.
 ///
@@ -135,45 +141,14 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
     }
 }
 
-/// Evaluate a condition against the input cache.
-#[must_use]
-pub fn evaluate_condition(condition: &Condition, cache: &dyn InputCache) -> bool {
-    match condition {
-        Condition::ButtonPressed { input } => cache.get_button(input),
-        Condition::ButtonReleased { input } => !cache.get_button(input),
-        Condition::AxisInRange { input, min, max } => {
-            let value = cache.get_axis(input);
-            value >= *min && value <= *max
-        }
-        Condition::All { conditions } => conditions.iter().all(|c| evaluate_condition(c, cache)),
-        Condition::Any { conditions } => conditions.iter().any(|c| evaluate_condition(c, cache)),
-        Condition::Not { condition } => !evaluate_condition(condition, cache),
-    }
-}
-
-/// Merge two axis values using the specified operation.
-#[must_use]
-pub fn merge_axes(first: f64, second: f64, operation: MergeOp) -> f64 {
-    match operation {
-        MergeOp::Bidirectional => (first - second).clamp(-1.0, 1.0),
-        MergeOp::Average => f64::midpoint(first, second),
-        MergeOp::Maximum => {
-            if first.abs() >= second.abs() {
-                first
-            } else {
-                second
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::action::Condition;
     use crate::processing::{Calibration, DeadzoneConfig, ResponseCurve};
-    use crate::types::{AxisValue, DeviceId, InputId, KeyModifier, OutputId, VJoyAxis};
+    use crate::types::{AxisValue, DeviceId, InputId, KeyModifier, MergeOp, OutputId, VJoyAxis};
 
     const TOLERANCE: f64 = 1e-6;
 

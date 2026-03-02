@@ -1,13 +1,15 @@
 // Rust guideline compliant 2026-03-02
 
+mod resolve;
+
+pub use resolve::resolve_mapping;
+
 use std::collections::{HashMap, HashSet};
 
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize};
 
-use crate::action::Mapping;
 use crate::error::{EngineError, Result};
-use crate::types::InputAddress;
 
 /// A node in the mode tree.
 ///
@@ -188,32 +190,6 @@ impl ModeTree {
     }
 }
 
-/// Resolve a mapping by walking the mode inheritance chain.
-///
-/// Given a set of mappings, an input address, and the current mode name,
-/// returns the first matching mapping found by walking from the current
-/// mode up to the root. Child mappings override parent mappings.
-///
-/// Returns `None` if no mapping is found in the entire ancestor chain.
-#[must_use]
-pub fn resolve_mapping<'a>(
-    mappings: &'a [Mapping],
-    input: &InputAddress,
-    mode: &str,
-    tree: &ModeTree,
-) -> Option<&'a Mapping> {
-    let chain = tree.ancestors(mode);
-    for ancestor_mode in &chain {
-        if let Some(mapping) = mappings
-            .iter()
-            .find(|m| m.input == *input && m.mode == *ancestor_mode)
-        {
-            return Some(mapping);
-        }
-    }
-    None
-}
-
 // --- Private helpers ---
 
 /// Recursively build a `ModeNode` from the adjacency map.
@@ -340,8 +316,6 @@ impl<'de> Deserialize<'de> for ModeTree {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::Action;
-    use crate::types::{DeviceId, InputId};
 
     /// Build the standard test tree:
     /// Default -> [Combat -> [Missiles, Guns], Landing]
@@ -356,13 +330,6 @@ mod tests {
             vec!["Missiles".to_owned(), "Guns".to_owned()],
         );
         ModeTree::from_adjacency(&map).unwrap()
-    }
-
-    fn test_input() -> InputAddress {
-        InputAddress {
-            device: DeviceId("dev-1".to_owned()),
-            input: InputId::Axis { index: 0 },
-        }
     }
 
     // --- Tree construction ---
@@ -482,99 +449,6 @@ mod tests {
         assert!(modes.contains(&"Missiles"));
         assert!(modes.contains(&"Guns"));
         assert!(modes.contains(&"Landing"));
-    }
-
-    // --- resolve_mapping ---
-
-    #[test]
-    fn resolve_mapping_direct() {
-        let tree = test_tree();
-        let input = test_input();
-        let mappings = vec![Mapping {
-            input: input.clone(),
-            mode: "Missiles".to_owned(),
-            actions: vec![Action::Invert],
-        }];
-        let result = resolve_mapping(&mappings, &input, "Missiles", &tree);
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().mode, "Missiles");
-    }
-
-    #[test]
-    fn resolve_mapping_inherited() {
-        let tree = test_tree();
-        let input = test_input();
-        let mappings = vec![Mapping {
-            input: input.clone(),
-            mode: "Default".to_owned(),
-            actions: vec![Action::Invert],
-        }];
-        // Look up from Missiles, should inherit from Default.
-        let result = resolve_mapping(&mappings, &input, "Missiles", &tree);
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().mode, "Default");
-    }
-
-    #[test]
-    fn resolve_mapping_not_found() {
-        let tree = test_tree();
-        let input = test_input();
-        let mappings: Vec<Mapping> = vec![];
-        let result = resolve_mapping(&mappings, &input, "Missiles", &tree);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn resolve_mapping_child_overrides_parent() {
-        let tree = test_tree();
-        let input = test_input();
-        let mappings = vec![
-            Mapping {
-                input: input.clone(),
-                mode: "Default".to_owned(),
-                actions: vec![Action::Invert],
-            },
-            Mapping {
-                input: input.clone(),
-                mode: "Combat".to_owned(),
-                actions: vec![], // Different actions to distinguish.
-            },
-        ];
-        // Look up from Combat: should find Combat's mapping, not Default's.
-        let result = resolve_mapping(&mappings, &input, "Combat", &tree);
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().mode, "Combat");
-    }
-
-    #[test]
-    fn resolve_mapping_wrong_input() {
-        let tree = test_tree();
-        let input = test_input();
-        let other_input = InputAddress {
-            device: DeviceId("dev-2".to_owned()),
-            input: InputId::Button { index: 5 },
-        };
-        let mappings = vec![Mapping {
-            input: other_input,
-            mode: "Default".to_owned(),
-            actions: vec![Action::Invert],
-        }];
-        let result = resolve_mapping(&mappings, &input, "Default", &tree);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn resolve_mapping_nonexistent_mode_returns_none() {
-        let tree = test_tree();
-        let input = test_input();
-        let mappings = vec![Mapping {
-            input: input.clone(),
-            mode: "Default".to_owned(),
-            actions: vec![Action::Invert],
-        }];
-        // Mode "Space" doesn't exist, ancestors returns empty, so no match.
-        let result = resolve_mapping(&mappings, &input, "Space", &tree);
-        assert!(result.is_none());
     }
 
     // --- Serde ---
