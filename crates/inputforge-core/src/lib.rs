@@ -2,4 +2,5 @@
 // Rust guideline compliant 2026-03-02
 
 pub mod error;
+pub mod processing;
 pub mod types;
