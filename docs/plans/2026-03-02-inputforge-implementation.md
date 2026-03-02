@@ -79,7 +79,7 @@
 - **Task 13**: Axis merging
 - **Task 14**: Button release callback system
 
-**Phase 4 coverage checkpoint:** Run `rtk cargo llvm-cov --workspace` after completing Phase 4. Core logic (processing, mode, conditions, pipeline) should have >95% coverage overall.
+**Phase 4 coverage checkpoint:** Run `rtk cargo llvm-cov --workspace` after completing Phase 4. Core logic (processing, mode, conditions, pipeline) should have >95% coverage overall. ✅ 235 tests, 98.58% region / 99.02% line coverage.
 
 ### Phase 5: Hardware I/O (Tasks 15-18) -- parallelizable
 - **Task 15**: SDL3 input source + hotplug
@@ -543,7 +543,12 @@ Combat = ["Missiles", "Guns"]
 
 ---
 
-## Phase 4: Conditions & Advanced Logic
+## Phase 4: Conditions & Advanced Logic [COMPLETED]
+
+> **Completed 2026-03-02.** All 3 tasks implemented. 235 tests, 98.58% region / 99.02% line coverage.
+> - Task 12: HatDirection condition variant + get_hat() on InputCache + deeply nested condition tests
+> - Task 13: Bidirectional merge integration tests for rudder pedal use case + full pipeline test
+> - Task 14: CallbackRegistry with register/fire/cancel, PopTemporaryMode and Custom(FnOnce) variants
 
 ### Task 12: Condition Types & Evaluation
 
