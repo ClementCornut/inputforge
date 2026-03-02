@@ -2,6 +2,7 @@
 // Rust guideline compliant 2026-03-02
 
 pub mod action;
+pub mod callbacks;
 pub mod error;
 pub mod mode;
 pub mod pipeline;
