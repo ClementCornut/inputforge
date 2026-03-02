@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cargo fmt --all 2>/dev/null || true",
+            "timeout": 10000,
+            "fileEditExtensions": [".rs"]
+          }
+        ]
+      }
+    ]
+  }
+}
