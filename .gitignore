@@ -1,0 +1,9 @@
+/target
+**/*.swp
+.DS_Store
+*.pdb
+*.log
+lcov.info
+.env
+.vscode/
+.idea/
