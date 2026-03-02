@@ -262,173 +262,89 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
 
 ---
 
-## Phase 2: Processing Pipeline
+## Phase 2: Processing Pipeline [COMPLETED]
 
-### Task 5: Deadzone & Calibration
+### Task 5: Deadzone & Calibration [COMPLETED]
 
 **Goal:** Implement deadzone and calibration processing as pure functions.
 
-**Files to create:**
-- `crates/inputforge-core/src/processing/mod.rs`
-- `crates/inputforge-core/src/processing/deadzone.rs`
-- `crates/inputforge-core/src/processing/calibration.rs`
+**Files created:**
+- `crates/inputforge-core/src/processing/mod.rs` -- `pub(crate) fn lerp_range()` shared helper + re-exports
+- `crates/inputforge-core/src/processing/deadzone.rs` -- `DeadzoneConfig` with Default and `apply()`
+- `crates/inputforge-core/src/processing/calibration.rs` -- `Calibration` (no Default, device-specific) with `apply()`
 
-**Files to modify:**
-- `crates/inputforge-core/src/lib.rs` -- add `pub mod processing;`
+**Files modified:**
+- `crates/inputforge-core/src/lib.rs` -- added `pub mod processing;`
 
-**Deadzone module:**
-- Define `DeadzoneConfig { low, center_low, center_high, high }` with serde derives and Default impl (low=-1, center_low=-0.05, center_high=0.05, high=1)
-- Implement `apply(&self, value: f64) -> f64` method:
-  - Below `low`: return -1.0
-  - Between `low` and `center_low`: linearly interpolate to [-1, 0]
-  - Between `center_low` and `center_high`: return 0.0
-  - Between `center_high` and `high`: linearly interpolate to [0, 1]
-  - Above `high`: return 1.0
-- Write a helper `lerp_range(value, in_min, in_max, out_min, out_max) -> f64`
+**Tests:** 10 deadzone tests (center, boundaries, lerp midpoints, serde roundtrip), 9 calibration tests (min/max mapping, center band, disabled passthrough, midpoints, serde roundtrip), 4 lerp_range tests.
 
-**Calibration module:**
-- Define `Calibration { physical_min, physical_center_low, physical_center_high, physical_max, enabled }` (5-value band from design doc)
-- Implement `apply(&self, value: f64) -> f64` method:
-  - If disabled, pass through
-  - Map [min, center_low] to [-1, 0], center band to 0, [center_high, max] to [0, 1]
-  - Clamp beyond extremes
-
-**Tests to write:**
-- Deadzone: center returns 0, below low returns -1, above high returns 1, linear interpolation between zones, default config full range
-- Calibration: min maps to -1, max maps to +1, center band maps to 0, disabled passes through, midpoints map correctly
-
-**Steps:**
-1. Create processing directory with mod.rs exporting both submodules
-2. Write deadzone module with `DeadzoneConfig` and `apply()`
-3. Write calibration module with `Calibration` and `apply()`
-4. Run `rtk cargo test -p inputforge-core`
-5. Commit: `feat(core): add deadzone and calibration processing`
+**Commit:** `feat(core): add deadzone and calibration processing`
 
 ---
 
-### Task 6: Axis/Button Inversion
+### Task 6: Axis/Button Inversion [COMPLETED]
 
 **Goal:** Simple value inversion functions.
 
-**Files to create:**
-- `crates/inputforge-core/src/processing/inversion.rs`
+**Files created:**
+- `crates/inputforge-core/src/processing/inversion.rs` -- `invert_axis(f64) -> f64`, `invert_button(bool) -> bool`, both `#[must_use]`
 
-**Files to modify:**
-- `crates/inputforge-core/src/processing/mod.rs` -- add `pub mod inversion;`
+**Tests:** 6 tests (positive/negative/zero axis negation, 1→-1, button toggle both ways).
 
-**Functions:**
-- `invert_axis(value: f64) -> f64` -- negate the value
-- `invert_button(pressed: bool) -> bool` -- toggle the state
-
-**Tests:** Verify axis inversion negates, button inversion toggles, zero stays zero.
-
-**Steps:**
-1. Write module with both functions and tests
-2. Export from processing/mod.rs
-3. Run `rtk cargo test -p inputforge-core`
-4. Commit: `feat(core): add axis and button inversion`
+**Commit:** `feat(core): add axis and button inversion`
 
 ---
 
-### Task 7: Response Curves
+### Task 7: Response Curves [COMPLETED]
 
 **Goal:** Implement all 3 response curve types with symmetry support.
 
-**Files to create:**
+**Files created:**
 - `crates/inputforge-core/src/processing/curves.rs`
 
-**Files to modify:**
-- `crates/inputforge-core/src/processing/mod.rs` -- add `pub mod curves;`
+**Types defined:**
+- `ResponseCurve` enum (serde tagged by `"kind"`, `rename_all = "snake_case"`): `PiecewiseLinear`, `CubicSpline`, `CubicBezier`
+- `BezierSegment { start, control1, control2, end }` (each `(f64, f64)`)
 
-**Types to define:**
-- `ResponseCurve` enum (serde tagged by "kind"):
-  - `PiecewiseLinear { points: Vec<(f64, f64)>, symmetric: bool }`
-  - `CubicSpline { points: Vec<(f64, f64)>, symmetric: bool }`
-  - `CubicBezier { segments: Vec<BezierSegment>, symmetric: bool }`
-- `BezierSegment { start, cp1, cp2, end }` (each is `(f64, f64)`)
+**Implementation:**
+- Piecewise linear: segment search + lerp, clamp outside range
+- Cubic spline: Thomas algorithm (`compute_spline_coefficients`) for natural cubic spline coefficients (`SplineCoeffs` with `poly_a/b/c/d/x_start` fields -- renamed from single-char names to satisfy clippy `many_single_char_names`)
+- Cubic bezier: `bezier_x/y/dx` helpers, `find_t_for_x` with Newton's method (8 iter) + bisection fallback (50 iter, uses `f64::midpoint()`)
+- Symmetry: `maybe_mirror_points()` (antisymmetric: f(-x) = -f(x)), `mirror_bezier_segments()`
 
-**Implement `evaluate(&self, input: f64) -> f64` on `ResponseCurve`:**
+**Tests:** 24 tests including identity, S-curve, clamping, spline interpolation, bezier endpoints, linear control points, all 3 symmetry types, 3 serde roundtrips verifying tag values, single-point fallbacks, NaN input edge cases, bisection fallback with pathological S-shaped x curve.
 
-1. **Piecewise linear**: Find the segment containing input x, linearly interpolate y. Clamp outside range.
-2. **Cubic spline**: Natural cubic spline interpolation using the Thomas algorithm to compute coefficients, then evaluate the correct segment.
-3. **Cubic bezier**: For each segment, find parameter t such that bezier_x(t) = x (Newton's method with bisection fallback), then compute bezier_y(t).
-
-**Symmetry support:**
-- `maybe_mirror(points, symmetric)`: When symmetric=true, mirror positive-side points to negative side (negate both x and y)
-- `mirror_bezier_segments(segments)`: Reverse and negate segments for negative side
-
-**Helper functions:**
-- `bezier_x(seg, t)`, `bezier_y(seg, t)` -- standard cubic bezier evaluation
-- `bezier_dx(seg, t)` -- derivative for Newton's method
-- `find_t_for_x(seg, x)` -- Newton's method (8 iterations) with bisection fallback (50 iterations)
-- `compute_spline_coefficients(points)` -- Thomas algorithm for natural cubic spline
-
-**Tests to write:**
-- Piecewise linear: identity curve, custom S-curve midpoints, clamping outside range
-- Cubic spline: passes through defined points, endpoint values correct
-- Cubic bezier: endpoints correct, linear control points produce linear output
-- Symmetry: mirrored curve produces antisymmetric values (f(-x) = -f(x))
-
-**Steps:**
-1. Write the curve types with serde derives
-2. Implement piecewise linear evaluation (simplest)
-3. Implement cubic spline with Thomas algorithm
-4. Implement cubic bezier with Newton's method
-5. Implement symmetry mirroring for all types
-6. Write comprehensive tests
-7. Run `rtk cargo test -p inputforge-core -- curves`
-8. Commit: `feat(core): add response curves (linear, spline, bezier) with symmetry`
+**Commit:** `feat(core): add response curves (linear, spline, bezier) with symmetry`
 
 ---
 
-### Task 8: Pipeline Executor & Action Types
+### Task 8: Pipeline Executor & Action Types [COMPLETED]
 
 **Goal:** Define action types and implement the pipeline executor that processes input through ordered action lists.
 
-**Files to create:**
-- `crates/inputforge-core/src/action.rs`
-- `crates/inputforge-core/src/pipeline.rs`
+**Files created:**
+- `crates/inputforge-core/src/action.rs` -- `Action`, `ModeChangeStrategy`, `Condition`, `Mapping`
+- `crates/inputforge-core/src/pipeline.rs` -- `PipelineOutput`, `InputCache` trait, `PipelineContext`, `execute_pipeline()`, `evaluate_condition()`, `merge_axes()`
 
-**Files to modify:**
-- `crates/inputforge-core/src/lib.rs` -- add `pub mod action; pub mod pipeline;`
+**Files modified:**
+- `crates/inputforge-core/src/lib.rs` -- added `pub mod action; pub mod pipeline;`
 
-**Action types to define (see design doc Section 4):**
-- `Action` enum (serde tagged by "type"):
-  - Processing: `ResponseCurve`, `Deadzone`, `Calibrate`, `Invert`
-  - Output: `MapToVJoy { output }`, `MapToKeyboard { key }`, `MergeAxis { second_input, operation }`
-  - Control flow: `ChangeMode { strategy }`, `Conditional { condition, if_true, if_false }`
-- `ModeChangeStrategy` enum: `SwitchTo`, `Temporary`, `Previous`, `Cycle`
-- `Condition` enum: `ButtonPressed`, `ButtonReleased`, `AxisInRange`, `All`, `Any`, `Not`
-- `Mapping { input: InputAddress, mode: String, actions: Vec<Action> }`
+**Notes from execution:**
+- `Action::MapToVJoy` uses `#[serde(rename = "map_to_vjoy")]` to avoid ugly `map_to_v_joy` from automatic snake_case
+- `PipelineOutput` is NOT Serialize/Deserialize (transient output, not persisted)
+- `PipelineContext` has manual `Debug` impl (cannot derive due to `&dyn InputCache`)
+- `Mapping` placed in `action.rs` (not `types/mapping.rs`) to avoid circular dependency with `processing/`
+- Button inversion in pipeline checks `input_value` type: buttons toggle via threshold (`> 0.5`), axes negate
+- `merge_axes` Maximum returns the axis with greater absolute value, preserving sign
+- `MergeOp::Average` uses `f64::midpoint()` per clippy
 
-**Pipeline executor:**
-- Define `PipelineOutput` enum: `SetAxis`, `SetButton`, `SendKey`, `ChangeMode`
-- Define `InputCache` trait with `get_button(&InputAddress) -> bool` and `get_axis(&InputAddress) -> f64`
-- Define `PipelineContext` struct: holds `current_value: f64`, `input_value: InputValue`, `outputs: Vec<PipelineOutput>`, `input_cache: &dyn InputCache`
-- Implement `execute_pipeline(actions: &[Action], ctx: &mut PipelineContext)`:
-  - Walk actions in order
-  - Processing actions: transform `ctx.current_value` (call the corresponding processing module)
-  - Output actions: push to `ctx.outputs`
-  - `Conditional`: evaluate condition against input cache, recurse into if_true or if_false sub-pipeline
-  - `MergeAxis`: read second axis from cache, apply merge operation, update current_value
-- Implement `evaluate_condition(condition, cache) -> bool` -- recursive evaluation
-- Implement `merge_axes(a, b, op) -> f64` for each MergeOp variant
+**Tests:** 12 action serde roundtrip tests + 25 pipeline tests (empty pipeline, axis/button passthrough, invert axis + button both directions, deadzone, calibrate, response curve, conditional true/false/no-else, merge axis 3 operations + first-wins, nested conditions All/Any/Not, ButtonReleased, AxisInRange true/false, MapToKeyboard, ChangeMode, multiple outputs, hat input no-op, Debug impl, full processing chain).
 
-**Tests to write (use a MockCache struct implementing InputCache):**
-- Empty pipeline produces no output
-- Axis value passes through MapToVJoy correctly
-- Invert then MapToVJoy negates the value
-- Conditional branches correctly based on button state in cache
-- MergeAxis: bidirectional, average, maximum operations
-- Nested conditions (All, Any, Not) evaluate correctly
+**Commits:**
+- `feat(core): add action types and pipeline executor`
+- `test(core): cover all production code paths in pipeline and curves`
 
-**Steps:**
-1. Write action types in action.rs
-2. Write pipeline executor in pipeline.rs with PipelineContext and InputCache trait
-3. Write MockCache for tests
-4. Write all unit tests
-5. Run `rtk cargo test -p inputforge-core`
-6. Commit: `feat(core): add action types and pipeline executor`
+**Phase 2 coverage results:** 118 tests, 99.11% total line coverage. All production code in `inputforge-core` is 100% covered. Only uncovered lines are `main.rs` (no integration tests) and test-only `panic!` branches.
 
 ---
 
