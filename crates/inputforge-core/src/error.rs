@@ -103,11 +103,15 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::unnecessary_literal_unwrap,
+        reason = "test verifies the Result type alias"
+    )]
     fn result_alias_works() {
         let ok: Result<i32> = Ok(42);
         assert_eq!(ok.unwrap(), 42);
 
         let err: Result<i32> = Err(EngineError::VJoyDriverMissing);
-        assert!(err.is_err());
+        err.unwrap_err();
     }
 }

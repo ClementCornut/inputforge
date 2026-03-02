@@ -174,14 +174,14 @@ mod tests {
     #[test]
     fn lerp_midpoint_negative_side() {
         let dz = DeadzoneConfig::default();
-        let mid = (dz.low() + dz.center_low()) / 2.0;
+        let mid = f64::midpoint(dz.low(), dz.center_low());
         assert!((dz.apply(mid) - (-0.5)).abs() < f64::EPSILON);
     }
 
     #[test]
     fn lerp_midpoint_positive_side() {
         let dz = DeadzoneConfig::default();
-        let mid = (dz.center_high() + dz.high()) / 2.0;
+        let mid = f64::midpoint(dz.center_high(), dz.high());
         assert!((dz.apply(mid) - 0.5).abs() < f64::EPSILON);
     }
 
@@ -228,7 +228,7 @@ mod tests {
     fn reject_invalid_serde_input() {
         let json = r#"{"low":0.5,"center_low":0.5,"center_high":0.5,"high":0.5}"#;
         let result: std::result::Result<DeadzoneConfig, _> = serde_json::from_str(json);
-        assert!(result.is_err());
+        result.unwrap_err();
     }
 
     #[test]

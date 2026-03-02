@@ -215,14 +215,14 @@ mod tests {
     #[test]
     fn midpoint_negative_side() {
         let cal = test_calibration();
-        let mid = (cal.physical_min() + cal.physical_center_low()) / 2.0;
+        let mid = f64::midpoint(cal.physical_min(), cal.physical_center_low());
         assert!((cal.apply(mid) - (-0.5)).abs() < f64::EPSILON);
     }
 
     #[test]
     fn midpoint_positive_side() {
         let cal = test_calibration();
-        let mid = (cal.physical_center_high() + cal.physical_max()) / 2.0;
+        let mid = f64::midpoint(cal.physical_center_high(), cal.physical_max());
         assert!((cal.apply(mid) - 0.5).abs() < f64::EPSILON);
     }
 
@@ -262,7 +262,7 @@ mod tests {
     fn reject_invalid_serde_input() {
         let json = r#"{"physical_min":0.0,"physical_center_low":0.0,"physical_center_high":0.0,"physical_max":0.0,"enabled":true}"#;
         let result: std::result::Result<Calibration, _> = serde_json::from_str(json);
-        assert!(result.is_err());
+        result.unwrap_err();
     }
 
     #[test]

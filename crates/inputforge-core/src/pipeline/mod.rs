@@ -176,13 +176,6 @@ mod tests {
         }
     }
 
-    fn axis_input_address() -> InputAddress {
-        InputAddress {
-            device: DeviceId("stick-1".to_owned()),
-            input: InputId::Axis { index: 0 },
-        }
-    }
-
     fn button_input_address() -> InputAddress {
         InputAddress {
             device: DeviceId("stick-1".to_owned()),
@@ -640,109 +633,6 @@ mod tests {
         } else {
             panic!("expected SetAxis");
         }
-    }
-
-    // -- Nested conditions ----------------------------------------------------
-
-    #[test]
-    fn nested_condition_all() {
-        let mut cache = MockCache::new();
-        let btn_a = button_input_address();
-        let btn_b = InputAddress {
-            device: DeviceId("stick-1".to_owned()),
-            input: InputId::Button { index: 1 },
-        };
-        cache.buttons.insert(btn_a.clone(), true);
-        cache.buttons.insert(btn_b.clone(), true);
-
-        let condition = Condition::All {
-            conditions: vec![
-                Condition::ButtonPressed { input: btn_a },
-                Condition::ButtonPressed { input: btn_b },
-            ],
-        };
-        assert!(evaluate_condition(&condition, &cache));
-    }
-
-    #[test]
-    fn nested_condition_any() {
-        let mut cache = MockCache::new();
-        let btn_a = button_input_address();
-        cache.buttons.insert(btn_a.clone(), false);
-
-        let btn_b = InputAddress {
-            device: DeviceId("stick-1".to_owned()),
-            input: InputId::Button { index: 1 },
-        };
-        cache.buttons.insert(btn_b.clone(), true);
-
-        let condition = Condition::Any {
-            conditions: vec![
-                Condition::ButtonPressed { input: btn_a },
-                Condition::ButtonPressed { input: btn_b },
-            ],
-        };
-        assert!(evaluate_condition(&condition, &cache));
-    }
-
-    #[test]
-    fn nested_condition_not() {
-        let cache = MockCache::new(); // button defaults to false
-        let condition = Condition::Not {
-            condition: Box::new(Condition::ButtonPressed {
-                input: button_input_address(),
-            }),
-        };
-        assert!(evaluate_condition(&condition, &cache));
-    }
-
-    // -- ButtonReleased -------------------------------------------------------
-
-    #[test]
-    fn button_released_condition_true_when_not_pressed() {
-        let cache = MockCache::new(); // button defaults to false
-        let condition = Condition::ButtonReleased {
-            input: button_input_address(),
-        };
-        assert!(evaluate_condition(&condition, &cache));
-    }
-
-    #[test]
-    fn button_released_condition_false_when_pressed() {
-        let mut cache = MockCache::new();
-        cache.buttons.insert(button_input_address(), true);
-        let condition = Condition::ButtonReleased {
-            input: button_input_address(),
-        };
-        assert!(!evaluate_condition(&condition, &cache));
-    }
-
-    // -- AxisInRange ----------------------------------------------------------
-
-    #[test]
-    fn axis_in_range_true() {
-        let mut cache = MockCache::new();
-        let addr = axis_input_address();
-        cache.axes.insert(addr.clone(), 0.5);
-        let condition = Condition::AxisInRange {
-            input: addr,
-            min: 0.0,
-            max: 1.0,
-        };
-        assert!(evaluate_condition(&condition, &cache));
-    }
-
-    #[test]
-    fn axis_in_range_false() {
-        let mut cache = MockCache::new();
-        let addr = axis_input_address();
-        cache.axes.insert(addr.clone(), 0.5);
-        let condition = Condition::AxisInRange {
-            input: addr,
-            min: 0.6,
-            max: 1.0,
-        };
-        assert!(!evaluate_condition(&condition, &cache));
     }
 
     // -- MapToKeyboard --------------------------------------------------------

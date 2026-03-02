@@ -695,7 +695,7 @@ mod tests {
         let result = curve.evaluate(0.3);
         // Result should be between 0 and 1 (valid y value)
         assert!(
-            result >= 0.0 && result <= 1.0,
+            (0.0..=1.0).contains(&result),
             "expected y in [0,1], got {result}"
         );
     }
@@ -737,6 +737,6 @@ mod tests {
     fn reject_invalid_serde_input() {
         let json = r#"{"kind":"piecewise_linear","points":[[0.0,0.0]],"symmetric":false}"#;
         let result: std::result::Result<ResponseCurve, _> = serde_json::from_str(json);
-        assert!(result.is_err());
+        result.unwrap_err();
     }
 }

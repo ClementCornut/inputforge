@@ -402,7 +402,7 @@ type = "invert"
     #[test]
     fn profile_invalid_toml_syntax() {
         let result = Profile::from_toml("this is not toml [[[");
-        assert!(result.is_err());
+        result.unwrap_err();
     }
 
     // --- File I/O ---

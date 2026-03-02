@@ -17,3 +17,32 @@ pub fn merge_axes(first: f64, second: f64, operation: MergeOp) -> f64 {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TOLERANCE: f64 = 1e-6;
+
+    #[test]
+    fn bidirectional_subtracts_and_clamps() {
+        assert!((merge_axes(0.8, 0.3, MergeOp::Bidirectional) - 0.5).abs() < TOLERANCE);
+    }
+
+    #[test]
+    fn average_computes_midpoint() {
+        assert!((merge_axes(0.8, 0.4, MergeOp::Average) - 0.6).abs() < TOLERANCE);
+    }
+
+    #[test]
+    fn maximum_picks_larger_absolute() {
+        // |-0.9| > |0.3|, so the result is -0.9
+        assert!((merge_axes(0.3, -0.9, MergeOp::Maximum) - (-0.9)).abs() < TOLERANCE);
+    }
+
+    #[test]
+    fn maximum_first_when_larger_absolute() {
+        // |-0.8| > |0.3|, so the result is -0.8 (first wins)
+        assert!((merge_axes(-0.8, 0.3, MergeOp::Maximum) - (-0.8)).abs() < TOLERANCE);
+    }
+}
