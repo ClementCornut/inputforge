@@ -288,7 +288,79 @@ mod tests {
         );
     }
 
+    // -- Hat input passthrough ------------------------------------------------
+
+    #[test]
+    fn hat_input_map_to_vjoy_no_output() {
+        let cache = MockCache::new();
+        let mut ctx = PipelineContext {
+            current_value: 0.0,
+            input_value: InputValue::Hat {
+                direction: crate::types::HatDirection::N,
+            },
+            outputs: Vec::new(),
+            input_cache: &cache,
+        };
+        let actions = [Action::MapToVJoy {
+            output: test_output(),
+        }];
+        execute_pipeline(&actions, &mut ctx);
+        assert!(ctx.outputs.is_empty());
+    }
+
+    // -- Debug impl -----------------------------------------------------------
+
+    #[test]
+    fn pipeline_context_debug_formats() {
+        let cache = MockCache::new();
+        let ctx = axis_ctx(&cache, 0.5);
+        let debug = format!("{ctx:?}");
+        assert!(debug.contains("PipelineContext"));
+        assert!(debug.contains("current_value"));
+        assert!(debug.contains("<dyn InputCache>"));
+    }
+
     // -- Invert + MapToVJoy ---------------------------------------------------
+
+    #[test]
+    fn invert_button_pressed_to_released() {
+        let cache = MockCache::new();
+        let mut ctx = button_ctx(&cache, true);
+        let actions = [
+            Action::Invert,
+            Action::MapToVJoy {
+                output: button_output(),
+            },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+        assert_eq!(
+            ctx.outputs[0],
+            PipelineOutput::SetButton {
+                output: button_output(),
+                pressed: false,
+            }
+        );
+    }
+
+    #[test]
+    fn invert_button_released_to_pressed() {
+        let cache = MockCache::new();
+        let mut ctx = button_ctx(&cache, false);
+        let actions = [
+            Action::Invert,
+            Action::MapToVJoy {
+                output: button_output(),
+            },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+        assert_eq!(
+            ctx.outputs[0],
+            PipelineOutput::SetButton {
+                output: button_output(),
+                pressed: true,
+            }
+        );
+    }
 
     #[test]
     fn invert_then_map_negates_axis() {
@@ -532,6 +604,33 @@ mod tests {
         }
     }
 
+    #[test]
+    fn merge_axis_maximum_first_larger_abs() {
+        let mut cache = MockCache::new();
+        let second_addr = InputAddress {
+            device: DeviceId("pedals".to_owned()),
+            input: InputId::Axis { index: 1 },
+        };
+        cache.axes.insert(second_addr.clone(), 0.3);
+        let mut ctx = axis_ctx(&cache, -0.8);
+        let actions = [
+            Action::MergeAxis {
+                second_input: second_addr,
+                operation: MergeOp::Maximum,
+            },
+            Action::MapToVJoy {
+                output: test_output(),
+            },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+        // |-0.8| > |0.3|, so the result is -0.8 (first wins)
+        if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
+            assert!((*value - (-0.8)).abs() < TOLERANCE, "expected -0.8, got {value}");
+        } else {
+            panic!("expected SetAxis");
+        }
+    }
+
     // -- Nested conditions ----------------------------------------------------
 
     #[test]
@@ -584,6 +683,27 @@ mod tests {
             }),
         };
         assert!(evaluate_condition(&condition, &cache));
+    }
+
+    // -- ButtonReleased -------------------------------------------------------
+
+    #[test]
+    fn button_released_condition_true_when_not_pressed() {
+        let cache = MockCache::new(); // button defaults to false
+        let condition = Condition::ButtonReleased {
+            input: button_input_address(),
+        };
+        assert!(evaluate_condition(&condition, &cache));
+    }
+
+    #[test]
+    fn button_released_condition_false_when_pressed() {
+        let mut cache = MockCache::new();
+        cache.buttons.insert(button_input_address(), true);
+        let condition = Condition::ButtonReleased {
+            input: button_input_address(),
+        };
+        assert!(!evaluate_condition(&condition, &cache));
     }
 
     // -- AxisInRange ----------------------------------------------------------

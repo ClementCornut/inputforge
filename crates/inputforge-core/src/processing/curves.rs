@@ -544,4 +544,76 @@ mod tests {
         let back: ResponseCurve = serde_json::from_str(&json).unwrap();
         assert_eq!(curve, back);
     }
+
+    // -- Cubic spline edge cases ----------------------------------------------
+
+    #[test]
+    fn spline_single_point_passthrough() {
+        let curve = ResponseCurve::CubicSpline {
+            points: vec![(0.0, 0.0)],
+            symmetric: false,
+        };
+        assert!((curve.evaluate(0.5) - 0.5).abs() < TOLERANCE);
+    }
+
+    // -- NaN input reaches fallback paths -------------------------------------
+
+    #[test]
+    fn piecewise_nan_input_returns_last_point() {
+        let curve = ResponseCurve::PiecewiseLinear {
+            points: vec![(0.0, 0.0), (1.0, 1.0)],
+            symmetric: false,
+        };
+        // NaN bypasses all comparisons, reaching the fallback return
+        let result = curve.evaluate(f64::NAN);
+        assert!((result - 1.0).abs() < TOLERANCE);
+    }
+
+    #[test]
+    fn spline_nan_input_returns_last_point() {
+        let curve = ResponseCurve::CubicSpline {
+            points: vec![(0.0, 0.0), (0.5, 0.5), (1.0, 1.0)],
+            symmetric: false,
+        };
+        let result = curve.evaluate(f64::NAN);
+        assert!((result - 1.0).abs() < TOLERANCE);
+    }
+
+    #[test]
+    fn bezier_nan_input_returns_last_endpoint() {
+        let seg = BezierSegment {
+            start: (0.0, 0.0),
+            control1: (0.3, 0.3),
+            control2: (0.7, 0.7),
+            end: (1.0, 1.0),
+        };
+        let curve = ResponseCurve::CubicBezier {
+            segments: vec![seg],
+            symmetric: false,
+        };
+        let result = curve.evaluate(f64::NAN);
+        assert!((result - 1.0).abs() < TOLERANCE);
+    }
+
+    // -- Bezier Newton break + bisection fallback -----------------------------
+
+    #[test]
+    fn bezier_bisection_fallback() {
+        // Control points create an S-shaped x: control1.x=1.0, control2.x=0.0
+        // At t=0.5, dx/dt=0 causing Newton to break, then bisection takes over
+        let seg = BezierSegment {
+            start: (0.0, 0.0),
+            control1: (1.0, 0.3),
+            control2: (0.0, 0.7),
+            end: (1.0, 1.0),
+        };
+        let curve = ResponseCurve::CubicBezier {
+            segments: vec![seg],
+            symmetric: false,
+        };
+        // Query x=0.3 forces Newton break at dx=0 then bisection
+        let result = curve.evaluate(0.3);
+        // Result should be between 0 and 1 (valid y value)
+        assert!(result >= 0.0 && result <= 1.0, "expected y in [0,1], got {result}");
+    }
 }
