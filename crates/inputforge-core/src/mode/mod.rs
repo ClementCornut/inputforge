@@ -1,8 +1,10 @@
 // Rust guideline compliant 2026-03-02
 
 mod resolve;
+mod state;
 
 pub use resolve::resolve_mapping;
+pub use state::ModeState;
 
 use std::collections::{HashMap, HashSet};
 
@@ -527,7 +529,7 @@ mod tests {
         map.insert("A".to_owned(), vec!["B".to_owned()]);
         // This is fine: A is child of Root and also a key. No duplication.
         let tree = ModeTree::from_adjacency(&map);
-        assert!(tree.is_ok());
+        tree.unwrap();
     }
 
     #[test]
