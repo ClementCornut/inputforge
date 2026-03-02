@@ -1,0 +1,748 @@
+// Rust guideline compliant 2026-03-02
+
+use crate::action::{Action, Condition, ModeChangeStrategy};
+use crate::types::{InputAddress, InputValue, KeyCombo, MergeOp, OutputAddress};
+
+/// Output produced by the pipeline executor.
+///
+/// These are transient values consumed by the output stage.
+/// Not serializable -- they exist only during pipeline execution.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PipelineOutput {
+    SetAxis { output: OutputAddress, value: f64 },
+    SetButton { output: OutputAddress, pressed: bool },
+    SendKey { key: KeyCombo, pressed: bool },
+    ChangeMode { strategy: ModeChangeStrategy },
+}
+
+/// Read-only access to the latest input values.
+///
+/// Implementations provide the current state of all physical inputs,
+/// used for condition evaluation and axis merging.
+pub trait InputCache {
+    /// Return whether the button at `address` is currently pressed.
+    fn get_button(&self, address: &InputAddress) -> bool;
+
+    /// Return the current axis value at `address`.
+    fn get_axis(&self, address: &InputAddress) -> f64;
+}
+
+/// Mutable context carried through pipeline execution.
+pub struct PipelineContext<'a> {
+    pub current_value: f64,
+    pub input_value: InputValue,
+    pub outputs: Vec<PipelineOutput>,
+    pub input_cache: &'a dyn InputCache,
+}
+
+impl std::fmt::Debug for PipelineContext<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PipelineContext")
+            .field("current_value", &self.current_value)
+            .field("input_value", &self.input_value)
+            .field("outputs", &self.outputs)
+            .field("input_cache", &"<dyn InputCache>")
+            .finish()
+    }
+}
+
+/// Execute a sequence of actions against the given pipeline context.
+pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
+    for action in actions {
+        match action {
+            // Processing actions transform current_value
+            Action::ResponseCurve { curve } => {
+                ctx.current_value = curve.evaluate(ctx.current_value);
+            }
+            Action::Deadzone { config } => {
+                ctx.current_value = config.apply(ctx.current_value);
+            }
+            Action::Calibrate { config } => {
+                ctx.current_value = config.apply(ctx.current_value);
+            }
+            Action::Invert => match &ctx.input_value {
+                InputValue::Button { .. } => {
+                    ctx.current_value = if ctx.current_value > 0.5 { 0.0 } else { 1.0 };
+                }
+                _ => {
+                    ctx.current_value = -ctx.current_value;
+                }
+            },
+
+            // Output actions push to ctx.outputs
+            Action::MapToVJoy { output } => match &ctx.input_value {
+                InputValue::Axis { .. } => {
+                    ctx.outputs.push(PipelineOutput::SetAxis {
+                        output: output.clone(),
+                        value: ctx.current_value,
+                    });
+                }
+                InputValue::Button { .. } => {
+                    ctx.outputs.push(PipelineOutput::SetButton {
+                        output: output.clone(),
+                        pressed: ctx.current_value > 0.5,
+                    });
+                }
+                InputValue::Hat { .. } => {}
+            },
+            Action::MapToKeyboard { key } => {
+                ctx.outputs.push(PipelineOutput::SendKey {
+                    key: key.clone(),
+                    pressed: ctx.current_value > 0.5,
+                });
+            }
+            Action::MergeAxis {
+                second_input,
+                operation,
+            } => {
+                let second = ctx.input_cache.get_axis(second_input);
+                ctx.current_value = merge_axes(ctx.current_value, second, *operation);
+            }
+
+            // Control flow
+            Action::ChangeMode { strategy } => {
+                ctx.outputs.push(PipelineOutput::ChangeMode {
+                    strategy: strategy.clone(),
+                });
+            }
+            Action::Conditional {
+                condition,
+                if_true,
+                if_false,
+            } => {
+                if evaluate_condition(condition, ctx.input_cache) {
+                    execute_pipeline(if_true, ctx);
+                } else if let Some(false_actions) = if_false {
+                    execute_pipeline(false_actions, ctx);
+                }
+            }
+        }
+    }
+}
+
+/// Evaluate a condition against the input cache.
+#[must_use]
+pub fn evaluate_condition(condition: &Condition, cache: &dyn InputCache) -> bool {
+    match condition {
+        Condition::ButtonPressed { input } => cache.get_button(input),
+        Condition::ButtonReleased { input } => !cache.get_button(input),
+        Condition::AxisInRange { input, min, max } => {
+            let value = cache.get_axis(input);
+            value >= *min && value <= *max
+        }
+        Condition::All { conditions } => {
+            conditions.iter().all(|c| evaluate_condition(c, cache))
+        }
+        Condition::Any { conditions } => {
+            conditions.iter().any(|c| evaluate_condition(c, cache))
+        }
+        Condition::Not { condition } => !evaluate_condition(condition, cache),
+    }
+}
+
+/// Merge two axis values using the specified operation.
+#[must_use]
+pub fn merge_axes(first: f64, second: f64, operation: MergeOp) -> f64 {
+    match operation {
+        MergeOp::Bidirectional => (first - second).clamp(-1.0, 1.0),
+        MergeOp::Average => f64::midpoint(first, second),
+        MergeOp::Maximum => {
+            if first.abs() >= second.abs() {
+                first
+            } else {
+                second
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::processing::{Calibration, DeadzoneConfig, ResponseCurve};
+    use crate::types::{AxisValue, DeviceId, InputId, KeyModifier, OutputId, VJoyAxis};
+
+    const TOLERANCE: f64 = 1e-6;
+
+    struct MockCache {
+        buttons: HashMap<InputAddress, bool>,
+        axes: HashMap<InputAddress, f64>,
+    }
+
+    impl MockCache {
+        fn new() -> Self {
+            Self {
+                buttons: HashMap::new(),
+                axes: HashMap::new(),
+            }
+        }
+    }
+
+    impl InputCache for MockCache {
+        fn get_button(&self, address: &InputAddress) -> bool {
+            self.buttons.get(address).copied().unwrap_or(false)
+        }
+
+        fn get_axis(&self, address: &InputAddress) -> f64 {
+            self.axes.get(address).copied().unwrap_or(0.0)
+        }
+    }
+
+    fn axis_input_address() -> InputAddress {
+        InputAddress {
+            device: DeviceId("stick-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        }
+    }
+
+    fn button_input_address() -> InputAddress {
+        InputAddress {
+            device: DeviceId("stick-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        }
+    }
+
+    fn test_output() -> OutputAddress {
+        OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        }
+    }
+
+    fn button_output() -> OutputAddress {
+        OutputAddress {
+            device: 1,
+            output: OutputId::Button { id: 1 },
+        }
+    }
+
+    fn axis_ctx(cache: &dyn InputCache, value: f64) -> PipelineContext<'_> {
+        PipelineContext {
+            current_value: value,
+            input_value: InputValue::Axis {
+                value: AxisValue::new(value),
+            },
+            outputs: Vec::new(),
+            input_cache: cache,
+        }
+    }
+
+    fn button_ctx(cache: &dyn InputCache, pressed: bool) -> PipelineContext<'_> {
+        PipelineContext {
+            current_value: if pressed { 1.0 } else { 0.0 },
+            input_value: InputValue::Button { pressed },
+            outputs: Vec::new(),
+            input_cache: cache,
+        }
+    }
+
+    // -- Empty pipeline -------------------------------------------------------
+
+    #[test]
+    fn empty_pipeline_no_output() {
+        let cache = MockCache::new();
+        let mut ctx = axis_ctx(&cache, 0.5);
+        execute_pipeline(&[], &mut ctx);
+        assert!(ctx.outputs.is_empty());
+    }
+
+    // -- Axis passthrough -----------------------------------------------------
+
+    #[test]
+    fn axis_passthrough_map_to_vjoy() {
+        let cache = MockCache::new();
+        let mut ctx = axis_ctx(&cache, 0.75);
+        let actions = [Action::MapToVJoy {
+            output: test_output(),
+        }];
+        execute_pipeline(&actions, &mut ctx);
+        assert_eq!(ctx.outputs.len(), 1);
+        assert_eq!(
+            ctx.outputs[0],
+            PipelineOutput::SetAxis {
+                output: test_output(),
+                value: 0.75,
+            }
+        );
+    }
+
+    // -- Button passthrough ---------------------------------------------------
+
+    #[test]
+    fn button_passthrough_set_button() {
+        let cache = MockCache::new();
+        let mut ctx = button_ctx(&cache, true);
+        let actions = [Action::MapToVJoy {
+            output: button_output(),
+        }];
+        execute_pipeline(&actions, &mut ctx);
+        assert_eq!(ctx.outputs.len(), 1);
+        assert_eq!(
+            ctx.outputs[0],
+            PipelineOutput::SetButton {
+                output: button_output(),
+                pressed: true,
+            }
+        );
+    }
+
+    // -- Invert + MapToVJoy ---------------------------------------------------
+
+    #[test]
+    fn invert_then_map_negates_axis() {
+        let cache = MockCache::new();
+        let mut ctx = axis_ctx(&cache, 0.5);
+        let actions = [
+            Action::Invert,
+            Action::MapToVJoy {
+                output: test_output(),
+            },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+        assert_eq!(
+            ctx.outputs[0],
+            PipelineOutput::SetAxis {
+                output: test_output(),
+                value: -0.5,
+            }
+        );
+    }
+
+    // -- Deadzone + MapToVJoy -------------------------------------------------
+
+    #[test]
+    fn deadzone_center_becomes_zero() {
+        let cache = MockCache::new();
+        let mut ctx = axis_ctx(&cache, 0.02);
+        let actions = [
+            Action::Deadzone {
+                config: DeadzoneConfig::default(),
+            },
+            Action::MapToVJoy {
+                output: test_output(),
+            },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+        if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
+            assert!(value.abs() < TOLERANCE, "expected 0, got {value}");
+        } else {
+            panic!("expected SetAxis");
+        }
+    }
+
+    // -- Calibrate + MapToVJoy ------------------------------------------------
+
+    #[test]
+    fn calibrate_normalizes_raw_value() {
+        let cache = MockCache::new();
+        let mut ctx = axis_ctx(&cache, 32767.0);
+        let actions = [
+            Action::Calibrate {
+                config: Calibration {
+                    physical_min: -32768.0,
+                    physical_center_low: -100.0,
+                    physical_center_high: 100.0,
+                    physical_max: 32767.0,
+                    enabled: true,
+                },
+            },
+            Action::MapToVJoy {
+                output: test_output(),
+            },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+        if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
+            assert!((*value - 1.0).abs() < TOLERANCE, "expected 1.0, got {value}");
+        } else {
+            panic!("expected SetAxis");
+        }
+    }
+
+    // -- ResponseCurve + MapToVJoy --------------------------------------------
+
+    #[test]
+    fn response_curve_identity_passthrough() {
+        let cache = MockCache::new();
+        let mut ctx = axis_ctx(&cache, 0.6);
+        let actions = [
+            Action::ResponseCurve {
+                curve: ResponseCurve::PiecewiseLinear {
+                    points: vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
+                    symmetric: false,
+                },
+            },
+            Action::MapToVJoy {
+                output: test_output(),
+            },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+        if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
+            assert!((*value - 0.6).abs() < TOLERANCE, "expected 0.6, got {value}");
+        } else {
+            panic!("expected SetAxis");
+        }
+    }
+
+    // -- Conditional ----------------------------------------------------------
+
+    #[test]
+    fn conditional_true_branch() {
+        let mut cache = MockCache::new();
+        cache.buttons.insert(button_input_address(), true);
+        let mut ctx = axis_ctx(&cache, 0.5);
+        let actions = [Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: button_input_address(),
+            },
+            if_true: vec![Action::Invert, Action::MapToVJoy {
+                output: test_output(),
+            }],
+            if_false: Some(vec![Action::MapToVJoy {
+                output: test_output(),
+            }]),
+        }];
+        execute_pipeline(&actions, &mut ctx);
+        if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
+            assert!((*value - (-0.5)).abs() < TOLERANCE, "expected -0.5, got {value}");
+        } else {
+            panic!("expected SetAxis");
+        }
+    }
+
+    #[test]
+    fn conditional_false_branch() {
+        let cache = MockCache::new(); // button defaults to false
+        let mut ctx = axis_ctx(&cache, 0.5);
+        let actions = [Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: button_input_address(),
+            },
+            if_true: vec![Action::Invert, Action::MapToVJoy {
+                output: test_output(),
+            }],
+            if_false: Some(vec![Action::MapToVJoy {
+                output: test_output(),
+            }]),
+        }];
+        execute_pipeline(&actions, &mut ctx);
+        if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
+            assert!((*value - 0.5).abs() < TOLERANCE, "expected 0.5, got {value}");
+        } else {
+            panic!("expected SetAxis");
+        }
+    }
+
+    #[test]
+    fn conditional_no_else_false_condition_no_output() {
+        let cache = MockCache::new();
+        let mut ctx = axis_ctx(&cache, 0.5);
+        let actions = [Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: button_input_address(),
+            },
+            if_true: vec![Action::MapToVJoy {
+                output: test_output(),
+            }],
+            if_false: None,
+        }];
+        execute_pipeline(&actions, &mut ctx);
+        assert!(ctx.outputs.is_empty());
+    }
+
+    // -- MergeAxis ------------------------------------------------------------
+
+    #[test]
+    fn merge_axis_bidirectional() {
+        let mut cache = MockCache::new();
+        let second_addr = InputAddress {
+            device: DeviceId("pedals".to_owned()),
+            input: InputId::Axis { index: 1 },
+        };
+        cache.axes.insert(second_addr.clone(), 0.3);
+        let mut ctx = axis_ctx(&cache, 0.8);
+        let actions = [
+            Action::MergeAxis {
+                second_input: second_addr,
+                operation: MergeOp::Bidirectional,
+            },
+            Action::MapToVJoy {
+                output: test_output(),
+            },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+        if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
+            assert!((*value - 0.5).abs() < TOLERANCE, "expected 0.5, got {value}");
+        } else {
+            panic!("expected SetAxis");
+        }
+    }
+
+    #[test]
+    fn merge_axis_average() {
+        let mut cache = MockCache::new();
+        let second_addr = InputAddress {
+            device: DeviceId("pedals".to_owned()),
+            input: InputId::Axis { index: 1 },
+        };
+        cache.axes.insert(second_addr.clone(), 0.4);
+        let mut ctx = axis_ctx(&cache, 0.8);
+        let actions = [
+            Action::MergeAxis {
+                second_input: second_addr,
+                operation: MergeOp::Average,
+            },
+            Action::MapToVJoy {
+                output: test_output(),
+            },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+        if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
+            assert!((*value - 0.6).abs() < TOLERANCE, "expected 0.6, got {value}");
+        } else {
+            panic!("expected SetAxis");
+        }
+    }
+
+    #[test]
+    fn merge_axis_maximum() {
+        let mut cache = MockCache::new();
+        let second_addr = InputAddress {
+            device: DeviceId("pedals".to_owned()),
+            input: InputId::Axis { index: 1 },
+        };
+        cache.axes.insert(second_addr.clone(), -0.9);
+        let mut ctx = axis_ctx(&cache, 0.3);
+        let actions = [
+            Action::MergeAxis {
+                second_input: second_addr,
+                operation: MergeOp::Maximum,
+            },
+            Action::MapToVJoy {
+                output: test_output(),
+            },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+        // |-0.9| > |0.3|, so the result is -0.9
+        if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
+            assert!((*value - (-0.9)).abs() < TOLERANCE, "expected -0.9, got {value}");
+        } else {
+            panic!("expected SetAxis");
+        }
+    }
+
+    // -- Nested conditions ----------------------------------------------------
+
+    #[test]
+    fn nested_condition_all() {
+        let mut cache = MockCache::new();
+        let btn_a = button_input_address();
+        let btn_b = InputAddress {
+            device: DeviceId("stick-1".to_owned()),
+            input: InputId::Button { index: 1 },
+        };
+        cache.buttons.insert(btn_a.clone(), true);
+        cache.buttons.insert(btn_b.clone(), true);
+
+        let condition = Condition::All {
+            conditions: vec![
+                Condition::ButtonPressed { input: btn_a },
+                Condition::ButtonPressed { input: btn_b },
+            ],
+        };
+        assert!(evaluate_condition(&condition, &cache));
+    }
+
+    #[test]
+    fn nested_condition_any() {
+        let mut cache = MockCache::new();
+        let btn_a = button_input_address();
+        cache.buttons.insert(btn_a.clone(), false);
+
+        let btn_b = InputAddress {
+            device: DeviceId("stick-1".to_owned()),
+            input: InputId::Button { index: 1 },
+        };
+        cache.buttons.insert(btn_b.clone(), true);
+
+        let condition = Condition::Any {
+            conditions: vec![
+                Condition::ButtonPressed { input: btn_a },
+                Condition::ButtonPressed { input: btn_b },
+            ],
+        };
+        assert!(evaluate_condition(&condition, &cache));
+    }
+
+    #[test]
+    fn nested_condition_not() {
+        let cache = MockCache::new(); // button defaults to false
+        let condition = Condition::Not {
+            condition: Box::new(Condition::ButtonPressed {
+                input: button_input_address(),
+            }),
+        };
+        assert!(evaluate_condition(&condition, &cache));
+    }
+
+    // -- AxisInRange ----------------------------------------------------------
+
+    #[test]
+    fn axis_in_range_true() {
+        let mut cache = MockCache::new();
+        let addr = axis_input_address();
+        cache.axes.insert(addr.clone(), 0.5);
+        let condition = Condition::AxisInRange {
+            input: addr,
+            min: 0.0,
+            max: 1.0,
+        };
+        assert!(evaluate_condition(&condition, &cache));
+    }
+
+    #[test]
+    fn axis_in_range_false() {
+        let mut cache = MockCache::new();
+        let addr = axis_input_address();
+        cache.axes.insert(addr.clone(), 0.5);
+        let condition = Condition::AxisInRange {
+            input: addr,
+            min: 0.6,
+            max: 1.0,
+        };
+        assert!(!evaluate_condition(&condition, &cache));
+    }
+
+    // -- MapToKeyboard --------------------------------------------------------
+
+    #[test]
+    fn map_to_keyboard_with_button() {
+        let cache = MockCache::new();
+        let mut ctx = button_ctx(&cache, true);
+        let key = KeyCombo {
+            key: "Space".to_owned(),
+            modifiers: vec![KeyModifier::Ctrl],
+        };
+        let actions = [Action::MapToKeyboard { key: key.clone() }];
+        execute_pipeline(&actions, &mut ctx);
+        assert_eq!(ctx.outputs.len(), 1);
+        assert_eq!(
+            ctx.outputs[0],
+            PipelineOutput::SendKey {
+                key,
+                pressed: true,
+            }
+        );
+    }
+
+    // -- ChangeMode -----------------------------------------------------------
+
+    #[test]
+    fn change_mode_output() {
+        let cache = MockCache::new();
+        let mut ctx = button_ctx(&cache, true);
+        let strategy = ModeChangeStrategy::SwitchTo {
+            mode: "combat".to_owned(),
+        };
+        let actions = [Action::ChangeMode {
+            strategy: strategy.clone(),
+        }];
+        execute_pipeline(&actions, &mut ctx);
+        assert_eq!(ctx.outputs.len(), 1);
+        assert_eq!(
+            ctx.outputs[0],
+            PipelineOutput::ChangeMode { strategy }
+        );
+    }
+
+    // -- Multiple outputs -----------------------------------------------------
+
+    #[test]
+    fn multiple_outputs_from_same_pipeline() {
+        let cache = MockCache::new();
+        let mut ctx = axis_ctx(&cache, 0.5);
+        let output_x = OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        };
+        let output_y = OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::Y },
+        };
+        let actions = [
+            Action::MapToVJoy { output: output_x.clone() },
+            Action::MapToVJoy { output: output_y.clone() },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+        assert_eq!(ctx.outputs.len(), 2);
+        assert_eq!(
+            ctx.outputs[0],
+            PipelineOutput::SetAxis {
+                output: output_x,
+                value: 0.5,
+            }
+        );
+        assert_eq!(
+            ctx.outputs[1],
+            PipelineOutput::SetAxis {
+                output: output_y,
+                value: 0.5,
+            }
+        );
+    }
+
+    // -- Full processing chain ------------------------------------------------
+
+    #[test]
+    fn full_chain_calibrate_deadzone_curve_invert_map() {
+        let cache = MockCache::new();
+        // Use a no-deadzone config (center at 0, no dead band)
+        let deadzone = DeadzoneConfig {
+            low: -1.0,
+            center_low: 0.0,
+            center_high: 0.0,
+            high: 1.0,
+        };
+        let calibration = Calibration {
+            physical_min: -100.0,
+            physical_center_low: 0.0,
+            physical_center_high: 0.0,
+            physical_max: 100.0,
+            enabled: true,
+        };
+        // Raw value 50.0 → calibrate → 0.5 → deadzone → 0.5 → identity curve → 0.5 → invert → -0.5
+        let mut ctx = PipelineContext {
+            current_value: 50.0,
+            input_value: InputValue::Axis {
+                value: AxisValue::raw(50.0),
+            },
+            outputs: Vec::new(),
+            input_cache: &cache,
+        };
+        let actions = [
+            Action::Calibrate { config: calibration },
+            Action::Deadzone { config: deadzone },
+            Action::ResponseCurve {
+                curve: ResponseCurve::PiecewiseLinear {
+                    points: vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
+                    symmetric: false,
+                },
+            },
+            Action::Invert,
+            Action::MapToVJoy {
+                output: test_output(),
+            },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+        assert_eq!(ctx.outputs.len(), 1);
+        if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
+            assert!(
+                (*value - (-0.5)).abs() < TOLERANCE,
+                "expected -0.5, got {value}"
+            );
+        } else {
+            panic!("expected SetAxis");
+        }
+    }
+}
