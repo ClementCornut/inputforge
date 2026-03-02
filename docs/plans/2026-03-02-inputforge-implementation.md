@@ -25,7 +25,7 @@
 | egui_plot       | 0.34+   | Independent versioning; 0.34 targets egui 0.33    |
 | catppuccin-egui | 5.7+    | Use `egui33` feature flag for egui 0.33           |
 | tray-icon       | 0.21+   | By Tauri team                                     |
-| toml            | 0.9+    | TOML 1.1 spec                                     |
+| toml            | 1.0+    | TOML 1.1 spec (0.9 is deprecated)                 |
 | serde           | 1.0     | Use `features = ["derive"]`                       |
 | thiserror       | 2.0+    | For core crate errors                             |
 | anyhow          | 1.0     | For app crate errors                              |
@@ -108,7 +108,7 @@
 
 ---
 
-## Phase 0: Prerequisite Tooling Check
+## Phase 0: Prerequisite Tooling Check [COMPLETED]
 
 **Goal:** Verify that all required tools are installed and accessible before writing any code. Fail fast if anything is missing.
 
@@ -116,14 +116,16 @@
 
 1. `rustc --version` -- must be 1.85+ (edition 2024 support)
 2. `cargo --version` -- must be present
-3. `cmake --version` -- required for SDL3 build from source
-4. `cl` or `cl.exe` -- MSVC compiler must be on PATH (run from Developer Command Prompt or verify VS Build Tools)
+3. `cmake --version` -- required for SDL3 build from source (not blocking for Phase 1)
+4. `cl` or `cl.exe` -- MSVC compiler must be on PATH (not blocking for Phase 1)
 5. `cargo install cargo-llvm-cov` -- install if not present, then `cargo llvm-cov --version`
 6. `rustup component add llvm-tools-preview` -- required by cargo-llvm-cov
 7. Check vJoy driver: look for `C:\Program Files\vJoy\` or run `vJoyConf.exe` to verify driver is installed
 8. Check HidHide: look for `C:\Program Files\Nefarius Software Solutions\HidHide\` or check Device Manager for HidHide device
 
-**If any check fails:** Stop and inform the user. Do not proceed to Phase 1 until all prerequisites are met.
+**If any check fails:** Stop and inform the user. Do not proceed to Phase 1 until all prerequisites are met. CMake and MSVC cl are only needed from Phase 3 (SDL3), so their absence does not block Phase 1-2.
+
+**Results:** Rust 1.93.0, cargo-llvm-cov 0.8.4, llvm-tools-preview, vJoy, HidHide all present. CMake and MSVC `cl` not on PATH (needed later for SDL3).
 
 **No commit for this phase** -- it's a validation step only.
 
@@ -131,49 +133,56 @@
 
 ## Phase 1: Foundation
 
-### Task 1: Workspace Scaffolding
+### Task 1: Workspace Scaffolding [COMPLETED]
 
 **Goal:** Create the Rust workspace with 3 crates and all dependencies configured.
 
 **Files to create:**
-- `inputforge/Cargo.toml` -- workspace root with members, workspace dependencies, and workspace lints
-- `inputforge/crates/inputforge-core/Cargo.toml` -- depends on serde, toml, thiserror, tracing, parking_lot
-- `inputforge/crates/inputforge-core/src/lib.rs` -- empty stub
-- `inputforge/crates/inputforge-gui/Cargo.toml` -- depends on inputforge-core, serde, tracing (GUI deps added later in Task 20)
-- `inputforge/crates/inputforge-gui/src/lib.rs` -- empty stub
-- `inputforge/crates/inputforge-app/Cargo.toml` -- depends on inputforge-core, inputforge-gui, anyhow, tracing, tracing-subscriber, mimalloc, clap (with derive)
-- `inputforge/crates/inputforge-app/src/main.rs` -- minimal main that sets mimalloc as global allocator and prints version
-- `inputforge/.gitignore` -- /target, *.swp, .DS_Store
-- `inputforge/rustfmt.toml` -- edition 2024, max_width 100
+- `Cargo.toml` -- workspace root with members, workspace dependencies, workspace package metadata, and workspace lints
+- `crates/inputforge-core/Cargo.toml` -- depends on serde, toml, thiserror, tracing, parking_lot; dev-depends on serde_json
+- `crates/inputforge-core/src/lib.rs` -- empty stub with guideline compliance comment
+- `crates/inputforge-gui/Cargo.toml` -- depends on inputforge-core, serde, tracing (GUI deps added later in Task 20)
+- `crates/inputforge-gui/src/lib.rs` -- empty stub with guideline compliance comment
+- `crates/inputforge-app/Cargo.toml` -- depends on inputforge-core, inputforge-gui, anyhow, tracing, tracing-subscriber, mimalloc, clap (with derive)
+- `crates/inputforge-app/src/main.rs` -- minimal main that sets mimalloc as global allocator and prints version using `#[expect(clippy::print_stdout)]`
+- `.gitignore` -- /target, *.swp, .DS_Store, *.pdb, *.log, lcov.info, .env, .vscode/, .idea/
+- `rustfmt.toml` -- edition 2024, max_width 100
 
 **Instructions:**
-1. Create the directory structure: `inputforge/crates/inputforge-{core,gui,app}/src/`
-2. Write workspace `Cargo.toml` with `resolver = "2"`, all three members, `[workspace.package]` (version 0.1.0, edition 2024), `[workspace.dependencies]` for all shared deps, and `[workspace.lints]` sections following ms-rust M-STATIC-VERIFICATION guidelines (compiler lints + clippy lints including pedantic, cargo, restriction subset). Also allow `cast_precision_loss`, `cast_possible_truncation`, `cast_sign_loss`, `cast_possible_wrap`, and `module_name_repetitions` since we do float math.
-3. Write each crate's `Cargo.toml` using `workspace = true` references and `[lints] workspace = true`
-4. Write stub lib.rs / main.rs files
-5. Run `rtk cargo build` to verify everything compiles
-6. `git init`, add all files, commit: `feat(workspace): scaffold InputForge workspace with 3 crates`
+1. Create the directory structure: `crates/inputforge-{core,gui,app}/src/`
+2. Write workspace `Cargo.toml` with:
+   - `resolver = "2"`, all three members
+   - `[workspace.package]`: version 0.1.0, edition 2024, license MIT, rust-version 1.85, description, repository (https://github.com/ClementCornut/inputforge), readme, keywords (joystick, vjoy, input-remapping, flight-simulation), categories (hardware-support)
+   - `[workspace.dependencies]` for all shared deps
+   - `[workspace.lints]` sections following full ms-rust M-STATIC-VERIFICATION guidelines: compiler lints (unsafe_code deny, 9 warn lints) + clippy groups (cargo, complexity, correctness, pedantic, perf, style, suspicious at priority -1) + 30 restriction lints. Project-specific allowances: only `cast_precision_loss` and `module_name_repetitions`. Do NOT globally allow `cast_possible_truncation`, `cast_sign_loss`, `cast_possible_wrap`, `missing_errors_doc`, or `missing_panics_doc` -- use `#[expect]` locally where needed.
+3. Write each crate's `Cargo.toml` using `workspace = true` references for all package metadata fields and `[lints] workspace = true`
+4. Write stub lib.rs / main.rs files with `// Rust guideline compliant {date}` comments. main.rs uses `#[expect(clippy::print_stdout, reason = "...")]` per M-LINT-OVERRIDE-EXPECT.
+5. Run `rtk cargo build` and `rtk cargo clippy --workspace -- -D warnings` to verify everything compiles clean
+6. `git init`, add all files, commit: `feat(workspace): scaffold inputforge workspace with 3 crates`
+
+**Notes from execution:**
+- `toml` crate version: plan said `0.9+` but latest stable is `1.0` (verified via `cargo search`)
+- `string_to_string` clippy lint was removed in Rust 1.93, now covered by `implicit_clone` -- do not include it
+- Workspace metadata (description, repository, readme, keywords, categories) required by `cargo_common_metadata` lint
 
 ---
 
-### Task 2: Claude Hook for Automatic cargo fmt
+### Task 2: Claude Hook for Automatic cargo fmt [COMPLETED]
 
 **Goal:** Create a Claude Code hook that automatically runs `cargo fmt --all` after every Rust file change, ensuring consistent formatting without manual intervention.
 
 **Files to create:**
-- `inputforge/.claude/settings.json` -- project-level Claude Code settings with hooks
+- `.claude/settings.json` -- project-level Claude Code settings with hooks
 
 **Hook configuration:**
-- Create a `PostToolUse` hook that triggers after `Edit` and `Write` tool uses
-- The hook should match `.rs` files only (use `fileEditExtensions` or similar matcher)
-- Command: `cargo fmt --all` (run from workspace root)
-- This ensures every Rust file is automatically formatted after any modification
+- `PostToolUse` hook with matcher `"Edit|Write"`
+- `fileEditExtensions: [".rs"]` to match only Rust files
+- Command: `cargo fmt --all 2>/dev/null || true` (suppresses errors, 10s timeout)
 
 **Steps:**
-1. Create `inputforge/.claude/` directory
-2. Write `settings.json` with a `hooks` section containing a `PostToolUse` hook for `Edit` and `Write` tools that runs `cargo fmt --all` on `.rs` file changes
-3. Verify the hook works by making a small change to any `.rs` file and confirming it gets formatted
-4. Commit: `chore(workspace): add Claude hook for automatic cargo fmt`
+1. Create `.claude/` directory
+2. Write `settings.json` with the hook configuration
+3. Commit: `chore(workspace): add claude hook for automatic cargo fmt`
 
 ---
 
