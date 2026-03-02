@@ -3,6 +3,7 @@
 
 pub mod action;
 pub mod error;
+pub mod mode;
 pub mod pipeline;
 pub mod processing;
 pub mod types;

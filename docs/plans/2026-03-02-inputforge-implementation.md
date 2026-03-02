@@ -34,6 +34,7 @@
 | parking_lot     | 0.12+   | Faster RwLock for shared state                    |
 | tracing         | 0.1     | With tracing-subscriber 0.3                       |
 | mimalloc        | 0.1     | Global allocator for app crate                    |
+| uuid            | 1.0+    | Use `features = ["v4"]` for profile IDs           |
 
 ---
 
@@ -382,7 +383,7 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
 
 ---
 
-## Phase 3: Profile & Mode System
+## Phase 3: Profile & Mode System [IN PROGRESS]
 
 ### Task 9: Profile TOML Serialization
 
@@ -393,9 +394,12 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
 
 **Files to modify:**
 - `crates/inputforge-core/src/lib.rs` -- add `pub mod profile;`
+- `Cargo.toml` (workspace root) -- add `uuid = { version = "1.0", features = ["v4"] }` to `[workspace.dependencies]`
+- `crates/inputforge-core/Cargo.toml` -- add `uuid = { workspace = true }` to `[dependencies]`
 
 **Types to define:**
-- `Profile { name, devices: Vec<DeviceEntry>, modes: ModeTree, mappings: Vec<Mapping>, settings: ProfileSettings }`
+- `ProfileId(String)` -- UUID v4, auto-generated on creation, stable across renames. Derive Debug/Clone/PartialEq/Eq/Hash/Serialize/Deserialize
+- `Profile { id: ProfileId, name, devices: Vec<DeviceEntry>, modes: ModeTree, mappings: Vec<Mapping>, settings: ProfileSettings }`
 - `DeviceEntry { id: DeviceId, name: String }`
 - `ProfileSettings { startup_mode: String }` (extensible later)
 
@@ -434,10 +438,21 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
 - `crates/inputforge-core/src/lib.rs` -- add `pub mod mode;`
 
 **Types to define:**
-- `ModeTree { root: ModeNode }` (serializable)
-- `ModeNode { name: String, children: Vec<ModeNode> }`
+- `ModeTree { root: ModeNode }` -- custom Serialize/Deserialize using flat adjacency map
+- `ModeNode { name: String, children: Vec<ModeNode> }` -- private fields, getters only
+
+**TOML serialization format:** Flat adjacency map where keys are parent mode names and values are child name lists. Root is auto-detected as the key that never appears in any value list. Example:
+```toml
+[modes]
+Default = ["Combat", "Landing"]
+Combat = ["Missiles", "Guns"]
+```
+> **Note:** Design doc showed `Default = []` which doesn't capture the parent-child hierarchy. The adjacency map format properly encodes the full tree.
+
+**Constructor:** `ModeTree::from_adjacency(&HashMap<String, Vec<String>>) -> Result<Self>` -- validates: non-empty, exactly one root, no duplicate mode names, all children reachable
 
 **Methods to implement:**
+- `ModeTree::root(&self) -> &ModeNode`
 - `ModeTree::find_mode(&self, name: &str) -> Option<&ModeNode>` -- recursive search
 - `ModeTree::ancestors(&self, name: &str) -> Vec<&str>` -- return path from mode to root (for inheritance chain)
 - `ModeTree::contains(&self, name: &str) -> bool`
@@ -454,6 +469,8 @@ Also define `pub type Result<T> = std::result::Result<T, EngineError>;`
 - `resolve_mapping` finds direct mapping
 - `resolve_mapping` falls through to parent when no mapping in child mode
 - `resolve_mapping` returns None when no mapping in entire chain
+- Validation rejections (empty, multiple roots, duplicates)
+- Serde roundtrip via TOML
 
 **Steps:**
 1. Define ModeTree and ModeNode with serde derives
