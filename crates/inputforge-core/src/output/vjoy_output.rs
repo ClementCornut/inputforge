@@ -77,6 +77,18 @@ impl OutputSink for VJoyOutput {
                 device_id: config.device_id,
             }
         })?;
+
+        // Log the requested capabilities. vJoy device configuration is
+        // managed externally (via vJoyConf), so we cannot enforce these
+        // values here.
+        tracing::debug!(
+            device_id = config.device_id,
+            axes = ?config.axes,
+            button_count = config.button_count,
+            hat_count = config.hat_count,
+            "vJoy device config received; actual capabilities are set externally via vJoyConf"
+        );
+
         self.cached_states.insert(config.device_id, state);
         self.active_devices.insert(config.device_id);
         Ok(())
@@ -92,8 +104,8 @@ impl OutputSink for VJoyOutput {
             .ok_or(EngineError::VJoyDeviceUnavailable { device_id: device })?;
         state
             .set_axis(axis_id, vjoy_value)
-            .map_err(|e| EngineError::InvalidConfig {
-                reason: format!("vJoy axis error: {e:?}"),
+            .map_err(|e| EngineError::OutputFailed {
+                reason: format!("vJoy device {device} axis {axis:?} (id {axis_id}): {e:?}"),
             })?;
         self.dirty_devices.insert(device);
         Ok(())
@@ -112,8 +124,8 @@ impl OutputSink for VJoyOutput {
             .ok_or(EngineError::VJoyDeviceUnavailable { device_id: device })?;
         state
             .set_button(button, button_state)
-            .map_err(|e| EngineError::InvalidConfig {
-                reason: format!("vJoy button error: {e:?}"),
+            .map_err(|e| EngineError::OutputFailed {
+                reason: format!("vJoy device {device} button {button}: {e:?}"),
             })?;
         self.dirty_devices.insert(device);
         Ok(())
@@ -128,14 +140,25 @@ impl OutputSink for VJoyOutput {
             .ok_or(EngineError::VJoyDeviceUnavailable { device_id: device })?;
         state
             .set_hat(hat, hat_state)
-            .map_err(|e| EngineError::InvalidConfig {
-                reason: format!("vJoy hat error: {e:?}"),
+            .map_err(|e| EngineError::OutputFailed {
+                reason: format!("vJoy device {device} hat {hat}: {e:?}"),
             })?;
         self.dirty_devices.insert(device);
         Ok(())
     }
 
     fn release_device(&mut self, device: u8) -> Result<()> {
+        // Flush any unflushed dirty state before releasing the device.
+        if self.dirty_devices.contains(&device) {
+            if let Some(state) = self.cached_states.get(&device) {
+                self.vjoy
+                    .update_device_state(state)
+                    .map_err(|e| EngineError::OutputFailed {
+                        reason: format!("vJoy device {device} flush on release: {e:?}"),
+                    })?;
+            }
+        }
+
         // The `vjoy` crate relinquishes all devices in its `Drop` impl.
         // Per-device relinquish is not exposed by the `vjoy` crate API.
         self.active_devices.remove(&device);
@@ -145,17 +168,50 @@ impl OutputSink for VJoyOutput {
     }
 
     fn flush(&mut self) -> Result<()> {
-        let dirty = std::mem::take(&mut self.dirty_devices);
-        for device_id in dirty {
+        let mut first_err = None;
+        let mut flushed = Vec::new();
+
+        for &device_id in &self.dirty_devices {
             if let Some(state) = self.cached_states.get(&device_id) {
-                self.vjoy
-                    .update_device_state(state)
-                    .map_err(|e| EngineError::InvalidConfig {
-                        reason: format!("vJoy flush error for device {device_id}: {e:?}"),
-                    })?;
+                match self.vjoy.update_device_state(state) {
+                    Ok(()) => {
+                        flushed.push(device_id);
+                    }
+                    Err(e) => {
+                        if first_err.is_none() {
+                            first_err = Some(EngineError::OutputFailed {
+                                reason: format!("vJoy device {device_id}: {e:?}"),
+                            });
+                        }
+                    }
+                }
+            } else {
+                debug_assert!(false, "dirty device {device_id} has no cached state");
+                tracing::warn!(
+                    device_id,
+                    "dirty device has no cached state, skipping flush"
+                );
             }
         }
-        Ok(())
+
+        for id in flushed {
+            self.dirty_devices.remove(&id);
+        }
+
+        first_err.map_or(Ok(()), Err)
+    }
+}
+
+/// Flush all dirty devices on drop, logging any errors that occur.
+impl Drop for VJoyOutput {
+    fn drop(&mut self) {
+        for &device_id in &self.dirty_devices {
+            if let Some(state) = self.cached_states.get(&device_id) {
+                if let Err(e) = self.vjoy.update_device_state(state) {
+                    tracing::warn!(device_id, error = ?e, "failed to flush vJoy device on drop");
+                }
+            }
+        }
     }
 }
 
@@ -176,8 +232,10 @@ fn vjoy_axis_id(axis: VJoyAxis) -> u32 {
 /// Convert a normalized axis value ([-1.0, 1.0]) to the vJoy integer range.
 ///
 /// Uses [`lerp_range`] to map from \[-1.0, 1.0\] to \[0x0001, 0x8000\].
+/// Non-finite inputs (NaN, infinity) are treated as zero.
 fn axis_value_to_vjoy(value: f64) -> i32 {
-    let clamped = value.clamp(-1.0, 1.0);
+    let safe = if value.is_finite() { value } else { 0.0 };
+    let clamped = safe.clamp(-1.0, 1.0);
     let raw = lerp_range(clamped, -1.0, 1.0, VJOY_AXIS_MIN, VJOY_AXIS_MAX);
     // The result is in range [1.0, 32768.0], fitting safely in i32.
     #[expect(
@@ -232,6 +290,19 @@ mod tests {
     fn axis_clamps_out_of_range() {
         assert_eq!(axis_value_to_vjoy(-2.0), axis_value_to_vjoy(-1.0));
         assert_eq!(axis_value_to_vjoy(5.0), axis_value_to_vjoy(1.0));
+    }
+
+    #[test]
+    fn axis_nan_maps_to_center() {
+        let center = axis_value_to_vjoy(0.0);
+        assert_eq!(axis_value_to_vjoy(f64::NAN), center);
+    }
+
+    #[test]
+    fn axis_infinity_maps_to_center() {
+        let center = axis_value_to_vjoy(0.0);
+        assert_eq!(axis_value_to_vjoy(f64::INFINITY), center);
+        assert_eq!(axis_value_to_vjoy(f64::NEG_INFINITY), center);
     }
 
     #[test]

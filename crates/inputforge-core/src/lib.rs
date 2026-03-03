@@ -1,5 +1,5 @@
 // InputForge Core - engine library (no GUI dependencies)
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-03
 
 pub mod action;
 pub mod callbacks;

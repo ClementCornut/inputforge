@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-03
 
 use std::path::PathBuf;
 
@@ -27,6 +27,9 @@ pub enum EngineError {
 
     #[error("HidHide error: {0}")]
     HidHide(String),
+
+    #[error("output failed: {reason}")]
+    OutputFailed { reason: String },
 
     #[error("device not found: {device_id:?}")]
     DeviceNotFound { device_id: DeviceId },

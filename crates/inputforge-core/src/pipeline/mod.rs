@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-03
 
 mod condition;
 mod merge;
@@ -9,8 +9,14 @@ pub use condition::evaluate_condition;
 pub use merge::merge_axes;
 
 use crate::action::{Action, ModeChangeStrategy};
-use crate::processing::{invert_axis, invert_button};
+use crate::processing::invert_axis;
 use crate::types::{HatDirection, InputAddress, InputValue, KeyCombo, OutputAddress};
+
+/// Threshold above which a button's `current_value` is considered pressed.
+///
+/// Used when converting continuous axis-like values back to a boolean
+/// press state (e.g., for `MapToVJoy` and `MapToKeyboard` actions).
+const BUTTON_PRESS_THRESHOLD: f64 = 0.5;
 
 /// Output produced by the pipeline executor.
 ///
@@ -84,10 +90,17 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                 ctx.current_value = config.apply(ctx.current_value);
             }
             Action::Invert => match &ctx.input_value {
-                InputValue::Button { pressed } => {
-                    ctx.current_value = if invert_button(*pressed) { 1.0 } else { 0.0 };
+                InputValue::Button { .. } => {
+                    ctx.current_value = if ctx.current_value > BUTTON_PRESS_THRESHOLD {
+                        0.0
+                    } else {
+                        1.0
+                    };
                 }
-                _ => {
+                InputValue::Hat { .. } => {
+                    tracing::debug!("hat inversion is a no-op");
+                }
+                InputValue::Axis { .. } => {
                     ctx.current_value = invert_axis(ctx.current_value);
                 }
             },
@@ -103,17 +116,21 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                 InputValue::Button { .. } => {
                     ctx.outputs.push(PipelineOutput::SetButton {
                         output: output.clone(),
-                        pressed: ctx.current_value > 0.5,
+                        pressed: ctx.current_value > BUTTON_PRESS_THRESHOLD,
                     });
                 }
-                InputValue::Hat { .. } => {}
+                InputValue::Hat { .. } => {
+                    tracing::debug!("hat-to-vJoy mapping not yet implemented");
+                }
             },
             Action::MapToKeyboard { key } => match &ctx.input_value {
-                InputValue::Hat { .. } => {}
+                InputValue::Hat { .. } => {
+                    tracing::debug!("hat-to-keyboard mapping not yet implemented");
+                }
                 _ => {
                     ctx.outputs.push(PipelineOutput::SendKey {
                         key: key.clone(),
-                        pressed: ctx.current_value > 0.5,
+                        pressed: ctx.current_value > BUTTON_PRESS_THRESHOLD,
                     });
                 }
             },
@@ -148,22 +165,13 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
 
 #[cfg(test)]
 mod tests {
-    use super::test_helpers::MockCache;
+    use super::test_helpers::{MockCache, button_input_address};
     use super::*;
     use crate::action::Condition;
     use crate::processing::{Calibration, DeadzoneConfig, ResponseCurve};
-    use crate::types::{
-        AxisValue, DeviceId, HatDirection, InputId, KeyModifier, MergeOp, OutputId, VJoyAxis,
-    };
+    use crate::types::{AxisValue, DeviceId, InputId, KeyModifier, MergeOp, OutputId, VJoyAxis};
 
     const TOLERANCE: f64 = 1e-6;
-
-    fn button_input_address() -> InputAddress {
-        InputAddress {
-            device: DeviceId("stick-1".to_owned()),
-            input: InputId::Button { index: 0 },
-        }
-    }
 
     fn test_output() -> OutputAddress {
         OutputAddress {
@@ -748,10 +756,15 @@ mod tests {
         // Right pedal raw value cached as calibrated -0.25
         //
         // Pipeline for left pedal:
-        //   calibrate(-32768..32767) -> -0.5
+        //   calibrate(-32768..32767) -> ~-0.4985 (not exactly -0.5)
         //   deadzone (trivial, pass-through)
-        //   merge bidirectional with right pedal -> (-0.5) - (-0.25) = -0.25
+        //   merge bidirectional with right pedal -> ~(-0.4985) - (-0.25) = ~-0.2485
         //   map to vJoy X axis
+        //
+        // The wider 0.01 tolerance (vs 1e-6 elsewhere) is required because the
+        // calibration center band [-100, 100] makes the linear interpolation
+        // segments asymmetric: lerp(-16384, -32768, -100, -1, 0) produces
+        // -1 + 16384/32668 ~= -0.4985, not exactly -0.5.
 
         let mut cache = MockCache::new();
         let right_pedal = InputAddress {

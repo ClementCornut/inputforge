@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-03
 
 use std::time::Instant;
 
@@ -19,7 +19,7 @@ impl AxisValue {
 
     /// Create a raw `AxisValue` without clamping (for calibration input).
     #[must_use]
-    pub fn raw(value: f64) -> Self {
+    pub(crate) fn raw(value: f64) -> Self {
         Self(value)
     }
 

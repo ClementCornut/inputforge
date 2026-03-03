@@ -1,6 +1,8 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-03
 
 use serde::{Deserialize, Serialize};
+
+use crate::error::{EngineError, Result};
 
 use super::address::VJoyAxis;
 
@@ -30,6 +32,22 @@ pub struct VirtualDeviceConfig {
     pub axes: Vec<VJoyAxis>,
     pub button_count: u8,
     pub hat_count: u8,
+}
+
+impl VirtualDeviceConfig {
+    /// Validates that the device configuration is within valid bounds.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::InvalidConfig`] if `device_id` is 0 or greater than 16.
+    pub fn validate(&self) -> Result<()> {
+        if self.device_id == 0 || self.device_id > 16 {
+            return Err(EngineError::InvalidConfig {
+                reason: format!("vJoy device_id must be 1..=16, got {}", self.device_id),
+            });
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -86,5 +104,48 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let back: VirtualDeviceConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(config, back);
+    }
+
+    #[test]
+    fn validate_accepts_valid_device_ids() {
+        for id in 1..=16 {
+            let config = VirtualDeviceConfig {
+                device_id: id,
+                axes: vec![],
+                button_count: 0,
+                hat_count: 0,
+            };
+            assert!(config.validate().is_ok(), "device_id {id} should be valid");
+        }
+    }
+
+    #[test]
+    fn validate_rejects_device_id_zero() {
+        let config = VirtualDeviceConfig {
+            device_id: 0,
+            axes: vec![],
+            button_count: 0,
+            hat_count: 0,
+        };
+        let err = config.validate().unwrap_err();
+        assert!(
+            err.to_string().contains("1..=16"),
+            "error should mention valid range: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_device_id_above_16() {
+        let config = VirtualDeviceConfig {
+            device_id: 17,
+            axes: vec![],
+            button_count: 0,
+            hat_count: 0,
+        };
+        let err = config.validate().unwrap_err();
+        assert!(
+            err.to_string().contains("1..=16"),
+            "error should mention valid range: {err}"
+        );
     }
 }

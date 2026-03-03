@@ -11,6 +11,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
+# Default features are Windows-only. Use `--no-default-features` on non-Windows platforms.
 default = ["sdl3-input", "vjoy-output", "win32-io"]
 sdl3-input = ["dep:sdl3"]
 vjoy-output = ["dep:vjoy"]

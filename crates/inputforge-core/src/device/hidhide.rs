@@ -2,9 +2,12 @@
 
 use std::fmt;
 
-use windows::Win32::Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, HANDLE};
+use windows::Win32::Foundation::{
+    CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_INSUFFICIENT_BUFFER, ERROR_MORE_DATA,
+    ERROR_PATH_NOT_FOUND, HANDLE,
+};
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
     OPEN_EXISTING,
 };
 use windows::Win32::System::IO::DeviceIoControl;
@@ -55,12 +58,20 @@ const MAX_BUFFER_SIZE: usize = 256 * 1024;
 pub struct HidHideManager {
     handle: HANDLE,
     active: bool,
+    /// Device instance paths we added to the blacklist during this session.
+    /// These are removed on drop to avoid leaving stale entries.
+    hidden_by_us: Vec<String>,
+    /// Whether `HidHide` was active before we started, so we can restore
+    /// the original state on drop.
+    was_active_before: bool,
 }
 
 impl fmt::Debug for HidHideManager {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("HidHideManager")
             .field("active", &self.active)
+            .field("hidden_by_us", &self.hidden_by_us)
+            .field("was_active_before", &self.was_active_before)
             .finish_non_exhaustive()
     }
 }
@@ -83,15 +94,34 @@ impl HidHideManager {
                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                 None,
                 OPEN_EXISTING,
-                FILE_ATTRIBUTE_NORMAL,
+                FILE_FLAGS_AND_ATTRIBUTES(0),
                 None,
             )
         }
-        .map_err(|e| EngineError::HidHide(format!("failed to open control device: {e}")))?;
+        .map_err(|e| {
+            let code = e.code();
+            if code == ERROR_FILE_NOT_FOUND.to_hresult()
+                || code == ERROR_PATH_NOT_FOUND.to_hresult()
+            {
+                EngineError::HidHide(
+                    "HidHide driver is not installed or control device not found".to_owned(),
+                )
+            } else {
+                EngineError::HidHide(format!("failed to open control device: {e}"))
+            }
+        })?;
 
-        let active = read_active(handle)?;
-
-        Ok(Self { handle, active })
+        // Construct the struct first to ensure the handle is owned and will be
+        // closed by Drop even if read_active fails below.
+        let mut manager = Self {
+            handle,
+            active: false,
+            hidden_by_us: Vec::new(),
+            was_active_before: false,
+        };
+        manager.was_active_before = read_active(manager.handle)?;
+        manager.active = manager.was_active_before;
+        Ok(manager)
     }
 
     /// Add our application to the `HidHide` whitelist so we can still
@@ -103,11 +133,14 @@ impl HidHideManager {
     pub fn whitelist_self(&mut self) -> Result<()> {
         let exe_path = std::env::current_exe()
             .map_err(|e| EngineError::HidHide(format!("failed to get exe path: {e}")))?;
-        let exe_str = exe_path.to_string_lossy();
+        let canonical = std::fs::canonicalize(&exe_path)?;
+        let exe_str = canonical
+            .to_str()
+            .ok_or_else(|| EngineError::HidHide("executable path is not valid UTF-8".to_owned()))?;
 
         let mut whitelist = read_multi_string(self.handle, IOCTL_GET_WHITELIST)?;
-        if !whitelist.iter().any(|p| p == exe_str.as_ref()) {
-            whitelist.push(exe_str.into_owned());
+        if !whitelist.iter().any(|p| p == exe_str) {
+            whitelist.push(exe_str.to_owned());
             write_multi_string(self.handle, IOCTL_SET_WHITELIST, &whitelist)?;
         }
         Ok(())
@@ -123,6 +156,39 @@ impl HidHideManager {
         self.active = active;
         Ok(())
     }
+
+    /// Returns the cached active state. Call [`refresh_active`](Self::refresh_active)
+    /// to re-read from the driver.
+    #[must_use]
+    pub fn is_active_cached(&self) -> bool {
+        self.active
+    }
+
+    /// Re-read the active state from the driver and update the cached value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::HidHide`] if the IOCTL call fails.
+    pub fn refresh_active(&mut self) -> Result<()> {
+        self.active = read_active(self.handle)?;
+        Ok(())
+    }
+
+    /// Try to remove a single path from the blacklist. Used during cleanup
+    /// in `Drop`. Logs warnings on failure instead of panicking.
+    fn try_unhide_path(&mut self, path: &str) {
+        let blacklist = match read_multi_string(self.handle, IOCTL_GET_BLACKLIST) {
+            Ok(bl) => bl,
+            Err(e) => {
+                tracing::warn!(path, %e, "failed to read blacklist during cleanup");
+                return;
+            }
+        };
+        let filtered: Vec<String> = blacklist.into_iter().filter(|p| p != path).collect();
+        if let Err(e) = write_multi_string(self.handle, IOCTL_SET_BLACKLIST, &filtered) {
+            tracing::warn!(path, %e, "failed to remove device from blacklist during cleanup");
+        }
+    }
 }
 
 impl DeviceHider for HidHideManager {
@@ -137,6 +203,7 @@ impl DeviceHider for HidHideManager {
         if !blacklist.iter().any(|p| p == instance_path) {
             blacklist.push(instance_path.to_owned());
             write_multi_string(self.handle, IOCTL_SET_BLACKLIST, &blacklist)?;
+            self.hidden_by_us.push(instance_path.to_owned());
         }
         Ok(())
     }
@@ -157,17 +224,39 @@ impl DeviceHider for HidHideManager {
         Ok(())
     }
 
+    /// Returns the cached active state. Call [`HidHideManager::refresh_active`]
+    /// to re-read from the driver.
     fn is_active(&self) -> bool {
         self.active
+    }
+
+    fn list_hidden_devices(&self) -> Result<Vec<String>> {
+        read_multi_string(self.handle, IOCTL_GET_BLACKLIST)
     }
 }
 
 impl Drop for HidHideManager {
     #[expect(unsafe_code, reason = "CloseHandle is a Win32 FFI call")]
     fn drop(&mut self) {
+        // Remove any devices we added to the blacklist during this session.
+        let paths_to_unhide = std::mem::take(&mut self.hidden_by_us);
+        for path in &paths_to_unhide {
+            self.try_unhide_path(path);
+        }
+
+        // Restore the original active state if we changed it.
+        if !self.was_active_before && self.active {
+            if let Err(e) = write_active(self.handle, false) {
+                tracing::warn!(%e, "failed to deactivate HidHide during cleanup");
+            }
+        }
+
         // SAFETY: `self.handle` was obtained from `CreateFileW` and has not
         // been closed yet. Closing it here prevents resource leaks.
-        let _ = unsafe { CloseHandle(self.handle) };
+        let result = unsafe { CloseHandle(self.handle) };
+        if let Err(e) = result {
+            tracing::warn!(%e, "failed to close HidHide control device handle");
+        }
     }
 }
 
@@ -226,8 +315,8 @@ fn write_active(handle: HANDLE, active: bool) -> Result<()> {
 
 /// Read a double-null-terminated UTF-16LE multi-string from an IOCTL.
 ///
-/// Retries with a doubled buffer if `ERROR_INSUFFICIENT_BUFFER` is returned,
-/// up to [`MAX_BUFFER_SIZE`].
+/// Retries with a doubled buffer if `ERROR_INSUFFICIENT_BUFFER` or
+/// `ERROR_MORE_DATA` is returned, up to [`MAX_BUFFER_SIZE`].
 #[expect(unsafe_code, reason = "DeviceIoControl is a Win32 FFI call")]
 fn read_multi_string(handle: HANDLE, ioctl: u32) -> Result<Vec<String>> {
     let mut buf_size = INITIAL_BUFFER_SIZE;
@@ -259,16 +348,25 @@ fn read_multi_string(handle: HANDLE, ioctl: u32) -> Result<Vec<String>> {
 
         match result {
             Ok(()) => {
+                if returned % 2 != 0 {
+                    return Err(EngineError::HidHide(format!(
+                        "IOCTL returned odd byte count {returned}: malformed UTF-16 buffer"
+                    )));
+                }
                 let u16_count = returned as usize / 2;
                 buf.truncate(u16_count);
-                return Ok(decode_multi_string(&buf));
+                return decode_multi_string(&buf);
             }
             Err(e) => {
-                if e.code() == ERROR_INSUFFICIENT_BUFFER.to_hresult() && buf_size < MAX_BUFFER_SIZE
+                let code = e.code();
+                if (code == ERROR_INSUFFICIENT_BUFFER.to_hresult()
+                    || code == ERROR_MORE_DATA.to_hresult())
+                    && buf_size < MAX_BUFFER_SIZE
                 {
                     buf_size = buf_size.saturating_mul(2).min(MAX_BUFFER_SIZE);
                     tracing::debug!(
                         buf_size,
+                        ioctl,
                         "IOCTL buffer too small, retrying with larger buffer"
                     );
                     continue;
@@ -285,13 +383,21 @@ fn read_multi_string(handle: HANDLE, ioctl: u32) -> Result<Vec<String>> {
 #[expect(unsafe_code, reason = "DeviceIoControl is a Win32 FFI call")]
 fn write_multi_string(handle: HANDLE, ioctl: u32, entries: &[String]) -> Result<()> {
     let buf = encode_multi_string(entries);
+
+    let byte_size = buf.len() * 2;
+    if byte_size > MAX_BUFFER_SIZE {
+        return Err(EngineError::HidHide(format!(
+            "multi-string buffer size ({byte_size} bytes) exceeds maximum ({MAX_BUFFER_SIZE} bytes)"
+        )));
+    }
+
     let mut returned = 0u32;
 
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "multi-string buffer size fits in u32"
+        reason = "byte_size is bounded by MAX_BUFFER_SIZE (256 KiB) which fits in u32"
     )]
-    let byte_len = (buf.len() * 2) as u32;
+    let byte_len = byte_size as u32;
 
     // SAFETY: `buf` is a properly encoded double-null-terminated u16 buffer.
     unsafe {
@@ -315,14 +421,21 @@ fn write_multi_string(handle: HANDLE, ioctl: u32, entries: &[String]) -> Result<
 ///
 /// Each string is null-terminated, with an extra trailing null marking the
 /// end of the list.
-fn decode_multi_string(buf: &[u16]) -> Vec<String> {
+///
+/// # Errors
+///
+/// Returns [`EngineError::HidHide`] if the buffer contains invalid UTF-16.
+fn decode_multi_string(buf: &[u16]) -> Result<Vec<String>> {
     let mut result = Vec::new();
     let mut start = 0;
 
     for (i, &ch) in buf.iter().enumerate() {
         if ch == 0 {
             if i > start {
-                result.push(String::from_utf16_lossy(&buf[start..i]));
+                let s = String::from_utf16(&buf[start..i]).map_err(|e| {
+                    EngineError::HidHide(format!("invalid UTF-16 in multi-string: {e}"))
+                })?;
+                result.push(s);
             } else {
                 // Double null: end of list.
                 break;
@@ -331,7 +444,7 @@ fn decode_multi_string(buf: &[u16]) -> Vec<String> {
         }
     }
 
-    result
+    Ok(result)
 }
 
 /// Encode a list of strings into a double-null-terminated UTF-16LE buffer.
@@ -341,7 +454,12 @@ fn encode_multi_string(entries: &[String]) -> Vec<u16> {
         buf.extend(entry.encode_utf16());
         buf.push(0); // null terminator for this entry
     }
-    buf.push(0); // final null for double-null termination
+    // Final null for double-null termination. For an empty list, this produces
+    // [0, 0] which is the correct REG_MULTI_SZ representation.
+    if entries.is_empty() {
+        buf.push(0);
+    }
+    buf.push(0);
     buf
 }
 
@@ -419,7 +537,7 @@ mod tests {
             "USB\\VID_1234&PID_5678".to_owned(),
         ];
         let encoded = encode_multi_string(&entries);
-        let decoded = decode_multi_string(&encoded);
+        let decoded = decode_multi_string(&encoded).expect("decode should succeed");
         assert_eq!(decoded, entries);
     }
 
@@ -427,14 +545,14 @@ mod tests {
     fn encode_empty_list() {
         let entries: Vec<String> = vec![];
         let encoded = encode_multi_string(&entries);
-        // Should be just a single null (double-null with the implicit end).
-        assert_eq!(encoded, vec![0]);
+        // Proper REG_MULTI_SZ for empty list: double null.
+        assert_eq!(encoded, vec![0, 0]);
     }
 
     #[test]
     fn decode_empty_buffer() {
         let buf: Vec<u16> = vec![0, 0];
-        let decoded = decode_multi_string(&buf);
+        let decoded = decode_multi_string(&buf).expect("decode should succeed");
         assert!(decoded.is_empty());
     }
 
@@ -444,7 +562,7 @@ mod tests {
         let mut buf: Vec<u16> = entry.encode_utf16().collect();
         buf.push(0); // null terminator
         buf.push(0); // double null
-        let decoded = decode_multi_string(&buf);
+        let decoded = decode_multi_string(&buf).expect("decode should succeed");
         assert_eq!(decoded, vec!["TEST\\DEVICE"]);
     }
 
@@ -452,7 +570,7 @@ mod tests {
     fn encode_preserves_backslashes_and_ampersands() {
         let entries = vec!["HID\\VID_045E&PID_02FF&IG_00#7&51dab6b&0&0000".to_owned()];
         let encoded = encode_multi_string(&entries);
-        let decoded = decode_multi_string(&encoded);
+        let decoded = decode_multi_string(&encoded).expect("decode should succeed");
         assert_eq!(decoded, entries);
     }
 }

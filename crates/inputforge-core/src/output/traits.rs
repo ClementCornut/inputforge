@@ -1,13 +1,15 @@
 // Rust guideline compliant 2026-03-03
 
 use crate::error::Result;
-use crate::types::{HatDirection, VJoyAxis, VirtualDeviceConfig};
+pub use crate::types::VirtualDeviceConfig;
+
+use crate::types::{HatDirection, KeyCombo, VJoyAxis};
 
 /// Trait for sending output to virtual devices.
 ///
 /// Implementations write axis, button, and hat values to virtual
 /// joystick devices (e.g., vJoy).
-pub trait OutputSink {
+pub trait OutputSink: Send {
     /// Create and acquire a virtual device from the given configuration.
     ///
     /// # Errors
@@ -57,4 +59,17 @@ pub trait OutputSink {
     fn flush(&mut self) -> Result<()> {
         Ok(())
     }
+}
+
+/// Trait for keyboard output sinks.
+///
+/// Separated from [`OutputSink`] because keyboard output operates on
+/// key combinations rather than virtual device axes/buttons.
+pub trait KeyboardSink: Send {
+    /// Sends a key press (press and release) for the given key combination.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key injection fails.
+    fn send_key(&mut self, combo: &KeyCombo) -> Result<()>;
 }

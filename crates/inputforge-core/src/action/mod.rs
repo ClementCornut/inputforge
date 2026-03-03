@@ -1,10 +1,10 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-03
 
 mod condition;
 mod mapping;
 mod mode_change;
 
-pub use condition::Condition;
+pub use condition::{Condition, validate_depth};
 pub use mapping::Mapping;
 pub use mode_change::{CycleModes, ModeChangeStrategy};
 

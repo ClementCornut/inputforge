@@ -1,9 +1,9 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-03
 
 use std::collections::HashMap;
 
 use super::InputCache;
-use crate::types::{HatDirection, InputAddress};
+use crate::types::{DeviceId, HatDirection, InputAddress, InputId};
 
 /// Shared mock for [`InputCache`] used across pipeline tests.
 pub(super) struct MockCache {
@@ -12,8 +12,24 @@ pub(super) struct MockCache {
     pub hats: HashMap<InputAddress, HatDirection>,
 }
 
+/// Shared button input address for pipeline tests.
+pub(super) fn button_input_address() -> InputAddress {
+    InputAddress {
+        device: DeviceId("stick-1".to_owned()),
+        input: InputId::Button { index: 0 },
+    }
+}
+
+/// Shared axis input address for pipeline tests.
+pub(super) fn axis_input_address() -> InputAddress {
+    InputAddress {
+        device: DeviceId("stick-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    }
+}
+
 impl MockCache {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             buttons: HashMap::new(),
             axes: HashMap::new(),

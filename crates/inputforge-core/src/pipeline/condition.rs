@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-03
 
 use crate::action::Condition;
 
@@ -16,6 +16,7 @@ pub fn evaluate_condition(condition: &Condition, cache: &dyn InputCache) -> bool
         }
         Condition::HatDirection { input, directions } => {
             let current = cache.get_hat(input);
+            // O(n) linear scan is acceptable: HatDirection has at most 9 variants.
             directions.contains(&current)
         }
         Condition::All { conditions } => conditions.iter().all(|c| evaluate_condition(c, cache)),
@@ -26,23 +27,9 @@ pub fn evaluate_condition(condition: &Condition, cache: &dyn InputCache) -> bool
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_helpers::MockCache;
+    use super::super::test_helpers::{MockCache, axis_input_address, button_input_address};
     use super::*;
     use crate::types::{DeviceId, HatDirection, InputAddress, InputId};
-
-    fn button_input_address() -> InputAddress {
-        InputAddress {
-            device: DeviceId("stick-1".to_owned()),
-            input: InputId::Button { index: 0 },
-        }
-    }
-
-    fn axis_input_address() -> InputAddress {
-        InputAddress {
-            device: DeviceId("stick-1".to_owned()),
-            input: InputId::Axis { index: 0 },
-        }
-    }
 
     // -- Nested conditions ----------------------------------------------------
 

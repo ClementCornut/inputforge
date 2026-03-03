@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-03
 
 use crate::error::Result;
 use crate::types::{DeviceId, DeviceInfo, InputEvent};
@@ -11,8 +11,11 @@ pub trait InputSource {
     /// List all currently connected physical devices.
     fn enumerate_devices(&self) -> Vec<DeviceInfo>;
 
-    /// Poll for new input events. Returns all events since the last call.
-    fn poll(&mut self) -> Vec<InputEvent>;
+    /// Poll for new input events, appending them to `out`.
+    ///
+    /// Using an output parameter lets callers reuse the allocation buffer
+    /// across frames instead of allocating a new `Vec` each time.
+    fn poll(&mut self, out: &mut Vec<InputEvent>);
 
     /// Check whether a specific device is still connected.
     fn is_device_connected(&self, id: &DeviceId) -> bool;
@@ -42,6 +45,13 @@ pub trait DeviceHider {
 
     /// Check whether the hiding driver is currently active.
     fn is_active(&self) -> bool;
+
+    /// Returns the list of currently hidden device instance paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying driver query fails.
+    fn list_hidden_devices(&self) -> Result<Vec<String>>;
 }
 
 /// Device connection or disconnection notification.

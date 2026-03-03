@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-03
 
 use std::collections::HashMap;
 
@@ -40,14 +40,22 @@ impl CallbackRegistry {
     }
 
     /// Register a callback to fire when the button at `input` is released.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal ID counter overflows (after 2^64 registrations).
     pub fn register(&mut self, input: InputAddress, callback: ReleaseCallback) -> CallbackId {
         let id = CallbackId(self.next_id);
-        self.next_id += 1;
+        self.next_id = self
+            .next_id
+            .checked_add(1)
+            .expect("CallbackRegistry ID space exhausted");
         self.entries.entry(input).or_default().push((id, callback));
         id
     }
 
     /// Fire and remove all callbacks registered for the given input.
+    #[must_use = "fired callbacks must be executed by the engine"]
     pub fn fire(&mut self, input: &InputAddress) -> Vec<ReleaseCallback> {
         self.entries
             .remove(input)
@@ -61,13 +69,18 @@ impl CallbackRegistry {
     ///
     /// Returns `true` if the callback was found and removed.
     pub fn cancel(&mut self, id: CallbackId) -> bool {
+        let mut found = false;
         for callbacks in self.entries.values_mut() {
             if let Some(pos) = callbacks.iter().position(|(cb_id, _)| *cb_id == id) {
-                callbacks.remove(pos);
-                return true;
+                callbacks.swap_remove(pos);
+                found = true;
+                break;
             }
         }
-        false
+        if found {
+            self.entries.retain(|_, v| !v.is_empty());
+        }
+        found
     }
 }
 

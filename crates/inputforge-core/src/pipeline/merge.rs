@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-03
 
 use crate::types::MergeOp;
 
@@ -7,7 +7,7 @@ use crate::types::MergeOp;
 pub fn merge_axes(first: f64, second: f64, operation: MergeOp) -> f64 {
     match operation {
         MergeOp::Bidirectional => (first - second).clamp(-1.0, 1.0),
-        MergeOp::Average => f64::midpoint(first, second),
+        MergeOp::Average => f64::midpoint(first, second).clamp(-1.0, 1.0),
         MergeOp::Maximum => {
             if first.abs() >= second.abs() {
                 first
@@ -15,6 +15,7 @@ pub fn merge_axes(first: f64, second: f64, operation: MergeOp) -> f64 {
                 second
             }
         }
+        .clamp(-1.0, 1.0),
     }
 }
 
@@ -91,5 +92,31 @@ mod tests {
         // Both at opposite extremes: left=1, right=-1
         // Bidirectional: 1 - (-1) = 2, clamped to 1.0
         assert!((merge_axes(1.0, -1.0, MergeOp::Bidirectional) - 1.0).abs() < TOLERANCE);
+    }
+
+    // -- Out-of-range input clamping ------------------------------------------
+
+    #[test]
+    fn average_out_of_range_clamps_positive() {
+        // midpoint(1.5, 1.5) = 1.5, clamped to 1.0
+        assert!((merge_axes(1.5, 1.5, MergeOp::Average) - 1.0).abs() < TOLERANCE);
+    }
+
+    #[test]
+    fn average_out_of_range_clamps_negative() {
+        // midpoint(-2.0, -1.0) = -1.5, clamped to -1.0
+        assert!((merge_axes(-2.0, -1.0, MergeOp::Average) - (-1.0)).abs() < TOLERANCE);
+    }
+
+    #[test]
+    fn maximum_out_of_range_clamps_positive() {
+        // |2.0| > |0.5|, result = 2.0, clamped to 1.0
+        assert!((merge_axes(2.0, 0.5, MergeOp::Maximum) - 1.0).abs() < TOLERANCE);
+    }
+
+    #[test]
+    fn maximum_out_of_range_clamps_negative() {
+        // |0.3| < |-1.5|, result = -1.5, clamped to -1.0
+        assert!((merge_axes(0.3, -1.5, MergeOp::Maximum) - (-1.0)).abs() < TOLERANCE);
     }
 }

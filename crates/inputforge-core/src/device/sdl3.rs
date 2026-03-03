@@ -1,7 +1,8 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-03
 
 use std::collections::HashMap;
 use std::fmt;
+use std::marker::PhantomData;
 use std::time::Instant;
 
 use sdl3::event::Event;
@@ -36,6 +37,9 @@ pub struct Sdl3Input {
     open_devices: HashMap<u32, OpenDevice>,
     /// Buffered hotplug events to be drained by the caller.
     hotplug_buffer: Vec<HotplugEvent>,
+    /// SDL3 context is not thread-safe; this marker makes the `!Send`
+    /// bound explicit instead of relying implicitly on SDL types.
+    _not_send: PhantomData<*mut ()>,
 }
 
 impl fmt::Debug for Sdl3Input {
@@ -50,6 +54,7 @@ impl fmt::Debug for Sdl3Input {
 struct OpenDevice {
     joystick: Joystick,
     device_id: DeviceId,
+    info: DeviceInfo,
 }
 
 impl Sdl3Input {
@@ -73,6 +78,7 @@ impl Sdl3Input {
             event_pump,
             open_devices: HashMap::new(),
             hotplug_buffer: Vec::new(),
+            _not_send: PhantomData,
         };
 
         // Open all already-connected joysticks.
@@ -85,7 +91,7 @@ impl Sdl3Input {
         let ids: Vec<JoystickId> = match self.joystick_subsystem.joysticks() {
             Ok(ids) => ids,
             Err(e) => {
-                tracing::warn!("failed to enumerate joysticks: {e}");
+                tracing::error!("failed to enumerate joysticks: {e}");
                 return;
             }
         };
@@ -106,12 +112,14 @@ impl Sdl3Input {
                 let guid = joystick.guid();
                 let device_id = DeviceId(guid.string());
                 let info = device_info_from_joystick(&joystick, &device_id);
-                self.hotplug_buffer.push(HotplugEvent::Connected(info));
+                self.hotplug_buffer
+                    .push(HotplugEvent::Connected(info.clone()));
                 self.open_devices.insert(
                     instance_id,
                     OpenDevice {
                         joystick,
                         device_id,
+                        info,
                     },
                 );
             }
@@ -132,14 +140,10 @@ impl Sdl3Input {
 
 impl InputSource for Sdl3Input {
     fn enumerate_devices(&self) -> Vec<DeviceInfo> {
-        self.open_devices
-            .values()
-            .map(|d| device_info_from_joystick(&d.joystick, &d.device_id))
-            .collect()
+        self.open_devices.values().map(|d| d.info.clone()).collect()
     }
 
-    fn poll(&mut self) -> Vec<InputEvent> {
-        let mut events = Vec::new();
+    fn poll(&mut self, out: &mut Vec<InputEvent>) {
         let now = Instant::now();
 
         // Collect all SDL events first to release the mutable borrow on
@@ -155,7 +159,7 @@ impl InputSource for Sdl3Input {
                     ..
                 } => {
                     if let Some(device) = self.open_devices.get(&which) {
-                        events.push(InputEvent {
+                        out.push(InputEvent {
                             source: InputAddress {
                                 device: device.device_id.clone(),
                                 input: InputId::Axis { index: axis_idx },
@@ -171,7 +175,7 @@ impl InputSource for Sdl3Input {
                     which, button_idx, ..
                 } => {
                     if let Some(device) = self.open_devices.get(&which) {
-                        events.push(InputEvent {
+                        out.push(InputEvent {
                             source: InputAddress {
                                 device: device.device_id.clone(),
                                 input: InputId::Button { index: button_idx },
@@ -185,7 +189,7 @@ impl InputSource for Sdl3Input {
                     which, button_idx, ..
                 } => {
                     if let Some(device) = self.open_devices.get(&which) {
-                        events.push(InputEvent {
+                        out.push(InputEvent {
                             source: InputAddress {
                                 device: device.device_id.clone(),
                                 input: InputId::Button { index: button_idx },
@@ -202,7 +206,7 @@ impl InputSource for Sdl3Input {
                     ..
                 } => {
                     if let Some(device) = self.open_devices.get(&which) {
-                        events.push(InputEvent {
+                        out.push(InputEvent {
                             source: InputAddress {
                                 device: device.device_id.clone(),
                                 input: InputId::Hat { index: hat_idx },
@@ -225,8 +229,6 @@ impl InputSource for Sdl3Input {
                 _ => {}
             }
         }
-
-        events
     }
 
     fn is_device_connected(&self, id: &DeviceId) -> bool {
@@ -236,7 +238,7 @@ impl InputSource for Sdl3Input {
     }
 
     fn hotplug_events(&mut self) -> Vec<HotplugEvent> {
-        std::mem::take(&mut self.hotplug_buffer)
+        self.hotplug_buffer.drain(..).collect()
     }
 }
 

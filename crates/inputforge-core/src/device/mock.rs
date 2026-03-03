@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-03
 
 use std::collections::HashSet;
 
@@ -25,8 +25,8 @@ impl InputSource for MockInputSource {
         self.devices.clone()
     }
 
-    fn poll(&mut self) -> Vec<InputEvent> {
-        std::mem::take(&mut self.events)
+    fn poll(&mut self, out: &mut Vec<InputEvent>) {
+        out.append(&mut self.events);
     }
 
     fn is_device_connected(&self, id: &DeviceId) -> bool {
@@ -60,6 +60,14 @@ impl DeviceHider for MockDeviceHider {
 
     fn is_active(&self) -> bool {
         self.active
+    }
+
+    fn list_hidden_devices(&self) -> Result<Vec<String>> {
+        Ok(self
+            .hidden_devices
+            .iter()
+            .filter_map(|d| d.instance_path.clone())
+            .collect())
     }
 }
 
@@ -109,9 +117,12 @@ mod tests {
             events: vec![sample_event()],
             ..Default::default()
         };
-        let polled = source.poll();
+        let mut polled = Vec::new();
+        source.poll(&mut polled);
         assert_eq!(polled.len(), 1);
-        assert!(source.poll().is_empty(), "poll should drain events");
+        let mut empty = Vec::new();
+        source.poll(&mut empty);
+        assert!(empty.is_empty(), "poll should drain events");
     }
 
     #[test]
