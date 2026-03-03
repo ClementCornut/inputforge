@@ -1,9 +1,9 @@
 // Rust guideline compliant 2026-03-03
 
 use crate::error::Result;
-use crate::types::{HatDirection, VJoyAxis, VirtualDeviceConfig};
+use crate::types::{HatDirection, KeyCombo, VJoyAxis, VirtualDeviceConfig};
 
-use super::traits::OutputSink;
+use super::traits::{KeyboardSink, OutputSink};
 
 /// A recorded output call for test assertions.
 #[derive(Debug, Clone, PartialEq)]
@@ -97,6 +97,44 @@ impl OutputSink for MockOutputSink {
     }
 }
 
+/// A recorded keyboard call for test assertions.
+#[derive(Debug, Clone, PartialEq)]
+pub enum KeyboardCall {
+    SendKey(KeyCombo),
+}
+
+/// Mock keyboard sink that records all calls for test assertions.
+#[derive(Debug, Default)]
+pub struct MockKeyboardSink {
+    calls: Vec<KeyboardCall>,
+}
+
+impl MockKeyboardSink {
+    /// Create a new empty `MockKeyboardSink`.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Return all recorded calls.
+    #[must_use]
+    pub fn calls(&self) -> &[KeyboardCall] {
+        &self.calls
+    }
+
+    /// Clear all recorded calls.
+    pub fn clear(&mut self) {
+        self.calls.clear();
+    }
+}
+
+impl KeyboardSink for MockKeyboardSink {
+    fn send_key(&mut self, combo: &KeyCombo) -> Result<()> {
+        self.calls.push(KeyboardCall::SendKey(combo.clone()));
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,6 +214,34 @@ mod tests {
         mock.set_axis(1, VJoyAxis::X, 0.0).unwrap();
         mock.set_button(1, 1, true).unwrap();
         assert_eq!(mock.calls().len(), 2);
+        mock.clear();
+        assert!(mock.calls().is_empty());
+    }
+
+    // --- MockKeyboardSink ---
+
+    #[test]
+    fn mock_keyboard_records_send_key() {
+        use crate::types::KeyModifier;
+
+        let mut mock = MockKeyboardSink::new();
+        let combo = KeyCombo {
+            key: "Space".to_owned(),
+            modifiers: vec![KeyModifier::Ctrl],
+        };
+        mock.send_key(&combo).unwrap();
+        assert_eq!(mock.calls(), &[KeyboardCall::SendKey(combo)]);
+    }
+
+    #[test]
+    fn mock_keyboard_clear_removes_calls() {
+        let mut mock = MockKeyboardSink::new();
+        let combo = KeyCombo {
+            key: "A".to_owned(),
+            modifiers: vec![],
+        };
+        mock.send_key(&combo).unwrap();
+        assert_eq!(mock.calls().len(), 1);
         mock.clear();
         assert!(mock.calls().is_empty());
     }

@@ -65,6 +65,11 @@ impl CallbackRegistry {
             .collect()
     }
 
+    /// Remove all registered callbacks.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
     /// Cancel a specific callback by its ID.
     ///
     /// Returns `true` if the callback was found and removed.

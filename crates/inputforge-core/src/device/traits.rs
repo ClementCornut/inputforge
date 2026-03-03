@@ -7,6 +7,14 @@ use crate::types::{DeviceId, DeviceInfo, InputEvent};
 ///
 /// Implementations wrap a platform-specific input library (e.g., SDL3)
 /// and normalize events into [`InputEvent`] values.
+///
+/// # Thread Safety
+///
+/// This trait intentionally does **not** require `Send`. The primary
+/// implementation (`Sdl3Input`) is `!Send` because the underlying
+/// SDL3 context must be used from the thread that created it. The
+/// [`Engine`](crate::engine::Engine) must be constructed and run on
+/// the same thread where the `InputSource` was created.
 pub trait InputSource {
     /// List all currently connected physical devices.
     fn enumerate_devices(&self) -> Vec<DeviceInfo>;
@@ -26,6 +34,13 @@ pub trait InputSource {
 
 /// Hides physical devices from other applications so only the virtual
 /// device is visible (e.g., via `HidHide` on Windows).
+///
+/// # Thread Safety
+///
+/// This trait does not require `Send`. The
+/// [`Engine`](crate::engine::Engine) owns the implementation and
+/// calls it exclusively from the engine thread, so cross-thread
+/// access is never needed.
 pub trait DeviceHider {
     /// Add a device to the hidden-device list.
     ///

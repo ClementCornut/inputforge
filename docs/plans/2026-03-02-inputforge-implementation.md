@@ -636,236 +636,289 @@ Combat = ["Missiles", "Guns"]
 
 ---
 
-## Phase 5: Hardware I/O
+## Phase 5: Hardware I/O [COMPLETED]
 
-> **Note:** Tasks 14-17 are independent and can be implemented in parallel.
+> **Completed 2026-03-02.** All 4 tasks implemented (parallelizable). 292 tests total after code review fixes.
+> - Task 15: SDL3 input with hotplug, GUID device IDs, hat conversion, `!Send` by design (device/)
+> - Task 16: vJoy output with cached dirty-flag flush, axis/button/hat mapping (output/)
+> - Task 17: Keyboard output via Win32 SendInput, full key/modifier mapping (output/)
+> - Task 18: HidHide IOCTL with blacklist/whitelist management, cleanup on Drop (device/)
+> - Scaffolding commit separated hardware deps into feature flags (`sdl3-input`, `vjoy-output`, `win32-io`) + `test-util` for mocks
+> - Two code review rounds (10 + 41 findings) hardened all I/O subsystems
+
+> **Note:** Tasks 15-18 are independent and can be implemented in parallel.
 > Each task implements a platform abstraction trait defined in the design doc Section 3.
 
-### Task 15: SDL3 Input Source + Hotplug
+### Task 15: SDL3 Input Source + Hotplug [COMPLETED]
 
 **Goal:** Implement the `InputSource` trait using SDL3 for physical device input.
 
-**Files to create:**
-- `crates/inputforge-core/src/device/mod.rs`
-- `crates/inputforge-core/src/device/traits.rs`
-- `crates/inputforge-core/src/device/sdl3.rs`
+**Files created:**
+- `crates/inputforge-core/src/device/mod.rs` -- re-exports, feature-gated submodules
+- `crates/inputforge-core/src/device/traits.rs` -- `InputSource` + `DeviceHider` traits
+- `crates/inputforge-core/src/device/sdl3.rs` -- `Sdl3Input` implementation
+- `crates/inputforge-core/src/device/mock.rs` -- `MockInputSource` + `MockDeviceHider` (behind `test-util` feature)
 
-**Files to modify:**
-- `crates/inputforge-core/src/lib.rs` -- add `pub mod device;`
-- `crates/inputforge-core/Cargo.toml` -- add `sdl3` dependency
+**Files modified:**
+- `crates/inputforge-core/src/lib.rs` -- added `pub mod device;`
+- `crates/inputforge-core/Cargo.toml` -- added `sdl3` dependency (feature-gated `sdl3-input`)
 
-**Trait to define in `traits.rs`:**
-- `InputSource` trait (from design doc Section 3):
+**Trait defined in `traits.rs`:**
+- `InputSource` trait:
   - `fn enumerate_devices(&self) -> Vec<DeviceInfo>`
   - `fn poll(&mut self) -> Vec<InputEvent>`
   - `fn is_device_connected(&self, id: &DeviceId) -> bool`
+  - `fn hotplug_events(&self) -> Vec<HotplugEvent>`
 
-**SDL3 implementation in `sdl3.rs`:**
-- `Sdl3Input` struct: wraps SDL3 joystick/gamepad subsystem
-- `Sdl3Input::new() -> Result<Self>` -- initialize SDL3 with joystick+gamepad subsystems
-- Implement `InputSource` for `Sdl3Input`:
-  - `enumerate_devices`: use SDL3 joystick enumeration, map to DeviceInfo
-  - `poll`: pump SDL events, convert joystick axis/button/hat events to InputEvent
-  - Map SDL3 instance IDs to our DeviceId (using GUID)
-- **Hotplug**: SDL3 fires `JoyDeviceAdded` / `JoyDeviceRemoved` events during polling. Capture these and expose via a method `hotplug_events(&self) -> Vec<HotplugEvent>` where `HotplugEvent` is `Connected(DeviceInfo)` or `Disconnected(DeviceId)`.
+**Notes from execution:**
+- `Sdl3Input` is `!Send` by design — enforced via `PhantomData<*mut ()>` because SDL3 is not thread-safe
+- Device IDs are SDL GUID strings (stable across reconnects)
+- Instance path retrieved via FFI `SDL_GetJoystickPathForID` for HidHide matching
+- Opens all connected joysticks on creation, caches `DeviceInfo` per device
+- `poll()` translates `JoyAxisMotion`/`JoyButtonDown`/`JoyButtonUp`/`JoyHatMotion`/`JoyDeviceAdded`/`JoyDeviceRemoved` into `InputEvent`/`HotplugEvent`
+- Hat conversion (`sdl_hat_to_direction`) maps all 9 SDL hat states to `HatDirection`
+- `MockInputSource` pre-loadable with devices/events/hotplug events, drains on poll; `MockDeviceHider` records hide/unhide calls — both behind `test-util` feature
 
-**Tests:**
-- Unit tests are limited since SDL3 requires real hardware
-- Create a `MockInputSource` implementing `InputSource` for use in other tests
-- Test DeviceId GUID formatting
-- Integration test (manual): connect a joystick and verify enumeration output
+**Tests:** 1 SDL test (hardware-dependent), 6 mock tests.
 
-**Steps:**
-1. Define `InputSource` trait in traits.rs
-2. Add `sdl3` dependency to Cargo.toml
-3. Implement `Sdl3Input` struct
-4. Create `MockInputSource` for testing
-5. Run `rtk cargo build -p inputforge-core` (verify SDL3 compiles)
-6. Commit: `feat(core): add SDL3 input source with hotplug detection`
+**Commit:** `feat(core): add SDL3 input source with hotplug detection`
 
 ---
 
-### Task 16: vJoy Output Sink
+### Task 16: vJoy Output Sink [COMPLETED]
 
 **Goal:** Implement the `OutputSink` trait using vJoy for virtual device output.
 
-**Files to create:**
-- `crates/inputforge-core/src/output/mod.rs`
-- `crates/inputforge-core/src/output/traits.rs`
-- `crates/inputforge-core/src/output/vjoy_output.rs`
+**Files created:**
+- `crates/inputforge-core/src/output/mod.rs` -- re-exports, feature-gated submodules
+- `crates/inputforge-core/src/output/traits.rs` -- `OutputSink` trait (with `Send` bound) + `KeyboardSink` trait
+- `crates/inputforge-core/src/output/vjoy_output.rs` -- `VJoyOutput` implementation
+- `crates/inputforge-core/src/output/mock.rs` -- `MockOutputSink` (behind `test-util` feature)
 
-**Files to modify:**
-- `crates/inputforge-core/src/lib.rs` -- add `pub mod output;`
-- `crates/inputforge-core/Cargo.toml` -- add `vjoy` dependency
+**Files modified:**
+- `crates/inputforge-core/src/lib.rs` -- added `pub mod output;`
+- `crates/inputforge-core/Cargo.toml` -- added `vjoy` dependency (feature-gated `vjoy-output`)
 
-**Trait to define in `traits.rs`:**
-- `OutputSink` trait (from design doc Section 3):
+**Trait defined in `traits.rs`:**
+- `OutputSink: Send` trait:
   - `fn create_device(&mut self, config: VirtualDeviceConfig) -> Result<()>`
   - `fn set_axis(&mut self, device: u8, axis: VJoyAxis, value: f64) -> Result<()>`
   - `fn set_button(&mut self, device: u8, button: u8, pressed: bool) -> Result<()>`
   - `fn set_hat(&mut self, device: u8, hat: u8, direction: HatDirection) -> Result<()>`
   - `fn release_device(&mut self, device: u8) -> Result<()>`
+  - `fn flush(&mut self) -> Result<()>` (default no-op)
 
-**vJoy implementation in `vjoy_output.rs`:**
-- `VJoyOutput` struct: wraps the vjoy crate
-- Map our `AxisValue` (-1.0 to 1.0) to vJoy range (typically 0x0000-0x7FFF)
-- Map `VJoyAxis` enum to vJoy axis constants
-- Map `HatDirection` to vJoy hat values (degrees * 100 or -1 for center)
-- Acquire/relinquish vJoy devices
+**Notes from execution:**
+- Dirty-flag flush optimization: state changes cached in `HashMap<u8, Device>`, dirty devices tracked in `HashSet<u8>`, `flush()` calls `vjoy.update_device_state()` only for dirty devices — reduces IPC calls
+- Reuses `lerp_range` from `processing::mod` for axis conversion `[-1.0, 1.0] → [0x0001, 0x8000]` (per Phase 2 lesson)
+- Hat mapping: `HatState::Continuous` in hundredths-of-degrees (`u32::MAX` = center, `0` = N, `4500` = NE, ..., `31500` = NW)
+- Axis ID mapping: X=1 through Slider1=8
+- `Drop` impl flushes remaining dirty devices; `flush()` called before `release_device()`
+- NaN guard on axis input values
+- `MockOutputSink` records all calls as `OutputCall` enum variants (CreateDevice/SetAxis/SetButton/SetHat/ReleaseDevice/Flush)
 
-> **Lesson from Phase 2 code review:** The axis value conversion (-1..1 to 0x0000..0x7FFF) is a `lerp_range` operation. Reuse `lerp_range` from `processing::mod` (which now has a `debug_assert` safety net) rather than reimplementing the conversion inline. This avoids the same class of div-by-zero bugs and keeps the mapping logic in one place.
+**Tests:** 9 vJoy tests (axis conversion, hat mapping, flush behavior), 8 mock tests.
 
-**Tests:**
-- Create `MockOutputSink` implementing `OutputSink` that records calls
-- Test axis value conversion (float to vJoy integer range)
-- Test hat direction to degree conversion
-- Integration test (manual): create vJoy device and set axes
-
-**Steps:**
-1. Define `OutputSink` trait in traits.rs
-2. Add `vjoy` dependency to Cargo.toml
-3. Implement `VJoyOutput` struct with value conversions
-4. Create `MockOutputSink` for testing
-5. Run `rtk cargo build -p inputforge-core`
-6. Commit: `feat(core): add vJoy output sink`
+**Commit:** `feat(core): add vJoy output sink with axis/button/hat conversion`
 
 ---
 
-### Task 17: Keyboard Output (Win32 SendInput)
+### Task 17: Keyboard Output (Win32 SendInput) [COMPLETED]
 
 **Goal:** Implement keyboard key press/release simulation using Win32 SendInput.
 
-**Files to create:**
+**Files created:**
 - `crates/inputforge-core/src/output/keyboard.rs`
 
-**Files to modify:**
-- `crates/inputforge-core/src/output/mod.rs` -- add `pub mod keyboard;`
-- `crates/inputforge-core/Cargo.toml` -- add `windows` dependency with required features (Win32_UI_Input_KeyboardAndMouse)
+**Files modified:**
+- `crates/inputforge-core/src/output/mod.rs` -- added `pub mod keyboard;`
+- `crates/inputforge-core/Cargo.toml` -- added `windows` dependency with `Win32_UI_Input_KeyboardAndMouse` (feature-gated `win32-io`)
 
-**Implementation:**
-- `KeyboardOutput` struct
-- `send_key(&self, combo: &KeyCombo, pressed: bool) -> Result<()>`:
-  - Parse key string to virtual key code (VK_*)
-  - Build `INPUT` struct array with modifier keys + main key
-  - Call `SendInput` from the `windows` crate
-  - For release: send in reverse order (main key up, then modifiers up)
-- Key string to VK mapping: support common names ("F1"-"F24", "A"-"Z", "0"-"9", "Space", "Enter", "Tab", "Escape", arrow keys, etc.)
+**Notes from execution:**
+- `KeyboardOutput` is a zero-size struct implementing `KeyboardSink` trait (separate from `OutputSink` — keyboard is not a vJoy-style device)
+- `KeyboardSink::send_key(combo)` does press-then-release in one call
+- Internal `send_key(combo, pressed: bool)` builds up to 5 `INPUT` structs on the stack (4 modifiers + 1 main key) — stack array replaces heap Vec (per code review)
+- `MapVirtualKeyW(MAPVK_VK_TO_VSC)` for scan code lookup, `KEYEVENTF_EXTENDEDKEY` set automatically for navigation keys (arrows, Home, End, PgUp, PgDn, Insert, Delete) and right-side modifiers
+- Key mapping coverage: A-Z (ASCII), 0-9 (ASCII), F1-F24, Space, Enter/Return, Tab, Escape/Esc, Backspace, Delete/Del, Insert/Ins, Up/Down/Left/Right, Home, End, PageUp/PgUp, PageDown/PgDn
+- Modifiers use left-side VKs (LControl, LShift, LAlt, LWin) by convention
+- `OutputFailed` error variant with `GetLastError` context on `SendInput` failure
 
-**Tests:**
-- Key string parsing: "F1" -> VK_F1, "A" -> VK_A, etc.
-- Modifier parsing: KeyCombo with Ctrl+Shift produces correct INPUT array
-- Create `MockKeyboardOutput` for testing in pipeline
+**Tests:** 16 tests (key string parsing, modifier combinations, extended key detection, full combo builds).
 
-**Steps:**
-1. Add `windows` dependency with correct features
-2. Implement key string to VK code mapping
-3. Implement SendInput wrapper
-4. Write key parsing tests
-5. Run `rtk cargo build -p inputforge-core`
-6. Commit: `feat(core): add keyboard output via Win32 SendInput`
+**Commit:** `feat(core): add keyboard output via Win32 SendInput`
 
 ---
 
-### Task 18: HidHide Integration
+### Task 18: HidHide Integration [COMPLETED]
 
 **Goal:** Implement the `DeviceHider` trait using HidHide IOCTL.
 
-**Files to create:**
+**Files created:**
 - `crates/inputforge-core/src/device/hidhide.rs`
 
-**Files to modify:**
-- `crates/inputforge-core/src/device/mod.rs` -- add `pub mod hidhide;`
-- `crates/inputforge-core/src/device/traits.rs` -- add `DeviceHider` trait
+**Files modified:**
+- `crates/inputforge-core/src/device/mod.rs` -- added `pub mod hidhide;`
+- `crates/inputforge-core/src/device/traits.rs` -- added `DeviceHider` trait
 
-**Trait to define:**
-- `DeviceHider` trait (from design doc Section 3):
+**Trait defined:**
+- `DeviceHider` trait:
   - `fn hide_device(&mut self, device: &DeviceInfo) -> Result<()>`
   - `fn unhide_device(&mut self, device: &DeviceInfo) -> Result<()>`
   - `fn is_active(&self) -> bool`
+  - `fn list_hidden_devices(&self) -> Result<Vec<String>>` (added in code review)
 
-**HidHide implementation:**
-- `HidHideManager` struct
-- Communicate with HidHide driver via IOCTL:
-  - Open device handle to `\\.\HidHide`
-  - Use `DeviceIoControl` to add/remove device instance paths to the blacklist
-  - Toggle HidHide active/inactive state
-- Map SDL3 device info to Windows device instance path (may need to use SetupAPI to find the device path from vendor/product ID)
+**Notes from execution:**
+- Opens `\\.\HidHide` via `CreateFileW` with correct file flags
+- IOCTL codes defined for GET/SET_BLACKLIST, GET/SET_WHITELIST, GET/SET_ACTIVE
+- Full blacklist read/modify/write cycle for hide/unhide operations
+- `whitelist_self()` adds current exe path to HidHide whitelist
+- `set_active()` / `refresh_active()` to toggle and refresh HidHide state
+- `Drop` impl cleans up: removes only devices *this instance* added to the blacklist, restores original active state, closes handle — logs `CloseHandle` failures
+- Exponential-backoff retry on `ERROR_INSUFFICIENT_BUFFER` / `ERROR_MORE_DATA` in `read_multi_string`
+- Double-null-terminated UTF-16LE encoding/decoding (`decode_multi_string` / `encode_multi_string`)
+- Path canonicalization and odd byte count validation
+- Replaced lossy UTF-16 decode with proper error handling
+- Device matching uses `instance_path` field from `DeviceInfo` (added to `DeviceInfo` in code review for this purpose)
 
-**Tests:**
-- Create `MockDeviceHider` for testing
-- Test that hide/unhide calls are tracked
-- Integration test (manual): verify HidHide driver communication
+**Tests:** 13 tests (multi-string encoding/decoding, blacklist add/remove, active state toggle, path canonicalization, edge cases).
 
-**Steps:**
-1. Add `DeviceHider` trait to traits.rs
-2. Research HidHide IOCTL interface (check HidHide GitHub docs)
-3. Implement `HidHideManager` with IOCTL calls via `windows` crate
-4. Create `MockDeviceHider`
-5. Run `rtk cargo build -p inputforge-core`
-6. Commit: `feat(core): add HidHide device hiding integration`
+**Commit:** `feat(core): add HidHide device hiding integration`
 
 ---
 
-## Phase 6: Engine
+### Phase 5 Code Review Fixes [COMPLETED]
 
-### Task 19: Engine Event Loop & AppState
+**Goal:** Address findings from two code review rounds covering all I/O infrastructure and cross-cutting concerns.
+
+**Round 1** (`f0cbf87`, 4 important + 6 minor):
+- Added `instance_path: Option<String>` to `DeviceInfo` for HidHide device matching (I1)
+- Tracked SDL3 binaries with Git LFS via `.gitattributes` (I2)
+- Added vJoy dirty-flag flush optimization — cache state, `flush()` only sends changed devices (I3)
+- Added HidHide retry loop with exponential backoff on `ERROR_INSUFFICIENT_BUFFER` (I4)
+- Populated `wScan` via `MapVirtualKeyW` in keyboard output (M1)
+- Replaced hardcoded linker path with `build.rs` (M2)
+- Fixed `DeviceId` doc comment to be platform-agnostic (M3)
+- Documented `Sdl3Input` thread safety (`!Send`) (M4)
+- Documented vJoy acquire/relinquish lifecycle (M5)
+
+**Round 2** (`c932301`, 41 findings across all subsystems):
+
+| Category | Key fixes |
+|----------|-----------|
+| **Safety** | HidHide handle leak fix in constructor, device cleanup in `Drop`, `CloseHandle` failure logging, odd byte count validation, empty multi-string encoding fix, path canonicalization, lossy UTF-16 decode replaced with proper error |
+| **Performance** | Keyboard stack array replaces heap `Vec`, key lookup allocation eliminated, VK arithmetic simplified, `swap_remove` in callbacks |
+| **Quality** | `Send` bound on `OutputSink`, `KeyboardSink` trait extracted, `OutputFailed` error variant with `GetLastError` context, condition depth validation (`MAX_CONDITION_DEPTH = 32`), `VirtualDeviceConfig::validate()`, `BUTTON_PRESS_THRESHOLD` constant, `pub(crate) AxisValue::raw()`, NaN guard on axis input, `flush()` before vJoy release, explicit hat no-op arms in pipeline |
+
+**Commits:**
+- `fix(core): address code review findings across I/O infrastructure`
+- `fix(core): resolve 41 code review findings across all subsystems`
+
+**Lessons for future phases:**
+1. **Drop impls are critical for I/O** — every resource-holding struct needs cleanup (vJoy flush, HidHide blacklist restore, handle close). Phase 6 Engine must ensure graceful shutdown order.
+2. **Feature-gate platform code** — `#[cfg(feature = "...")]` keeps the build working on CI/platforms without hardware drivers. Apply to engine integration.
+3. **`Send` bounds matter** — `OutputSink: Send` was missing initially. Phase 6 Engine will move sinks across threads; verify all trait bounds compile early.
+4. **Stack over heap for fixed-size buffers** — keyboard `INPUT` array was heap-allocated unnecessarily. Apply this in engine hot path (avoid per-frame allocations).
+5. **Validate at boundaries, trust internally** — `VirtualDeviceConfig::validate()`, condition depth limits. Engine should validate profile on load, then trust data in the processing loop.
+6. **Guard NaN/infinity from hardware** — floating-point values from physical devices can be surprising. Axis values are guarded now; keep this pattern when wiring the engine loop.
+
+**Phase 5 coverage checkpoint:** 292 tests total after code review fixes.
+
+---
+
+## Phase 6: Engine [IN PROGRESS]
+
+> **Implemented 2026-03-03.** Engine event loop, shared state, and two code review rounds complete. 362 tests total. Engine integration tests deferred.
+> - Engine decomposed into `engine/` module (mod.rs, command.rs, output_handler.rs, run.rs) instead of single file
+> - State decomposed into `state/` module (mod.rs, cache.rs, device.rs, status.rs) instead of single file
+> - `MockKeyboardSink` added to output/mock.rs for engine testing
+> - Code review round 1 (8 findings: 2 critical, 5 important, 1 suggestion) applied
+> - Code review round 2 (5 findings at 75/100 confidence: axis refresh, error handling, state cleanup, cache eviction, doc accuracy) applied
+
+### Task 19: Engine Event Loop & AppState [COMPLETED]
 
 **Goal:** Implement the main engine that ties everything together: polls input, routes through modes, executes pipelines, writes output.
 
-**Files to create:**
-- `crates/inputforge-core/src/engine.rs`
-- `crates/inputforge-core/src/state.rs`
+**Files created:**
+- `crates/inputforge-core/src/engine/mod.rs` -- `Engine` struct, constructor, custom Debug, Drop impl
+- `crates/inputforge-core/src/engine/command.rs` -- `EngineCommand` enum (6 variants)
+- `crates/inputforge-core/src/engine/output_handler.rs` -- `process_pipeline_outputs()`, `apply_mode_change()`, `refresh_axes_for_mode_change()`
+- `crates/inputforge-core/src/engine/run.rs` -- `Engine::run()` loop, `Engine::tick()`, command processing, hotplug handling
+- `crates/inputforge-core/src/state/mod.rs` -- `AppState` struct with `new()`, `with_profile()`, `Default`
+- `crates/inputforge-core/src/state/cache.rs` -- `InputCacheStore` implementing `InputCache` trait
+- `crates/inputforge-core/src/state/device.rs` -- `DeviceState` (info + connected)
+- `crates/inputforge-core/src/state/status.rs` -- `EngineStatus` enum (Running, Paused, Stopped)
 
-**Files to modify:**
-- `crates/inputforge-core/src/lib.rs` -- add `pub mod engine; pub mod state;`
+**Files modified:**
+- `crates/inputforge-core/src/lib.rs` -- added `pub mod engine; pub mod state;`
+- `crates/inputforge-core/src/output/mock.rs` -- added `MockKeyboardSink` + `KeyboardCall` (behind `test-util`)
+- `crates/inputforge-core/src/output/mod.rs` -- re-export `MockKeyboardSink`, `KeyboardCall`
+- `crates/inputforge-core/src/device/traits.rs` -- added thread safety docs to `InputSource` and `DeviceHider`
 
-**AppState (shared between engine and GUI):**
-- Define `AppState` struct (design doc Section 3 "Thread Architecture"):
-  - `devices: Vec<DeviceState>` -- live device list with current values
-  - `current_mode: String`
-  - `engine_status: EngineStatus` (enum: Running, Paused, Stopped)
-  - `active_profile: Option<Profile>`
-  - `input_cache: InputCacheStore` -- HashMap<InputAddress, InputValue> implementing InputCache trait
-- Wrap in `Arc<RwLock<AppState>>`
+**Notes from execution:**
+- Engine is `!Send` by design -- `InputSource` and `DeviceHider` are `!Send` (SDL3 same-thread constraint). Engine must be constructed and run on the same thread where InputSource was created. Documented on traits and `Engine::new`.
+- `Engine::tick()` separates single-frame logic from `run()` loop for testability
+- `POLL_INTERVAL = 1ms` (~1000 Hz) with `std::thread::sleep`
+- Mappings and mode tree cloned out of `RwLock` at frame start to avoid holding lock during processing
+- Event buffer reused via `std::mem::take` + restore pattern (avoids per-frame allocation while satisfying borrow checker -- original `drain().collect()` allocated every frame)
+- Release callbacks fire BEFORE mapping resolution (intentional deviation from plan step ordering): when user releases a "shift" button, the pop happens first so the release event maps in the restored mode, not the temporary one
+- Axis refresh on mode change re-processes all cached axes through new mode's pipelines; skips `SendKey` (avoids spurious key events) and `ChangeMode` (avoids recursion)
+- `OutputId` type mismatches (e.g., `SetAxis` with `Button` OutputId) logged via `tracing::warn!` instead of silent skip
+- `Engine::Drop` flushes output sink with `tracing::error!` on failure
+- `Deactivate` command flushes pending output but does not release virtual devices (no device tracking yet)
+- `EngineCommand` derives `Debug + PartialEq`
+- Channel disconnect (`TryRecvError::Disconnected`) treated as shutdown signal
+- `clone_into` optimization for per-frame mode string writes to shared state
 
-**Engine commands (sent from GUI to engine via mpsc):**
-- `EngineCommand` enum: `LoadProfile(PathBuf)`, `Activate`, `Deactivate`, `Pause`, `Resume`, `Shutdown`
+**Tests:** 20 tests in state/ modules (14 cache + 1 evict_device, 3 AppState, 3 status, 3 device). 2 tests for MockKeyboardSink. 34 engine tests. Engine integration tests (6 planned scenarios) deferred.
 
-**Engine struct:**
-- `Engine` struct: holds InputSource, OutputSink, DeviceHider, KeyboardOutput, AppState, command receiver, CallbackRegistry, ModeState
-- `Engine::new(input: impl InputSource, output: impl OutputSink, ...)` -- constructor with trait objects
-- `Engine::run(&mut self)` -- main loop:
-  1. Check for commands from GUI (non-blocking recv)
-  2. Poll input source for events
-  3. Handle hotplug events (update device list in AppState)
-  4. For each input event:
-     a. Update input cache
-     b. Resolve mapping via mode tree (using `resolve_mapping` from Task 10)
-     c. Execute action pipeline (using `execute_pipeline` from Task 8)
-     d. Process pipeline outputs: write to vJoy, send keyboard, handle mode changes
-     e. Check for button release -> fire callbacks
-  5. Sleep to maintain target poll rate (~1ms)
-- On mode change: re-emit all cached axis values through new mode's pipelines (axis refresh, feature 30)
+**Commits:** (pending)
+- `feat(core): add engine event loop with mode routing and pipeline execution`
 
-> **Lesson from Phase 2 code review:** The engine wires together many modules. Two rules to follow: (1) Always delegate to processing module functions (`invert_axis`, `invert_button`, `lerp_range`, etc.) rather than reimplementing logic inline — the Phase 2 review caught an inline button inversion that diverged from the canonical implementation. (2) When processing `PipelineOutput`, handle all variants exhaustively — use `match` without a wildcard `_` arm so new variants cause compile errors rather than silent no-ops.
+### Phase 6 Code Review Fixes [COMPLETED]
 
-**Tests (using mock implementations for all I/O):**
-- Engine processes an axis event through a mapping and produces vJoy output
-- Engine handles mode switch command
-- Engine handles profile load command
-- Engine pauses and resumes
-- Axis refresh: changing mode re-processes cached axis values
-- Button release fires registered callbacks (temporary mode auto-pop)
+#### Round 1: Implementation Review (8 findings)
 
-**Steps:**
-1. Define AppState and InputCacheStore in state.rs
-2. Define EngineCommand enum
-3. Implement Engine struct with main loop
-4. Wire up all components: input polling, mode routing, pipeline execution, output writing
-5. Implement axis refresh on mode change
-6. Write tests with mocks
-7. Run `rtk cargo test -p inputforge-core -- engine`
-8. Commit: `feat(core): add engine event loop with mode routing and pipeline execution`
+**Goal:** Address 8 findings from code review (2 critical, 5 important, 1 suggestion).
+
+| ID | Severity | Fix |
+|----|----------|-----|
+| C2 | Critical | Replaced per-frame `drain().collect()` with `std::mem::take` + restore pattern in event buffer |
+| C3 | Critical | Documented `!Send` contract on `InputSource`, `DeviceHider` traits and `Engine::new` |
+| I1 | Important | Documented intentional callback-before-mapping ordering deviation |
+| I2 | Important | Added `tracing::warn!` on `OutputId` type mismatches (4 locations) |
+| I3 | Important | Axis refresh skips `SendKey` outputs; removed unused `keyboard` param from `refresh_axes_for_mode_change` |
+| I4 | Important | Updated `Deactivate` doc to match behavior ("flush pending output" not "release devices") |
+| I5 | Important | Added `Engine::Drop` impl that flushes output sink |
+| S1 | Suggestion | Added `PartialEq` derive to `EngineCommand` |
+
+#### Round 2: Deep Review with 5-Agent Scoring (5 findings, all 75/100)
+
+**Goal:** Address 5 findings from a second, deeper code review using 5 parallel review agents with confidence scoring (threshold 80, all scored 75).
+
+| ID | Score | Fix |
+|----|-------|-----|
+| R2-1 | 75 | Pop-temporary on release now triggers axis refresh -- track mode before/after callbacks, OR flag into refresh condition (`engine/run.rs`) |
+| R2-2 | 75 | Mode change errors (`ModeNotFound`, `ModeCycleDetected`) logged and skipped instead of terminating engine -- `apply_mode_change` returns `()` (`engine/output_handler.rs`) |
+| R2-3 | 75 | `CallbackRegistry` cleared on `LoadProfile` -- added `clear()` method to `callbacks.rs`, called in handler (`engine/run.rs`) |
+| R2-4 | 75 | `InputCacheStore` evicts entries on device disconnect -- added `evict_device()` method to `state/cache.rs`, called in hotplug handler (`engine/run.rs`) |
+| R2-5 | 75 | `DeviceHider` thread-safety doc rewritten -- removed misleading "for consistency with InputSource" claim (`device/traits.rs`) |
+
+3 additional findings scored below threshold and were not actioned:
+- `SendKey { pressed: false }` silently dropped (50 -- intentional by design, confirmed by test)
+- RwLock read guard held during pipeline execution (25 -- no actual contention, engine is sole writer)
+- `assert_eq!(x, false)` style (15 -- Clippy will catch)
+
+**Lessons for future phases:**
+1. **Callback ordering matters for temporary modes** -- release callbacks must fire before mapping resolution so the release event resolves in the restored mode. This is a semantic invariant, not just an optimization.
+2. **`std::mem::take` solves borrow checker conflicts in event loops** -- when iterating a buffer while needing `&mut self` for other fields, move the buffer out temporarily and restore it after.
+3. **Axis refresh must be conservative** -- only apply axis and button outputs. Key presses and mode changes during refresh cause spurious side effects.
+4. **`!Send` traits need explicit documentation** -- when a trait intentionally omits `Send`, document why and what construction constraints it implies for consumers.
+5. **Callback-triggered mode changes need axis refresh too** -- not just pipeline-output mode changes. The pop-on-release path was invisible to the pipeline's `mode_changed` flag.
+6. **Recoverable user-config errors must not crash the engine loop** -- bad mode names, cycle detection, etc. should be logged and skipped, not propagated as fatal errors.
+7. **State cleanup on profile load must include ALL engine-owned state** -- callbacks, cache, and mode must all be reset together.
+8. **Cache entries tied to physical devices should have a lifecycle matching device connection** -- evict on disconnect to prevent unbounded growth.
+
+**Phase 6 coverage checkpoint:** 362 tests total (20 state + 2 mock keyboard + 34 engine + existing).
 
 ---
 

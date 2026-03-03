@@ -20,4 +20,4 @@ pub use vjoy_output::VJoyOutput;
 pub use keyboard::KeyboardOutput;
 
 #[cfg(feature = "test-util")]
-pub use mock::{MockOutputSink, OutputCall};
+pub use mock::{KeyboardCall, MockKeyboardSink, MockOutputSink, OutputCall};
