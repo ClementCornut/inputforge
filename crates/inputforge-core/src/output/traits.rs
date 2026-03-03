@@ -44,4 +44,17 @@ pub trait OutputSink {
     ///
     /// Returns an error if the device is not currently acquired.
     fn release_device(&mut self, device: u8) -> Result<()>;
+
+    /// Write all pending state changes to the hardware.
+    ///
+    /// Implementations that batch state changes should flush all dirty
+    /// device states in this method. The default no-op implementation is
+    /// suitable for sinks that write immediately (e.g., mocks).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any device state update fails.
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
 }

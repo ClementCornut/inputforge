@@ -20,6 +20,12 @@ use super::traits::{HotplugEvent, InputSource};
 /// Wraps the SDL3 joystick subsystem and translates SDL events into
 /// [`InputEvent`] values.  Hotplug detection is handled automatically
 /// via SDL3's `JoyDeviceAdded` / `JoyDeviceRemoved` events.
+///
+/// # Thread Safety
+///
+/// This type is `!Send` because the underlying SDL3 context must be
+/// used from the thread that created it. Do not attempt to move this
+/// value across thread boundaries.
 pub struct Sdl3Input {
     // Keep the SDL context alive for the lifetime of this struct.
     _sdl: Sdl,
@@ -235,13 +241,38 @@ impl InputSource for Sdl3Input {
 }
 
 /// Build a [`DeviceInfo`] from an open SDL3 joystick.
+///
+/// Calls `SDL_GetJoystickPathForID` via FFI to retrieve the platform-specific
+/// device path (used by `HidHide` on Windows).
+#[expect(unsafe_code, reason = "SDL_GetJoystickPathForID is an SDL3 FFI call")]
 fn device_info_from_joystick(joystick: &Joystick, device_id: &DeviceId) -> DeviceInfo {
+    let instance_id = sdl3::sys::joystick::SDL_JoystickID(joystick.id());
+
+    // SAFETY: `instance_id` was obtained from an open joystick via `id()`.
+    // `SDL_GetJoystickPathForID` returns a pointer to an SDL-managed
+    // null-terminated C string, or null if no path is available. The
+    // returned string remains valid until the joystick subsystem is shut down.
+    let path_ptr = unsafe { sdl3::sys::joystick::SDL_GetJoystickPathForID(instance_id) };
+
+    let instance_path = if path_ptr.is_null() {
+        None
+    } else {
+        // SAFETY: pointer is non-null and SDL guarantees it is a valid
+        // null-terminated C string.
+        Some(
+            unsafe { std::ffi::CStr::from_ptr(path_ptr) }
+                .to_string_lossy()
+                .into_owned(),
+        )
+    };
+
     DeviceInfo {
         id: device_id.clone(),
         name: joystick.name(),
         axes: u8::try_from(joystick.num_axes()).unwrap_or(u8::MAX),
         buttons: u8::try_from(joystick.num_buttons()).unwrap_or(u8::MAX),
         hats: u8::try_from(joystick.num_hats()).unwrap_or(u8::MAX),
+        instance_path,
     }
 }
 

@@ -1,14 +1,14 @@
 // Rust guideline compliant 2026-03-03
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput,
-    VIRTUAL_KEY, VK_0, VK_1, VK_2, VK_3, VK_4, VK_5, VK_6, VK_7, VK_8, VK_9, VK_A, VK_B, VK_BACK,
-    VK_C, VK_D, VK_DELETE, VK_DOWN, VK_E, VK_END, VK_ESCAPE, VK_F, VK_F1, VK_F2, VK_F3, VK_F4,
-    VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_F10, VK_F11, VK_F12, VK_F13, VK_F14, VK_F15, VK_F16,
-    VK_F17, VK_F18, VK_F19, VK_F20, VK_F21, VK_F22, VK_F23, VK_F24, VK_G, VK_H, VK_HOME, VK_I,
-    VK_INSERT, VK_J, VK_K, VK_L, VK_LCONTROL, VK_LEFT, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_M, VK_N,
-    VK_NEXT, VK_O, VK_P, VK_PRIOR, VK_Q, VK_R, VK_RETURN, VK_RIGHT, VK_S, VK_SPACE, VK_T, VK_TAB,
-    VK_U, VK_UP, VK_V, VK_W, VK_X, VK_Y, VK_Z,
+    INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_KEYUP,
+    MAPVK_VK_TO_VSC, MapVirtualKeyW, SendInput, VIRTUAL_KEY, VK_0, VK_1, VK_2, VK_3, VK_4, VK_5,
+    VK_6, VK_7, VK_8, VK_9, VK_A, VK_B, VK_BACK, VK_C, VK_D, VK_DELETE, VK_DOWN, VK_E, VK_END,
+    VK_ESCAPE, VK_F, VK_F1, VK_F2, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_F10, VK_F11,
+    VK_F12, VK_F13, VK_F14, VK_F15, VK_F16, VK_F17, VK_F18, VK_F19, VK_F20, VK_F21, VK_F22, VK_F23,
+    VK_F24, VK_G, VK_H, VK_HOME, VK_I, VK_INSERT, VK_J, VK_K, VK_L, VK_LCONTROL, VK_LEFT, VK_LMENU,
+    VK_LSHIFT, VK_LWIN, VK_M, VK_N, VK_NEXT, VK_O, VK_P, VK_PRIOR, VK_Q, VK_R, VK_RETURN, VK_RIGHT,
+    VK_S, VK_SPACE, VK_T, VK_TAB, VK_U, VK_UP, VK_V, VK_W, VK_X, VK_Y, VK_Z,
 };
 
 use crate::error::{EngineError, Result};
@@ -58,18 +58,33 @@ impl KeyboardOutput {
 }
 
 /// Build a keyboard `INPUT` struct for a single key.
+///
+/// Maps the virtual key code to its hardware scan code via
+/// [`MapVirtualKeyW`] so that applications reading scan codes
+/// (common in games) receive correct input.
 fn make_input(vk: VIRTUAL_KEY, key_up: bool) -> INPUT {
     let flags = if key_up {
         KEYEVENTF_KEYUP
     } else {
         KEYBD_EVENT_FLAGS(0)
     };
+
+    #[expect(
+        unsafe_code,
+        reason = "MapVirtualKeyW is an unsafe FFI call in the windows crate"
+    )]
+    #[expect(clippy::cast_possible_truncation, reason = "scan codes fit in u16")]
+    // SAFETY: `MapVirtualKeyW` is a stateless Win32 lookup that converts a
+    // virtual-key code to a scan code. It has no preconditions beyond valid
+    // parameter types, which are satisfied by the `VIRTUAL_KEY` newtype.
+    let scan = unsafe { MapVirtualKeyW(u32::from(vk.0), MAPVK_VK_TO_VSC) } as u16;
+
     INPUT {
         r#type: INPUT_KEYBOARD,
         Anonymous: INPUT_0 {
             ki: KEYBDINPUT {
                 wVk: vk,
-                wScan: 0,
+                wScan: scan,
                 dwFlags: flags,
                 time: 0,
                 dwExtraInfo: 0,
@@ -286,6 +301,7 @@ mod tests {
         let ki = unsafe { input.Anonymous.ki };
         assert_eq!(ki.wVk, VK_A);
         assert_eq!(ki.dwFlags, KEYBD_EVENT_FLAGS(0));
+        assert_ne!(ki.wScan, 0, "scan code should be populated");
     }
 
     #[test]
@@ -295,5 +311,23 @@ mod tests {
         // SAFETY: we just created this as a keyboard input.
         let ki = unsafe { input.Anonymous.ki };
         assert_eq!(ki.dwFlags, KEYEVENTF_KEYUP);
+        assert_ne!(ki.wScan, 0, "scan code should be populated");
+    }
+
+    #[test]
+    #[expect(
+        unsafe_code,
+        reason = "accessing INPUT union field and calling MapVirtualKeyW"
+    )]
+    fn make_input_populates_scan_code() {
+        let input = make_input(VK_A, false);
+        // SAFETY: we just created this as a keyboard input.
+        let ki = unsafe { input.Anonymous.ki };
+        // Verify the scan code matches what MapVirtualKeyW returns for
+        // this key on the current keyboard layout.
+        // SAFETY: stateless Win32 lookup, no preconditions.
+        let expected = unsafe { MapVirtualKeyW(u32::from(VK_A.0), MAPVK_VK_TO_VSC) } as u16;
+        assert_eq!(ki.wScan, expected);
+        assert_ne!(ki.wScan, 0, "scan code should be populated");
     }
 }

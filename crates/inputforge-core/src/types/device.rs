@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::address::VJoyAxis;
 
-/// Stable SDL3 GUID identifying a physical device across reconnects.
+/// Stable identifier for a physical device, persists across reconnects.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DeviceId(pub String);
 
@@ -16,6 +16,11 @@ pub struct DeviceInfo {
     pub axes: u8,
     pub buttons: u8,
     pub hats: u8,
+    /// Platform-specific device path for hiding subsystems (e.g., `HidHide`).
+    ///
+    /// On Windows this is the HID device interface path returned by SDL3.
+    /// `None` when the platform path is unavailable.
+    pub instance_path: Option<String>,
 }
 
 /// Configuration for creating a virtual vJoy device.
@@ -48,6 +53,22 @@ mod tests {
             axes: 3,
             buttons: 12,
             hats: 1,
+            instance_path: Some("HID\\VID_045E&PID_02FF".to_owned()),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let back: DeviceInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(info, back);
+    }
+
+    #[test]
+    fn device_info_serde_roundtrip_no_instance_path() {
+        let info = DeviceInfo {
+            id: DeviceId("guid-002".to_owned()),
+            name: "Pedals".to_owned(),
+            axes: 3,
+            buttons: 0,
+            hats: 0,
+            instance_path: None,
         };
         let json = serde_json::to_string(&info).unwrap();
         let back: DeviceInfo = serde_json::from_str(&json).unwrap();

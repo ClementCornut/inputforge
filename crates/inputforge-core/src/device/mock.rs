@@ -78,6 +78,7 @@ mod tests {
             axes: 4,
             buttons: 12,
             hats: 1,
+            instance_path: None,
         }
     }
 

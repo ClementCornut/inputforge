@@ -1,9 +1,9 @@
 // Rust guideline compliant 2026-03-03
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use vjoy::{ButtonState, HatState, VJoy};
+use vjoy::{ButtonState, Device, HatState, VJoy};
 
 use crate::error::{EngineError, Result};
 use crate::processing::lerp_range;
@@ -21,15 +21,25 @@ const VJOY_AXIS_MIN: f64 = 1.0;
 const VJOY_AXIS_MAX: f64 = 32_768.0;
 
 /// Output sink that writes to virtual vJoy devices.
+///
+/// State changes from [`OutputSink::set_axis`], [`OutputSink::set_button`],
+/// and [`OutputSink::set_hat`] are cached in memory. Call
+/// [`OutputSink::flush`] to write all dirty device states to the driver
+/// in a single IPC call per device.
 pub struct VJoyOutput {
     vjoy: VJoy,
     active_devices: HashSet<u8>,
+    /// Cached device states, modified in-place by set methods.
+    cached_states: HashMap<u8, Device>,
+    /// Devices whose cached state has been modified since the last flush.
+    dirty_devices: HashSet<u8>,
 }
 
 impl fmt::Debug for VJoyOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("VJoyOutput")
             .field("active_devices", &self.active_devices)
+            .field("dirty_devices", &self.dirty_devices)
             .finish_non_exhaustive()
     }
 }
@@ -49,6 +59,8 @@ impl VJoyOutput {
         Ok(Self {
             vjoy,
             active_devices: HashSet::new(),
+            cached_states: HashMap::new(),
+            dirty_devices: HashSet::new(),
         })
     }
 }
@@ -56,87 +68,93 @@ impl VJoyOutput {
 impl OutputSink for VJoyOutput {
     fn create_device(&mut self, config: &VirtualDeviceConfig) -> Result<()> {
         let id = u32::from(config.device_id);
-        // Verify the device exists and is acquired.
-        let _state = self.vjoy.get_device_state(id).map_err(|e| {
+        // The `vjoy` crate acquires all available devices during
+        // `VJoy::from_default_dll_location` (see `VJoy::fetch_devices`).
+        // Explicit acquire is not needed; the private API does not expose it.
+        let state = self.vjoy.get_device_state(id).map_err(|e| {
             tracing::debug!("vJoy device error: {e:?}");
             EngineError::VJoyDeviceUnavailable {
                 device_id: config.device_id,
             }
         })?;
+        self.cached_states.insert(config.device_id, state);
         self.active_devices.insert(config.device_id);
         Ok(())
     }
 
     fn set_axis(&mut self, device: u8, axis: VJoyAxis, value: f64) -> Result<()> {
-        let id = u32::from(device);
         let axis_id = vjoy_axis_id(axis);
         let vjoy_value = axis_value_to_vjoy(value);
 
-        let mut state = self.vjoy.get_device_state(id).map_err(|e| {
-            tracing::debug!("vJoy device error: {e:?}");
-            EngineError::VJoyDeviceUnavailable { device_id: device }
-        })?;
+        let state = self
+            .cached_states
+            .get_mut(&device)
+            .ok_or(EngineError::VJoyDeviceUnavailable { device_id: device })?;
         state
             .set_axis(axis_id, vjoy_value)
             .map_err(|e| EngineError::InvalidConfig {
                 reason: format!("vJoy axis error: {e:?}"),
             })?;
-        self.vjoy
-            .update_device_state(&state)
-            .map_err(|e| EngineError::InvalidConfig {
-                reason: format!("vJoy update error: {e:?}"),
-            })?;
+        self.dirty_devices.insert(device);
         Ok(())
     }
 
     fn set_button(&mut self, device: u8, button: u8, pressed: bool) -> Result<()> {
-        let id = u32::from(device);
         let button_state = if pressed {
             ButtonState::Pressed
         } else {
             ButtonState::Released
         };
 
-        let mut state = self.vjoy.get_device_state(id).map_err(|e| {
-            tracing::debug!("vJoy device error: {e:?}");
-            EngineError::VJoyDeviceUnavailable { device_id: device }
-        })?;
+        let state = self
+            .cached_states
+            .get_mut(&device)
+            .ok_or(EngineError::VJoyDeviceUnavailable { device_id: device })?;
         state
             .set_button(button, button_state)
             .map_err(|e| EngineError::InvalidConfig {
                 reason: format!("vJoy button error: {e:?}"),
             })?;
-        self.vjoy
-            .update_device_state(&state)
-            .map_err(|e| EngineError::InvalidConfig {
-                reason: format!("vJoy update error: {e:?}"),
-            })?;
+        self.dirty_devices.insert(device);
         Ok(())
     }
 
     fn set_hat(&mut self, device: u8, hat: u8, direction: HatDirection) -> Result<()> {
-        let id = u32::from(device);
         let hat_state = hat_direction_to_vjoy(direction);
 
-        let mut state = self.vjoy.get_device_state(id).map_err(|e| {
-            tracing::debug!("vJoy device error: {e:?}");
-            EngineError::VJoyDeviceUnavailable { device_id: device }
-        })?;
+        let state = self
+            .cached_states
+            .get_mut(&device)
+            .ok_or(EngineError::VJoyDeviceUnavailable { device_id: device })?;
         state
             .set_hat(hat, hat_state)
             .map_err(|e| EngineError::InvalidConfig {
                 reason: format!("vJoy hat error: {e:?}"),
             })?;
-        self.vjoy
-            .update_device_state(&state)
-            .map_err(|e| EngineError::InvalidConfig {
-                reason: format!("vJoy update error: {e:?}"),
-            })?;
+        self.dirty_devices.insert(device);
         Ok(())
     }
 
     fn release_device(&mut self, device: u8) -> Result<()> {
+        // The `vjoy` crate relinquishes all devices in its `Drop` impl.
+        // Per-device relinquish is not exposed by the `vjoy` crate API.
         self.active_devices.remove(&device);
+        self.cached_states.remove(&device);
+        self.dirty_devices.remove(&device);
+        Ok(())
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        let dirty = std::mem::take(&mut self.dirty_devices);
+        for device_id in dirty {
+            if let Some(state) = self.cached_states.get(&device_id) {
+                self.vjoy
+                    .update_device_state(state)
+                    .map_err(|e| EngineError::InvalidConfig {
+                        reason: format!("vJoy flush error for device {device_id}: {e:?}"),
+                    })?;
+            }
+        }
         Ok(())
     }
 }

@@ -25,6 +25,7 @@ pub enum OutputCall {
         direction: HatDirection,
     },
     ReleaseDevice(u8),
+    Flush,
 }
 
 /// Mock output sink that records all calls for test assertions.
@@ -87,6 +88,11 @@ impl OutputSink for MockOutputSink {
 
     fn release_device(&mut self, device: u8) -> Result<()> {
         self.calls.push(OutputCall::ReleaseDevice(device));
+        Ok(())
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        self.calls.push(OutputCall::Flush);
         Ok(())
     }
 }
@@ -155,6 +161,13 @@ mod tests {
         let mut mock = MockOutputSink::new();
         mock.release_device(2).unwrap();
         assert_eq!(mock.calls(), &[OutputCall::ReleaseDevice(2)]);
+    }
+
+    #[test]
+    fn mock_records_flush() {
+        let mut mock = MockOutputSink::new();
+        mock.flush().unwrap();
+        assert_eq!(mock.calls(), &[OutputCall::Flush]);
     }
 
     #[test]

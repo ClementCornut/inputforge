@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, HANDLE};
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
     OPEN_EXISTING,
@@ -41,6 +41,12 @@ const IOCTL_SET_ACTIVE: u32 = 0x8001_6014;
 /// `HidHide` returns double-null-terminated UTF-16LE strings. 4 KiB
 /// is sufficient for typical installations with a few devices.
 const INITIAL_BUFFER_SIZE: usize = 4096;
+
+/// Maximum buffer size for multi-string reads (256 KiB).
+///
+/// Caps the retry loop in [`read_multi_string`] to prevent unbounded
+/// allocation when the IOCTL repeatedly reports insufficient buffer.
+const MAX_BUFFER_SIZE: usize = 256 * 1024;
 
 /// Manager for the `HidHide` device-hiding driver.
 ///
@@ -121,17 +127,27 @@ impl HidHideManager {
 
 impl DeviceHider for HidHideManager {
     fn hide_device(&mut self, device: &DeviceInfo) -> Result<()> {
-        let instance_path = &device.id.0;
+        let instance_path = device.instance_path.as_deref().ok_or_else(|| {
+            EngineError::HidHide(format!(
+                "device '{}' has no instance path for hiding",
+                device.name
+            ))
+        })?;
         let mut blacklist = read_multi_string(self.handle, IOCTL_GET_BLACKLIST)?;
         if !blacklist.iter().any(|p| p == instance_path) {
-            blacklist.push(instance_path.clone());
+            blacklist.push(instance_path.to_owned());
             write_multi_string(self.handle, IOCTL_SET_BLACKLIST, &blacklist)?;
         }
         Ok(())
     }
 
     fn unhide_device(&mut self, device: &DeviceInfo) -> Result<()> {
-        let instance_path = &device.id.0;
+        let instance_path = device.instance_path.as_deref().ok_or_else(|| {
+            EngineError::HidHide(format!(
+                "device '{}' has no instance path for unhiding",
+                device.name
+            ))
+        })?;
         let mut blacklist = read_multi_string(self.handle, IOCTL_GET_BLACKLIST)?;
         let before = blacklist.len();
         blacklist.retain(|p| p != instance_path);
@@ -209,36 +225,60 @@ fn write_active(handle: HANDLE, active: bool) -> Result<()> {
 }
 
 /// Read a double-null-terminated UTF-16LE multi-string from an IOCTL.
+///
+/// Retries with a doubled buffer if `ERROR_INSUFFICIENT_BUFFER` is returned,
+/// up to [`MAX_BUFFER_SIZE`].
 #[expect(unsafe_code, reason = "DeviceIoControl is a Win32 FFI call")]
 fn read_multi_string(handle: HANDLE, ioctl: u32) -> Result<Vec<String>> {
-    let mut buf: Vec<u16> = vec![0; INITIAL_BUFFER_SIZE / 2];
-    let mut returned = 0u32;
+    let mut buf_size = INITIAL_BUFFER_SIZE;
 
-    // SAFETY: `buf` is a properly aligned u16 buffer. `DeviceIoControl`
-    // writes at most `buf.len() * 2` bytes.
-    unsafe {
-        DeviceIoControl(
-            handle,
-            ioctl,
-            None,
-            0,
-            Some(buf.as_mut_ptr().cast()),
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "buffer is INITIAL_BUFFER_SIZE which fits in u32"
-            )]
-            {
-                (buf.len() * 2) as u32
-            },
-            Some(&raw mut returned),
-            None,
-        )
+    loop {
+        let mut buf: Vec<u16> = vec![0; buf_size / 2];
+        let mut returned = 0u32;
+
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "buf_size is bounded by MAX_BUFFER_SIZE (256 KiB) which fits in u32"
+        )]
+        let byte_len = (buf.len() * 2) as u32;
+
+        // SAFETY: `buf` is a properly aligned u16 buffer. `DeviceIoControl`
+        // writes at most `byte_len` bytes.
+        let result = unsafe {
+            DeviceIoControl(
+                handle,
+                ioctl,
+                None,
+                0,
+                Some(buf.as_mut_ptr().cast()),
+                byte_len,
+                Some(&raw mut returned),
+                None,
+            )
+        };
+
+        match result {
+            Ok(()) => {
+                let u16_count = returned as usize / 2;
+                buf.truncate(u16_count);
+                return Ok(decode_multi_string(&buf));
+            }
+            Err(e) => {
+                if e.code() == ERROR_INSUFFICIENT_BUFFER.to_hresult() && buf_size < MAX_BUFFER_SIZE
+                {
+                    buf_size = buf_size.saturating_mul(2).min(MAX_BUFFER_SIZE);
+                    tracing::debug!(
+                        buf_size,
+                        "IOCTL buffer too small, retrying with larger buffer"
+                    );
+                    continue;
+                }
+                return Err(EngineError::HidHide(format!(
+                    "IOCTL read multi-string failed: {e}"
+                )));
+            }
+        }
     }
-    .map_err(|e| EngineError::HidHide(format!("IOCTL read multi-string failed: {e}")))?;
-
-    let u16_count = returned as usize / 2;
-    buf.truncate(u16_count);
-    Ok(decode_multi_string(&buf))
 }
 
 /// Write a double-null-terminated UTF-16LE multi-string via an IOCTL.
