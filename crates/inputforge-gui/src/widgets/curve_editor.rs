@@ -787,14 +787,15 @@ fn convert_curve_type(curve: &ResponseCurve, target: CurveType) -> Option<Respon
 
 /// Apply a symmetry change to the curve, returning a validated result.
 ///
-/// When enabling symmetry, retains only points with `x >= 0` and validates.
-/// When disabling, keeps existing points unchanged (they are already valid).
+/// When enabling symmetry, retains only points with `x >= 0` and ensures
+/// the origin is included so the curve always has enough points for
+/// validation. When disabling, keeps existing points unchanged.
 /// Returns `None` when the post-change state fails validation.
 fn apply_symmetry(curve: &ResponseCurve, symmetric: bool) -> Option<ResponseCurve> {
     match curve {
         ResponseCurve::PiecewiseLinear { points, .. } => {
             let pts = if symmetric {
-                points.iter().filter(|(x, _)| *x >= 0.0).copied().collect()
+                ensure_symmetric_points(points, curve)
             } else {
                 points.clone()
             };
@@ -802,26 +803,51 @@ fn apply_symmetry(curve: &ResponseCurve, symmetric: bool) -> Option<ResponseCurv
         }
         ResponseCurve::CubicSpline { points, .. } => {
             let pts = if symmetric {
-                points.iter().filter(|(x, _)| *x >= 0.0).copied().collect()
+                ensure_symmetric_points(points, curve)
             } else {
                 points.clone()
             };
             ResponseCurve::cubic_spline(pts, symmetric).ok()
         }
         ResponseCurve::CubicBezier { segments, .. } => {
-            // For Bezier, keep segments that are fully in the non-negative domain.
             let segs = if symmetric {
-                segments
+                let filtered: Vec<_> = segments
                     .iter()
                     .filter(|s| s.start.0 >= 0.0 && s.end.0 >= 0.0)
                     .cloned()
-                    .collect::<Vec<_>>()
+                    .collect();
+                if filtered.is_empty() {
+                    // No segments in positive domain — create a default from origin.
+                    vec![BezierSegment {
+                        start: (0.0, 0.0),
+                        control1: (1.0 / 3.0, 1.0 / 3.0),
+                        control2: (2.0 / 3.0, 2.0 / 3.0),
+                        end: (1.0, 1.0),
+                    }]
+                } else {
+                    filtered
+                }
             } else {
                 segments.clone()
             };
             ResponseCurve::cubic_bezier(segs, symmetric).ok()
         }
     }
+}
+
+/// Filter points to `x >= 0` for symmetric mode, ensuring the origin and
+/// at least 2 points exist so validated constructors will not reject them.
+fn ensure_symmetric_points(points: &[(f64, f64)], curve: &ResponseCurve) -> Vec<(f64, f64)> {
+    let mut pts: Vec<(f64, f64)> = points.iter().filter(|(x, _)| *x >= 0.0).copied().collect();
+    // Insert origin if missing (e.g., curve only has x=-1 and x=1).
+    if pts.is_empty() || pts[0].0 > 0.0 {
+        pts.insert(0, (0.0, curve.evaluate(0.0)));
+    }
+    // Ensure at least 2 points for validation.
+    if pts.len() < 2 {
+        pts.push((1.0, curve.evaluate(1.0)));
+    }
+    pts
 }
 
 // ---------------------------------------------------------------------------
@@ -1010,6 +1036,33 @@ mod tests {
         if let Some(ResponseCurve::PiecewiseLinear { points, symmetric }) = result {
             assert!(symmetric);
             assert!(points.iter().all(|(x, _)| *x >= 0.0));
+        }
+    }
+
+    #[test]
+    fn apply_symmetry_two_point_default_curve() {
+        // Regression: the default identity curve [(-1,-1), (1,1)] has only one
+        // point with x >= 0 after filtering. `ensure_symmetric_points` must
+        // insert the origin so the result has >= 2 points.
+        let curve = ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (1.0, 1.0)], false).unwrap();
+        let result = apply_symmetry(&curve, true);
+        assert!(
+            result.is_some(),
+            "enabling symmetry on 2-point default curve must succeed"
+        );
+        if let Some(ResponseCurve::PiecewiseLinear { points, symmetric }) = result {
+            assert!(symmetric);
+            assert!(
+                points.len() >= 2,
+                "symmetric curve must have at least 2 points, got {}",
+                points.len()
+            );
+            assert!(points.iter().all(|(x, _)| *x >= 0.0));
+            // Origin must be present.
+            assert!(
+                points.iter().any(|(x, _)| (*x).abs() < f64::EPSILON),
+                "origin (0, _) must be present"
+            );
         }
     }
 
