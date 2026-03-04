@@ -14,6 +14,14 @@ categories.workspace = true
 inputforge-core = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
+eframe = { workspace = true }
+egui = { workspace = true }
+egui_extras = { workspace = true }
+egui_plot = { workspace = true }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+egui_kittest = { workspace = true }
 
 [lints]
 workspace = true

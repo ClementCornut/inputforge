@@ -91,12 +91,12 @@
 - **Task 19**: Engine event loop & AppState
 
 ### Phase 7: GUI (Tasks 20-25) -- parallelizable after Task 20
-- **Task 20**: GUI foundation (theme, fonts, layout) -> run frontend skill and challenge theme crate usage
-- **Task 21**: Device panel (tree, axis bars, buttons)
-- **Task 22**: Mapping editor (action pipeline cards)
+- **Task 20**: GUI foundation (theme, fonts, layout) ✅
+- **Task 21**: Device panel (tree, axis bars, buttons) ✅
+- **Task 22**: Mapping editor (action pipeline cards) ✅
 - **Task 23**: Response curve editor (egui_plot interactive)
-- **Task 24**: Input monitor
-- **Task 25**: Mode, calibration & deadzone editors
+- **Task 24**: Input monitor ✅
+- **Task 25**: Mode, calibration & deadzone editors ✅
 
 ### Phase 8: Integration (Task 26)
 - **Task 26**: System tray, CLI arguments, app entry point
@@ -922,131 +922,102 @@ Combat = ["Missiles", "Guns"]
 
 ---
 
-## Phase 7: GUI
+## Phase 7: GUI [IN PROGRESS]
 
-### Task 20: GUI Foundation
+> **Review decisions applied:** Custom blue-dominant dark theme (not Catppuccin Mocha), Inter font (not Lexend), mode tree moved to center panel tabs (not left panel). `catppuccin-egui` removed. `egui_extras` and `egui_kittest` added. egui 0.33 uses `CornerRadius` (not `Rounding`) and `corner_radius` field (not `rounding`), `CornerRadius::same()` takes `u8`.
 
-**Goal:** Set up eframe app with Catppuccin Mocha theme, custom fonts, and main layout structure.
+### Task 20: GUI Foundation ✅ COMPLETE
 
-**Files to create:**
-- `crates/inputforge-gui/src/app.rs`
-- `crates/inputforge-gui/src/theme.rs`
-- `crates/inputforge-gui/src/panels/mod.rs`
-- `crates/inputforge-gui/src/widgets/mod.rs`
+**Goal:** Set up eframe app with custom blue-dominant dark theme, Inter font, and main layout structure.
 
-**Files to modify:**
-- `crates/inputforge-gui/Cargo.toml` -- add eframe, egui, catppuccin-egui (with egui33 feature), egui_plot
-- `crates/inputforge-gui/src/lib.rs` -- export modules and public launch function
+**Files created:**
+- `crates/inputforge-gui/src/app.rs` -- `InputForgeApp`, `CachedState`, `GuiSelection`, `CenterView`
+- `crates/inputforge-gui/src/theme.rs` -- custom dark theme with blue-dominant palette, Inter + JetBrains Mono fonts
+- `crates/inputforge-gui/src/panels/mod.rs` -- module declarations
+- `crates/inputforge-gui/src/panels/left_panel.rs` -- resizable sidebar (240-400px, default 300) with device tree
+- `crates/inputforge-gui/src/panels/center_panel.rs` -- tab bar routing (Devices/Mappings/Monitor/Modes)
+- `crates/inputforge-gui/src/panels/status_bar.rs` -- 28px bottom panel with engine status, mode badge, device count
+- `crates/inputforge-gui/src/widgets/mod.rs` -- module declarations
+- `crates/inputforge-gui/assets/fonts/Inter-Regular.ttf`
+- `crates/inputforge-gui/assets/fonts/Inter-SemiBold.ttf`
+- `crates/inputforge-gui/assets/fonts/JetBrainsMono-Regular.ttf`
 
-**Assets to include:**
-- Download Lexend font (Regular, Medium, SemiBold weights) and JetBrains Mono (Regular) -- embed as bytes using `include_bytes!`
-- Place font files in `crates/inputforge-gui/assets/fonts/`
+**Files modified:**
+- `Cargo.toml` (workspace) -- added eframe 0.33, egui 0.33, egui_extras 0.33, egui_plot 0.34, egui_kittest 0.33
+- `crates/inputforge-gui/Cargo.toml` -- deps: inputforge-core, serde, tracing, eframe, egui, egui_extras, egui_plot, parking_lot; dev-deps: egui_kittest
+- `crates/inputforge-gui/src/lib.rs` -- module declarations and `launch_gui()` (1280x800 default, 800x500 min)
 
-**Theme setup (theme.rs):**
-- Apply Catppuccin Mocha using `catppuccin_egui::set_theme()` with the Mocha variant
-- Override specific style properties for our design (see design doc Section 7):
-  - Window rounding, widget rounding
-  - Spacing adjustments
-  - Selection color (Teal)
-- Define semantic color constants: PRIMARY (Teal), SECONDARY (Peach), INFO (Blue), SUCCESS (Green), ERROR (Red), SPECIAL (Mauve)
+**Theme (theme.rs) -- custom blue-dominant dark palette:**
+- Backgrounds: BASE #1a1a2e, MANTLE #16163a, CRUST #121228
+- Surfaces: SURFACE0 #2a2a3e, SURFACE1 #3a3a4e
+- Semantic colors: PRIMARY #4A9EFF (blue), LIVE #00E5A0 (cyan-green), WARNING #FFB347, ERROR #FF6B6B, SPECIAL #B07FFF (purple), TEXT #E0E0E8, TEXT_DIM #8888A0
+- Action colors: PROCESSING=PRIMARY, OUTPUT=LIVE, CONTROL=SPECIAL
+- Widget rounding: `CornerRadius::same(6u8)`, selection color: PRIMARY
 
-**App struct (app.rs):**
-- `InputForgeApp` implementing `eframe::App`
-- Hold reference to `Arc<RwLock<AppState>>` and `mpsc::Sender<EngineCommand>`
-- `update()` method: render main layout:
-  - Top panel: logo text, profile dropdown, activate/deactivate button, settings gear
-  - Left panel (280px fixed): device tree area + mode tree area (implemented in Task 21, 25)
-  - Central panel (flex): context-dependent content area (stub for now)
-  - Bottom panel: status bar with engine status, device count, vJoy status, mode badge
-
-**Public function:**
-- `pub fn launch_gui(state: Arc<RwLock<AppState>>, commands: mpsc::Sender<EngineCommand>) -> Result<()>` -- create and run eframe
-
-**Steps:**
-1. Add GUI dependencies to Cargo.toml
-2. Download and embed font files
-3. Implement theme.rs with Catppuccin Mocha + semantic colors
-4. Implement app.rs with main layout structure (panels are stubs)
-5. Implement launch function in lib.rs
-6. Run `rtk cargo build -p inputforge-gui` (verify it compiles)
-7. Commit: `feat(gui): add foundation with Catppuccin Mocha theme, fonts, and layout`
+**Layout (no top panel):**
+- Panel ordering: BottomPanel (status_bar) → SidePanel (left_panel) → CentralPanel (center_panel, last)
+- Left panel: resizable 240-400px, device list only (mode tree in center tabs)
+- Center panel: tab bar (Devices/Mappings/Monitor/Modes) with active tab underline in PRIMARY
+- Brief RwLock read pattern: `refresh_cache()` clones into `CachedState`, drops lock before rendering
 
 ---
 
-### Task 21: Device Panel
+### Task 21: Device Panel ✅ COMPLETE
 
-**Goal:** Left panel showing connected devices with live axis bars and button indicators.
+**Goal:** Default center view showing all connected devices with live axis bars, button grid, and hat compass.
 
-**Files to create:**
-- `crates/inputforge-gui/src/panels/device_panel.rs`
+**Files created:**
+- `crates/inputforge-gui/src/panels/device_view.rs` -- live device visualization with snapshot pattern
+- `crates/inputforge-gui/src/widgets/axis_bar.rs` -- 14px custom-painted bar, fill from center (PRIMARY positive, WARNING negative), inline monospace value
+- `crates/inputforge-gui/src/widgets/button_grid.rs` -- 14px circles in configurable grid, COLOR_LIVE when pressed, SURFACE1 outline when released
+- `crates/inputforge-gui/src/widgets/hat_indicator.rs` -- 48x48 compass rose with 8 directional triangles, active in PRIMARY
 
-**Files to modify:**
-- `crates/inputforge-gui/src/panels/mod.rs` -- add `pub mod device_panel;`
-
-**Implementation:**
-- Read device list and live values from `AppState`
-- Render each device as a collapsible tree node:
-  - Device name + connection status indicator (green/red dot)
-  - **Axis bars**: horizontal bars, 6px height, Teal for positive values, Peach for negative, center tick mark, value in JetBrains Mono next to bar
-  - **Button grid**: 12px circles in a grid layout, filled Teal when pressed, outlined Surface1 when released
-  - **Hat indicators**: show current direction as arrow or "C" for center
-- Clicking a device or input selects it for editing in the central panel
-
-**Steps:**
-1. Implement device panel widget reading from AppState
-2. Implement axis bar custom painting using egui Painter API
-3. Implement button grid layout
-4. Implement hat direction display
-5. Wire up selection to update central panel context
-6. Run `rtk cargo build -p inputforge-gui`
-7. Commit: `feat(gui): add device panel with live axis bars and button indicators`
+**Implementation details:**
+- `device_view::show()` iterates cached devices, renders per-device CollapsingHeaders (default open)
+- Per device: connection dot (LIVE/ERROR), header "Name (Xa, Yb, Zh)"
+- `snapshot_device_inputs()`: brief lock, constructs `InputAddress` per axis/button/hat from `DeviceInfo`, queries `InputCacheStore`, drops lock before rendering
+- 7 unit tests covering header formatting, snapshot defaults, and cached value reads
 
 ---
 
-### Task 22: Mapping Editor
+### Task 22: Mapping Editor ✅ COMPLETE
 
 **Goal:** Central panel for editing action pipelines on selected inputs.
 
-**Files to create:**
-- `crates/inputforge-gui/src/panels/mapping_panel.rs`
-- `crates/inputforge-gui/src/widgets/action_card.rs`
+**Files created:**
+- `crates/inputforge-gui/src/panels/mapping_editor.rs` -- `MappingEditorState`, action card list with arrow reordering, add/delete, categorized "Add Action" dropdown (Processing/Output/Control)
+- `crates/inputforge-gui/src/widgets/action_card.rs` -- `ActionCardResponse` enum, color-coded accent bars, category badge, expand/collapse/delete/move buttons, flow connectors
+- `crates/inputforge-gui/src/widgets/action_config.rs` -- per-variant config UI: deadzone/calibration delegates, vJoy device/type/axis/button/hat selectors, keyboard key+modifiers, merge axis operation, mode change strategy, conditional stub
+- `crates/inputforge-gui/src/widgets/empty_state.rs` -- centered placeholder widget
 
-**Files to modify:**
-- `crates/inputforge-gui/src/panels/mod.rs`
-- `crates/inputforge-gui/src/widgets/mod.rs`
+**Files modified:**
+- `crates/inputforge-gui/src/panels/mod.rs` -- added `mapping_editor`
+- `crates/inputforge-gui/src/widgets/mod.rs` -- added `action_card`, `action_config`, `empty_state`
+- `crates/inputforge-gui/src/panels/center_panel.rs` -- route MappingEditor view
+- `crates/inputforge-gui/src/app.rs` -- added `MappingEditorState` field
 
-**Implementation:**
-- Show mapping list for the selected device input + current mode
-- **Action cards** (design doc Section 7 "Key Widgets"):
-  - Stacked cards connected by vertical flow lines
-  - Each card has: left accent bar (colored by action type), action name, configuration fields, drag handle for reorder
-  - Colors: Processing = Blue, Output = Green, Control = Mauve
-- Add action button at bottom of pipeline (dropdown to pick action type)
-- Delete action button on each card (X icon, confirmation)
-- Drag-and-drop reorder of actions within the pipeline
-- Each action type shows its specific configuration:
-  - ResponseCurve: curve type dropdown, link to curve editor (Task 23)
-  - Deadzone: four slider values
-  - Calibrate: five values + enable toggle
-  - Invert: no config needed
-  - MapToVJoy: device + output type dropdowns
-  - MapToKeyboard: key combo input field
-  - MergeAxis: second input selector + operation dropdown
-  - ChangeMode: strategy dropdown + mode selector
-  - Conditional: condition editor (inline) + nested action lists for if_true/if_false
-
-**Steps:**
-1. Implement action_card widget with accent bar and drag handle
-2. Implement mapping panel showing pipeline of action cards
-3. Implement add/delete/reorder actions
-4. Implement configuration UI for each action type
-5. Wire up changes to update the Profile in AppState
-6. Run `rtk cargo build -p inputforge-gui`
-7. Commit: `feat(gui): add mapping editor with action pipeline cards`
+**Test count:** 10 tests (5 action_config + 4 mapping_editor + 1 action_card)
 
 ---
 
-### Task 23: Response Curve Editor
+### Card Content Polish Pass #2 ✅ COMPLETE
+
+**Goal:** Fix 7 UI issues in action cards and related editors identified during review.
+
+**Files modified (7 files, all changes uncommitted):**
+- `action_config.rs` -- removed `.small()` from description, renamed axis labels (Rx→X Rotation etc.), added `.width(150.0)` to all ComboBoxes, replaced Button/Hat DragValue with ComboBox, added `virtual_devices` parameter
+- `theme.rs` -- added `zone_negative()`, `zone_positive()`, `zone_saturated()`, `disabled_overlay()` methods
+- `calibration_editor.rs` -- replaced 3 hardcoded zone color constants with theme methods
+- `deadzone_editor.rs` -- replaced 3 hardcoded zone color constants with theme methods
+- `mapping_editor.rs` -- added "Merge Axis" to Add Action dropdown, threaded `virtual_devices` through to `action_config`
+- `app.rs` -- added `virtual_devices: Vec<VirtualDeviceConfig>` to `CachedState`, populated from `AppState`
+- `crates/inputforge-core/src/state/mod.rs` -- added `virtual_devices: Vec<VirtualDeviceConfig>` to `AppState`
+
+**Verification:** 394 tests passing (314 core + 80 gui), 0 clippy errors (3 pre-existing warnings)
+
+---
+
+### Task 23: Response Curve Editor ⬜ NOT STARTED
 
 **Goal:** Interactive egui_plot-based response curve editor with draggable control points.
 
@@ -1055,115 +1026,87 @@ Combat = ["Missiles", "Guns"]
 
 **Files to modify:**
 - `crates/inputforge-gui/src/widgets/mod.rs`
-
-**Implementation (design doc Section 7 "Key Widgets" - Response curve editor):**
-- Use `egui_plot::Plot` with equal aspect ratio, -1 to 1 on both axes
-- Grid overlay: major grid at 0.5 intervals, minor at 0.1
-- Identity line (diagonal dashed line) for reference
-- **Curve rendering**: compute and draw the current response curve as a polyline
-- **Control points**: draggable circles at each defined point
-  - Piecewise linear: drag points along the curve
-  - Cubic spline: drag interpolation points
-  - Cubic bezier: drag endpoints + control point handles (lines connecting to control points)
-- **Live input/output lines**:
-  - Vertical line at current input value (Green)
-  - Horizontal line at current output value (Green)
-  - Intersection dot
-- **Deadzone shading**: semi-transparent Red overlay on deadzone regions
-- **Symmetry toggle**: checkbox, when enabled, editing positive side auto-mirrors to negative
-- **Curve type selector**: tabs or dropdown to switch between Linear/Spline/Bezier
-- Add/remove control points: right-click to add, delete key to remove selected
-
-> **Lesson from Phase 2 code review:** Every point edit (drag, add, remove) must go through `ResponseCurve::piecewise_linear()` / `cubic_spline()` / `cubic_bezier()` factory methods, which validate invariants (>= 2 points, strictly increasing x, x >= 0 when symmetric, >= 1 bezier segment). Constrain drag handles to prevent crossing adjacent points (preserves x-monotonicity) and use the constructor as a safety net. On validation failure, revert the drag or show a user-facing error.
-
-**Steps:**
-1. Set up egui_plot widget with correct axis ranges and grid
-2. Implement curve polyline rendering (evaluate curve at many points, draw as line)
-3. Implement draggable control points using plot interaction
-4. Implement bezier control point handles (lines from endpoint to control point)
-5. Implement live input/output indicator lines
-6. Implement deadzone shading overlay
-7. Implement symmetry toggle
-8. Implement add/remove control points
-9. Run `rtk cargo build -p inputforge-gui`
-10. Commit: `feat(gui): add interactive response curve editor with egui_plot`
-
----
-
-### Task 24: Input Monitor
-
-**Goal:** Real-time display of all input values for debugging and verification.
-
-**Files to create:**
-- `crates/inputforge-gui/src/panels/monitor_panel.rs`
-
-**Files to modify:**
-- `crates/inputforge-gui/src/panels/mod.rs`
+- `crates/inputforge-gui/src/widgets/action_config.rs` (link from `ResponseCurve` config)
 
 **Implementation:**
-- Central panel mode showing all active device inputs in real-time
-- Table layout: Device | Input | Raw Value | Processed Value | Output
-- Values update every frame from AppState
-- Axis values shown as number + small inline bar
-- Button values shown as filled/unfilled circle
-- Hat values shown as direction arrow
-- Optional: filter by device, highlight active (recently changed) inputs
+- `CurveEditorState`: dragging_point index, cached_line (`Vec<[f64;2]>`), cache_dirty flag
+- `curve_editor(ui, curve: &mut ResponseCurve, state: &mut CurveEditorState, live_input: Option<f64>) -> bool`
+- `egui_plot::Plot` (0.34): view -1.1 to 1.1 both axes, scroll/zoom/drag disabled, equal data aspect
+- Curve polyline from cached 200 sample points, identity reference line (dashed SURFACE1)
+- Control point markers (white circles, LIVE when dragged)
+- Live input: VLine at input value (WARNING), output dot on curve
+- **Custom drag handling** (egui_plot has no native draggable points):
+  1. On drag_started: find nearest point within 10px screen distance
+  2. On dragged: update point, constrain x to stay strictly increasing
+  3. On drag_stopped: reconstruct curve via validated constructor, revert on failure
+- Curve type selector ComboBox, symmetry toggle checkbox
+- Bezier: render control handles as lines from endpoints to control points
+
+> **Lesson from Phase 2 code review:** Every point edit must go through `ResponseCurve` validated constructors. Constrain drag handles to prevent crossing adjacent points. Revert on validation failure.
 
 **Steps:**
-1. Implement monitor panel reading from AppState input cache
-2. Layout as scrollable table
-3. Add inline visualizations (bars, circles, arrows)
-4. Add filtering and highlight for active inputs
-5. Run `rtk cargo build -p inputforge-gui`
-6. Commit: `feat(gui): add real-time input monitor panel`
+1. Set up egui_plot widget with correct axis ranges
+2. Implement curve polyline rendering from cached sample points
+3. Implement custom draggable control points
+4. Implement bezier control point handles
+5. Implement live input/output indicator
+6. Implement symmetry toggle and curve type selector
+7. Run `rtk cargo build -p inputforge-gui`
+8. Commit: `feat(gui): add interactive response curve editor with egui_plot`
 
 ---
 
-### Task 25: Mode, Calibration & Deadzone Editors
+### Task 24: Input Monitor ✅ COMPLETE
 
-**Goal:** GUI editors for mode tree management, per-axis calibration wizard, and deadzone configuration.
+**Goal:** Real-time event log with filtering for debugging and verification.
 
-**Files to create:**
-- `crates/inputforge-gui/src/panels/mode_panel.rs`
-- `crates/inputforge-gui/src/widgets/deadzone_editor.rs`
-- `crates/inputforge-gui/src/widgets/calibration_editor.rs`
+**Files created:**
+- `crates/inputforge-gui/src/panels/input_monitor.rs` -- `InputMonitorState` + `MonitorEntry` ring buffer + `egui_extras::TableBuilder` table
 
-**Files to modify:**
-- `crates/inputforge-gui/src/panels/mod.rs`
-- `crates/inputforge-gui/src/widgets/mod.rs`
+**Implementation:**
+- `MonitorEntry`: timestamp_ms, device_name, input_label, value_text, mode
+- `InputMonitorState`: entries ring buffer (500 max), auto_scroll, filter text, paused flag
+- Toolbar: auto-scroll toggle, pause/resume, filter text input, clear, entry count
+- `egui_extras::TableBuilder` with columns: Time | Device | Input | Value | Mode (all resizable, striped)
+- Feed: in `app.rs` `refresh_cache()`, diff current vs previous input values, push `MonitorEntry` for changed inputs when not paused
+- 4 unit tests
 
-**Mode panel:**
-- Tree view of all modes with indent showing parent-child relationships
-- Add/remove/rename modes
-- Drag to reparent modes
-- Current active mode highlighted (Mauve badge)
-- Click mode to filter mapping editor to that mode
+---
 
-**Deadzone editor widget (design doc Section 7):**
-- Horizontal bar representing [-1, 1] range
-- 4 draggable boundary handles for low, center_low, center_high, high
-- Center deadzone region shaded Red
-- Live input marker (Green vertical line at current axis value)
-- Numeric value labels on each handle
+### Task 25: Mode, Calibration & Deadzone Editors ✅ COMPLETE
 
-**Calibration editor widget:**
-- Step-by-step wizard:
-  1. "Move axis to minimum" -> record physical_min
-  2. "Release axis to center" -> record physical_center_low and physical_center_high (wait for stabilization)
-  3. "Move axis to maximum" -> record physical_max
-- Live axis value display during calibration
-- Manual override: edit 5 values directly
-- Enable/disable toggle
+**Goal:** GUI editors for mode tree display, deadzone visualization, and calibration configuration.
 
-> **Lesson from Phase 2 code review:** Both editors MUST go through validated constructors (`DeadzoneConfig::new()`, `Calibration::new()`) — the private fields enforce this at compile time. On every drag/edit, call the constructor and handle `Err` by showing a user-facing message (e.g., "center_low must be less than center_high") or by constraining drag handles to prevent invalid states (e.g., don't let center_low pass center_high). Same applies to numeric field edits: validate via constructor before applying.
+**Files created:**
+- `crates/inputforge-gui/src/panels/mode_editor.rs` -- recursive mode tree with `CollapsingHeader` branches, selectable leaf labels
+- `crates/inputforge-gui/src/widgets/deadzone_editor.rs` -- custom-painted 200x30px zone bar + 4 `DragValue` sliders
+- `crates/inputforge-gui/src/widgets/calibration_editor.rs` -- custom-painted 200x30px range bar + 4 `DragValue` sliders + enabled checkbox
 
-**Steps:**
-1. Implement mode panel with tree view and add/remove/rename
-2. Implement deadzone editor with draggable handles using egui Painter API
-3. Implement calibration wizard with step-by-step flow
-4. Wire up to AppState and profile
-5. Run `rtk cargo build -p inputforge-gui`
-6. Commit: `feat(gui): add mode tree, deadzone, and calibration editors`
+**Mode editor (center panel tab, not left panel):**
+- `show(ui, mode_tree: Option<&ModeTree>, current_mode, selected_mode)`
+- Recursive `show_node()`: `CollapsingHeader` for branches, `selectable_label` for leaves
+- Active mode highlighted in COLOR_LIVE + bold, root expanded by default
+- Click to select mode (updates `selected_mode` for mapping editor filter)
+- "No profile loaded" placeholder when `mode_tree` is None
+- 3 unit tests
+
+**Deadzone editor (DragValue sliders, not draggable handles):**
+- `deadzone_editor(ui, config: &DeadzoneConfig, live_input: Option<f64>) -> Option<DeadzoneConfig>`
+- Custom-painted 200x30px bar with 5 zones: saturated=ERROR, active=PRIMARY, dead center=SURFACE0+"DEAD"
+- 4 `DragValue` sliders [-1.0, 1.0] speed 0.01 for low, center_low, center_high, high
+- Live input marker in COLOR_LIVE
+- Validates via `DeadzoneConfig::new()` on every change, returns None if unchanged or invalid
+- 5 unit tests
+
+**Calibration editor (DragValue sliders, not step-by-step wizard):**
+- `calibration_editor(ui, config: &Calibration, live_input: Option<f64>) -> Option<Calibration>`
+- Custom-painted 200x30px bar: negative=WARNING, center=SURFACE1+"CTR", positive=PRIMARY
+- 4 `DragValue` sliders [-2.0, 2.0] + enabled checkbox
+- "DISABLED" overlay when not enabled
+- Validates via `Calibration::new()` on every change
+- 5 unit tests
+
+**Phase 7 progress:** Tasks 20, 21, 22, 24, 25 complete. Task 23 (Response Curve Editor) remaining. 80 GUI tests total, 394 workspace total (314 core + 80 gui).
 
 ---
 

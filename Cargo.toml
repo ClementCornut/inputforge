@@ -52,6 +52,13 @@ windows = { version = "0.62", features = [
     "Win32_Security",
 ] }
 
+# GUI
+eframe = "0.33"
+egui = "0.33"
+egui_extras = { version = "0.33", features = ["image"] }
+egui_plot = "0.34"
+egui_kittest = { version = "0.33", features = ["wgpu", "snapshot"] }
+
 # Internal crates
 inputforge-core = { path = "crates/inputforge-core" }
 inputforge-gui = { path = "crates/inputforge-gui" }

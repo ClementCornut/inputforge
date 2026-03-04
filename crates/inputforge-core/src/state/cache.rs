@@ -87,7 +87,7 @@ impl InputCache for InputCacheStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{AxisValue, DeviceId, InputId};
+    use crate::types::{AxisValue, InputId};
 
     fn axis_address(index: u8) -> InputAddress {
         InputAddress {

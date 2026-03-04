@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-03-04
 
 //! Shared application state between engine and GUI.
 //!
@@ -15,6 +15,7 @@ pub use device::DeviceState;
 pub use status::EngineStatus;
 
 use crate::profile::Profile;
+use crate::types::VirtualDeviceConfig;
 
 /// Top-level shared state for the application.
 ///
@@ -32,6 +33,11 @@ pub struct AppState {
     pub active_profile: Option<Profile>,
     /// Cache of the latest value for every physical input.
     pub input_cache: InputCacheStore,
+    /// Discovered virtual vJoy device configurations.
+    ///
+    /// Populated by the engine when it probes the vJoy driver at startup.
+    /// Empty until the driver is queried.
+    pub virtual_devices: Vec<VirtualDeviceConfig>,
 }
 
 impl AppState {
@@ -44,6 +50,7 @@ impl AppState {
             engine_status: EngineStatus::Stopped,
             active_profile: None,
             input_cache: InputCacheStore::new(),
+            virtual_devices: Vec::new(),
         }
     }
 
@@ -57,6 +64,7 @@ impl AppState {
             engine_status: EngineStatus::Stopped,
             active_profile: Some(profile),
             input_cache: InputCacheStore::new(),
+            virtual_devices: Vec::new(),
         }
     }
 }
