@@ -10,7 +10,7 @@ use inputforge_core::types::{
     InputAddress, InputId, KeyModifier, MergeOp, OutputId, VJoyAxis, VirtualDeviceConfig,
 };
 
-use crate::theme::ThemeColors;
+use crate::theme::{SMALL_FONT_SIZE, ThemeColors};
 use crate::widgets::{calibration_editor, curve_editor, deadzone_editor};
 
 /// All [`VJoyAxis`] variants in UI display order.
@@ -565,7 +565,7 @@ fn show_change_mode(
                     ui.label(
                         egui::RichText::new(mode_list)
                             .monospace()
-                            .small()
+                            .size(SMALL_FONT_SIZE)
                             .color(colors.text),
                     );
                     ui.end_row();
@@ -596,7 +596,7 @@ fn show_conditional(
     ui.label(
         egui::RichText::new(format!("{condition:?}"))
             .monospace()
-            .small()
+            .size(SMALL_FONT_SIZE)
             .color(colors.text),
     );
 

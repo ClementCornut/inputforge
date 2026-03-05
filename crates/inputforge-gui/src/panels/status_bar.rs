@@ -36,13 +36,17 @@ pub(crate) fn show(ctx: &egui::Context, cache: &CachedState) {
                 ui.label(
                     egui::RichText::new(format!("{connected}/{total} devices"))
                         .color(colors.text_dim)
-                        .small(),
+                        .size(theme::SMALL_FONT_SIZE),
                 );
 
                 // Profile name (right-aligned).
                 if let Some(ref name) = cache.profile_name {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new(name).color(colors.text_dim).small());
+                        ui.label(
+                            egui::RichText::new(name)
+                                .color(colors.text_dim)
+                                .size(theme::SMALL_FONT_SIZE),
+                        );
                     });
                 }
             });
@@ -62,14 +66,26 @@ fn show_engine_status(ui: &mut egui::Ui, status: EngineStatus) {
     let is_running = matches!(status, EngineStatus::Running);
     status_dot::status_dot(ui, color, is_running);
 
-    ui.label(egui::RichText::new(label).color(color).small());
+    ui.label(
+        egui::RichText::new(label)
+            .color(color)
+            .size(theme::SMALL_FONT_SIZE),
+    );
 }
 
 /// Render the current mode name with a "Mode:" prefix and purple accent.
 fn show_mode_badge(ui: &mut egui::Ui, mode: &str) {
     let colors = theme::colors(ui.ctx());
-    ui.label(egui::RichText::new("Mode:").color(colors.text_dim).small());
-    ui.label(egui::RichText::new(mode).color(colors.special).small());
+    ui.label(
+        egui::RichText::new("Mode:")
+            .color(colors.text_dim)
+            .size(theme::SMALL_FONT_SIZE),
+    );
+    ui.label(
+        egui::RichText::new(mode)
+            .color(colors.special)
+            .size(theme::SMALL_FONT_SIZE),
+    );
 }
 
 #[cfg(test)]

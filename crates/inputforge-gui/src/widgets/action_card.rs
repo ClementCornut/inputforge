@@ -10,7 +10,7 @@ use egui::{Color32, CursorIcon, FontFamily, Pos2, Stroke, Vec2};
 
 use inputforge_core::action::Action;
 
-use crate::theme::ThemeColors;
+use crate::theme::{SMALL_FONT_SIZE, ThemeColors};
 
 /// Return the accent color for an [`Action`] based on its pipeline category.
 pub(crate) fn category_accent_color(action: &Action, colors: &ThemeColors) -> Color32 {
@@ -22,6 +22,11 @@ pub(crate) const ACCENT_BAR_WIDTH: f32 = 4.0;
 
 /// Uniform minimum size for card control buttons (consistent hover rects).
 const BUTTON_MIN_SIZE: Vec2 = Vec2::new(20.0, 20.0);
+
+/// Minimum height for the action card header row in logical pixels.
+/// Ensures the accent bar and action name are vertically centered
+/// even for single-line action names.
+const CARD_HEADER_MIN_HEIGHT: f32 = 30.0;
 
 /// Height of the vertical flow connector between cards.
 const FLOW_CONNECTOR_HEIGHT: f32 = 8.0;
@@ -77,15 +82,6 @@ impl ActionCategory {
             Self::Control => colors.control(),
         }
     }
-
-    /// Short uppercase label for the category badge.
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Processing => "PROCESSING",
-            Self::Output => "OUTPUT",
-            Self::Control => "CONTROL",
-        }
-    }
 }
 
 /// Human-readable display name for an action variant.
@@ -118,10 +114,11 @@ pub(crate) fn action_card(
     can_move_down: bool,
     colors: &ThemeColors,
 ) -> ActionCardResponse {
-    let category = ActionCategory::of(action);
     let mut response = ActionCardResponse::None;
 
     ui.horizontal(|ui| {
+        ui.allocate_space(Vec2::new(0.0, CARD_HEADER_MIN_HEIGHT));
+
         // Action name.
         ui.label(
             egui::RichText::new(action_name(action))
@@ -129,21 +126,17 @@ pub(crate) fn action_card(
                 .color(colors.text),
         );
 
-        // Category badge.
-        ui.label(
-            egui::RichText::new(category.label())
-                .monospace()
-                .small()
-                .color(colors.text_dim),
-        );
-
         // Right-aligned controls.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Delete button.
             let delete_btn = ui.add(
-                egui::Button::new(egui::RichText::new("X").small().color(colors.text_dim))
-                    .min_size(BUTTON_MIN_SIZE)
-                    .frame_when_inactive(false),
+                egui::Button::new(
+                    egui::RichText::new("X")
+                        .size(SMALL_FONT_SIZE)
+                        .color(colors.text_dim),
+                )
+                .min_size(BUTTON_MIN_SIZE)
+                .frame_when_inactive(false),
             );
             if delete_btn.clicked() {
                 response = ActionCardResponse::Delete;
@@ -176,9 +169,13 @@ pub(crate) fn action_card(
             // Expand/collapse chevron button.
             let chevron = if expanded { "\u{25BC}" } else { "\u{25B6}" };
             let toggle_btn = ui.add(
-                egui::Button::new(egui::RichText::new(chevron).small().color(colors.text_dim))
-                    .min_size(BUTTON_MIN_SIZE)
-                    .frame_when_inactive(false),
+                egui::Button::new(
+                    egui::RichText::new(chevron)
+                        .size(SMALL_FONT_SIZE)
+                        .color(colors.text_dim),
+                )
+                .min_size(BUTTON_MIN_SIZE)
+                .frame_when_inactive(false),
             );
             if toggle_btn.clicked() {
                 response = ActionCardResponse::Toggle;
@@ -212,9 +209,13 @@ fn render_move_button(
     };
 
     let btn = ui.add(
-        egui::Button::new(egui::RichText::new(symbol).small().color(text_color))
-            .min_size(BUTTON_MIN_SIZE)
-            .frame_when_inactive(false),
+        egui::Button::new(
+            egui::RichText::new(symbol)
+                .size(SMALL_FONT_SIZE)
+                .color(text_color),
+        )
+        .min_size(BUTTON_MIN_SIZE)
+        .frame_when_inactive(false),
     );
 
     if enabled && btn.clicked() {
@@ -301,21 +302,5 @@ mod tests {
     fn action_card_response_variants_are_distinct() {
         assert_ne!(ActionCardResponse::None, ActionCardResponse::Delete);
         assert_ne!(ActionCardResponse::MoveUp, ActionCardResponse::MoveDown);
-    }
-
-    #[test]
-    fn category_labels_are_uppercase() {
-        for cat in [
-            ActionCategory::Processing,
-            ActionCategory::Output,
-            ActionCategory::Control,
-        ] {
-            let label = cat.label();
-            assert_eq!(
-                label,
-                label.to_uppercase(),
-                "category label must be uppercase"
-            );
-        }
     }
 }

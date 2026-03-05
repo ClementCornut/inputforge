@@ -21,6 +21,10 @@ use crate::widgets::{action_card, action_config, empty_state};
 pub(crate) struct MappingEditorState {
     /// Working copy of the action pipeline being edited.
     actions: Vec<Action>,
+    /// Stable unique ID for each action (parallel to `actions`).
+    action_ids: Vec<u64>,
+    /// Next unique ID to assign.
+    next_id: u64,
     /// Indices of expanded action cards.
     expanded: HashSet<usize>,
     /// Whether the working copy has unsaved changes.
@@ -31,6 +35,16 @@ impl MappingEditorState {
     /// Create a new empty mapping editor state.
     pub(crate) fn new() -> Self {
         Self::default()
+    }
+
+    /// Push an action with a stable unique ID.
+    fn push_action(&mut self, action: Action) {
+        let index = self.actions.len();
+        self.actions.push(action);
+        self.action_ids.push(self.next_id);
+        self.next_id += 1;
+        self.expanded.insert(index);
+        self.dirty = true;
     }
 }
 
@@ -57,7 +71,11 @@ pub(crate) fn show(
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if state.dirty {
-                ui.label(egui::RichText::new("unsaved").small().color(colors.warning));
+                ui.label(
+                    egui::RichText::new("unsaved")
+                        .size(theme::SMALL_FONT_SIZE)
+                        .color(colors.warning),
+                );
             }
         });
     });
@@ -94,6 +112,12 @@ fn show_action_list(
     let mut move_up_index: Option<usize> = None;
     let mut move_down_index: Option<usize> = None;
     let count = state.actions.len();
+
+    debug_assert_eq!(
+        state.actions.len(),
+        state.action_ids.len(),
+        "actions and action_ids must be kept in sync"
+    );
 
     for index in 0..count {
         if index > 0 {
@@ -132,6 +156,7 @@ fn show_action_list(
     // Handle move up (swap with previous).
     if let Some(idx) = move_up_index {
         state.actions.swap(idx, idx - 1);
+        state.action_ids.swap(idx, idx - 1);
         reindex_expanded_after_swap(&mut state.expanded, idx, idx - 1);
         state.dirty = true;
     }
@@ -139,6 +164,7 @@ fn show_action_list(
     // Handle move down (swap with next).
     if let Some(idx) = move_down_index {
         state.actions.swap(idx, idx + 1);
+        state.action_ids.swap(idx, idx + 1);
         reindex_expanded_after_swap(&mut state.expanded, idx, idx + 1);
         state.dirty = true;
     }
@@ -146,6 +172,7 @@ fn show_action_list(
     // Handle deletion.
     if let Some(idx) = delete_index {
         state.actions.remove(idx);
+        state.action_ids.remove(idx);
         state.expanded.remove(&idx);
         let new_expanded: HashSet<usize> = state
             .expanded
@@ -216,42 +243,46 @@ fn render_single_card(
             bottom: 4,
         })
         .show(ui, |ui| {
-            // Header row with action name, category badge, and buttons.
-            let card_response = action_card::action_card(
-                ui,
-                &state.actions[index],
-                expanded,
-                can_move_up,
-                can_move_down,
-                colors,
-            );
+            // Push stable action ID so all child widgets get unique IDs.
+            let action_id = state.action_ids[index];
+            ui.push_id(action_id, |ui| {
+                // Header row with action name, category badge, and buttons.
+                let card_response = action_card::action_card(
+                    ui,
+                    &state.actions[index],
+                    expanded,
+                    can_move_up,
+                    can_move_down,
+                    colors,
+                );
 
-            match card_response {
-                action_card::ActionCardResponse::Delete => *delete_index = Some(index),
-                action_card::ActionCardResponse::Toggle => *toggle_index = Some(index),
-                action_card::ActionCardResponse::MoveUp => *move_up_index = Some(index),
-                action_card::ActionCardResponse::MoveDown => {
-                    *move_down_index = Some(index);
-                }
-                action_card::ActionCardResponse::None => {}
-            }
-
-            // Expanded config body — inside the card frame.
-            if expanded {
-                ui.separator();
-                ui.add_space(4.0);
-
-                egui::Frame::new().inner_margin(8.0).show(ui, |ui| {
-                    if action_config::action_config(
-                        ui,
-                        &mut state.actions[index],
-                        colors,
-                        &cache.virtual_devices,
-                    ) {
-                        state.dirty = true;
+                match card_response {
+                    action_card::ActionCardResponse::Delete => *delete_index = Some(index),
+                    action_card::ActionCardResponse::Toggle => *toggle_index = Some(index),
+                    action_card::ActionCardResponse::MoveUp => *move_up_index = Some(index),
+                    action_card::ActionCardResponse::MoveDown => {
+                        *move_down_index = Some(index);
                     }
-                });
-            }
+                    action_card::ActionCardResponse::None => {}
+                }
+
+                // Expanded config body — inside the card frame.
+                if expanded {
+                    ui.separator();
+                    ui.add_space(4.0);
+
+                    egui::Frame::new().inner_margin(8.0).show(ui, |ui| {
+                        if action_config::action_config(
+                            ui,
+                            &mut state.actions[index],
+                            colors,
+                            &cache.virtual_devices,
+                        ) {
+                            state.dirty = true;
+                        }
+                    });
+                }
+            });
         });
 
     // Paint accent bar as overlay using the frame's actual rect.
@@ -285,7 +316,7 @@ fn show_add_action_dropdown(
                 ui.label(
                     egui::RichText::new("PROCESSING")
                         .monospace()
-                        .small()
+                        .size(theme::SMALL_FONT_SIZE)
                         .color(colors.processing()),
                 );
                 if ui.button("Response Curve").clicked() {
@@ -293,10 +324,9 @@ fn show_add_action_dropdown(
                     ui.close();
                 }
                 if ui.button("Deadzone").clicked() {
-                    state.actions.push(Action::Deadzone {
+                    state.push_action(Action::Deadzone {
                         config: inputforge_core::processing::deadzone::DeadzoneConfig::default(),
                     });
-                    state.dirty = true;
                     ui.close();
                 }
                 if ui.button("Calibrate").clicked() {
@@ -304,14 +334,12 @@ fn show_add_action_dropdown(
                     if let Ok(config) = inputforge_core::processing::calibration::Calibration::new(
                         -1.0, -0.05, 0.05, 1.0, true,
                     ) {
-                        state.actions.push(Action::Calibrate { config });
-                        state.dirty = true;
+                        state.push_action(Action::Calibrate { config });
                     }
                     ui.close();
                 }
                 if ui.button("Invert").clicked() {
-                    state.actions.push(Action::Invert);
-                    state.dirty = true;
+                    state.push_action(Action::Invert);
                     ui.close();
                 }
 
@@ -321,11 +349,11 @@ fn show_add_action_dropdown(
                 ui.label(
                     egui::RichText::new("OUTPUT")
                         .monospace()
-                        .small()
+                        .size(theme::SMALL_FONT_SIZE)
                         .color(colors.output()),
                 );
                 if ui.button("Map to vJoy").clicked() {
-                    state.actions.push(Action::MapToVJoy {
+                    state.push_action(Action::MapToVJoy {
                         output: inputforge_core::types::OutputAddress {
                             device: 1,
                             output: inputforge_core::types::OutputId::Axis {
@@ -333,28 +361,25 @@ fn show_add_action_dropdown(
                             },
                         },
                     });
-                    state.dirty = true;
                     ui.close();
                 }
                 if ui.button("Map to Keyboard").clicked() {
-                    state.actions.push(Action::MapToKeyboard {
+                    state.push_action(Action::MapToKeyboard {
                         key: inputforge_core::types::KeyCombo {
                             key: String::new(),
                             modifiers: vec![],
                         },
                     });
-                    state.dirty = true;
                     ui.close();
                 }
                 if ui.button("Merge Axis").clicked() {
-                    state.actions.push(Action::MergeAxis {
+                    state.push_action(Action::MergeAxis {
                         second_input: inputforge_core::types::InputAddress {
                             device: inputforge_core::types::DeviceId(String::new()),
                             input: inputforge_core::types::InputId::Axis { index: 0 },
                         },
                         operation: inputforge_core::types::MergeOp::Bidirectional,
                     });
-                    state.dirty = true;
                     ui.close();
                 }
 
@@ -364,14 +389,13 @@ fn show_add_action_dropdown(
                 ui.label(
                     egui::RichText::new("CONTROL")
                         .monospace()
-                        .small()
+                        .size(theme::SMALL_FONT_SIZE)
                         .color(colors.control()),
                 );
                 if ui.button("Change Mode").clicked() {
-                    state.actions.push(Action::ChangeMode {
+                    state.push_action(Action::ChangeMode {
                         strategy: inputforge_core::action::ModeChangeStrategy::Previous,
                     });
-                    state.dirty = true;
                     ui.close();
                 }
             },
@@ -387,8 +411,7 @@ fn add_default_response_curve(state: &mut MappingEditorState) {
         false,
     );
     if let Ok(curve) = curve {
-        state.actions.push(Action::ResponseCurve { curve });
-        state.dirty = true;
+        state.push_action(Action::ResponseCurve { curve });
     }
 }
 

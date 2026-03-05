@@ -25,8 +25,11 @@ const CURVE_SAMPLE_COUNT: usize = 200;
 /// "hit" for hover detection and drag initiation.
 const HIT_RADIUS_PX: f32 = 10.0;
 
-/// Plot width and height in logical pixels (square canvas).
-const PLOT_SIZE: f32 = 300.0;
+/// Maximum plot dimension in logical pixels. The actual size adapts to the
+/// available panel width so the editor remains usable at narrow window sizes.
+const PLOT_MAX_SIZE: f32 = 450.0;
+/// Minimum plot dimension to keep the curve legible.
+const PLOT_MIN_SIZE: f32 = 250.0;
 
 /// Minimum x separation between adjacent control points when dragging.
 const MIN_X_GAP: f64 = 0.001;
@@ -71,8 +74,14 @@ pub(crate) struct CurveEditorState {
     hovered_point: Option<usize>,
     /// Cached 200-sample polyline for the current curve shape.
     cached_line: Vec<[f64; 2]>,
+    /// Cached flat list of draggable control point positions, rebuilt
+    /// alongside `cached_line` to avoid per-frame allocation.
+    cached_control_points: Vec<[f64; 2]>,
     /// `true` when the cached polyline is stale and must be rebuilt.
     cache_dirty: bool,
+    /// Snapshot of the curve when a drag started, used for reverting on
+    /// validation failure instead of reverting to an arbitrary previous state.
+    pre_drag_curve: Option<ResponseCurve>,
 }
 
 impl Default for CurveEditorState {
@@ -81,8 +90,10 @@ impl Default for CurveEditorState {
             dragging_point: None,
             hovered_point: None,
             cached_line: Vec::new(),
+            cached_control_points: Vec::new(),
             // Force a cache rebuild on first render.
             cache_dirty: true,
+            pre_drag_curve: None,
         }
     }
 }
@@ -93,7 +104,7 @@ impl Default for CurveEditorState {
 
 /// Render the interactive response curve editor.
 ///
-/// Draws a 300 × 300 `egui_plot` canvas with draggable control points that
+/// Draws a 450 × 450 `egui_plot` canvas with draggable control points that
 /// modify `curve` in-place. Displays a live input indicator dot when
 /// `live_input` is `Some`.
 ///
@@ -107,37 +118,50 @@ pub(crate) fn curve_editor(
     // Rebuild polyline cache when the curve changed since the last frame.
     if state.cache_dirty {
         rebuild_cache(curve, &mut state.cached_line);
+        state.cached_control_points = extract_control_points(curve);
         state.cache_dirty = false;
     }
 
     let colors = theme::colors(ui.ctx());
 
     // Snapshot data needed inside the plot closure.
-    // The cache is cloned because `PlotPoints::new` takes ownership of the vec.
-    let control_points = extract_control_points(curve);
+    // `PlotPoints::new` consumes the vec, so a clone is required here.
+    // The allocation is small (~3 KB for 200 points) and unavoidable
+    // because `egui_plot` does not offer a borrowing alternative.
     let cached_line = state.cached_line.clone();
     let hovered_point = state.hovered_point;
     let dragging_point = state.dragging_point;
 
     let plot_id = ui.id().with("curve_editor");
     let snap = PlotSnapshot {
-        control_points: &control_points,
+        control_points: &state.cached_control_points,
         cached_line,
         hovered_point,
         dragging_point,
     };
-    let plot_response = render_plot(ui, plot_id, curve, snap, live_input, colors);
+    let plot_size = ui.available_width().clamp(PLOT_MIN_SIZE, PLOT_MAX_SIZE);
+    let plot_response = render_plot(ui, plot_id, curve, snap, live_input, colors, plot_size);
 
-    let changed_drag = handle_plot_interaction(curve, state, &plot_response, &control_points);
+    let changed_drag = handle_plot_interaction(
+        curve,
+        state,
+        &plot_response,
+        &state.cached_control_points.clone(),
+    );
+    plot_response
+        .response
+        .clone()
+        .on_hover_text("Drag points \u{00b7} Double-click to add \u{00b7} Right-click to remove");
 
     // Rebuild now if the interaction dirtied the cache.
     if state.cache_dirty {
         rebuild_cache(curve, &mut state.cached_line);
+        state.cached_control_points = extract_control_points(curve);
         state.cache_dirty = false;
     }
 
-    ui.add_space(4.0);
-    let changed_controls = render_controls(ui, curve, state, colors);
+    ui.add_space(8.0);
+    let changed_controls = render_controls(ui, curve, state);
 
     changed_drag || changed_controls
 }
@@ -162,6 +186,7 @@ fn render_plot(
     snap: PlotSnapshot<'_>,
     live_input: Option<f64>,
     colors: &theme::ThemeColors,
+    plot_size: f32,
 ) -> egui_plot::PlotResponse<()> {
     let PlotSnapshot {
         control_points,
@@ -177,12 +202,21 @@ fn render_plot(
         .allow_drag(false)
         .allow_zoom(false)
         .allow_scroll(false)
+        .allow_boxed_zoom(false)
+        .allow_double_click_reset(false)
         .data_aspect(1.0)
-        .width(PLOT_SIZE)
-        .height(PLOT_SIZE)
-        .show_axes([true, true])
+        .width(plot_size)
+        .height(plot_size)
+        .show_axes([false, false])
         .show_grid(true)
         .show(ui, |plot_ui| {
+            // Lock the view to [-1.1, 1.1] — prevent auto-scaling.
+            plot_ui.set_plot_bounds(egui_plot::PlotBounds::from_min_max(
+                [-1.1, -1.1],
+                [1.1, 1.1],
+            ));
+            plot_ui.set_auto_bounds(egui::Vec2b::new(false, false));
+
             // Layer 1 — identity reference line (dashed, recedes visually).
             plot_ui.line(
                 Line::new("identity", PlotPoints::new(vec![[-1.0, -1.0], [1.0, 1.0]]))
@@ -193,32 +227,7 @@ fn render_plot(
 
             // Layer 2 — Bezier control handles (start→c1 and c2→end segments).
             if let ResponseCurve::CubicBezier { segments, .. } = curve {
-                for (seg_i, seg) in segments.iter().enumerate() {
-                    plot_ui.line(
-                        Line::new(
-                            format!("handle_a_{seg_i}"),
-                            PlotPoints::new(vec![
-                                [seg.start.0, seg.start.1],
-                                [seg.control1.0, seg.control1.1],
-                            ]),
-                        )
-                        .style(LineStyle::dashed_loose())
-                        .color(colors.surface1)
-                        .width(1.0),
-                    );
-                    plot_ui.line(
-                        Line::new(
-                            format!("handle_b_{seg_i}"),
-                            PlotPoints::new(vec![
-                                [seg.control2.0, seg.control2.1],
-                                [seg.end.0, seg.end.1],
-                            ]),
-                        )
-                        .style(LineStyle::dashed_loose())
-                        .color(colors.surface1)
-                        .width(1.0),
-                    );
-                }
+                render_bezier_handles(plot_ui, segments, colors);
             }
 
             // Layer 3 — curve polyline (dominant element).
@@ -279,6 +288,18 @@ fn handle_plot_interaction(
         None
     };
 
+    if state.dragging_point.is_some() {
+        plot_response
+            .response
+            .ctx
+            .output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+    } else if state.hovered_point.is_some() {
+        plot_response
+            .response
+            .ctx
+            .output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+    }
+
     let response = &plot_response.response;
 
     // Drag start — find the nearest control point within the hit radius.
@@ -291,6 +312,10 @@ fn handle_plot_interaction(
                 .filter(|(_, dist)| *dist <= HIT_RADIUS_PX)
                 .map(|(idx, _)| idx)
         });
+        // Snapshot the curve for reverting on validation failure.
+        if state.dragging_point.is_some() {
+            state.pre_drag_curve = Some(curve.clone());
+        }
     }
 
     // Drag in progress — update the dragged point's position.
@@ -306,15 +331,39 @@ fn handle_plot_interaction(
         }
     }
 
-    // Drag ended — validate curve; revert on failure.
+    // Drag ended — validate curve; revert to pre-drag snapshot on failure.
     if response.drag_stopped() && state.dragging_point.is_some() {
         if let Some(valid) = reconstruct_curve(curve) {
             *curve = valid;
+        } else if let Some(snapshot) = state.pre_drag_curve.take() {
+            *curve = snapshot;
         } else {
             *curve = default_identity_curve(curve);
         }
         state.cache_dirty = true;
         state.dragging_point = None;
+    }
+
+    // Double-click — add a new control point at the clicked position.
+    if response.double_clicked() {
+        if let Some(screen_pos) = response.hover_pos() {
+            let plot_pos = plot_response.transform.value_from_position(screen_pos);
+            if add_control_point(curve, plot_pos) {
+                state.cache_dirty = true;
+                changed = true;
+            }
+        }
+    }
+
+    // Right-click — remove the hovered control point.
+    if response.secondary_clicked() {
+        if let Some(hovered_idx) = state.hovered_point {
+            if remove_control_point(curve, hovered_idx) {
+                state.hovered_point = None;
+                state.cache_dirty = true;
+                changed = true;
+            }
+        }
     }
 
     changed
@@ -324,10 +373,45 @@ fn handle_plot_interaction(
 // Rendering helpers
 // ---------------------------------------------------------------------------
 
+/// Render Bezier control handle lines (dashed) for each segment.
+fn render_bezier_handles(
+    plot_ui: &mut egui_plot::PlotUi,
+    segments: &[BezierSegment],
+    colors: &theme::ThemeColors,
+) {
+    for (seg_i, seg) in segments.iter().enumerate() {
+        plot_ui.line(
+            Line::new(
+                format!("handle_a_{seg_i}"),
+                PlotPoints::new(vec![
+                    [seg.start.0, seg.start.1],
+                    [seg.control1.0, seg.control1.1],
+                ]),
+            )
+            .style(LineStyle::dashed_loose())
+            .color(colors.text_dim.gamma_multiply(0.5))
+            .width(1.0),
+        );
+        plot_ui.line(
+            Line::new(
+                format!("handle_b_{seg_i}"),
+                PlotPoints::new(vec![
+                    [seg.control2.0, seg.control2.1],
+                    [seg.end.0, seg.end.1],
+                ]),
+            )
+            .style(LineStyle::dashed_loose())
+            .color(colors.text_dim.gamma_multiply(0.5))
+            .width(1.0),
+        );
+    }
+}
+
 /// Render control point markers for all curve types.
 ///
 /// Uses distinct colors and sizes for default, hovered, and dragging states.
-/// Bezier handles are drawn as smaller diamond shapes.
+/// Bezier handles are drawn as smaller diamond shapes. All points (including
+/// the negative side of symmetric curves) are fully interactive.
 fn render_control_point_markers(
     plot_ui: &mut egui_plot::PlotUi,
     curve: &ResponseCurve,
@@ -338,71 +422,82 @@ fn render_control_point_markers(
 ) {
     match curve {
         ResponseCurve::PiecewiseLinear { .. } | ResponseCurve::CubicSpline { .. } => {
-            // All points are anchor nodes — render as circles.
+            // Batch points by visual state to minimize allocations.
+            let mut normal_pts = Vec::new();
             for (idx, &pt) in control_points.iter().enumerate() {
-                let (color, radius) = if Some(idx) == dragging {
-                    (colors.live, 7.0)
-                } else if Some(idx) == hovered {
-                    (colors.primary, 7.0)
+                if Some(idx) == dragging || Some(idx) == hovered {
+                    // Active points rendered individually for distinct styling.
+                    let (color, label) = if Some(idx) == dragging {
+                        (colors.live, "pt_drag")
+                    } else {
+                        (colors.primary, "pt_hover")
+                    };
+                    plot_ui.points(
+                        Points::new(label, PlotPoints::new(vec![pt]))
+                            .shape(MarkerShape::Circle)
+                            .radius(7.0)
+                            .color(color),
+                    );
                 } else {
-                    (colors.text, 5.0)
-                };
+                    normal_pts.push(pt);
+                }
+            }
+            if !normal_pts.is_empty() {
                 plot_ui.points(
-                    Points::new(format!("pt_{idx}"), PlotPoints::new(vec![pt]))
+                    Points::new("pts", PlotPoints::new(normal_pts))
                         .shape(MarkerShape::Circle)
-                        .radius(radius)
-                        .color(color),
+                        .radius(5.0)
+                        .color(colors.text),
                 );
             }
         }
-        ResponseCurve::CubicBezier { segments, .. } => {
-            // Interleaved layout: for each segment, points are laid out as:
-            // [start, control1, control2, end, ...]
-            // extract_control_points produces exactly this order.
+        ResponseCurve::CubicBezier { .. } => {
+            // Batch bezier points by visual state and kind (anchor vs handle).
+            let mut normal_anchors = Vec::new();
+            let mut normal_handles = Vec::new();
             for (idx, &pt) in control_points.iter().enumerate() {
-                // Determine whether this is an anchor endpoint or a handle.
-                // Segment index layout: for n segments, 4*n points total.
-                // Point at position 4*k is start, 4*k+1 is c1, 4*k+2 is c2,
-                // 4*k+3 is end. We expose anchors (0,3) as circles and
-                // handles (1,2) as smaller diamonds.
                 let local = idx % 4;
                 let is_handle = local == 1 || local == 2;
 
-                let (color, radius, shape) = if Some(idx) == dragging {
-                    (
-                        colors.live,
-                        if is_handle { 5.0 } else { 7.0 },
-                        if is_handle {
-                            MarkerShape::Diamond
-                        } else {
-                            MarkerShape::Circle
-                        },
-                    )
-                } else if Some(idx) == hovered {
-                    (
-                        colors.primary,
-                        if is_handle { 5.0 } else { 7.0 },
-                        if is_handle {
-                            MarkerShape::Diamond
-                        } else {
-                            MarkerShape::Circle
-                        },
-                    )
+                if Some(idx) == dragging || Some(idx) == hovered {
+                    let color = if Some(idx) == dragging {
+                        colors.live
+                    } else {
+                        colors.primary
+                    };
+                    let (radius, shape, label) = if is_handle {
+                        (5.0, MarkerShape::Diamond, "bz_active_h")
+                    } else {
+                        (7.0, MarkerShape::Circle, "bz_active_a")
+                    };
+                    plot_ui.points(
+                        Points::new(label, PlotPoints::new(vec![pt]))
+                            .shape(shape)
+                            .radius(radius)
+                            .color(color),
+                    );
                 } else if is_handle {
-                    (colors.text_dim, 4.0, MarkerShape::Diamond)
+                    normal_handles.push(pt);
                 } else {
-                    (colors.text, 5.0, MarkerShape::Circle)
-                };
-
+                    normal_anchors.push(pt);
+                }
+            }
+            if !normal_anchors.is_empty() {
                 plot_ui.points(
-                    Points::new(format!("bz_{idx}"), PlotPoints::new(vec![pt]))
-                        .shape(shape)
-                        .radius(radius)
-                        .color(color),
+                    Points::new("bz_anchors", PlotPoints::new(normal_anchors))
+                        .shape(MarkerShape::Circle)
+                        .radius(5.0)
+                        .color(colors.text),
                 );
             }
-            // Suppress unused variable warning for segments when no iteration needed.
-            let _ = segments;
+            if !normal_handles.is_empty() {
+                plot_ui.points(
+                    Points::new("bz_handles", PlotPoints::new(normal_handles))
+                        .shape(MarkerShape::Diamond)
+                        .radius(4.0)
+                        .color(colors.text_dim),
+                );
+            }
         }
     }
 }
@@ -414,7 +509,6 @@ fn render_controls(
     ui: &mut egui::Ui,
     curve: &mut ResponseCurve,
     state: &mut CurveEditorState,
-    colors: &theme::ThemeColors,
 ) -> bool {
     let mut changed = false;
 
@@ -430,52 +524,42 @@ fn render_controls(
         | ResponseCurve::CubicBezier { symmetric, .. } => *symmetric,
     };
 
-    egui::Grid::new(ui.id().with("curve_controls"))
-        .num_columns(2)
-        .spacing([8.0, 4.0])
-        .show(ui, |ui| {
-            // Curve type selector.
-            ui.label(egui::RichText::new("Type").color(colors.text_dim));
-            let mut selected_type = current_type;
-            egui::ComboBox::from_id_salt(ui.id().with("curve_type"))
-                .selected_text(selected_type.label())
-                .width(150.0)
-                .show_ui(ui, |ui| {
-                    for variant in [
-                        CurveType::PiecewiseLinear,
-                        CurveType::CubicSpline,
-                        CurveType::CubicBezier,
-                    ] {
-                        if ui
-                            .selectable_value(&mut selected_type, variant, variant.label())
-                            .changed()
-                        {
-                            // Type switching handled after closure.
-                        }
-                    }
-                });
-            if selected_type != current_type {
-                if let Some(converted) = convert_curve_type(curve, selected_type) {
-                    *curve = converted;
-                    state.cache_dirty = true;
-                    changed = true;
+    ui.horizontal(|ui| {
+        // Curve type selector.
+        let mut selected_type = current_type;
+        egui::ComboBox::from_id_salt(ui.id().with("curve_type"))
+            .selected_text(selected_type.label())
+            .width(150.0)
+            .show_ui(ui, |ui| {
+                for variant in [
+                    CurveType::PiecewiseLinear,
+                    CurveType::CubicSpline,
+                    CurveType::CubicBezier,
+                ] {
+                    ui.selectable_value(&mut selected_type, variant, variant.label());
                 }
+            });
+        if selected_type != current_type {
+            if let Some(converted) = convert_curve_type(curve, selected_type) {
+                *curve = converted;
+                state.cache_dirty = true;
+                changed = true;
             }
-            ui.end_row();
+        }
 
-            // Symmetry toggle.
-            ui.label(egui::RichText::new("Symmetric").color(colors.text_dim));
-            let mut symmetric = current_symmetric;
-            if ui.checkbox(&mut symmetric, "").changed() {
-                let new_curve = apply_symmetry(curve, symmetric);
-                if let Some(valid) = new_curve {
-                    *curve = valid;
-                    state.cache_dirty = true;
-                    changed = true;
-                }
+        ui.add_space(16.0);
+
+        // Symmetry toggle.
+        let mut symmetric = current_symmetric;
+        if ui.checkbox(&mut symmetric, "Symmetric").changed() {
+            let new_curve = apply_symmetry(curve, symmetric);
+            if let Some(valid) = new_curve {
+                *curve = valid;
+                state.cache_dirty = true;
+                changed = true;
             }
-            ui.end_row();
-        });
+        }
+    });
 
     changed
 }
@@ -486,8 +570,7 @@ fn render_controls(
 
 /// Rebuild the 200-sample polyline cache from the current curve.
 ///
-/// Samples are spaced evenly from -1.0 to 1.0, or from 0.0 to 1.0 when the
-/// curve is symmetric (only the positive half needs distinct sampling).
+/// Samples are spaced evenly from -1.0 to 1.0.
 fn rebuild_cache(curve: &ResponseCurve, cached_line: &mut Vec<[f64; 2]>) {
     cached_line.clear();
     cached_line.reserve(CURVE_SAMPLE_COUNT);
@@ -557,7 +640,7 @@ fn find_nearest_point(
             let dist = screen_pos.distance(screen_pt);
             (idx, dist)
         })
-        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .min_by(|a, b| a.1.total_cmp(&b.1))
 }
 
 // ---------------------------------------------------------------------------
@@ -567,28 +650,52 @@ fn find_nearest_point(
 /// Compute the allowed x range for moving control point at `index`.
 ///
 /// Returns `(lower_bound, upper_bound)` exclusive so that the dragged point
-/// keeps strictly between its neighbors. For Bezier handle points (non-anchor
-/// positions in the 4-per-segment layout), the full `-1.0..=1.0` range is
-/// returned because handles do not need to maintain x ordering.
+/// keeps strictly between its neighbors. Edge points (first and last) have
+/// their x position locked. In symmetric mode, the center point is frozen
+/// at x = 0.
 fn adjacent_x_bounds(curve: &ResponseCurve, index: usize) -> (f64, f64) {
+    let symmetric = match curve {
+        ResponseCurve::PiecewiseLinear { symmetric, .. }
+        | ResponseCurve::CubicSpline { symmetric, .. }
+        | ResponseCurve::CubicBezier { symmetric, .. } => *symmetric,
+    };
+
     match curve {
         ResponseCurve::PiecewiseLinear { points, .. }
         | ResponseCurve::CubicSpline { points, .. } => {
-            let lower = if index > 0 {
-                points[index - 1].0 + MIN_X_GAP
-            } else {
-                -1.0
-            };
-            let upper = if index + 1 < points.len() {
-                points[index + 1].0 - MIN_X_GAP
-            } else {
-                1.0
-            };
+            let count = points.len();
+
+            // Edge points: x locked at their current position.
+            if index == 0 {
+                return (points[0].0, points[0].0);
+            }
+            if index == count - 1 {
+                return (points[count - 1].0, points[count - 1].0);
+            }
+
+            // Center point in symmetric mode: frozen at x = 0.
+            if symmetric && count % 2 == 1 && index == count / 2 {
+                return (0.0, 0.0);
+            }
+
+            let lower = points[index - 1].0 + MIN_X_GAP;
+            let upper = points[index + 1].0 - MIN_X_GAP;
             (lower, upper)
         }
-        ResponseCurve::CubicBezier { .. } => {
-            // Bezier handles have no x-ordering constraint; only endpoints
-            // are loosely bounded to the visible domain.
+        ResponseCurve::CubicBezier { segments, .. } => {
+            let seg_idx = index / 4;
+            let local = index % 4;
+            let last_seg = segments.len().saturating_sub(1);
+
+            // Lock endpoint x: first segment start at x=-1, last segment end at x=1.
+            if seg_idx == 0 && local == 0 {
+                return (-1.0, -1.0);
+            }
+            if seg_idx == last_seg && local == 3 {
+                return (1.0, 1.0);
+            }
+
+            // All other bezier handles are unconstrained.
             (-1.0, 1.0)
         }
     }
@@ -600,6 +707,9 @@ fn adjacent_x_bounds(curve: &ResponseCurve, index: usize) -> (f64, f64) {
 /// directly.  For `CubicBezier` the point at the given index within the
 /// interleaved `[start, c1, c2, end]` layout is updated in the corresponding
 /// segment field.
+///
+/// When the curve is symmetric, the mirror point at `count - 1 - index` is
+/// automatically updated to `(-x, -y)`, maintaining antisymmetry.
 fn update_point_in_curve(
     curve: &mut ResponseCurve,
     index: usize,
@@ -610,48 +720,145 @@ fn update_point_in_curve(
     let new_y = new_pos.y.clamp(-1.0, 1.0);
 
     match curve {
-        ResponseCurve::PiecewiseLinear { points, .. }
-        | ResponseCurve::CubicSpline { points, .. } => {
+        ResponseCurve::PiecewiseLinear {
+            points, symmetric, ..
+        }
+        | ResponseCurve::CubicSpline {
+            points, symmetric, ..
+        } => {
+            // Center point is frozen at (0, 0) in symmetric mode.
+            if *symmetric && points.len() % 2 == 1 && index == points.len() / 2 {
+                return;
+            }
             if let Some(pt) = points.get_mut(index) {
                 pt.0 = new_x;
                 pt.1 = new_y;
             }
+            // Auto-mirror in symmetric mode.
+            if *symmetric {
+                let count = points.len();
+                let mirror_idx = count - 1 - index;
+                if mirror_idx != index {
+                    if let Some(mirror_pt) = points.get_mut(mirror_idx) {
+                        mirror_pt.0 = -new_x;
+                        mirror_pt.1 = -new_y;
+                    }
+                }
+            }
         }
-        ResponseCurve::CubicBezier { segments, .. } => {
-            let seg_idx = index / 4;
-            let local = index % 4;
-            if let Some(seg) = segments.get_mut(seg_idx) {
-                match local {
-                    0 => {
-                        seg.start.0 = new_x;
-                        seg.start.1 = new_y;
-                    }
-                    1 => {
-                        seg.control1.0 = new_x;
-                        seg.control1.1 = new_y;
-                    }
-                    2 => {
-                        seg.control2.0 = new_x;
-                        seg.control2.1 = new_y;
-                    }
-                    3 => {
-                        seg.end.0 = new_x;
-                        seg.end.1 = new_y;
-                    }
+        ResponseCurve::CubicBezier {
+            segments,
+            symmetric,
+        } => update_bezier_point(segments, *symmetric, index, new_x, new_y),
+    }
+}
+
+/// Update a single bezier control point and enforce symmetric mirroring.
+///
+/// Handles center-freeze, endpoint sync between consecutive segments,
+/// and antisymmetric mirroring when `symmetric` is enabled.
+fn update_bezier_point(
+    segments: &mut [BezierSegment],
+    symmetric: bool,
+    index: usize,
+    new_x: f64,
+    new_y: f64,
+) {
+    let seg_idx = index / 4;
+    let local = index % 4;
+
+    // Center junction point is frozen at (0, 0) in symmetric mode.
+    // For N segments, the center is at segment N/2, local 0 (= start).
+    if symmetric && segments.len() % 2 == 0 {
+        let center_seg = segments.len() / 2;
+        if seg_idx == center_seg && local == 0 {
+            return;
+        }
+        // Also block the alias: previous segment's end (local 3).
+        if seg_idx == center_seg - 1 && local == 3 {
+            return;
+        }
+    }
+
+    if let Some(seg) = segments.get_mut(seg_idx) {
+        match local {
+            0 => {
+                seg.start.0 = new_x;
+                seg.start.1 = new_y;
+            }
+            1 => {
+                seg.control1.0 = new_x;
+                seg.control1.1 = new_y;
+            }
+            2 => {
+                seg.control2.0 = new_x;
+                seg.control2.1 = new_y;
+            }
+            3 => {
+                seg.end.0 = new_x;
+                seg.end.1 = new_y;
+            }
+            _ => {}
+        }
+    }
+
+    // Sync shared endpoints between consecutive segments:
+    // segment N's end == segment N+1's start.
+    if local == 3 {
+        if let Some(next) = segments.get_mut(seg_idx + 1) {
+            next.start.0 = new_x;
+            next.start.1 = new_y;
+        }
+    } else if local == 0 && seg_idx > 0 {
+        if let Some(prev) = segments.get_mut(seg_idx - 1) {
+            prev.end.0 = new_x;
+            prev.end.1 = new_y;
+        }
+    }
+
+    // Auto-mirror in symmetric mode: mirror the corresponding
+    // point in the opposite segment. For N segments, segment i
+    // mirrors to segment (N - 1 - i), with local positions
+    // swapped (0<->3, 1<->2).
+    if symmetric {
+        let seg_count = segments.len();
+        let mirror_seg_idx = seg_count - 1 - seg_idx;
+        let mirror_local = 3 - local;
+
+        // Track which segment the primary endpoint sync touched,
+        // so we skip overlapping mirror endpoint sync.
+        let primary_synced_idx = match local {
+            3 => Some(seg_idx + 1),
+            0 if seg_idx > 0 => Some(seg_idx - 1),
+            _ => None,
+        };
+
+        // Only mirror if it is a different point (not the center).
+        if mirror_seg_idx != seg_idx || mirror_local != local {
+            if let Some(mirror_seg) = segments.get_mut(mirror_seg_idx) {
+                match mirror_local {
+                    0 => mirror_seg.start = (-new_x, -new_y),
+                    1 => mirror_seg.control1 = (-new_x, -new_y),
+                    2 => mirror_seg.control2 = (-new_x, -new_y),
+                    3 => mirror_seg.end = (-new_x, -new_y),
                     _ => {}
                 }
             }
-            // Sync shared endpoints between consecutive segments:
-            // segment N's end == segment N+1's start.
-            if local == 3 {
-                if let Some(next) = segments.get_mut(seg_idx + 1) {
-                    next.start.0 = new_x;
-                    next.start.1 = new_y;
+            // Sync shared endpoints for the mirrored segment,
+            // skipping if the primary sync already wrote to this segment.
+            if mirror_local == 3 {
+                let target = mirror_seg_idx + 1;
+                if primary_synced_idx != Some(target) {
+                    if let Some(next) = segments.get_mut(target) {
+                        next.start = (-new_x, -new_y);
+                    }
                 }
-            } else if local == 0 && seg_idx > 0 {
-                if let Some(prev) = segments.get_mut(seg_idx - 1) {
-                    prev.end.0 = new_x;
-                    prev.end.1 = new_y;
+            } else if mirror_local == 0 && mirror_seg_idx > 0 {
+                let target = mirror_seg_idx - 1;
+                if primary_synced_idx != Some(target) {
+                    if let Some(prev) = segments.get_mut(target) {
+                        prev.end = (-new_x, -new_y);
+                    }
                 }
             }
         }
@@ -683,38 +890,49 @@ fn reconstruct_curve(curve: &ResponseCurve) -> Option<ResponseCurve> {
 }
 
 /// Return a safe identity fallback with the same type and symmetry as `curve`.
+///
+/// Symmetric curves store all points on both sides of the origin.
 fn default_identity_curve(curve: &ResponseCurve) -> ResponseCurve {
     match curve {
         ResponseCurve::PiecewiseLinear { symmetric, .. } => {
-            let pts = if *symmetric {
-                vec![(0.0, 0.0), (1.0, 1.0)]
-            } else {
-                vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)]
-            };
+            let pts = vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)];
             ResponseCurve::piecewise_linear(pts, *symmetric).unwrap_or_else(|_| {
                 ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (1.0, 1.0)], false)
                     .expect("hardcoded identity is valid")
             })
         }
         ResponseCurve::CubicSpline { symmetric, .. } => {
-            let pts = if *symmetric {
-                vec![(0.0, 0.0), (1.0, 1.0)]
-            } else {
-                vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)]
-            };
+            let pts = vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)];
             ResponseCurve::cubic_spline(pts, *symmetric).unwrap_or_else(|_| {
                 ResponseCurve::cubic_spline(vec![(-1.0, -1.0), (1.0, 1.0)], false)
                     .expect("hardcoded identity is valid")
             })
         }
         ResponseCurve::CubicBezier { symmetric, .. } => {
-            let seg = BezierSegment {
-                start: (-1.0, -1.0),
-                control1: (-1.0 / 3.0, -1.0 / 3.0),
-                control2: (1.0 / 3.0, 1.0 / 3.0),
-                end: (1.0, 1.0),
+            let segs = if *symmetric {
+                vec![
+                    BezierSegment {
+                        start: (-1.0, -1.0),
+                        control1: (-2.0 / 3.0, -2.0 / 3.0),
+                        control2: (-1.0 / 3.0, -1.0 / 3.0),
+                        end: (0.0, 0.0),
+                    },
+                    BezierSegment {
+                        start: (0.0, 0.0),
+                        control1: (1.0 / 3.0, 1.0 / 3.0),
+                        control2: (2.0 / 3.0, 2.0 / 3.0),
+                        end: (1.0, 1.0),
+                    },
+                ]
+            } else {
+                vec![BezierSegment {
+                    start: (-1.0, -1.0),
+                    control1: (-1.0 / 3.0, -1.0 / 3.0),
+                    control2: (1.0 / 3.0, 1.0 / 3.0),
+                    end: (1.0, 1.0),
+                }]
             };
-            ResponseCurve::cubic_bezier(vec![seg], *symmetric).unwrap_or_else(|_| {
+            ResponseCurve::cubic_bezier(segs, *symmetric).unwrap_or_else(|_| {
                 let fallback_seg = BezierSegment {
                     start: (-1.0, -1.0),
                     control1: (-1.0 / 3.0, -1.0 / 3.0),
@@ -732,53 +950,305 @@ fn default_identity_curve(curve: &ResponseCurve) -> ResponseCurve {
 // Curve type conversion
 // ---------------------------------------------------------------------------
 
-/// Convert a curve to a different [`CurveType`], preserving points where
-/// possible.
+/// Convert a curve to a different [`CurveType`] by creating fresh defaults.
 ///
-/// Returns `None` when conversion produces an invalid curve (validation
-/// error), leaving `curve` unchanged. The caller should not apply the result
-/// in that case.
+/// Matches `JoystickGremlin` behavior: switching types resets the curve to
+/// a clean identity rather than attempting to preserve arbitrary point
+/// configurations. Preserves the symmetric flag and applies enforcement if
+/// symmetric.
 fn convert_curve_type(curve: &ResponseCurve, target: CurveType) -> Option<ResponseCurve> {
-    let (points, symmetric) = match curve {
-        ResponseCurve::PiecewiseLinear { points, symmetric }
-        | ResponseCurve::CubicSpline { points, symmetric } => (points.clone(), *symmetric),
+    let symmetric = match curve {
+        ResponseCurve::PiecewiseLinear { symmetric, .. }
+        | ResponseCurve::CubicSpline { symmetric, .. }
+        | ResponseCurve::CubicBezier { symmetric, .. } => *symmetric,
+    };
+
+    match target {
+        CurveType::PiecewiseLinear => {
+            ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], symmetric)
+                .ok()
+        }
+        CurveType::CubicSpline => {
+            ResponseCurve::cubic_spline(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], symmetric).ok()
+        }
+        CurveType::CubicBezier => {
+            let segs = if symmetric {
+                vec![
+                    BezierSegment {
+                        start: (-1.0, -1.0),
+                        control1: (-2.0 / 3.0, -2.0 / 3.0),
+                        control2: (-1.0 / 3.0, -1.0 / 3.0),
+                        end: (0.0, 0.0),
+                    },
+                    BezierSegment {
+                        start: (0.0, 0.0),
+                        control1: (1.0 / 3.0, 1.0 / 3.0),
+                        control2: (2.0 / 3.0, 2.0 / 3.0),
+                        end: (1.0, 1.0),
+                    },
+                ]
+            } else {
+                vec![BezierSegment {
+                    start: (-1.0, -1.0),
+                    control1: (-1.0 / 3.0, -1.0 / 3.0),
+                    control2: (1.0 / 3.0, 1.0 / 3.0),
+                    end: (1.0, 1.0),
+                }]
+            };
+            ResponseCurve::cubic_bezier(segs, symmetric).ok()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Add / remove control points
+// ---------------------------------------------------------------------------
+
+/// Add a control point at `pos` on the curve. For symmetric curves, also
+/// adds the mirror point at `(-x, -y)`.
+///
+/// Returns `true` when the point was added successfully.
+fn add_control_point(curve: &mut ResponseCurve, pos: PlotPoint) -> bool {
+    let x = pos.x.clamp(-1.0, 1.0);
+    let y = pos.y.clamp(-1.0, 1.0);
+
+    match curve {
+        ResponseCurve::PiecewiseLinear {
+            points, symmetric, ..
+        }
+        | ResponseCurve::CubicSpline {
+            points, symmetric, ..
+        } => {
+            let original_points = points.clone();
+            points.push((x, y));
+            if *symmetric {
+                // Add mirror point (skip if at origin).
+                if x.abs() > 0.0 {
+                    points.push((-x, -y));
+                }
+            }
+            points.sort_by(|a, b| a.0.total_cmp(&b.0));
+            // Validate: check x values are strictly increasing after sort.
+            if points.windows(2).all(|w| w[0].0 < w[1].0) {
+                true
+            } else {
+                // Rollback: restore original points on validation failure.
+                *points = original_points;
+                false
+            }
+        }
         ResponseCurve::CubicBezier {
             segments,
             symmetric,
         } => {
-            // Extract only the endpoint pairs (start and end of each segment).
-            let mut pts: Vec<(f64, f64)> = Vec::with_capacity(segments.len() + 1);
-            for (i, seg) in segments.iter().enumerate() {
-                if i == 0 {
-                    pts.push(seg.start);
-                }
-                pts.push(seg.end);
-            }
-            // Deduplicate: consecutive endpoints should be the same.
-            pts.dedup_by(|a, b| (a.0 - b.0).abs() < MIN_X_GAP);
-            (pts, *symmetric)
-        }
-    };
-
-    match target {
-        CurveType::PiecewiseLinear => ResponseCurve::piecewise_linear(points, symmetric).ok(),
-        CurveType::CubicSpline => ResponseCurve::cubic_spline(points, symmetric).ok(),
-        CurveType::CubicBezier => {
-            // Build a single segment spanning the full range, using evenly
-            // spaced control handles to approximate a smooth identity.
-            let first = points.first().copied().unwrap_or((-1.0, -1.0));
-            let last = points.last().copied().unwrap_or((1.0, 1.0));
-            let dx = (last.0 - first.0) / 3.0;
-            let dy = (last.1 - first.1) / 3.0;
-            let seg = BezierSegment {
-                start: first,
-                control1: (first.0 + dx, first.1 + dy),
-                control2: (last.0 - dx, last.1 - dy),
-                end: last,
+            // Find the segment containing x.
+            let Some(seg_idx) = segments.iter().position(|s| s.start.0 <= x && x <= s.end.0) else {
+                return false;
             };
-            ResponseCurve::cubic_bezier(vec![seg], symmetric).ok()
+
+            // Compute t parameter (linear approximation).
+            let seg = &segments[seg_idx];
+            let dx = seg.end.0 - seg.start.0;
+            if dx.abs() < f64::EPSILON {
+                return false;
+            }
+            let t = ((x - seg.start.0) / dx).clamp(0.05, 0.95);
+
+            // De Casteljau split.
+            let (left, right) = split_bezier_segment(seg, t);
+            segments.splice(seg_idx..=seg_idx, [left, right]);
+
+            // Mirror in symmetric mode.
+            if *symmetric {
+                // segments.len() is post-splice (original + 1).
+                let pre_splice_count = segments.len() - 1;
+                let mut mirror_seg = pre_splice_count - 1 - seg_idx;
+                // Adjust mirror index for the splice insertion at seg_idx.
+                if mirror_seg >= seg_idx {
+                    mirror_seg += 1;
+                }
+                if mirror_seg != seg_idx && mirror_seg != seg_idx + 1 {
+                    // Compute mirror t from the mirror segment's geometry
+                    // so the split point lands at (-x, -y) for antisymmetry.
+                    let mirror_x = -x;
+                    let m_seg = &segments[mirror_seg];
+                    let m_dx = m_seg.end.0 - m_seg.start.0;
+                    let mirror_t = if m_dx.abs() < f64::EPSILON {
+                        0.5
+                    } else {
+                        ((mirror_x - m_seg.start.0) / m_dx).clamp(0.05, 0.95)
+                    };
+                    let (ml, mr) = split_bezier_segment(&segments[mirror_seg], mirror_t);
+                    segments.splice(mirror_seg..=mirror_seg, [ml, mr]);
+                }
+            }
+            true
         }
     }
+}
+
+/// Remove control point at `index`. For symmetric curves, also removes the
+/// mirror point. Edge points and center point cannot be removed.
+///
+/// Returns `true` when the point was removed successfully.
+fn remove_control_point(curve: &mut ResponseCurve, index: usize) -> bool {
+    match curve {
+        ResponseCurve::PiecewiseLinear {
+            points, symmetric, ..
+        }
+        | ResponseCurve::CubicSpline {
+            points, symmetric, ..
+        } => {
+            let count = points.len();
+
+            // Cannot remove edge points.
+            if index == 0 || index == count - 1 {
+                return false;
+            }
+            // Cannot remove center point in symmetric mode.
+            if *symmetric && count % 2 == 1 && index == count / 2 {
+                return false;
+            }
+            // Need at least 2 points after removal.
+            let removals = if *symmetric { 2 } else { 1 };
+            if count <= removals + 1 {
+                return false;
+            }
+
+            if *symmetric {
+                let mirror_idx = count - 1 - index;
+                // Center point (index == mirror_idx) is already blocked above.
+                debug_assert_ne!(index, mirror_idx, "center removal should be caught earlier");
+                // Remove higher index first to avoid shifting.
+                let (first, second) = if index > mirror_idx {
+                    (index, mirror_idx)
+                } else {
+                    (mirror_idx, index)
+                };
+                points.remove(first);
+                points.remove(second);
+            } else {
+                points.remove(index);
+            }
+            true
+        }
+        ResponseCurve::CubicBezier {
+            segments,
+            symmetric,
+        } => {
+            let seg_idx = index / 4;
+            let local = index % 4;
+
+            // Only junction points (endpoints shared between segments) can be removed.
+            // Control handles (local 1, 2) cannot be removed independently.
+            if local == 1 || local == 2 {
+                return false;
+            }
+
+            // Determine which two segments share this junction.
+            let (left_idx, right_idx) = if local == 3 {
+                (seg_idx, seg_idx + 1)
+            } else {
+                // local == 0
+                if seg_idx == 0 {
+                    return false; // First start point — edge.
+                }
+                (seg_idx - 1, seg_idx)
+            };
+
+            let seg_count = segments.len();
+            if right_idx >= seg_count {
+                return false; // Last end point — edge.
+            }
+            // Need at least 1 segment after merge.
+            if seg_count < 2 {
+                return false;
+            }
+
+            // Cannot remove center junction in symmetric mode.
+            if *symmetric && seg_count % 2 == 0 {
+                let center_seg = seg_count / 2;
+                if (local == 3 && seg_idx == center_seg - 1)
+                    || (local == 0 && seg_idx == center_seg)
+                {
+                    return false;
+                }
+            }
+
+            // Merge: keep left's start+control1, right's control2+end.
+            let merged = BezierSegment {
+                start: segments[left_idx].start,
+                control1: segments[left_idx].control1,
+                control2: segments[right_idx].control2,
+                end: segments[right_idx].end,
+            };
+            segments.splice(left_idx..=right_idx, [merged]);
+
+            // Mirror in symmetric mode.
+            if *symmetric {
+                // The primary merge replaced 2 segments with 1, so
+                // pre_merge_count = current + 1.
+                let pre_merge_count = segments.len() + 1;
+                let mut mirror_left = pre_merge_count - 2 - left_idx;
+                // Adjust: the merge at left_idx reduced indices above it by 1.
+                if mirror_left > left_idx {
+                    mirror_left -= 1;
+                }
+                let new_count = segments.len();
+                if mirror_left < new_count && mirror_left != left_idx {
+                    let mirror_right = mirror_left + 1;
+                    if mirror_right < new_count {
+                        let mirror_merged = BezierSegment {
+                            start: segments[mirror_left].start,
+                            control1: segments[mirror_left].control1,
+                            control2: segments[mirror_right].control2,
+                            end: segments[mirror_right].end,
+                        };
+                        segments.splice(mirror_left..=mirror_right, [mirror_merged]);
+                    }
+                }
+            }
+            true
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bezier helpers
+// ---------------------------------------------------------------------------
+
+/// Linearly interpolate between two 2D points.
+fn lerp_point(a: (f64, f64), b: (f64, f64), t: f64) -> (f64, f64) {
+    (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t)
+}
+
+/// Split a cubic Bezier segment at parameter `t` using De Casteljau's algorithm.
+///
+/// Returns the two sub-segments `(left, right)` whose union equals the original.
+fn split_bezier_segment(seg: &BezierSegment, t: f64) -> (BezierSegment, BezierSegment) {
+    // Level 1: interpolate between adjacent original control points.
+    let ab = lerp_point(seg.start, seg.control1, t);
+    let bc = lerp_point(seg.control1, seg.control2, t);
+    let cd = lerp_point(seg.control2, seg.end, t);
+    // Level 2: interpolate between level-1 results.
+    let abc = lerp_point(ab, bc, t);
+    let bcd = lerp_point(bc, cd, t);
+    // Level 3: the point on the curve at parameter t.
+    let mid = lerp_point(abc, bcd, t);
+
+    let left = BezierSegment {
+        start: seg.start,
+        control1: ab,
+        control2: abc,
+        end: mid,
+    };
+    let right = BezierSegment {
+        start: mid,
+        control1: bcd,
+        control2: cd,
+        end: seg.end,
+    };
+    (left, right)
 }
 
 // ---------------------------------------------------------------------------
@@ -787,67 +1257,119 @@ fn convert_curve_type(curve: &ResponseCurve, target: CurveType) -> Option<Respon
 
 /// Apply a symmetry change to the curve, returning a validated result.
 ///
-/// When enabling symmetry, retains only points with `x >= 0` and ensures
-/// the origin is included so the curve always has enough points for
-/// validation. When disabling, keeps existing points unchanged.
+/// When **enabling** symmetry, restructures the curve to be antisymmetric
+/// through the origin by mirroring the positive-half points to the negative
+/// side, matching `JoystickGremlin` `_enforce_symmetry()` behavior.
+///
+/// When **disabling** symmetry, simply clears the flag — all points (both
+/// sides) are kept as-is.
+///
 /// Returns `None` when the post-change state fails validation.
 fn apply_symmetry(curve: &ResponseCurve, symmetric: bool) -> Option<ResponseCurve> {
+    if symmetric {
+        // Enabling: enforce antisymmetry.
+        enforce_symmetry(curve)
+    } else {
+        // Disabling: mutate the flag in-place without cloning or re-validating.
+        let mut result = curve.clone();
+        result.set_symmetric(false);
+        Some(result)
+    }
+}
+
+/// Enforce antisymmetry on a curve: `f(-x) = -f(x)`.
+///
+/// Takes the positive-half points (x >= 0), mirrors them to create the
+/// negative side, and ensures the origin is included. Matches
+/// `JoystickGremlin` `_enforce_symmetry()`.
+fn enforce_symmetry(curve: &ResponseCurve) -> Option<ResponseCurve> {
     match curve {
         ResponseCurve::PiecewiseLinear { points, .. } => {
-            let pts = if symmetric {
-                ensure_symmetric_points(points, curve)
-            } else {
-                points.clone()
-            };
-            ResponseCurve::piecewise_linear(pts, symmetric).ok()
+            let pts = enforce_symmetry_points(points);
+            ResponseCurve::piecewise_linear(pts, true).ok()
         }
         ResponseCurve::CubicSpline { points, .. } => {
-            let pts = if symmetric {
-                ensure_symmetric_points(points, curve)
-            } else {
-                points.clone()
-            };
-            ResponseCurve::cubic_spline(pts, symmetric).ok()
+            let pts = enforce_symmetry_points(points);
+            ResponseCurve::cubic_spline(pts, true).ok()
         }
         ResponseCurve::CubicBezier { segments, .. } => {
-            let segs = if symmetric {
-                let filtered: Vec<_> = segments
-                    .iter()
-                    .filter(|s| s.start.0 >= 0.0 && s.end.0 >= 0.0)
-                    .cloned()
-                    .collect();
-                if filtered.is_empty() {
-                    // No segments in positive domain — create a default from origin.
-                    vec![BezierSegment {
-                        start: (0.0, 0.0),
-                        control1: (1.0 / 3.0, 1.0 / 3.0),
-                        control2: (2.0 / 3.0, 2.0 / 3.0),
-                        end: (1.0, 1.0),
-                    }]
-                } else {
-                    filtered
-                }
-            } else {
-                segments.clone()
-            };
-            ResponseCurve::cubic_bezier(segs, symmetric).ok()
+            let segs = enforce_symmetry_bezier(segments);
+            ResponseCurve::cubic_bezier(segs, true).ok()
         }
     }
 }
 
-/// Filter points to `x >= 0` for symmetric mode, ensuring the origin and
-/// at least 2 points exist so validated constructors will not reject them.
-fn ensure_symmetric_points(points: &[(f64, f64)], curve: &ResponseCurve) -> Vec<(f64, f64)> {
-    let mut pts: Vec<(f64, f64)> = points.iter().filter(|(x, _)| *x >= 0.0).copied().collect();
-    // Insert origin if missing (e.g., curve only has x=-1 and x=1).
-    if pts.is_empty() || pts[0].0 > 0.0 {
-        pts.insert(0, (0.0, curve.evaluate(0.0)));
+/// Build a full antisymmetric point set from existing points.
+///
+/// Keeps points with x >= 0, mirrors them to the negative side, and
+/// ensures the origin (0, 0) is present. If no positive-side points
+/// exist, falls back to a minimal identity.
+fn enforce_symmetry_points(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    // Collect positive-half points (x >= 0), sorted by x.
+    let mut positive: Vec<(f64, f64)> = points.iter().filter(|(x, _)| *x >= 0.0).copied().collect();
+    positive.sort_by(|a, b| a.0.total_cmp(&b.0));
+
+    // Ensure origin is present.
+    if positive.is_empty() || positive[0].0 > 0.0 {
+        positive.insert(0, (0.0, 0.0));
+    } else {
+        // Lock origin y to 0 for antisymmetry.
+        positive[0].1 = 0.0;
     }
-    // Ensure at least 2 points for validation.
-    if pts.len() < 2 {
-        pts.push((1.0, curve.evaluate(1.0)));
+
+    // Ensure at least (0,0) and (1,1).
+    if positive.len() < 2 {
+        positive.push((1.0, 1.0));
     }
-    pts
+
+    // Mirror positive points (excluding origin) to negative side.
+    let mut result: Vec<(f64, f64)> = positive
+        .iter()
+        .filter(|(x, _)| *x > 0.0)
+        .map(|(x, y)| (-x, -y))
+        .collect();
+    result.reverse();
+    result.extend_from_slice(&positive);
+    result
+}
+
+/// Build a full antisymmetric bezier segment set from existing segments.
+///
+/// Keeps segments in the positive domain and mirrors them to the negative
+/// side. If no positive segments exist, creates a default symmetric pair.
+fn enforce_symmetry_bezier(segments: &[BezierSegment]) -> Vec<BezierSegment> {
+    // Collect segments with start.x >= 0.
+    let positive: Vec<_> = segments
+        .iter()
+        .filter(|s| s.start.0 >= 0.0)
+        .cloned()
+        .collect();
+
+    let positive = if positive.is_empty() {
+        // Fallback: create a default positive segment.
+        vec![BezierSegment {
+            start: (0.0, 0.0),
+            control1: (1.0 / 3.0, 1.0 / 3.0),
+            control2: (2.0 / 3.0, 2.0 / 3.0),
+            end: (1.0, 1.0),
+        }]
+    } else {
+        positive
+    };
+
+    // Mirror positive segments to create negative side.
+    let mut mirrored: Vec<BezierSegment> = positive
+        .iter()
+        .rev()
+        .map(|seg| BezierSegment {
+            start: (-seg.end.0, -seg.end.1),
+            control1: (-seg.control2.0, -seg.control2.1),
+            control2: (-seg.control1.0, -seg.control1.1),
+            end: (-seg.start.0, -seg.start.1),
+        })
+        .collect();
+    mirrored.extend_from_slice(&positive);
+    mirrored
 }
 
 // ---------------------------------------------------------------------------
@@ -991,13 +1513,15 @@ mod tests {
     }
 
     #[test]
-    fn adjacent_x_bounds_clamps_endpoints() {
+    fn adjacent_x_bounds_locks_edge_points() {
         let curve = identity_piecewise();
-        // First point: no lower neighbor.
-        let (lo, _) = adjacent_x_bounds(&curve, 0);
+        // First point: x locked at -1.0.
+        let (lo, hi) = adjacent_x_bounds(&curve, 0);
         assert!((lo - (-1.0)).abs() < f64::EPSILON);
-        // Last point: no upper neighbor.
-        let (_, hi) = adjacent_x_bounds(&curve, 2);
+        assert!((hi - (-1.0)).abs() < f64::EPSILON);
+        // Last point: x locked at 1.0.
+        let (lo, hi) = adjacent_x_bounds(&curve, 2);
+        assert!((lo - 1.0).abs() < f64::EPSILON);
         assert!((hi - 1.0).abs() < f64::EPSILON);
     }
 
@@ -1023,11 +1547,10 @@ mod tests {
     }
 
     #[test]
-    fn apply_symmetry_enables_filters_negative_x() {
+    fn apply_symmetry_enforces_antisymmetric_points() {
         let curve =
             ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false)
                 .unwrap();
-        // Enable symmetry: must drop the x=-1.0 point and return x>=0 only.
         let result = apply_symmetry(&curve, true);
         assert!(
             result.is_some(),
@@ -1035,15 +1558,22 @@ mod tests {
         );
         if let Some(ResponseCurve::PiecewiseLinear { points, symmetric }) = result {
             assert!(symmetric);
-            assert!(points.iter().all(|(x, _)| *x >= 0.0));
+            // Must have origin and mirrored points on both sides.
+            assert!(points.len() >= 3);
+            // Origin must be at (0, 0).
+            let center = points.iter().find(|(x, _)| x.abs() < f64::EPSILON);
+            assert!(center.is_some(), "origin must be present");
+            assert!(
+                (center.unwrap().1).abs() < f64::EPSILON,
+                "origin y must be 0"
+            );
         }
     }
 
     #[test]
     fn apply_symmetry_two_point_default_curve() {
-        // Regression: the default identity curve [(-1,-1), (1,1)] has only one
-        // point with x >= 0 after filtering. `ensure_symmetric_points` must
-        // insert the origin so the result has >= 2 points.
+        // The default identity curve [(-1,-1), (1,1)] must produce a valid
+        // symmetric curve with origin and mirrored points on both sides.
         let curve = ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (1.0, 1.0)], false).unwrap();
         let result = apply_symmetry(&curve, true);
         assert!(
@@ -1053,26 +1583,113 @@ mod tests {
         if let Some(ResponseCurve::PiecewiseLinear { points, symmetric }) = result {
             assert!(symmetric);
             assert!(
-                points.len() >= 2,
-                "symmetric curve must have at least 2 points, got {}",
+                points.len() >= 3,
+                "symmetric curve must have at least 3 points (neg, origin, pos), got {}",
                 points.len()
             );
-            assert!(points.iter().all(|(x, _)| *x >= 0.0));
-            // Origin must be present.
+            // First point must be negative, last must be positive.
+            assert!(points[0].0 < 0.0, "first point must be negative x");
             assert!(
-                points.iter().any(|(x, _)| (*x).abs() < f64::EPSILON),
-                "origin (0, _) must be present"
+                points[points.len() - 1].0 > 0.0,
+                "last point must be positive x"
             );
         }
     }
 
     #[test]
-    fn apply_symmetry_disables_keeps_points() {
-        let curve = ResponseCurve::piecewise_linear(vec![(0.0, 0.0), (1.0, 1.0)], true).unwrap();
+    fn apply_symmetry_disable_keeps_all_points() {
+        // Symmetric curve with full-range points; disabling just clears the flag.
+        let curve = ResponseCurve::piecewise_linear(
+            vec![(-1.0, -1.0), (0.0, 0.0), (0.5, 0.2), (1.0, 1.0)],
+            true,
+        )
+        .unwrap();
         let result = apply_symmetry(&curve, false);
-        assert!(result.is_some());
-        if let Some(ResponseCurve::PiecewiseLinear { symmetric, .. }) = result {
+        assert!(result.is_some(), "disabling symmetry must succeed");
+        if let Some(ResponseCurve::PiecewiseLinear { points, symmetric }) = result {
             assert!(!symmetric);
+            // All original points must be preserved.
+            assert_eq!(points.len(), 4);
+        }
+    }
+
+    #[test]
+    fn adjacent_x_bounds_edge_points_locked() {
+        let curve = identity_piecewise();
+        // First point: x locked at -1.0.
+        let (lo, hi) = adjacent_x_bounds(&curve, 0);
+        assert!((lo - (-1.0)).abs() < f64::EPSILON, "first point lo = -1.0");
+        assert!((hi - (-1.0)).abs() < f64::EPSILON, "first point hi = -1.0");
+        // Last point: x locked at 1.0.
+        let (lo, hi) = adjacent_x_bounds(&curve, 2);
+        assert!((lo - 1.0).abs() < f64::EPSILON, "last point lo = 1.0");
+        assert!((hi - 1.0).abs() < f64::EPSILON, "last point hi = 1.0");
+    }
+
+    #[test]
+    fn adjacent_x_bounds_symmetric_locks_center() {
+        let curve = ResponseCurve::piecewise_linear(
+            vec![
+                (-1.0, -1.0),
+                (-0.5, -0.3),
+                (0.0, 0.0),
+                (0.5, 0.3),
+                (1.0, 1.0),
+            ],
+            true,
+        )
+        .unwrap();
+        // Center point (index 2) must be locked at x = 0.
+        let (lo, hi) = adjacent_x_bounds(&curve, 2);
+        assert!((lo - 0.0).abs() < f64::EPSILON, "center lo must be 0.0");
+        assert!((hi - 0.0).abs() < f64::EPSILON, "center hi must be 0.0");
+    }
+
+    #[test]
+    fn enforce_symmetry_points_produces_antisymmetric() {
+        let points = vec![(-1.0, -0.8), (0.0, 0.1), (0.5, 0.3), (1.0, 1.0)];
+        let result = enforce_symmetry_points(&points);
+        // Must have mirrored positive side to negative and fixed origin y to 0.
+        assert!(result.len() >= 5);
+        // Check antisymmetry: for each positive point, a mirrored negative must exist.
+        for &(x, y) in &result {
+            if x.abs() > f64::EPSILON {
+                let mirror = result.iter().find(|(mx, _)| (mx + x).abs() < f64::EPSILON);
+                assert!(mirror.is_some(), "mirror of ({x}, {y}) must exist");
+                let (_, my) = mirror.unwrap();
+                assert!(
+                    (my + y).abs() < f64::EPSILON,
+                    "mirror y must be -{y}, got {my}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn center_point_frozen_in_symmetric_mode() {
+        use egui_plot::PlotPoint;
+
+        let mut curve = ResponseCurve::PiecewiseLinear {
+            points: vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
+            symmetric: true,
+        };
+        // Try to drag center point (index 1) to (0.3, 0.5).
+        let bounds = adjacent_x_bounds(&curve, 1);
+        update_point_in_curve(&mut curve, 1, PlotPoint::new(0.3, 0.5), bounds);
+
+        if let ResponseCurve::PiecewiseLinear { points, .. } = &curve {
+            assert!(
+                points[1].0.abs() < f64::EPSILON,
+                "center x must stay at 0, got {}",
+                points[1].0
+            );
+            assert!(
+                points[1].1.abs() < f64::EPSILON,
+                "center y must stay at 0, got {}",
+                points[1].1
+            );
+        } else {
+            panic!("expected PiecewiseLinear");
         }
     }
 }

@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-04
 
 use serde::{Deserialize, Serialize};
 
@@ -83,8 +83,11 @@ pub struct BezierSegment {
 
 /// Validate that points satisfy the response curve invariants.
 ///
-/// Requires >= 2 points, strictly increasing x, and x >= 0 when symmetric.
-fn validate_points(points: &[(f64, f64)], symmetric: bool, kind: &str) -> Result<()> {
+/// Requires >= 2 points and strictly increasing x values.
+/// The `symmetric` flag is stored as an edit constraint for the GUI;
+/// it does not affect validation — symmetric curves store all points
+/// on both sides of the origin.
+fn validate_points(points: &[(f64, f64)], kind: &str) -> Result<()> {
     if points.len() < 2 {
         return Err(EngineError::InvalidConfig {
             reason: format!("{kind} requires at least 2 points, got {}", points.len()),
@@ -101,15 +104,6 @@ fn validate_points(points: &[(f64, f64)], symmetric: bool, kind: &str) -> Result
             });
         }
     }
-    if symmetric {
-        for &(x, _) in points {
-            if x < 0.0 {
-                return Err(EngineError::InvalidConfig {
-                    reason: format!("{kind} with symmetric=true requires all x >= 0, found x={x}"),
-                });
-            }
-        }
-    }
     Ok(())
 }
 
@@ -121,9 +115,8 @@ impl ResponseCurve {
     /// Returns [`EngineError::InvalidConfig`] when:
     /// - fewer than 2 points are provided
     /// - x values are not strictly increasing
-    /// - symmetric is true but some x < 0
     pub fn piecewise_linear(points: Vec<(f64, f64)>, symmetric: bool) -> Result<Self> {
-        validate_points(&points, symmetric, "PiecewiseLinear")?;
+        validate_points(&points, "PiecewiseLinear")?;
         Ok(Self::PiecewiseLinear { points, symmetric })
     }
 
@@ -134,9 +127,8 @@ impl ResponseCurve {
     /// Returns [`EngineError::InvalidConfig`] when:
     /// - fewer than 2 points are provided
     /// - x values are not strictly increasing
-    /// - symmetric is true but some x < 0
     pub fn cubic_spline(points: Vec<(f64, f64)>, symmetric: bool) -> Result<Self> {
-        validate_points(&points, symmetric, "CubicSpline")?;
+        validate_points(&points, "CubicSpline")?;
         Ok(Self::CubicSpline { points, symmetric })
     }
 
@@ -158,28 +150,24 @@ impl ResponseCurve {
     }
 
     /// Evaluate the curve at the given input value.
+    ///
+    /// Symmetric curves store all points on both sides of the origin,
+    /// so no runtime mirroring is needed.
     #[must_use]
     pub fn evaluate(&self, input: f64) -> f64 {
         match self {
-            Self::PiecewiseLinear { points, symmetric } => {
-                let pts = maybe_mirror_points(points, *symmetric);
-                evaluate_piecewise_linear(&pts, input)
-            }
-            Self::CubicSpline { points, symmetric } => {
-                let pts = maybe_mirror_points(points, *symmetric);
-                evaluate_cubic_spline(&pts, input)
-            }
-            Self::CubicBezier {
-                segments,
-                symmetric,
-            } => {
-                let segs = if *symmetric {
-                    mirror_bezier_segments(segments)
-                } else {
-                    segments.clone()
-                };
-                evaluate_cubic_bezier(&segs, input)
-            }
+            Self::PiecewiseLinear { points, .. } => evaluate_piecewise_linear(points, input),
+            Self::CubicSpline { points, .. } => evaluate_cubic_spline(points, input),
+            Self::CubicBezier { segments, .. } => evaluate_cubic_bezier(segments, input),
+        }
+    }
+
+    /// Set the symmetric flag on this curve without re-validating.
+    pub fn set_symmetric(&mut self, symmetric: bool) {
+        match self {
+            Self::PiecewiseLinear { symmetric: s, .. }
+            | Self::CubicSpline { symmetric: s, .. }
+            | Self::CubicBezier { symmetric: s, .. } => *s = symmetric,
         }
     }
 }
@@ -214,7 +202,8 @@ fn evaluate_piecewise_linear(points: &[(f64, f64)], input: f64) -> f64 {
 // ---------------------------------------------------------------------------
 
 /// Coefficients for one segment of a natural cubic spline.
-struct SplineCoeffs {
+#[derive(Debug, Clone)]
+pub(crate) struct SplineCoeffs {
     poly_a: f64,
     poly_b: f64,
     poly_c: f64,
@@ -296,6 +285,79 @@ fn evaluate_cubic_spline(points: &[(f64, f64)], input: f64) -> f64 {
     points[points.len() - 1].1
 }
 
+fn evaluate_cubic_spline_cached(points: &[(f64, f64)], coeffs: &[SplineCoeffs], input: f64) -> f64 {
+    if input <= points[0].0 {
+        return points[0].1;
+    }
+    if input >= points[points.len() - 1].0 {
+        return points[points.len() - 1].1;
+    }
+    for (i, coeff) in coeffs.iter().enumerate() {
+        if input <= points[i + 1].0 {
+            let dx = input - coeff.x_start;
+            return coeff.poly_a
+                + coeff.poly_b * dx
+                + coeff.poly_c * dx * dx
+                + coeff.poly_d * dx * dx * dx;
+        }
+    }
+    points[points.len() - 1].1
+}
+
+/// Pre-computed evaluation state for hot-path curve evaluation.
+///
+/// Caches spline coefficients so `evaluate()` avoids per-call heap allocation.
+/// Use [`CachedEvaluator::new`] to create; call [`CachedEvaluator::evaluate`] on the hot path.
+#[derive(Debug, Clone)]
+pub struct CachedEvaluator {
+    curve: ResponseCurve,
+    spline_coeffs: Vec<SplineCoeffs>,
+}
+
+impl CachedEvaluator {
+    /// Build a cached evaluator, pre-computing spline coefficients if applicable.
+    #[must_use]
+    pub fn new(curve: ResponseCurve) -> Self {
+        let spline_coeffs = match &curve {
+            ResponseCurve::CubicSpline { points, .. } => compute_spline_coefficients(points),
+            _ => Vec::new(),
+        };
+        Self {
+            curve,
+            spline_coeffs,
+        }
+    }
+
+    /// Replace the inner curve and recompute cached data.
+    pub fn update(&mut self, curve: ResponseCurve) {
+        self.spline_coeffs = match &curve {
+            ResponseCurve::CubicSpline { points, .. } => compute_spline_coefficients(points),
+            _ => Vec::new(),
+        };
+        self.curve = curve;
+    }
+
+    /// Evaluate the curve at `input`, using cached coefficients for splines.
+    #[must_use]
+    pub fn evaluate(&self, input: f64) -> f64 {
+        match &self.curve {
+            ResponseCurve::PiecewiseLinear { points, .. } => {
+                evaluate_piecewise_linear(points, input)
+            }
+            ResponseCurve::CubicSpline { points, .. } => {
+                evaluate_cubic_spline_cached(points, &self.spline_coeffs, input)
+            }
+            ResponseCurve::CubicBezier { segments, .. } => evaluate_cubic_bezier(segments, input),
+        }
+    }
+
+    /// Access the inner curve.
+    #[must_use]
+    pub fn curve(&self) -> &ResponseCurve {
+        &self.curve
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Cubic bezier (Newton + bisection)
 // ---------------------------------------------------------------------------
@@ -375,49 +437,6 @@ fn evaluate_cubic_bezier(segments: &[BezierSegment], input: f64) -> f64 {
     }
 
     last.end.1
-}
-
-// ---------------------------------------------------------------------------
-// Symmetry support
-// ---------------------------------------------------------------------------
-
-/// If `symmetric` is true, mirror positive-side points to create the negative side.
-///
-/// Produces antisymmetric behavior: f(-x) = -f(x).
-/// Assumes points are defined for x >= 0 (including the origin).
-fn maybe_mirror_points(points: &[(f64, f64)], symmetric: bool) -> Vec<(f64, f64)> {
-    if !symmetric {
-        return points.to_vec();
-    }
-
-    let mut result: Vec<(f64, f64)> = points
-        .iter()
-        .filter(|(x, _)| *x > 0.0)
-        .map(|(x, y)| (-x, -y))
-        .collect();
-    result.reverse();
-
-    result.extend_from_slice(points);
-    result
-}
-
-/// Mirror bezier segments for the negative side of a symmetric curve.
-///
-/// Produces antisymmetric behavior: reverses and negates each segment.
-fn mirror_bezier_segments(segments: &[BezierSegment]) -> Vec<BezierSegment> {
-    let mut mirrored: Vec<BezierSegment> = segments
-        .iter()
-        .rev()
-        .map(|seg| BezierSegment {
-            start: (-seg.end.0, -seg.end.1),
-            control1: (-seg.control2.0, -seg.control2.1),
-            control2: (-seg.control1.0, -seg.control1.1),
-            end: (-seg.start.0, -seg.start.1),
-        })
-        .collect();
-
-    mirrored.extend_from_slice(segments);
-    mirrored
 }
 
 #[cfg(test)]
@@ -556,8 +575,18 @@ mod tests {
 
     #[test]
     fn symmetric_piecewise_antisymmetric() {
-        let curve = ResponseCurve::piecewise_linear(vec![(0.0, 0.0), (0.5, 0.2), (1.0, 1.0)], true)
-            .unwrap();
+        // Symmetric curves now store all points on both sides.
+        let curve = ResponseCurve::piecewise_linear(
+            vec![
+                (-1.0, -1.0),
+                (-0.5, -0.2),
+                (0.0, 0.0),
+                (0.5, 0.2),
+                (1.0, 1.0),
+            ],
+            true,
+        )
+        .unwrap();
         for &x in &[0.25, 0.5, 0.75, 1.0] {
             let pos = curve.evaluate(x);
             let neg = curve.evaluate(-x);
@@ -570,8 +599,17 @@ mod tests {
 
     #[test]
     fn symmetric_spline_antisymmetric() {
-        let curve =
-            ResponseCurve::cubic_spline(vec![(0.0, 0.0), (0.5, 0.3), (1.0, 1.0)], true).unwrap();
+        let curve = ResponseCurve::cubic_spline(
+            vec![
+                (-1.0, -1.0),
+                (-0.5, -0.3),
+                (0.0, 0.0),
+                (0.5, 0.3),
+                (1.0, 1.0),
+            ],
+            true,
+        )
+        .unwrap();
         for &x in &[0.25, 0.5, 0.75] {
             let pos = curve.evaluate(x);
             let neg = curve.evaluate(-x);
@@ -584,13 +622,19 @@ mod tests {
 
     #[test]
     fn symmetric_bezier_antisymmetric() {
-        let seg = BezierSegment {
+        let neg_seg = BezierSegment {
+            start: (-1.0, -1.0),
+            control1: (-0.7, -0.9),
+            control2: (-0.3, -0.1),
+            end: (0.0, 0.0),
+        };
+        let pos_seg = BezierSegment {
             start: (0.0, 0.0),
             control1: (0.3, 0.1),
             control2: (0.7, 0.9),
             end: (1.0, 1.0),
         };
-        let curve = ResponseCurve::cubic_bezier(vec![seg], true).unwrap();
+        let curve = ResponseCurve::cubic_bezier(vec![neg_seg, pos_seg], true).unwrap();
         for &x in &[0.25, 0.5, 0.75] {
             let pos = curve.evaluate(x);
             let neg = curve.evaluate(-x);
@@ -599,6 +643,17 @@ mod tests {
                 "antisymmetry failed at x={x}: f(x)={pos}, f(-x)={neg}"
             );
         }
+    }
+
+    #[test]
+    fn symmetric_accepts_negative_x() {
+        // Symmetric curves now store all points on both sides of origin;
+        // negative x values are valid and expected.
+        let pl = ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], true);
+        assert!(pl.is_ok());
+
+        let cs = ResponseCurve::cubic_spline(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], true);
+        assert!(cs.is_ok());
     }
 
     // -- Serde --------------------------------------------------------------
@@ -617,7 +672,7 @@ mod tests {
     #[test]
     fn spline_serde_roundtrip() {
         let curve =
-            ResponseCurve::cubic_spline(vec![(0.0, 0.0), (0.5, 0.3), (1.0, 1.0)], true).unwrap();
+            ResponseCurve::cubic_spline(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], true).unwrap();
         let json = serde_json::to_string(&curve).unwrap();
         assert!(json.contains("\"kind\":\"cubic_spline\""));
         let back: ResponseCurve = serde_json::from_str(&json).unwrap();
@@ -711,13 +766,6 @@ mod tests {
     #[test]
     fn reject_decreasing_x() {
         let err = ResponseCurve::cubic_spline(vec![(1.0, 1.0), (0.0, 0.0)], false).unwrap_err();
-        assert!(matches!(err, EngineError::InvalidConfig { .. }));
-    }
-
-    #[test]
-    fn reject_symmetric_with_negative_x() {
-        let err =
-            ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0)], true).unwrap_err();
         assert!(matches!(err, EngineError::InvalidConfig { .. }));
     }
 

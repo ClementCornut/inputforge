@@ -8,7 +8,7 @@
 
 **Architecture:** Rust workspace with 3 crates: `inputforge-core` (engine library, no GUI deps), `inputforge-gui` (egui configuration UI), `inputforge-app` (binary entry point with system tray). Engine runs on dedicated thread, GUI is optional. Communication via `Arc<RwLock<AppState>>` + mpsc channels.
 
-**Tech Stack:** Rust, SDL3 (input), vJoy (output), HidHide (device hiding), egui/eframe (GUI), egui_plot (curves), catppuccin-egui (theme), tray-icon (system tray), TOML+serde (profiles), Win32 SendInput (keyboard), tracing (logging), anyhow/thiserror (errors), mimalloc (allocator), clap (CLI).
+**Tech Stack:** Rust, SDL3 (input), vJoy (output), HidHide (device hiding), egui/eframe (GUI), egui_plot (curves), tray-icon (system tray), TOML+serde (profiles), Win32 SendInput (keyboard), tracing (logging), anyhow/thiserror (errors), mimalloc (allocator), clap (CLI).
 
 **Test coverage:** Aim for maximum test coverage across the entire workspace. Use `cargo-llvm-cov` to measure and report coverage. Every task that adds logic MUST include corresponding tests. Target >95% line, branches, functions coverage for `inputforge-core`, measure after each phase. Add `cargo-llvm-cov` as a project tool and run `rtk cargo llvm-cov --workspace --html` to generate HTML reports. Include coverage checks in the post-implementation checklist.
 
@@ -23,7 +23,6 @@
 | egui            | 0.33+   | Lockstep with eframe                              |
 | eframe          | 0.33+   | Lockstep with egui                                |
 | egui_plot       | 0.34+   | Independent versioning; 0.34 targets egui 0.33    |
-| catppuccin-egui | 5.7+    | Use `egui33` feature flag for egui 0.33           |
 | tray-icon       | 0.21+   | By Tauri team                                     |
 | toml            | 1.0+    | TOML 1.1 spec (0.9 is deprecated)                 |
 | serde           | 1.0     | Use `features = ["derive"]`                       |
@@ -94,7 +93,7 @@
 - **Task 20**: GUI foundation (theme, fonts, layout) ✅
 - **Task 21**: Device panel (tree, axis bars, buttons) ✅
 - **Task 22**: Mapping editor (action pipeline cards) ✅
-- **Task 23**: Response curve editor (egui_plot interactive)
+- **Task 23**: Response curve editor (egui_plot interactive) ✅
 - **Task 24**: Input monitor ✅
 - **Task 25**: Mode, calibration & deadzone editors ✅
 
@@ -1017,42 +1016,39 @@ Combat = ["Missiles", "Guns"]
 
 ---
 
-### Task 23: Response Curve Editor ⬜ NOT STARTED
+### Task 23: Response Curve Editor ✅ COMPLETE
 
 **Goal:** Interactive egui_plot-based response curve editor with draggable control points.
 
-**Files to create:**
-- `crates/inputforge-gui/src/widgets/curve_editor.rs`
+**Files created:**
+- `crates/inputforge-gui/src/widgets/curve_editor.rs` -- 1300+ line widget with custom drag handling, De Casteljau bezier splitting, and symmetry enforcement
 
-**Files to modify:**
-- `crates/inputforge-gui/src/widgets/mod.rs`
-- `crates/inputforge-gui/src/widgets/action_config.rs` (link from `ResponseCurve` config)
+**Files modified:**
+- `crates/inputforge-gui/src/widgets/mod.rs` -- added `curve_editor` module export
+- `crates/inputforge-gui/src/widgets/action_config.rs` -- integrated `CurveEditorWidget` into `ResponseCurve` action config
+- `crates/inputforge-gui/src/panels/mapping_editor.rs` -- threaded `CurveEditorWidget` state through mapping editor
 
 **Implementation:**
-- `CurveEditorState`: dragging_point index, cached_line (`Vec<[f64;2]>`), cache_dirty flag
-- `curve_editor(ui, curve: &mut ResponseCurve, state: &mut CurveEditorState, live_input: Option<f64>) -> bool`
-- `egui_plot::Plot` (0.34): view -1.1 to 1.1 both axes, scroll/zoom/drag disabled, equal data aspect
-- Curve polyline from cached 200 sample points, identity reference line (dashed SURFACE1)
-- Control point markers (white circles, LIVE when dragged)
-- Live input: VLine at input value (WARNING), output dot on curve
+- `CurveEditorWidget` struct with `dragging_point` index, `cached_line` (`Vec<[f64;2]>`), `cache_dirty` flag, `symmetric` toggle
+- `show(ui, curve: &mut ResponseCurve, live_input: Option<f64>) -> bool` -- main entry point
+- `egui_plot::Plot`: view locked at [-1.1, 1.1] both axes, scroll/zoom/drag disabled, equal data aspect, 450x450px canvas
+- Curve polyline from cached 200 sample points, identity reference line (dashed)
+- All 3 curve types: piecewise linear, cubic spline, cubic bezier
 - **Custom drag handling** (egui_plot has no native draggable points):
-  1. On drag_started: find nearest point within 10px screen distance
-  2. On dragged: update point, constrain x to stay strictly increasing
-  3. On drag_stopped: reconstruct curve via validated constructor, revert on failure
-- Curve type selector ComboBox, symmetry toggle checkbox
-- Bezier: render control handles as lines from endpoints to control points
+  1. On pointer press: find nearest point within 10px screen distance via `plot_transform`
+  2. On drag: update point position, constrain x between adjacent points (strictly increasing)
+  3. Center point (index `n/2`) x-locked at 0.0 when symmetry enabled
+  4. Endpoint x values locked at -1.0 / 1.0
+  5. On release: reconstruct curve via validated constructors, revert on failure
+- Bezier: render control handles as lines from endpoints to control points, De Casteljau splitting for add-point
+- Symmetry toggle: mirrors positive half to negative half, enforces on every edit
+- Add point: click empty area to insert (bezier uses De Casteljau segment splitting)
+- Remove point: right-click control point (minimum 2 points preserved)
+- Curve type conversion: ComboBox selector with point resampling between types
+- Live input: `VLine` at input value, output dot on curve
+- 18 unit tests
 
-> **Lesson from Phase 2 code review:** Every point edit must go through `ResponseCurve` validated constructors. Constrain drag handles to prevent crossing adjacent points. Revert on validation failure.
-
-**Steps:**
-1. Set up egui_plot widget with correct axis ranges
-2. Implement curve polyline rendering from cached sample points
-3. Implement custom draggable control points
-4. Implement bezier control point handles
-5. Implement live input/output indicator
-6. Implement symmetry toggle and curve type selector
-7. Run `rtk cargo build -p inputforge-gui`
-8. Commit: `feat(gui): add interactive response curve editor with egui_plot`
+> **Lesson applied from Phase 2 code review:** Every point edit goes through `ResponseCurve` validated constructors. Drag handles constrained to prevent crossing adjacent points. Revert on validation failure.
 
 ---
 
@@ -1106,7 +1102,109 @@ Combat = ["Missiles", "Guns"]
 - Validates via `Calibration::new()` on every change
 - 5 unit tests
 
-**Phase 7 progress:** Tasks 20, 21, 22, 24, 25 complete. Task 23 (Response Curve Editor) remaining. 80 GUI tests total, 394 workspace total (314 core + 80 gui).
+**Phase 7 progress:** All tasks (20-25) complete. Two code review rounds applied (18 + 4 fixes). 97 GUI tests, 411 workspace total (314 core + 97 gui). 0 clippy errors (3 pre-existing dead-code warnings).
+
+---
+
+### Post-Task 23 Polish
+
+#### Stable Action IDs
+
+**Problem:** Widget ID collisions when adding/removing actions -- egui reused IDs causing state leaks between action cards.
+
+**Fix:** Added `push_id: u64` field to `ActionStep` with a monotonic `NEXT_ACTION_ID` counter. Each action gets a unique stable ID at creation time, used as `ui.push_id()` scope in the mapping editor. IDs survive reordering and sibling removal.
+
+**Files modified:**
+- `crates/inputforge-gui/src/panels/mapping_editor.rs` -- `push_id`-based `ui.push_id()` scoping, auto-expand newly added actions via `auto_expand_id` tracking
+
+#### Curve Editor Polish
+
+- Enlarged plot canvas from 300px to 450px for better precision
+- Removed redundant "Type" label from curve type selector (ComboBox is self-explanatory)
+- Controls section simplified: curve type ComboBox + symmetric checkbox on one row
+
+**Files modified:**
+- `crates/inputforge-gui/src/widgets/curve_editor.rs`
+
+#### Theme Completeness Pass
+
+Added missing `egui::Visuals` fields to eliminate default-theme bleed-through:
+
+- `weak_bg_fill` -- subtle background for buttons, menu items
+- `bg_stroke` -- border stroke for panels and frames
+- `warn_fg_color` -- warning text color (mapped to WARNING palette)
+- `error_fg_color` -- error text color (mapped to ERROR palette)
+- `code_bg_color` -- inline code background
+- `window_stroke` -- window border stroke
+
+**Files modified:**
+- `crates/inputforge-gui/src/theme.rs` -- added missing Visuals fields, added complete `LIGHT` palette and `light()` constructor
+
+#### Status Bar Polish
+
+**Files modified:**
+- `crates/inputforge-gui/src/panels/status_bar.rs` -- visual refinements
+
+---
+
+### Code Review Fixes (5-agent review, 18 issues)
+
+A parallel 5-agent code review (Frontend Design, Bug Hunter, Performance, Quality, Rust Best Practices) identified 18 issues. All fixed.
+
+#### Core crate (`curves.rs`)
+
+- Removed dead `_symmetric` parameter from `validate_points` and fixed stale `# Errors` doc comments that documented removed validation
+- Added `CachedEvaluator` struct for hot-path spline coefficient caching -- eliminates 7 heap allocations per `evaluate()` call at 60Hz+
+- Added `set_symmetric(&mut self, bool)` method for in-place flag mutation without clone/revalidate
+- Added `symmetric_accepts_negative_x` test (replaces deleted rejection test)
+
+**Files modified:**
+- `crates/inputforge-core/src/processing/curves.rs`
+
+#### Bezier symmetric bug fixes (`curve_editor.rs`)
+
+- **add_control_point rollback** -- points were pushed before validation with no rollback on failure; now clones and restores on duplicate-x
+- **add_control_point mirror arithmetic** -- used post-splice `segments.len()` as pre-splice count; now captures `pre_splice_count` before splice; mirror `t` computed from mirror segment geometry for true antisymmetry
+- **remove_control_point mirror arithmetic** -- used post-merge count for mirror index with fragile `.min()` clamps masking off-by-one; now uses `pre_merge_count` with proper adjustment
+- **update_point_in_curve double-mutation** -- when `mirror_seg_idx == seg_idx + 1`, endpoint sync and mirror sync overwrote each other; now tracks primary-synced segment and skips overlapping mirror sync
+
+#### UX improvements (`curve_editor.rs`)
+
+- Responsive plot size: `clamp(250, 450)` instead of fixed 450px (prevents overflow in narrow panels)
+- Cursor feedback: `PointingHand` on hover, `Grabbing` during drag
+- Interaction tooltip: "Drag points · Double-click to add · Right-click to remove"
+- Bezier handle line visibility: `colors.text_dim.gamma_multiply(0.5)` instead of nearly-invisible `colors.surface1`
+
+#### Quality & performance (multiple files)
+
+- `total_cmp()` replacing `partial_cmp().unwrap_or(Equal)` (3 locations)
+- Standardized symmetry thresholds to `0.0` (was inconsistent `f64::EPSILON` / `-f64::EPSILON`)
+- Removed redundant `pre_drag_curve = None` (`.take()` already clears), empty `.changed()` block, dead guard in `remove_control_point`
+- Named constant `CARD_HEADER_MIN_HEIGHT` replacing magic `30.0` in `action_card.rs`
+- Debug assertion for `action_ids` parallel vec invariant in `mapping_editor.rs`
+- Cached `control_points` in `CurveEditorState` (eliminated per-frame Vec allocation)
+- Batched control point rendering: 3 `Points` calls total instead of N per-point `format!` + `vec![pt]` allocations
+- `apply_symmetry` disable path uses `set_symmetric()` instead of full clone + reconstruct
+
+**Files modified:**
+- `crates/inputforge-gui/src/widgets/curve_editor.rs`
+- `crates/inputforge-gui/src/widgets/action_card.rs`
+- `crates/inputforge-gui/src/panels/mapping_editor.rs`
+
+#### Code cleanup (remaining review items)
+
+- Updated stale doc comment `300 × 300` → `450 × 450` in `curve_editor.rs` to match `PLOT_SIZE` constant
+- Extracted `update_bezier_point()` helper from 149-line `update_point_in_curve` -- parent function now ~36 lines, bezier logic in ~80-line dedicated function; removed stale `#[expect(clippy::too_many_lines)]`, changed `&mut Vec<BezierSegment>` to `&mut [BezierSegment]`
+- Documented `cached_line.clone()` justification -- `PlotPoints::new` requires ownership, ~3 KB/frame allocation is unavoidable with current egui_plot API
+- Added `SMALL_FONT_SIZE` constant to `theme.rs`, replaced 14 hardcoded `.size(12.0)` calls across 4 files with `.size(SMALL_FONT_SIZE)` / `.size(theme::SMALL_FONT_SIZE)` (per M-DOCUMENTED-MAGIC guideline)
+
+**Files modified:**
+- `crates/inputforge-gui/src/theme.rs` -- added `SMALL_FONT_SIZE` constant
+- `crates/inputforge-gui/src/widgets/curve_editor.rs` -- doc fix, function extraction, clone documentation
+- `crates/inputforge-gui/src/widgets/action_card.rs` -- `SMALL_FONT_SIZE` import + usage (3 sites)
+- `crates/inputforge-gui/src/widgets/action_config.rs` -- `SMALL_FONT_SIZE` import + usage (2 sites)
+- `crates/inputforge-gui/src/panels/status_bar.rs` -- `SMALL_FONT_SIZE` usage (5 sites)
+- `crates/inputforge-gui/src/panels/mapping_editor.rs` -- `SMALL_FONT_SIZE` usage (4 sites)
 
 ---
 

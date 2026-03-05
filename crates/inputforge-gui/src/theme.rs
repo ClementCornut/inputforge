@@ -161,6 +161,9 @@ pub(crate) fn colors(ctx: &egui::Context) -> &'static ThemeColors {
 // Theme setup
 // ---------------------------------------------------------------------------
 
+/// Font size for secondary labels, status text, and compact UI elements.
+pub(crate) const SMALL_FONT_SIZE: f32 = 12.0;
+
 /// Widget corner radius in logical pixels.
 const WIDGET_ROUNDING: u8 = 6;
 
@@ -198,27 +201,38 @@ fn build_visuals(palette: &ThemeColors, mut visuals: Visuals) -> Visuals {
     visuals.selection.bg_fill = palette.primary.gamma_multiply(0.35);
     visuals.selection.stroke.color = palette.primary;
     visuals.hyperlink_color = palette.primary;
+    visuals.warn_fg_color = palette.warning;
+    visuals.error_fg_color = palette.error;
+    visuals.code_bg_color = palette.crust;
+    visuals.window_stroke = egui::Stroke::new(1.0, palette.surface1);
 
     // Widget states.
     let corner_radius = CornerRadius::same(WIDGET_ROUNDING);
 
     visuals.widgets.noninteractive.bg_fill = palette.surface0;
+    visuals.widgets.noninteractive.weak_bg_fill = palette.surface0;
+    visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, palette.surface1);
     visuals.widgets.noninteractive.fg_stroke.color = palette.text_dim;
     visuals.widgets.noninteractive.corner_radius = corner_radius;
 
     visuals.widgets.inactive.bg_fill = palette.surface0;
+    visuals.widgets.inactive.weak_bg_fill = palette.surface0;
+    visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, palette.surface1);
     visuals.widgets.inactive.fg_stroke.color = palette.text;
     visuals.widgets.inactive.corner_radius = corner_radius;
 
     visuals.widgets.hovered.bg_fill = palette.surface1;
+    visuals.widgets.hovered.weak_bg_fill = palette.surface1;
     visuals.widgets.hovered.fg_stroke.color = palette.text;
     visuals.widgets.hovered.corner_radius = corner_radius;
 
     visuals.widgets.active.bg_fill = palette.primary.gamma_multiply(0.25);
+    visuals.widgets.active.weak_bg_fill = palette.primary.gamma_multiply(0.25);
     visuals.widgets.active.fg_stroke.color = palette.primary;
     visuals.widgets.active.corner_radius = corner_radius;
 
     visuals.widgets.open.bg_fill = palette.surface1;
+    visuals.widgets.open.weak_bg_fill = palette.surface1;
     visuals.widgets.open.fg_stroke.color = palette.text;
     visuals.widgets.open.corner_radius = corner_radius;
 
