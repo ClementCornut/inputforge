@@ -26,9 +26,6 @@ pub(crate) fn show(ctx: &egui::Context, cache: &CachedState, selection: &mut Gui
         .default_width(DEFAULT_WIDTH)
         .width_range(MIN_WIDTH..=MAX_WIDTH)
         .show(ctx, |ui| {
-            ui.heading("Devices");
-            ui.separator();
-
             if cache.devices.is_empty() {
                 empty_state::empty_state(ui, "No devices detected");
                 return;

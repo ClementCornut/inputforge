@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-06
 
 use serde::{Deserialize, Serialize};
 
@@ -53,7 +53,7 @@ impl<'de> Deserialize<'de> for DeadzoneConfig {
 
 impl Default for DeadzoneConfig {
     fn default() -> Self {
-        Self::new(-1.0, -0.05, 0.05, 1.0).expect("default deadzone config is valid")
+        Self::new(-1.0, 0.0, 0.0, 1.0).expect("default deadzone config is valid")
     }
 }
 
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn center_band_all_zero() {
-        let dz = DeadzoneConfig::default();
+        let dz = DeadzoneConfig::new(-1.0, -0.05, 0.05, 1.0).unwrap();
         assert!((dz.apply(-0.03) - 0.0).abs() < f64::EPSILON);
         assert!((dz.apply(0.03) - 0.0).abs() < f64::EPSILON);
     }

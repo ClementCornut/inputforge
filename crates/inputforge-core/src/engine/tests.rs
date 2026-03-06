@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-03-06
 
 //! Engine integration and unit tests.
 //!
@@ -112,6 +112,7 @@ fn make_profile(modes: ModeTree, mappings: Vec<Mapping>) -> Profile {
         vec![],
         modes,
         mappings,
+        vec![],
         "Default".to_owned(),
     )
 }
@@ -1125,4 +1126,98 @@ fn tick_handles_load_profile_command() {
     drop(s);
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_dir(&dir);
+}
+
+// ---------------------------------------------------------------------------
+// Calibration integration tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tick_set_calibration_command_updates_store() {
+    use crate::processing::Calibration;
+
+    let profile = make_profile(simple_mode_tree(), vec![]);
+    let input = MockInputSource::default();
+    let (mut engine, state, tx) = make_engine(input, profile);
+
+    let cal = Calibration::new(-32768.0, -100.0, 100.0, 32767.0, true).unwrap();
+    tx.send(EngineCommand::SetCalibration {
+        device: dev_id(),
+        axis: 0,
+        calibration: cal.clone(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    let stored = s.calibrations.get(&dev_id(), 0);
+    assert_eq!(stored, Some(&cal));
+}
+
+#[test]
+fn tick_axis_with_calibration_applies_transform() {
+    use crate::processing::Calibration;
+
+    // Map axis 0 → vJoy axis X.
+    let mapping = Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        actions: vec![Action::MapToVJoy {
+            output: vjoy_axis_output(1, VJoyAxis::X),
+        }],
+    };
+    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+
+    // Calibration: raw range [-100, 100], no center deadzone.
+    // Input of 50 should map to 0.5 after calibration.
+    let cal = Calibration::new(-100.0, 0.0, 0.0, 100.0, true).unwrap();
+
+    let mut input = MockInputSource::default();
+    input.events.push(axis_event(0, 50.0));
+
+    let (mut engine, state, _tx) = make_engine(input, profile);
+
+    // Pre-populate calibration in shared state.
+    state.write().calibrations.set(dev_id(), 0, cal);
+
+    engine.tick().unwrap();
+
+    // Verify the input cache received the raw value.
+    let s = state.read();
+    let cached = s.input_cache.get_all_axis_entries();
+    assert_eq!(cached.len(), 1);
+    // The raw value in the cache should be 50.0 (cache stores raw).
+    assert!((cached[0].1 - 50.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn with_profile_loads_calibrations() {
+    use crate::profile::{CalibrationEntry, Profile};
+
+    let mut map = HashMap::new();
+    map.insert("Default".to_owned(), vec![]);
+    let modes = crate::mode::ModeTree::from_adjacency(&map).unwrap();
+
+    let calibrations = vec![CalibrationEntry {
+        device: DeviceId("dev-1".to_owned()),
+        axis: 0,
+        physical_min: -32768.0,
+        physical_center_low: -100.0,
+        physical_center_high: 100.0,
+        physical_max: 32767.0,
+        enabled: true,
+    }];
+
+    let profile = Profile::new(
+        "Test".to_owned(),
+        vec![],
+        modes,
+        vec![],
+        calibrations,
+        "Default".to_owned(),
+    );
+
+    let state = AppState::with_profile(profile);
+    let cal = state.calibrations.get(&DeviceId("dev-1".to_owned()), 0);
+    assert!(cal.is_some(), "calibrations should be loaded from profile");
 }

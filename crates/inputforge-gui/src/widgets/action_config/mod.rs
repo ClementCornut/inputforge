@@ -12,7 +12,7 @@ use inputforge_core::action::Action;
 use inputforge_core::types::{InputAddress, InputId, KeyModifier, MergeOp, VirtualDeviceConfig};
 
 use crate::theme::{SMALL_FONT_SIZE, ThemeColors};
-use crate::widgets::{calibration_editor, curve_editor, deadzone_editor};
+use crate::widgets::{curve_editor, deadzone_editor};
 
 /// Format an [`InputAddress`] as a human-readable string.
 fn format_input_address(address: &InputAddress) -> String {
@@ -43,7 +43,6 @@ pub(crate) fn action_config(
 ) -> bool {
     match action {
         Action::Deadzone { config } => show_deadzone(ui, config, colors),
-        Action::Calibrate { config } => show_calibrate(ui, config, colors),
         Action::ResponseCurve { curve } => show_response_curve(ui, curve, colors),
         Action::Invert => show_invert(ui, colors),
         Action::MapToVJoy { output } => vjoy::show_map_to_vjoy(ui, output, colors, virtual_devices),
@@ -74,26 +73,6 @@ fn show_deadzone(
     );
 
     if let Some(new_config) = deadzone_editor::deadzone_editor(ui, config, None) {
-        *config = new_config;
-        true
-    } else {
-        false
-    }
-}
-
-/// Delegate to the dedicated calibration editor widget.
-fn show_calibrate(
-    ui: &mut egui::Ui,
-    config: &mut inputforge_core::processing::calibration::Calibration,
-    colors: &ThemeColors,
-) -> bool {
-    description(
-        ui,
-        "Maps the physical device range to normalized [-1, 1] with center compensation.",
-        colors,
-    );
-
-    if let Some(new_config) = calibration_editor::calibration_editor(ui, config, None) {
         *config = new_config;
         true
     } else {

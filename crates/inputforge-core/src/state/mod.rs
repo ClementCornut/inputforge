@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-04
+// Rust guideline compliant 2026-03-06
 
 //! Shared application state between engine and GUI.
 //!
@@ -7,12 +7,16 @@
 //! reference to display live values.
 
 mod cache;
+mod calibration;
 mod device;
 mod status;
 
 pub use cache::InputCacheStore;
+pub use calibration::DeviceCalibrationStore;
 pub use device::DeviceState;
 pub use status::EngineStatus;
+
+use std::path::PathBuf;
 
 use crate::profile::Profile;
 use crate::types::VirtualDeviceConfig;
@@ -38,6 +42,10 @@ pub struct AppState {
     /// Populated by the engine when it probes the vJoy driver at startup.
     /// Empty until the driver is queried.
     pub virtual_devices: Vec<VirtualDeviceConfig>,
+    /// Per-device, per-axis calibration configurations.
+    pub calibrations: DeviceCalibrationStore,
+    /// File path of the currently loaded profile, if loaded from disk.
+    pub profile_path: Option<PathBuf>,
 }
 
 impl AppState {
@@ -51,13 +59,34 @@ impl AppState {
             active_profile: None,
             input_cache: InputCacheStore::new(),
             virtual_devices: Vec::new(),
+            calibrations: DeviceCalibrationStore::new(),
+            profile_path: None,
         }
     }
 
     /// Create a new `AppState` initialized from a profile.
+    ///
+    /// Populates calibrations from the profile's calibration entries.
+    /// Invalid entries are skipped with a warning.
     #[must_use]
     pub fn with_profile(profile: Profile) -> Self {
         let startup_mode = profile.settings().startup_mode().to_owned();
+        let mut calibrations = DeviceCalibrationStore::new();
+        for entry in profile.calibrations() {
+            match entry.to_calibration() {
+                Ok(cal) => {
+                    calibrations.set(entry.device.clone(), entry.axis, cal);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        device = %entry.device.0,
+                        axis = entry.axis,
+                        error = %e,
+                        "skipping invalid calibration entry in with_profile"
+                    );
+                }
+            }
+        }
         Self {
             devices: Vec::new(),
             current_mode: startup_mode,
@@ -65,6 +94,8 @@ impl AppState {
             active_profile: Some(profile),
             input_cache: InputCacheStore::new(),
             virtual_devices: Vec::new(),
+            calibrations,
+            profile_path: None,
         }
     }
 }

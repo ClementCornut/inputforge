@@ -86,9 +86,6 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
             Action::Deadzone { config } => {
                 ctx.current_value = config.apply(ctx.current_value);
             }
-            Action::Calibrate { config } => {
-                ctx.current_value = config.apply(ctx.current_value);
-            }
             Action::Invert => match &ctx.input_value {
                 InputValue::Button { .. } => {
                     ctx.current_value = if ctx.current_value > BUTTON_PRESS_THRESHOLD {
@@ -168,7 +165,7 @@ mod tests {
     use super::test_helpers::{MockCache, button_input_address};
     use super::*;
     use crate::action::Condition;
-    use crate::processing::{Calibration, DeadzoneConfig, ResponseCurve};
+    use crate::processing::{DeadzoneConfig, ResponseCurve};
     use crate::types::{AxisValue, DeviceId, InputId, KeyModifier, MergeOp, OutputId, VJoyAxis};
 
     const TOLERANCE: f64 = 1e-6;
@@ -359,7 +356,7 @@ mod tests {
         let mut ctx = axis_ctx(&cache, 0.02);
         let actions = [
             Action::Deadzone {
-                config: DeadzoneConfig::default(),
+                config: DeadzoneConfig::new(-1.0, -0.05, 0.05, 1.0).unwrap(),
             },
             Action::MapToVJoy {
                 output: test_output(),
@@ -368,31 +365,6 @@ mod tests {
         execute_pipeline(&actions, &mut ctx);
         if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
             assert!(value.abs() < TOLERANCE, "expected 0, got {value}");
-        } else {
-            panic!("expected SetAxis");
-        }
-    }
-
-    // -- Calibrate + MapToVJoy ------------------------------------------------
-
-    #[test]
-    fn calibrate_normalizes_raw_value() {
-        let cache = MockCache::new();
-        let mut ctx = axis_ctx(&cache, 32767.0);
-        let actions = [
-            Action::Calibrate {
-                config: Calibration::new(-32768.0, -100.0, 100.0, 32767.0, true).unwrap(),
-            },
-            Action::MapToVJoy {
-                output: test_output(),
-            },
-        ];
-        execute_pipeline(&actions, &mut ctx);
-        if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
-            assert!(
-                (*value - 1.0).abs() < TOLERANCE,
-                "expected 1.0, got {value}"
-            );
         } else {
             panic!("expected SetAxis");
         }
@@ -704,24 +676,13 @@ mod tests {
     // -- Full processing chain ------------------------------------------------
 
     #[test]
-    fn full_chain_calibrate_deadzone_curve_invert_map() {
+    fn full_chain_deadzone_curve_invert_map() {
         let cache = MockCache::new();
         // Use a no-deadzone config (center at 0, no dead band)
         let deadzone = DeadzoneConfig::new(-1.0, 0.0, 0.0, 1.0).unwrap();
-        let calibration = Calibration::new(-100.0, 0.0, 0.0, 100.0, true).unwrap();
-        // Raw value 50.0 → calibrate → 0.5 → deadzone → 0.5 → identity curve → 0.5 → invert → -0.5
-        let mut ctx = PipelineContext {
-            current_value: 50.0,
-            input_value: InputValue::Axis {
-                value: AxisValue::raw(50.0),
-            },
-            outputs: Vec::new(),
-            input_cache: &cache,
-        };
+        // Pre-calibrated value 0.5 → deadzone → 0.5 → identity curve → 0.5 → invert → -0.5
+        let mut ctx = axis_ctx(&cache, 0.5);
         let actions = [
-            Action::Calibrate {
-                config: calibration,
-            },
             Action::Deadzone { config: deadzone },
             Action::ResponseCurve {
                 curve: ResponseCurve::piecewise_linear(
@@ -751,49 +712,31 @@ mod tests {
 
     #[test]
     fn pedal_merge_full_pipeline() {
-        // Simulate two pedal axes going through calibration + deadzone + merge + map.
-        // Left pedal raw value: -16384 (half depressed)
-        // Right pedal raw value cached as calibrated -0.25
+        // Simulate two pre-calibrated pedal axes going through deadzone + merge + map.
+        // Left pedal pre-calibrated value: -0.5 (half depressed)
+        // Right pedal cached at -0.25
         //
         // Pipeline for left pedal:
-        //   calibrate(-32768..32767) -> ~-0.4985 (not exactly -0.5)
-        //   deadzone (trivial, pass-through)
-        //   merge bidirectional with right pedal -> ~(-0.4985) - (-0.25) = ~-0.2485
-        //   map to vJoy X axis
-        //
-        // The wider 0.01 tolerance (vs 1e-6 elsewhere) is required because the
-        // calibration center band [-100, 100] makes the linear interpolation
-        // segments asymmetric: lerp(-16384, -32768, -100, -1, 0) produces
-        // -1 + 16384/32668 ~= -0.4985, not exactly -0.5.
+        //   deadzone (trivial, pass-through) → -0.5
+        //   merge bidirectional with right pedal → -0.5 - (-0.25) = -0.25
+        //   map to vJoy Rz axis
 
         let mut cache = MockCache::new();
         let right_pedal = InputAddress {
             device: DeviceId("pedals".to_owned()),
             input: InputId::Axis { index: 1 },
         };
-        // Right pedal already calibrated in cache at -0.25
         cache.axes.insert(right_pedal.clone(), -0.25);
 
-        let calibration = Calibration::new(-32768.0, -100.0, 100.0, 32767.0, true).unwrap();
         let deadzone = DeadzoneConfig::new(-1.0, 0.0, 0.0, 1.0).unwrap();
         let output = OutputAddress {
             device: 1,
             output: OutputId::Axis { id: VJoyAxis::Rz },
         };
 
-        let mut ctx = PipelineContext {
-            current_value: -16384.0,
-            input_value: InputValue::Axis {
-                value: AxisValue::raw(-16384.0),
-            },
-            outputs: Vec::new(),
-            input_cache: &cache,
-        };
+        let mut ctx = axis_ctx(&cache, -0.5);
 
         let actions = [
-            Action::Calibrate {
-                config: calibration,
-            },
             Action::Deadzone { config: deadzone },
             Action::MergeAxis {
                 second_input: right_pedal,
@@ -808,10 +751,9 @@ mod tests {
         assert_eq!(ctx.outputs.len(), 1);
         if let PipelineOutput::SetAxis { value, output: out } = &ctx.outputs[0] {
             assert_eq!(*out, output);
-            // calibrate: -16384 / 32767 ~= -0.5000..., merged: -0.5 - (-0.25) = -0.25
             assert!(
-                (*value - (-0.25)).abs() < 0.01,
-                "expected ~-0.25, got {value}"
+                (*value - (-0.25)).abs() < TOLERANCE,
+                "expected -0.25, got {value}"
             );
         } else {
             panic!("expected SetAxis");

@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-03-06
 
 //! Engine main loop and per-frame tick logic.
 //!
@@ -15,9 +15,9 @@ use crate::device::traits::HotplugEvent;
 use crate::error::Result;
 use crate::mode::resolve_mapping;
 use crate::pipeline::{self, PipelineContext};
-use crate::profile::Profile;
-use crate::state::{DeviceState, EngineStatus};
-use crate::types::InputValue;
+use crate::profile::{CalibrationEntry, Profile};
+use crate::state::{DeviceCalibrationStore, DeviceState, EngineStatus};
+use crate::types::{InputEvent, InputId, InputValue};
 
 use super::Engine;
 use super::command::EngineCommand;
@@ -127,29 +127,19 @@ impl Engine {
                 continue;
             };
 
-            // Build pipeline context and execute.
-            let current_value = match &event.value {
-                InputValue::Axis { value } => value.value(),
-                InputValue::Button { pressed } => {
-                    if *pressed {
-                        1.0
-                    } else {
-                        0.0
-                    }
-                }
-                InputValue::Hat { .. } => 0.0,
-            };
+            // Single lock acquisition for calibration lookup and pipeline context.
+            let guard = self.state.read();
+            let current_value = resolve_input_value(event, &guard.calibrations);
 
-            let input_cache = self.state.read();
             let mut ctx = PipelineContext {
                 current_value,
                 input_value: event.value.clone(),
                 outputs: Vec::new(),
-                input_cache: &input_cache.input_cache,
+                input_cache: &guard.input_cache,
             };
             pipeline::execute_pipeline(&mapping.actions, &mut ctx);
             let outputs = std::mem::take(&mut ctx.outputs);
-            drop(input_cache);
+            drop(guard);
 
             // Process pipeline outputs.
             let result = process_pipeline_outputs(
@@ -218,7 +208,29 @@ impl Engine {
                 self.callbacks.clear();
 
                 let mut state = self.state.write();
+
+                // Load calibrations from profile.
+                state.calibrations = DeviceCalibrationStore::new();
+                for entry in profile.calibrations() {
+                    match entry.to_calibration() {
+                        Ok(cal) => {
+                            state
+                                .calibrations
+                                .set(entry.device.clone(), entry.axis, cal);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                device = %entry.device.0,
+                                axis = entry.axis,
+                                error = %e,
+                                "skipping invalid calibration entry"
+                            );
+                        }
+                    }
+                }
+
                 state.active_profile = Some(profile);
+                state.profile_path = Some(path);
                 state.current_mode = startup_mode;
                 state.input_cache.clear();
             }
@@ -235,11 +247,60 @@ impl Engine {
                 let mut state = self.state.write();
                 state.engine_status = EngineStatus::Paused;
             }
+            EngineCommand::SetCalibration {
+                device,
+                axis,
+                calibration,
+            } => {
+                let mut state = self.state.write();
+                state.calibrations.set(device, axis, calibration);
+            }
+            EngineCommand::SaveCalibrations => {
+                self.save_calibrations_to_profile();
+            }
             EngineCommand::Shutdown => {
                 self.shutdown = true;
             }
         }
         Ok(())
+    }
+
+    /// Persist the current calibration store into the loaded profile and save to disk.
+    fn save_calibrations_to_profile(&self) {
+        let mut state = self.state.write();
+
+        if state.active_profile.is_none() {
+            tracing::warn!("cannot save calibrations: no profile loaded");
+            return;
+        }
+
+        let Some(path) = state.profile_path.clone() else {
+            tracing::warn!("cannot save calibrations: no profile path");
+            return;
+        };
+
+        // Rebuild CalibrationEntry list from the runtime store.
+        let mut entries = Vec::new();
+        for device_id in state.calibrations.device_ids() {
+            for (axis, cal) in state.calibrations.get_for_device(device_id) {
+                entries.push(CalibrationEntry::from_calibration(
+                    device_id.clone(),
+                    axis,
+                    cal,
+                ));
+            }
+        }
+
+        let profile = state.active_profile.as_mut().expect("checked above");
+        profile.set_calibrations(entries);
+
+        if let Err(e) = profile.save(&path) {
+            tracing::warn!(
+                path = %path.display(),
+                error = %e,
+                "failed to save calibrations to profile"
+            );
+        }
     }
 
     /// Read the current engine status from shared state.
@@ -272,5 +333,29 @@ impl Engine {
                 }
             }
         }
+    }
+}
+
+/// Resolve the pipeline input value from an event, applying calibration if available.
+fn resolve_input_value(event: &InputEvent, calibrations: &DeviceCalibrationStore) -> f64 {
+    match &event.value {
+        InputValue::Axis { value } => {
+            let raw = value.value();
+            if let InputId::Axis { index } = &event.source.input {
+                calibrations
+                    .get(&event.source.device, *index)
+                    .map_or(raw, |cal| cal.apply(raw))
+            } else {
+                raw
+            }
+        }
+        InputValue::Button { pressed } => {
+            if *pressed {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        InputValue::Hat { .. } => 0.0,
     }
 }

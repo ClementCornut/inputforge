@@ -61,10 +61,9 @@ impl ActionCategory {
     /// Classify an [`Action`] into its pipeline category.
     const fn of(action: &Action) -> Self {
         match action {
-            Action::ResponseCurve { .. }
-            | Action::Deadzone { .. }
-            | Action::Calibrate { .. }
-            | Action::Invert => Self::Processing,
+            Action::ResponseCurve { .. } | Action::Deadzone { .. } | Action::Invert => {
+                Self::Processing
+            }
 
             Action::MapToVJoy { .. } | Action::MapToKeyboard { .. } | Action::MergeAxis { .. } => {
                 Self::Output
@@ -89,7 +88,6 @@ fn action_name(action: &Action) -> &'static str {
     match action {
         Action::ResponseCurve { .. } => "Response Curve",
         Action::Deadzone { .. } => "Deadzone",
-        Action::Calibrate { .. } => "Calibrate",
         Action::Invert => "Invert",
         Action::MapToVJoy { .. } => "Map to vJoy",
         Action::MapToKeyboard { .. } => "Map to Keyboard",

@@ -1,8 +1,8 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-06
 
 mod types;
 
-pub use types::{DeviceEntry, ProfileId, ProfileSettings};
+pub use types::{CalibrationEntry, DeviceEntry, ProfileId, ProfileSettings};
 
 use std::path::Path;
 
@@ -41,6 +41,7 @@ pub struct Profile {
     devices: Vec<DeviceEntry>,
     modes: ModeTree,
     mappings: Vec<Mapping>,
+    calibrations: Vec<CalibrationEntry>,
     settings: ProfileSettings,
 }
 
@@ -61,6 +62,8 @@ struct ProfileRaw {
     modes: ModeTree,
     #[serde(default)]
     mappings: Vec<Mapping>,
+    #[serde(default)]
+    calibrations: Vec<CalibrationEntry>,
 }
 
 impl Profile {
@@ -71,6 +74,7 @@ impl Profile {
         devices: Vec<DeviceEntry>,
         modes: ModeTree,
         mappings: Vec<Mapping>,
+        calibrations: Vec<CalibrationEntry>,
         startup_mode: String,
     ) -> Self {
         Self {
@@ -79,6 +83,7 @@ impl Profile {
             devices,
             modes,
             mappings,
+            calibrations,
             settings: ProfileSettings { startup_mode },
         }
     }
@@ -170,6 +175,17 @@ impl Profile {
         &self.settings
     }
 
+    /// Return the calibration entries.
+    #[must_use]
+    pub fn calibrations(&self) -> &[CalibrationEntry] {
+        &self.calibrations
+    }
+
+    /// Replace the calibration entries.
+    pub fn set_calibrations(&mut self, entries: Vec<CalibrationEntry>) {
+        self.calibrations = entries;
+    }
+
     /// Validate and convert from the raw TOML representation.
     fn from_raw(raw: ProfileRaw) -> Result<Self> {
         // Validate startup_mode exists in the mode tree.
@@ -191,12 +207,25 @@ impl Profile {
             }
         }
 
+        // Validate all calibration entries.
+        for entry in &raw.calibrations {
+            entry
+                .to_calibration()
+                .map_err(|e| EngineError::InvalidConfig {
+                    reason: format!(
+                        "invalid calibration for device '{}' axis {}: {e}",
+                        entry.device.0, entry.axis
+                    ),
+                })?;
+        }
+
         Ok(Self {
             id: raw.profile.id,
             name: raw.profile.name,
             devices: raw.devices,
             modes: raw.modes,
             mappings: raw.mappings,
+            calibrations: raw.calibrations,
             settings: ProfileSettings {
                 startup_mode: raw.profile.startup_mode,
             },
@@ -214,6 +243,7 @@ impl Profile {
             devices: self.devices.clone(),
             modes: self.modes.clone(),
             mappings: self.mappings.clone(),
+            calibrations: self.calibrations.clone(),
         }
     }
 }
@@ -273,6 +303,7 @@ mod tests {
                 mode: "Default".to_owned(),
                 actions: vec![Action::Invert],
             }],
+            vec![],
             "Default".to_owned(),
         )
     }
@@ -455,6 +486,7 @@ type = "invert"
                     actions: vec![],
                 },
             ],
+            vec![],
             "Default".to_owned(),
         );
         let toml_str = profile.to_toml().unwrap();
@@ -485,6 +517,7 @@ type = "invert"
                     },
                 ],
             }],
+            vec![],
             "Default".to_owned(),
         );
         let toml_str = profile.to_toml().unwrap();
@@ -529,6 +562,7 @@ type = "invert"
                     }]),
                 }],
             }],
+            vec![],
             "Default".to_owned(),
         );
         let toml_str = profile.to_toml().unwrap();
@@ -555,6 +589,7 @@ type = "invert"
                     },
                 }],
             }],
+            vec![],
             "Default".to_owned(),
         );
         let toml_str = profile.to_toml().unwrap();
@@ -588,10 +623,95 @@ type = "invert"
                     },
                 ],
             }],
+            vec![],
             "Default".to_owned(),
         );
         let toml_str = profile.to_toml().unwrap();
         let back = Profile::from_toml(&toml_str).unwrap();
         assert_eq!(profile.mappings(), back.mappings());
+    }
+
+    #[test]
+    fn profile_with_calibrations_roundtrip() {
+        let mut map = HashMap::new();
+        map.insert("Default".to_owned(), vec![]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let calibrations = vec![
+            CalibrationEntry {
+                device: DeviceId("dev-1".to_owned()),
+                axis: 0,
+                physical_min: -32768.0,
+                physical_center_low: -100.0,
+                physical_center_high: 100.0,
+                physical_max: 32767.0,
+                enabled: true,
+            },
+            CalibrationEntry {
+                device: DeviceId("dev-1".to_owned()),
+                axis: 1,
+                physical_min: -500.0,
+                physical_center_low: -10.0,
+                physical_center_high: 10.0,
+                physical_max: 500.0,
+                enabled: false,
+            },
+        ];
+
+        let profile = Profile::new(
+            "Calibrated".to_owned(),
+            vec![],
+            modes,
+            vec![],
+            calibrations.clone(),
+            "Default".to_owned(),
+        );
+        let toml_str = profile.to_toml().unwrap();
+        let back = Profile::from_toml(&toml_str).unwrap();
+        assert_eq!(profile.calibrations(), back.calibrations());
+        assert_eq!(back.calibrations().len(), 2);
+        assert_eq!(back.calibrations()[0].axis, 0);
+        assert_eq!(back.calibrations()[1].axis, 1);
+        assert!(back.calibrations()[0].enabled);
+        assert!(!back.calibrations()[1].enabled);
+    }
+
+    #[test]
+    fn profile_without_calibrations_loads() {
+        let toml_str = r#"
+[profile]
+id = "test-id"
+name = "No Cals"
+startup_mode = "Default"
+
+[modes]
+Default = []
+"#;
+        let profile = Profile::from_toml(toml_str).unwrap();
+        assert!(profile.calibrations().is_empty());
+    }
+
+    #[test]
+    fn profile_with_invalid_calibration_rejected() {
+        let toml_str = r#"
+[profile]
+id = "test-id"
+name = "Bad Cal"
+startup_mode = "Default"
+
+[modes]
+Default = []
+
+[[calibrations]]
+device = "dev-1"
+axis = 0
+physical_min = 100.0
+physical_center_low = 0.0
+physical_center_high = 0.0
+physical_max = -100.0
+enabled = true
+"#;
+        let err = Profile::from_toml(toml_str).unwrap_err();
+        assert!(err.to_string().contains("calibration"));
     }
 }

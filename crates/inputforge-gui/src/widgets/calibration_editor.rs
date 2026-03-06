@@ -1,10 +1,9 @@
 // Rust guideline compliant 2026-03-04
 
-//! Visual calibration configuration editor widget.
+//! Visual calibration bar widget.
 //!
 //! Renders a custom-painted horizontal bar showing the physical-to-normalized
-//! mapping with threshold markers and optional live input indicator, plus
-//! four `DragValue` sliders and an enabled checkbox.
+//! mapping with threshold markers and optional live input indicator.
 
 use egui::{FontFamily, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2};
 
@@ -17,105 +16,6 @@ const BAR_WIDTH: f32 = 200.0;
 
 /// Height of the visual preview bar in logical pixels.
 const BAR_HEIGHT: f32 = 30.0;
-
-/// Drag speed for threshold sliders.
-const DRAG_SPEED: f64 = 0.01;
-
-/// Range limit for physical min/max values.
-const RANGE_LIMIT: f64 = 2.0;
-
-/// Render a single label + `DragValue` row inside a `Grid`.
-///
-/// Returns `true` when the value was changed by the user.
-fn drag_row(
-    ui: &mut egui::Ui,
-    label: &str,
-    value: &mut f64,
-    range_min: f64,
-    range_max: f64,
-) -> bool {
-    let colors = theme::colors(ui.ctx());
-    ui.label(egui::RichText::new(label).color(colors.text_dim));
-    let changed = ui
-        .add(
-            egui::DragValue::new(value)
-                .range(range_min..=range_max)
-                .speed(DRAG_SPEED)
-                .fixed_decimals(2),
-        )
-        .changed();
-    ui.end_row();
-    changed
-}
-
-/// Render the calibration editor widget.
-///
-/// Displays a visual preview bar, four `DragValue` controls for the
-/// physical thresholds, and an enabled checkbox.
-/// Returns `Some(new_config)` when the user modifies a value and the
-/// new configuration is valid. Returns `None` when nothing changed.
-pub(crate) fn calibration_editor(
-    ui: &mut egui::Ui,
-    config: &Calibration,
-    live_input: Option<f64>,
-) -> Option<Calibration> {
-    let colors = theme::colors(ui.ctx());
-
-    // Paint visual preview.
-    paint_calibration_bar(ui, config, live_input);
-
-    ui.add_space(4.0);
-
-    // Editable thresholds.
-    let mut physical_min = config.physical_min();
-    let mut center_low = config.physical_center_low();
-    let mut center_high = config.physical_center_high();
-    let mut physical_max = config.physical_max();
-    let mut enabled = config.enabled();
-
-    let mut changed = false;
-
-    egui::Grid::new(ui.id().with("calibration_sliders"))
-        .num_columns(2)
-        .spacing([8.0, 4.0])
-        .show(ui, |ui| {
-            changed |= drag_row(
-                ui,
-                "Physical Min",
-                &mut physical_min,
-                -RANGE_LIMIT,
-                RANGE_LIMIT,
-            );
-            changed |= drag_row(ui, "Center Low", &mut center_low, -RANGE_LIMIT, RANGE_LIMIT);
-            changed |= drag_row(
-                ui,
-                "Center High",
-                &mut center_high,
-                -RANGE_LIMIT,
-                RANGE_LIMIT,
-            );
-            changed |= drag_row(
-                ui,
-                "Physical Max",
-                &mut physical_max,
-                -RANGE_LIMIT,
-                RANGE_LIMIT,
-            );
-
-            ui.label(egui::RichText::new("Enabled").color(colors.text_dim));
-            if ui.checkbox(&mut enabled, "").changed() {
-                changed = true;
-            }
-            ui.end_row();
-        });
-
-    if changed {
-        // Validate the new configuration; revert on error.
-        Calibration::new(physical_min, center_low, center_high, physical_max, enabled).ok()
-    } else {
-        None
-    }
-}
 
 /// Map a physical value to an x pixel coordinate within `rect`,
 /// given the display range [`display_min`, `display_max`].
@@ -136,7 +36,11 @@ fn physical_to_x(rect: &Rect, value: f64, display_min: f64, display_range: f64) 
 /// - `[center_high, max]`: positive active zone (maps to `[0, 1]`)
 ///
 /// With threshold markers and optional live input indicator.
-fn paint_calibration_bar(ui: &mut egui::Ui, config: &Calibration, live_input: Option<f64>) {
+pub(crate) fn paint_calibration_bar(
+    ui: &mut egui::Ui,
+    config: &Calibration,
+    live_input: Option<f64>,
+) {
     let colors = theme::colors(ui.ctx());
     let desired_size = Vec2::new(BAR_WIDTH, BAR_HEIGHT);
     let (rect, _response) = ui.allocate_exact_size(desired_size, egui::Sense::hover());
@@ -299,17 +203,6 @@ mod tests {
     fn bar_dimensions_are_positive() {
         assert!(BAR_WIDTH > 0.0);
         assert!(BAR_HEIGHT > 0.0);
-    }
-
-    #[test]
-    fn drag_speed_is_reasonable() {
-        assert!(DRAG_SPEED > 0.0);
-        assert!(DRAG_SPEED < 1.0);
-    }
-
-    #[test]
-    fn range_limit_allows_over_unity() {
-        assert!(RANGE_LIMIT > 1.0);
     }
 
     #[test]

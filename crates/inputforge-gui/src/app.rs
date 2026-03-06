@@ -19,9 +19,17 @@ use inputforge_core::state::{AppState, DeviceState, EngineStatus};
 use inputforge_core::types::{DeviceId, HatDirection, InputAddress, InputId, VirtualDeviceConfig};
 
 use crate::panels;
+use crate::panels::calibration_window::CalibrationWindowState;
 use crate::panels::input_monitor::InputMonitorState;
 use crate::panels::mapping_editor::MappingEditorState;
 use crate::theme;
+
+/// State for floating tool windows opened from the menu bar.
+#[derive(Debug, Default)]
+pub(crate) struct ToolWindowStates {
+    /// Whether the calibration window is open.
+    pub calibration_open: bool,
+}
 
 /// Which view occupies the center panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,9 +54,10 @@ impl CenterView {
             Self::ModeEditor,
         ]
     }
+}
 
-    /// Tab label for the view.
-    pub(crate) const fn label(self) -> &'static str {
+impl crate::widgets::tab_bar::TabItem for CenterView {
+    fn label(self) -> &'static str {
         match self {
             Self::DeviceOverview => "Devices",
             Self::MappingEditor => "Mappings",
@@ -133,6 +142,10 @@ pub struct InputForgeApp {
     pub(crate) monitor_state: InputMonitorState,
     /// Persistent state for the mapping editor panel.
     pub(crate) mapping_editor_state: MappingEditorState,
+    /// State for floating tool windows opened from the menu bar.
+    pub(crate) tool_windows: ToolWindowStates,
+    /// Persistent state for the calibration window.
+    pub(crate) calibration_window_state: CalibrationWindowState,
 }
 
 impl InputForgeApp {
@@ -155,6 +168,8 @@ impl InputForgeApp {
             selection: GuiSelection::default(),
             monitor_state: InputMonitorState::new(),
             mapping_editor_state: MappingEditorState::new(),
+            tool_windows: ToolWindowStates::default(),
+            calibration_window_state: CalibrationWindowState::default(),
         };
         app.refresh_cache();
         app
@@ -265,6 +280,16 @@ impl eframe::App for InputForgeApp {
             &mut self.selection,
             &mut self.monitor_state,
             &mut self.mapping_editor_state,
+            &mut self.tool_windows,
+        );
+
+        panels::calibration_window::show(
+            ctx,
+            &mut self.calibration_window_state,
+            &mut self.tool_windows.calibration_open,
+            &self.cache,
+            &self.state,
+            &self.commands,
         );
     }
 }
@@ -301,6 +326,8 @@ mod tests {
             selection: GuiSelection::default(),
             monitor_state: InputMonitorState::new(),
             mapping_editor_state: MappingEditorState::new(),
+            tool_windows: ToolWindowStates::default(),
+            calibration_window_state: CalibrationWindowState::default(),
         };
 
         // Mutate shared state.
@@ -330,12 +357,14 @@ mod tests {
             selection: GuiSelection::default(),
             monitor_state: InputMonitorState::new(),
             mapping_editor_state: MappingEditorState::new(),
+            tool_windows: ToolWindowStates::default(),
+            calibration_window_state: CalibrationWindowState::default(),
         };
 
         // Add one device.
         {
             let mut guard = state.write();
-            guard.devices.push(inputforge_core::state::DeviceState {
+            guard.devices.push(DeviceState {
                 info: DeviceInfo {
                     id: DeviceId("dev-0".to_owned()),
                     name: "Joystick".to_owned(),
@@ -364,7 +393,7 @@ mod tests {
     #[test]
     fn snapshot_device_inputs_returns_defaults() {
         let state = AppState::new();
-        let device = inputforge_core::state::DeviceState {
+        let device = DeviceState {
             info: inputforge_core::types::DeviceInfo {
                 id: DeviceId("test".to_owned()),
                 name: "Test".to_owned(),
@@ -417,7 +446,7 @@ mod tests {
         use inputforge_core::types::{AxisValue, InputValue};
 
         let mut state = AppState::new();
-        let device = inputforge_core::state::DeviceState {
+        let device = DeviceState {
             info: inputforge_core::types::DeviceInfo {
                 id: DeviceId("test-dev".to_owned()),
                 name: "Test".to_owned(),

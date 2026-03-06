@@ -12,7 +12,7 @@ use std::collections::HashSet;
 
 use inputforge_core::action::Action;
 
-use crate::app::{CachedState, GuiSelection};
+use crate::app::CachedState;
 use crate::theme;
 
 /// Persistent state for the mapping editor panel.
@@ -52,34 +52,8 @@ impl MappingEditorState {
 /// If no device or input is selected, shows a placeholder message.
 /// Otherwise displays the action pipeline with arrow-button
 /// reordering, add/delete controls, and per-action configuration.
-pub(crate) fn show(
-    ui: &mut egui::Ui,
-    state: &mut MappingEditorState,
-    cache: &CachedState,
-    _selection: &GuiSelection,
-) {
+pub(crate) fn show(ui: &mut egui::Ui, state: &mut MappingEditorState, cache: &CachedState) {
     let colors = theme::colors(ui.ctx());
-
-    // Header.
-    ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new("Action Pipeline")
-                .family(egui::FontFamily::Name("SemiBold".into()))
-                .color(colors.text),
-        );
-
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if state.dirty {
-                ui.label(
-                    egui::RichText::new("unsaved")
-                        .size(theme::SMALL_FONT_SIZE)
-                        .color(colors.warning),
-                );
-            }
-        });
-    });
-
-    ui.separator();
 
     // Scrollable action card list.
     egui::ScrollArea::vertical()

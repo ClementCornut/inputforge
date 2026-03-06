@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-03-06
 
 mod condition;
 mod mapping;
@@ -10,7 +10,7 @@ pub use mode_change::{CycleModes, ModeChangeStrategy};
 
 use serde::{Deserialize, Serialize};
 
-use crate::processing::{Calibration, DeadzoneConfig, ResponseCurve};
+use crate::processing::{DeadzoneConfig, ResponseCurve};
 use crate::types::{InputAddress, KeyCombo, MergeOp, OutputAddress};
 
 /// An action in the input processing pipeline.
@@ -28,9 +28,6 @@ pub enum Action {
     },
     Deadzone {
         config: DeadzoneConfig,
-    },
-    Calibrate {
-        config: Calibration,
     },
     Invert,
 

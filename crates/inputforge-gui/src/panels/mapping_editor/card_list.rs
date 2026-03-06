@@ -238,15 +238,6 @@ pub(super) fn show_add_action_dropdown(
                     });
                     ui.close();
                 }
-                if ui.button("Calibrate").clicked() {
-                    // Use validated constructor with sensible defaults.
-                    if let Ok(config) = inputforge_core::processing::calibration::Calibration::new(
-                        -1.0, -0.05, 0.05, 1.0, true,
-                    ) {
-                        state.push_action(Action::Calibrate { config });
-                    }
-                    ui.close();
-                }
                 if ui.button("Invert").clicked() {
                     state.push_action(Action::Invert);
                     ui.close();

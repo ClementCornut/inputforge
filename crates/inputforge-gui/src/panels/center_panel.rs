@@ -1,19 +1,22 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-03-06
 
 //! Center panel routing between application views.
 //!
-//! Displays a horizontal tab bar at the top for switching between
-//! four views: Devices, Mappings, Monitor, and Modes. The active
-//! tab determines which content is rendered below.
+//! Displays a unified toolbar at the top: tab buttons on the left for
+//! switching between four views (Devices, Mappings, Monitor, Modes)
+//! and tool buttons on the right (Calibration). The active tab
+//! determines which content is rendered below.
 
-use crate::app::{CachedState, CenterView, GuiSelection};
+use crate::app::{CachedState, CenterView, GuiSelection, ToolWindowStates};
+use crate::panels::calibration_window;
 use crate::panels::device_view;
 use crate::panels::input_monitor::{self, InputMonitorState};
 use crate::panels::mapping_editor::{self, MappingEditorState};
 use crate::theme;
 use crate::widgets::empty_state;
+use crate::widgets::tab_bar;
 
-/// Render the center panel with tab bar and routed content.
+/// Render the center panel with unified toolbar and routed content.
 ///
 /// This panel must be added LAST in `update()` because `CentralPanel`
 /// fills remaining space after all side/bottom panels are placed.
@@ -23,16 +26,22 @@ pub(crate) fn show(
     selection: &mut GuiSelection,
     monitor_state: &mut InputMonitorState,
     mapping_editor_state: &mut MappingEditorState,
+    tool_windows: &mut ToolWindowStates,
 ) {
     egui::CentralPanel::default().show(ctx, |ui| {
-        // Tab bar.
+        // Unified toolbar: tabs on the left, tool buttons on the right.
         ui.horizontal(|ui| {
-            for view in CenterView::all() {
-                tab_button(ui, view.label(), view, selection);
-            }
+            tab_bar::tab_bar_enum(
+                ui,
+                "center_tabs",
+                &CenterView::all(),
+                &mut selection.center_view,
+            );
+
+            show_tool_buttons(ui, ctx, tool_windows);
         });
 
-        ui.separator();
+        ui.add_space(4.0);
 
         // Routed content.
         match selection.center_view {
@@ -40,7 +49,7 @@ pub(crate) fn show(
                 device_view::show(ui, cache);
             }
             CenterView::MappingEditor => {
-                mapping_editor::show(ui, mapping_editor_state, cache, selection);
+                mapping_editor::show(ui, mapping_editor_state, cache);
             }
             CenterView::InputMonitor => {
                 input_monitor::show(ui, monitor_state);
@@ -52,38 +61,36 @@ pub(crate) fn show(
     });
 }
 
-/// Render a single tab button with active highlighting.
-fn tab_button(ui: &mut egui::Ui, label: &str, view: CenterView, selection: &mut GuiSelection) {
-    let colors = theme::colors(ui.ctx());
-    let is_active = selection.center_view == view;
+/// Render tool buttons right-aligned in the toolbar row.
+fn show_tool_buttons(ui: &mut egui::Ui, ctx: &egui::Context, tool_windows: &mut ToolWindowStates) {
+    let colors = theme::colors(ctx);
 
-    let text = if is_active {
-        egui::RichText::new(label).color(colors.primary)
-    } else {
-        egui::RichText::new(label).color(colors.text_dim)
-    };
-
-    // Give inactive tabs a subtle background so they look clickable.
-    let button = if is_active {
-        egui::Button::new(text).frame(false)
-    } else {
-        egui::Button::new(text).fill(colors.surface0)
-    };
-    let response = ui.add(button);
-
-    if response.clicked() {
-        selection.center_view = view;
-    }
-
-    // Active indicator underline drawn under this button's rect.
-    if is_active {
-        let rect = response.rect;
-        ui.painter().hline(
-            rect.left()..=rect.right(),
-            rect.bottom(),
-            egui::Stroke::new(2.0, colors.primary),
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        let btn = ui.add(
+            egui::Button::new(egui::RichText::new("Calibration").color(colors.text_dim))
+                .frame(false),
         );
-    }
+        // Brighten text on hover (same pattern as tab_bar inactive tabs).
+        if btn.hovered() {
+            ui.painter().text(
+                btn.rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "Calibration",
+                egui::FontId::proportional(ui.style().text_styles[&egui::TextStyle::Body].size),
+                colors.text,
+            );
+        }
+        if btn.clicked() {
+            if tool_windows.calibration_open {
+                ctx.send_viewport_cmd_to(
+                    calibration_window::viewport_id(),
+                    egui::ViewportCommand::Focus,
+                );
+            } else {
+                tool_windows.calibration_open = true;
+            }
+        }
+    });
 }
 
 /// Stub for the mode editor (implemented in Task 25).

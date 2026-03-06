@@ -1,8 +1,10 @@
-// Rust guideline compliant 2026-03-02
+// Rust guideline compliant 2026-03-06
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::error::Result;
+use crate::processing::Calibration;
 use crate::types::DeviceId;
 
 /// A stable profile identifier backed by UUID v4.
@@ -53,6 +55,54 @@ impl ProfileSettings {
     }
 }
 
+/// Serializable calibration entry for a specific device axis.
+///
+/// Fields are public following the DTO pattern — this type exists
+/// solely for serialization/deserialization between profile TOML
+/// and the validated [`Calibration`] domain type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CalibrationEntry {
+    pub device: DeviceId,
+    pub axis: u8,
+    pub physical_min: f64,
+    pub physical_center_low: f64,
+    pub physical_center_high: f64,
+    pub physical_max: f64,
+    pub enabled: bool,
+}
+
+impl CalibrationEntry {
+    /// Convert this entry into a validated [`Calibration`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the calibration values violate the invariant
+    /// `physical_min < physical_center_low <= physical_center_high < physical_max`.
+    pub fn to_calibration(&self) -> Result<Calibration> {
+        Calibration::new(
+            self.physical_min,
+            self.physical_center_low,
+            self.physical_center_high,
+            self.physical_max,
+            self.enabled,
+        )
+    }
+
+    /// Create a `CalibrationEntry` from a validated [`Calibration`].
+    #[must_use]
+    pub fn from_calibration(device: DeviceId, axis: u8, cal: &Calibration) -> Self {
+        Self {
+            device,
+            axis,
+            physical_min: cal.physical_min(),
+            physical_center_low: cal.physical_center_low(),
+            physical_center_high: cal.physical_center_high(),
+            physical_max: cal.physical_max(),
+            enabled: cal.enabled(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,5 +137,51 @@ mod tests {
             startup_mode: "Default".to_owned(),
         };
         assert_eq!(settings.startup_mode(), "Default");
+    }
+
+    #[test]
+    fn calibration_entry_roundtrip() {
+        let entry = CalibrationEntry {
+            device: DeviceId("dev-1".to_owned()),
+            axis: 0,
+            physical_min: -32768.0,
+            physical_center_low: -100.0,
+            physical_center_high: 100.0,
+            physical_max: 32767.0,
+            enabled: true,
+        };
+        let cal = entry.to_calibration().unwrap();
+        let back = CalibrationEntry::from_calibration(DeviceId("dev-1".to_owned()), 0, &cal);
+        assert_eq!(entry, back);
+    }
+
+    #[test]
+    fn calibration_entry_invalid_values() {
+        let entry = CalibrationEntry {
+            device: DeviceId("dev-1".to_owned()),
+            axis: 0,
+            physical_min: 100.0,
+            physical_center_low: 0.0,
+            physical_center_high: 0.0,
+            physical_max: -100.0,
+            enabled: true,
+        };
+        assert!(entry.to_calibration().is_err());
+    }
+
+    #[test]
+    fn calibration_entry_serde_roundtrip() {
+        let entry = CalibrationEntry {
+            device: DeviceId("dev-1".to_owned()),
+            axis: 2,
+            physical_min: -500.0,
+            physical_center_low: -10.0,
+            physical_center_high: 10.0,
+            physical_max: 500.0,
+            enabled: false,
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        let back: CalibrationEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(entry, back);
     }
 }
