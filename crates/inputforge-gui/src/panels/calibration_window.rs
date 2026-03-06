@@ -16,6 +16,7 @@ use parking_lot::RwLock;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::processing::calibration::Calibration;
 use inputforge_core::state::AppState;
+use inputforge_core::types::AxisPolarity;
 
 use crate::app::CachedState;
 use crate::theme;
@@ -304,7 +305,11 @@ fn show_axis_list(
             let axis_idx = i as u8;
             let is_selected = window_state.selected_axis == Some(axis_idx);
 
-            let value = snapshot.and_then(|s| s.axes.get(i)).copied().unwrap_or(0.0);
+            let value = snapshot
+                .and_then(|s| s.axes.get(i))
+                .copied()
+                .unwrap_or((0.0, AxisPolarity::Bipolar))
+                .0;
             let label = format!("A{i}");
 
             let response = ui
@@ -320,7 +325,7 @@ fn show_axis_list(
                         ui.add_space(ACCENT_BORDER_WIDTH + 2.0);
                     }
 
-                    axis_bar::axis_bar(ui, &label, value);
+                    axis_bar::axis_bar(ui, &label, value, AxisPolarity::Bipolar);
                 })
                 .response;
 
@@ -356,7 +361,8 @@ fn show_axis_detail(
         .get(device_idx)
         .and_then(|s| s.axes.get(editor_idx))
         .copied()
-        .unwrap_or(0.0);
+        .unwrap_or((0.0, AxisPolarity::Bipolar))
+        .0;
 
     // --- Section label ---
     ui.label(
@@ -368,14 +374,28 @@ fn show_axis_detail(
     ui.add_space(4.0);
 
     // --- Raw value bar ---
-    axis_bar::axis_bar_colored(ui, "Raw", raw_value, colors.indicator_idle, colors.text_dim);
+    axis_bar::axis_bar_colored(
+        ui,
+        "Raw",
+        raw_value,
+        AxisPolarity::Bipolar,
+        colors.indicator_idle,
+        colors.text_dim,
+    );
 
     // --- Calibrated value bar ---
     let editor = &window_state.axis_editors[editor_idx];
     let calibrated = editor
         .to_calibration()
         .map_or(raw_value, |cal| cal.apply(raw_value));
-    axis_bar::axis_bar_colored(ui, "Cal", calibrated, colors.live, colors.live);
+    axis_bar::axis_bar_colored(
+        ui,
+        "Cal",
+        calibrated,
+        AxisPolarity::Bipolar,
+        colors.live,
+        colors.live,
+    );
 
     ui.add_space(4.0);
 

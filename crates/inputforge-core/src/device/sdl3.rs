@@ -1,6 +1,6 @@
 // Rust guideline compliant 2026-03-03
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::marker::PhantomData;
 use std::time::Instant;
@@ -11,7 +11,8 @@ use sdl3::{EventPump, JoystickSubsystem, Sdl};
 
 use crate::error::{EngineError, Result};
 use crate::types::{
-    AxisValue, DeviceId, DeviceInfo, HatDirection, InputAddress, InputEvent, InputId, InputValue,
+    AxisPolarity, AxisValue, DeviceId, DeviceInfo, HatDirection, InputAddress, InputEvent, InputId,
+    InputValue,
 };
 
 use super::traits::{HotplugEvent, InputSource};
@@ -37,6 +38,14 @@ pub struct Sdl3Input {
     open_devices: HashMap<u32, OpenDevice>,
     /// Buffered hotplug events to be drained by the caller.
     hotplug_buffer: Vec<HotplugEvent>,
+    /// Axes whose polarity has been classified from a real hardware
+    /// event.  Key is `(instance_id, axis_index)`.  Once an axis is in
+    /// this set its polarity is final and won't be re-evaluated.
+    classified_axes: HashSet<(u32, u8)>,
+    /// Number of poll cycles elapsed.  Used to trigger a deferred
+    /// polarity re-probe after SDL3 has had time to populate hardware
+    /// axis values via DirectInput.
+    poll_count: u32,
     /// SDL3 context is not thread-safe; this marker makes the `!Send`
     /// bound explicit instead of relying implicitly on SDL types.
     _not_send: PhantomData<*mut ()>,
@@ -47,6 +56,7 @@ impl fmt::Debug for Sdl3Input {
         f.debug_struct("Sdl3Input")
             .field("open_devices", &self.open_devices.len())
             .field("hotplug_buffer", &self.hotplug_buffer.len())
+            .field("classified_axes", &self.classified_axes.len())
             .finish_non_exhaustive()
     }
 }
@@ -78,6 +88,8 @@ impl Sdl3Input {
             event_pump,
             open_devices: HashMap::new(),
             hotplug_buffer: Vec::new(),
+            classified_axes: HashSet::new(),
+            poll_count: 0,
             _not_send: PhantomData,
         };
 
@@ -129,9 +141,60 @@ impl Sdl3Input {
         }
     }
 
+    /// Re-probe axis polarities using `SDL_GetJoystickAxis` after the
+    /// event pump has had time to populate real hardware values.
+    ///
+    /// Any axes reclassified as unipolar trigger a
+    /// `HotplugEvent::Connected` update so the engine and GUI pick up
+    /// the corrected polarity.
+    #[expect(unsafe_code, reason = "SDL3 FFI calls for axis re-probe")]
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "axis_idx iterates from 0..num_axes, always non-negative"
+    )]
+    fn deferred_reprobe_polarities(&mut self) {
+        for device in self.open_devices.values_mut() {
+            let instance_id = sdl3::sys::joystick::SDL_JoystickID(device.joystick.id());
+            // SAFETY: the joystick is open so the pointer is valid.
+            let raw = unsafe { sdl3::sys::joystick::SDL_GetJoystickFromID(instance_id) };
+            if raw.is_null() {
+                continue;
+            }
+            let mut changed = false;
+            for axis_idx in 0..i32::from(device.info.axes) {
+                let idx = axis_idx as usize;
+                // SAFETY: raw is non-null and valid.
+                let current = unsafe { sdl3::sys::joystick::SDL_GetJoystickAxis(raw, axis_idx) };
+                let polarity = if current < UNIPOLAR_INITIAL_STATE_THRESHOLD {
+                    AxisPolarity::Unipolar
+                } else {
+                    AxisPolarity::Bipolar
+                };
+                if idx < device.info.axis_polarities.len()
+                    && device.info.axis_polarities[idx] != polarity
+                {
+                    tracing::info!(
+                        device = %device.info.name,
+                        axis_idx,
+                        current,
+                        ?polarity,
+                        "deferred reprobe reclassified axis polarity"
+                    );
+                    device.info.axis_polarities[idx] = polarity;
+                    changed = true;
+                }
+            }
+            if changed {
+                self.hotplug_buffer
+                    .push(HotplugEvent::Connected(device.info.clone()));
+            }
+        }
+    }
+
     /// Handle a joystick removal event.
     fn handle_device_removed(&mut self, instance_id: u32) {
         if let Some(removed) = self.open_devices.remove(&instance_id) {
+            self.classified_axes.retain(|&(id, _)| id != instance_id);
             self.hotplug_buffer
                 .push(HotplugEvent::Disconnected(removed.device_id));
         }
@@ -158,14 +221,41 @@ impl InputSource for Sdl3Input {
                     value,
                     ..
                 } => {
-                    if let Some(device) = self.open_devices.get(&which) {
+                    if let Some(device) = self.open_devices.get_mut(&which) {
+                        // Lazy polarity classification: on the first event
+                        // for each axis, check the raw value to determine
+                        // if it's a unipolar axis (pedal/trigger resting
+                        // at −32 768).
+                        let key = (which, axis_idx);
+                        if self.classified_axes.insert(key) {
+                            let polarity = if value < UNIPOLAR_INITIAL_STATE_THRESHOLD {
+                                AxisPolarity::Unipolar
+                            } else {
+                                AxisPolarity::Bipolar
+                            };
+                            let idx = usize::from(axis_idx);
+                            if idx < device.info.axis_polarities.len()
+                                && device.info.axis_polarities[idx] != polarity
+                            {
+                                tracing::info!(
+                                    device = %device.info.name,
+                                    axis_idx,
+                                    value,
+                                    ?polarity,
+                                    "reclassified axis polarity from first event"
+                                );
+                                device.info.axis_polarities[idx] = polarity;
+                                self.hotplug_buffer
+                                    .push(HotplugEvent::Connected(device.info.clone()));
+                            }
+                        }
                         out.push(InputEvent {
                             source: InputAddress {
                                 device: device.device_id.clone(),
                                 input: InputId::Axis { index: axis_idx },
                             },
                             value: InputValue::Axis {
-                                value: AxisValue::raw(f64::from(value)),
+                                value: AxisValue::raw(f64::from(value) / f64::from(i16::MAX)),
                             },
                             timestamp: now,
                         });
@@ -229,6 +319,18 @@ impl InputSource for Sdl3Input {
                 _ => {}
             }
         }
+
+        // Deferred polarity re-probe: after a few poll cycles the event
+        // pump has run enough for DirectInput to populate real axis
+        // resting values.  We re-read current values via SDL FFI and
+        // reclassify any axes that were misdetected at enumeration time.
+        self.poll_count = self.poll_count.saturating_add(1);
+        if self.poll_count >= REPROBE_START
+            && self.poll_count <= REPROBE_END
+            && self.poll_count % REPROBE_INTERVAL == 0
+        {
+            self.deferred_reprobe_polarities();
+        }
     }
 
     fn is_device_connected(&self, id: &DeviceId) -> bool {
@@ -242,11 +344,34 @@ impl InputSource for Sdl3Input {
     }
 }
 
+/// Axis initial-state threshold below which an axis is classified as unipolar.
+///
+/// SDL3 reports axis values as `i16` in `[-32 768, 32 767]`.  Pedals and
+/// triggers typically rest at the minimum value (`-32 768`).  Any axis whose
+/// initial state is below this threshold (bottom 25 % of the signed range) is
+/// treated as unipolar so the GUI can display it as 0–100 % instead of
+/// −100 %..+100 %.
+const UNIPOLAR_INITIAL_STATE_THRESHOLD: i16 = -16_384;
+
+/// First poll cycle at which deferred polarity re-probing starts.
+const REPROBE_START: u32 = 5;
+
+/// Last poll cycle at which re-probing is attempted (2 s at 1 ms/tick).
+const REPROBE_END: u32 = 2000;
+
+/// Interval between re-probe attempts within the window.
+///
+/// With `POLL_INTERVAL = 1 ms` this means one probe every 100 ms,
+/// giving ~20 attempts total to catch DirectInput populating the
+/// real axis resting values.
+const REPROBE_INTERVAL: u32 = 100;
+
 /// Build a [`DeviceInfo`] from an open SDL3 joystick.
 ///
-/// Calls `SDL_GetJoystickPathForID` via FFI to retrieve the platform-specific
-/// device path (used by `HidHide` on Windows).
-#[expect(unsafe_code, reason = "SDL_GetJoystickPathForID is an SDL3 FFI call")]
+/// Calls SDL3 FFI to retrieve the platform-specific device path (used by
+/// `HidHide` on Windows) and to probe per-axis initial state for polarity
+/// detection.
+#[expect(unsafe_code, reason = "SDL3 FFI calls for path and axis initial state")]
 fn device_info_from_joystick(joystick: &Joystick, device_id: &DeviceId) -> DeviceInfo {
     let instance_id = sdl3::sys::joystick::SDL_JoystickID(joystick.id());
 
@@ -268,14 +393,60 @@ fn device_info_from_joystick(joystick: &Joystick, device_id: &DeviceId) -> Devic
         )
     };
 
+    let num_axes = u8::try_from(joystick.num_axes()).unwrap_or(u8::MAX);
+
+    // SAFETY: `SDL_GetJoystickFromID` returns the `SDL_Joystick` pointer
+    // associated with the given instance ID, or null if invalid.  We hold
+    // an open `Joystick` reference so the pointer is valid for the
+    // duration of this function.
+    let raw_joystick = unsafe { sdl3::sys::joystick::SDL_GetJoystickFromID(instance_id) };
+
+    // Best-effort polarity detection at enumeration time.  On Windows
+    // with DirectInput, SDL3 often reports 0 for all axes at this point
+    // because hardware hasn't been polled yet.  The runtime lazy
+    // classifier in `poll()` will correct any misclassifications when
+    // the first real axis event arrives.
+    let axis_polarities = detect_axis_polarities(raw_joystick, num_axes);
+
     DeviceInfo {
         id: device_id.clone(),
         name: joystick.name(),
-        axes: u8::try_from(joystick.num_axes()).unwrap_or(u8::MAX),
+        axes: num_axes,
         buttons: u8::try_from(joystick.num_buttons()).unwrap_or(u8::MAX),
         hats: u8::try_from(joystick.num_hats()).unwrap_or(u8::MAX),
         instance_path,
+        axis_polarities,
     }
+}
+
+/// Best-effort polarity detection via `SDL_GetJoystickAxis`.
+///
+/// On Windows with DirectInput, this usually returns all-zero at
+/// enumeration time.  The deferred re-probe in
+/// [`Sdl3Input::deferred_reprobe_polarities`] and the lazy classifier
+/// in [`Sdl3Input::poll`] handle the real classification once hardware
+/// values are available.
+#[expect(unsafe_code, reason = "SDL_GetJoystickAxis is an SDL3 FFI call")]
+fn detect_axis_polarities(
+    raw_joystick: *mut sdl3::sys::joystick::SDL_Joystick,
+    num_axes: u8,
+) -> Vec<AxisPolarity> {
+    (0..i32::from(num_axes))
+        .map(|axis_idx| {
+            if raw_joystick.is_null() {
+                return AxisPolarity::Bipolar;
+            }
+            // SAFETY: `raw_joystick` is non-null and valid (checked above).
+            // `SDL_GetJoystickAxis` returns 0 on failure.
+            let current_value =
+                unsafe { sdl3::sys::joystick::SDL_GetJoystickAxis(raw_joystick, axis_idx) };
+            if current_value < UNIPOLAR_INITIAL_STATE_THRESHOLD {
+                AxisPolarity::Unipolar
+            } else {
+                AxisPolarity::Bipolar
+            }
+        })
+        .collect()
 }
 
 /// Convert SDL3 [`HatState`] to our [`HatDirection`].

@@ -16,20 +16,23 @@ use crate::app::{CachedState, DeviceInputSnapshot};
 use crate::theme;
 use crate::widgets::{axis_bar, button_grid, empty_state, hat_indicator, status_dot};
 
-/// Static 0-indexed axis label table for axes 0-15 to avoid per-frame allocation.
-pub(crate) const AXIS_LABELS: [&str; 16] = [
-    "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13", "A14",
-    "A15",
-];
-
-/// Return a label for the given 0-based axis index.
+/// HID standard axis names for indices 0–7.
 ///
-/// Uses a static table for indices 0-15 to avoid heap allocation.
+/// Maps to the standard HID usage page ordering: X, Y, Z, then rotational
+/// axes, then slider and dial.  Uses abbreviated forms to fit the 40 px
+/// label area.
+pub(crate) const HID_AXIS_LABELS: [&str; 8] =
+    ["X", "Y", "Z", "Rot X", "Rot Y", "Rot Z", "Sldr", "Dial"];
+
+/// Return a human-readable label for the given 0-based axis index.
+///
+/// Indices 0–7 use HID standard names; higher indices fall back to
+/// `Ax {index}`.
 pub(crate) fn axis_label(index: usize) -> Cow<'static, str> {
-    if index < AXIS_LABELS.len() {
-        Cow::Borrowed(AXIS_LABELS[index])
+    if index < HID_AXIS_LABELS.len() {
+        Cow::Borrowed(HID_AXIS_LABELS[index])
     } else {
-        Cow::Owned(format!("A{index}"))
+        Cow::Owned(format!("Ax {index}"))
     }
 }
 
@@ -90,8 +93,8 @@ fn show_device(ui: &mut egui::Ui, device: &DeviceState, snapshot: &DeviceInputSn
                         .color(colors.text)
                         .family(FontFamily::Name("SemiBold".into())),
                 );
-                for (i, &value) in snapshot.axes.iter().enumerate() {
-                    axis_bar::axis_bar(ui, &axis_label(i), value);
+                for (i, &(value, polarity)) in snapshot.axes.iter().enumerate() {
+                    axis_bar::axis_bar(ui, &axis_label(i), value, polarity);
                     ui.add_space(1.0);
                 }
                 ui.add_space(4.0);
@@ -149,6 +152,7 @@ mod tests {
                 buttons: 12,
                 hats: 1,
                 instance_path: None,
+                axis_polarities: vec![],
             },
             connected: true,
         }
@@ -171,6 +175,7 @@ mod tests {
                 buttons: 0,
                 hats: 0,
                 instance_path: None,
+                axis_polarities: vec![],
             },
             connected: false,
         };
@@ -179,15 +184,17 @@ mod tests {
     }
 
     #[test]
-    fn axis_label_uses_static_table() {
-        assert_eq!(axis_label(0), "A0");
-        assert_eq!(axis_label(7), "A7");
-        assert_eq!(axis_label(15), "A15");
+    fn axis_label_hid_names() {
+        assert_eq!(axis_label(0), "X");
+        assert_eq!(axis_label(2), "Z");
+        assert_eq!(axis_label(3), "Rot X");
+        assert_eq!(axis_label(6), "Sldr");
+        assert_eq!(axis_label(7), "Dial");
     }
 
     #[test]
     fn axis_label_beyond_table_falls_back() {
-        assert_eq!(axis_label(16), "A16");
-        assert_eq!(axis_label(99), "A99");
+        assert_eq!(axis_label(8), "Ax 8");
+        assert_eq!(axis_label(99), "Ax 99");
     }
 }

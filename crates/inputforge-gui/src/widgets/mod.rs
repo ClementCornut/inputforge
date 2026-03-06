@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-03-06
 
 //! Reusable custom-painted widgets for the `InputForge` GUI.
 //!
@@ -13,6 +13,7 @@
 //! - `hat_indicator`: 8-way compass direction display
 //! - `status_dot`: connection/status indicator dot
 //! - `tab_bar`: horizontal tab bar with animated sliding underline
+//! - `toast`: floating toast notifications for transient warnings/errors
 
 pub(crate) mod action_card;
 pub(crate) mod action_config;
@@ -25,3 +26,4 @@ pub(crate) mod empty_state;
 pub(crate) mod hat_indicator;
 pub(crate) mod status_dot;
 pub(crate) mod tab_bar;
+pub(crate) mod toast;

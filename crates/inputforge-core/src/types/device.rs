@@ -6,6 +6,16 @@ use crate::error::{EngineError, Result};
 
 use super::address::VJoyAxis;
 
+/// Whether an axis is bipolar (centered at 0) or unipolar (rests at min).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum AxisPolarity {
+    /// Axis rests at center (0). Range displayed as −100 %..+100 %.
+    #[default]
+    Bipolar,
+    /// Axis rests at minimum (−1.0). Range displayed as 0 %..100 %.
+    Unipolar,
+}
+
 /// Stable identifier for a physical device, persists across reconnects.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DeviceId(pub String);
@@ -23,6 +33,12 @@ pub struct DeviceInfo {
     /// On Windows this is the HID device interface path returned by SDL3.
     /// `None` when the platform path is unavailable.
     pub instance_path: Option<String>,
+    /// Per-axis polarity detected at enumeration time.
+    ///
+    /// Length equals `axes`. Empty or shorter than `axes` means all remaining
+    /// axes default to [`AxisPolarity::Bipolar`].
+    #[serde(default)]
+    pub axis_polarities: Vec<AxisPolarity>,
 }
 
 /// Configuration for creating a virtual vJoy device.
@@ -72,6 +88,7 @@ mod tests {
             buttons: 12,
             hats: 1,
             instance_path: Some("HID\\VID_045E&PID_02FF".to_owned()),
+            axis_polarities: vec![],
         };
         let json = serde_json::to_string(&info).unwrap();
         let back: DeviceInfo = serde_json::from_str(&json).unwrap();
@@ -87,6 +104,7 @@ mod tests {
             buttons: 0,
             hats: 0,
             instance_path: None,
+            axis_polarities: vec![],
         };
         let json = serde_json::to_string(&info).unwrap();
         let back: DeviceInfo = serde_json::from_str(&json).unwrap();

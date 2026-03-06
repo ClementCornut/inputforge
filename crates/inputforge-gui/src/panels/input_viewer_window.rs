@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 use egui::FontFamily;
 
 use inputforge_core::state::DeviceState;
-use inputforge_core::types::{DeviceId, VJoyAxis, VirtualDeviceConfig};
+use inputforge_core::types::{AxisPolarity, DeviceId, VJoyAxis, VirtualDeviceConfig};
 
 use inputforge_core::types::HatDirection;
 
@@ -448,8 +448,8 @@ fn show_physical_device_section(
 
     if show_axes {
         instrument_frame(ui, colors, |ui| {
-            for (i, &value) in snapshot.axes.iter().enumerate() {
-                axis_bar::axis_bar(ui, &axis_label(i), value);
+            for (i, &(value, polarity)) in snapshot.axes.iter().enumerate() {
+                axis_bar::axis_bar(ui, &axis_label(i), value, polarity);
                 ui.add_space(AXIS_BAR_SPACING);
             }
         });
@@ -507,6 +507,7 @@ fn show_virtual_device_section(
                     ui,
                     vjoy_axis_label(axis),
                     value,
+                    AxisPolarity::Bipolar,
                     colors.special,
                     colors.special,
                 );
@@ -745,16 +746,16 @@ mod tests {
     }
 
     #[test]
-    fn axis_label_uses_static_table() {
-        assert_eq!(axis_label(0), "A0");
-        assert_eq!(axis_label(7), "A7");
-        assert_eq!(axis_label(15), "A15");
+    fn axis_label_hid_names() {
+        assert_eq!(axis_label(0), "X");
+        assert_eq!(axis_label(3), "Rot X");
+        assert_eq!(axis_label(7), "Dial");
     }
 
     #[test]
     fn axis_label_beyond_table_falls_back() {
-        assert_eq!(axis_label(16), "A16");
-        assert_eq!(axis_label(99), "A99");
+        assert_eq!(axis_label(8), "Ax 8");
+        assert_eq!(axis_label(99), "Ax 99");
     }
 
     #[test]
@@ -787,6 +788,7 @@ mod tests {
                     buttons: 12,
                     hats: 1,
                     instance_path: None,
+                    axis_polarities: vec![],
                 },
                 connected: true,
             }],
@@ -796,6 +798,7 @@ mod tests {
             profile_name: None,
             virtual_devices: vec![],
             output_snapshots: vec![],
+            warnings: vec![],
         };
 
         register_new_devices(&mut state, &cache);
@@ -821,6 +824,7 @@ mod tests {
                 hat_count: 0,
             }],
             output_snapshots: vec![],
+            warnings: vec![],
         };
 
         register_new_devices(&mut state, &cache);
@@ -846,6 +850,7 @@ mod tests {
                 hat_count: 1,
             }],
             output_snapshots: vec![],
+            warnings: vec![],
         };
 
         register_new_devices(&mut state, &cache);

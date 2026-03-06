@@ -17,7 +17,7 @@ use inputforge_core::engine::EngineCommand;
 use inputforge_core::pipeline::InputCache;
 use inputforge_core::state::{AppState, DeviceState, EngineStatus};
 use inputforge_core::types::{
-    DeviceId, HatDirection, InputAddress, InputId, VJoyAxis, VirtualDeviceConfig,
+    AxisPolarity, DeviceId, HatDirection, InputAddress, InputId, VJoyAxis, VirtualDeviceConfig,
 };
 
 use crate::panels;
@@ -25,6 +25,7 @@ use crate::panels::calibration_window::CalibrationWindowState;
 use crate::panels::input_viewer_window::InputViewerWindowState;
 use crate::panels::mapping_editor::MappingEditorState;
 use crate::theme;
+use crate::widgets::toast::{ToastLevel, ToastManager};
 
 /// State for floating tool windows opened from the menu bar.
 #[derive(Debug, Default)]
@@ -87,8 +88,8 @@ impl Default for GuiSelection {
 /// rendering without further lock acquisitions.
 #[derive(Debug, Clone)]
 pub(crate) struct DeviceInputSnapshot {
-    /// Axis values in `[-1.0, 1.0]`.
-    pub axes: Vec<f64>,
+    /// Axis values in `[-1.0, 1.0]` paired with their detected polarity.
+    pub axes: Vec<(f64, AxisPolarity)>,
     /// Button pressed states.
     pub buttons: Vec<bool>,
     /// Hat switch directions.
@@ -124,6 +125,8 @@ pub(crate) struct CachedState {
     pub virtual_devices: Vec<VirtualDeviceConfig>,
     /// Per-vJoy-device output snapshots, parallel to `virtual_devices`.
     pub output_snapshots: Vec<VjoyOutputSnapshot>,
+    /// Warnings from the engine (e.g., `HidHide` unavailable).
+    pub warnings: Vec<String>,
 }
 
 impl Default for CachedState {
@@ -136,6 +139,7 @@ impl Default for CachedState {
             profile_name: None,
             virtual_devices: Vec::new(),
             output_snapshots: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 }
@@ -159,6 +163,10 @@ pub struct InputForgeApp {
     pub(crate) tool_windows: ToolWindowStates,
     /// Persistent state for the calibration window.
     pub(crate) calibration_window_state: CalibrationWindowState,
+    /// Toast notification manager for transient warnings.
+    pub(crate) toast_manager: ToastManager,
+    /// Number of warnings seen so far (to detect new ones).
+    last_warning_count: usize,
 }
 
 impl InputForgeApp {
@@ -183,6 +191,8 @@ impl InputForgeApp {
             mapping_editor_state: MappingEditorState::new(),
             tool_windows: ToolWindowStates::default(),
             calibration_window_state: CalibrationWindowState::default(),
+            toast_manager: ToastManager::default(),
+            last_warning_count: 0,
         };
         app.refresh_cache();
         app
@@ -218,23 +228,23 @@ impl InputForgeApp {
             .iter()
             .map(|vdev| snapshot_vjoy_outputs(vdev, &guard))
             .collect();
+
+        self.cache.warnings.clone_from(&guard.warnings);
         // Guard dropped here.
+
+        // Push any new warnings to the toast manager.
+        if self.cache.warnings.len() > self.last_warning_count {
+            for msg in &self.cache.warnings[self.last_warning_count..] {
+                self.toast_manager.push(msg.clone(), ToastLevel::Warning);
+            }
+            self.last_warning_count = self.cache.warnings.len();
+        }
 
         // Validate selected_device_idx after device list may have changed.
         if let Some(idx) = self.selection.selected_device_idx {
             if idx >= self.cache.devices.len() {
                 self.selection.selected_device_idx = None;
             }
-        }
-    }
-
-    /// Send a command to the engine thread.
-    ///
-    /// Errors are logged at `warn` level but otherwise silently dropped
-    /// to avoid disrupting the UI frame.
-    pub(crate) fn send_command(&self, cmd: EngineCommand) {
-        if let Err(e) = self.commands.send(cmd) {
-            tracing::warn!(error = %e, "failed to send engine command");
         }
     }
 }
@@ -248,13 +258,19 @@ fn snapshot_device_inputs(
     device: &DeviceState,
     guard: &AppState,
 ) -> DeviceInputSnapshot {
-    let axes: Vec<f64> = (0..device.info.axes)
+    let axes: Vec<(f64, AxisPolarity)> = (0..device.info.axes)
         .map(|i| {
             let addr = InputAddress {
                 device: device_id.clone(),
                 input: InputId::Axis { index: i },
             };
-            guard.input_cache.get_axis(&addr)
+            let polarity = device
+                .info
+                .axis_polarities
+                .get(usize::from(i))
+                .copied()
+                .unwrap_or_default();
+            (guard.input_cache.get_axis(&addr), polarity)
         })
         .collect();
 
@@ -344,6 +360,9 @@ impl eframe::App for InputForgeApp {
             &mut self.tool_windows.input_viewer_open,
             &self.cache,
         );
+
+        // Render toast overlays on top of all panels.
+        self.toast_manager.show(ctx);
     }
 }
 
@@ -381,6 +400,8 @@ mod tests {
             mapping_editor_state: MappingEditorState::new(),
             tool_windows: ToolWindowStates::default(),
             calibration_window_state: CalibrationWindowState::default(),
+            toast_manager: ToastManager::default(),
+            last_warning_count: 0,
         };
 
         // Mutate shared state.
@@ -412,6 +433,8 @@ mod tests {
             mapping_editor_state: MappingEditorState::new(),
             tool_windows: ToolWindowStates::default(),
             calibration_window_state: CalibrationWindowState::default(),
+            toast_manager: ToastManager::default(),
+            last_warning_count: 0,
         };
 
         // Add one device.
@@ -425,6 +448,7 @@ mod tests {
                     buttons: 0,
                     hats: 0,
                     instance_path: None,
+                    axis_polarities: vec![],
                 },
                 connected: true,
             });
@@ -454,6 +478,7 @@ mod tests {
                 buttons: 12,
                 hats: 1,
                 instance_path: None,
+                axis_polarities: vec![],
             },
             connected: true,
         };
@@ -463,8 +488,9 @@ mod tests {
         assert_eq!(snap.buttons.len(), 12);
         assert_eq!(snap.hats.len(), 1);
 
-        for &v in &snap.axes {
+        for &(v, polarity) in &snap.axes {
             assert!(v.abs() < f64::EPSILON);
+            assert_eq!(polarity, AxisPolarity::Bipolar);
         }
         for &b in &snap.buttons {
             assert!(!b);
@@ -505,6 +531,7 @@ mod tests {
                 buttons: 12,
                 hats: 1,
                 instance_path: None,
+                axis_polarities: vec![],
             },
             connected: true,
         };
@@ -540,7 +567,7 @@ mod tests {
         );
 
         let snap = snapshot_device_inputs(&device.info.id, &device, &state);
-        assert!((snap.axes[1] - 0.75).abs() < f64::EPSILON);
+        assert!((snap.axes[1].0 - 0.75).abs() < f64::EPSILON);
         assert!(snap.buttons[3]);
         assert_eq!(snap.hats[0], HatDirection::NE);
     }

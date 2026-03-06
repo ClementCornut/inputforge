@@ -62,6 +62,25 @@ impl Engine {
     pub fn tick(&mut self) -> Result<()> {
         self.process_commands()?;
 
+        // Always poll input and handle hotplug events so devices and
+        // live input values are visible in the GUI even when stopped.
+        self.event_buffer.clear();
+        self.input.poll(&mut self.event_buffer);
+
+        let hotplug_events = self.input.hotplug_events();
+        if !hotplug_events.is_empty() {
+            self.handle_hotplug(&hotplug_events);
+        }
+
+        // Update input cache from all events regardless of engine status.
+        // The GUI reads the cache to display live axis/button values.
+        if !self.event_buffer.is_empty() {
+            let mut state = self.state.write();
+            for event in &self.event_buffer {
+                state.input_cache.update(&event.source, &event.value);
+            }
+        }
+
         if self.read_status() != EngineStatus::Running {
             return Ok(());
         }
@@ -75,16 +94,6 @@ impl Engine {
                 None => return Ok(()),
             }
         };
-
-        // Poll input (reuse buffer to avoid per-frame allocation).
-        self.event_buffer.clear();
-        self.input.poll(&mut self.event_buffer);
-
-        // Handle hotplug events.
-        let hotplug_events = self.input.hotplug_events();
-        if !hotplug_events.is_empty() {
-            self.handle_hotplug(&hotplug_events);
-        }
 
         // Process each input event.
         // Move the buffer out of self so the loop body can borrow other

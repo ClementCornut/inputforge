@@ -27,6 +27,7 @@ mod tests {
             buttons: 12,
             hats: 1,
             instance_path: None,
+            axis_polarities: vec![],
         }
     }
 

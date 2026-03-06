@@ -1,5 +1,6 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-03-06
 
+pub mod noop_hider;
 pub mod traits;
 
 #[cfg(feature = "sdl3-input")]
@@ -11,6 +12,7 @@ pub mod hidhide;
 #[cfg(feature = "test-util")]
 pub mod mock;
 
+pub use noop_hider::NoOpDeviceHider;
 pub use traits::{DeviceHider, HotplugEvent, InputSource};
 
 #[cfg(feature = "sdl3-input")]

@@ -1272,3 +1272,23 @@ After all 26 tasks are complete:
 5. Run coverage summary: `rtk cargo llvm-cov --workspace` -- print text summary to verify thresholds
 6. Manual integration test: connect a joystick, create a simple profile, verify axis mapping works
 7. Create initial git tag: `v0.1.0`
+
+---
+
+## Deferred Findings from Phase 8 Review
+
+Performance and security items identified during Phase 8 code review that are not blocking but should be addressed in a future pass.
+
+### Performance
+
+1. **Windows timer resolution** — The engine loop uses `thread::sleep(1ms)`, but Windows default timer resolution is 15.6ms. Currently relies on SDL3 implicitly calling `timeBeginPeriod(1)`. Add an explicit `timeBeginPeriod(1)` at startup and `timeEndPeriod(1)` at shutdown for reliable 1ms polling regardless of SDL3 internals.
+
+2. **Input cache lock batching** — The engine acquires `state.write()` once per input event to update `input_cache`. When a single poll returns many events (e.g., moving a stick generates 6+ axis events), this means multiple write lock acquisitions per tick. Batch all `input_cache` updates into a single write lock after the event loop, similar to how `output_buffer` is already batched.
+
+3. **GUI repaint rate when idle** — The GUI calls `request_repaint_after(16ms)` unconditionally (60fps). When the engine is `Stopped` or `Paused`, reduce the repaint rate to ~10fps (`100ms`) to lower CPU usage when the GUI is open but nothing is changing.
+
+### Security
+
+4. **SendInput with Win modifier** — The keyboard output supports the `Win` modifier key via `SendInput`. A crafted profile could inject `Win+R` (Run dialog) or other system shortcuts. Consider restricting the `Win` modifier for untrusted profiles, or adding a UI warning when loading profiles that use it.
+
+5. **Action/Condition recursion depth** — `Condition` types (`All`, `Any`, `Not`) and `Action::Conditional` are recursively nested. A `validate_depth` function exists for conditions but may not be called during `Profile::from_raw`. Add depth validation for `Action` trees as well. A crafted TOML with ~1000 levels of nesting could cause a stack overflow.

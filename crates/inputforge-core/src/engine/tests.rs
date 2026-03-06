@@ -540,6 +540,7 @@ fn tick_hotplug_connected_adds_device() {
         buttons: 12,
         hats: 1,
         instance_path: None,
+        axis_polarities: vec![],
     };
 
     let mut input = MockInputSource::default();
@@ -565,6 +566,7 @@ fn tick_hotplug_disconnected_marks_device() {
         buttons: 12,
         hats: 1,
         instance_path: None,
+        axis_polarities: vec![],
     };
 
     // Pre-load the disconnect event before engine construction.
@@ -1059,6 +1061,7 @@ fn tick_hotplug_reconnect_updates_existing() {
         buttons: 8,
         hats: 0,
         instance_path: None,
+        axis_polarities: vec![],
     };
 
     let updated_info = DeviceInfo {
@@ -1068,6 +1071,7 @@ fn tick_hotplug_reconnect_updates_existing() {
         buttons: 12,
         hats: 1,
         instance_path: None,
+        axis_polarities: vec![],
     };
 
     let mut input = MockInputSource::default();

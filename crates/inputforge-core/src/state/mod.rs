@@ -50,6 +50,8 @@ pub struct AppState {
     pub calibrations: DeviceCalibrationStore,
     /// File path of the currently loaded profile, if loaded from disk.
     pub profile_path: Option<PathBuf>,
+    /// Warnings surfaced to the user (e.g., `HidHide` unavailable).
+    pub warnings: Vec<String>,
 }
 
 impl AppState {
@@ -66,6 +68,7 @@ impl AppState {
             virtual_devices: Vec::new(),
             calibrations: DeviceCalibrationStore::new(),
             profile_path: None,
+            warnings: Vec::new(),
         }
     }
 
@@ -102,6 +105,7 @@ impl AppState {
             virtual_devices: Vec::new(),
             calibrations,
             profile_path: None,
+            warnings: Vec::new(),
         }
     }
 }
