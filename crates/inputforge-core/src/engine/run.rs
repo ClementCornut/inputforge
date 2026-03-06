@@ -21,7 +21,9 @@ use crate::types::{InputEvent, InputId, InputValue};
 
 use super::Engine;
 use super::command::EngineCommand;
-use super::output_handler::{process_pipeline_outputs, refresh_axes_for_mode_change};
+use super::output_handler::{
+    process_pipeline_outputs, record_outputs_to_cache, refresh_axes_for_mode_change,
+};
 
 /// Target poll interval for the engine loop.
 ///
@@ -89,6 +91,7 @@ impl Engine {
         // &mut self fields (state, mode_state, callbacks). After the loop
         // the cleared buffer is restored to reuse its heap allocation.
         let mut events = std::mem::take(&mut self.event_buffer);
+        self.output_buffer.clear();
         for event in &events {
             // Update the input cache.
             let mut state = self.state.write();
@@ -152,23 +155,34 @@ impl Engine {
                 &event.source,
             )?;
 
+            self.output_buffer.extend_from_slice(&outputs);
+
             // If mode changed (via pipeline output or release callbacks),
             // refresh all cached axes through the new mode.
             if result.mode_changed || callbacks_changed_mode {
-                let state = self.state.read();
+                let mut guard = self.state.write();
+                let state: &mut crate::state::AppState = &mut *guard;
                 refresh_axes_for_mode_change(
                     &state.input_cache,
                     &mappings,
                     self.mode_state.current(),
                     &mode_tree,
                     self.output.as_mut(),
+                    &mut state.output_cache,
                 )?;
+                self.output_buffer.clear();
             }
         }
 
         // Restore the buffer to reuse its heap allocation next frame.
         events.clear();
         self.event_buffer = events;
+
+        // Flush pipeline outputs to the output cache in a single write lock.
+        if !self.output_buffer.is_empty() {
+            let mut state = self.state.write();
+            record_outputs_to_cache(&self.output_buffer, &mut state.output_cache);
+        }
 
         // Flush output sink.
         self.output.flush()?;
@@ -233,6 +247,7 @@ impl Engine {
                 state.profile_path = Some(path);
                 state.current_mode = startup_mode;
                 state.input_cache.clear();
+                state.output_cache.clear();
             }
             EngineCommand::Activate | EngineCommand::Resume => {
                 let mut state = self.state.write();

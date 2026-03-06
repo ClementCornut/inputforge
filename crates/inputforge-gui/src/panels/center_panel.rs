@@ -3,14 +3,14 @@
 //! Center panel routing between application views.
 //!
 //! Displays a unified toolbar at the top: tab buttons on the left for
-//! switching between four views (Devices, Mappings, Monitor, Modes)
-//! and tool buttons on the right (Calibration). The active tab
+//! switching between three views (Devices, Mappings, Modes) and tool
+//! buttons on the right (Input Viewer, Calibration). The active tab
 //! determines which content is rendered below.
 
 use crate::app::{CachedState, CenterView, GuiSelection, ToolWindowStates};
 use crate::panels::calibration_window;
 use crate::panels::device_view;
-use crate::panels::input_monitor::{self, InputMonitorState};
+use crate::panels::input_viewer_window;
 use crate::panels::mapping_editor::{self, MappingEditorState};
 use crate::theme;
 use crate::widgets::empty_state;
@@ -24,7 +24,6 @@ pub(crate) fn show(
     ctx: &egui::Context,
     cache: &CachedState,
     selection: &mut GuiSelection,
-    monitor_state: &mut InputMonitorState,
     mapping_editor_state: &mut MappingEditorState,
     tool_windows: &mut ToolWindowStates,
 ) {
@@ -50,9 +49,6 @@ pub(crate) fn show(
             }
             CenterView::MappingEditor => {
                 mapping_editor::show(ui, mapping_editor_state, cache);
-            }
-            CenterView::InputMonitor => {
-                input_monitor::show(ui, monitor_state);
             }
             CenterView::ModeEditor => {
                 show_mode_editor_stub(ui);
@@ -90,6 +86,30 @@ fn show_tool_buttons(ui: &mut egui::Ui, ctx: &egui::Context, tool_windows: &mut 
                 tool_windows.calibration_open = true;
             }
         }
+
+        let viewer_btn = ui.add(
+            egui::Button::new(egui::RichText::new("Input Viewer").color(colors.text_dim))
+                .frame(false),
+        );
+        if viewer_btn.hovered() {
+            ui.painter().text(
+                viewer_btn.rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "Input Viewer",
+                egui::FontId::proportional(ui.style().text_styles[&egui::TextStyle::Body].size),
+                colors.text,
+            );
+        }
+        if viewer_btn.clicked() {
+            if tool_windows.input_viewer_open {
+                ctx.send_viewport_cmd_to(
+                    input_viewer_window::viewport_id(),
+                    egui::ViewportCommand::Focus,
+                );
+            } else {
+                tool_windows.input_viewer_open = true;
+            }
+        }
     });
 }
 
@@ -107,7 +127,6 @@ mod tests {
         let views = [
             CenterView::DeviceOverview,
             CenterView::MappingEditor,
-            CenterView::InputMonitor,
             CenterView::ModeEditor,
         ];
         for (i, a) in views.iter().enumerate() {

@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-03-06
 
 //! Engine event loop and orchestration.
 //!
@@ -25,6 +25,7 @@ use crate::callbacks::CallbackRegistry;
 use crate::device::traits::{DeviceHider, InputSource};
 use crate::mode::ModeState;
 use crate::output::traits::{KeyboardSink, OutputSink};
+use crate::pipeline::PipelineOutput;
 use crate::state::AppState;
 use crate::types::InputEvent;
 
@@ -48,6 +49,8 @@ pub struct Engine {
     mode_state: ModeState,
     /// Reused across frames to avoid per-frame allocation.
     event_buffer: Vec<InputEvent>,
+    /// Reused across frames to batch output cache writes.
+    output_buffer: Vec<PipelineOutput>,
     shutdown: bool,
 }
 
@@ -100,6 +103,7 @@ impl Engine {
             callbacks: CallbackRegistry::new(),
             mode_state: ModeState::new(startup_mode),
             event_buffer: Vec::with_capacity(64),
+            output_buffer: Vec::new(),
             shutdown: false,
         }
     }

@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-03-06
 
 //! Pipeline output processing and mode change application.
 //!
@@ -12,7 +12,7 @@ use crate::error::Result;
 use crate::mode::{ModeState, ModeTree, resolve_mapping};
 use crate::output::traits::{KeyboardSink, OutputSink};
 use crate::pipeline::{self, PipelineContext, PipelineOutput};
-use crate::state::InputCacheStore;
+use crate::state::{InputCacheStore, OutputCacheStore};
 use crate::types::{AxisValue, InputAddress, InputValue, OutputId};
 
 /// Result of processing pipeline outputs for a single event.
@@ -134,6 +134,34 @@ fn apply_mode_change(
     }
 }
 
+/// Write axis and button values from pipeline outputs into the output cache.
+///
+/// Iterates each output and updates the corresponding entry in the cache.
+/// Non-output variants (`SendKey`, `ChangeMode`) are ignored.
+pub(super) fn record_outputs_to_cache(outputs: &[PipelineOutput], cache: &mut OutputCacheStore) {
+    for output in outputs {
+        match output {
+            PipelineOutput::SetAxis {
+                output: addr,
+                value,
+            } => {
+                if let OutputId::Axis { id } = &addr.output {
+                    cache.set_axis(addr.device, *id, *value);
+                }
+            }
+            PipelineOutput::SetButton {
+                output: addr,
+                pressed,
+            } => {
+                if let OutputId::Button { id } = &addr.output {
+                    cache.set_button(addr.device, *id, *pressed);
+                }
+            }
+            PipelineOutput::SendKey { .. } | PipelineOutput::ChangeMode { .. } => {}
+        }
+    }
+}
+
 /// Re-process all cached axis values through the new mode's pipelines.
 ///
 /// Called after a mode change so that axis outputs reflect the new
@@ -145,6 +173,7 @@ pub(super) fn refresh_axes_for_mode_change(
     mode: &str,
     tree: &ModeTree,
     output_sink: &mut dyn OutputSink,
+    output_cache: &mut OutputCacheStore,
 ) -> Result<()> {
     for (address, value) in cache.get_all_axis_entries() {
         if let Some(mapping) = resolve_mapping(mappings, &address, mode, tree) {
@@ -174,6 +203,7 @@ pub(super) fn refresh_axes_for_mode_change(
                             continue;
                         };
                         output_sink.set_axis(addr.device, *id, *v)?;
+                        output_cache.set_axis(addr.device, *id, *v);
                     }
                     PipelineOutput::SetButton {
                         output: addr,
@@ -187,6 +217,7 @@ pub(super) fn refresh_axes_for_mode_change(
                             continue;
                         };
                         output_sink.set_button(addr.device, *id, *pressed)?;
+                        output_cache.set_button(addr.device, *id, *pressed);
                     }
                     // Skip key presses (spurious from axis-to-keyboard
                     // mappings) and mode changes (avoid recursion).

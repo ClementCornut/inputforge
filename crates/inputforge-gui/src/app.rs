@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-04
+// Rust guideline compliant 2026-03-06
 
 //! Main application struct implementing `eframe::App`.
 //!
@@ -16,11 +16,13 @@ use parking_lot::RwLock;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::pipeline::InputCache;
 use inputforge_core::state::{AppState, DeviceState, EngineStatus};
-use inputforge_core::types::{DeviceId, HatDirection, InputAddress, InputId, VirtualDeviceConfig};
+use inputforge_core::types::{
+    DeviceId, HatDirection, InputAddress, InputId, VJoyAxis, VirtualDeviceConfig,
+};
 
 use crate::panels;
 use crate::panels::calibration_window::CalibrationWindowState;
-use crate::panels::input_monitor::InputMonitorState;
+use crate::panels::input_viewer_window::InputViewerWindowState;
 use crate::panels::mapping_editor::MappingEditorState;
 use crate::theme;
 
@@ -29,6 +31,8 @@ use crate::theme;
 pub(crate) struct ToolWindowStates {
     /// Whether the calibration window is open.
     pub calibration_open: bool,
+    /// Whether the input viewer window is open.
+    pub input_viewer_open: bool,
 }
 
 /// Which view occupies the center panel.
@@ -38,21 +42,14 @@ pub(crate) enum CenterView {
     DeviceOverview,
     /// Mapping editor for the selected device.
     MappingEditor,
-    /// Real-time input event monitor.
-    InputMonitor,
     /// Mode tree display and selection.
     ModeEditor,
 }
 
 impl CenterView {
     /// All variants in tab-bar display order.
-    pub(crate) const fn all() -> [Self; 4] {
-        [
-            Self::DeviceOverview,
-            Self::MappingEditor,
-            Self::InputMonitor,
-            Self::ModeEditor,
-        ]
+    pub(crate) const fn all() -> [Self; 3] {
+        [Self::DeviceOverview, Self::MappingEditor, Self::ModeEditor]
     }
 }
 
@@ -61,7 +58,6 @@ impl crate::widgets::tab_bar::TabItem for CenterView {
         match self {
             Self::DeviceOverview => "Devices",
             Self::MappingEditor => "Mappings",
-            Self::InputMonitor => "Monitor",
             Self::ModeEditor => "Modes",
         }
     }
@@ -99,6 +95,20 @@ pub(crate) struct DeviceInputSnapshot {
     pub hats: Vec<HatDirection>,
 }
 
+/// Snapshot of a single vJoy device's output values.
+///
+/// Captured once per frame under a single read lock, then used for
+/// rendering without further lock acquisitions.
+#[derive(Debug, Clone)]
+pub(crate) struct VjoyOutputSnapshot {
+    /// Axis values in `[-1.0, 1.0]`, parallel to `VirtualDeviceConfig::axes`.
+    pub axes: Vec<(VJoyAxis, f64)>,
+    /// Button pressed states, length = `VirtualDeviceConfig::button_count`.
+    pub buttons: Vec<bool>,
+    /// Hat directions, length = `VirtualDeviceConfig::hat_count`.
+    pub hats: Vec<HatDirection>,
+}
+
 /// Cached snapshot of shared state read each frame.
 ///
 /// Populated by `refresh_cache()` with a brief read-lock on `AppState`.
@@ -112,6 +122,8 @@ pub(crate) struct CachedState {
     pub profile_name: Option<String>,
     /// Discovered vJoy device configurations (empty until engine populates).
     pub virtual_devices: Vec<VirtualDeviceConfig>,
+    /// Per-vJoy-device output snapshots, parallel to `virtual_devices`.
+    pub output_snapshots: Vec<VjoyOutputSnapshot>,
 }
 
 impl Default for CachedState {
@@ -123,6 +135,7 @@ impl Default for CachedState {
             current_mode: "Default".to_owned(),
             profile_name: None,
             virtual_devices: Vec::new(),
+            output_snapshots: Vec::new(),
         }
     }
 }
@@ -138,8 +151,8 @@ pub struct InputForgeApp {
     pub(crate) cache: CachedState,
     /// GUI selection state (selected device, active view).
     pub(crate) selection: GuiSelection,
-    /// Persistent state for the input monitor panel.
-    pub(crate) monitor_state: InputMonitorState,
+    /// Persistent state for the floating input viewer window.
+    pub(crate) input_viewer_window_state: InputViewerWindowState,
     /// Persistent state for the mapping editor panel.
     pub(crate) mapping_editor_state: MappingEditorState,
     /// State for floating tool windows opened from the menu bar.
@@ -166,7 +179,7 @@ impl InputForgeApp {
             commands,
             cache: CachedState::default(),
             selection: GuiSelection::default(),
-            monitor_state: InputMonitorState::new(),
+            input_viewer_window_state: InputViewerWindowState::default(),
             mapping_editor_state: MappingEditorState::new(),
             tool_windows: ToolWindowStates::default(),
             calibration_window_state: CalibrationWindowState::default(),
@@ -196,6 +209,14 @@ impl InputForgeApp {
             .devices
             .iter()
             .map(|device| snapshot_device_inputs(&device.info.id, device, &guard))
+            .collect();
+
+        // Snapshot all vJoy output values under the same lock.
+        self.cache.output_snapshots = self
+            .cache
+            .virtual_devices
+            .iter()
+            .map(|vdev| snapshot_vjoy_outputs(vdev, &guard))
             .collect();
         // Guard dropped here.
 
@@ -264,6 +285,32 @@ fn snapshot_device_inputs(
     }
 }
 
+/// Read all output values for a vJoy device from the shared state guard.
+///
+/// Called under the existing read lock in `refresh_cache()` to avoid
+/// additional lock acquisitions during rendering.
+fn snapshot_vjoy_outputs(config: &VirtualDeviceConfig, guard: &AppState) -> VjoyOutputSnapshot {
+    let axes: Vec<(VJoyAxis, f64)> = config
+        .axes
+        .iter()
+        .map(|&axis| (axis, guard.output_cache.get_axis(config.device_id, axis)))
+        .collect();
+
+    let buttons: Vec<bool> = (1..=config.button_count)
+        .map(|i| guard.output_cache.get_button(config.device_id, i))
+        .collect();
+
+    let hats: Vec<HatDirection> = (0..config.hat_count)
+        .map(|i| guard.output_cache.get_hat(config.device_id, i))
+        .collect();
+
+    VjoyOutputSnapshot {
+        axes,
+        buttons,
+        hats,
+    }
+}
+
 impl eframe::App for InputForgeApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.refresh_cache();
@@ -278,7 +325,6 @@ impl eframe::App for InputForgeApp {
             ctx,
             &self.cache,
             &mut self.selection,
-            &mut self.monitor_state,
             &mut self.mapping_editor_state,
             &mut self.tool_windows,
         );
@@ -290,6 +336,13 @@ impl eframe::App for InputForgeApp {
             &self.cache,
             &self.state,
             &self.commands,
+        );
+
+        panels::input_viewer_window::show(
+            ctx,
+            &mut self.input_viewer_window_state,
+            &mut self.tool_windows.input_viewer_open,
+            &self.cache,
         );
     }
 }
@@ -324,7 +377,7 @@ mod tests {
             commands: tx,
             cache: CachedState::default(),
             selection: GuiSelection::default(),
-            monitor_state: InputMonitorState::new(),
+            input_viewer_window_state: InputViewerWindowState::default(),
             mapping_editor_state: MappingEditorState::new(),
             tool_windows: ToolWindowStates::default(),
             calibration_window_state: CalibrationWindowState::default(),
@@ -355,7 +408,7 @@ mod tests {
             commands: tx,
             cache: CachedState::default(),
             selection: GuiSelection::default(),
-            monitor_state: InputMonitorState::new(),
+            input_viewer_window_state: InputViewerWindowState::default(),
             mapping_editor_state: MappingEditorState::new(),
             tool_windows: ToolWindowStates::default(),
             calibration_window_state: CalibrationWindowState::default(),
@@ -431,14 +484,12 @@ mod tests {
         // If you add a variant, update `all()` AND add it to the match below.
         for view in &all {
             match view {
-                CenterView::DeviceOverview
-                | CenterView::MappingEditor
-                | CenterView::InputMonitor
-                | CenterView::ModeEditor => {}
+                CenterView::DeviceOverview | CenterView::MappingEditor | CenterView::ModeEditor => {
+                }
             }
         }
         // The array length must match the variant count.
-        assert_eq!(all.len(), 4);
+        assert_eq!(all.len(), 3);
     }
 
     #[test]
@@ -492,5 +543,29 @@ mod tests {
         assert!((snap.axes[1] - 0.75).abs() < f64::EPSILON);
         assert!(snap.buttons[3]);
         assert_eq!(snap.hats[0], HatDirection::NE);
+    }
+
+    #[test]
+    fn vjoy_output_snapshot_returns_defaults() {
+        let state = AppState::new();
+        let config = VirtualDeviceConfig {
+            device_id: 1,
+            axes: vec![VJoyAxis::X, VJoyAxis::Y],
+            button_count: 4,
+            hat_count: 1,
+        };
+        let snap = snapshot_vjoy_outputs(&config, &state);
+        assert_eq!(snap.axes.len(), 2);
+        assert_eq!(snap.buttons.len(), 4);
+        assert_eq!(snap.hats.len(), 1);
+        for &(_, v) in &snap.axes {
+            assert!(v.abs() < f64::EPSILON);
+        }
+        for &b in &snap.buttons {
+            assert!(!b);
+        }
+        for &h in &snap.hats {
+            assert_eq!(h, HatDirection::Center);
+        }
     }
 }

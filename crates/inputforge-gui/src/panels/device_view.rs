@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-03-06
 
 //! Device overview panel showing all connected devices with live inputs.
 //!
@@ -17,7 +17,7 @@ use crate::theme;
 use crate::widgets::{axis_bar, button_grid, empty_state, hat_indicator, status_dot};
 
 /// Static 0-indexed axis label table for axes 0-15 to avoid per-frame allocation.
-const AXIS_LABELS: [&str; 16] = [
+pub(crate) const AXIS_LABELS: [&str; 16] = [
     "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13", "A14",
     "A15",
 ];
@@ -25,7 +25,7 @@ const AXIS_LABELS: [&str; 16] = [
 /// Return a label for the given 0-based axis index.
 ///
 /// Uses a static table for indices 0-15 to avoid heap allocation.
-fn axis_label(index: usize) -> Cow<'static, str> {
+pub(crate) fn axis_label(index: usize) -> Cow<'static, str> {
     if index < AXIS_LABELS.len() {
         Cow::Borrowed(AXIS_LABELS[index])
     } else {

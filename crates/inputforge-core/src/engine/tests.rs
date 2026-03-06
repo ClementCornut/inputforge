@@ -21,7 +21,7 @@ use crate::mode::{ModeState, ModeTree};
 use crate::output::mock::{KeyboardCall, MockKeyboardSink, MockOutputSink, OutputCall};
 use crate::pipeline::PipelineOutput;
 use crate::profile::Profile;
-use crate::state::{AppState, DeviceState, EngineStatus, InputCacheStore};
+use crate::state::{AppState, DeviceState, EngineStatus, InputCacheStore, OutputCacheStore};
 use crate::types::{
     AxisValue, DeviceId, DeviceInfo, HatDirection, InputAddress, InputEvent, InputId, InputValue,
     KeyCombo, OutputAddress, OutputId, VJoyAxis,
@@ -359,7 +359,15 @@ fn refresh_axes_reprocesses_cached_values() {
     );
 
     let mut sink = MockOutputSink::new();
-    refresh_axes_for_mode_change(&cache, &[mapping], "Default", &tree, &mut sink).unwrap();
+    refresh_axes_for_mode_change(
+        &cache,
+        &[mapping],
+        "Default",
+        &tree,
+        &mut sink,
+        &mut OutputCacheStore::new(),
+    )
+    .unwrap();
 
     assert_eq!(
         sink.calls(),
@@ -401,7 +409,15 @@ fn refresh_axes_skips_mode_changes_and_keys() {
     );
 
     let mut sink = MockOutputSink::new();
-    refresh_axes_for_mode_change(&cache, &[mapping], "Default", &tree, &mut sink).unwrap();
+    refresh_axes_for_mode_change(
+        &cache,
+        &[mapping],
+        "Default",
+        &tree,
+        &mut sink,
+        &mut OutputCacheStore::new(),
+    )
+    .unwrap();
 
     // No axis/button outputs were produced, mode changes and keys skipped.
     assert!(sink.calls().is_empty());
@@ -887,6 +903,7 @@ fn refresh_axes_set_button_path() {
         "Default",
         &tree,
         &mut sink,
+        &mut OutputCacheStore::new(),
     )
     .unwrap();
 

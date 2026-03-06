@@ -4,7 +4,6 @@
 //!
 //! - [`center_panel`]: Unified toolbar (tabs + tool buttons) and routed content views.
 //! - [`device_view`]: Per-device collapsible section with live axis, button, and hat data.
-//! - [`input_monitor`]: Real-time scrollable event log with filtering and pause controls.
 //! - [`left_panel`]: Resizable sidebar with device tree.
 //! - [`mapping_editor`]: Action pipeline editor with arrow-button card reordering.
 //! - [`mode_editor`]: Hierarchical mode tree display and selection.
@@ -13,7 +12,7 @@
 pub(crate) mod calibration_window;
 pub(crate) mod center_panel;
 pub(crate) mod device_view;
-pub(crate) mod input_monitor;
+pub(crate) mod input_viewer_window;
 pub(crate) mod left_panel;
 pub(crate) mod mapping_editor;
 pub(crate) mod mode_editor;
