@@ -49,6 +49,12 @@ pub(crate) enum ToastLevel {
 struct Toast {
     message: String,
     level: ToastLevel,
+    /// Stable identifier used as the egui `Area` ID for this toast.
+    ///
+    /// Assigned once at creation so the `Area` keeps the same ID across
+    /// frames, allowing egui to correctly compute anchor positioning
+    /// after the first layout pass.
+    id: usize,
     created: Instant,
     dismissed: bool,
     /// Accumulated pause time from hovering.
@@ -58,10 +64,11 @@ struct Toast {
 }
 
 impl Toast {
-    fn new(message: String, level: ToastLevel) -> Self {
+    fn new(message: String, level: ToastLevel, id: usize) -> Self {
         Self {
             message,
             level,
+            id,
             created: Instant::now(),
             dismissed: false,
             paused_duration: Duration::ZERO,
@@ -111,7 +118,9 @@ pub(crate) struct ToastManager {
 impl ToastManager {
     /// Add a new toast notification.
     pub(crate) fn push(&mut self, message: String, level: ToastLevel) {
-        self.toasts.push(Toast::new(message, level));
+        let id = self.next_id;
+        self.next_id += 1;
+        self.toasts.push(Toast::new(message, level, id));
     }
 
     /// Render all active toasts as floating overlays.
@@ -123,7 +132,7 @@ impl ToastManager {
 
         let mut y_offset = TOAST_MARGIN;
 
-        for (i, toast) in self.toasts.iter_mut().enumerate() {
+        for toast in &mut self.toasts {
             if toast.is_expired() {
                 continue;
             }
@@ -134,7 +143,7 @@ impl ToastManager {
                 ToastLevel::Error => colors.error,
             };
 
-            let toast_id = Id::new("inputforge_toast").with(self.next_id + i);
+            let toast_id = Id::new("inputforge_toast").with(toast.id);
 
             let response = Area::new(toast_id)
                 .order(Order::Foreground)
@@ -143,60 +152,30 @@ impl ToastManager {
                     ui.set_max_width(TOAST_MAX_WIDTH);
                     ui.set_opacity(opacity);
 
-                    Frame::new()
+                    let frame_response = Frame::new()
                         .fill(colors.surface0)
                         .stroke(Stroke::new(1.0, colors.surface1.gamma_multiply(opacity)))
                         .corner_radius(4.0)
-                        .inner_margin(Margin::ZERO)
+                        .inner_margin(Margin {
+                            left: ACCENT_WIDTH as i8 + 8,
+                            right: 20,
+                            top: 8,
+                            bottom: 8,
+                        })
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                // Left accent bar.
-                                let bar_rect = ui.allocate_space(Vec2::new(ACCENT_WIDTH, 0.0)).1;
-                                // The bar height will be painted after layout.
-                                let _ = bar_rect;
-
-                                ui.add_space(8.0);
-
-                                ui.vertical(|ui| {
-                                    ui.add_space(8.0);
-
-                                    ui.horizontal(|ui| {
-                                        // Icon.
-                                        let icon = match toast.level {
-                                            ToastLevel::Warning => "\u{26A0}",
-                                            ToastLevel::Error => "\u{2716}",
-                                        };
-                                        ui.colored_label(
-                                            accent_color.gamma_multiply(opacity),
-                                            icon,
-                                        );
-
-                                        ui.label(
-                                            egui::RichText::new(&toast.message)
-                                                .color(colors.text.gamma_multiply(opacity)),
-                                        );
-                                    });
-
-                                    ui.add_space(8.0);
-                                });
-
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::TOP),
-                                    |ui| {
-                                        ui.add_space(4.0);
-                                        ui.add_space(4.0);
-                                        let close = ui.small_button(
-                                            egui::RichText::new("\u{2715}")
-                                                .color(colors.text_dim.gamma_multiply(opacity)),
-                                        );
-                                        if close.clicked() {
-                                            toast.dismissed = true;
-                                        }
-                                    },
+                                let icon = match toast.level {
+                                    ToastLevel::Warning => "\u{26A0}",
+                                    ToastLevel::Error => "\u{2716}",
+                                };
+                                ui.colored_label(accent_color.gamma_multiply(opacity), icon);
+                                ui.label(
+                                    egui::RichText::new(&toast.message)
+                                        .color(colors.text.gamma_multiply(opacity)),
                                 );
                             });
 
-                            // Paint the accent bar over the full height of the toast.
+                            // Paint the accent bar over the full height.
                             let full_rect = ui.min_rect();
                             let bar_rect = egui::Rect::from_min_size(
                                 full_rect.left_top(),
@@ -213,6 +192,25 @@ impl ToastManager {
                                 accent_color.gamma_multiply(opacity),
                             );
                         });
+
+                    // Close button in the top-right corner, placed after
+                    // frame layout so it doesn't compete for flow space.
+                    let fr = frame_response.response.rect;
+                    let btn_rect = egui::Rect::from_min_size(
+                        egui::pos2(fr.right() - 20.0, fr.top() + 4.0),
+                        Vec2::new(16.0, 16.0),
+                    );
+                    let close = ui.put(
+                        btn_rect,
+                        egui::Button::new(
+                            egui::RichText::new("x").color(colors.text_dim.gamma_multiply(opacity)),
+                        )
+                        .small()
+                        .frame(false),
+                    );
+                    if close.clicked() {
+                        toast.dismissed = true;
+                    }
                 });
 
             // Pause timer while hovered.
@@ -231,10 +229,8 @@ impl ToastManager {
             y_offset += response.response.rect.height() + TOAST_GAP;
         }
 
-        // Remove expired toasts and advance the ID counter.
-        let before = self.toasts.len();
+        // Remove expired toasts.
         self.toasts.retain(|t| !t.is_expired());
-        self.next_id += before;
 
         // Request repaint while toasts are active (for fade animation).
         if !self.toasts.is_empty() {
@@ -249,19 +245,19 @@ mod tests {
 
     #[test]
     fn toast_starts_at_full_opacity() {
-        let toast = Toast::new("test".into(), ToastLevel::Warning);
+        let toast = Toast::new("test".into(), ToastLevel::Warning, 0);
         assert!((toast.opacity() - 1.0).abs() < f32::EPSILON);
     }
 
     #[test]
     fn toast_not_expired_initially() {
-        let toast = Toast::new("test".into(), ToastLevel::Warning);
+        let toast = Toast::new("test".into(), ToastLevel::Warning, 0);
         assert!(!toast.is_expired());
     }
 
     #[test]
     fn dismissed_toast_is_expired() {
-        let mut toast = Toast::new("test".into(), ToastLevel::Warning);
+        let mut toast = Toast::new("test".into(), ToastLevel::Warning, 0);
         toast.dismissed = true;
         assert!(toast.is_expired());
     }
