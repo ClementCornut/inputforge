@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::sync::mpsc;
 
 use eframe::CreationContext;
+use muda::{MenuEvent, MenuId};
 use parking_lot::RwLock;
 
 use inputforge_core::engine::EngineCommand;
@@ -167,6 +168,10 @@ pub struct InputForgeApp {
     pub(crate) toast_manager: ToastManager,
     /// Number of warnings seen so far (to detect new ones).
     last_warning_count: usize,
+    /// Tray menu item IDs for polling `MenuEvent` while the GUI is open.
+    tray_show_id: MenuId,
+    tray_toggle_id: MenuId,
+    tray_quit_id: MenuId,
 }
 
 impl InputForgeApp {
@@ -179,6 +184,7 @@ impl InputForgeApp {
         cc: &CreationContext<'_>,
         state: Arc<RwLock<AppState>>,
         commands: mpsc::Sender<EngineCommand>,
+        tray_menu_ids: (MenuId, MenuId, MenuId),
     ) -> Self {
         theme::setup(&cc.egui_ctx);
 
@@ -193,6 +199,9 @@ impl InputForgeApp {
             calibration_window_state: CalibrationWindowState::default(),
             toast_manager: ToastManager::default(),
             last_warning_count: 0,
+            tray_show_id: tray_menu_ids.0,
+            tray_toggle_id: tray_menu_ids.1,
+            tray_quit_id: tray_menu_ids.2,
         };
         app.refresh_cache();
         app
@@ -246,6 +255,33 @@ impl InputForgeApp {
                 self.selection.selected_device_idx = None;
             }
         }
+    }
+
+    /// Drain queued tray menu events and act on them.
+    ///
+    /// While the GUI is open, eframe owns the Win32 message pump.
+    /// Tray menu clicks are dispatched by eframe and pushed to the
+    /// `MenuEvent` channel, so we poll it here each frame.
+    ///
+    /// Returns `true` if the GUI should close (quit requested).
+    fn process_tray_events(&mut self, ctx: &egui::Context) -> bool {
+        while let Ok(event) = MenuEvent::receiver().try_recv() {
+            if event.id == self.tray_quit_id {
+                self.state.write().quit_requested = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                return true;
+            } else if event.id == self.tray_toggle_id {
+                let cmd = match self.cache.engine_status {
+                    EngineStatus::Running => EngineCommand::Deactivate,
+                    EngineStatus::Paused | EngineStatus::Stopped => EngineCommand::Activate,
+                };
+                let _ = self.commands.send(cmd);
+            } else if event.id == self.tray_show_id {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+        }
+        false
     }
 }
 
@@ -330,6 +366,9 @@ fn snapshot_vjoy_outputs(config: &VirtualDeviceConfig, guard: &AppState) -> Vjoy
 impl eframe::App for InputForgeApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.refresh_cache();
+        if self.process_tray_events(ctx) {
+            return;
+        }
 
         // Request continuous repainting so live data animates at ~60 fps.
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
@@ -402,6 +441,9 @@ mod tests {
             calibration_window_state: CalibrationWindowState::default(),
             toast_manager: ToastManager::default(),
             last_warning_count: 0,
+            tray_show_id: MenuId::new("test-show"),
+            tray_toggle_id: MenuId::new("test-toggle"),
+            tray_quit_id: MenuId::new("test-quit"),
         };
 
         // Mutate shared state.
@@ -435,6 +477,9 @@ mod tests {
             calibration_window_state: CalibrationWindowState::default(),
             toast_manager: ToastManager::default(),
             last_warning_count: 0,
+            tray_show_id: MenuId::new("test-show"),
+            tray_toggle_id: MenuId::new("test-toggle"),
+            tray_quit_id: MenuId::new("test-quit"),
         };
 
         // Add one device.

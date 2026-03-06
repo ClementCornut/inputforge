@@ -19,6 +19,7 @@ egui = { workspace = true }
 egui_extras = { workspace = true }
 egui_plot = { workspace = true }
 parking_lot = { workspace = true }
+muda = { workspace = true }
 
 [dev-dependencies]
 egui_kittest = { workspace = true }

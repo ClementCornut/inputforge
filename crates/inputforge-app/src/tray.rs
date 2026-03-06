@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use parking_lot::RwLock;
-use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 use inputforge_core::state::AppState;
@@ -92,6 +92,17 @@ impl AppTray {
             return Some(TrayAction::Quit);
         }
         None
+    }
+
+    /// Return cloned menu item IDs for (show, toggle, quit).
+    ///
+    /// Used to pass IDs to the GUI so it can poll `MenuEvent` while open.
+    pub(crate) fn menu_item_ids(&self) -> (MenuId, MenuId, MenuId) {
+        (
+            self.show_item.id().clone(),
+            self.toggle_item.id().clone(),
+            self.quit_item.id().clone(),
+        )
     }
 
     /// Update the toggle menu item text to match current engine status.

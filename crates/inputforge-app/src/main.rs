@@ -165,12 +165,26 @@ fn launch_gui_blocking(
 ) -> Vec<TrayAction> {
     let gui_state = Arc::clone(state);
     let gui_tx = cmd_tx.clone();
+    let menu_ids = tray.menu_item_ids();
 
-    if let Err(e) = inputforge_gui::launch_gui(gui_state, gui_tx) {
+    if let Err(e) = inputforge_gui::launch_gui(gui_state, gui_tx, menu_ids) {
         tracing::error!(%e, "GUI exited with error");
     }
 
-    drain_stale_gui_events(tray)
+    let mut pending = Vec::new();
+
+    // Check if the GUI closed because of a tray Quit click.
+    {
+        let mut guard = state.write();
+        if guard.quit_requested {
+            pending.push(TrayAction::Quit);
+            guard.quit_requested = false;
+        }
+    }
+
+    // Drain any events that arrived between the last update() and window close.
+    pending.extend(drain_stale_gui_events(tray));
+    pending
 }
 
 /// Drain queued menu events, discarding stale `ShowGui` clicks.

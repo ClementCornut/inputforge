@@ -2191,6 +2191,7 @@ dependencies = [
  "egui_kittest",
  "egui_plot",
  "inputforge-core",
+ "muda",
  "parking_lot",
  "serde",
  "tracing",

@@ -55,6 +55,7 @@ windows = { version = "0.62", features = [
 
 # System tray
 tray-icon = "0.21"
+muda = "0.17"
 
 # GUI
 eframe = "0.33"

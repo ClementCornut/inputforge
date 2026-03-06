@@ -132,10 +132,7 @@ fn show_device(ui: &mut egui::Ui, device: &DeviceState, snapshot: &DeviceInputSn
 /// Build a header string from device info: "Name (Xa, Yb, Zh)".
 fn build_header_text(device: &DeviceState) -> String {
     let info = &device.info;
-    format!(
-        "{} ({}a, {}b, {}h)",
-        info.name, info.axes, info.buttons, info.hats
-    )
+    format!("{}", info.name)
 }
 
 #[cfg(test)]
@@ -162,7 +159,7 @@ mod tests {
     fn build_header_text_format() {
         let device = sample_device();
         let text = build_header_text(&device);
-        assert_eq!(text, "Test Joystick (3a, 12b, 1h)");
+        assert_eq!(text, "Test Joystick");
     }
 
     #[test]
@@ -180,7 +177,7 @@ mod tests {
             connected: false,
         };
         let text = build_header_text(&device);
-        assert_eq!(text, "Empty Device (0a, 0b, 0h)");
+        assert_eq!(text, "Empty Device");
     }
 
     #[test]

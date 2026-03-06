@@ -16,6 +16,8 @@ use std::sync::mpsc;
 
 use parking_lot::RwLock;
 
+use muda::MenuId;
+
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::state::AppState;
 
@@ -31,6 +33,7 @@ use app::InputForgeApp;
 pub fn launch_gui(
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Sender<EngineCommand>,
+    tray_menu_ids: (MenuId, MenuId, MenuId),
 ) -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -45,6 +48,13 @@ pub fn launch_gui(
     eframe::run_native(
         "InputForge",
         options,
-        Box::new(move |cc| Ok(Box::new(InputForgeApp::new(cc, state, commands)))),
+        Box::new(move |cc| {
+            Ok(Box::new(InputForgeApp::new(
+                cc,
+                state,
+                commands,
+                tray_menu_ids,
+            )))
+        }),
     )
 }
