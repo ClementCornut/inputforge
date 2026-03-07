@@ -131,10 +131,23 @@ pub fn create_profile(name: &str) -> Result<PathBuf> {
 pub(crate) fn create_profile_in(name: &str, dir: &Path) -> Result<PathBuf> {
     validate_profile_name(name)?;
 
-    let filename = format!("{}.toml", sanitize_filename(name));
+    let sanitized = sanitize_filename(name);
+    if sanitized.is_empty() {
+        return Err(EngineError::InvalidConfig {
+            reason: "profile name is empty after sanitization".to_owned(),
+        });
+    }
+
+    let filename = format!("{sanitized}.toml");
     let path = dir.join(filename);
 
     std::fs::create_dir_all(dir)?;
+
+    if path.exists() {
+        return Err(EngineError::InvalidConfig {
+            reason: format!("a profile named '{name}' already exists"),
+        });
+    }
 
     let mut map = HashMap::new();
     map.insert("Default".to_owned(), vec![]);
@@ -199,12 +212,27 @@ pub(crate) fn ensure_default_profile_in(dir: &Path) -> Result<PathBuf> {
 pub fn rename_profile(path: &Path, new_name: &str) -> Result<PathBuf> {
     validate_profile_name(new_name)?;
 
+    let sanitized = sanitize_filename(new_name);
+    if sanitized.is_empty() {
+        return Err(EngineError::InvalidConfig {
+            reason: "profile name is empty after sanitization".to_owned(),
+        });
+    }
+
     let parent = path.parent().ok_or_else(|| EngineError::InvalidConfig {
         reason: "profile path has no parent directory".to_owned(),
     })?;
 
-    let new_filename = format!("{}.toml", sanitize_filename(new_name));
+    let new_filename = format!("{sanitized}.toml");
     let new_path = parent.join(new_filename);
+
+    // Allow case-change renames (same file on case-insensitive filesystems)
+    // but reject if a different file already occupies the destination.
+    if new_path.exists() && new_path != path {
+        return Err(EngineError::InvalidConfig {
+            reason: format!("a profile named '{new_name}' already exists"),
+        });
+    }
 
     std::fs::rename(path, &new_path)?;
 
@@ -369,6 +397,28 @@ mod tests {
         assert!(path.exists());
     }
 
+    #[test]
+    fn create_profile_rejects_dot_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = create_profile_in(".", tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("empty after sanitization"));
+    }
+
+    #[test]
+    fn create_profile_rejects_dot_dot_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = create_profile_in("..", tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("empty after sanitization"));
+    }
+
+    #[test]
+    fn create_profile_rejects_duplicate_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        create_profile_in("Duplicate", tmp.path()).unwrap();
+        let err = create_profile_in("Duplicate", tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("already exists"));
+    }
+
     // --- list_profiles ---
 
     #[test]
@@ -471,6 +521,27 @@ mod tests {
         assert!(err.to_string().contains("illegal character"));
         // Original file should still exist.
         assert!(path.exists());
+    }
+
+    #[test]
+    fn rename_profile_rejects_dot_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = create_profile_in("Valid", tmp.path()).unwrap();
+        let err = rename_profile(&path, ".").unwrap_err();
+        assert!(err.to_string().contains("empty after sanitization"));
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn rename_profile_rejects_collision() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path_a = create_profile_in("Alpha", tmp.path()).unwrap();
+        create_profile_in("Bravo", tmp.path()).unwrap();
+
+        let err = rename_profile(&path_a, "Bravo").unwrap_err();
+        assert!(err.to_string().contains("already exists"));
+        // Original file should still exist.
+        assert!(path_a.exists());
     }
 
     #[test]
