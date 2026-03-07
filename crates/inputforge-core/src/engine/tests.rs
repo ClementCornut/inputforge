@@ -1251,3 +1251,121 @@ fn with_profile_loads_calibrations() {
     let cal = state.calibrations.get(&DeviceId("dev-1".to_owned()), 0);
     assert!(cal.is_some(), "calibrations should be loaded from profile");
 }
+
+#[test]
+fn activate_refreshes_outputs_from_cached_axis_values() {
+    // Map axis 0 → vJoy device 1 axis X.
+    let mapping = Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::MapToVJoy {
+            output: vjoy_axis_output(1, VJoyAxis::X),
+        }],
+    };
+    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+
+    // Engine starts Stopped so the first tick populates the input cache
+    // without evaluating mappings.
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    // Default engine status is Stopped — no need to set it explicitly.
+
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new({
+            let mut src = MockInputSource::default();
+            src.events.push(axis_event(0, 0.5));
+            src
+        }),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+    );
+
+    // Tick 1 (Stopped): input cache is updated, mappings are not evaluated.
+    engine.tick().unwrap();
+    assert!(
+        state.read().output_cache.get_axis(1, VJoyAxis::X).abs() < f64::EPSILON,
+        "output cache must be empty before activation"
+    );
+
+    // Send Activate and replace the input source with an empty one so
+    // tick 2 has no new events — the refresh must rely solely on the cache.
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.input = Box::new(MockInputSource::default());
+
+    // Tick 2 (Running, no new events): activation refresh fires.
+    engine.tick().unwrap();
+
+    let cached = state.read().output_cache.get_axis(1, VJoyAxis::X);
+    assert!(
+        (cached - 0.5).abs() < f64::EPSILON,
+        "output cache should reflect cached axis value after activation, got {cached}"
+    );
+}
+
+#[test]
+fn set_mapping_refreshes_outputs_from_cached_axis_values() {
+    // Map axis 0 → vJoy device 1 axis X.
+    let mapping = Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::MapToVJoy {
+            output: vjoy_axis_output(1, VJoyAxis::X),
+        }],
+    };
+    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+
+    // Write the profile to a temp file so set_mapping can persist it.
+    let dir = std::env::temp_dir().join("inputforge_engine_test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("set_mapping_refresh_test.toml");
+    std::fs::write(&path, profile.to_toml().unwrap()).unwrap();
+
+    let (mut engine, state, tx) = make_engine(
+        {
+            let mut src = MockInputSource::default();
+            src.events.push(axis_event(0, 0.5));
+            src
+        },
+        profile,
+    );
+    state.write().profile_path = Some(path.clone());
+
+    // Tick 1 (Running): processes axis event, writes 0.5 to vJoy X.
+    engine.tick().unwrap();
+    assert!(
+        (state.read().output_cache.get_axis(1, VJoyAxis::X) - 0.5).abs() < f64::EPSILON,
+        "initial output should be on vJoy X"
+    );
+
+    // Change the mapping: axis 0 → vJoy Y instead of vJoy X.
+    tx.send(EngineCommand::SetMapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::MapToVJoy {
+            output: vjoy_axis_output(1, VJoyAxis::Y),
+        }],
+    })
+    .unwrap();
+
+    // Replace input with no events — the refresh must use the cached value.
+    engine.input = Box::new(MockInputSource::default());
+    engine.tick().unwrap();
+
+    // The output cache should have 0.5 on vJoy Y after the mapping refresh.
+    let s = state.read();
+    assert!(
+        (s.output_cache.get_axis(1, VJoyAxis::Y) - 0.5).abs() < f64::EPSILON,
+        "output should be refreshed to vJoy Y after mapping change"
+    );
+
+    // Clean up temp file.
+    drop(s);
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir(&dir);
+}

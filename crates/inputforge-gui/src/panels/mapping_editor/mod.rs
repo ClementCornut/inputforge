@@ -128,18 +128,20 @@ impl MappingEditorState {
 /// If no device or input is selected, shows a placeholder message.
 /// Otherwise displays the action pipeline with arrow-button
 /// reordering, add/delete controls, and per-action configuration.
+/// Returns `true` when the user clicks "Discard", signalling that the
+/// caller should reload the current mapping from the saved profile.
 pub(crate) fn show(
     ui: &mut egui::Ui,
     state: &mut MappingEditorState,
     cache: &CachedState,
     commands: &mpsc::Sender<EngineCommand>,
-) {
+) -> bool {
     let colors = theme::colors(ui.ctx());
 
     // If no input is selected, show placeholder.
     let Some(editing_addr) = state.editing() else {
         crate::widgets::empty_state::empty_state(ui, "Select an input in the device tree to begin");
-        return;
+        return false;
     };
     let editing_addr = editing_addr.clone(); // Clone to release borrow on state
 
@@ -170,6 +172,7 @@ pub(crate) fn show(
     });
 
     // Save / Discard buttons
+    let mut discard_clicked = false;
     ui.horizontal(|ui| {
         let save_btn = ui.add_enabled(state.is_dirty(), egui::Button::new("Save"));
         if save_btn.clicked() {
@@ -184,11 +187,13 @@ pub(crate) fn show(
 
         let discard_btn = ui.add_enabled(state.is_dirty(), egui::Button::new("Discard"));
         if discard_btn.clicked() {
-            // Mark clean and keep current actions. The user can re-select
-            // the input to reload from the profile if needed.
-            state.mark_clean();
+            discard_clicked = true;
         }
     });
+
+    if discard_clicked {
+        return true;
+    }
 
     ui.add_space(4.0);
     ui.separator();
@@ -202,6 +207,8 @@ pub(crate) fn show(
             ui.add_space(8.0);
             card_list::show_add_action_dropdown(ui, state, colors);
         });
+
+    false
 }
 
 /// Update the expanded set after swapping two adjacent actions.

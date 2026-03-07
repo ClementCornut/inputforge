@@ -19,6 +19,8 @@ pub(crate) enum StatusBarAction {
     None,
     /// User clicked the profile name -- open the profile manager.
     OpenProfileManager,
+    /// User clicked the engine status -- toggle the engine on/off.
+    ToggleEngine,
 }
 
 /// Render the bottom status bar.
@@ -31,8 +33,10 @@ pub(crate) fn show(ctx: &egui::Context, cache: &CachedState) -> StatusBarAction 
         .exact_height(28.0)
         .show(ctx, |ui| {
             ui.horizontal_centered(|ui| {
-                // Engine status indicator.
-                show_engine_status(ui, cache.engine_status);
+                // Engine status indicator (clickable to toggle).
+                if show_engine_status(ui, cache.engine_status) {
+                    action = StatusBarAction::ToggleEngine;
+                }
 
                 ui.separator();
 
@@ -82,7 +86,10 @@ pub(crate) fn show(ctx: &egui::Context, cache: &CachedState) -> StatusBarAction 
 }
 
 /// Render the colored engine status dot and label.
-fn show_engine_status(ui: &mut egui::Ui, status: EngineStatus) {
+///
+/// Returns `true` when the user clicks the label, signalling a toggle
+/// request. The dot is visual only; the label is a frameless button.
+fn show_engine_status(ui: &mut egui::Ui, status: EngineStatus) -> bool {
     let colors = theme::colors(ui.ctx());
     let (color, label) = match status {
         EngineStatus::Running => (colors.live, "Running"),
@@ -94,11 +101,22 @@ fn show_engine_status(ui: &mut egui::Ui, status: EngineStatus) {
     let is_running = matches!(status, EngineStatus::Running);
     status_dot::status_dot(ui, color, is_running);
 
-    ui.label(
-        egui::RichText::new(label)
-            .color(color)
-            .size(theme::SMALL_FONT_SIZE),
-    );
+    let tooltip = if is_running {
+        "Click to deactivate"
+    } else {
+        "Click to activate"
+    };
+
+    ui.add(
+        egui::Button::new(
+            egui::RichText::new(label)
+                .color(color)
+                .size(theme::SMALL_FONT_SIZE),
+        )
+        .frame(false),
+    )
+    .on_hover_text(tooltip)
+    .clicked()
 }
 
 /// Render the current mode name with a "Mode:" prefix and purple accent.

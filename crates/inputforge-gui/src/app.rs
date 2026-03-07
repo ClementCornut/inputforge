@@ -46,9 +46,7 @@ pub(crate) struct ToolWindowStates {
 /// Which view occupies the center panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CenterView {
-    /// Live overview of all connected devices (default).
-    DeviceOverview,
-    /// Mapping editor for the selected device.
+    /// Mapping editor for the selected device (default).
     MappingEditor,
     /// Mode tree display and selection.
     ModeEditor,
@@ -56,15 +54,14 @@ pub(crate) enum CenterView {
 
 impl CenterView {
     /// All variants in tab-bar display order.
-    pub(crate) const fn all() -> [Self; 3] {
-        [Self::DeviceOverview, Self::MappingEditor, Self::ModeEditor]
+    pub(crate) const fn all() -> [Self; 2] {
+        [Self::MappingEditor, Self::ModeEditor]
     }
 }
 
 impl crate::widgets::tab_bar::TabItem for CenterView {
     fn label(self) -> &'static str {
         match self {
-            Self::DeviceOverview => "Devices",
             Self::MappingEditor => "Mappings",
             Self::ModeEditor => "Modes",
         }
@@ -87,7 +84,7 @@ impl Default for GuiSelection {
         Self {
             selected_device_idx: None,
             selected_input: None,
-            center_view: CenterView::DeviceOverview,
+            center_view: CenterView::MappingEditor,
         }
     }
 }
@@ -532,11 +529,21 @@ impl eframe::App for InputForgeApp {
 
         // Panel ordering: BottomPanel -> SidePanel -> CentralPanel (last).
         let status_bar_action = panels::status_bar::show(ctx, &self.cache);
-        if status_bar_action == panels::status_bar::StatusBarAction::OpenProfileManager {
-            self.tool_windows.profiles_open = true;
+        match status_bar_action {
+            panels::status_bar::StatusBarAction::OpenProfileManager => {
+                self.tool_windows.profiles_open = true;
+            }
+            panels::status_bar::StatusBarAction::ToggleEngine => {
+                let cmd = match self.cache.engine_status {
+                    EngineStatus::Running => EngineCommand::Deactivate,
+                    EngineStatus::Paused | EngineStatus::Stopped => EngineCommand::Activate,
+                };
+                let _ = self.commands.send(cmd);
+            }
+            panels::status_bar::StatusBarAction::None => {}
         }
         panels::left_panel::show(ctx, &self.cache, &mut self.selection);
-        panels::center_panel::show(
+        let discard_requested = panels::center_panel::show(
             ctx,
             &self.cache,
             &mut self.selection,
@@ -544,6 +551,11 @@ impl eframe::App for InputForgeApp {
             &mut self.tool_windows,
             &self.commands,
         );
+        if discard_requested {
+            if let Some(addr) = self.mapping_editor_state.editing().cloned() {
+                self.switch_to_input(Some(addr));
+            }
+        }
 
         panels::calibration_window::show(
             ctx,
@@ -586,9 +598,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gui_selection_defaults_to_device_overview() {
+    fn gui_selection_defaults_to_mapping_editor() {
         let sel = GuiSelection::default();
-        assert_eq!(sel.center_view, CenterView::DeviceOverview);
+        assert_eq!(sel.center_view, CenterView::MappingEditor);
         assert!(sel.selected_device_idx.is_none());
         assert!(sel.selected_input.is_none());
     }
@@ -738,12 +750,11 @@ mod tests {
         // If you add a variant, update `all()` AND add it to the match below.
         for view in &all {
             match view {
-                CenterView::DeviceOverview | CenterView::MappingEditor | CenterView::ModeEditor => {
-                }
+                CenterView::MappingEditor | CenterView::ModeEditor => {}
             }
         }
         // The array length must match the variant count.
-        assert_eq!(all.len(), 3);
+        assert_eq!(all.len(), 2);
     }
 
     #[test]

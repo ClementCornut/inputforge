@@ -52,6 +52,11 @@ pub struct Engine {
     /// Reused across frames to batch output cache writes.
     output_buffer: Vec<PipelineOutput>,
     shutdown: bool,
+    /// When `true`, the next tick will refresh all cached axis outputs.
+    ///
+    /// Set on `Activate`/`Resume` so vJoy reflects current physical
+    /// device positions immediately, without waiting for a new input event.
+    pending_output_refresh: bool,
 }
 
 impl std::fmt::Debug for Engine {
@@ -116,6 +121,7 @@ impl Engine {
             event_buffer: Vec::with_capacity(64),
             output_buffer: Vec::new(),
             shutdown: false,
+            pending_output_refresh: false,
         }
     }
 }

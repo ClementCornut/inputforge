@@ -96,6 +96,11 @@ impl Engine {
             }
         };
 
+        // On first tick after activation, refresh all cached axis outputs so
+        // vJoy reflects current physical device positions without waiting for
+        // a new input event.
+        self.apply_activation_refresh(&mappings, &mode_tree)?;
+
         // Process each input event.
         // Move the buffer out of self so the loop body can borrow other
         // &mut self fields (state, mode_state, callbacks). After the loop
@@ -207,6 +212,32 @@ impl Engine {
         Ok(())
     }
 
+    /// Refresh all cached axis outputs if an activation refresh is pending.
+    ///
+    /// Consumes the `pending_output_refresh` flag and runs
+    /// [`refresh_axes_for_mode_change`] so vJoy reflects current physical
+    /// device positions on the first tick after activation.
+    fn apply_activation_refresh(
+        &mut self,
+        mappings: &[crate::action::Mapping],
+        mode_tree: &crate::mode::ModeTree,
+    ) -> Result<()> {
+        if !self.pending_output_refresh {
+            return Ok(());
+        }
+        self.pending_output_refresh = false;
+        let mut guard = self.state.write();
+        let state: &mut crate::state::AppState = &mut guard;
+        refresh_axes_for_mode_change(
+            &state.input_cache,
+            mappings,
+            self.mode_state.current(),
+            mode_tree,
+            self.output.as_mut(),
+            &mut state.output_cache,
+        )
+    }
+
     /// Process all pending commands from the GUI.
     fn process_commands(&mut self) -> Result<()> {
         loop {
@@ -260,6 +291,8 @@ impl Engine {
             EngineCommand::Activate | EngineCommand::Resume => {
                 let mut state = self.state.write();
                 state.engine_status = EngineStatus::Running;
+                drop(state);
+                self.pending_output_refresh = true;
             }
             EngineCommand::Deactivate => {
                 self.output.flush()?;
@@ -288,6 +321,7 @@ impl Engine {
                 actions,
             } => {
                 self.set_mapping(&input, &mode, name, actions);
+                self.pending_output_refresh = true;
             }
             EngineCommand::Shutdown => {
                 self.shutdown = true;

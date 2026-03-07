@@ -162,11 +162,11 @@ pub(super) fn record_outputs_to_cache(outputs: &[PipelineOutput], cache: &mut Ou
     }
 }
 
-/// Re-process all cached axis values through the new mode's pipelines.
+/// Re-process all cached axis values through the active mode's pipelines.
 ///
-/// Called after a mode change so that axis outputs reflect the new
-/// mode's mappings immediately, without waiting for a physical
-/// input event.
+/// Called after a mode change, on engine activation, and after saving a
+/// mapping so that axis outputs reflect current mappings immediately,
+/// without waiting for a physical input event.
 pub(super) fn refresh_axes_for_mode_change(
     cache: &InputCacheStore,
     mappings: &[crate::action::Mapping],

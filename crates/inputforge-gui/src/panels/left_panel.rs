@@ -65,7 +65,7 @@ pub(crate) fn show(ctx: &egui::Context, cache: &CachedState, selection: &mut Gui
                         if response.clicked() {
                             selection.selected_device_idx = Some(idx);
                             selection.selected_input = None;
-                            selection.center_view = CenterView::DeviceOverview;
+                            selection.center_view = CenterView::MappingEditor;
                         }
                     });
 

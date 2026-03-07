@@ -3,9 +3,9 @@
 //! Center panel routing between application views.
 //!
 //! Displays a unified toolbar at the top: tab buttons on the left for
-//! switching between three views (Devices, Mappings, Modes) and tool
-//! buttons on the right (Input Viewer, Calibration, Profiles). The active tab
-//! determines which content is rendered below.
+//! switching between two views (Mappings, Modes) and tool buttons on the
+//! right (Input Viewer, Calibration, Profiles). The active tab determines
+//! which content is rendered below.
 
 use std::sync::mpsc;
 
@@ -13,7 +13,6 @@ use inputforge_core::engine::EngineCommand;
 
 use crate::app::{CachedState, CenterView, GuiSelection, ToolWindowStates};
 use crate::panels::calibration_window;
-use crate::panels::device_view;
 use crate::panels::input_viewer_window;
 use crate::panels::mapping_editor::{self, MappingEditorState};
 use crate::panels::profile_window;
@@ -25,6 +24,11 @@ use crate::widgets::tab_bar;
 ///
 /// This panel must be added LAST in `update()` because `CentralPanel`
 /// fills remaining space after all side/bottom panels are placed.
+///
+/// Returns `true` when the user clicks "Discard" in the mapping editor,
+/// signalling that the caller should reload the current mapping from the
+/// saved profile.
+#[must_use]
 pub(crate) fn show(
     ctx: &egui::Context,
     cache: &CachedState,
@@ -32,7 +36,9 @@ pub(crate) fn show(
     mapping_editor_state: &mut MappingEditorState,
     tool_windows: &mut ToolWindowStates,
     commands: &mpsc::Sender<EngineCommand>,
-) {
+) -> bool {
+    let mut discard_requested = false;
+
     egui::CentralPanel::default().show(ctx, |ui| {
         // Unified toolbar: tabs on the left, tool buttons on the right.
         ui.horizontal(|ui| {
@@ -50,17 +56,18 @@ pub(crate) fn show(
 
         // Routed content.
         match selection.center_view {
-            CenterView::DeviceOverview => {
-                device_view::show(ui, cache);
-            }
             CenterView::MappingEditor => {
-                mapping_editor::show(ui, mapping_editor_state, cache, commands);
+                if mapping_editor::show(ui, mapping_editor_state, cache, commands) {
+                    discard_requested = true;
+                }
             }
             CenterView::ModeEditor => {
                 show_mode_editor_stub(ui);
             }
         }
     });
+
+    discard_requested
 }
 
 /// Render tool buttons right-aligned in the toolbar row.
@@ -153,11 +160,7 @@ mod tests {
 
     #[test]
     fn tab_views_are_distinct() {
-        let views = [
-            CenterView::DeviceOverview,
-            CenterView::MappingEditor,
-            CenterView::ModeEditor,
-        ];
+        let views = [CenterView::MappingEditor, CenterView::ModeEditor];
         for (i, a) in views.iter().enumerate() {
             for (j, b) in views.iter().enumerate() {
                 if i != j {
