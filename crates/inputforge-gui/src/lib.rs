@@ -44,6 +44,11 @@ pub fn launch_gui(
             .with_inner_size([1280.0, 800.0])
             // 800x500: minimum to fit left panel (240) + center content.
             .with_min_inner_size([800.0, 500.0]),
+        // Disable vsync to prevent the render thread from blocking on the
+        // vertical blanking interval when a game is competing for the GPU.
+        // With vsync on (the default), a missed vsync deadline stalls the
+        // frame, which manifests as a black flash under heavy system load.
+        vsync: false,
         ..Default::default()
     };
 

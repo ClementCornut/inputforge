@@ -253,7 +253,11 @@ impl InputForgeApp {
     /// snapshot operations. All rendering uses the cached data without
     /// further lock acquisitions.
     pub(crate) fn refresh_cache(&mut self) {
-        let guard = self.state.read();
+        // Use try_read() to avoid blocking the GUI frame when the engine
+        // holds a write lock. At 60 fps, one stale frame is imperceptible.
+        let Some(guard) = self.state.try_read() else {
+            return;
+        };
         self.cache.devices = guard.devices.clone();
         self.cache.engine_status = guard.engine_status;
         self.cache.current_mode.clone_from(&guard.current_mode);
@@ -493,6 +497,28 @@ fn snapshot_vjoy_outputs(config: &VirtualDeviceConfig, guard: &AppState) -> Vjoy
 }
 
 impl eframe::App for InputForgeApp {
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        // Match the theme base color to prevent black flashes during surface
+        // recreation (e.g., window resize, focus change, DPI transitions).
+        if visuals.dark_mode {
+            // DARK.base = #1A1A2E
+            [
+                f32::from(0x1A_u8) / 255.0,
+                f32::from(0x1A_u8) / 255.0,
+                f32::from(0x2E_u8) / 255.0,
+                1.0,
+            ]
+        } else {
+            // LIGHT.base = #ECEEF6
+            [
+                f32::from(0xEC_u8) / 255.0,
+                f32::from(0xEE_u8) / 255.0,
+                f32::from(0xF6_u8) / 255.0,
+                1.0,
+            ]
+        }
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.refresh_cache();
 
