@@ -11,6 +11,7 @@ mod card_list;
 use std::collections::HashSet;
 
 use inputforge_core::action::Action;
+use inputforge_core::types::InputAddress;
 
 use crate::app::CachedState;
 use crate::theme;
@@ -28,6 +29,10 @@ pub(crate) struct MappingEditorState {
     expanded: HashSet<usize>,
     /// Whether the working copy has unsaved changes.
     dirty: bool,
+    /// The input address currently being edited, if any.
+    editing: Option<InputAddress>,
+    /// User-editable name for the mapping.
+    mapping_name: String,
 }
 
 impl MappingEditorState {
@@ -44,6 +49,65 @@ impl MappingEditorState {
         self.next_id += 1;
         self.expanded.insert(index);
         self.dirty = true;
+    }
+
+    /// Load a mapping for editing.
+    ///
+    /// Replaces the current pipeline, resets dirty state, and assigns
+    /// fresh stable IDs to each action.
+    pub(crate) fn load(
+        &mut self,
+        address: InputAddress,
+        name: Option<String>,
+        actions: Vec<Action>,
+    ) {
+        self.editing = Some(address);
+        self.mapping_name = name.unwrap_or_default();
+        self.action_ids = (0..actions.len() as u64).collect();
+        self.next_id = actions.len() as u64;
+        self.actions = actions;
+        self.expanded.clear();
+        self.dirty = false;
+    }
+
+    /// The input address currently being edited.
+    pub(crate) fn editing(&self) -> Option<&InputAddress> {
+        self.editing.as_ref()
+    }
+
+    /// Whether the working copy has unsaved changes.
+    pub(crate) fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    /// Clone the current actions for saving.
+    pub(crate) fn take_actions(&self) -> Vec<Action> {
+        self.actions.clone()
+    }
+
+    /// Return the mapping name if non-empty.
+    pub(crate) fn take_name(&self) -> Option<String> {
+        if self.mapping_name.is_empty() {
+            None
+        } else {
+            Some(self.mapping_name.clone())
+        }
+    }
+
+    /// The current mapping name (for UI binding).
+    pub(crate) fn mapping_name_mut(&mut self) -> &mut String {
+        &mut self.mapping_name
+    }
+
+    /// Reset to empty/no-input state.
+    pub(crate) fn clear(&mut self) {
+        self.editing = None;
+        self.mapping_name.clear();
+        self.actions.clear();
+        self.action_ids.clear();
+        self.next_id = 0;
+        self.expanded.clear();
+        self.dirty = false;
     }
 }
 
@@ -113,5 +177,84 @@ mod tests {
         // Both swapped — both remain expanded at swapped positions.
         assert!(expanded.contains(&1));
         assert!(expanded.contains(&2));
+    }
+
+    #[test]
+    fn load_sets_editing_and_actions() {
+        use inputforge_core::types::{DeviceId, InputId};
+
+        let mut state = MappingEditorState::new();
+        let addr = InputAddress {
+            device: DeviceId("dev-0".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        let actions = vec![Action::Invert, Action::Invert];
+        state.load(addr.clone(), Some("Roll".to_owned()), actions);
+
+        assert_eq!(state.editing(), Some(&addr));
+        assert_eq!(state.mapping_name, "Roll");
+        assert_eq!(state.actions.len(), 2);
+        assert_eq!(state.action_ids, vec![0, 1]);
+        assert_eq!(state.next_id, 2);
+        assert!(!state.dirty);
+        assert!(state.expanded.is_empty());
+    }
+
+    #[test]
+    fn clear_resets_all_state() {
+        use inputforge_core::types::{DeviceId, InputId};
+
+        let mut state = MappingEditorState::new();
+        let addr = InputAddress {
+            device: DeviceId("dev-0".to_owned()),
+            input: InputId::Button { index: 1 },
+        };
+        state.load(addr, Some("Fire".to_owned()), vec![Action::Invert]);
+        state.clear();
+
+        assert!(state.editing().is_none());
+        assert!(state.mapping_name.is_empty());
+        assert!(state.actions.is_empty());
+        assert!(state.action_ids.is_empty());
+        assert_eq!(state.next_id, 0);
+        assert!(state.expanded.is_empty());
+        assert!(!state.dirty);
+    }
+
+    #[test]
+    fn take_name_empty_returns_none() {
+        let state = MappingEditorState::new();
+        assert!(state.take_name().is_none());
+    }
+
+    #[test]
+    fn take_name_nonempty_returns_some() {
+        use inputforge_core::types::{DeviceId, InputId};
+
+        let mut state = MappingEditorState::new();
+        let addr = InputAddress {
+            device: DeviceId("dev-0".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        state.load(addr, Some("Roll".to_owned()), vec![]);
+        assert_eq!(state.take_name(), Some("Roll".to_owned()));
+    }
+
+    #[test]
+    fn dirty_flag_tracks_mutations() {
+        use inputforge_core::types::{DeviceId, InputId};
+
+        let mut state = MappingEditorState::new();
+        assert!(!state.is_dirty());
+
+        state.push_action(Action::Invert);
+        assert!(state.is_dirty());
+
+        let addr = InputAddress {
+            device: DeviceId("dev-0".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        state.load(addr, None, vec![]);
+        assert!(!state.is_dirty());
     }
 }

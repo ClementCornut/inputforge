@@ -70,6 +70,8 @@ impl crate::widgets::tab_bar::TabItem for CenterView {
 pub(crate) struct GuiSelection {
     /// Index into `cached_devices` for the selected device.
     pub selected_device_idx: Option<usize>,
+    /// The specific input selected within the device (for editing).
+    pub selected_input: Option<InputId>,
     /// Which center panel view is active.
     pub center_view: CenterView,
 }
@@ -78,6 +80,7 @@ impl Default for GuiSelection {
     fn default() -> Self {
         Self {
             selected_device_idx: None,
+            selected_input: None,
             center_view: CenterView::DeviceOverview,
         }
     }
@@ -253,6 +256,7 @@ impl InputForgeApp {
         if let Some(idx) = self.selection.selected_device_idx {
             if idx >= self.cache.devices.len() {
                 self.selection.selected_device_idx = None;
+                self.selection.selected_input = None;
             }
         }
     }
@@ -414,6 +418,7 @@ mod tests {
         let sel = GuiSelection::default();
         assert_eq!(sel.center_view, CenterView::DeviceOverview);
         assert!(sel.selected_device_idx.is_none());
+        assert!(sel.selected_input.is_none());
     }
 
     #[test]
