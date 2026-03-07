@@ -7,6 +7,7 @@
 //! - [`left_panel`]: Resizable sidebar with device tree.
 //! - [`mapping_editor`]: Action pipeline editor with arrow-button card reordering.
 //! - [`mode_editor`]: Hierarchical mode tree display and selection.
+//! - [`profile_window`]: Floating profile management window.
 //! - [`status_bar`]: Bottom status bar with engine state and mode badge.
 
 pub(crate) mod calibration_window;
@@ -16,4 +17,5 @@ pub(crate) mod input_viewer_window;
 pub(crate) mod left_panel;
 pub(crate) mod mapping_editor;
 pub(crate) mod mode_editor;
+pub(crate) mod profile_window;
 pub(crate) mod status_bar;
