@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-06
+// Rust guideline compliant 2026-03-07
 
 //! `InputForge` — desktop application entry point.
 //!
@@ -22,6 +22,8 @@ use inputforge_core::device::{DeviceHider, HidHideManager, NoOpDeviceHider, Sdl3
 use inputforge_core::engine::{Engine, EngineCommand};
 use inputforge_core::output::{KeyboardOutput, VJoyOutput};
 use inputforge_core::profile::Profile;
+use inputforge_core::profile::manager::ensure_default_profile;
+use inputforge_core::settings::AppSettings;
 use inputforge_core::state::AppState;
 use inputforge_core::state::EngineStatus;
 
@@ -41,12 +43,55 @@ fn main() -> Result<()> {
     let state = Arc::new(RwLock::new(AppState::new()));
     let (cmd_tx, cmd_rx) = mpsc::channel::<EngineCommand>();
 
-    // Load profile from CLI if provided.
-    if let Some(ref path) = cli.profile {
+    // Load settings and determine which profile to use.
+    let mut settings = AppSettings::load();
+
+    let profile_path = if let Some(ref path) = cli.profile {
+        // CLI argument takes priority.
         let profile = Profile::load(path)?;
         let mut guard = state.write();
         *guard = AppState::with_profile(profile);
         guard.profile_path = Some(path.clone());
+        path.clone()
+    } else {
+        // Try last-used profile from settings, fall back to default.
+        match settings.last_profile {
+            Some(ref last) if last.exists() => match Profile::load(last) {
+                Ok(profile) => {
+                    let mut guard = state.write();
+                    *guard = AppState::with_profile(profile);
+                    guard.profile_path = Some(last.clone());
+                    last.clone()
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        path = %last.display(),
+                        %e,
+                        "failed to load last-used profile, falling back to default"
+                    );
+                    let default_path = ensure_default_profile()?;
+                    let profile = Profile::load(&default_path)?;
+                    let mut guard = state.write();
+                    *guard = AppState::with_profile(profile);
+                    guard.profile_path = Some(default_path.clone());
+                    default_path
+                }
+            },
+            _ => {
+                let default_path = ensure_default_profile()?;
+                let profile = Profile::load(&default_path)?;
+                let mut guard = state.write();
+                *guard = AppState::with_profile(profile);
+                guard.profile_path = Some(default_path.clone());
+                default_path
+            }
+        }
+    };
+
+    // Persist the loaded profile path as last-used.
+    settings.last_profile = Some(profile_path);
+    if let Err(e) = settings.save() {
+        tracing::warn!(%e, "failed to save application settings");
     }
 
     // Spawn the engine on a dedicated thread. All !Send types (SDL3,
@@ -67,7 +112,7 @@ fn main() -> Result<()> {
     // Launch the GUI immediately unless --start-minimized.
     let mut quit_requested = false;
     if !cli.start_minimized {
-        for action in launch_gui_blocking(&tray, &state, &cmd_tx) {
+        for action in launch_gui_blocking(&tray, &state, &cmd_tx, &settings) {
             match action {
                 TrayAction::Quit => quit_requested = true,
                 TrayAction::ToggleActivation => {
@@ -85,7 +130,7 @@ fn main() -> Result<()> {
 
     // Run the tray event loop until the user selects Quit.
     if !quit_requested {
-        run_tray_loop(&tray, &state, &cmd_tx);
+        run_tray_loop(&tray, &state, &cmd_tx, &settings);
     }
 
     // Graceful shutdown.
@@ -162,12 +207,13 @@ fn launch_gui_blocking(
     tray: &AppTray,
     state: &Arc<RwLock<AppState>>,
     cmd_tx: &mpsc::Sender<EngineCommand>,
+    settings: &AppSettings,
 ) -> Vec<TrayAction> {
     let gui_state = Arc::clone(state);
     let gui_tx = cmd_tx.clone();
     let menu_ids = tray.menu_item_ids();
 
-    if let Err(e) = inputforge_gui::launch_gui(gui_state, gui_tx, menu_ids) {
+    if let Err(e) = inputforge_gui::launch_gui(gui_state, gui_tx, menu_ids, settings.clone()) {
         tracing::error!(%e, "GUI exited with error");
     }
 
@@ -219,6 +265,7 @@ fn run_tray_loop(
     tray: &AppTray,
     state: &Arc<RwLock<AppState>>,
     cmd_tx: &mpsc::Sender<EngineCommand>,
+    settings: &AppSettings,
 ) {
     use windows::Win32::UI::WindowsAndMessaging::{
         DispatchMessageW, GetMessageW, MSG, TranslateMessage,
@@ -250,7 +297,7 @@ fn run_tray_loop(
         while let Some(action) = tray.poll_event() {
             match action {
                 TrayAction::ShowGui => {
-                    let deferred = launch_gui_blocking(tray, state, cmd_tx);
+                    let deferred = launch_gui_blocking(tray, state, cmd_tx, settings);
                     tray.refresh_toggle_label();
                     for deferred_action in deferred {
                         match deferred_action {

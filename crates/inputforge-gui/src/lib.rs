@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-03-07
 
 //! `InputForge` GUI — egui-based configuration interface.
 //!
@@ -19,6 +19,7 @@ use parking_lot::RwLock;
 use muda::MenuId;
 
 use inputforge_core::engine::EngineCommand;
+use inputforge_core::settings::AppSettings;
 use inputforge_core::state::AppState;
 
 use app::InputForgeApp;
@@ -34,6 +35,7 @@ pub fn launch_gui(
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Sender<EngineCommand>,
     tray_menu_ids: (MenuId, MenuId, MenuId),
+    settings: AppSettings,
 ) -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -54,6 +56,7 @@ pub fn launch_gui(
                 state,
                 commands,
                 tray_menu_ids,
+                settings,
             )))
         }),
     )

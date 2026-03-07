@@ -17,6 +17,7 @@ use parking_lot::RwLock;
 
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::pipeline::InputCache;
+use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, DeviceState, EngineStatus};
 use inputforge_core::types::{
     AxisPolarity, DeviceId, HatDirection, InputAddress, InputId, VJoyAxis, VirtualDeviceConfig,
@@ -162,6 +163,12 @@ pub struct InputForgeApp {
     state: Arc<RwLock<AppState>>,
     /// Channel to send commands to the engine.
     commands: mpsc::Sender<EngineCommand>,
+    /// Application-wide persistent settings (used by profile management window).
+    #[expect(
+        dead_code,
+        reason = "will be read by profile management window (Task 10)"
+    )]
+    pub(crate) settings: AppSettings,
     /// Per-frame cached snapshot of shared state.
     pub(crate) cache: CachedState,
     /// GUI selection state (selected device, active view).
@@ -212,12 +219,14 @@ impl InputForgeApp {
         state: Arc<RwLock<AppState>>,
         commands: mpsc::Sender<EngineCommand>,
         tray_menu_ids: (MenuId, MenuId, MenuId),
+        settings: AppSettings,
     ) -> Self {
         theme::setup(&cc.egui_ctx);
 
         let mut app = Self {
             state,
             commands,
+            settings,
             cache: CachedState::default(),
             selection: GuiSelection::default(),
             input_viewer_window_state: InputViewerWindowState::default(),
@@ -579,6 +588,7 @@ mod tests {
         let mut app = InputForgeApp {
             state: Arc::clone(&state),
             commands: tx,
+            settings: AppSettings::default(),
             cache: CachedState::default(),
             selection: GuiSelection::default(),
             input_viewer_window_state: InputViewerWindowState::default(),
@@ -616,6 +626,7 @@ mod tests {
         let mut app = InputForgeApp {
             state: Arc::clone(&state),
             commands: tx,
+            settings: AppSettings::default(),
             cache: CachedState::default(),
             selection: GuiSelection::default(),
             input_viewer_window_state: InputViewerWindowState::default(),
