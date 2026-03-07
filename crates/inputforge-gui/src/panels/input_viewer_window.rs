@@ -783,6 +783,7 @@ mod tests {
             engine_status: inputforge_core::state::EngineStatus::Stopped,
             current_mode: "Default".to_owned(),
             profile_name: None,
+            profile_path: None,
             virtual_devices: vec![],
             output_snapshots: vec![],
             warnings: vec![],
@@ -806,6 +807,7 @@ mod tests {
             engine_status: inputforge_core::state::EngineStatus::Stopped,
             current_mode: "Default".to_owned(),
             profile_name: None,
+            profile_path: None,
             virtual_devices: vec![VirtualDeviceConfig {
                 device_id: 1,
                 axes: vec![VJoyAxis::X],
@@ -834,6 +836,7 @@ mod tests {
             engine_status: inputforge_core::state::EngineStatus::Stopped,
             current_mode: "Default".to_owned(),
             profile_name: None,
+            profile_path: None,
             virtual_devices: vec![VirtualDeviceConfig {
                 device_id: 2,
                 axes: vec![],

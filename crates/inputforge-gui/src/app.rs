@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-06
+// Rust guideline compliant 2026-03-07
 
 //! Main application struct implementing `eframe::App`.
 //!
@@ -8,6 +8,7 @@
 //! `BottomPanel` -> `SidePanel` -> `CentralPanel` (last).
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc;
 
@@ -27,6 +28,7 @@ use crate::panels;
 use crate::panels::calibration_window::CalibrationWindowState;
 use crate::panels::input_viewer_window::InputViewerWindowState;
 use crate::panels::mapping_editor::MappingEditorState;
+use crate::panels::profile_window::ProfileWindowState;
 use crate::theme;
 use crate::widgets::toast::{ToastLevel, ToastManager};
 
@@ -37,6 +39,8 @@ pub(crate) struct ToolWindowStates {
     pub calibration_open: bool,
     /// Whether the input viewer window is open.
     pub input_viewer_open: bool,
+    /// Whether the profile management window is open.
+    pub profiles_open: bool,
 }
 
 /// Which view occupies the center panel.
@@ -127,6 +131,8 @@ pub(crate) struct CachedState {
     pub engine_status: EngineStatus,
     pub current_mode: String,
     pub profile_name: Option<String>,
+    /// File path of the currently loaded profile, if loaded from disk.
+    pub profile_path: Option<PathBuf>,
     /// Discovered vJoy device configurations (empty until engine populates).
     pub virtual_devices: Vec<VirtualDeviceConfig>,
     /// Per-vJoy-device output snapshots, parallel to `virtual_devices`.
@@ -147,6 +153,7 @@ impl Default for CachedState {
             engine_status: EngineStatus::Stopped,
             current_mode: "Default".to_owned(),
             profile_name: None,
+            profile_path: None,
             virtual_devices: Vec::new(),
             output_snapshots: Vec::new(),
             warnings: Vec::new(),
@@ -164,10 +171,6 @@ pub struct InputForgeApp {
     /// Channel to send commands to the engine.
     commands: mpsc::Sender<EngineCommand>,
     /// Application-wide persistent settings (used by profile management window).
-    #[expect(
-        dead_code,
-        reason = "will be read by profile management window (Task 10)"
-    )]
     pub(crate) settings: AppSettings,
     /// Per-frame cached snapshot of shared state.
     pub(crate) cache: CachedState,
@@ -181,6 +184,8 @@ pub struct InputForgeApp {
     pub(crate) tool_windows: ToolWindowStates,
     /// Persistent state for the calibration window.
     pub(crate) calibration_window_state: CalibrationWindowState,
+    /// Persistent state for the profile management window.
+    pub(crate) profile_window_state: ProfileWindowState,
     /// Toast notification manager for transient warnings.
     pub(crate) toast_manager: ToastManager,
     /// Pending input switch awaiting dirty-state confirmation.
@@ -233,6 +238,7 @@ impl InputForgeApp {
             mapping_editor_state: MappingEditorState::new(),
             tool_windows: ToolWindowStates::default(),
             calibration_window_state: CalibrationWindowState::default(),
+            profile_window_state: ProfileWindowState::new(),
             toast_manager: ToastManager::default(),
             pending_input_switch: None,
             last_warning_count: 0,
@@ -255,6 +261,7 @@ impl InputForgeApp {
         self.cache.engine_status = guard.engine_status;
         self.cache.current_mode.clone_from(&guard.current_mode);
         self.cache.profile_name = guard.active_profile.as_ref().map(|p| p.name().to_owned());
+        self.cache.profile_path.clone_from(&guard.profile_path);
         self.cache
             .virtual_devices
             .clone_from(&guard.virtual_devices);
@@ -551,6 +558,18 @@ impl eframe::App for InputForgeApp {
             &self.cache,
         );
 
+        let profile_toasts = panels::profile_window::show(
+            ctx,
+            &mut self.profile_window_state,
+            &mut self.tool_windows.profiles_open,
+            self.cache.profile_path.as_deref(),
+            &self.commands,
+            &mut self.settings,
+        );
+        for (msg, level) in profile_toasts {
+            self.toast_manager.push(msg, level);
+        }
+
         // Show dirty-state confirmation dialog if pending.
         self.show_dirty_confirmation(ctx);
 
@@ -595,6 +614,7 @@ mod tests {
             mapping_editor_state: MappingEditorState::new(),
             tool_windows: ToolWindowStates::default(),
             calibration_window_state: CalibrationWindowState::default(),
+            profile_window_state: ProfileWindowState::new(),
             toast_manager: ToastManager::default(),
             pending_input_switch: None,
             last_warning_count: 0,
@@ -633,6 +653,7 @@ mod tests {
             mapping_editor_state: MappingEditorState::new(),
             tool_windows: ToolWindowStates::default(),
             calibration_window_state: CalibrationWindowState::default(),
+            profile_window_state: ProfileWindowState::new(),
             toast_manager: ToastManager::default(),
             pending_input_switch: None,
             last_warning_count: 0,
