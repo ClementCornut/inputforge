@@ -25,6 +25,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 parking_lot = { workspace = true }
 uuid = { workspace = true }
+dirs = { workspace = true }
 
 # Hardware I/O (optional, behind feature gates)
 sdl3 = { workspace = true, optional = true }

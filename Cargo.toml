@@ -42,6 +42,9 @@ mimalloc = "0.1"
 # Input
 sdl3 = "0.17"
 
+# Filesystem
+dirs = "6"
+
 # Output
 vjoy = "0.7"
 windows = { version = "0.62", features = [
