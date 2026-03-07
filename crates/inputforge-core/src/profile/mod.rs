@@ -1,5 +1,6 @@
 // Rust guideline compliant 2026-03-06
 
+pub mod manager;
 mod types;
 
 pub use types::{CalibrationEntry, DeviceEntry, ProfileId, ProfileSettings};
@@ -225,6 +226,11 @@ impl Profile {
     /// Replace the calibration entries.
     pub fn set_calibrations(&mut self, entries: Vec<CalibrationEntry>) {
         self.calibrations = entries;
+    }
+
+    /// Update the profile display name.
+    pub fn set_name(&mut self, name: String) {
+        self.name = name;
     }
 
     /// Validate and convert from the raw TOML representation.
