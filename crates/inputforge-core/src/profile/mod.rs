@@ -8,9 +8,10 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::action::Mapping;
+use crate::action::{Action, Mapping};
 use crate::error::{EngineError, Result};
 use crate::mode::ModeTree;
+use crate::types::InputAddress;
 
 /// A complete input mapping profile.
 ///
@@ -181,6 +182,46 @@ impl Profile {
         &self.calibrations
     }
 
+    /// Find a mapping by input address and mode.
+    #[must_use]
+    pub fn find_mapping(&self, input: &InputAddress, mode: &str) -> Option<&Mapping> {
+        self.mappings
+            .iter()
+            .find(|m| m.input == *input && m.mode == mode)
+    }
+
+    /// Set or update a mapping for a specific input and mode.
+    ///
+    /// If `actions` is empty the mapping is removed instead.
+    pub fn set_mapping(
+        &mut self,
+        input: &InputAddress,
+        mode: &str,
+        name: Option<String>,
+        actions: Vec<Action>,
+    ) {
+        if actions.is_empty() {
+            self.mappings
+                .retain(|m| !(m.input == *input && m.mode == mode));
+            return;
+        }
+        if let Some(existing) = self
+            .mappings
+            .iter_mut()
+            .find(|m| m.input == *input && m.mode == mode)
+        {
+            existing.name = name;
+            existing.actions = actions;
+        } else {
+            self.mappings.push(Mapping {
+                name,
+                input: input.clone(),
+                mode: mode.to_owned(),
+                actions,
+            });
+        }
+    }
+
     /// Replace the calibration entries.
     pub fn set_calibrations(&mut self, entries: Vec<CalibrationEntry>) {
         self.calibrations = entries;
@@ -301,6 +342,7 @@ mod tests {
             vec![Mapping {
                 input: test_input(),
                 mode: "Default".to_owned(),
+                name: None,
                 actions: vec![Action::Invert],
             }],
             vec![],
@@ -478,11 +520,13 @@ type = "invert"
                 Mapping {
                     input: test_input(),
                     mode: "Default".to_owned(),
+                    name: None,
                     actions: vec![Action::Invert],
                 },
                 Mapping {
                     input: test_input(),
                     mode: "Combat".to_owned(),
+                    name: None,
                     actions: vec![],
                 },
             ],
@@ -508,6 +552,7 @@ type = "invert"
             vec![Mapping {
                 input: test_input(),
                 mode: "Default".to_owned(),
+                name: None,
                 actions: vec![
                     Action::Deadzone {
                         config: DeadzoneConfig::default(),
@@ -541,6 +586,7 @@ type = "invert"
                     input: InputId::Button { index: 0 },
                 },
                 mode: "Default".to_owned(),
+                name: None,
                 actions: vec![Action::Conditional {
                     condition: Condition::ButtonPressed {
                         input: InputAddress {
@@ -583,6 +629,7 @@ type = "invert"
                     input: InputId::Button { index: 1 },
                 },
                 mode: "Default".to_owned(),
+                name: None,
                 actions: vec![Action::ChangeMode {
                     strategy: ModeChangeStrategy::SwitchTo {
                         mode: "Combat".to_owned(),
@@ -610,6 +657,7 @@ type = "invert"
             vec![Mapping {
                 input: test_input(),
                 mode: "Default".to_owned(),
+                name: None,
                 actions: vec![
                     Action::MergeAxis {
                         second_input: InputAddress {
@@ -713,5 +761,84 @@ enabled = true
 "#;
         let err = Profile::from_toml(toml_str).unwrap_err();
         assert!(err.to_string().contains("calibration"));
+    }
+
+    // --- find_mapping / set_mapping ---
+
+    #[test]
+    fn find_mapping_returns_existing() {
+        let profile = minimal_profile();
+        let result = profile.find_mapping(&test_input(), "Default");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().actions, vec![Action::Invert]);
+    }
+
+    #[test]
+    fn find_mapping_returns_none_for_unknown() {
+        let profile = minimal_profile();
+        assert!(profile.find_mapping(&test_input(), "NonExistent").is_none());
+
+        let other_input = InputAddress {
+            device: DeviceId("other-dev".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        assert!(profile.find_mapping(&other_input, "Default").is_none());
+    }
+
+    #[test]
+    fn set_mapping_creates_new() {
+        let mut profile = minimal_profile();
+        let new_input = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 5 },
+        };
+        let actions = vec![Action::MapToVJoy {
+            output: test_output(),
+        }];
+
+        profile.set_mapping(
+            &new_input,
+            "Default",
+            Some("My Button".to_owned()),
+            actions.clone(),
+        );
+
+        let found = profile.find_mapping(&new_input, "Default");
+        assert!(found.is_some());
+        let m = found.unwrap();
+        assert_eq!(m.name, Some("My Button".to_owned()));
+        assert_eq!(m.actions, actions);
+        assert_eq!(profile.mappings().len(), 2);
+    }
+
+    #[test]
+    fn set_mapping_updates_existing() {
+        let mut profile = minimal_profile();
+        let new_actions = vec![Action::MapToVJoy {
+            output: test_output(),
+        }];
+
+        profile.set_mapping(
+            &test_input(),
+            "Default",
+            Some("Renamed".to_owned()),
+            new_actions.clone(),
+        );
+
+        assert_eq!(profile.mappings().len(), 1);
+        let m = profile.find_mapping(&test_input(), "Default").unwrap();
+        assert_eq!(m.name, Some("Renamed".to_owned()));
+        assert_eq!(m.actions, new_actions);
+    }
+
+    #[test]
+    fn set_mapping_removes_when_actions_empty() {
+        let mut profile = minimal_profile();
+        assert_eq!(profile.mappings().len(), 1);
+
+        profile.set_mapping(&test_input(), "Default", None, vec![]);
+
+        assert_eq!(profile.mappings().len(), 0);
+        assert!(profile.find_mapping(&test_input(), "Default").is_none());
     }
 }

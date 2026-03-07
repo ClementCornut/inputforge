@@ -68,6 +68,7 @@ mod tests {
         let mappings = vec![Mapping {
             input: input.clone(),
             mode: "Missiles".to_owned(),
+            name: None,
             actions: vec![Action::Invert],
         }];
         let result = resolve_mapping(&mappings, &input, "Missiles", &tree);
@@ -82,6 +83,7 @@ mod tests {
         let mappings = vec![Mapping {
             input: input.clone(),
             mode: "Default".to_owned(),
+            name: None,
             actions: vec![Action::Invert],
         }];
         // Look up from Missiles, should inherit from Default.
@@ -107,11 +109,13 @@ mod tests {
             Mapping {
                 input: input.clone(),
                 mode: "Default".to_owned(),
+                name: None,
                 actions: vec![Action::Invert],
             },
             Mapping {
                 input: input.clone(),
                 mode: "Combat".to_owned(),
+                name: None,
                 actions: vec![], // Different actions to distinguish.
             },
         ];
@@ -132,6 +136,7 @@ mod tests {
         let mappings = vec![Mapping {
             input: other_input,
             mode: "Default".to_owned(),
+            name: None,
             actions: vec![Action::Invert],
         }];
         let result = resolve_mapping(&mappings, &input, "Default", &tree);
@@ -145,6 +150,7 @@ mod tests {
         let mappings = vec![Mapping {
             input: input.clone(),
             mode: "Default".to_owned(),
+            name: None,
             actions: vec![Action::Invert],
         }];
         // Mode "Space" doesn't exist, ancestors returns empty, so no match.

@@ -14,6 +14,8 @@ use super::Action;
 pub struct Mapping {
     pub input: InputAddress,
     pub mode: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub actions: Vec<Action>,
 }
 
@@ -42,6 +44,7 @@ mod tests {
         let mapping = Mapping {
             input: test_input_address(),
             mode: "default".to_owned(),
+            name: Some("Test Mapping".to_owned()),
             actions: vec![
                 Action::Deadzone {
                     config: DeadzoneConfig::default(),

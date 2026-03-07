@@ -345,6 +345,7 @@ fn refresh_axes_reprocesses_cached_values() {
     let mapping = Mapping {
         input: axis_addr(0),
         mode: "Default".to_owned(),
+        name: None,
         actions: vec![Action::MapToVJoy {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
@@ -385,6 +386,7 @@ fn refresh_axes_skips_mode_changes_and_keys() {
     let mapping = Mapping {
         input: axis_addr(0),
         mode: "Default".to_owned(),
+        name: None,
         actions: vec![
             Action::ChangeMode {
                 strategy: ModeChangeStrategy::SwitchTo {
@@ -432,6 +434,7 @@ fn tick_processes_axis_event_to_output() {
     let mapping = Mapping {
         input: axis_addr(0),
         mode: "Default".to_owned(),
+        name: None,
         actions: vec![Action::MapToVJoy {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
@@ -459,6 +462,7 @@ fn tick_updates_current_mode_in_state() {
     let mapping = Mapping {
         input: button_addr(0),
         mode: "Default".to_owned(),
+        name: None,
         actions: vec![Action::ChangeMode {
             strategy: ModeChangeStrategy::SwitchTo {
                 mode: "Combat".to_owned(),
@@ -481,6 +485,7 @@ fn tick_skips_processing_when_paused() {
     let mapping = Mapping {
         input: axis_addr(0),
         mode: "Default".to_owned(),
+        name: None,
         actions: vec![Action::MapToVJoy {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
@@ -599,6 +604,7 @@ fn tick_release_pops_temporary_mode_before_mapping() {
     let mapping = Mapping {
         input: button_addr(0),
         mode: "Default".to_owned(),
+        name: None,
         actions: vec![Action::Conditional {
             condition: crate::action::Condition::ButtonPressed {
                 input: button_addr(0),
@@ -870,6 +876,7 @@ fn refresh_axes_set_button_path() {
     let mapping = Mapping {
         input: button_addr(0),
         mode: "Default".to_owned(),
+        name: None,
         actions: vec![Action::MapToVJoy {
             output: vjoy_button_output(1, 3),
         }],
@@ -893,6 +900,7 @@ fn refresh_axes_set_button_path() {
     let mapping_axis = Mapping {
         input: axis_addr(0),
         mode: "Default".to_owned(),
+        name: None,
         actions: vec![Action::MapToVJoy {
             output: vjoy_axis_output(1, VJoyAxis::Y),
         }],
@@ -940,6 +948,7 @@ fn tick_unmapped_input_continues() {
     let mapping = Mapping {
         input: axis_addr(0),
         mode: "Default".to_owned(),
+        name: None,
         actions: vec![Action::MapToVJoy {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
@@ -971,6 +980,7 @@ fn tick_hat_event_produces_zero_value() {
     let mapping = Mapping {
         input: hat_addr(0),
         mode: "Default".to_owned(),
+        name: None,
         actions: vec![Action::MapToVJoy {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
@@ -1183,6 +1193,7 @@ fn tick_axis_with_calibration_applies_transform() {
     let mapping = Mapping {
         input: axis_addr(0),
         mode: "Default".to_owned(),
+        name: None,
         actions: vec![Action::MapToVJoy {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],

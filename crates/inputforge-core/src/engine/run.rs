@@ -10,6 +10,7 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
+use crate::action::Action;
 use crate::callbacks::ReleaseCallback;
 use crate::device::traits::HotplugEvent;
 use crate::error::Result;
@@ -17,7 +18,7 @@ use crate::mode::resolve_mapping;
 use crate::pipeline::{self, PipelineContext};
 use crate::profile::{CalibrationEntry, Profile};
 use crate::state::{DeviceCalibrationStore, DeviceState, EngineStatus};
-use crate::types::{InputEvent, InputId, InputValue};
+use crate::types::{InputAddress, InputEvent, InputId, InputValue};
 
 use super::Engine;
 use super::command::EngineCommand;
@@ -282,11 +283,51 @@ impl Engine {
             EngineCommand::SaveCalibrations => {
                 self.save_calibrations_to_profile();
             }
+            EngineCommand::SetMapping {
+                input,
+                mode,
+                name,
+                actions,
+            } => {
+                self.set_mapping(&input, &mode, name, actions);
+            }
             EngineCommand::Shutdown => {
                 self.shutdown = true;
             }
         }
         Ok(())
+    }
+
+    /// Update a mapping in the active profile and persist to disk.
+    fn set_mapping(
+        &self,
+        input: &InputAddress,
+        mode: &str,
+        name: Option<String>,
+        actions: Vec<Action>,
+    ) {
+        let mut state = self.state.write();
+
+        if state.active_profile.is_none() {
+            tracing::warn!("cannot set mapping: no profile loaded");
+            return;
+        }
+
+        let Some(path) = state.profile_path.clone() else {
+            tracing::warn!("cannot save mapping: no profile path");
+            return;
+        };
+
+        let profile = state.active_profile.as_mut().expect("checked above");
+        profile.set_mapping(input, mode, name, actions);
+
+        if let Err(e) = profile.save(&path) {
+            tracing::warn!(
+                path = %path.display(),
+                error = %e,
+                "failed to save mapping to profile"
+            );
+        }
     }
 
     /// Persist the current calibration store into the loaded profile and save to disk.

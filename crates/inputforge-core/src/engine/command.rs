@@ -2,8 +2,9 @@
 
 use std::path::PathBuf;
 
+use crate::action::Action;
 use crate::processing::Calibration;
-use crate::types::DeviceId;
+use crate::types::{DeviceId, InputAddress};
 
 /// Commands sent from the GUI to the engine via an mpsc channel.
 #[derive(Debug, PartialEq)]
@@ -28,4 +29,11 @@ pub enum EngineCommand {
     },
     /// Persist current calibrations to the loaded profile file.
     SaveCalibrations,
+    /// Set or update a mapping for a specific input and mode.
+    SetMapping {
+        input: InputAddress,
+        mode: String,
+        name: Option<String>,
+        actions: Vec<Action>,
+    },
 }
