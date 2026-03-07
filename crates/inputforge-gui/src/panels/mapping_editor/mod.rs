@@ -9,9 +9,11 @@
 mod card_list;
 
 use std::collections::HashSet;
+use std::sync::mpsc;
 
 use inputforge_core::action::Action;
-use inputforge_core::types::InputAddress;
+use inputforge_core::engine::EngineCommand;
+use inputforge_core::types::{InputAddress, InputId};
 
 use crate::app::CachedState;
 use crate::theme;
@@ -80,6 +82,16 @@ impl MappingEditorState {
         self.dirty
     }
 
+    /// Mark the editor as having unsaved changes.
+    pub(crate) fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
+    /// Mark the editor as clean (no unsaved changes).
+    pub(crate) fn mark_clean(&mut self) {
+        self.dirty = false;
+    }
+
     /// Clone the current actions for saving.
     pub(crate) fn take_actions(&self) -> Vec<Action> {
         self.actions.clone()
@@ -116,18 +128,79 @@ impl MappingEditorState {
 /// If no device or input is selected, shows a placeholder message.
 /// Otherwise displays the action pipeline with arrow-button
 /// reordering, add/delete controls, and per-action configuration.
-pub(crate) fn show(ui: &mut egui::Ui, state: &mut MappingEditorState, cache: &CachedState) {
+pub(crate) fn show(
+    ui: &mut egui::Ui,
+    state: &mut MappingEditorState,
+    cache: &CachedState,
+    commands: &mpsc::Sender<EngineCommand>,
+) {
     let colors = theme::colors(ui.ctx());
+
+    // If no input is selected, show placeholder.
+    let Some(editing_addr) = state.editing() else {
+        crate::widgets::empty_state::empty_state(ui, "Select an input in the device tree to begin");
+        return;
+    };
+    let editing_addr = editing_addr.clone(); // Clone to release borrow on state
+
+    // Header: input name
+    let input_label = match &editing_addr.input {
+        InputId::Axis { index } => {
+            format!(
+                "Axis {} ({})",
+                index,
+                crate::panels::device_view::axis_label(usize::from(*index))
+            )
+        }
+        InputId::Button { index } => format!("Button {}", index + 1),
+        InputId::Hat { index } => format!("Hat {index}"),
+    };
+    ui.heading(egui::RichText::new(&input_label).color(colors.text));
+
+    // Editable name field
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("Name:").color(colors.text_dim));
+        let name_response = ui.add(
+            egui::TextEdit::singleline(state.mapping_name_mut())
+                .hint_text("(optional)")
+                .desired_width(200.0),
+        );
+        if name_response.changed() {
+            state.mark_dirty();
+        }
+    });
+
+    // Save / Discard buttons
+    ui.horizontal(|ui| {
+        let save_btn = ui.add_enabled(state.is_dirty(), egui::Button::new("Save"));
+        if save_btn.clicked() {
+            let _ = commands.send(EngineCommand::SetMapping {
+                input: editing_addr.clone(),
+                mode: cache.current_mode.clone(),
+                name: state.take_name(),
+                actions: state.take_actions(),
+            });
+            state.mark_clean();
+        }
+
+        let discard_btn = ui.add_enabled(state.is_dirty(), egui::Button::new("Discard"));
+        if discard_btn.clicked() {
+            // Mark clean and keep current actions. The user can re-select
+            // the input to reload from the profile if needed.
+            state.mark_clean();
+        }
+    });
+
+    ui.add_space(4.0);
+    ui.separator();
+    ui.add_space(4.0);
 
     // Scrollable action card list.
     egui::ScrollArea::vertical()
         .auto_shrink([false; 2])
         .show(ui, |ui| {
             card_list::show_action_list(ui, state, cache, colors);
-
             ui.add_space(8.0);
-
-            // "Add Action" dropdown at the bottom.
             card_list::show_add_action_dropdown(ui, state, colors);
         });
 }

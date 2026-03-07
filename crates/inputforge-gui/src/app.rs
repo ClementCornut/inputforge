@@ -176,12 +176,29 @@ pub struct InputForgeApp {
     pub(crate) calibration_window_state: CalibrationWindowState,
     /// Toast notification manager for transient warnings.
     pub(crate) toast_manager: ToastManager,
+    /// Pending input switch awaiting dirty-state confirmation.
+    ///
+    /// When the user selects a different input while the editor has unsaved
+    /// changes, the target address is stored here. A modal dialog asks the
+    /// user to save or discard before switching.
+    ///
+    /// The outer `Option` indicates whether a switch is pending; the inner
+    /// `Option` carries the target (`None` = deselect, `Some` = new input).
+    #[expect(clippy::option_option, reason = "outer=pending, inner=target")]
+    pending_input_switch: Option<Option<InputAddress>>,
     /// Number of warnings seen so far (to detect new ones).
     last_warning_count: usize,
     /// Tray menu item IDs for polling `MenuEvent` while the GUI is open.
     tray_show_id: MenuId,
     tray_toggle_id: MenuId,
     tray_quit_id: MenuId,
+}
+
+/// Action chosen in the dirty-state confirmation dialog.
+enum DirtyAction {
+    None,
+    Discard,
+    Save,
 }
 
 impl InputForgeApp {
@@ -208,6 +225,7 @@ impl InputForgeApp {
             tool_windows: ToolWindowStates::default(),
             calibration_window_state: CalibrationWindowState::default(),
             toast_manager: ToastManager::default(),
+            pending_input_switch: None,
             last_warning_count: 0,
             tray_show_id: tray_menu_ids.0,
             tray_toggle_id: tray_menu_ids.1,
@@ -307,6 +325,55 @@ impl InputForgeApp {
             }
         }
         false
+    }
+
+    /// Render the unsaved-changes confirmation dialog.
+    ///
+    /// Shown when `pending_input_switch` is `Some`, meaning the user tried
+    /// to switch inputs while the editor had unsaved changes.
+    fn show_dirty_confirmation(&mut self, ctx: &egui::Context) {
+        if self.pending_input_switch.is_none() {
+            return;
+        }
+
+        let mut action = DirtyAction::None;
+
+        egui::Window::new("Unsaved Changes")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label("You have unsaved changes to the current mapping.");
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Discard").clicked() {
+                        action = DirtyAction::Discard;
+                    }
+                    if ui.button("Save").clicked() {
+                        action = DirtyAction::Save;
+                    }
+                });
+            });
+
+        match action {
+            DirtyAction::None => {}
+            DirtyAction::Discard => {
+                let target = self.pending_input_switch.take().flatten();
+                self.switch_to_input(target);
+            }
+            DirtyAction::Save => {
+                if let Some(editing_addr) = self.mapping_editor_state.editing().cloned() {
+                    let _ = self.commands.send(EngineCommand::SetMapping {
+                        input: editing_addr,
+                        mode: self.cache.current_mode.clone(),
+                        name: self.mapping_editor_state.take_name(),
+                        actions: self.mapping_editor_state.take_actions(),
+                    });
+                }
+                let target = self.pending_input_switch.take().flatten();
+                self.switch_to_input(target);
+            }
+        }
     }
 
     /// Load the mapping for the given input address into the editor.
@@ -430,8 +497,14 @@ impl eframe::App for InputForgeApp {
             }
             _ => None,
         };
-        if target.as_ref() != self.mapping_editor_state.editing() {
-            self.switch_to_input(target);
+        if target.as_ref() != self.mapping_editor_state.editing()
+            && self.pending_input_switch.is_none()
+        {
+            if self.mapping_editor_state.is_dirty() {
+                self.pending_input_switch = Some(target);
+            } else {
+                self.switch_to_input(target);
+            }
         }
 
         if self.process_tray_events(ctx) {
@@ -450,6 +523,7 @@ impl eframe::App for InputForgeApp {
             &mut self.selection,
             &mut self.mapping_editor_state,
             &mut self.tool_windows,
+            &self.commands,
         );
 
         panels::calibration_window::show(
@@ -467,6 +541,9 @@ impl eframe::App for InputForgeApp {
             &mut self.tool_windows.input_viewer_open,
             &self.cache,
         );
+
+        // Show dirty-state confirmation dialog if pending.
+        self.show_dirty_confirmation(ctx);
 
         // Render toast overlays on top of all panels.
         self.toast_manager.show(ctx);
@@ -509,6 +586,7 @@ mod tests {
             tool_windows: ToolWindowStates::default(),
             calibration_window_state: CalibrationWindowState::default(),
             toast_manager: ToastManager::default(),
+            pending_input_switch: None,
             last_warning_count: 0,
             tray_show_id: MenuId::new("test-show"),
             tray_toggle_id: MenuId::new("test-toggle"),
@@ -545,6 +623,7 @@ mod tests {
             tool_windows: ToolWindowStates::default(),
             calibration_window_state: CalibrationWindowState::default(),
             toast_manager: ToastManager::default(),
+            pending_input_switch: None,
             last_warning_count: 0,
             tray_show_id: MenuId::new("test-show"),
             tray_toggle_id: MenuId::new("test-toggle"),

@@ -7,6 +7,10 @@
 //! buttons on the right (Input Viewer, Calibration). The active tab
 //! determines which content is rendered below.
 
+use std::sync::mpsc;
+
+use inputforge_core::engine::EngineCommand;
+
 use crate::app::{CachedState, CenterView, GuiSelection, ToolWindowStates};
 use crate::panels::calibration_window;
 use crate::panels::device_view;
@@ -26,6 +30,7 @@ pub(crate) fn show(
     selection: &mut GuiSelection,
     mapping_editor_state: &mut MappingEditorState,
     tool_windows: &mut ToolWindowStates,
+    commands: &mpsc::Sender<EngineCommand>,
 ) {
     egui::CentralPanel::default().show(ctx, |ui| {
         // Unified toolbar: tabs on the left, tool buttons on the right.
@@ -48,7 +53,7 @@ pub(crate) fn show(
                 device_view::show(ui, cache);
             }
             CenterView::MappingEditor => {
-                mapping_editor::show(ui, mapping_editor_state, cache);
+                mapping_editor::show(ui, mapping_editor_state, cache, commands);
             }
             CenterView::ModeEditor => {
                 show_mode_editor_stub(ui);
