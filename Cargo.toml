@@ -44,6 +44,7 @@ sdl3 = "0.17"
 
 # Filesystem
 dirs = "6"
+tempfile = "3"
 
 # Output
 vjoy = "0.7"

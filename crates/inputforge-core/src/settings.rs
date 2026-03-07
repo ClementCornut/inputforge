@@ -1,7 +1,7 @@
 // Application-level settings (persisted outside profiles)
 // Rust guideline compliant 2026-03-07
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -48,14 +48,22 @@ impl AppSettings {
         Self::config_dir().join("settings.toml")
     }
 
-    /// Load settings from disk.
+    /// Load settings from the default settings path.
     ///
     /// Returns [`Default`] settings if the file is missing or cannot be
     /// parsed, logging a warning via [`tracing`].
     #[must_use]
     pub fn load() -> Self {
-        let path = Self::settings_path();
-        match std::fs::read_to_string(&path) {
+        Self::load_from(&Self::settings_path())
+    }
+
+    /// Load settings from the given path.
+    ///
+    /// Returns [`Default`] settings if the file is missing or cannot be
+    /// parsed, logging a warning via [`tracing`].
+    #[must_use]
+    pub fn load_from(path: &Path) -> Self {
+        match std::fs::read_to_string(path) {
             Ok(contents) => match toml::from_str(&contents) {
                 Ok(settings) => settings,
                 Err(e) => {
@@ -70,7 +78,7 @@ impl AppSettings {
         }
     }
 
-    /// Persist settings to disk.
+    /// Persist settings to the default settings path.
     ///
     /// Creates the configuration directory if it does not exist.
     ///
@@ -81,8 +89,23 @@ impl AppSettings {
     pub fn save(&self) -> Result<()> {
         let dir = Self::config_dir();
         std::fs::create_dir_all(&dir)?;
-        let toml_str = toml::to_string(self)?;
-        std::fs::write(Self::settings_path(), toml_str)?;
+        self.save_to(&Self::settings_path())
+    }
+
+    /// Persist settings to the given path.
+    ///
+    /// Creates the parent directory of `path` if it does not exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the parent directory cannot be created, the
+    /// settings cannot be serialized, or the file cannot be written.
+    pub fn save_to(&self, path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let toml_str = toml::to_string_pretty(self)?;
+        std::fs::write(path, toml_str)?;
         Ok(())
     }
 }
@@ -136,39 +159,26 @@ mod tests {
 
     #[test]
     fn save_and_load_roundtrip() {
-        // Use a unique temp directory to avoid interference with real settings.
-        let tmp = std::env::temp_dir().join("inputforge_settings_test");
-        std::fs::create_dir_all(&tmp).unwrap();
-        let settings_path = tmp.join("settings.toml");
+        let tmp = tempfile::tempdir().unwrap();
+        let settings_path = tmp.path().join("settings.toml");
 
         let settings = AppSettings {
             last_profile: Some(PathBuf::from("C:/profiles/my_profile.toml")),
         };
 
-        // Manually write to the temp path (bypass config_dir).
-        let toml_str = toml::to_string(&settings).unwrap();
-        std::fs::write(&settings_path, &toml_str).unwrap();
+        settings.save_to(&settings_path).unwrap();
 
-        // Read back and verify.
-        let contents = std::fs::read_to_string(&settings_path).unwrap();
-        let loaded: AppSettings = toml::from_str(&contents).unwrap();
+        let loaded = AppSettings::load_from(&settings_path);
         assert_eq!(settings, loaded);
-
-        // Cleanup.
-        let _ = std::fs::remove_file(&settings_path);
-        let _ = std::fs::remove_dir(&tmp);
     }
 
     #[test]
     fn load_returns_default_on_missing_file() {
-        // AppSettings::load() reads from the real settings_path, which may
-        // or may not exist. Instead, test the parse-fallback logic directly.
-        let result: std::result::Result<AppSettings, _> = toml::from_str("invalid { toml");
-        assert!(result.is_err());
+        let tmp = tempfile::tempdir().unwrap();
+        let nonexistent = tmp.path().join("does_not_exist.toml");
 
-        // Confirm Default is what we expect.
-        let fallback = AppSettings::default();
-        assert!(fallback.last_profile.is_none());
+        let loaded = AppSettings::load_from(&nonexistent);
+        assert_eq!(loaded, AppSettings::default());
     }
 
     #[test]
@@ -189,33 +199,26 @@ mod tests {
         assert_eq!(settings, back);
     }
 
-    /// Single sequential test for real-path I/O to avoid parallel test
-    /// interference (all three scenarios share the same settings file).
+    /// Test save, load, and invalid-TOML recovery using a temp directory.
     #[test]
     fn save_load_and_invalid_toml_recovery() {
-        let path = AppSettings::settings_path();
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.toml");
 
-        // 1. save() creates the directory and file.
+        // 1. save_to() creates the parent directory and file.
         let settings = AppSettings {
             last_profile: Some(PathBuf::from("test_profile.toml")),
         };
-        settings.save().unwrap();
-        assert!(path.exists(), "settings file should exist after save");
-        let contents = std::fs::read_to_string(&path).unwrap();
-        let loaded: AppSettings = toml::from_str(&contents).unwrap();
+        settings.save_to(&path).unwrap();
+        assert!(path.exists(), "settings file should exist after save_to");
+
+        // 2. load_from() roundtrips correctly.
+        let loaded = AppSettings::load_from(&path);
         assert_eq!(settings, loaded);
 
-        // 2. load() roundtrips correctly.
-        let loaded = AppSettings::load();
-        assert_eq!(settings, loaded);
-
-        // 3. load() returns Default when the file contains garbage.
+        // 3. load_from() returns Default when the file contains garbage.
         std::fs::write(&path, "this is not valid toml {{{{").unwrap();
-        let loaded = AppSettings::load();
+        let loaded = AppSettings::load_from(&path);
         assert_eq!(loaded, AppSettings::default());
-
-        // Cleanup: restore empty settings.
-        let empty = AppSettings::default();
-        empty.save().unwrap();
     }
 }
