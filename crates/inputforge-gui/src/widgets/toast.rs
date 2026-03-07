@@ -37,6 +37,12 @@ const ACCENT_WIDTH: f32 = 3.0;
 /// Severity level of a toast notification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ToastLevel {
+    /// Blue accent — informational notification.
+    #[allow(
+        dead_code,
+        reason = "variant used by profile_window which is not yet wired"
+    )]
+    Info,
     /// Amber accent — non-fatal issue the user should be aware of.
     Warning,
     /// Red accent — something went wrong.
@@ -139,6 +145,7 @@ impl ToastManager {
 
             let opacity = toast.opacity();
             let accent_color = match toast.level {
+                ToastLevel::Info => colors.primary,
                 ToastLevel::Warning => colors.warning,
                 ToastLevel::Error => colors.error,
             };
@@ -165,6 +172,7 @@ impl ToastManager {
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 let icon = match toast.level {
+                                    ToastLevel::Info => "\u{2139}",
                                     ToastLevel::Warning => "\u{26A0}",
                                     ToastLevel::Error => "\u{2716}",
                                 };

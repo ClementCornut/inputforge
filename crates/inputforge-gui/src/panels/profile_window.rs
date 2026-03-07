@@ -6,7 +6,7 @@
 //! deleting profiles. Uses a `needs_refresh` guard so `list_profiles()`
 //! is never called in the per-frame render path.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
 use inputforge_core::engine::EngineCommand;
@@ -72,7 +72,7 @@ pub(crate) fn show(
     ctx: &egui::Context,
     window_state: &mut ProfileWindowState,
     open: &mut bool,
-    active_profile_path: Option<&PathBuf>,
+    active_profile_path: Option<&Path>,
     commands: &mpsc::Sender<EngineCommand>,
     settings: &mut AppSettings,
 ) -> Vec<(String, ToastLevel)> {
@@ -170,7 +170,7 @@ fn show_header(
 fn show_profile_list(
     ui: &mut egui::Ui,
     window_state: &mut ProfileWindowState,
-    active_profile_path: Option<&PathBuf>,
+    active_profile_path: Option<&Path>,
     commands: &mpsc::Sender<EngineCommand>,
     settings: &mut AppSettings,
     toasts: &mut Vec<(String, ToastLevel)>,
@@ -193,7 +193,7 @@ fn show_profile_list(
 
             for (name, path) in &profiles {
                 let is_selected = window_state.selected_path.as_ref() == Some(path);
-                let is_active = active_profile_path == Some(path);
+                let is_active = active_profile_path == Some(path.as_path());
                 let is_delete_confirming = window_state.delete_confirming.as_ref() == Some(path);
 
                 // --- Delete confirmation mode ---
@@ -232,11 +232,7 @@ fn show_profile_list(
                     let response = ui.add(text_edit);
 
                     // Auto-focus on first frame.
-                    if !response.has_focus() && response.gained_focus()
-                        || ui.memory(|m| m.focused().is_none())
-                    {
-                        response.request_focus();
-                    }
+                    response.request_focus();
 
                     // Cancel on Escape.
                     if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -244,8 +240,8 @@ fn show_profile_list(
                         continue;
                     }
 
-                    // Commit on Enter or loss of focus.
-                    if response.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    // Commit on Enter or loss of focus (but not Escape — handled above).
+                    if response.lost_focus() && !ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                         let new_name = rename_text.trim().to_owned();
                         rename_result = Some(RenameOutcome {
                             old_path: rename_path.clone(),
@@ -286,7 +282,7 @@ fn show_profile_list(
 
     // --- Apply delete ---
     if let Some(outcome) = delete_result {
-        apply_delete(window_state, &outcome, toasts);
+        apply_delete(window_state, &outcome, settings, toasts);
     }
 
     // --- Apply load (double-click) ---
@@ -325,7 +321,7 @@ fn show_action_bar(
                 let current_name = window_state
                     .profiles
                     .iter()
-                    .find(|p| &p.path == path)
+                    .find(|p| p.path == *path)
                     .map(|p| p.name.clone())
                     .unwrap_or_default();
                 window_state.renaming = Some((path.clone(), current_name));
@@ -404,6 +400,7 @@ fn apply_rename(
 fn apply_delete(
     window_state: &mut ProfileWindowState,
     outcome: &DeleteOutcome,
+    settings: &mut AppSettings,
     toasts: &mut Vec<(String, ToastLevel)>,
 ) {
     window_state.delete_confirming = None;
@@ -411,6 +408,8 @@ fn apply_delete(
     match delete_profile(&outcome.path) {
         Ok(()) => {
             if outcome.was_active {
+                settings.last_profile = None;
+                let _ = settings.save();
                 toasts.push((
                     format!(
                         "Active profile '{}' deleted \u{2014} engine still running with in-memory copy",
@@ -432,7 +431,7 @@ fn apply_delete(
 
 /// Load a profile by path, updating settings and sending the engine command.
 fn apply_load(
-    path: &PathBuf,
+    path: &Path,
     commands: &mpsc::Sender<EngineCommand>,
     settings: &mut AppSettings,
     toasts: &mut Vec<(String, ToastLevel)>,
@@ -440,19 +439,19 @@ fn apply_load(
 ) {
     let name = profiles
         .iter()
-        .find(|p| &p.path == path)
+        .find(|p| p.path == *path)
         .map_or("unknown", |p| p.name.as_str());
 
-    if let Err(e) = commands.send(EngineCommand::LoadProfile(path.clone())) {
+    if let Err(e) = commands.send(EngineCommand::LoadProfile(path.to_path_buf())) {
         tracing::warn!(error = %e, "failed to send LoadProfile command");
     }
 
-    settings.last_profile = Some(path.clone());
+    settings.last_profile = Some(path.to_path_buf());
     if let Err(e) = settings.save() {
         tracing::warn!(error = %e, "failed to save settings after load");
     }
 
-    toasts.push((format!("Loaded '{name}'"), ToastLevel::Warning));
+    toasts.push((format!("Loaded '{name}'"), ToastLevel::Info));
 }
 
 #[cfg(test)]
