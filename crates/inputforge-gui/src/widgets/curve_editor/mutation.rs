@@ -63,7 +63,8 @@ pub(super) fn adjacent_x_bounds(curve: &ResponseCurve, index: usize) -> (f64, f6
                 return (1.0, 1.0);
             }
 
-            // All other bezier handles are unconstrained.
+            // Handles are unconstrained in x; find_t_for_x handles
+            // non-monotonic x(t) via coarse sampling.
             (-1.0, 1.0)
         }
     }

@@ -51,6 +51,8 @@ pub(crate) struct ProfileWindowState {
     renaming: Option<(PathBuf, String)>,
     /// Path of profile pending delete confirmation.
     delete_confirming: Option<PathBuf>,
+    /// Path of the profile row hovered last frame (for hover-reveal icons).
+    hovered_path: Option<PathBuf>,
 }
 
 impl ProfileWindowState {
@@ -117,21 +119,24 @@ pub(crate) fn show(
                 if window_state.profiles.is_empty() {
                     empty_state::empty_state(ui, "No profiles \u{2014} click + New to create one");
                 } else {
-                    show_profile_list(
-                        ui,
-                        window_state,
-                        active_profile_path,
-                        commands,
-                        settings,
-                        &mut toasts,
-                        colors,
-                    );
+                    let outcomes = show_profile_list(ui, window_state, active_profile_path, colors);
+
+                    if let Some(outcome) = outcomes.rename {
+                        apply_rename(window_state, &outcome, settings, commands, &mut toasts);
+                    }
+                    if let Some(outcome) = outcomes.delete {
+                        apply_delete(window_state, &outcome, settings, &mut toasts);
+                    }
+                    if let Some(path) = outcomes.load_path {
+                        apply_load(
+                            &path,
+                            commands,
+                            settings,
+                            &mut toasts,
+                            &window_state.profiles,
+                        );
+                    }
                 }
-
-                ui.separator();
-
-                // --- Action bar ---
-                show_action_bar(ui, window_state, commands, settings, &mut toasts, colors);
             });
         },
     );
@@ -166,20 +171,25 @@ fn show_header(
     });
 }
 
-/// Render the scrollable profile list.
+/// Deferred outcomes collected during profile list rendering.
+struct ListOutcomes {
+    rename: Option<RenameOutcome>,
+    delete: Option<DeleteOutcome>,
+    load_path: Option<PathBuf>,
+}
+
+/// Render the scrollable profile list and return deferred outcomes.
 fn show_profile_list(
     ui: &mut egui::Ui,
     window_state: &mut ProfileWindowState,
     active_profile_path: Option<&Path>,
-    commands: &mpsc::Sender<EngineCommand>,
-    settings: &mut AppSettings,
-    toasts: &mut Vec<(String, ToastLevel)>,
     colors: &theme::ThemeColors,
-) {
+) -> ListOutcomes {
     // Collect results from rename/delete operations to apply after iteration.
     let mut rename_result: Option<RenameOutcome> = None;
     let mut delete_result: Option<DeleteOutcome> = None;
     let mut load_path: Option<PathBuf> = None;
+    let mut new_hovered_path: Option<PathBuf> = None;
 
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
@@ -224,35 +234,15 @@ fn show_profile_list(
                     .is_some_and(|(rp, _)| rp == path);
 
                 if is_renaming {
-                    let (rename_path, rename_text) =
-                        window_state.renaming.as_mut().expect("checked above");
-
-                    let text_edit = egui::TextEdit::singleline(rename_text)
-                        .desired_width(ui.available_width() - 8.0);
-                    let response = ui.add(text_edit);
-
-                    // Auto-focus on first frame.
-                    response.request_focus();
-
-                    // Cancel on Escape.
-                    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        window_state.renaming = None;
-                        continue;
-                    }
-
-                    // Commit on Enter or loss of focus (but not Escape — handled above).
-                    if response.lost_focus() && !ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        let new_name = rename_text.trim().to_owned();
-                        rename_result = Some(RenameOutcome {
-                            old_path: rename_path.clone(),
-                            new_name,
-                            was_active: is_active,
-                        });
+                    if let Some(outcome) = show_rename_row(ui, window_state, is_active) {
+                        rename_result = Some(outcome);
                     }
                     continue;
                 }
 
                 // --- Normal display mode ---
+                let is_hovered = window_state.hovered_path.as_ref() == Some(path);
+
                 let response = ui.horizontal(|ui| {
                     let label = ui.selectable_label(is_selected, name);
                     if label.clicked() {
@@ -262,12 +252,34 @@ fn show_profile_list(
                         load_path = Some(path.clone());
                     }
 
-                    if is_active {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if is_active {
                             ui.colored_label(colors.live, "ACTIVE");
-                        });
-                    }
+                        }
+
+                        // Hover-reveal action icons (based on previous frame's hover).
+                        if is_hovered {
+                            match show_hover_icons(ui) {
+                                Some(HoverAction::Load) => {
+                                    load_path = Some(path.clone());
+                                }
+                                Some(HoverAction::Rename) => {
+                                    window_state.renaming = Some((path.clone(), name.clone()));
+                                }
+                                Some(HoverAction::Delete) => {
+                                    window_state.delete_confirming = Some(path.clone());
+                                }
+                                None => {}
+                            }
+                        }
+                    });
                 });
+
+                // Track hover for next frame.
+                if response.response.contains_pointer() {
+                    new_hovered_path = Some(path.clone());
+                }
+
                 // Also select on row click.
                 if response.response.interact(egui::Sense::click()).clicked() {
                     window_state.selected_path = Some(path.clone());
@@ -275,68 +287,82 @@ fn show_profile_list(
             }
         });
 
-    // --- Apply rename ---
-    if let Some(outcome) = rename_result {
-        apply_rename(window_state, &outcome, settings, commands, toasts);
-    }
+    // Update hover tracking for next frame.
+    window_state.hovered_path = new_hovered_path;
 
-    // --- Apply delete ---
-    if let Some(outcome) = delete_result {
-        apply_delete(window_state, &outcome, settings, toasts);
-    }
-
-    // --- Apply load (double-click) ---
-    if let Some(path) = load_path {
-        apply_load(&path, commands, settings, toasts, &window_state.profiles);
+    ListOutcomes {
+        rename: rename_result,
+        delete: delete_result,
+        load_path,
     }
 }
 
-/// Render the bottom action bar: Load, Rename, Delete.
-fn show_action_bar(
+/// Render inline rename text field. Returns a `RenameOutcome` when the user
+/// commits the name (Enter or focus loss), or `None` if still editing / cancelled.
+fn show_rename_row(
     ui: &mut egui::Ui,
     window_state: &mut ProfileWindowState,
-    commands: &mpsc::Sender<EngineCommand>,
-    settings: &mut AppSettings,
-    toasts: &mut Vec<(String, ToastLevel)>,
-    _colors: &theme::ThemeColors,
-) {
-    let has_selection = window_state.selected_path.is_some();
+    is_active: bool,
+) -> Option<RenameOutcome> {
+    let (rename_path, rename_text) = window_state.renaming.as_mut().expect("caller checked");
 
-    ui.horizontal(|ui| {
-        if ui
-            .add_enabled(has_selection, egui::Button::new("Load"))
-            .clicked()
-        {
-            if let Some(path) = &window_state.selected_path {
-                let path = path.clone();
-                apply_load(&path, commands, settings, toasts, &window_state.profiles);
-            }
-        }
+    let text_edit =
+        egui::TextEdit::singleline(rename_text).desired_width(ui.available_width() - 8.0);
+    let response = ui.add(text_edit);
 
-        if ui
-            .add_enabled(has_selection, egui::Button::new("Rename"))
-            .clicked()
-        {
-            if let Some(path) = &window_state.selected_path {
-                let current_name = window_state
-                    .profiles
-                    .iter()
-                    .find(|p| p.path == *path)
-                    .map(|p| p.name.clone())
-                    .unwrap_or_default();
-                window_state.renaming = Some((path.clone(), current_name));
-            }
-        }
+    // Auto-focus only when the field doesn't already have focus.
+    if !response.has_focus() && !response.lost_focus() {
+        response.request_focus();
+    }
 
-        if ui
-            .add_enabled(has_selection, egui::Button::new("Delete"))
-            .clicked()
-        {
-            if let Some(path) = &window_state.selected_path {
-                window_state.delete_confirming = Some(path.clone());
-            }
-        }
-    });
+    // Cancel on Escape.
+    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        window_state.renaming = None;
+        return None;
+    }
+
+    // Commit on Enter or loss of focus (but not Escape — handled above).
+    let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
+    if enter_pressed || (response.lost_focus() && !ui.input(|i| i.key_pressed(egui::Key::Escape))) {
+        let new_name = rename_text.trim().to_owned();
+        return Some(RenameOutcome {
+            old_path: rename_path.clone(),
+            new_name,
+            was_active: is_active,
+        });
+    }
+
+    None
+}
+
+/// Action triggered by a hover-reveal icon button.
+enum HoverAction {
+    Load,
+    Rename,
+    Delete,
+}
+
+/// Render hover-reveal icon buttons (Load, Rename, Delete) and return the
+/// clicked action, if any.
+fn show_hover_icons(ui: &mut egui::Ui) -> Option<HoverAction> {
+    let mut action = None;
+
+    let delete_btn = egui::Button::new(egui::RichText::new("\u{1F5D1}").small()).frame(false);
+    if ui.add(delete_btn).on_hover_text("Delete").clicked() {
+        action = Some(HoverAction::Delete);
+    }
+
+    let rename_btn = egui::Button::new(egui::RichText::new("\u{270F}").small()).frame(false);
+    if ui.add(rename_btn).on_hover_text("Rename").clicked() {
+        action = Some(HoverAction::Rename);
+    }
+
+    let load_btn = egui::Button::new(egui::RichText::new("\u{25B6}").small()).frame(false);
+    if ui.add(load_btn).on_hover_text("Load").clicked() {
+        action = Some(HoverAction::Load);
+    }
+
+    action
 }
 
 // ---------------------------------------------------------------------------
@@ -466,6 +492,7 @@ mod tests {
         assert!(state.selected_path.is_none());
         assert!(state.renaming.is_none());
         assert!(state.delete_confirming.is_none());
+        assert!(state.hovered_path.is_none());
     }
 
     #[test]

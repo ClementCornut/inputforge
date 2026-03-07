@@ -256,8 +256,6 @@ impl Engine {
                 state.active_profile = Some(profile);
                 state.profile_path = Some(path);
                 state.current_mode = startup_mode;
-                state.input_cache.clear();
-                state.output_cache.clear();
             }
             EngineCommand::Activate | EngineCommand::Resume => {
                 let mut state = self.state.write();

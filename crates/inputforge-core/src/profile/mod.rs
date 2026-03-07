@@ -298,11 +298,10 @@ impl Profile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::{Action, Condition, ModeChangeStrategy};
+    use crate::action::{Condition, ModeChangeStrategy};
     use crate::processing::DeadzoneConfig;
     use crate::types::{
-        DeviceId, InputAddress, InputId, KeyCombo, KeyModifier, MergeOp, OutputAddress, OutputId,
-        VJoyAxis,
+        DeviceId, InputId, KeyCombo, KeyModifier, MergeOp, OutputAddress, OutputId, VJoyAxis,
     };
     use std::collections::HashMap;
 

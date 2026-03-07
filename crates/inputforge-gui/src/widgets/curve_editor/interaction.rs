@@ -70,9 +70,10 @@ pub(super) fn handle_plot_interaction(
     if response.dragged() {
         if let Some(drag_idx) = state.dragging_point {
             if let Some(screen_pos) = response.hover_pos() {
-                let new_plot_pos = plot_response.transform.value_from_position(screen_pos);
+                let visual_pos = plot_response.transform.value_from_position(screen_pos);
+                let storage_pos = PlotPoint::new(visual_pos.y, visual_pos.x);
                 let adj = mutation::adjacent_x_bounds(curve, drag_idx);
-                mutation::update_point_in_curve(curve, drag_idx, new_plot_pos, adj);
+                mutation::update_point_in_curve(curve, drag_idx, storage_pos, adj);
                 state.cache_dirty = true;
                 changed = true;
             }
@@ -95,8 +96,9 @@ pub(super) fn handle_plot_interaction(
     // Double-click — add a new control point at the clicked position.
     if response.double_clicked() {
         if let Some(screen_pos) = response.hover_pos() {
-            let plot_pos = plot_response.transform.value_from_position(screen_pos);
-            if mutation::add_control_point(curve, plot_pos) {
+            let visual_pos = plot_response.transform.value_from_position(screen_pos);
+            let storage_pos = PlotPoint::new(visual_pos.y, visual_pos.x);
+            if mutation::add_control_point(curve, storage_pos) {
                 state.cache_dirty = true;
                 changed = true;
             }

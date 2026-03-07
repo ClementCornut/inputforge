@@ -12,7 +12,7 @@ mod mutation;
 mod rendering;
 mod symmetry;
 
-use inputforge_core::processing::curves::ResponseCurve;
+use inputforge_core::processing::curves::{ResponseCurve, bezier_x, bezier_y};
 
 use crate::theme;
 
@@ -182,21 +182,36 @@ struct PlotSnapshot<'a> {
 // Cache helpers
 // ---------------------------------------------------------------------------
 
-/// Rebuild the 200-sample polyline cache from the current curve.
+/// Rebuild the polyline cache from the current curve.
 ///
-/// Samples are spaced evenly from -1.0 to 1.0.
+/// For bezier curves, samples parametrically (by t) to correctly render
+/// non-monotonic regions. For other curve types, samples evenly by input.
 fn rebuild_cache(curve: &ResponseCurve, cached_line: &mut Vec<[f64; 2]>) {
     cached_line.clear();
-    cached_line.reserve(CURVE_SAMPLE_COUNT);
 
+    if let ResponseCurve::CubicBezier { segments, .. } = curve {
+        let samples_per_seg = CURVE_SAMPLE_COUNT / segments.len().max(1);
+        cached_line.reserve(samples_per_seg * segments.len());
+        for seg in segments {
+            let last = (samples_per_seg - 1).max(1);
+            for i in 0..samples_per_seg {
+                let t = i as f64 / last as f64;
+                let input = bezier_x(seg, t);
+                let output = bezier_y(seg, t);
+                cached_line.push([output, input]);
+            }
+        }
+        return;
+    }
+
+    cached_line.reserve(CURVE_SAMPLE_COUNT);
     let start = -1.0_f64;
     let end = 1.0_f64;
     let step = (end - start) / (CURVE_SAMPLE_COUNT - 1) as f64;
-
     for i in 0..CURVE_SAMPLE_COUNT {
         let x = start + i as f64 * step;
         let y = curve.evaluate(x);
-        cached_line.push([x, y]);
+        cached_line.push([y, x]);
     }
 }
 
@@ -216,15 +231,15 @@ fn extract_control_points(curve: &ResponseCurve) -> Vec<[f64; 2]> {
     match curve {
         ResponseCurve::PiecewiseLinear { points, .. }
         | ResponseCurve::CubicSpline { points, .. } => {
-            points.iter().map(|&(x, y)| [x, y]).collect()
+            points.iter().map(|&(x, y)| [y, x]).collect()
         }
         ResponseCurve::CubicBezier { segments, .. } => {
             let mut pts = Vec::with_capacity(segments.len() * 4);
             for seg in segments {
-                pts.push([seg.start.0, seg.start.1]);
-                pts.push([seg.control1.0, seg.control1.1]);
-                pts.push([seg.control2.0, seg.control2.1]);
-                pts.push([seg.end.0, seg.end.1]);
+                pts.push([seg.start.1, seg.start.0]);
+                pts.push([seg.control1.1, seg.control1.0]);
+                pts.push([seg.control2.1, seg.control2.0]);
+                pts.push([seg.end.1, seg.end.0]);
             }
             pts
         }
@@ -293,26 +308,27 @@ mod tests {
 
         let tolerance = 1e-9;
 
+        // Visual format: [output, input] where output = curve.evaluate(input).
         let first = cache[0];
         assert!(
-            (first[0] - (-1.0)).abs() < tolerance,
-            "first sample x must be -1.0, got {}",
-            first[0]
+            (first[0] - curve.evaluate(-1.0)).abs() < tolerance,
+            "first sample visual-x (output) must match curve.evaluate(-1.0)"
         );
         assert!(
-            (first[1] - curve.evaluate(-1.0)).abs() < tolerance,
-            "first sample y must match curve.evaluate(-1.0)"
+            (first[1] - (-1.0)).abs() < tolerance,
+            "first sample visual-y (input) must be -1.0, got {}",
+            first[1]
         );
 
         let last = cache[CURVE_SAMPLE_COUNT - 1];
         assert!(
-            (last[0] - 1.0).abs() < tolerance,
-            "last sample x must be 1.0, got {}",
-            last[0]
+            (last[0] - curve.evaluate(1.0)).abs() < tolerance,
+            "last sample visual-x (output) must match curve.evaluate(1.0)"
         );
         assert!(
-            (last[1] - curve.evaluate(1.0)).abs() < tolerance,
-            "last sample y must match curve.evaluate(1.0)"
+            (last[1] - 1.0).abs() < tolerance,
+            "last sample visual-y (input) must be 1.0, got {}",
+            last[1]
         );
     }
 
@@ -321,6 +337,7 @@ mod tests {
         let curve = identity_piecewise();
         let pts = extract_control_points(&curve);
         assert_eq!(pts.len(), 3, "identity piecewise has 3 control points");
+        // Visual format: [output, input]. For identity curve, output == input.
         assert!((pts[0][0] - (-1.0)).abs() < f64::EPSILON);
         assert!((pts[1][0] - 0.0).abs() < f64::EPSILON);
         assert!((pts[2][0] - 1.0).abs() < f64::EPSILON);
@@ -332,9 +349,8 @@ mod tests {
         let pts = extract_control_points(&curve);
         // One segment → 4 points (start, c1, c2, end).
         assert_eq!(pts.len(), 4, "one bezier segment exposes 4 control points");
-        // start
+        // Visual format: [output, input]. For identity, output == input.
         assert!((pts[0][0] - (-1.0)).abs() < f64::EPSILON);
-        // end
         assert!((pts[3][0] - 1.0).abs() < f64::EPSILON);
     }
 }

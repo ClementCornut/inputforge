@@ -1151,8 +1151,6 @@ fn tick_handles_load_profile_command() {
     let s = state.read();
     assert!(s.active_profile.is_some());
     assert_eq!(s.current_mode, "Default");
-    assert!(s.input_cache.get_all_axis_entries().is_empty());
-
     // Clean up.
     drop(s);
     let _ = std::fs::remove_file(&path);

@@ -147,8 +147,7 @@ pub(crate) fn show(
     let input_label = match &editing_addr.input {
         InputId::Axis { index } => {
             format!(
-                "Axis {} ({})",
-                index,
+                "Axis {}",
                 crate::panels::device_view::axis_label(usize::from(*index))
             )
         }

@@ -787,8 +787,8 @@ mod tests {
             virtual_devices: vec![],
             output_snapshots: vec![],
             warnings: vec![],
-            mapped_inputs: std::collections::HashSet::new(),
-            mapping_names: std::collections::HashMap::new(),
+            mapped_inputs: HashSet::new(),
+            mapping_names: HashMap::new(),
         };
 
         register_new_devices(&mut state, &cache);
@@ -816,8 +816,8 @@ mod tests {
             }],
             output_snapshots: vec![],
             warnings: vec![],
-            mapped_inputs: std::collections::HashSet::new(),
-            mapping_names: std::collections::HashMap::new(),
+            mapped_inputs: HashSet::new(),
+            mapping_names: HashMap::new(),
         };
 
         register_new_devices(&mut state, &cache);
@@ -845,8 +845,8 @@ mod tests {
             }],
             output_snapshots: vec![],
             warnings: vec![],
-            mapped_inputs: std::collections::HashSet::new(),
-            mapping_names: std::collections::HashMap::new(),
+            mapped_inputs: HashSet::new(),
+            mapping_names: HashMap::new(),
         };
 
         register_new_devices(&mut state, &cache);

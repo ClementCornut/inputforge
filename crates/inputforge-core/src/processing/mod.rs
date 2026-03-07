@@ -6,7 +6,7 @@ pub mod deadzone;
 pub mod inversion;
 
 pub use calibration::Calibration;
-pub use curves::{BezierSegment, ResponseCurve};
+pub use curves::{BezierSegment, ResponseCurve, bezier_x, bezier_y};
 pub use deadzone::DeadzoneConfig;
 pub use inversion::{invert_axis, invert_button};
 

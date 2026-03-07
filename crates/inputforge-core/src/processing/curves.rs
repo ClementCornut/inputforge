@@ -362,7 +362,9 @@ impl CachedEvaluator {
 // Cubic bezier (Newton + bisection)
 // ---------------------------------------------------------------------------
 
-fn bezier_x(seg: &BezierSegment, t: f64) -> f64 {
+/// Evaluate the x-component (input) of a cubic bezier segment at parameter `t`.
+#[must_use]
+pub fn bezier_x(seg: &BezierSegment, t: f64) -> f64 {
     let u = 1.0 - t;
     u * u * u * seg.start.0
         + 3.0 * u * u * t * seg.control1.0
@@ -370,7 +372,9 @@ fn bezier_x(seg: &BezierSegment, t: f64) -> f64 {
         + t * t * t * seg.end.0
 }
 
-fn bezier_y(seg: &BezierSegment, t: f64) -> f64 {
+/// Evaluate the y-component (output) of a cubic bezier segment at parameter `t`.
+#[must_use]
+pub fn bezier_y(seg: &BezierSegment, t: f64) -> f64 {
     let u = 1.0 - t;
     u * u * u * seg.start.1
         + 3.0 * u * u * t * seg.control1.1
@@ -387,11 +391,25 @@ fn bezier_dx(seg: &BezierSegment, t: f64) -> f64 {
 
 /// Find parameter t such that `bezier_x(seg, t) ≈ x`.
 ///
-/// Uses Newton's method (8 iterations) with bisection fallback (50 iterations).
+/// Uses coarse sampling (33 points) to find the best starting t, then
+/// refines with Newton's method. This approach handles non-monotonic
+/// x(t) where the previous bisection fallback would fail.
 fn find_t_for_x(seg: &BezierSegment, x: f64) -> f64 {
-    // Newton's method
-    let mut t = 0.5;
-    // 8 iterations of Newton's method
+    // Phase 1: coarse sampling to find best starting t.
+    const SAMPLES: usize = 32;
+    let mut best_t = 0.0;
+    let mut best_err = f64::MAX;
+    for i in 0..=SAMPLES {
+        let t = i as f64 / SAMPLES as f64;
+        let err = (bezier_x(seg, t) - x).abs();
+        if err < best_err {
+            best_err = err;
+            best_t = t;
+        }
+    }
+
+    // Phase 2: Newton refinement from best sample.
+    let mut t = best_t;
     for _ in 0..8 {
         let dx = bezier_dx(seg, t);
         if dx.abs() < 1e-12 {
@@ -399,20 +417,8 @@ fn find_t_for_x(seg: &BezierSegment, x: f64) -> f64 {
         }
         t -= (bezier_x(seg, t) - x) / dx;
         t = t.clamp(0.0, 1.0);
-    }
-
-    // Bisection fallback if Newton didn't converge
-    if (bezier_x(seg, t) - x).abs() > 1e-6 {
-        let mut lo = 0.0_f64;
-        let mut hi = 1.0_f64;
-        // 50 iterations of bisection
-        for _ in 0..50 {
-            t = f64::midpoint(lo, hi);
-            if bezier_x(seg, t) < x {
-                lo = t;
-            } else {
-                hi = t;
-            }
+        if (bezier_x(seg, t) - x).abs() < 1e-6 {
+            break;
         }
     }
 

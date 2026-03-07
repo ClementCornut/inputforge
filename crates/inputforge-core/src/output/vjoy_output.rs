@@ -65,6 +65,23 @@ impl VJoyOutput {
     }
 }
 
+impl VJoyOutput {
+    /// Ensure the vJoy device is in the cache, creating it on first use.
+    fn ensure_device(&mut self, device_id: u8) -> Result<()> {
+        if self.cached_states.contains_key(&device_id) {
+            return Ok(());
+        }
+        let id = u32::from(device_id);
+        let state = self.vjoy.get_device_state(id).map_err(|e| {
+            tracing::debug!("vJoy device error: {e:?}");
+            EngineError::VJoyDeviceUnavailable { device_id }
+        })?;
+        self.cached_states.insert(device_id, state);
+        self.active_devices.insert(device_id);
+        Ok(())
+    }
+}
+
 impl OutputSink for VJoyOutput {
     fn create_device(&mut self, config: &VirtualDeviceConfig) -> Result<()> {
         let id = u32::from(config.device_id);
@@ -98,10 +115,8 @@ impl OutputSink for VJoyOutput {
         let axis_id = vjoy_axis_id(axis);
         let vjoy_value = axis_value_to_vjoy(value);
 
-        let state = self
-            .cached_states
-            .get_mut(&device)
-            .ok_or(EngineError::VJoyDeviceUnavailable { device_id: device })?;
+        self.ensure_device(device)?;
+        let state = self.cached_states.get_mut(&device).expect("just ensured");
         state
             .set_axis(axis_id, vjoy_value)
             .map_err(|e| EngineError::OutputFailed {
@@ -118,10 +133,8 @@ impl OutputSink for VJoyOutput {
             ButtonState::Released
         };
 
-        let state = self
-            .cached_states
-            .get_mut(&device)
-            .ok_or(EngineError::VJoyDeviceUnavailable { device_id: device })?;
+        self.ensure_device(device)?;
+        let state = self.cached_states.get_mut(&device).expect("just ensured");
         state
             .set_button(button, button_state)
             .map_err(|e| EngineError::OutputFailed {
@@ -134,10 +147,8 @@ impl OutputSink for VJoyOutput {
     fn set_hat(&mut self, device: u8, hat: u8, direction: HatDirection) -> Result<()> {
         let hat_state = hat_direction_to_vjoy(direction);
 
-        let state = self
-            .cached_states
-            .get_mut(&device)
-            .ok_or(EngineError::VJoyDeviceUnavailable { device_id: device })?;
+        self.ensure_device(device)?;
+        let state = self.cached_states.get_mut(&device).expect("just ensured");
         state
             .set_hat(hat, hat_state)
             .map_err(|e| EngineError::OutputFailed {

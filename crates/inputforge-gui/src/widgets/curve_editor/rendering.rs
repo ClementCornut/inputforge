@@ -5,7 +5,7 @@
 //! Contains all drawing logic: the `egui_plot` canvas layers, Bezier handle
 //! lines, control point markers, and the type/symmetry control strip.
 
-use egui_plot::{Line, LineStyle, MarkerShape, Plot, PlotPoints, Points, VLine};
+use egui_plot::{HLine, Line, LineStyle, MarkerShape, Plot, PlotPoints, Points};
 
 use inputforge_core::processing::curves::{BezierSegment, ResponseCurve};
 
@@ -87,16 +87,16 @@ pub(super) fn render_plot(
                 colors,
             );
 
-            // Layer 5 — live input indicator.
+            // Layer 5 — live input indicator (input on Y axis).
             if let Some(input) = live_input {
                 let output = curve.evaluate(input);
-                plot_ui.vline(
-                    VLine::new("live_input", input)
+                plot_ui.hline(
+                    HLine::new("live_input", input)
                         .color(colors.warning)
                         .width(1.5),
                 );
                 plot_ui.points(
-                    Points::new("live_dot", PlotPoints::new(vec![[input, output]]))
+                    Points::new("live_dot", PlotPoints::new(vec![[output, input]]))
                         .shape(MarkerShape::Circle)
                         .radius(6.0)
                         .color(colors.live),
@@ -116,8 +116,8 @@ pub(super) fn render_bezier_handles(
             Line::new(
                 format!("handle_a_{seg_i}"),
                 PlotPoints::new(vec![
-                    [seg.start.0, seg.start.1],
-                    [seg.control1.0, seg.control1.1],
+                    [seg.start.1, seg.start.0],
+                    [seg.control1.1, seg.control1.0],
                 ]),
             )
             .style(LineStyle::dashed_loose())
@@ -128,8 +128,8 @@ pub(super) fn render_bezier_handles(
             Line::new(
                 format!("handle_b_{seg_i}"),
                 PlotPoints::new(vec![
-                    [seg.control2.0, seg.control2.1],
-                    [seg.end.0, seg.end.1],
+                    [seg.control2.1, seg.control2.0],
+                    [seg.end.1, seg.end.0],
                 ]),
             )
             .style(LineStyle::dashed_loose())

@@ -83,7 +83,7 @@ fn vjoy_device_selector(
 ) -> bool {
     let mut changed = false;
     ui.label(egui::RichText::new("Device").color(colors.text_dim));
-    let current_device_label = format!("Device {}", output.device);
+    let current_device_label = format!("vJoy {}", output.device);
     egui::ComboBox::from_id_salt(ui.id().with("vjoy_device"))
         .selected_text(current_device_label)
         .width(150.0)
@@ -94,7 +94,7 @@ fn vjoy_device_selector(
                 virtual_devices.iter().map(|d| d.device_id).collect()
             };
             for device_id in device_ids {
-                let label = format!("Device {device_id}");
+                let label = format!("vJoy {device_id}");
                 if ui
                     .selectable_value(&mut output.device, device_id, label)
                     .changed()
