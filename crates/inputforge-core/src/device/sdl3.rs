@@ -44,7 +44,7 @@ pub struct Sdl3Input {
     classified_axes: HashSet<(u32, u8)>,
     /// Number of poll cycles elapsed.  Used to trigger a deferred
     /// polarity re-probe after SDL3 has had time to populate hardware
-    /// axis values via DirectInput.
+    /// axis values via `DirectInput`.
     poll_count: u32,
     /// SDL3 context is not thread-safe; this marker makes the `!Send`
     /// bound explicit instead of relying implicitly on SDL types.
@@ -199,6 +199,119 @@ impl Sdl3Input {
                 .push(HotplugEvent::Disconnected(removed.device_id));
         }
     }
+
+    /// Dispatch a single SDL event, converting it to an [`InputEvent`] or
+    /// handling hotplug add/remove.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "SDL Event is a small Copy-like enum"
+    )]
+    fn dispatch_sdl_event(&mut self, event: Event, now: Instant, out: &mut Vec<InputEvent>) {
+        match event {
+            Event::JoyAxisMotion {
+                which,
+                axis_idx,
+                value,
+                ..
+            } => {
+                if let Some(device) = self.open_devices.get_mut(&which) {
+                    // Lazy polarity classification: on the first event
+                    // for each axis, check the raw value to determine
+                    // if it's a unipolar axis (pedal/trigger resting
+                    // at −32 768).
+                    let key = (which, axis_idx);
+                    if self.classified_axes.insert(key) {
+                        let polarity = if value < UNIPOLAR_INITIAL_STATE_THRESHOLD {
+                            AxisPolarity::Unipolar
+                        } else {
+                            AxisPolarity::Bipolar
+                        };
+                        let idx = usize::from(axis_idx);
+                        if idx < device.info.axis_polarities.len()
+                            && device.info.axis_polarities[idx] != polarity
+                        {
+                            tracing::info!(
+                                device = %device.info.name,
+                                axis_idx,
+                                value,
+                                ?polarity,
+                                "reclassified axis polarity from first event"
+                            );
+                            device.info.axis_polarities[idx] = polarity;
+                            self.hotplug_buffer
+                                .push(HotplugEvent::Connected(device.info.clone()));
+                        }
+                    }
+                    out.push(InputEvent {
+                        source: InputAddress {
+                            device: device.device_id.clone(),
+                            input: InputId::Axis { index: axis_idx },
+                        },
+                        value: InputValue::Axis {
+                            value: AxisValue::raw(f64::from(value) / f64::from(i16::MAX)),
+                        },
+                        timestamp: now,
+                    });
+                }
+            }
+            Event::JoyButtonDown {
+                which, button_idx, ..
+            } => {
+                if let Some(device) = self.open_devices.get(&which) {
+                    out.push(InputEvent {
+                        source: InputAddress {
+                            device: device.device_id.clone(),
+                            input: InputId::Button { index: button_idx },
+                        },
+                        value: InputValue::Button { pressed: true },
+                        timestamp: now,
+                    });
+                }
+            }
+            Event::JoyButtonUp {
+                which, button_idx, ..
+            } => {
+                if let Some(device) = self.open_devices.get(&which) {
+                    out.push(InputEvent {
+                        source: InputAddress {
+                            device: device.device_id.clone(),
+                            input: InputId::Button { index: button_idx },
+                        },
+                        value: InputValue::Button { pressed: false },
+                        timestamp: now,
+                    });
+                }
+            }
+            Event::JoyHatMotion {
+                which,
+                hat_idx,
+                state,
+                ..
+            } => {
+                if let Some(device) = self.open_devices.get(&which) {
+                    out.push(InputEvent {
+                        source: InputAddress {
+                            device: device.device_id.clone(),
+                            input: InputId::Hat { index: hat_idx },
+                        },
+                        value: InputValue::Hat {
+                            direction: sdl_hat_to_direction(state),
+                        },
+                        timestamp: now,
+                    });
+                }
+            }
+            Event::JoyDeviceAdded { which, .. } => {
+                // `which` in JoyDeviceAdded is the joystick ID to pass
+                // to `open()` (wrapped as `SDL_JoystickID`).
+                self.try_open_joystick(sdl3::sys::joystick::SDL_JoystickID(which));
+            }
+            Event::JoyDeviceRemoved { which, .. } => {
+                self.handle_device_removed(which);
+            }
+            _ => {}
+        }
+    }
 }
 
 impl InputSource for Sdl3Input {
@@ -214,110 +327,7 @@ impl InputSource for Sdl3Input {
         let sdl_events: Vec<Event> = self.event_pump.poll_iter().collect();
 
         for event in sdl_events {
-            match event {
-                Event::JoyAxisMotion {
-                    which,
-                    axis_idx,
-                    value,
-                    ..
-                } => {
-                    if let Some(device) = self.open_devices.get_mut(&which) {
-                        // Lazy polarity classification: on the first event
-                        // for each axis, check the raw value to determine
-                        // if it's a unipolar axis (pedal/trigger resting
-                        // at −32 768).
-                        let key = (which, axis_idx);
-                        if self.classified_axes.insert(key) {
-                            let polarity = if value < UNIPOLAR_INITIAL_STATE_THRESHOLD {
-                                AxisPolarity::Unipolar
-                            } else {
-                                AxisPolarity::Bipolar
-                            };
-                            let idx = usize::from(axis_idx);
-                            if idx < device.info.axis_polarities.len()
-                                && device.info.axis_polarities[idx] != polarity
-                            {
-                                tracing::info!(
-                                    device = %device.info.name,
-                                    axis_idx,
-                                    value,
-                                    ?polarity,
-                                    "reclassified axis polarity from first event"
-                                );
-                                device.info.axis_polarities[idx] = polarity;
-                                self.hotplug_buffer
-                                    .push(HotplugEvent::Connected(device.info.clone()));
-                            }
-                        }
-                        out.push(InputEvent {
-                            source: InputAddress {
-                                device: device.device_id.clone(),
-                                input: InputId::Axis { index: axis_idx },
-                            },
-                            value: InputValue::Axis {
-                                value: AxisValue::raw(f64::from(value) / f64::from(i16::MAX)),
-                            },
-                            timestamp: now,
-                        });
-                    }
-                }
-                Event::JoyButtonDown {
-                    which, button_idx, ..
-                } => {
-                    if let Some(device) = self.open_devices.get(&which) {
-                        out.push(InputEvent {
-                            source: InputAddress {
-                                device: device.device_id.clone(),
-                                input: InputId::Button { index: button_idx },
-                            },
-                            value: InputValue::Button { pressed: true },
-                            timestamp: now,
-                        });
-                    }
-                }
-                Event::JoyButtonUp {
-                    which, button_idx, ..
-                } => {
-                    if let Some(device) = self.open_devices.get(&which) {
-                        out.push(InputEvent {
-                            source: InputAddress {
-                                device: device.device_id.clone(),
-                                input: InputId::Button { index: button_idx },
-                            },
-                            value: InputValue::Button { pressed: false },
-                            timestamp: now,
-                        });
-                    }
-                }
-                Event::JoyHatMotion {
-                    which,
-                    hat_idx,
-                    state,
-                    ..
-                } => {
-                    if let Some(device) = self.open_devices.get(&which) {
-                        out.push(InputEvent {
-                            source: InputAddress {
-                                device: device.device_id.clone(),
-                                input: InputId::Hat { index: hat_idx },
-                            },
-                            value: InputValue::Hat {
-                                direction: sdl_hat_to_direction(state),
-                            },
-                            timestamp: now,
-                        });
-                    }
-                }
-                Event::JoyDeviceAdded { which, .. } => {
-                    // `which` in JoyDeviceAdded is the joystick ID to pass
-                    // to `open()` (wrapped as `SDL_JoystickID`).
-                    self.try_open_joystick(sdl3::sys::joystick::SDL_JoystickID(which));
-                }
-                Event::JoyDeviceRemoved { which, .. } => {
-                    self.handle_device_removed(which);
-                }
-                _ => {}
-            }
+            self.dispatch_sdl_event(event, now, out);
         }
 
         // Deferred polarity re-probe: after a few poll cycles the event
@@ -362,7 +372,7 @@ const REPROBE_END: u32 = 2000;
 /// Interval between re-probe attempts within the window.
 ///
 /// With `POLL_INTERVAL = 1 ms` this means one probe every 100 ms,
-/// giving ~20 attempts total to catch DirectInput populating the
+/// giving ~20 attempts total to catch `DirectInput` populating the
 /// real axis resting values.
 const REPROBE_INTERVAL: u32 = 100;
 
@@ -421,7 +431,7 @@ fn device_info_from_joystick(joystick: &Joystick, device_id: &DeviceId) -> Devic
 
 /// Best-effort polarity detection via `SDL_GetJoystickAxis`.
 ///
-/// On Windows with DirectInput, this usually returns all-zero at
+/// On Windows with `DirectInput`, this usually returns all-zero at
 /// enumeration time.  The deferred re-probe in
 /// [`Sdl3Input::deferred_reprobe_polarities`] and the lazy classifier
 /// in [`Sdl3Input::poll`] handle the real classification once hardware

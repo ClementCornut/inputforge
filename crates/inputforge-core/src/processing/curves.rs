@@ -649,11 +649,9 @@ mod tests {
     fn symmetric_accepts_negative_x() {
         // Symmetric curves now store all points on both sides of origin;
         // negative x values are valid and expected.
-        let pl = ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], true);
-        assert!(pl.is_ok());
+        ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], true).unwrap();
 
-        let cs = ResponseCurve::cubic_spline(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], true);
-        assert!(cs.is_ok());
+        ResponseCurve::cubic_spline(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], true).unwrap();
     }
 
     // -- Serde --------------------------------------------------------------

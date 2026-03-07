@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn row_calculation_exact_fit() {
-        let buttons = vec![false; 16];
+        let buttons = [false; 16];
         let columns = 8;
         let rows = buttons.len().div_ceil(columns);
         assert_eq!(rows, 2);
@@ -125,16 +125,10 @@ mod tests {
 
     #[test]
     fn row_calculation_partial_last_row() {
-        let buttons = vec![false; 10];
+        let buttons = [false; 10];
         let columns = 8;
         let rows = buttons.len().div_ceil(columns);
         assert_eq!(rows, 2);
-    }
-
-    #[test]
-    fn columns_clamped_to_minimum_one() {
-        let clamped = 0_usize.max(1);
-        assert_eq!(clamped, 1);
     }
 
     #[test]

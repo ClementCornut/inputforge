@@ -120,15 +120,8 @@ mod tests {
             .map(|(_, angle)| *angle)
     }
 
-    #[test]
-    fn inner_radius_less_than_outer() {
-        assert!(INNER_RADIUS < OUTER_RADIUS);
-    }
-
-    #[test]
-    fn center_radius_less_than_inner() {
-        assert!(CENTER_RADIUS < INNER_RADIUS);
-    }
+    const _: () = assert!(INNER_RADIUS < OUTER_RADIUS);
+    const _: () = assert!(CENTER_RADIUS < INNER_RADIUS);
 
     #[test]
     fn direction_angles_has_8_entries() {

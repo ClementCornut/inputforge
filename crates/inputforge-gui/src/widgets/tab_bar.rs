@@ -173,20 +173,11 @@ pub(crate) fn tab_bar_enum<T: TabItem>(
 mod tests {
     use super::*;
 
-    #[test]
-    fn constants_are_positive() {
-        assert!(UNDERLINE_THICKNESS > 0.0);
-        assert!(SEPARATOR_THICKNESS > 0.0);
-        assert!(UNDERLINE_ANIMATION_SECS > 0.0);
-    }
-
-    #[test]
-    fn animation_duration_is_reasonable() {
-        assert!(
-            UNDERLINE_ANIMATION_SECS >= 0.05 && UNDERLINE_ANIMATION_SECS <= 1.0,
-            "animation should be between 50ms and 1s"
-        );
-    }
+    const _: () = assert!(UNDERLINE_THICKNESS > 0.0);
+    const _: () = assert!(SEPARATOR_THICKNESS > 0.0);
+    const _: () = assert!(UNDERLINE_ANIMATION_SECS > 0.0);
+    const _: () = assert!(UNDERLINE_ANIMATION_SECS >= 0.05);
+    const _: () = assert!(UNDERLINE_ANIMATION_SECS <= 1.0);
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum TestTab {

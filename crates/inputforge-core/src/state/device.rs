@@ -48,7 +48,7 @@ mod tests {
             connected: false,
         };
         let cloned = state.clone();
-        assert_eq!(cloned.connected, false);
+        assert!(!cloned.connected);
         assert_eq!(cloned.info.id, state.info.id);
     }
 

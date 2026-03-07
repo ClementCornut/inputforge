@@ -451,7 +451,7 @@ mod tests {
             let mut guard = state.write();
             guard.engine_status = EngineStatus::Running;
             guard.current_mode = "Combat".to_owned();
-        }
+        };
 
         app.refresh_cache();
 
@@ -497,7 +497,7 @@ mod tests {
                 },
                 connected: true,
             });
-        }
+        };
 
         app.refresh_cache();
         app.selection.selected_device_idx = Some(0);
@@ -506,7 +506,7 @@ mod tests {
         {
             let mut guard = state.write();
             guard.devices.clear();
-        }
+        };
 
         app.refresh_cache();
         assert!(app.selection.selected_device_idx.is_none());

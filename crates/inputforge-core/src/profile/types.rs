@@ -166,7 +166,7 @@ mod tests {
             physical_max: -100.0,
             enabled: true,
         };
-        assert!(entry.to_calibration().is_err());
+        entry.to_calibration().unwrap_err();
     }
 
     #[test]

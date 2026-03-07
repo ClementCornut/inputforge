@@ -29,7 +29,7 @@ mod tests {
     #[test]
     fn status_clone_and_copy() {
         let status = EngineStatus::Running;
-        let cloned = status.clone();
+        let cloned = status;
         let copied = status;
         assert_eq!(status, cloned);
         assert_eq!(status, copied);

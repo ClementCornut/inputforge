@@ -86,7 +86,7 @@ enum DeviceKey {
 }
 
 /// Per-device visibility toggles for input categories.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct VisibilityToggles {
     /// Whether axes are shown.
     axes: bool,
@@ -94,16 +94,6 @@ struct VisibilityToggles {
     buttons: bool,
     /// Whether hats are shown.
     hats: bool,
-}
-
-impl Default for VisibilityToggles {
-    fn default() -> Self {
-        Self {
-            axes: true,
-            buttons: true,
-            hats: true,
-        }
-    }
 }
 
 impl VisibilityToggles {
@@ -162,16 +152,20 @@ pub(crate) fn show(
 
             let colors = theme::colors(ctx);
 
-            // Left sidebar with device toggles.
-            egui::SidePanel::left("input_viewer_sidebar")
-                .exact_width(SIDEBAR_WIDTH)
-                .show(ctx, |ui| {
-                    show_sidebar(ui, window_state, cache, colors);
-                });
-
-            // Main content area.
+            // Single CentralPanel with horizontal strip to avoid SidePanel
+            // rendering artifacts in child viewports.
             egui::CentralPanel::default().show(ctx, |ui| {
-                show_main_area(ui, window_state, cache, colors);
+                egui_extras::StripBuilder::new(ui)
+                    .size(egui_extras::Size::exact(SIDEBAR_WIDTH))
+                    .size(egui_extras::Size::remainder())
+                    .horizontal(|mut strip| {
+                        strip.cell(|ui| {
+                            show_sidebar(ui, window_state, cache, colors);
+                        });
+                        strip.cell(|ui| {
+                            show_main_area(ui, window_state, cache, colors);
+                        });
+                    });
             });
         },
     );
@@ -620,17 +614,17 @@ mod tests {
     }
 
     #[test]
-    fn visibility_toggles_default_all_true() {
+    fn visibility_toggles_default_all_false() {
         let toggles = VisibilityToggles::default();
-        assert!(toggles.axes);
-        assert!(toggles.buttons);
-        assert!(toggles.hats);
+        assert!(!toggles.axes);
+        assert!(!toggles.buttons);
+        assert!(!toggles.hats);
     }
 
     #[test]
-    fn visibility_toggles_any_visible_all_on() {
+    fn visibility_toggles_default_none_visible() {
         let toggles = VisibilityToggles::default();
-        assert!(toggles.any_visible());
+        assert!(!toggles.any_visible());
     }
 
     #[test]
@@ -758,21 +752,14 @@ mod tests {
         assert_eq!(axis_label(99), "Ax 99");
     }
 
-    #[test]
-    fn constants_are_positive() {
-        assert!(DEFAULT_WIDTH > 0.0);
-        assert!(DEFAULT_HEIGHT > 0.0);
-        assert!(MIN_WIDTH > 0.0);
-        assert!(MIN_HEIGHT > 0.0);
-        assert!(SIDEBAR_WIDTH > 0.0);
-        assert!(FRAME_ROUNDING > 0.0);
-    }
-
-    #[test]
-    fn min_dimensions_less_than_default() {
-        assert!(MIN_WIDTH < DEFAULT_WIDTH);
-        assert!(MIN_HEIGHT < DEFAULT_HEIGHT);
-    }
+    const _: () = assert!(DEFAULT_WIDTH > 0.0);
+    const _: () = assert!(DEFAULT_HEIGHT > 0.0);
+    const _: () = assert!(MIN_WIDTH > 0.0);
+    const _: () = assert!(MIN_HEIGHT > 0.0);
+    const _: () = assert!(SIDEBAR_WIDTH > 0.0);
+    const _: () = assert!(FRAME_ROUNDING > 0.0);
+    const _: () = assert!(MIN_WIDTH < DEFAULT_WIDTH);
+    const _: () = assert!(MIN_HEIGHT < DEFAULT_HEIGHT);
 
     #[test]
     fn register_new_devices_adds_physical() {

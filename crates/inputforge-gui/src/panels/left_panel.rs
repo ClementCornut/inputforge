@@ -69,9 +69,6 @@ pub(crate) fn show(ctx: &egui::Context, cache: &CachedState, selection: &mut Gui
 mod tests {
     use super::*;
 
-    #[test]
-    fn panel_constants_are_ordered() {
-        assert!(MIN_WIDTH < DEFAULT_WIDTH);
-        assert!(DEFAULT_WIDTH < MAX_WIDTH);
-    }
+    const _: () = assert!(MIN_WIDTH < DEFAULT_WIDTH);
+    const _: () = assert!(DEFAULT_WIDTH < MAX_WIDTH);
 }

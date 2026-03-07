@@ -199,11 +199,8 @@ mod tests {
         assert!(cal.physical_center_high() < cal.physical_max());
     }
 
-    #[test]
-    fn bar_dimensions_are_positive() {
-        assert!(BAR_WIDTH > 0.0);
-        assert!(BAR_HEIGHT > 0.0);
-    }
+    const _: () = assert!(BAR_WIDTH > 0.0);
+    const _: () = assert!(BAR_HEIGHT > 0.0);
 
     #[test]
     fn disabled_calibration_passes_through() {

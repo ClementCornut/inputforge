@@ -218,17 +218,10 @@ mod tests {
         assert!(config.center_high() < config.high());
     }
 
-    #[test]
-    fn bar_dimensions_are_positive() {
-        assert!(BAR_WIDTH > 0.0);
-        assert!(BAR_HEIGHT > 0.0);
-    }
-
-    #[test]
-    fn drag_speed_is_reasonable() {
-        assert!(DRAG_SPEED > 0.0);
-        assert!(DRAG_SPEED < 1.0);
-    }
+    const _: () = assert!(BAR_WIDTH > 0.0);
+    const _: () = assert!(BAR_HEIGHT > 0.0);
+    const _: () = assert!(DRAG_SPEED > 0.0);
+    const _: () = assert!(DRAG_SPEED < 1.0);
 
     #[test]
     fn norm_to_x_maps_endpoints() {

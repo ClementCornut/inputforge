@@ -200,6 +200,50 @@ impl OutputSink for VJoyOutput {
 
         first_err.map_or(Ok(()), Err)
     }
+
+    fn list_devices(&self) -> Vec<VirtualDeviceConfig> {
+        // `build_device_configs` needs &mut self because the vjoy crate's
+        // `hid_usage()` accessor takes &mut. Work around by cloning devices.
+        self.vjoy
+            .devices()
+            .map(|device| {
+                let axes: Vec<VJoyAxis> = device
+                    .axes()
+                    .filter_map(|axis| {
+                        // Axis fields are pub(crate) in the vjoy crate, but the
+                        // Display impl prints the HID usage. Use the known fixed
+                        // order: axes are stored in HID usage order (0x30..0x37)
+                        // and only present axes are included. Map by position
+                        // against the full axis table.
+                        //
+                        // We parse the Display output "Axis ID: N | ..." to get
+                        // the 1-based axis ID.
+                        let display = format!("{axis}");
+                        let id_str = display
+                            .strip_prefix("Axis ID: ")
+                            .and_then(|s| s.split(" |").next());
+                        id_str.and_then(|s| s.parse::<u32>().ok()).and_then(|id| {
+                            // axis IDs are 1-based, AXES_HID_USAGE is 0-indexed
+                            let hid = [0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37];
+                            hid.get((id - 1) as usize)
+                                .copied()
+                                .and_then(hid_usage_to_vjoy_axis)
+                        })
+                    })
+                    .collect();
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "vJoy supports max 128 buttons and 4 hats, both fit in u8"
+                )]
+                VirtualDeviceConfig {
+                    device_id: device.id() as u8,
+                    axes,
+                    button_count: device.num_buttons() as u8,
+                    hat_count: device.num_hats() as u8,
+                }
+            })
+            .collect()
+    }
 }
 
 /// Flush all dirty devices on drop, logging any errors that occur.
@@ -212,6 +256,23 @@ impl Drop for VJoyOutput {
                 }
             }
         }
+    }
+}
+
+/// Map a vJoy HID usage code to a [`VJoyAxis`] variant.
+///
+/// Returns `None` for unrecognised usage codes.
+fn hid_usage_to_vjoy_axis(hid: u32) -> Option<VJoyAxis> {
+    match hid {
+        0x30 => Some(VJoyAxis::X),
+        0x31 => Some(VJoyAxis::Y),
+        0x32 => Some(VJoyAxis::Z),
+        0x33 => Some(VJoyAxis::Rx),
+        0x34 => Some(VJoyAxis::Ry),
+        0x35 => Some(VJoyAxis::Rz),
+        0x36 => Some(VJoyAxis::Slider0),
+        0x37 => Some(VJoyAxis::Slider1),
+        _ => None,
     }
 }
 

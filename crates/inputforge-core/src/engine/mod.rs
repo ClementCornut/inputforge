@@ -93,6 +93,17 @@ impl Engine {
             )
         };
 
+        // Probe the output driver for available virtual devices and publish
+        // them to shared state so the GUI can display them.
+        let virtual_devices = output.list_devices();
+        if !virtual_devices.is_empty() {
+            tracing::info!(
+                count = virtual_devices.len(),
+                "discovered virtual devices from output driver"
+            );
+            state.write().virtual_devices = virtual_devices;
+        }
+
         Self {
             input,
             output,

@@ -26,8 +26,5 @@ pub(crate) fn empty_state(ui: &mut egui::Ui, text: &str) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn top_padding_is_positive() {
-        assert!(TOP_PADDING > 0.0);
-    }
+    const _: () = assert!(TOP_PADDING > 0.0);
 }

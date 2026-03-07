@@ -408,7 +408,29 @@ fn show_axis_detail(
 
     // --- Threshold editors ---
     let editor = &mut window_state.axis_editors[editor_idx];
+    show_threshold_editors(ui, editor, colors);
 
+    ui.add_space(8.0);
+
+    // --- Recording buttons ---
+    show_recording_buttons(ui, editor, raw_value, colors);
+
+    ui.add_space(8.0);
+
+    // --- Action buttons ---
+    show_action_buttons(
+        ui,
+        window_state,
+        device_idx,
+        editor_idx,
+        colors,
+        cache,
+        commands,
+    );
+}
+
+/// Render the threshold editor grid (min, center, max, toggles).
+fn show_threshold_editors(ui: &mut egui::Ui, editor: &mut AxisEditor, colors: &theme::ThemeColors) {
     let mut changed = false;
     egui::Grid::new(ui.id().with("cal_thresholds"))
         .num_columns(2)
@@ -468,24 +490,6 @@ fn show_axis_detail(
     if changed {
         editor.unsaved = true;
     }
-
-    ui.add_space(8.0);
-
-    // --- Recording buttons ---
-    show_recording_buttons(ui, editor, raw_value, colors);
-
-    ui.add_space(8.0);
-
-    // --- Action buttons ---
-    show_action_buttons(
-        ui,
-        window_state,
-        device_idx,
-        editor_idx,
-        colors,
-        cache,
-        commands,
-    );
 }
 
 /// Render the recording toggle buttons (Center / Extrema).
@@ -642,8 +646,10 @@ mod tests {
 
     #[test]
     fn axis_editor_to_calibration_without_center() {
-        let mut editor = AxisEditor::default();
-        editor.with_center = false;
+        let editor = AxisEditor {
+            with_center: false,
+            ..AxisEditor::default()
+        };
         let cal = editor.to_calibration();
         assert!(cal.is_some());
         let cal = cal.unwrap();
@@ -653,10 +659,12 @@ mod tests {
 
     #[test]
     fn axis_editor_to_calibration_invalid_returns_none() {
-        let mut editor = AxisEditor::default();
         // min >= center_low violates invariant.
-        editor.physical_min = 1.0;
-        editor.physical_center_low = 0.0;
+        let editor = AxisEditor {
+            physical_min: 1.0,
+            physical_center_low: 0.0,
+            ..AxisEditor::default()
+        };
         assert!(editor.to_calibration().is_none());
     }
 
@@ -696,15 +704,12 @@ mod tests {
         assert!(state.axis_editors.is_empty());
     }
 
-    #[test]
-    fn constants_are_positive() {
-        assert!(DEFAULT_WIDTH > 0.0);
-        assert!(DEFAULT_HEIGHT > 0.0);
-        assert!(MIN_WIDTH > 0.0);
-        assert!(MIN_HEIGHT > 0.0);
-        assert!(LEFT_COLUMN_WIDTH > 0.0);
-        assert!(ACCENT_BORDER_WIDTH > 0.0);
-        assert!(DRAG_SPEED > 0.0);
-        assert!(RANGE_LIMIT > 0.0);
-    }
+    const _: () = assert!(DEFAULT_WIDTH > 0.0);
+    const _: () = assert!(DEFAULT_HEIGHT > 0.0);
+    const _: () = assert!(MIN_WIDTH > 0.0);
+    const _: () = assert!(MIN_HEIGHT > 0.0);
+    const _: () = assert!(LEFT_COLUMN_WIDTH > 0.0);
+    const _: () = assert!(ACCENT_BORDER_WIDTH > 0.0);
+    const _: () = assert!(DRAG_SPEED > 0.0);
+    const _: () = assert!(RANGE_LIMIT > 0.0);
 }

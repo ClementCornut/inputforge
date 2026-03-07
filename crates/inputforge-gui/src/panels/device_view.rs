@@ -132,7 +132,7 @@ fn show_device(ui: &mut egui::Ui, device: &DeviceState, snapshot: &DeviceInputSn
 /// Build a header string from device info: "Name (Xa, Yb, Zh)".
 fn build_header_text(device: &DeviceState) -> String {
     let info = &device.info;
-    format!("{}", info.name)
+    info.name.clone()
 }
 
 #[cfg(test)]

@@ -170,7 +170,7 @@ impl Engine {
             // refresh all cached axes through the new mode.
             if result.mode_changed || callbacks_changed_mode {
                 let mut guard = self.state.write();
-                let state: &mut crate::state::AppState = &mut *guard;
+                let state: &mut crate::state::AppState = &mut guard;
                 refresh_axes_for_mode_change(
                     &state.input_cache,
                     &mappings,
@@ -338,6 +338,12 @@ impl Engine {
         for event in events {
             match event {
                 HotplugEvent::Connected(info) => {
+                    // Skip vJoy virtual HID devices — InputForge controls
+                    // them through the output system, not as input devices.
+                    if info.name.to_ascii_lowercase().contains("vjoy") {
+                        continue;
+                    }
+
                     // Update existing or add new.
                     if let Some(dev) = state.devices.iter_mut().find(|d| d.info.id == info.id) {
                         dev.info = info.clone();

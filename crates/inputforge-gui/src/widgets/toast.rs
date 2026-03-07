@@ -40,7 +40,7 @@ pub(crate) enum ToastLevel {
     /// Amber accent — non-fatal issue the user should be aware of.
     Warning,
     /// Red accent — something went wrong.
-    #[expect(dead_code, reason = "will be used for engine error toasts")]
+    #[allow(dead_code, reason = "variant reserved for future error toasts")]
     Error,
 }
 
@@ -157,7 +157,7 @@ impl ToastManager {
                         .stroke(Stroke::new(1.0, colors.surface1.gamma_multiply(opacity)))
                         .corner_radius(4.0)
                         .inner_margin(Margin {
-                            left: ACCENT_WIDTH as i8 + 8,
+                            left: 11, // ACCENT_WIDTH (3) + 8
                             right: 20,
                             top: 8,
                             bottom: 8,

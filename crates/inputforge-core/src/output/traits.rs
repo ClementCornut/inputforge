@@ -59,6 +59,15 @@ pub trait OutputSink: Send {
     fn flush(&mut self) -> Result<()> {
         Ok(())
     }
+
+    /// Return configurations for all available virtual devices.
+    ///
+    /// Implementations should probe the underlying driver and return one
+    /// [`VirtualDeviceConfig`] per discovered device. The default returns
+    /// an empty list (suitable for mocks or when no virtual driver exists).
+    fn list_devices(&self) -> Vec<VirtualDeviceConfig> {
+        Vec::new()
+    }
 }
 
 /// Trait for keyboard output sinks.
