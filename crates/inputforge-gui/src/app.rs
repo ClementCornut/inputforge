@@ -7,6 +7,7 @@
 //! The `update()` method renders panels in the required order:
 //! `BottomPanel` -> `SidePanel` -> `CentralPanel` (last).
 
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::mpsc;
 
@@ -131,6 +132,10 @@ pub(crate) struct CachedState {
     pub output_snapshots: Vec<VjoyOutputSnapshot>,
     /// Warnings from the engine (e.g., `HidHide` unavailable).
     pub warnings: Vec<String>,
+    /// Set of input addresses that have mappings in the active profile.
+    pub mapped_inputs: HashSet<InputAddress>,
+    /// Mapping names keyed by input address (only for mappings with names).
+    pub mapping_names: HashMap<InputAddress, String>,
 }
 
 impl Default for CachedState {
@@ -144,6 +149,8 @@ impl Default for CachedState {
             virtual_devices: Vec::new(),
             output_snapshots: Vec::new(),
             warnings: Vec::new(),
+            mapped_inputs: HashSet::new(),
+            mapping_names: HashMap::new(),
         }
     }
 }
@@ -242,6 +249,20 @@ impl InputForgeApp {
             .collect();
 
         self.cache.warnings.clone_from(&guard.warnings);
+
+        // Cache which inputs have mappings for left panel indicators.
+        self.cache.mapped_inputs.clear();
+        self.cache.mapping_names.clear();
+        if let Some(profile) = &guard.active_profile {
+            for mapping in profile.mappings() {
+                self.cache.mapped_inputs.insert(mapping.input.clone());
+                if let Some(name) = &mapping.name {
+                    self.cache
+                        .mapping_names
+                        .insert(mapping.input.clone(), name.clone());
+                }
+            }
+        }
         // Guard dropped here.
 
         // Push any new warnings to the toast manager.
@@ -286,6 +307,30 @@ impl InputForgeApp {
             }
         }
         false
+    }
+
+    /// Load the mapping for the given input address into the editor.
+    ///
+    /// Briefly acquires a read lock on shared state to look up the
+    /// mapping in the active profile. If no mapping exists, loads
+    /// an empty pipeline.
+    fn switch_to_input(&mut self, target: Option<InputAddress>) {
+        match target {
+            Some(addr) => {
+                let guard = self.state.read();
+                let (name, actions) = guard
+                    .active_profile
+                    .as_ref()
+                    .and_then(|p| p.find_mapping(&addr, &self.cache.current_mode))
+                    .map(|m| (m.name.clone(), m.actions.clone()))
+                    .unwrap_or_default();
+                drop(guard);
+                self.mapping_editor_state.load(addr, name, actions);
+            }
+            None => {
+                self.mapping_editor_state.clear();
+            }
+        }
     }
 }
 
@@ -370,6 +415,25 @@ fn snapshot_vjoy_outputs(config: &VirtualDeviceConfig, guard: &AppState) -> Vjoy
 impl eframe::App for InputForgeApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.refresh_cache();
+
+        // Detect input selection changes and load the corresponding mapping.
+        let target = match (
+            self.selection.selected_device_idx,
+            &self.selection.selected_input,
+        ) {
+            (Some(idx), Some(input_id)) if idx < self.cache.devices.len() => {
+                let device_id = self.cache.devices[idx].info.id.clone();
+                Some(InputAddress {
+                    device: device_id,
+                    input: input_id.clone(),
+                })
+            }
+            _ => None,
+        };
+        if target.as_ref() != self.mapping_editor_state.editing() {
+            self.switch_to_input(target);
+        }
+
         if self.process_tray_events(ctx) {
             return;
         }
