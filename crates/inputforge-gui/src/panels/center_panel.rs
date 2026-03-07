@@ -1,10 +1,10 @@
-// Rust guideline compliant 2026-03-06
+// Rust guideline compliant 2026-03-07
 
 //! Center panel routing between application views.
 //!
 //! Displays a unified toolbar at the top: tab buttons on the left for
 //! switching between three views (Devices, Mappings, Modes) and tool
-//! buttons on the right (Input Viewer, Calibration). The active tab
+//! buttons on the right (Input Viewer, Calibration, Profiles). The active tab
 //! determines which content is rendered below.
 
 use std::sync::mpsc;
@@ -16,6 +16,7 @@ use crate::panels::calibration_window;
 use crate::panels::device_view;
 use crate::panels::input_viewer_window;
 use crate::panels::mapping_editor::{self, MappingEditorState};
+use crate::panels::profile_window;
 use crate::theme;
 use crate::widgets::empty_state;
 use crate::widgets::tab_bar;
@@ -67,6 +68,29 @@ fn show_tool_buttons(ui: &mut egui::Ui, ctx: &egui::Context, tool_windows: &mut 
     let colors = theme::colors(ctx);
 
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        let profiles_btn = ui.add(
+            egui::Button::new(egui::RichText::new("Profiles").color(colors.text_dim)).frame(false),
+        );
+        if profiles_btn.hovered() {
+            ui.painter().text(
+                profiles_btn.rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "Profiles",
+                egui::FontId::proportional(ui.style().text_styles[&egui::TextStyle::Body].size),
+                colors.text,
+            );
+        }
+        if profiles_btn.clicked() {
+            if tool_windows.profiles_open {
+                ctx.send_viewport_cmd_to(
+                    profile_window::viewport_id(),
+                    egui::ViewportCommand::Focus,
+                );
+            } else {
+                tool_windows.profiles_open = true;
+            }
+        }
+
         let btn = ui.add(
             egui::Button::new(egui::RichText::new("Calibration").color(colors.text_dim))
                 .frame(false),

@@ -531,7 +531,10 @@ impl eframe::App for InputForgeApp {
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
 
         // Panel ordering: BottomPanel -> SidePanel -> CentralPanel (last).
-        panels::status_bar::show(ctx, &self.cache);
+        let status_bar_action = panels::status_bar::show(ctx, &self.cache);
+        if status_bar_action == panels::status_bar::StatusBarAction::OpenProfileManager {
+            self.tool_windows.profiles_open = true;
+        }
         panels::left_panel::show(ctx, &self.cache, &mut self.selection);
         panels::center_panel::show(
             ctx,

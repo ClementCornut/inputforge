@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-03-07
 
 //! Bottom status bar showing engine status, mode badge, and device count.
 //!
@@ -12,8 +12,19 @@ use crate::app::CachedState;
 use crate::theme;
 use crate::widgets::status_dot;
 
+/// Action triggered by status bar interaction.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum StatusBarAction {
+    /// No action taken.
+    None,
+    /// User clicked the profile name -- open the profile manager.
+    OpenProfileManager,
+}
+
 /// Render the bottom status bar.
-pub(crate) fn show(ctx: &egui::Context, cache: &CachedState) {
+#[must_use]
+pub(crate) fn show(ctx: &egui::Context, cache: &CachedState) -> StatusBarAction {
+    let mut action = StatusBarAction::None;
     let colors = theme::colors(ctx);
     egui::TopBottomPanel::bottom("status_bar")
         // 28px: fits one text row (14px) + 7px vertical padding on each side.
@@ -39,18 +50,35 @@ pub(crate) fn show(ctx: &egui::Context, cache: &CachedState) {
                         .size(theme::SMALL_FONT_SIZE),
                 );
 
-                // Profile name (right-aligned).
+                // Profile name (right-aligned, clickable).
                 if let Some(ref name) = cache.profile_name {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(
-                            egui::RichText::new(name)
-                                .color(colors.text_dim)
-                                .size(theme::SMALL_FONT_SIZE),
+                        let btn = ui.add(
+                            egui::Button::new(
+                                egui::RichText::new(name)
+                                    .color(colors.text_dim)
+                                    .size(theme::SMALL_FONT_SIZE),
+                            )
+                            .frame(false),
                         );
+                        if btn.hovered() {
+                            // Brighten on hover.
+                            ui.painter().text(
+                                btn.rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                name.as_str(),
+                                egui::FontId::proportional(theme::SMALL_FONT_SIZE),
+                                colors.text,
+                            );
+                        }
+                        if btn.clicked() {
+                            action = StatusBarAction::OpenProfileManager;
+                        }
                     });
                 }
             });
         });
+    action
 }
 
 /// Render the colored engine status dot and label.
