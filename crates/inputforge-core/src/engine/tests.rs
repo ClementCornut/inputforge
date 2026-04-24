@@ -87,19 +87,19 @@ fn button_event(index: u8, pressed: bool) -> InputEvent {
     }
 }
 
-/// Build a minimal ModeTree with Default at root.
+/// Build a minimal `ModeTree` with Default at root.
 fn simple_mode_tree() -> ModeTree {
     let map = HashMap::from([("Default".to_owned(), vec![])]);
     ModeTree::from_adjacency(&map).unwrap()
 }
 
-/// Build a ModeTree with Default → Combat.
+/// Build a `ModeTree` with Default → Combat.
 fn two_mode_tree() -> ModeTree {
     let map = HashMap::from([("Default".to_owned(), vec!["Combat".to_owned()])]);
     ModeTree::from_adjacency(&map).unwrap()
 }
 
-/// Build a ModeTree with Default → Shift.
+/// Build a `ModeTree` with Default → Shift.
 fn shift_mode_tree() -> ModeTree {
     let map = HashMap::from([("Default".to_owned(), vec!["Shift".to_owned()])]);
     ModeTree::from_adjacency(&map).unwrap()
@@ -669,7 +669,7 @@ fn hat_event(index: u8, direction: HatDirection) -> InputEvent {
     }
 }
 
-/// Build a ModeTree with Default → Combat → Racing (three modes).
+/// Build a `ModeTree` with Default → Combat → Racing (three modes).
 fn three_mode_tree() -> ModeTree {
     let map = HashMap::from([(
         "Default".to_owned(),
@@ -1226,7 +1226,7 @@ fn with_profile_loads_calibrations() {
 
     let mut map = HashMap::new();
     map.insert("Default".to_owned(), vec![]);
-    let modes = crate::mode::ModeTree::from_adjacency(&map).unwrap();
+    let modes = ModeTree::from_adjacency(&map).unwrap();
 
     let calibrations = vec![CalibrationEntry {
         device: DeviceId("dev-1".to_owned()),

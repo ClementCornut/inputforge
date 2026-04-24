@@ -293,12 +293,12 @@ mod tests {
 
     #[test]
     fn validate_accepts_normal_name() {
-        assert!(validate_profile_name("My Profile").is_ok());
+        validate_profile_name("My Profile").unwrap();
     }
 
     #[test]
     fn validate_accepts_name_with_dashes() {
-        assert!(validate_profile_name("flight-sim-v2").is_ok());
+        validate_profile_name("flight-sim-v2").unwrap();
     }
 
     #[test]
