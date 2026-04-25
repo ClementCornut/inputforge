@@ -94,6 +94,31 @@ impl MetaSnapshot {
     }
 }
 
+impl ConfigSnapshot {
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "called by spawn_polling_task in Task 8")
+    )]
+    pub(crate) fn from_state(s: &AppState) -> Self {
+        let mut mapped_inputs = HashSet::new();
+        let mut mapping_names = HashMap::new();
+        if let Some(profile) = &s.active_profile {
+            for mapping in profile.mappings() {
+                mapped_inputs.insert(mapping.input.clone());
+                if let Some(name) = &mapping.name {
+                    mapping_names.insert(mapping.input.clone(), name.clone());
+                }
+            }
+        }
+        Self {
+            devices: s.devices.clone(),
+            virtual_devices: s.virtual_devices.clone(),
+            mapped_inputs,
+            mapping_names,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,5 +185,41 @@ mod tests {
         let state = AppState::with_profile(profile);
         let meta = MetaSnapshot::from_state(&state);
         assert_eq!(meta.profile_name, Some("Hornet".to_owned()));
+    }
+
+    #[test]
+    fn config_from_state_clones_devices_and_virtual_devices() {
+        use inputforge_core::state::DeviceState;
+        use inputforge_core::types::{
+            AxisPolarity, DeviceId, DeviceInfo, VJoyAxis, VirtualDeviceConfig,
+        };
+
+        let mut state = AppState::new();
+        state.devices.push(DeviceState {
+            info: DeviceInfo {
+                id: DeviceId("dev-1".to_owned()),
+                name: "Throttle".to_owned(),
+                axes: 1,
+                buttons: 0,
+                hats: 0,
+                instance_path: None,
+                axis_polarities: vec![AxisPolarity::Unipolar],
+            },
+            connected: true,
+        });
+        state.virtual_devices.push(VirtualDeviceConfig {
+            device_id: 1,
+            axes: vec![VJoyAxis::X],
+            button_count: 4,
+            hat_count: 0,
+        });
+
+        let cfg = ConfigSnapshot::from_state(&state);
+        assert_eq!(cfg.devices.len(), 1);
+        assert_eq!(cfg.devices[0].info.name, "Throttle");
+        assert_eq!(cfg.virtual_devices.len(), 1);
+        assert_eq!(cfg.virtual_devices[0].button_count, 4);
+        assert!(cfg.mapped_inputs.is_empty()); // no profile loaded
+        assert!(cfg.mapping_names.is_empty());
     }
 }
