@@ -42,16 +42,8 @@ use inputforge_gui::launch_gui;
 use inputforge_gui_dx::launch_gui;
 
 #[cfg(feature = "gui-egui")]
-#[expect(
-    dead_code,
-    reason = "used by lifecycle guards landing in Task 15 (next commit)"
-)]
 const IS_GUI_DIOXUS: bool = false;
 #[cfg(feature = "gui-dioxus")]
-#[expect(
-    dead_code,
-    reason = "used by lifecycle guards landing in Task 15 (next commit)"
-)]
 const IS_GUI_DIOXUS: bool = true;
 
 #[global_allocator]
@@ -149,6 +141,15 @@ fn main() -> Result<()> {
                 }
                 TrayAction::ShowGui => {} // already drained, but satisfy exhaustiveness
             }
+        }
+        if IS_GUI_DIOXUS {
+            // F1: tao EventLoop::run is one-shot. Skip run_tray_loop to avoid a
+            // second launch_gui_blocking on tray Show-GUI. F3 restores the full
+            // lifecycle with WindowCloseBehaviour::WindowHides.
+            tracing::info!(
+                "Dioxus window closed; treating as app exit (hide-to-tray lands in F3)."
+            );
+            quit_requested = true;
         }
     }
 
@@ -339,6 +340,12 @@ fn run_tray_loop(
                             }
                             TrayAction::ShowGui => {}
                         }
+                    }
+                    if IS_GUI_DIOXUS {
+                        // F1: tao EventLoop::run is one-shot. Return from the tray loop so
+                        // main()'s shutdown() runs. F3 restores tray re-open via
+                        // DesktopService::set_visible(true) signaled from the listener.
+                        return;
                     }
                 }
                 TrayAction::ToggleActivation => {
