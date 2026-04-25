@@ -6,6 +6,12 @@
 //! window. The engine runs on a dedicated thread (`SDL3` is `!Send`), while
 //! the main thread owns the tray icon and optionally hosts an `eframe` GUI.
 
+#[cfg(all(feature = "gui-egui", feature = "gui-dioxus"))]
+compile_error!("features `gui-egui` and `gui-dioxus` are mutually exclusive");
+
+#[cfg(not(any(feature = "gui-egui", feature = "gui-dioxus")))]
+compile_error!("one of `gui-egui` or `gui-dioxus` must be enabled");
+
 mod cli;
 mod tray;
 
@@ -29,6 +35,24 @@ use inputforge_core::state::EngineStatus;
 
 use crate::cli::Cli;
 use crate::tray::{AppTray, TrayAction};
+
+#[cfg(feature = "gui-egui")]
+use inputforge_gui::launch_gui;
+#[cfg(feature = "gui-dioxus")]
+use inputforge_gui_dx::launch_gui;
+
+#[cfg(feature = "gui-egui")]
+#[expect(
+    dead_code,
+    reason = "used by lifecycle guards landing in Task 15 (next commit)"
+)]
+const IS_GUI_DIOXUS: bool = false;
+#[cfg(feature = "gui-dioxus")]
+#[expect(
+    dead_code,
+    reason = "used by lifecycle guards landing in Task 15 (next commit)"
+)]
+const IS_GUI_DIOXUS: bool = true;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -213,7 +237,7 @@ fn launch_gui_blocking(
     let gui_tx = cmd_tx.clone();
     let menu_ids = tray.menu_item_ids();
 
-    if let Err(e) = inputforge_gui::launch_gui(gui_state, gui_tx, menu_ids, settings.clone()) {
+    if let Err(e) = launch_gui(gui_state, gui_tx, menu_ids, settings.clone()) {
         tracing::error!(%e, "GUI exited with error");
     }
 
