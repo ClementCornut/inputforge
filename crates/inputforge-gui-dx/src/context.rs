@@ -1,0 +1,110 @@
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::{Arc, mpsc};
+
+use dioxus::prelude::*;
+use parking_lot::RwLock;
+
+use inputforge_core::engine::EngineCommand;
+use inputforge_core::settings::AppSettings;
+use inputforge_core::state::{AppState, DeviceState, EngineStatus};
+use inputforge_core::types::{
+    AxisPolarity, HatDirection, InputAddress, VJoyAxis, VirtualDeviceConfig,
+};
+
+/// Raw signal-free handles installed via `LaunchBuilder::with_context`.
+///
+/// `Arc<AppSettings>` is a zero-cost read-only handle at F1; F14 will
+/// unwind this wrapping when adding the mutation path.
+#[derive(Clone, Debug)]
+#[expect(
+    dead_code,
+    reason = "constructed in Task 8 (bridge) and Task 9 (app_root)"
+)]
+pub(crate) struct RawHandles {
+    pub state: Arc<RwLock<AppState>>,
+    pub commands: mpsc::Sender<EngineCommand>,
+    pub settings: Arc<AppSettings>,
+}
+
+/// Full per-window context: raw handles plus the three reactive signals.
+///
+/// Assembled inside `app_root` (signals must be created within the runtime).
+#[derive(Clone, Debug)]
+#[expect(dead_code, reason = "constructed in Task 9 (app_root)")]
+pub(crate) struct AppContext {
+    pub state: Arc<RwLock<AppState>>,
+    pub commands: mpsc::Sender<EngineCommand>,
+    pub settings: Arc<AppSettings>,
+    pub meta: Signal<MetaSnapshot>,
+    pub config: Signal<ConfigSnapshot>,
+    pub live: Signal<LiveSnapshot>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct MetaSnapshot {
+    pub engine_status: EngineStatus,
+    pub current_mode: String,
+    pub profile_name: Option<String>,
+    pub profile_path: Option<PathBuf>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct ConfigSnapshot {
+    pub devices: Vec<DeviceState>,
+    pub virtual_devices: Vec<VirtualDeviceConfig>,
+    pub mapped_inputs: HashSet<InputAddress>,
+    pub mapping_names: HashMap<InputAddress, String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct LiveSnapshot {
+    pub device_inputs: Vec<DeviceInputValues>,
+    pub output_values: Vec<VjoyOutputValues>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct DeviceInputValues {
+    pub axes: Vec<(f64, AxisPolarity)>,
+    pub buttons: Vec<bool>,
+    pub hats: Vec<HatDirection>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct VjoyOutputValues {
+    pub axes: Vec<(VJoyAxis, f64)>,
+    pub buttons: Vec<bool>,
+    pub hats: Vec<HatDirection>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn meta_snapshot_default_is_empty() {
+        let m = MetaSnapshot::default();
+        assert_eq!(m.engine_status, EngineStatus::Stopped);
+        assert!(m.current_mode.is_empty());
+        assert!(m.profile_name.is_none());
+        assert!(m.profile_path.is_none());
+        assert!(m.warnings.is_empty());
+    }
+
+    #[test]
+    fn config_snapshot_default_is_empty() {
+        let c = ConfigSnapshot::default();
+        assert!(c.devices.is_empty());
+        assert!(c.virtual_devices.is_empty());
+        assert!(c.mapped_inputs.is_empty());
+        assert!(c.mapping_names.is_empty());
+    }
+
+    #[test]
+    fn live_snapshot_default_is_empty() {
+        let l = LiveSnapshot::default();
+        assert!(l.device_inputs.is_empty());
+        assert!(l.output_values.is_empty());
+    }
+}
