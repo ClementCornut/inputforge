@@ -80,10 +80,6 @@ pub(crate) struct VjoyOutputValues {
 }
 
 impl MetaSnapshot {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "called by spawn_polling_task in Task 8")
-    )]
     pub(crate) fn from_state(s: &AppState) -> Self {
         Self {
             engine_status: s.engine_status,
@@ -96,10 +92,6 @@ impl MetaSnapshot {
 }
 
 impl LiveSnapshot {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "called by spawn_polling_task in Task 8")
-    )]
     /// Takes a pre-built `ConfigSnapshot` so device / virtual-device shape is
     /// read from a single coherent source.
     pub(crate) fn from_state(s: &AppState, cfg: &ConfigSnapshot) -> Self {
@@ -172,10 +164,6 @@ impl LiveSnapshot {
 }
 
 impl ConfigSnapshot {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "called by spawn_polling_task in Task 8")
-    )]
     pub(crate) fn from_state(s: &AppState) -> Self {
         let mut mapped_inputs = HashSet::new();
         let mut mapping_names = HashMap::new();
