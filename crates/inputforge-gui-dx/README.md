@@ -40,5 +40,5 @@ dx serve --platform desktop --no-default-features --features gui-dioxus
 | `cargo build` / `cargo run` | egui (default) |
 | `cargo build --no-default-features --features gui-dioxus` | Dioxus |
 | `cargo run --no-default-features --features gui-dioxus`   | Dioxus |
-| `cargo build --features gui-dioxus` (default still on)    | compile error (Task 14) |
-| `cargo build --no-default-features`                       | compile error (Task 14) |
+| `cargo build --features gui-dioxus` (default still on)    | compile error |
+| `cargo build --no-default-features`                       | compile error |
