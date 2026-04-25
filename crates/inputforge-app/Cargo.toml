@@ -10,17 +10,23 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+default    = ["gui-egui"]
+gui-egui   = ["dep:inputforge-gui"]
+gui-dioxus = ["dep:inputforge-gui-dx"]
+
 [dependencies]
-inputforge-core = { workspace = true }
-inputforge-gui = { workspace = true }
-anyhow = { workspace = true }
-parking_lot = { workspace = true }
-tracing = { workspace = true }
+inputforge-core   = { workspace = true }
+inputforge-gui    = { workspace = true, optional = true }
+inputforge-gui-dx = { workspace = true, optional = true }
+anyhow            = { workspace = true }
+parking_lot       = { workspace = true }
+tracing           = { workspace = true }
 tracing-subscriber = { workspace = true }
-mimalloc = { workspace = true }
-clap = { workspace = true }
-tray-icon = { workspace = true }
-windows = { workspace = true }
+mimalloc          = { workspace = true }
+clap              = { workspace = true }
+tray-icon         = { workspace = true }
+windows           = { workspace = true }
 
 [lints]
 workspace = true
