@@ -30,13 +30,13 @@ use app::InputForgeApp;
 ///
 /// # Errors
 ///
-/// Returns an `eframe::Error` if the native window fails to initialize.
+/// Returns an error if the native window fails to initialize.
 pub fn launch_gui(
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Sender<EngineCommand>,
     tray_menu_ids: (MenuId, MenuId, MenuId),
     settings: AppSettings,
-) -> eframe::Result<()> {
+) -> anyhow::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("InputForge")
@@ -65,4 +65,5 @@ pub fn launch_gui(
             )))
         }),
     )
+    .map_err(|e| anyhow::anyhow!("{e}"))
 }
