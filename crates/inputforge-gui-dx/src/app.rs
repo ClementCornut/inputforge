@@ -5,7 +5,6 @@ use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, Raw
 
 /// Root Dioxus component — assembles `AppContext`, installs it for descendants,
 /// spawns the polling task once, and renders the F1 readout.
-#[expect(dead_code, reason = "called by launch_gui in Task 10")]
 pub(crate) fn app_root() -> Element {
     let raw = use_context::<RawHandles>();
 
