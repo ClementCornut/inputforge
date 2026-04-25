@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/inputforge-core", "crates/inputforge-gui", "crates/inputforge-app"]
+members = ["crates/inputforge-core", "crates/inputforge-gui", "crates/inputforge-app", "crates/inputforge-gui-dx"]
 resolver = "2"
 
 [workspace.package]
@@ -25,6 +25,7 @@ anyhow = "1.0"
 
 # Concurrency
 parking_lot = "0.12"
+tokio = { version = "1", default-features = false, features = ["rt", "time", "sync"] }
 
 # Logging
 tracing = "0.1"
@@ -62,6 +63,7 @@ tray-icon = "0.21"
 muda = "0.17"
 
 # GUI
+dioxus = "0.7.6"
 eframe = "0.33"
 egui = "0.33"
 egui_extras = { version = "0.33", features = ["image"] }
@@ -71,6 +73,7 @@ egui_kittest = { version = "0.33", features = ["wgpu", "snapshot"] }
 # Internal crates
 inputforge-core = { path = "crates/inputforge-core" }
 inputforge-gui = { path = "crates/inputforge-gui" }
+inputforge-gui-dx = { path = "crates/inputforge-gui-dx" }
 
 # Compiler lints (M-STATIC-VERIFICATION)
 [workspace.lints.rust]
