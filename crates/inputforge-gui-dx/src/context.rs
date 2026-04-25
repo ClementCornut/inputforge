@@ -126,9 +126,6 @@ mod tests {
 
     #[test]
     fn meta_from_state_extracts_lifecycle_fields() {
-        use inputforge_core::state::{AppState, EngineStatus};
-        use std::path::PathBuf;
-
         let mut state = AppState::new();
         state.engine_status = EngineStatus::Running;
         state.current_mode = "FlightAssist".to_owned();
@@ -141,5 +138,27 @@ mod tests {
         assert_eq!(meta.profile_name, None); // active_profile is None
         assert_eq!(meta.profile_path, Some(PathBuf::from("/tmp/profile.json")));
         assert_eq!(meta.warnings, vec!["HidHide unavailable".to_owned()]);
+    }
+
+    #[test]
+    fn meta_from_state_with_active_profile_maps_name() {
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+
+        let mut map = HashMap::new();
+        map.insert("Default".to_owned(), vec![]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let profile = Profile::new(
+            "Hornet".to_owned(),
+            vec![],
+            modes,
+            vec![],
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+        let meta = MetaSnapshot::from_state(&state);
+        assert_eq!(meta.profile_name, Some("Hornet".to_owned()));
     }
 }
