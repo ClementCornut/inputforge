@@ -65,5 +65,8 @@ pub fn launch_gui(
             )))
         }),
     )
-    .map_err(|e| anyhow::anyhow!("{e}"))
+    // eframe::Error is not Send + Sync (eframe 0.33 / glutin), so the blanket
+    // anyhow::Error::from impl doesn't apply. Convert via Display; the source
+    // chain is dropped, which is acceptable here — main.rs only uses %e.
+    .map_err(|e| anyhow::Error::msg(e.to_string()))
 }
