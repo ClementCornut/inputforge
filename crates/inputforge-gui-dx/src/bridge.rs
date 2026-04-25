@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
 
-/// Spawn the 60Hz state-bridge polling task.
+/// Spawn the ~60Hz state-bridge polling task (16ms tick interval).
 ///
 /// Each tick: non-blocking `try_read()` of `AppState`, rebuild the three
 /// snapshots, write each via `Signal::set` only when `PartialEq` differs.
@@ -28,6 +28,8 @@ pub(crate) fn spawn_polling_task(ctx: AppContext) {
             let meta = MetaSnapshot::from_state(&guard);
             let config = ConfigSnapshot::from_state(&guard);
             let live = LiveSnapshot::from_state(&guard, &config);
+            // Release the read lock before calling Signal::set; reactive re-reads of
+            // ctx.state from subscribers must not contend with the held guard.
             drop(guard);
 
             // peek() reads without subscribing — the diff gate doesn't wake any component.

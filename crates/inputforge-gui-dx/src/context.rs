@@ -20,7 +20,7 @@ use inputforge_core::types::{
 #[derive(Clone, Debug)]
 #[expect(
     dead_code,
-    reason = "constructed in Task 8 (bridge) and Task 9 (app_root)"
+    reason = "constructed by launch_gui in Task 10 and consumed by app_root in Task 9"
 )]
 pub(crate) struct RawHandles {
     pub state: Arc<RwLock<AppState>>,
