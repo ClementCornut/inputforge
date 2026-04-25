@@ -81,7 +81,7 @@ pub(crate) struct VjoyOutputValues {
 impl MetaSnapshot {
     #[cfg_attr(
         not(test),
-        expect(dead_code, reason = "called from bridge polling task in Task 8")
+        expect(dead_code, reason = "called by spawn_polling_task in Task 8")
     )]
     pub(crate) fn from_state(s: &AppState) -> Self {
         Self {
@@ -189,10 +189,7 @@ mod tests {
 
     #[test]
     fn config_from_state_clones_devices_and_virtual_devices() {
-        use inputforge_core::state::DeviceState;
-        use inputforge_core::types::{
-            AxisPolarity, DeviceId, DeviceInfo, VJoyAxis, VirtualDeviceConfig,
-        };
+        use inputforge_core::types::{DeviceId, DeviceInfo};
 
         let mut state = AppState::new();
         state.devices.push(DeviceState {
@@ -221,5 +218,60 @@ mod tests {
         assert_eq!(cfg.virtual_devices[0].button_count, 4);
         assert!(cfg.mapped_inputs.is_empty()); // no profile loaded
         assert!(cfg.mapping_names.is_empty());
+    }
+
+    #[test]
+    fn config_from_state_populates_mapped_inputs_and_names() {
+        use inputforge_core::action::Mapping;
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::types::{DeviceId, InputId};
+
+        let mut map = HashMap::new();
+        map.insert("Default".to_owned(), vec![]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let device_id = DeviceId("dev-1".to_owned());
+        let addr_named = InputAddress {
+            device: device_id.clone(),
+            input: InputId::Button { index: 0 },
+        };
+        let addr_unnamed = InputAddress {
+            device: device_id,
+            input: InputId::Button { index: 1 },
+        };
+
+        let mappings = vec![
+            Mapping {
+                input: addr_named.clone(),
+                mode: "Default".to_owned(),
+                name: Some("Fire".to_owned()),
+                actions: vec![],
+            },
+            Mapping {
+                input: addr_unnamed.clone(),
+                mode: "Default".to_owned(),
+                name: None,
+                actions: vec![],
+            },
+        ];
+
+        let profile = Profile::new(
+            "TestProfile".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+
+        let cfg = ConfigSnapshot::from_state(&state);
+        assert_eq!(cfg.mapped_inputs.len(), 2);
+        assert!(cfg.mapped_inputs.contains(&addr_named));
+        assert!(cfg.mapped_inputs.contains(&addr_unnamed));
+        assert_eq!(cfg.mapping_names.len(), 1);
+        assert_eq!(cfg.mapping_names.get(&addr_named), Some(&"Fire".to_owned()));
+        assert!(!cfg.mapping_names.contains_key(&addr_unnamed));
     }
 }
