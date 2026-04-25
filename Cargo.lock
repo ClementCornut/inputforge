@@ -3298,6 +3298,7 @@ dependencies = [
  "clap",
  "inputforge-core",
  "inputforge-gui",
+ "inputforge-gui-dx",
  "mimalloc",
  "parking_lot",
  "tracing",
@@ -3328,6 +3329,7 @@ dependencies = [
 name = "inputforge-gui"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "eframe",
  "egui",
  "egui_extras",
