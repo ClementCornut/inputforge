@@ -6,10 +6,11 @@ use dioxus::prelude::*;
 use parking_lot::RwLock;
 
 use inputforge_core::engine::EngineCommand;
+use inputforge_core::pipeline::InputCache;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, DeviceState, EngineStatus};
 use inputforge_core::types::{
-    AxisPolarity, HatDirection, InputAddress, VJoyAxis, VirtualDeviceConfig,
+    AxisPolarity, HatDirection, InputAddress, InputId, VJoyAxis, VirtualDeviceConfig,
 };
 
 /// Raw signal-free handles installed via `LaunchBuilder::with_context`.
@@ -90,6 +91,82 @@ impl MetaSnapshot {
             profile_name: s.active_profile.as_ref().map(|p| p.name().to_owned()),
             profile_path: s.profile_path.clone(),
             warnings: s.warnings.clone(),
+        }
+    }
+}
+
+impl LiveSnapshot {
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "called by spawn_polling_task in Task 8")
+    )]
+    /// Takes a pre-built `ConfigSnapshot` so device / virtual-device shape is
+    /// read from a single coherent source.
+    pub(crate) fn from_state(s: &AppState, cfg: &ConfigSnapshot) -> Self {
+        let device_inputs: Vec<DeviceInputValues> = cfg
+            .devices
+            .iter()
+            .map(|device| {
+                let did = &device.info.id;
+                DeviceInputValues {
+                    axes: (0..device.info.axes)
+                        .map(|i| {
+                            let addr = InputAddress {
+                                device: did.clone(),
+                                input: InputId::Axis { index: i },
+                            };
+                            let pol = device
+                                .info
+                                .axis_polarities
+                                .get(usize::from(i))
+                                .copied()
+                                .unwrap_or_default();
+                            (s.input_cache.get_axis(&addr), pol)
+                        })
+                        .collect(),
+                    buttons: (0..device.info.buttons)
+                        .map(|i| {
+                            let addr = InputAddress {
+                                device: did.clone(),
+                                input: InputId::Button { index: i },
+                            };
+                            s.input_cache.get_button(&addr)
+                        })
+                        .collect(),
+                    hats: (0..device.info.hats)
+                        .map(|i| {
+                            let addr = InputAddress {
+                                device: did.clone(),
+                                input: InputId::Hat { index: i },
+                            };
+                            s.input_cache.get_hat(&addr)
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+
+        let output_values: Vec<VjoyOutputValues> = cfg
+            .virtual_devices
+            .iter()
+            .map(|v| VjoyOutputValues {
+                axes: v
+                    .axes
+                    .iter()
+                    .map(|&a| (a, s.output_cache.get_axis(v.device_id, a)))
+                    .collect(),
+                buttons: (1..=v.button_count)
+                    .map(|i| s.output_cache.get_button(v.device_id, i))
+                    .collect(),
+                hats: (0..v.hat_count)
+                    .map(|i| s.output_cache.get_hat(v.device_id, i))
+                    .collect(),
+            })
+            .collect();
+
+        Self {
+            device_inputs,
+            output_values,
         }
     }
 }
@@ -218,6 +295,89 @@ mod tests {
         assert_eq!(cfg.virtual_devices[0].button_count, 4);
         assert!(cfg.mapped_inputs.is_empty()); // no profile loaded
         assert!(cfg.mapping_names.is_empty());
+    }
+
+    #[test]
+    fn live_from_state_handles_empty_config() {
+        let state = AppState::new();
+        let cfg = ConfigSnapshot::from_state(&state);
+        let live = LiveSnapshot::from_state(&state, &cfg);
+        assert!(live.device_inputs.is_empty());
+        assert!(live.output_values.is_empty());
+    }
+
+    #[test]
+    fn live_from_state_reads_caches_per_device_shape() {
+        use inputforge_core::state::DeviceState;
+        use inputforge_core::types::{AxisValue, DeviceId, DeviceInfo, InputId, InputValue};
+
+        let mut state = AppState::new();
+        let did = DeviceId("dev-1".to_owned());
+
+        state.devices.push(DeviceState {
+            info: DeviceInfo {
+                id: did.clone(),
+                name: "Joystick".to_owned(),
+                axes: 1,
+                buttons: 1,
+                hats: 1,
+                instance_path: None,
+                axis_polarities: vec![AxisPolarity::Bipolar],
+            },
+            connected: true,
+        });
+        state.virtual_devices.push(VirtualDeviceConfig {
+            device_id: 1,
+            axes: vec![VJoyAxis::X],
+            button_count: 1,
+            hat_count: 1,
+        });
+
+        state.input_cache.update(
+            &InputAddress {
+                device: did.clone(),
+                input: InputId::Axis { index: 0 },
+            },
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+            },
+        );
+        state.input_cache.update(
+            &InputAddress {
+                device: did.clone(),
+                input: InputId::Button { index: 0 },
+            },
+            &InputValue::Button { pressed: true },
+        );
+        state.input_cache.update(
+            &InputAddress {
+                device: did,
+                input: InputId::Hat { index: 0 },
+            },
+            &InputValue::Hat {
+                direction: HatDirection::N,
+            },
+        );
+
+        state.output_cache.set_axis(1, VJoyAxis::X, -0.25);
+        state.output_cache.set_button(1, 1, true);
+        state.output_cache.set_hat(1, 0, HatDirection::SE);
+
+        let cfg = ConfigSnapshot::from_state(&state);
+        let live = LiveSnapshot::from_state(&state, &cfg);
+
+        assert_eq!(live.device_inputs.len(), 1);
+        assert_eq!(live.device_inputs[0].axes.len(), 1);
+        assert!((live.device_inputs[0].axes[0].0 - 0.5).abs() < f64::EPSILON);
+        assert_eq!(live.device_inputs[0].axes[0].1, AxisPolarity::Bipolar);
+        assert_eq!(live.device_inputs[0].buttons, vec![true]);
+        assert_eq!(live.device_inputs[0].hats, vec![HatDirection::N]);
+
+        assert_eq!(live.output_values.len(), 1);
+        assert!((live.output_values[0].axes[0].1 - (-0.25)).abs() < f64::EPSILON);
+        assert_eq!(live.output_values[0].axes[0].0, VJoyAxis::X);
+        assert_eq!(live.output_values[0].buttons, vec![true]);
+        assert_eq!(live.output_values[0].hats, vec![HatDirection::SE]);
     }
 
     #[test]
