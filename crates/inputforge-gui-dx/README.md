@@ -16,8 +16,7 @@ directly. No engine, no tray, no profile I/O — safe to hot-reload.
 
 ```bash
 cargo install dioxus-cli --version 0.7.6
-cd crates/inputforge-gui-dx
-dx serve --example bridge_demo --platform desktop
+dx serve -p inputforge-gui-dx --example bridge_demo --platform desktop
 ```
 
 Edit RSX in `src/app.rs` — the running window updates within ~1s without
@@ -41,5 +40,5 @@ dx serve --platform desktop --no-default-features --features gui-dioxus
 | `cargo build` / `cargo run` | egui (default) |
 | `cargo build --no-default-features --features gui-dioxus` | Dioxus |
 | `cargo run --no-default-features --features gui-dioxus`   | Dioxus |
-| `cargo build --features gui-dioxus` (default still on)    | compile error |
-| `cargo build --no-default-features`                       | compile error |
+| `cargo build --features gui-dioxus` (default still on)    | compile error (Task 14) |
+| `cargo build --no-default-features`                       | compile error (Task 14) |
