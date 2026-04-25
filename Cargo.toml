@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/inputforge-core", "crates/inputforge-gui", "crates/inputforge-app", "crates/inputforge-gui-dx"]
+members = ["crates/inputforge-core", "crates/inputforge-gui", "crates/inputforge-gui-dx", "crates/inputforge-app"]
 resolver = "2"
 
 [workspace.package]
