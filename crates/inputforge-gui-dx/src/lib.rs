@@ -4,8 +4,7 @@ mod app;
 mod bridge;
 mod context;
 
-use std::sync::Arc;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
 use dioxus::prelude::*;
@@ -27,10 +26,10 @@ use crate::context::RawHandles;
 ///
 /// # Errors
 ///
-/// Currently does not fail — `LaunchBuilder::launch` is non-returning. The
-/// `Result` return type matches the egui crate's signature for `cfg`-gated
-/// dispatch in `inputforge-app::main`. Future tasks may surface engine /
-/// runtime errors here.
+/// Currently always returns `Ok(())`. The `Result` return type exists for
+/// signature parity with `inputforge_gui::launch_gui`, enabling `cfg`-gated
+/// dispatch in `inputforge-app::main`. Future tasks may surface engine or
+/// runtime initialization failures via this `Result`.
 #[expect(
     clippy::needless_pass_by_value,
     reason = "signature parity with inputforge_gui::launch_gui — main.rs dispatches \
@@ -44,7 +43,6 @@ pub fn launch_gui(
     settings: AppSettings,
 ) -> anyhow::Result<()> {
     tracing::debug!(?tray_menu_ids, "tray wiring stubbed until F3");
-    let _ = tray_menu_ids;
 
     let handles = RawHandles {
         state,
