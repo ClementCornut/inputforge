@@ -6,7 +6,7 @@ use crate::types::DeviceInfo;
 ///
 /// Combines static device metadata with runtime connection status.
 /// Updated by the engine when hotplug events occur.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceState {
     /// Static device metadata (name, axis/button/hat counts).
     pub info: DeviceInfo,
@@ -18,6 +18,29 @@ pub struct DeviceState {
 mod tests {
     use super::*;
     use crate::types::DeviceId;
+
+    fn sample() -> DeviceState {
+        DeviceState {
+            info: DeviceInfo {
+                id: DeviceId("dev-1".to_owned()),
+                name: "Stick".to_owned(),
+                axes: 2,
+                buttons: 4,
+                hats: 1,
+                instance_path: None,
+                axis_polarities: vec![],
+            },
+            connected: true,
+        }
+    }
+
+    #[test]
+    fn equality_is_structural() {
+        assert_eq!(sample(), sample());
+        let mut other = sample();
+        other.connected = false;
+        assert_ne!(sample(), other);
+    }
 
     fn sample_device() -> DeviceInfo {
         DeviceInfo {

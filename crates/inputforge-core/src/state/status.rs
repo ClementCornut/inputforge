@@ -5,13 +5,14 @@
 /// Represents the three possible states of the engine event loop.
 /// `Running` actively processes input; `Paused` keeps the engine
 /// alive but skips processing; `Stopped` means fully deactivated.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum EngineStatus {
     /// Actively polling input and executing pipelines.
     Running,
     /// Alive but dormant; input processing is skipped.
     Paused,
     /// Fully deactivated; virtual devices released.
+    #[default]
     Stopped,
 }
 
@@ -40,5 +41,10 @@ mod tests {
         assert_eq!(EngineStatus::Running, EngineStatus::Running);
         assert_ne!(EngineStatus::Running, EngineStatus::Paused);
         assert_ne!(EngineStatus::Paused, EngineStatus::Stopped);
+    }
+
+    #[test]
+    fn default_is_stopped() {
+        assert_eq!(EngineStatus::default(), EngineStatus::Stopped);
     }
 }
