@@ -78,6 +78,22 @@ pub(crate) struct VjoyOutputValues {
     pub hats: Vec<HatDirection>,
 }
 
+impl MetaSnapshot {
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "called from bridge polling task in Task 8")
+    )]
+    pub(crate) fn from_state(s: &AppState) -> Self {
+        Self {
+            engine_status: s.engine_status,
+            current_mode: s.current_mode.clone(),
+            profile_name: s.active_profile.as_ref().map(|p| p.name().to_owned()),
+            profile_path: s.profile_path.clone(),
+            warnings: s.warnings.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,5 +122,24 @@ mod tests {
         let l = LiveSnapshot::default();
         assert!(l.device_inputs.is_empty());
         assert!(l.output_values.is_empty());
+    }
+
+    #[test]
+    fn meta_from_state_extracts_lifecycle_fields() {
+        use inputforge_core::state::{AppState, EngineStatus};
+        use std::path::PathBuf;
+
+        let mut state = AppState::new();
+        state.engine_status = EngineStatus::Running;
+        state.current_mode = "FlightAssist".to_owned();
+        state.warnings.push("HidHide unavailable".to_owned());
+        state.profile_path = Some(PathBuf::from("/tmp/profile.json"));
+
+        let meta = MetaSnapshot::from_state(&state);
+        assert_eq!(meta.engine_status, EngineStatus::Running);
+        assert_eq!(meta.current_mode, "FlightAssist");
+        assert_eq!(meta.profile_name, None); // active_profile is None
+        assert_eq!(meta.profile_path, Some(PathBuf::from("/tmp/profile.json")));
+        assert_eq!(meta.warnings, vec!["HidHide unavailable".to_owned()]);
     }
 }
