@@ -12,7 +12,6 @@ use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
 ///
 /// The task is bound to the Dioxus runtime: it is auto-cancelled when the
 /// runtime tears down on window close.
-#[expect(dead_code, reason = "called by app_root in Task 9")]
 pub(crate) fn spawn_polling_task(ctx: AppContext) {
     spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_millis(16));

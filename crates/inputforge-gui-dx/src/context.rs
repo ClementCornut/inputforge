@@ -18,10 +18,6 @@ use inputforge_core::types::{
 /// `Arc<AppSettings>` is a zero-cost read-only handle at F1; F14 will
 /// unwind this wrapping when adding the mutation path.
 #[derive(Clone, Debug)]
-#[expect(
-    dead_code,
-    reason = "constructed by launch_gui in Task 10 and consumed by app_root in Task 9"
-)]
 pub(crate) struct RawHandles {
     pub state: Arc<RwLock<AppState>>,
     pub commands: mpsc::Sender<EngineCommand>,
@@ -32,10 +28,11 @@ pub(crate) struct RawHandles {
 ///
 /// Assembled inside `app_root` (signals must be created within the runtime).
 #[derive(Clone, Debug)]
-#[expect(dead_code, reason = "constructed in Task 9 (app_root)")]
 pub(crate) struct AppContext {
     pub state: Arc<RwLock<AppState>>,
+    #[expect(dead_code, reason = "used in later tasks (engine command dispatch)")]
     pub commands: mpsc::Sender<EngineCommand>,
+    #[expect(dead_code, reason = "used in later tasks (settings reads)")]
     pub settings: Arc<AppSettings>,
     pub meta: Signal<MetaSnapshot>,
     pub config: Signal<ConfigSnapshot>,
