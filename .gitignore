@@ -3,6 +3,7 @@
 .DS_Store
 *.pdb
 *.log
+/rust_out*
 lcov.info
 .env
 .vscode/
