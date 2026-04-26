@@ -33,8 +33,12 @@ fn main() {
     reason = "gallery function intentionally lists all primitives in one place"
 )]
 fn gallery_root() -> Element {
-    // Interactive demo state for NumberInput steppers — proves onstep works end-to-end.
+    // Interactive demo state for NumberInput steppers — each non-disabled
+    // demo wires its own signal so they're independently steppable.
     let mut number_demo = use_signal(|| 50.0_f64);
+    let mut number_demo_b = use_signal(|| 50.0_f64);
+    let mut number_demo_precision = use_signal(|| 0.123_456_f64);
+    let mut number_demo_size = use_signal(|| 0.0_f64);
     rsx! {
         ThemeProvider {
             main {
@@ -116,15 +120,41 @@ fn gallery_root() -> Element {
                                 step: 1.0,
                                 onstep: move |v| number_demo.set(v),
                             }
-                            NumberInput { value: 50.0, min: 0.0, max: 100.0, step: 1.0 }
+                            NumberInput {
+                                value: number_demo_b(),
+                                min: 0.0,
+                                max: 100.0,
+                                step: 1.0,
+                                onstep: move |v| number_demo_b.set(v),
+                            }
                             NumberInput { value: 0.0, disabled: true }
-                            NumberInput { value: 0.123_456, precision: 2 }
+                            NumberInput {
+                                value: number_demo_precision(),
+                                step: 0.01,
+                                precision: 2,
+                                onstep: move |v| number_demo_precision.set(v),
+                            }
                         }
                         div {
                             style: "display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-3);",
-                            NumberInput { value: 0.0, size: InputSize::Sm }
-                            NumberInput { value: 0.0, size: InputSize::Md }
-                            NumberInput { value: 0.0, size: InputSize::Lg }
+                            NumberInput {
+                                value: number_demo_size(),
+                                step: 1.0,
+                                size: InputSize::Sm,
+                                onstep: move |v| number_demo_size.set(v),
+                            }
+                            NumberInput {
+                                value: number_demo_size(),
+                                step: 1.0,
+                                size: InputSize::Md,
+                                onstep: move |v| number_demo_size.set(v),
+                            }
+                            NumberInput {
+                                value: number_demo_size(),
+                                step: 1.0,
+                                size: InputSize::Lg,
+                                onstep: move |v| number_demo_size.set(v),
+                            }
                         }
                     }
                 }

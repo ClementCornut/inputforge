@@ -50,6 +50,7 @@
     color: var(--color-text);
     border-color: var(--color-border-strong);
 }
+.if-button.if-button--secondary:hover:not(:disabled) { border-color: var(--color-border-focus); }
 
 .if-button.if-button--ghost {
     background: transparent;

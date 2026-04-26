@@ -36,6 +36,9 @@
 }
 
 .if-menu__item {
+    /* Full-width so hover bg + pointer cursor cover the entire row, not just
+       the text+padding box of the underlying <button>. */
+    width: 100%;
     background: transparent;
     border: none;
     color: var(--color-text);
