@@ -1,0 +1,46 @@
+/* Stub — finalized in Task 14 after impeccable:frontend-design.
+   Layout-only: native <dialog> resets, panel surface, scrollable body,
+   right-aligned footer. No motion, no fancy backdrop yet. */
+
+.if-dialog {
+    background: transparent;
+    border: none;
+    padding: 0;
+    /* Native :modal already centers; we just constrain width. */
+    max-width: min(560px, calc(100vw - 32px));
+    color: var(--color-text);
+}
+.if-dialog::backdrop {
+    background: var(--color-bg-overlay);
+}
+.if-dialog__panel {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-6);
+    box-shadow: var(--shadow-3);
+    font-family: var(--font-sans);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    max-height: 80vh;
+}
+.if-dialog__title {
+    margin: 0;
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+}
+.if-dialog__desc {
+    margin: 0;
+    color: var(--color-text-muted);
+}
+.if-dialog__body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+.if-dialog__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+}

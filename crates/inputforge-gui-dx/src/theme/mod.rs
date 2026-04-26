@@ -23,6 +23,7 @@ const SELECT_CSS: Asset = asset!("/assets/components/select.css");
 const SLIDER_CSS: Asset = asset!("/assets/components/slider.css");
 const SWITCH_CSS: Asset = asset!("/assets/components/switch.css");
 const CHECKBOX_CSS: Asset = asset!("/assets/components/checkbox.css");
+const DIALOG_CSS: Asset = asset!("/assets/components/dialog.css");
 const CARD_CSS: Asset = asset!("/assets/components/card.css");
 const BADGE_CSS: Asset = asset!("/assets/components/badge.css");
 const SEPARATOR_CSS: Asset = asset!("/assets/components/separator.css");
@@ -60,6 +61,7 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: SLIDER_CSS }
         Stylesheet { href: SWITCH_CSS }
         Stylesheet { href: CHECKBOX_CSS }
+        Stylesheet { href: DIALOG_CSS }
         Stylesheet { href: CARD_CSS }
         Stylesheet { href: BADGE_CSS }
         Stylesheet { href: SEPARATOR_CSS }
