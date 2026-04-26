@@ -39,7 +39,7 @@ dx serve --platform desktop --no-default-features --features gui-dioxus
 |---|---|
 | `cargo build` / `cargo run` | egui (default) |
 | `cargo build --no-default-features --features gui-dioxus` | Dioxus |
-| `cargo run --no-default-features --features gui-dioxus`   | Dioxus |
+| `cargo run --no-default-features --features gui-dioxus`   | Dioxus shell + tray + lifecycle, production-viable |
 | `cargo build --features gui-dioxus` (default still on)    | compile error |
 | `cargo build --no-default-features`                       | compile error |
 
@@ -113,3 +113,67 @@ all timing in tokens.
 
 - `dx` (dioxus-cli) version 0.7.6 — install via `cargo install dioxus-cli --version 0.7.6`. Required for hot-reload (`dx serve`).
 - WebView2 runtime — bundled with Windows 11. On Windows 10 or earlier, install the Evergreen Standalone runtime from https://developer.microsoft.com/microsoft-edge/webview2/.
+
+## F3 — Tray bridge & hide-to-tray lifecycle
+
+### Tray bridge
+
+Under `--features gui-dioxus`, tray menu events are observed via the
+`use_muda_event_handler` hook (`dioxus_desktop`'s public hooks API). The
+spec originally specified `Config::with_custom_event_handler` matching
+on `UserWindowEvent::MudaMenuEvent`, but `dioxus_desktop::ipc` is a
+private module in 0.7.6 — the type is unreachable from external crates.
+The hook performs the equivalent pattern-match internally and delivers
+the same `muda::MenuEvent` payload through a callback that runs on the
+event-loop thread. F3 routes the menu id to a `TrayAction` via pure
+logic in `tray::action::TrayAction::from_event`, then `try_send`s on a
+bounded `tokio::sync::mpsc` channel created inside `app_root`. A Dioxus
+task (also spawned from `app_root`) drains the channel and dispatches:
+`Show` → `lifecycle::show_window`, `Toggle` → engine command via
+`AppContext::commands`, `Quit` → `lifecycle::request_quit`.
+
+The handler is observe-only: it only `try_send`s and logs overflow. It
+never mutates `ControlFlow` or interacts with the event loop directly.
+Routing logic is pure (`tray::action`) and unit-tested.
+
+### Hide-to-tray window lifecycle
+
+`Config::with_close_behaviour(WindowCloseBehaviour::WindowHides)` makes
+X-click hide the window natively (Dioxus calls `set_visible(false)` and
+consumes the close-requested event; F3 has no close-handler code path).
+Tray Show re-opens via `set_visible(true)` + `set_focus()`. Tray Quit
+flips this window's close behavior to `WindowCloses` then calls
+`close()`; with the default `exit_on_last_window_close = true` the
+event loop exits and `launch_gui` returns. `main.rs::shutdown()` then
+runs, the engine thread joins, `HidHide` unhide and `vJoy` release fire
+via `Drop`.
+
+`--start-minimized` is plumbed via the `start_minimized: bool`
+parameter on `launch_gui`. The Dioxus side calls `set_visible(false)`
+once during `app_root` mount when the flag is set; tray Show works
+identically. The egui side ignores the parameter — it already gates
+startup launch from `cli.start_minimized` in `main.rs`.
+
+Note the dioxus-desktop 0.7.6 API spelling asymmetry:
+- `Config::with_close_behaviour` — UK (builder method)
+- `WindowCloseBehaviour` — UK (enum)
+- `DesktopService::set_close_behavior` — US (per-window setter)
+
+### New primitives (F3)
+
+- `Tabs` — full WAI-ARIA Tabs pattern (`role="tablist"`/`tab`,
+  focus-roving with `tabindex` 0|-1, arrow keys + Home/End for cycle
+  and activate). Stateless: caller owns `value`. Reused by F11 (Modes).
+- `StatusBar` — three-slot horizontal bar (start / middle / end). Fixed
+  28px height. ARIA-neutral wrapper — consumers add `role="status"` /
+  `aria-live` only on the specific elements they want announced (e.g.,
+  the engine-status badge in `StatusBarView`).
+
+### Placeholder shell
+
+`shell/placeholder.rs` and `assets/shell/placeholder-shell.css` are
+**explicitly disposable at F5**. Treat them as scratch — F5 may replace
+the entire grid template, not just slot contents. The shell exists so
+F3's tray-bridge lifecycle can be observed against a coherent layout
+(open the window, watch the status bar reflect engine state, click
+tray Toggle, watch the badge flip).
