@@ -36,10 +36,6 @@ use self::action::{TrayAction, TrayMenuIds};
 
 /// Capacity for the tray-action channel. Sized for human-click cadence
 /// (≪ 1 Hz peak realistic burst); 8 is a comfortable safety margin.
-#[allow(
-    dead_code,
-    reason = "consumed by launch_gui channel construction in F3 Task 13"
-)]
 pub(crate) const CHANNEL_CAPACITY: usize = 8;
 
 /// Install the muda event handler. Must be called from inside a Dioxus
@@ -51,10 +47,6 @@ pub(crate) const CHANNEL_CAPACITY: usize = 8;
 /// send must never deadlock the event loop. The handler is observe-only;
 /// routing happens in `TrayAction::from_event` (pure) and dispatch in the
 /// listener task spawned via `spawn_listener_task`.
-#[allow(
-    dead_code,
-    reason = "consumed by app_root in F3 Task 18 (tray bridge wiring)"
-)]
 pub(crate) fn install_event_handler(ids: TrayMenuIds, tx: mpsc::Sender<TrayAction>) {
     use_muda_event_handler(move |menu_ev| {
         if let Some(action) = TrayAction::from_event(menu_ev, &ids) {
@@ -67,10 +59,6 @@ pub(crate) fn install_event_handler(ids: TrayMenuIds, tx: mpsc::Sender<TrayActio
 
 /// Spawn the listener task. Called from `app_root`'s `use_hook` so the task
 /// is tied to the Dioxus runtime lifetime and auto-cancelled on teardown.
-#[allow(
-    dead_code,
-    reason = "consumed by app_root in F3 Task 18 (tray bridge wiring)"
-)]
 pub(crate) fn spawn_listener_task(mut rx: mpsc::Receiver<TrayAction>, ctx: AppContext) {
     spawn(async move {
         while let Some(action) = rx.recv().await {
@@ -91,10 +79,6 @@ pub(crate) fn spawn_listener_task(mut rx: mpsc::Receiver<TrayAction>, ctx: AppCo
 /// channels, returning `Err` only if the receiver has been dropped. We
 /// discard the error: at that point the engine is already gone and the user
 /// is about to learn so via the normal shutdown path.
-#[allow(
-    dead_code,
-    reason = "called by spawn_listener_task; reachable once F3 Task 18 wires app_root"
-)]
 fn dispatch_toggle(ctx: &AppContext) {
     let status = ctx.state.read().engine_status;
     let cmd = match status {

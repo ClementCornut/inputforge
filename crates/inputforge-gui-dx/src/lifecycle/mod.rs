@@ -20,10 +20,6 @@
 use dioxus::desktop::{WindowCloseBehaviour, window};
 
 /// Tray Show — bring the window back to foreground.
-#[allow(
-    dead_code,
-    reason = "consumed by tray::spawn_listener_task once F3 Task 18 wires app_root"
-)]
 pub(crate) fn show_window() {
     let w = window();
     w.set_visible(true);
@@ -39,10 +35,6 @@ pub(crate) fn show_window() {
 /// `quit_requested` in `AppState` is **not** read on the Dioxus path
 /// (egui still uses it). The close-behavior switch is the entire Quit
 /// pathway — there is no flag to gate, no close-hook to wire.
-#[allow(
-    dead_code,
-    reason = "consumed by tray::spawn_listener_task once F3 Task 18 wires app_root"
-)]
 pub(crate) fn request_quit() {
     let w = window();
     w.set_close_behavior(WindowCloseBehaviour::WindowCloses);
@@ -50,10 +42,6 @@ pub(crate) fn request_quit() {
 }
 
 /// Apply --start-minimized once during `app_root` mount.
-#[allow(
-    dead_code,
-    reason = "consumed by app_root in F3 Task 18 (LaunchParams wiring)"
-)]
 pub(crate) fn apply_start_minimized(start_minimized: bool) {
     if start_minimized {
         window().set_visible(false);

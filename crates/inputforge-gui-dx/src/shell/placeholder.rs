@@ -5,9 +5,8 @@ use crate::shell::status_bar_view::StatusBarView;
 
 const PLACEHOLDER_SHELL_CSS: Asset = asset!("/assets/shell/placeholder-shell.css");
 
-/// Disposable four-region shell grid. Mounted by `app_root` once F3 Task 18
-/// wires the shell into the launch path; F5 replaces this entirely.
-#[allow(dead_code, reason = "consumed by app_root in F3 Task 18 (shell mount)")]
+/// Disposable four-region shell grid. Mounted by `app_root`; F5 replaces
+/// this entirely.
 #[component]
 pub(crate) fn PlaceholderShell() -> Element {
     let mut center_tab = use_signal(|| "mappings".to_owned());

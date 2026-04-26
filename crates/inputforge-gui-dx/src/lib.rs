@@ -36,10 +36,6 @@ use crate::tray::action::TrayMenuIds;
 /// the deviation in Tasks 10/11 (using `use_muda_event_handler` instead of
 /// `Config::with_custom_event_handler`) means both channel halves can live
 /// inside `app_root`'s `use_hook` body.
-#[allow(
-    dead_code,
-    reason = "consumed by app_root in F3 Task 18 (tray bridge wiring)"
-)]
 #[derive(Clone)]
 pub(crate) struct LaunchParams {
     pub start_minimized: bool,

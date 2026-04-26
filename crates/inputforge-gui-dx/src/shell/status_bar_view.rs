@@ -14,7 +14,6 @@ use crate::context::AppContext;
 /// when the value is "Default"), `connected/total devices` text, and
 /// profile-name span (plain `<span>`, not clickable in F3 — F14 owns
 /// profile-manager wiring).
-#[allow(dead_code, reason = "consumed by app_root in F3 Task 18 (shell mount)")]
 #[component]
 pub(crate) fn StatusBarView() -> Element {
     let ctx = use_context::<AppContext>();
@@ -61,10 +60,6 @@ pub(crate) fn StatusBarView() -> Element {
     }
 }
 
-#[allow(
-    dead_code,
-    reason = "consumed by StatusBarView; reachable once F3 Task 18 wires app_root"
-)]
 fn status_to_variant(s: EngineStatus) -> BadgeVariant {
     match s {
         EngineStatus::Running => BadgeVariant::Success,
@@ -73,10 +68,6 @@ fn status_to_variant(s: EngineStatus) -> BadgeVariant {
     }
 }
 
-#[allow(
-    dead_code,
-    reason = "consumed by StatusBarView; reachable once F3 Task 18 wires app_root"
-)]
 fn status_label(s: EngineStatus) -> &'static str {
     match s {
         EngineStatus::Running => "Running",

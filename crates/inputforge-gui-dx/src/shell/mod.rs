@@ -11,8 +11,4 @@
 mod placeholder;
 mod status_bar_view;
 
-#[allow(
-    unused_imports,
-    reason = "consumed by app_root in F3 Task 18 (shell mount)"
-)]
 pub(crate) use placeholder::PlaceholderShell;
