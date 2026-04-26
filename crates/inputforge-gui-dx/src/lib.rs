@@ -5,6 +5,16 @@ mod bridge;
 mod context;
 mod lifecycle;
 mod shell;
+#[expect(
+    dead_code,
+    unused_imports,
+    unreachable_pub,
+    reason = "transient: F4 Task 2 scaffold types; Tasks 3-5 add methods that use every \
+              field, Task 6 wires the Signal wrapper into app_root. `#[expect]` (not \
+              `#[allow]`) is self-removing — each lint becomes an error once it stops \
+              firing, forcing prompt cleanup as the module grows."
+)]
+mod toast;
 mod tray;
 
 pub mod components;
