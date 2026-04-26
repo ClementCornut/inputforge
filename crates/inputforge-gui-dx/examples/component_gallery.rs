@@ -9,8 +9,9 @@
 use dioxus::prelude::*;
 use inputforge_gui_dx::components::{
     Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Card, CardPadding, Checkbox, Icon,
-    IconButton, NumberInput, Select, Separator, SeparatorOrientation, Slider, Spinner, SpinnerSize,
-    Switch, TextInput, Tooltip, TooltipPlacement,
+    IconButton, MenuItem, MenuItems, MenuRoot, MenuTrigger, NumberInput, Select, Separator,
+    SeparatorOrientation, Slider, Spinner, SpinnerSize, Switch, TextInput, Tooltip,
+    TooltipPlacement,
 };
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
 use inputforge_gui_dx::theme::ThemeProvider;
@@ -209,6 +210,20 @@ fn gallery_root() -> Element {
                             Tooltip { content: "Hovers down".to_owned(),  placement: TooltipPlacement::Bottom, Button { "Bottom" } }
                             Tooltip { content: "Hovers left".to_owned(),  placement: TooltipPlacement::Left,   Button { "Left" } }
                             Tooltip { content: "Hovers right".to_owned(), placement: TooltipPlacement::Right,  Button { "Right" } }
+                        }
+                    }
+                }
+
+                section {
+                    h2 { "Menu" }
+                    Card { padding: CardPadding::Md,
+                        MenuRoot {
+                            MenuTrigger { "Open menu" }
+                            MenuItems {
+                                MenuItem { "First action" }
+                                MenuItem { "Second action" }
+                                MenuItem { disabled: true, "Disabled action" }
+                            }
                         }
                     }
                 }
