@@ -8,7 +8,8 @@
 
 use dioxus::prelude::*;
 use inputforge_gui_dx::components::{
-    Button, ButtonSize, ButtonVariant, Icon, IconButton, NumberInput, Select, Slider, TextInput,
+    Button, ButtonSize, ButtonVariant, Checkbox, Icon, IconButton, NumberInput, Select, Slider,
+    Switch, TextInput,
 };
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
 use inputforge_gui_dx::theme::ThemeProvider;
@@ -21,6 +22,10 @@ fn main() {
     LaunchBuilder::desktop().launch(gallery_root);
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "gallery function intentionally lists all primitives in one place"
+)]
 fn gallery_root() -> Element {
     rsx! {
         ThemeProvider {
@@ -116,6 +121,25 @@ fn gallery_root() -> Element {
                         style: "display: flex; flex-direction: column; gap: var(--space-3); max-width: 320px;",
                         Slider { value: 0.5 }
                         Slider { value: 0.25, disabled: true }
+                    }
+                }
+
+                section {
+                    h2 { "Switch" }
+                    div { style: "display: flex; gap: var(--space-4);",
+                        Switch { checked: false, label: "Off".to_owned() }
+                        Switch { checked: true,  label: "On".to_owned() }
+                        Switch { checked: false, disabled: true, label: "Disabled".to_owned() }
+                    }
+                }
+
+                section {
+                    h2 { "Checkbox" }
+                    div { style: "display: flex; gap: var(--space-4); align-items: center;",
+                        Checkbox { checked: false }
+                        Checkbox { checked: true }
+                        Checkbox { checked: false, indeterminate: true }
+                        Checkbox { checked: false, disabled: true }
                     }
                 }
             }

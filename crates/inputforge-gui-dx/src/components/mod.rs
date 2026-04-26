@@ -1,19 +1,23 @@
 //! Re-exports for the F2 component primitives.
 
 pub mod button;
+pub mod checkbox;
 pub mod icon;
 pub mod icon_button;
 pub mod number_input;
 pub mod select;
 pub mod slider;
+pub mod switch;
 pub mod text_input;
 
 pub use button::{Button, ButtonSize, ButtonVariant};
+pub use checkbox::Checkbox;
 pub use icon::Icon;
 pub use icon_button::IconButton;
 pub use number_input::NumberInput;
 pub use select::Select;
 pub use slider::Slider;
+pub use switch::Switch;
 pub use text_input::{InputSize, TextInput};
 
 /// Joins a base class, a variant class, and an optional caller class.

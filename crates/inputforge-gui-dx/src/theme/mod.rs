@@ -21,6 +21,8 @@ const TEXT_INPUT_CSS: Asset = asset!("/assets/components/text-input.css");
 const NUMBER_INPUT_CSS: Asset = asset!("/assets/components/number-input.css");
 const SELECT_CSS: Asset = asset!("/assets/components/select.css");
 const SLIDER_CSS: Asset = asset!("/assets/components/slider.css");
+const SWITCH_CSS: Asset = asset!("/assets/components/switch.css");
+const CHECKBOX_CSS: Asset = asset!("/assets/components/checkbox.css");
 
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
@@ -44,6 +46,8 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: NUMBER_INPUT_CSS }
         Stylesheet { href: SELECT_CSS }
         Stylesheet { href: SLIDER_CSS }
+        Stylesheet { href: SWITCH_CSS }
+        Stylesheet { href: CHECKBOX_CSS }
 
         {children}
     }
