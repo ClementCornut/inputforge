@@ -1,11 +1,27 @@
+/* StatusBar — telemetry strip at the bottom of the shell.
+   Sunken background + 1px strong-border on top reads as a recessed
+   instrument readout sitting beneath the main panel. Height stays
+   at 28px (matching the egui surface) — glanceable, never demanding.
+   Slot gaps follow the F2 spacing scale: tight inside slots
+   (--space-2) to pack badge groups, generous between slots
+   (--space-3). Default text uses --color-text-muted because
+   telemetry is for glancing, not acting on; consumers raise specific
+   elements (badges, status-role wrappers) to bright text via their
+   own styles. The font scale drops to --text-sm for the same reason —
+   this strip is supporting context, not primary content. min-width:0
+   on slots permits flex-shrink truncation in narrow viewports
+   without collapsing the grid. */
+
 .if-status-bar {
     display: grid;
     grid-template-columns: auto 1fr auto;
     align-items: center;
     height: 28px;
     padding: 0 var(--space-3);
-    border-top: 1px solid var(--color-border);
-    background: var(--color-bg, transparent);
+    border-top: 1px solid var(--color-border-strong);
+    background: var(--color-bg-sunken);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
     gap: var(--space-3);
 }
 

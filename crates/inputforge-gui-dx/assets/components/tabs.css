@@ -1,19 +1,43 @@
+/* Tabs — instrument-panel selector with underline indicator.
+   The active underline reads as an indicator-light strip below the
+   tab label: 3px tall, primary-blue, sitting on top of the tablist
+   border so the indicator visually anchors to the panel edge. Hover
+   raises the muted label to bright text only — no background fill,
+   keeping the strip flat against the panel surface like an etched
+   selector. Focus-visible places its outline inside the tab so it
+   never collides with the underline indicator. Disabled fades the
+   label and resolves the active indicator to a muted swatch via
+   color-mix so the strip no longer reads as live. Transitions use
+   the F2 motion tokens (--duration-base + --easing-standard, the
+   "needle finding its mark" curve). */
+
 .if-tabs {
     display: flex;
     flex-direction: row;
+    align-items: stretch;
     gap: var(--space-1);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border-strong);
+    padding: 0 var(--space-1);
 }
 
 .if-tab {
     appearance: none;
     background: transparent;
     border: 0;
-    border-bottom: 2px solid transparent;
+    border-bottom: 3px solid transparent;
     color: var(--color-text-muted);
     font: inherit;
+    font-weight: var(--weight-medium);
+    letter-spacing: 0.01em;
     padding: var(--space-2) var(--space-3);
+    /* Overlap the tablist border so the indicator visually sits
+       on top of it — keeps the active underline reading as part of
+       the panel edge rather than floating above it. */
+    margin-bottom: -1px;
     cursor: pointer;
+    transition:
+        color var(--duration-base) var(--easing-standard),
+        border-color var(--duration-base) var(--easing-standard);
 }
 
 .if-tab:hover:not([disabled]) {
@@ -27,11 +51,20 @@
 
 .if-tab:focus-visible {
     outline: 2px solid var(--color-border-focus);
-    outline-offset: -2px;
+    /* Sit inside the tab so the outline never collides with the
+       3px underline indicator below. */
+    outline-offset: -3px;
+    border-radius: var(--radius-sm);
 }
 
 .if-tab[disabled],
 .if-tabs--disabled .if-tab {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
+}
+
+/* Disabled active keeps a faint indicator so users can see
+   "this is the selected one, but interaction is suspended". */
+.if-tabs--disabled .if-tab--active {
+    border-bottom-color: color-mix(in oklch, var(--color-primary), var(--color-bg) 60%);
 }
