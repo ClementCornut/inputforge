@@ -21,7 +21,7 @@ fn gallery_root() -> Element {
     rsx! {
         ThemeProvider {
             main {
-                style: "padding: 24px;",
+                style: "padding: var(--space-6);",
                 h1 { "InputForge — Component Gallery (F2)" }
                 p { "Primitives appear in sections below as Phase 4 lands them." }
             }

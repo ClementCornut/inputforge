@@ -52,8 +52,7 @@ fn F1Readout() -> Element {
 
     rsx! {
         main {
-            style: "font-family: system-ui; padding: 24px; color: #ddd; \
-                    background: #1A1A2E; min-height: 100vh;",
+            style: "padding: var(--space-6); min-height: 100vh;",
             h1 { "InputForge — Dioxus (F1 bridge smoke test)" }
             p { "Engine status: "     strong { "{status}" } }
             p { "Current mode: "      strong { "{mode}" } }

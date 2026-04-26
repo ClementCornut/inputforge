@@ -1,11 +1,36 @@
 //! Mounts the F2 design-system stylesheets and exposes them to descendants.
 //!
 //! Stylesheet load order (cascade priority, lowest first):
-//! tokens → global → components. Order matters — do not reshuffle.
+//!     tokens → global → components.
+//! `document::Stylesheet` mounts in render order, so the rsx! sequence
+//! below IS the cascade order. Do not reshuffle.
 
 use dioxus::prelude::*;
 
+const COLORS_CSS: Asset = asset!("/assets/tokens/colors.css");
+const TYPOGRAPHY_CSS: Asset = asset!("/assets/tokens/typography.css");
+const SPACING_CSS: Asset = asset!("/assets/tokens/spacing.css");
+const RADII_CSS: Asset = asset!("/assets/tokens/radii.css");
+const ELEVATION_CSS: Asset = asset!("/assets/tokens/elevation.css");
+const MOTION_CSS: Asset = asset!("/assets/tokens/motion.css");
+const GLOBAL_CSS: Asset = asset!("/assets/global.css");
+
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
-    rsx! { {children} }
+    rsx! {
+        // Tokens first (lowest cascade priority).
+        Stylesheet { href: COLORS_CSS }
+        Stylesheet { href: TYPOGRAPHY_CSS }
+        Stylesheet { href: SPACING_CSS }
+        Stylesheet { href: RADII_CSS }
+        Stylesheet { href: ELEVATION_CSS }
+        Stylesheet { href: MOTION_CSS }
+
+        // Body baseline.
+        Stylesheet { href: GLOBAL_CSS }
+
+        // Component CSS will be appended here as primitives land (Tasks 13-20).
+
+        {children}
+    }
 }
