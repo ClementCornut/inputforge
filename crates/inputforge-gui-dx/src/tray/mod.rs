@@ -34,8 +34,16 @@ use crate::lifecycle;
 
 use self::action::{TrayAction, TrayMenuIds};
 
-/// Capacity for the tray-action channel. Sized for human-click cadence
-/// (≪ 1 Hz peak realistic burst); 8 is a comfortable safety margin.
+/// Capacity for the tray-action channel.
+///
+/// The channel buffers between the muda event handler (runs synchronously on
+/// the tao event-loop thread, so must never block) and the listener task
+/// (runs in the Dioxus runtime). The worst case is a burst of clicks during
+/// a stalled listener task — drainage normally resumes within single-digit
+/// ms, and tray clicks are human-paced (≤ ~5 Hz peak from frantic clicking).
+/// Cap=2 would technically suffice; 8 gives generous headroom. Overflow is
+/// logged via `tracing::warn!` and the action is dropped (see
+/// `install_event_handler`), which is preferable to blocking the event loop.
 pub(crate) const CHANNEL_CAPACITY: usize = 8;
 
 /// Install the muda event handler. Must be called from inside a Dioxus

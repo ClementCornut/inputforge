@@ -452,7 +452,7 @@ mod tests {
         let meta = MetaSnapshot::from_state(&s);
         let cfg = ConfigSnapshot::from_state(&s);
 
-        // The exact six values F1Readout reads:
+        // The exact six snapshot fields the placeholder shell surfaces consume:
         assert_eq!(meta.engine_status, EngineStatus::Running);
         assert_eq!(meta.current_mode, "Combat");
         assert_eq!(meta.profile_name, None); // no profile loaded

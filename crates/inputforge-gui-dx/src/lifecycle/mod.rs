@@ -42,6 +42,16 @@ pub(crate) fn request_quit() {
 }
 
 /// Apply --start-minimized once during `app_root` mount.
+///
+/// **Egui/Dioxus divergence.** The egui path skips `launch_gui_blocking`
+/// entirely when `--start-minimized` is set — no window is created until
+/// tray Show requests it. The Dioxus path always creates the `WebView2`
+/// window (and the polling + listener tasks) and hides it via
+/// `set_visible(false)`. Dioxus 0.7's `tao::EventLoop::run` is one-shot,
+/// so a tray-triggered relaunch isn't viable without restructuring the
+/// whole event loop. UX is identical (no window visible at startup, tray
+/// Show opens it) but resource usage is not — `--features gui-dioxus`
+/// pays the `WebView2` + task cost up-front regardless of `--start-minimized`.
 pub(crate) fn apply_start_minimized(start_minimized: bool) {
     if start_minimized {
         window().set_visible(false);

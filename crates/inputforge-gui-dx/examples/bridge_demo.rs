@@ -56,7 +56,9 @@ fn main() -> anyhow::Result<()> {
     let (commands, rx) = mpsc::channel::<EngineCommand>();
     Box::leak(Box::new(rx));
 
-    // Stub menu IDs — `launch_gui` ignores them at F1.
+    // Stub menu IDs — wired through to `use_muda_event_handler` at F3, but
+    // harmless here because no real tray icon is registered in this example,
+    // so muda never emits `MenuEvent`s matching these IDs.
     let menu_ids = (
         muda::MenuId::new("show-gui"),
         muda::MenuId::new("toggle-activation"),

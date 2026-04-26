@@ -70,8 +70,8 @@ rsx! {
 }
 ```
 
-`app_root` already wraps `F1Readout` in `ThemeProvider` — every screen
-mounted under `app_root` inherits it.
+`app_root` already wraps `PlaceholderShell` in `ThemeProvider` — every
+screen mounted under `app_root` inherits it.
 
 ## Adding a new icon
 
@@ -92,8 +92,8 @@ for `gap`/`padding` so magic px values stay out of the consumer side:
 | `Cluster` | row, wraps, ⤳cent | `gap: --space-3`, padding none  |
 | `Inset`   | block             | `padding: --space-4`            |
 
-For asymmetric grids (e.g. F1Readout's two-column key/value layout), keep an
-inline `style:` — these primitives intentionally don't model `display: grid`.
+For asymmetric grids (e.g. a two-column key/value layout), keep an inline
+`style:` — these primitives intentionally don't model `display: grid`.
 
 ## Status backgrounds
 
@@ -188,6 +188,14 @@ once during `app_root` mount when the flag is set; tray Show works
 identically. The egui side ignores the parameter — it already gates
 startup launch from `cli.start_minimized` in `main.rs`.
 
+**Cost asymmetry.** The egui path skips `launch_gui_blocking` entirely
+when `--start-minimized` is set, so no window or webview exists until
+tray Show. The Dioxus path always creates the WebView2 window (plus the
+polling and listener tasks) and merely hides it. End-user UX is the same;
+startup memory/CPU is not. Dioxus 0.7's `tao::EventLoop::run` is one-shot,
+so a tray-triggered relaunch isn't viable without restructuring the whole
+event loop — defer-launch parity is left as a future investigation.
+
 Note the dioxus-desktop 0.7.6 API spelling asymmetry:
 - `Config::with_close_behaviour` — UK (builder method)
 - `WindowCloseBehaviour` — UK (enum)
@@ -197,7 +205,14 @@ Note the dioxus-desktop 0.7.6 API spelling asymmetry:
 
 - `Tabs` — full WAI-ARIA Tabs pattern (`role="tablist"`/`tab`,
   focus-roving with `tabindex` 0|-1, arrow keys + Home/End for cycle
-  and activate). Stateless: caller owns `value`. Reused by F11 (Modes).
+  and activate). Each tab button gets `id="tab-{id}"`; set
+  `TabItem::controls` to wire `aria-controls` at the consumer's
+  tabpanel `id` (the consumer renders the `role="tabpanel"` div with
+  matching `id` and an `aria-labelledby` back-reference to `tab-{id}`).
+  Focus is moved imperatively via `MountedData::set_focus` after each
+  keyboard activation so the focus ring follows selection. Stateless:
+  caller owns `value`. Reused by F11 (Modes); see `examples/component_gallery.rs`
+  for the canonical full-pattern wiring.
 - `StatusBar` — three-slot horizontal bar (start / middle / end). Fixed
   28px height. ARIA-neutral wrapper — consumers add `role="status"` /
   `aria-live` only on the specific elements they want announced (e.g.,

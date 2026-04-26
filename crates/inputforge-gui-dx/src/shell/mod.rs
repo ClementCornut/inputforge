@@ -7,6 +7,15 @@
 //! (not just slot contents). Treat every line of CSS in
 //! `assets/shell/placeholder-shell.css` and every grid-area definition in
 //! `placeholder.rs` as scratch.
+//!
+//! ## CSS mount choice
+//!
+//! `placeholder-shell.css` mounts via `Stylesheet { href: ... }` inside
+//! `PlaceholderShell` itself, NOT in `theme/mod.rs` alongside the other
+//! component CSS files. This is intentional: the CSS is shell-scoped (only
+//! meaningful when the placeholder is rendered) and component-disposable.
+//! Keeping the asset reference local means deleting this module at F5
+//! cleans up its CSS without touching `ThemeProvider`.
 
 mod placeholder;
 mod status_bar_view;
