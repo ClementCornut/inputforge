@@ -18,7 +18,6 @@ use crate::toast::{ToastLevel, ToastQueue};
 /// `Signal<T>` is `Copy`; the closure rebinds `last_seen` as `mut` so it can
 /// call `.set(...)`. The same shape is used by the F1 polling task in
 /// `bridge.rs`.
-#[expect(dead_code, reason = "consumed by app_root in F4 Task 16")]
 #[expect(
     clippy::needless_pass_by_value,
     reason = "ctx is moved into the returned `'static` FnMut closure"

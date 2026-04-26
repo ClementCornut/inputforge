@@ -6,6 +6,7 @@ use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, Raw
 use crate::lifecycle;
 use crate::shell::PlaceholderShell;
 use crate::theme::ThemeProvider;
+use crate::toast::{ToastQueue, ToastState, ToastViewport, install_warnings_bridge};
 use crate::tray;
 use crate::tray::action::TrayAction;
 
@@ -30,6 +31,19 @@ pub(crate) fn app_root() -> Element {
     };
     use_context_provider(|| ctx.clone());
 
+    // F4: ToastQueue context — Signal lives in app_root's scope, mirroring the
+    // F1 AppContext pattern. Calling Signal::new() outside a hook leaks per
+    // dioxus-signals/src/signal.rs:30-52, so use_signal is mandatory here.
+    let toast_state = use_signal(ToastState::default);
+    let toast_queue = ToastQueue { state: toast_state };
+    use_context_provider(|| toast_queue);
+
+    // F4: warnings bridge — reads ctx.meta, pushes new tail entries as
+    // Warning toasts. last_seen initializes from peek() so first run is a
+    // no-op even if warnings accumulated before mount.
+    let last_seen = use_signal(|| ctx.meta.peek().warnings.len());
+    use_effect(install_warnings_bridge(ctx.clone(), toast_queue, last_seen));
+
     // Polling task — bridges AppState into Dioxus signals. One-shot per scope
     // mount; auto-cancelled when the runtime tears down.
     use_hook(|| spawn_polling_task(ctx.clone()));
@@ -53,6 +67,9 @@ pub(crate) fn app_root() -> Element {
     use_hook(|| lifecycle::apply_start_minimized(params.start_minimized));
 
     rsx! {
-        ThemeProvider { PlaceholderShell {} }
+        ThemeProvider {
+            ToastViewport {}
+            PlaceholderShell {}
+        }
     }
 }
