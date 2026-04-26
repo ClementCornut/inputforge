@@ -226,3 +226,93 @@ the entire grid template, not just slot contents. The shell exists so
 F3's tray-bridge lifecycle can be observed against a coherent layout
 (open the window, watch the status bar reflect engine state, click
 tray Toggle, watch the badge flip).
+
+## F4 — Toast & Dialog Infrastructure
+
+### `ToastQueue`
+
+Global toast queue installed via `use_context_provider` in `app_root`. Producers
+reach it with:
+
+```rust
+use inputforge_gui_dx::{ToastLevel, ToastQueue};
+
+let toasts = use_context::<ToastQueue>();
+toasts.push(ToastLevel::Warning, "HidHide unavailable");
+```
+
+- **Levels:** `Info`, `Success`, `Warning`, `Error`. Info/Success render in
+  `role="status" aria-live="polite"`; Warning/Error in
+  `role="alert" aria-live="assertive"`.
+- **Dedupe:** identical `(level, message)` against any non-dismissed toast
+  increments its count (`×N` badge) and resets the auto-dismiss timer.
+- **Cap:** at most 5 visible toasts; FIFO drain of the oldest non-dismissed
+  entry on overflow.
+- **Auto-dismiss:** 8 s. Hover or focus on a toast pauses the timer; ESC while
+  focused dismisses; click × dismisses.
+
+### Dialog primitive
+
+Compound API on the native `<dialog>` element:
+
+```rust
+use dioxus::prelude::*;
+use inputforge_gui_dx::components::{
+    DialogBody, DialogDescription, DialogFooter, DialogRoot, DialogTitle,
+};
+
+let mut open = use_signal(|| false);
+
+rsx! {
+    DialogRoot {
+        open: open,
+        onclose: move |()| {},
+        DialogTitle { "Title" }
+        DialogDescription { "Body description (rendered in a <p>)." }
+        DialogBody { /* optional scrollable region */ }
+        DialogFooter { /* action buttons */ }
+    }
+}
+```
+
+- **`dismissible: bool` (default `true`)** — when `false`, ESC is suppressed.
+  Read once at mount; flipping after mount has no effect.
+- **`close_on_backdrop_click: bool` (default `false`)** — backdrop click
+  resolves the dialog when `true`.
+- Native `<dialog>` provides focus trap, inert background, `aria-modal`, and
+  focus restore on close.
+- **`onclose` semantics:** Dioxus 0.7 has no `onclose` event for `<dialog>`;
+  the prop fires on ESC dismissal (when `dismissible: true`) and on backdrop
+  click (when `close_on_backdrop_click: true`). Programmatic `open.set(false)`
+  closes the dialog but does NOT fire `onclose` — consumer-driven flows should
+  call their own callbacks alongside `open.set(false)`.
+
+### `DirtyConfirmDialog`
+
+Presentational reusable composing the dialog primitives with default copy and
+Cancel/Discard/Save buttons. Cancel-first for default focus; ESC routes to
+`oncancel`; `close_on_backdrop_click: false`.
+
+```rust
+use inputforge_gui_dx::patterns::DirtyConfirmDialog;
+
+let mut open = use_signal(|| false);
+
+rsx! {
+    DirtyConfirmDialog {
+        open: open,
+        oncancel:  move |()| { /* abort the action — distinct from discard */ },
+        ondiscard: move |()| { /* drop unsaved changes, proceed */ },
+        onsave:    move |()| { /* persist, then proceed */ },
+    }
+}
+```
+
+Override `title`, `message`, and `save_label` for context-specific phrasing
+(e.g., `save_label: Some("Save & Switch".to_owned())`).
+
+### Warnings bridge
+
+`MetaSnapshot.warnings` (populated by the engine via the F1 polling task)
+flows into the toast queue as Warning-level toasts. Producers do not need to
+opt in — append to `AppState.warnings` and the bridge handles delivery.
