@@ -114,12 +114,18 @@ all timing in tokens.
 - `dx` (dioxus-cli) version 0.7.6 — install via `cargo install dioxus-cli --version 0.7.6`. Required for hot-reload (`dx serve`).
 - WebView2 runtime — bundled with Windows 11. On Windows 10 or earlier, install the Evergreen Standalone runtime from https://developer.microsoft.com/microsoft-edge/webview2/.
 
-## SDL3.dll placement and `target/dx` recovery
+## SDL3.dll placement
 
 Windows builds need `SDL3.dll` next to the executable. `crates/inputforge-app/build.rs`
-copies it from `<workspace>/SDL/SDL3.dll` into both `target/<profile>/` (for
-`cargo run`) and `target/dx/inputforge-app/<profile>/windows/app/` (for
-`dx run` / `dx serve`).
+copies it from `<workspace>/SDL/SDL3.dll` into both:
+
+- `target/<cargo-profile>/SDL3.dll` — alongside the `cargo` binary
+- `target/dx/inputforge-app/<dx-profile>/windows/app/SDL3.dll` — alongside the `dx` binary
+
+The `<dx-profile>` segment uses cargo's `PROFILE` env var (`debug` or
+`release`), which collapses custom cargo profiles like dx-cli's `desktop-dev`
+to one of those two values based on profile inheritance. dx names its bundle
+output dirs `debug` and `release` regardless of the underlying cargo profile.
 
 `Dioxus.toml`'s `[bundle].resources` is **not** an option here: in dioxus-cli
 0.7.6 that key is consumed only by the `bundler` module, which is invoked
@@ -128,24 +134,19 @@ and `dx build` never copy `bundle.resources` into the dev output dir
 (verified empirically and by reading `packages/cli/src/bundler/` and
 `packages/cli/src/cli/bundle.rs` at the v0.7.6 tag).
 
-**Recovery from a wiped `target/dx`:** if you `rm -rf target/dx` (or
-otherwise delete `target/dx/inputforge-app/<profile>/windows/app/SDL3.dll`)
-and the next `dx run` fails with `STATUS_DLL_NOT_FOUND` (`0xC0000135`),
-the build script did not re-run because cargo's fingerprint of
-`inputforge-app` is still fresh (the source `SDL/SDL3.dll` did not change,
-and `cargo:rerun-if-changed=<missing-destination>` does not trigger a
-rerun — cargo treats missing files as untracked, not changed).
-
-Force the build script to re-run:
+**Recovery if SDL3.dll goes missing.** The build script declares
+`cargo:rerun-if-changed=` on the source DLL and both destinations, but cargo
+treats *missing* destination files as untracked rather than changed — so if
+you `rm -rf target/dx` and the next `dx run` fails with
+`STATUS_DLL_NOT_FOUND` (`0xC0000135`), the script did not re-run because
+cargo's fingerprint of `inputforge-app` is still fresh. Force a rerun with:
 
 ```bash
 cargo clean -p inputforge-app
 dx run -p inputforge-app --no-default-features --features gui-dioxus
 ```
 
-`cargo clean -p inputforge-app` is enough — you do not need a full
-`cargo clean`. The next `dx run` rebuilds `inputforge-app`, which re-runs
-the build script, which re-populates both copy destinations.
+A full `cargo clean` is unnecessary; the per-package clean is enough.
 
 ## F3 — Tray bridge & hide-to-tray lifecycle
 
