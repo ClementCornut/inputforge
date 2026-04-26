@@ -36,111 +36,129 @@ fn gallery_root() -> Element {
 
                 section {
                     h2 { "Icon" }
-                    div {
-                        style: "display: flex; gap: var(--space-4); align-items: center;",
-                        Icon { name: IconKind::Joystick, size: IconSize::Sm }
-                        Icon { name: IconKind::Joystick, size: IconSize::Md }
-                        Icon { name: IconKind::Joystick, size: IconSize::Lg }
-                        Icon { name: IconKind::Settings }
-                        Icon { name: IconKind::Save }
-                        Icon { name: IconKind::Trash }
+                    Card { padding: CardPadding::Md,
+                        div {
+                            style: "display: flex; gap: var(--space-4); align-items: center;",
+                            Icon { name: IconKind::Joystick, size: IconSize::Sm }
+                            Icon { name: IconKind::Joystick, size: IconSize::Md }
+                            Icon { name: IconKind::Joystick, size: IconSize::Lg }
+                            Icon { name: IconKind::Settings }
+                            Icon { name: IconKind::Save }
+                            Icon { name: IconKind::Trash }
+                        }
                     }
                 }
 
                 section {
                     h2 { "Button" }
-                    div {
-                        style: "display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center;",
-                        Button { variant: ButtonVariant::Primary,   "Primary" }
-                        Button { variant: ButtonVariant::Secondary, "Secondary" }
-                        Button { variant: ButtonVariant::Ghost,     "Ghost" }
-                        Button { variant: ButtonVariant::Danger,    "Danger" }
-                        Button { disabled: true, "Disabled" }
-                    }
-                    div {
-                        style: "display: flex; gap: var(--space-3); margin-top: var(--space-3);",
-                        Button { size: ButtonSize::Sm, "Small" }
-                        Button { size: ButtonSize::Md, "Medium" }
-                        Button { size: ButtonSize::Lg, "Large" }
+                    Card { padding: CardPadding::Md,
+                        div {
+                            style: "display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center;",
+                            Button { variant: ButtonVariant::Primary,   "Primary" }
+                            Button { variant: ButtonVariant::Secondary, "Secondary" }
+                            Button { variant: ButtonVariant::Ghost,     "Ghost" }
+                            Button { variant: ButtonVariant::Danger,    "Danger" }
+                            Button { disabled: true, "Disabled" }
+                        }
+                        div {
+                            style: "display: flex; gap: var(--space-3); margin-top: var(--space-3);",
+                            Button { size: ButtonSize::Sm, "Small" }
+                            Button { size: ButtonSize::Md, "Medium" }
+                            Button { size: ButtonSize::Lg, "Large" }
+                        }
                     }
                 }
 
                 section {
                     h2 { "IconButton" }
-                    div {
-                        style: "display: flex; gap: var(--space-3); align-items: center;",
-                        IconButton { icon: IconKind::Settings, label: "Settings" }
-                        IconButton { icon: IconKind::Save,     label: "Save",  variant: ButtonVariant::Primary }
-                        IconButton { icon: IconKind::Trash,    label: "Delete", variant: ButtonVariant::Danger }
-                        IconButton { icon: IconKind::Eye,      label: "Show",   disabled: true }
+                    Card { padding: CardPadding::Md,
+                        div {
+                            style: "display: flex; gap: var(--space-3); align-items: center;",
+                            IconButton { icon: IconKind::Settings, label: "Settings" }
+                            IconButton { icon: IconKind::Save,     label: "Save",  variant: ButtonVariant::Primary }
+                            IconButton { icon: IconKind::Trash,    label: "Delete", variant: ButtonVariant::Danger }
+                            IconButton { icon: IconKind::Eye,      label: "Show",   disabled: true }
+                        }
                     }
                 }
 
                 section {
                     h2 { "TextInput" }
-                    div {
-                        style: "display: flex; flex-direction: column; gap: var(--space-3); max-width: 320px;",
-                        TextInput { value: "hello".to_owned(), placeholder: "Type here…".to_owned() }
-                        TextInput { value: String::new(), placeholder: "Disabled".to_owned(), disabled: true }
-                        TextInput { value: "wrong".to_owned(), invalid: true }
+                    Card { padding: CardPadding::Md,
+                        div {
+                            style: "display: flex; flex-direction: column; gap: var(--space-3); max-width: 320px;",
+                            TextInput { value: "hello".to_owned(), placeholder: "Type here…".to_owned() }
+                            TextInput { value: String::new(), placeholder: "Disabled".to_owned(), disabled: true }
+                            TextInput { value: "wrong".to_owned(), invalid: true }
+                        }
                     }
                 }
 
                 section {
                     h2 { "NumberInput" }
-                    div {
-                        style: "display: flex; gap: var(--space-3); align-items: center;",
-                        NumberInput { value: 0.0, min: 0.0, max: 100.0, step: 1.0 }
-                        NumberInput { value: 50.0, min: 0.0, max: 100.0, step: 1.0 }
-                        NumberInput { value: 0.0, disabled: true }
+                    Card { padding: CardPadding::Md,
+                        div {
+                            style: "display: flex; gap: var(--space-3); align-items: center;",
+                            NumberInput { value: 0.0, min: 0.0, max: 100.0, step: 1.0 }
+                            NumberInput { value: 50.0, min: 0.0, max: 100.0, step: 1.0 }
+                            NumberInput { value: 0.0, disabled: true }
+                        }
                     }
                 }
 
                 section {
                     h2 { "Select" }
-                    div {
-                        style: "display: flex; gap: var(--space-3); align-items: center;",
-                        Select {
-                            value: "alpha".to_owned(),
-                            options: vec![
-                                ("alpha".to_owned(),   "Alpha".to_owned()),
-                                ("beta".to_owned(),    "Beta".to_owned()),
-                                ("gamma".to_owned(),   "Gamma".to_owned()),
-                            ],
-                        }
-                        Select {
-                            value: "alpha".to_owned(),
-                            options: vec![("alpha".to_owned(), "Alpha".to_owned())],
-                            disabled: true,
+                    Card { padding: CardPadding::Md,
+                        div {
+                            style: "display: flex; gap: var(--space-3); align-items: center;",
+                            Select {
+                                value: "alpha".to_owned(),
+                                options: vec![
+                                    ("alpha".to_owned(),   "Alpha".to_owned()),
+                                    ("beta".to_owned(),    "Beta".to_owned()),
+                                    ("gamma".to_owned(),   "Gamma".to_owned()),
+                                ],
+                            }
+                            Select {
+                                value: "alpha".to_owned(),
+                                options: vec![("alpha".to_owned(), "Alpha".to_owned())],
+                                disabled: true,
+                            }
                         }
                     }
                 }
 
                 section {
                     h2 { "Slider" }
-                    div {
-                        style: "display: flex; flex-direction: column; gap: var(--space-3); max-width: 320px;",
-                        Slider { value: 0.5 }
-                        Slider { value: 0.25, disabled: true }
+                    Card { padding: CardPadding::Md,
+                        div {
+                            style: "display: flex; flex-direction: column; gap: var(--space-3); max-width: 320px;",
+                            Slider { value: 0.5 }
+                            Slider { value: 0.25, disabled: true }
+                        }
                     }
                 }
 
                 section {
                     h2 { "Switch" }
-                    div { style: "display: flex; gap: var(--space-4);",
-                        Switch { checked: false, label: "Off".to_owned() }
-                        Switch { checked: true,  label: "On".to_owned() }
-                        Switch { checked: false, disabled: true, label: "Disabled".to_owned() }
+                    Card { padding: CardPadding::Md,
+                        div { style: "display: flex; gap: var(--space-4);",
+                            Switch { checked: false, label: "Off".to_owned() }
+                            Switch { checked: true,  label: "On".to_owned() }
+                            Switch { checked: false, disabled: true, label: "Disabled".to_owned() }
+                        }
                     }
                 }
 
                 section {
                     h2 { "Checkbox" }
-                    div { style: "display: flex; gap: var(--space-4); align-items: center;",
-                        Checkbox { checked: false }
-                        Checkbox { checked: true }
-                        Checkbox { checked: false, indeterminate: true }
-                        Checkbox { checked: false, disabled: true }
+                    Card { padding: CardPadding::Md,
+                        div { style: "display: flex; gap: var(--space-4); align-items: center;",
+                            Checkbox { checked: false }
+                            Checkbox { checked: true }
+                            Checkbox { checked: false, indeterminate: true }
+                            Checkbox { checked: false, disabled: true }
+                        }
                     }
                 }
 
