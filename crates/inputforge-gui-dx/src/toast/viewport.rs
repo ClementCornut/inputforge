@@ -16,7 +16,7 @@ use crate::toast::state::{Toast, ToastLevel};
 /// order of magnitude finer than the CSS fade-out duration, so cost is
 /// negligible.
 #[component]
-pub(crate) fn ToastViewport() -> Element {
+pub fn ToastViewport() -> Element {
     let queue = use_context::<ToastQueue>();
 
     let mut now_signal = use_signal(Instant::now);

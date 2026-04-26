@@ -50,10 +50,6 @@ impl ToastQueue {
     /// Snapshot of non-expired toasts at `now`. Used by `ToastViewport` on
     /// each tick. Cloning is cheap (toasts are short and bounded by
     /// `TOAST_MAX_VISIBLE` plus a few in-flight dismissed entries fading out).
-    #[expect(
-        dead_code,
-        reason = "consumed transitively by ToastViewport, which is wired in F4 Task 9 (gallery) and Task 16 (app)"
-    )]
     pub(crate) fn visible(&self, now: Instant) -> Vec<Toast> {
         self.state
             .read()
