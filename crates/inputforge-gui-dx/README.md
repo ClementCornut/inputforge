@@ -114,6 +114,39 @@ all timing in tokens.
 - `dx` (dioxus-cli) version 0.7.6 — install via `cargo install dioxus-cli --version 0.7.6`. Required for hot-reload (`dx serve`).
 - WebView2 runtime — bundled with Windows 11. On Windows 10 or earlier, install the Evergreen Standalone runtime from https://developer.microsoft.com/microsoft-edge/webview2/.
 
+## SDL3.dll placement and `target/dx` recovery
+
+Windows builds need `SDL3.dll` next to the executable. `crates/inputforge-app/build.rs`
+copies it from `<workspace>/SDL/SDL3.dll` into both `target/<profile>/` (for
+`cargo run`) and `target/dx/inputforge-app/<profile>/windows/app/` (for
+`dx run` / `dx serve`).
+
+`Dioxus.toml`'s `[bundle].resources` is **not** an option here: in dioxus-cli
+0.7.6 that key is consumed only by the `bundler` module, which is invoked
+exclusively from `dx bundle` (production packaging). `dx serve`, `dx run`,
+and `dx build` never copy `bundle.resources` into the dev output dir
+(verified empirically and by reading `packages/cli/src/bundler/` and
+`packages/cli/src/cli/bundle.rs` at the v0.7.6 tag).
+
+**Recovery from a wiped `target/dx`:** if you `rm -rf target/dx` (or
+otherwise delete `target/dx/inputforge-app/<profile>/windows/app/SDL3.dll`)
+and the next `dx run` fails with `STATUS_DLL_NOT_FOUND` (`0xC0000135`),
+the build script did not re-run because cargo's fingerprint of
+`inputforge-app` is still fresh (the source `SDL/SDL3.dll` did not change,
+and `cargo:rerun-if-changed=<missing-destination>` does not trigger a
+rerun — cargo treats missing files as untracked, not changed).
+
+Force the build script to re-run:
+
+```bash
+cargo clean -p inputforge-app
+dx run -p inputforge-app --no-default-features --features gui-dioxus
+```
+
+`cargo clean -p inputforge-app` is enough — you do not need a full
+`cargo clean`. The next `dx run` rebuilds `inputforge-app`, which re-runs
+the build script, which re-populates both copy destinations.
+
 ## F3 — Tray bridge & hide-to-tray lifecycle
 
 ### Tray bridge
