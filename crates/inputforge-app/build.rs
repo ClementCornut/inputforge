@@ -93,6 +93,15 @@ fn main() {
     // .../debug/windows/app/ — NOT .../desktop-dev/windows/app/. Use cargo's
     // `PROFILE` env var, which collapses custom profiles to "debug" or
     // "release" based on inheritance, instead of the cargo profile name.
+    //
+    // CARGO_TARGET_DIR caveat: this path assumes the dx output lives under
+    // `<workspace_root>/target/`. dioxus-cli 0.7.6 hardcodes `target/` relative
+    // to the workspace and does not honor CARGO_TARGET_DIR for its bundle
+    // output, so honoring it here would put the DLL where dx will not look.
+    // The cargo-side copy above derives its target via OUT_DIR ancestry, so it
+    // does honor CARGO_TARGET_DIR automatically. If a future dx-cli respects
+    // CARGO_TARGET_DIR for bundle output, update both this path and the
+    // recovery instructions in `crates/inputforge-gui-dx/README.md`.
     let dx_profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_owned());
     let dx_app_dir = workspace_root
         .join("target")
