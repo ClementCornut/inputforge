@@ -15,7 +15,7 @@ use inputforge_gui_dx::components::{
     Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Card, CardPadding, Checkbox, Cluster,
     Field, Icon, IconButton, InputSize, Label, MenuItem, MenuItems, MenuRoot, MenuTrigger,
     NumberInput, Select, Separator, SeparatorOrientation, Slider, Spinner, SpinnerSize, Stack,
-    Switch, TextInput, Tooltip, TooltipPlacement,
+    StatusBar, Switch, Tabs, TextInput, Tooltip, TooltipPlacement,
 };
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
 use inputforge_gui_dx::theme::ThemeProvider;
@@ -39,6 +39,7 @@ fn gallery_root() -> Element {
     let mut number_demo_b = use_signal(|| 50.0_f64);
     let mut number_demo_precision = use_signal(|| 0.123_456_f64);
     let mut number_demo_size = use_signal(|| 0.0_f64);
+    let mut tabs_demo = use_signal(|| "first".to_owned());
     rsx! {
         ThemeProvider {
             main {
@@ -332,6 +333,64 @@ fn gallery_root() -> Element {
                                             precision: 2,
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    section {
+                        h2 { "Tabs" }
+                        Card { padding: CardPadding::Md,
+                            Stack { gap: "--space-3".to_owned(),
+                                p {
+                                    "Active tab: "
+                                    code { "{tabs_demo}" }
+                                    " — use Left/Right or Home/End to cycle."
+                                }
+                                Tabs {
+                                    items: vec![
+                                        ("first".into(),  "First".into()),
+                                        ("second".into(), "Second".into()),
+                                        ("third".into(),  "Third".into()),
+                                    ],
+                                    value: tabs_demo.read().clone(),
+                                    onchange: move |id: String| tabs_demo.set(id),
+                                }
+                                p { "Disabled state:" }
+                                Tabs {
+                                    items: vec![
+                                        ("a".into(), "Disabled A".into()),
+                                        ("b".into(), "Disabled B".into()),
+                                    ],
+                                    value: "a".to_owned(),
+                                    onchange: move |_: String| {},
+                                    disabled: true,
+                                }
+                            }
+                        }
+                    }
+
+                    section {
+                        h2 { "StatusBar" }
+                        Stack { gap: "--space-3".to_owned(),
+                            p { "Composed slots (Badge + Separator + Badge / text / span):" }
+                            Card { padding: CardPadding::Md,
+                                StatusBar {
+                                    start: rsx! {
+                                        Badge { variant: BadgeVariant::Success, "Running" }
+                                        Separator { orientation: SeparatorOrientation::Vertical }
+                                        Badge { variant: BadgeVariant::Neutral, "Default" }
+                                    },
+                                    middle: rsx! { span { "2/3 devices" } },
+                                    end: rsx! { span { "Demo Profile" } },
+                                }
+                            }
+                            p { "Empty slots — verifies slot independence:" }
+                            Card { padding: CardPadding::Md,
+                                StatusBar {
+                                    start:  rsx! {},
+                                    middle: rsx! {},
+                                    end:    rsx! {},
                                 }
                             }
                         }

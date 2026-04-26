@@ -15,7 +15,9 @@ pub mod select;
 pub mod separator;
 pub mod slider;
 pub mod spinner;
+pub mod status_bar;
 pub mod switch;
+pub mod tabs;
 pub mod text_input;
 pub mod tooltip;
 
@@ -34,7 +36,9 @@ pub use select::Select;
 pub use separator::{Separator, SeparatorOrientation};
 pub use slider::Slider;
 pub use spinner::{Spinner, SpinnerSize};
+pub use status_bar::StatusBar;
 pub use switch::Switch;
+pub use tabs::Tabs;
 pub use text_input::{InputSize, TextInput};
 pub use tooltip::{Tooltip, TooltipPlacement};
 
