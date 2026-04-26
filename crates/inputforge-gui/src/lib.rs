@@ -28,6 +28,11 @@ use app::InputForgeApp;
 ///
 /// Blocks the calling thread until the window is closed.
 ///
+/// `start_minimized` is accepted for signature parity with
+/// `inputforge_gui_dx::launch_gui` and is ignored here — `main.rs` already
+/// gates the egui startup launch on `cli.start_minimized`. The parameter is
+/// removed at F16 cleanup when the egui crate is deleted.
+///
 /// # Errors
 ///
 /// Returns an error if the native window fails to initialize.
@@ -36,7 +41,9 @@ pub fn launch_gui(
     commands: mpsc::Sender<EngineCommand>,
     tray_menu_ids: (MenuId, MenuId, MenuId),
     settings: AppSettings,
+    start_minimized: bool,
 ) -> anyhow::Result<()> {
+    let _ = start_minimized;
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("InputForge")

@@ -63,5 +63,5 @@ fn main() -> anyhow::Result<()> {
         muda::MenuId::new("quit"),
     );
 
-    inputforge_gui_dx::launch_gui(state, commands, menu_ids, AppSettings::default())
+    inputforge_gui_dx::launch_gui(state, commands, menu_ids, AppSettings::default(), false)
 }

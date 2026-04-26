@@ -31,20 +31,18 @@ use inputforge_core::profile::Profile;
 use inputforge_core::profile::manager::ensure_default_profile;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::AppState;
+#[cfg(feature = "gui-egui")]
 use inputforge_core::state::EngineStatus;
 
 use crate::cli::Cli;
-use crate::tray::{AppTray, TrayAction};
+use crate::tray::AppTray;
+#[cfg(feature = "gui-egui")]
+use crate::tray::TrayAction;
 
 #[cfg(feature = "gui-egui")]
 use inputforge_gui::launch_gui;
 #[cfg(feature = "gui-dioxus")]
 use inputforge_gui_dx::launch_gui;
-
-#[cfg(feature = "gui-egui")]
-const IS_GUI_DIOXUS: bool = false;
-#[cfg(feature = "gui-dioxus")]
-const IS_GUI_DIOXUS: bool = true;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -125,37 +123,48 @@ fn main() -> Result<()> {
     // Create the system tray icon (always visible).
     let tray = AppTray::new(Arc::clone(&state))?;
 
-    // Launch the GUI immediately unless --start-minimized.
-    let mut quit_requested = false;
-    if !cli.start_minimized {
-        for action in launch_gui_blocking(&tray, &state, &cmd_tx, &settings) {
-            match action {
-                TrayAction::Quit => quit_requested = true,
-                TrayAction::ToggleActivation => {
-                    let status = state.read().engine_status;
-                    let cmd = match status {
-                        EngineStatus::Running => EngineCommand::Deactivate,
-                        EngineStatus::Paused | EngineStatus::Stopped => EngineCommand::Activate,
-                    };
-                    let _ = cmd_tx.send(cmd);
-                }
-                TrayAction::ShowGui => {} // already drained, but satisfy exhaustiveness
-            }
+    // GUI launch — Shape A: cfg-split because the Dioxus and egui lifecycles
+    // diverge. The egui flow is byte-identical to today.
+
+    #[cfg(feature = "gui-dioxus")]
+    {
+        if let Err(e) = launch_gui(
+            Arc::clone(&state),
+            cmd_tx.clone(),
+            tray.menu_item_ids(),
+            settings.clone(),
+            cli.start_minimized,
+        ) {
+            tracing::error!(%e, "GUI exited with error");
         }
-        if IS_GUI_DIOXUS {
-            // F1: tao EventLoop::run is one-shot. Skip run_tray_loop to avoid a
-            // second launch_gui_blocking on tray Show-GUI. F3 restores the full
-            // lifecycle with WindowCloseBehaviour::WindowHides.
-            tracing::info!(
-                "Dioxus window closed; treating as app exit (hide-to-tray lands in F3)."
-            );
-            quit_requested = true;
-        }
+        // launch_gui only returns on real Quit (tray Quit click). Fall
+        // through to shutdown — no run_tray_loop, no drain_stale_gui_events,
+        // no quit_requested flag. The window-hides-on-X behavior is owned
+        // by Dioxus via WindowCloseBehaviour::WindowHides set in launch_gui.
     }
 
-    // Run the tray event loop until the user selects Quit.
-    if !quit_requested {
-        run_tray_loop(&tray, &state, &cmd_tx, &settings);
+    #[cfg(feature = "gui-egui")]
+    {
+        let mut quit_requested = false;
+        if !cli.start_minimized {
+            for action in launch_gui_blocking(&tray, &state, &cmd_tx, &settings) {
+                match action {
+                    TrayAction::Quit => quit_requested = true,
+                    TrayAction::ToggleActivation => {
+                        let status = state.read().engine_status;
+                        let cmd = match status {
+                            EngineStatus::Running => EngineCommand::Deactivate,
+                            EngineStatus::Paused | EngineStatus::Stopped => EngineCommand::Activate,
+                        };
+                        let _ = cmd_tx.send(cmd);
+                    }
+                    TrayAction::ShowGui => {} // already drained, satisfy exhaustiveness
+                }
+            }
+        }
+        if !quit_requested {
+            run_tray_loop(&tray, &state, &cmd_tx, &settings);
+        }
     }
 
     // Graceful shutdown.
@@ -228,6 +237,7 @@ fn run_engine_inner(
 /// After the window closes, stale `ShowGui` menu events are discarded
 /// and any other pending actions (`Quit`, `ToggleActivation`) are
 /// returned for the caller to process.
+#[cfg(feature = "gui-egui")]
 fn launch_gui_blocking(
     tray: &AppTray,
     state: &Arc<RwLock<AppState>>,
@@ -238,7 +248,11 @@ fn launch_gui_blocking(
     let gui_tx = cmd_tx.clone();
     let menu_ids = tray.menu_item_ids();
 
-    if let Err(e) = launch_gui(gui_state, gui_tx, menu_ids, settings.clone()) {
+    if let Err(e) = launch_gui(gui_state, gui_tx, menu_ids, settings.clone(), false) {
+        // start_minimized: false — main.rs gates the egui startup launch
+        // from cli.start_minimized itself; once we're in launch_gui_blocking,
+        // we always want the window visible. Parameter exists only for
+        // signature parity with the Dioxus crate (deletes at F16).
         tracing::error!(%e, "GUI exited with error");
     }
 
@@ -264,6 +278,7 @@ fn launch_gui_blocking(
 /// the `MenuEvent` channel. `ShowGui` events are meaningless (the GUI
 /// just closed), but `Quit` and `ToggleActivation` are legitimate user
 /// actions that the caller should honor.
+#[cfg(feature = "gui-egui")]
 fn drain_stale_gui_events(tray: &AppTray) -> Vec<TrayAction> {
     let mut pending = Vec::new();
     while let Some(action) = tray.poll_event() {
@@ -282,6 +297,7 @@ fn drain_stale_gui_events(tray: &AppTray) -> Vec<TrayAction> {
 ///
 /// Blocks on `GetMessageW` (zero CPU when idle). Processes tray menu
 /// actions until the user selects Quit.
+#[cfg(feature = "gui-egui")]
 #[expect(
     unsafe_code,
     reason = "Win32 GetMessageW / TranslateMessage / DispatchMessageW for tray icon message pump"
@@ -340,12 +356,6 @@ fn run_tray_loop(
                             }
                             TrayAction::ShowGui => {}
                         }
-                    }
-                    if IS_GUI_DIOXUS {
-                        // F1: tao EventLoop::run is one-shot. Return from the tray loop so
-                        // main()'s shutdown() runs. F3 restores tray re-open via
-                        // DesktopService::set_visible(true) signaled from the listener.
-                        return;
                     }
                 }
                 TrayAction::ToggleActivation => {
