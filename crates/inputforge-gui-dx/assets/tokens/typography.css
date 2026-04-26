@@ -23,19 +23,30 @@
     --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrainsMono', ui-monospace, 'Cascadia Code', monospace;
 
-    --text-xs:   12px;
-    --text-sm:   13px;
-    --text-base: 14px;
-    --text-md:   15px;
-    --text-lg:   18px;
-    --text-xl:   22px;
-    --text-2xl:  28px;
+    /* Six perceptually distinct sizes (preserving all seven token names).
+       Removes the 13/14/15 cluster from the placeholder. Step ratio ~1.25
+       once past the dense-UI sub-steps at the small end. */
+    --text-xs:   11px;   /* tabular captions, tick labels, kbd chips */
+    --text-sm:   12px;   /* helper text, badges, dense cells */
+    --text-base: 14px;   /* default body & inputs */
+    --text-md:   16px;   /* emphasized body, button labels, card titles */
+    --text-lg:   20px;   /* section headings, panel titles */
+    --text-xl:   24px;   /* screen headings inside the shell */
+    --text-2xl:  32px;   /* empty states, wizard intros, hero numerics */
 
     --weight-regular:  400;
     --weight-medium:   500;
     --weight-semibold: 600;
+    --weight-bold:     700;
 
-    --leading-tight:   1.2;
-    --leading-base:    1.5;
-    --leading-relaxed: 1.7;
+    /* Tightened from 1.2 / 1.5 / 1.7 — instrument-cluster reads denser. */
+    --leading-tight:   1.15;
+    --leading-base:    1.45;
+    --leading-relaxed: 1.6;
+
+    /* Inter feature flags applied at the body level via global.css.
+       Exposed here as a token so component CSS can opt out
+       (e.g., a freeform notes textarea may want proportional figures). */
+    --font-features-default: "tnum" 1, "ss03" 1, "cv11" 1;
+    --font-features-prose:   "tnum" 0, "ss03" 1, "cv11" 1;
 }

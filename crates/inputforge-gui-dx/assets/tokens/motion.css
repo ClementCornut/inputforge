@@ -1,8 +1,21 @@
+/* Cockpit-brisk durations. No bounce, no elastic, no overshoot —
+   real instruments don't bounce. Custom easings replace generic
+   Material decelerate curves with "instrument settle" feel. */
 :root {
-    --duration-fast: 120ms;
-    --duration-base: 180ms;
-    --duration-slow: 260ms;
+    --duration-fast: 100ms;   /* button press, hover, focus ring */
+    --duration-base: 180ms;   /* default state transitions */
+    --duration-slow: 240ms;   /* container enter/exit (menu, tooltip) */
 
-    --easing-standard:    cubic-bezier(0.2, 0, 0, 1);
-    --easing-emphasized:  cubic-bezier(0.3, 0, 0, 1);
+    /* Slight initial dwell then clean decelerate.
+       Reads as a needle finding its mark. */
+    --easing-standard:   cubic-bezier(0.32, 0.08, 0.24, 1);
+
+    /* Sharper decelerate for accented moments
+       (alarm reveal, mode switch confirmation). */
+    --easing-emphasized: cubic-bezier(0.50, 0.00, 0.10, 1);
+
+    /* Linear is correct when the animation *is* the data —
+       live axis indicators, progress bound to a real metric.
+       Do not use for chrome transitions. */
+    --easing-linear:     linear;
 }

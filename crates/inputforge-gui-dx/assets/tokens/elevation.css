@@ -1,6 +1,26 @@
+/* "Borders over shadows" made literal.
+   Cards never lift via shadow — they separate by background luminance
+   shift + 1px hairline border + (optional) inset top highlight.
+   Real shadow blur is reserved for genuine overlays. */
 :root {
     --shadow-0: none;
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.30);
-    --shadow-2: 0 2px 8px rgba(0, 0, 0, 0.35);
-    --shadow-3: 0 8px 24px rgba(0, 0, 0, 0.45);
+
+    /* Subtle elevated-surface accent: top inset highlight only,
+       no drop shadow. Reads as a 1px light bloom on the upper edge,
+       mimicking how light catches the chamfer of a real panel. */
+    --shadow-1: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+    /* Stamped panel: 1px hard ridge below + top inset highlight.
+       No blur. Reads as a recessed/embossed bezel rather than a
+       drop shadow. Used by Card primitive. */
+    --shadow-2:
+        0 1px 0 rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+    /* Genuine floating overlay — menus, tooltips, dialogs only.
+       Deeper diffusion + 1px outline to keep the edge readable
+       on dark backgrounds where pure shadows can vanish. */
+    --shadow-3:
+        0 8px 32px rgba(0, 0, 0, 0.55),
+        0 0 0 1px rgba(0, 0, 0, 0.4);
 }

@@ -1,46 +1,59 @@
 /* Dark theme is the default. A future light theme can be added as
-   :root[data-theme="light"] { ... } without touching component CSS. */
+   :root[data-theme="light"] { ... } without touching component CSS.
+
+   Palette: "Evolved Glass Cockpit (Dark)"
+   - Surfaces are navy-tinted neutrals (cohesion with the action-blue accent).
+   - Action/status hues stay saturated (they must alert).
+   - Category hues (processing/output/control) are intentionally chroma-reduced
+     so they read as taxonomy markers, not competing alerts. */
 :root {
-    /* Surface */
-    --color-bg:           #1A1A2E;
-    --color-bg-elevated:  #2A2A3E;
-    --color-bg-sunken:    #121228;
-    --color-bg-overlay:   rgba(18, 18, 40, 0.85);
+    /* Surface — slightly cooler & deeper than the egui base, with a
+       clearer gap between sunken and elevated for crisper layering. */
+    --color-bg:           #14172A;
+    --color-bg-elevated:  #1E223A;
+    --color-bg-sunken:    #0E1020;
+    --color-bg-overlay:   rgba(8, 10, 22, 0.78);
 
-    /* Text */
-    --color-text:         #E0E0E8;
-    --color-text-muted:   #A0A0B8;
-    --color-text-subtle:  #707088;
-    --color-text-inverse: #1A1A2E;
+    /* Text — pulled slightly cooler to harmonize with the navy base. */
+    --color-text:         #E4E6F0;
+    --color-text-muted:   #9CA0BC;
+    --color-text-subtle:  #686C88;
+    --color-text-inverse: #0E1020;
 
-    /* Border */
-    --color-border:        #3A3A4E;
-    --color-border-strong: #555570;
-    --color-border-focus:  #4A9EFF;
+    /* Border — hairline + strong. Strong is what most cockpit panel
+       seams use; the regular border is for sub-divisions. */
+    --color-border:        #2A2E48;
+    --color-border-strong: #424766;
+    --color-border-focus:  #5AB0FF;
 
-    /* Action */
-    --color-primary:        #4A9EFF;
-    --color-primary-hover:  #6BB0FF;
-    --color-primary-active: #2E7DD9;
-    --color-primary-fg:     #0A1020;
+    /* Action — primary lifted slightly toward HUD-cyan-blue for that
+       avionics readout feel. Hover brightens, active deepens. */
+    --color-primary:        #4FA8FF;
+    --color-primary-hover:  #6FBAFF;
+    --color-primary-active: #2D7FD9;
+    --color-primary-fg:     #06101F;
 
-    /* Status */
-    --color-live:    #00E5A0;
+    /* Status — live shifted from mint to a slightly cooler phosphor
+       green that reads CRT-instrument rather than fintech.
+       Warning kept amber. Error desaturated a touch so it doesn't clip.
+       Info aliased to primary. */
+    --color-live:    #2EE0A0;
     --color-warning: #FFB347;
-    --color-error:   #FF6B6B;
-    --color-info:    #4A9EFF;
+    --color-error:   #F25555;
+    --color-info:    #4FA8FF;
 
-    /* Categories — three INDEPENDENT accent hues (NOT aliased to
-       action/status). Frontend-design (Task 10) will pick final values. */
-    --color-processing:    #4A9EFF;   /* placeholder */
-    --color-processing-bg: rgba(74, 158, 255, 0.12);
-    --color-processing-fg: #0A1020;
+    /* Categories — three INDEPENDENT accent hues, NOT aliased to
+       action/status. Each ~30% lower chroma than the alert palette
+       so they read as classification chips, not competing alerts. */
+    --color-processing:    #3FB8B0;                       /* teal-cyan */
+    --color-processing-bg: rgba(63, 184, 176, 0.14);
+    --color-processing-fg: #06151B;
 
-    --color-output:        #00E5A0;   /* placeholder */
-    --color-output-bg:     rgba(0, 229, 160, 0.12);
-    --color-output-fg:     #0A1020;
+    --color-output:        #C99846;                       /* burnished gold */
+    --color-output-bg:     rgba(201, 152, 70, 0.14);
+    --color-output-fg:     #1A1305;
 
-    --color-control:       #B07FFF;   /* placeholder */
-    --color-control-bg:    rgba(176, 127, 255, 0.12);
-    --color-control-fg:    #0A1020;
+    --color-control:       #9A78D6;                       /* muted violet */
+    --color-control-bg:    rgba(154, 120, 214, 0.14);
+    --color-control-fg:    #120A22;
 }

@@ -7,6 +7,11 @@ body {
     font-family: var(--font-sans);
     font-size: var(--text-base);
     line-height: var(--leading-base);
+    /* Inter OpenType features: tabular figures, single-story 'a' (cv11),
+       slashed zero (ss03). Distinguishes the GUI from default-Inter SaaS
+       look. Component CSS may override with var(--font-features-prose)
+       on freeform text areas. */
+    font-feature-settings: var(--font-features-default);
 }
 
 /* Components opt in to spacing via tokens; no implicit heading/paragraph margins. */
