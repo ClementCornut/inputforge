@@ -30,7 +30,6 @@ pub(crate) struct RawHandles {
 #[derive(Clone, Debug)]
 pub(crate) struct AppContext {
     pub state: Arc<RwLock<AppState>>,
-    #[expect(dead_code, reason = "used in later tasks (engine command dispatch)")]
     pub commands: mpsc::Sender<EngineCommand>,
     #[expect(dead_code, reason = "used in later tasks (settings reads)")]
     pub settings: Arc<AppSettings>,
