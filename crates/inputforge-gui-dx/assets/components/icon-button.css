@@ -29,16 +29,19 @@
     color: var(--color-primary-fg);
     border-color: var(--color-primary);
 }
+.if-icon-button--primary:hover:not(:disabled) { background: var(--color-primary-hover); border-color: var(--color-primary-hover); }
 
 .if-icon-button--secondary {
     border-color: var(--color-border-strong);
 }
+.if-icon-button--secondary:hover:not(:disabled) { border-color: var(--color-border-focus); }
 
 .if-icon-button--danger {
     background: var(--color-error);
     color: var(--color-text-inverse);
     border-color: var(--color-error);
 }
+.if-icon-button--danger:hover:not(:disabled) { background: var(--color-error-hover); border-color: var(--color-error-hover); }
 
 .if-icon-button:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
 .if-icon-button:active:not(:disabled) { transform: translateY(1px); }

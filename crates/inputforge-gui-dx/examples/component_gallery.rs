@@ -33,6 +33,8 @@ fn main() {
     reason = "gallery function intentionally lists all primitives in one place"
 )]
 fn gallery_root() -> Element {
+    // Interactive demo state for NumberInput steppers — proves onstep works end-to-end.
+    let mut number_demo = use_signal(|| 50.0_f64);
     rsx! {
         ThemeProvider {
             main {
@@ -107,7 +109,13 @@ fn gallery_root() -> Element {
                     Card { padding: CardPadding::Md,
                         div {
                             style: "display: flex; gap: var(--space-3); align-items: center;",
-                            NumberInput { value: 0.0, min: 0.0, max: 100.0, step: 1.0 }
+                            NumberInput {
+                                value: number_demo(),
+                                min: 0.0,
+                                max: 100.0,
+                                step: 1.0,
+                                onstep: move |v| number_demo.set(v),
+                            }
                             NumberInput { value: 50.0, min: 0.0, max: 100.0, step: 1.0 }
                             NumberInput { value: 0.0, disabled: true }
                             NumberInput { value: 0.123_456, precision: 2 }

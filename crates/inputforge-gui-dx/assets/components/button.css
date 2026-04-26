@@ -66,6 +66,8 @@
     color: var(--color-text-inverse);
     border-color: var(--color-error);
 }
+.if-button.if-button--danger:hover:not(:disabled)  { background: var(--color-error-hover);  border-color: var(--color-error-hover); }
+.if-button.if-button--danger:active:not(:disabled) { background: var(--color-error-active); border-color: var(--color-error-active); }
 
 /* Sizes */
 .if-button.if-button--sm { padding: var(--space-1) var(--space-3); font-size: var(--text-sm); }

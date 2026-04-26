@@ -37,10 +37,12 @@
        green that reads CRT-instrument rather than fintech.
        Warning kept amber. Error desaturated a touch so it doesn't clip.
        Info aliased to primary. */
-    --color-live:    #2EE0A0;
-    --color-warning: #FFB347;
-    --color-error:   #F25555;
-    --color-info:    #4FA8FF;
+    --color-live:          #2EE0A0;
+    --color-warning:       #FFB347;
+    --color-error:         #F25555;
+    --color-error-hover:   #FF6F6F;
+    --color-error-active:  #D43F3F;
+    --color-info:          #4FA8FF;
 
     /* Categories — three INDEPENDENT accent hues, NOT aliased to
        action/status. Each ~30% lower chroma than the alert palette

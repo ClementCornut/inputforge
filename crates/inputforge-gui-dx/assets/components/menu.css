@@ -45,6 +45,6 @@
     border-radius: var(--radius-sm);
     font-family: var(--font-sans);
 }
-.if-menu__item:hover:not(:disabled) { background: var(--color-bg-sunken); }
+.if-menu__item:hover:not(:disabled) { background: var(--color-border); }
 .if-menu__item:focus-visible        { outline: 2px solid var(--color-border-focus); outline-offset: -2px; }
 .if-menu__item:disabled             { opacity: 0.5; cursor: not-allowed; }
