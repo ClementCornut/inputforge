@@ -1,0 +1,27 @@
+.if-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    color: currentColor;
+}
+
+/*
+ * Phosphor v2.0.8 regular-weight icons are STROKE-based: every shape uses
+ * fill="none" stroke="currentColor" stroke-width="16" on a 256x256 viewBox.
+ * We do NOT override fill or stroke at the CSS level — the SVG's built-in
+ * stroke="currentColor" inherits color from this `.if-icon` parent
+ * (which inherits from the surrounding element).
+ *
+ * If the icon set is later swapped to "fill"-weight Phosphor icons (those
+ * use fill="currentColor" without strokes), this rule still works because
+ * `currentColor` resolution is identical for either attribute.
+ */
+.if-icon svg {
+    width:  100%;
+    height: 100%;
+}
+
+.if-icon--sm { width: 14px; height: 14px; }
+.if-icon--md { width: 18px; height: 18px; }
+.if-icon--lg { width: 24px; height: 24px; }

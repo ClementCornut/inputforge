@@ -14,6 +14,7 @@ const RADII_CSS: Asset = asset!("/assets/tokens/radii.css");
 const ELEVATION_CSS: Asset = asset!("/assets/tokens/elevation.css");
 const MOTION_CSS: Asset = asset!("/assets/tokens/motion.css");
 const GLOBAL_CSS: Asset = asset!("/assets/global.css");
+const ICON_CSS: Asset = asset!("/assets/components/icon.css");
 
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
@@ -30,6 +31,7 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: GLOBAL_CSS }
 
         // Component CSS will be appended here as primitives land (Tasks 13-20).
+        Stylesheet { href: ICON_CSS }
 
         {children}
     }

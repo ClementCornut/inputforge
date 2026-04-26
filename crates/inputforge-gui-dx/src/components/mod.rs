@@ -1,1 +1,4 @@
-//! Re-exports for the F2 component primitives. Populated as primitives land.
+//! Re-exports for the F2 component primitives.
+
+pub mod icon;
+pub use icon::Icon;
