@@ -117,6 +117,7 @@ impl ToastState {
 /// Compute whether a toast has exceeded `TOAST_DURATION`, excluding paused
 /// intervals (both finalized via `paused_total` and any in-progress pause
 /// observed via `paused`).
+#[must_use]
 pub fn is_expired(t: &Toast, now: Instant) -> bool {
     if t.dismissed {
         return true;
