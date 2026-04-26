@@ -15,7 +15,7 @@ use inputforge_gui_dx::components::{
     Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Card, CardPadding, Checkbox, Cluster,
     Field, Icon, IconButton, InputSize, Label, MenuItem, MenuItems, MenuRoot, MenuTrigger,
     NumberInput, Select, Separator, SeparatorOrientation, Slider, Spinner, SpinnerSize, Stack,
-    StatusBar, Switch, Tabs, TextInput, Tooltip, TooltipPlacement,
+    StatusBar, Switch, TabItem, Tabs, TextInput, Tooltip, TooltipPlacement,
 };
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
 use inputforge_gui_dx::theme::ThemeProvider;
@@ -349,18 +349,61 @@ fn gallery_root() -> Element {
                                 }
                                 Tabs {
                                     items: vec![
-                                        ("first".into(),  "First".into()),
-                                        ("second".into(), "Second".into()),
-                                        ("third".into(),  "Third".into()),
+                                        TabItem {
+                                            id: "first".into(),
+                                            label: "First".into(),
+                                            controls: Some("first-panel".into()),
+                                        },
+                                        TabItem {
+                                            id: "second".into(),
+                                            label: "Second".into(),
+                                            controls: Some("second-panel".into()),
+                                        },
+                                        TabItem {
+                                            id: "third".into(),
+                                            label: "Third".into(),
+                                            controls: Some("third-panel".into()),
+                                        },
                                     ],
                                     value: tabs_demo.read().clone(),
                                     onchange: move |id: String| tabs_demo.set(id),
                                 }
+                                {
+                                    match tabs_demo.read().as_str() {
+                                        "first" => rsx! {
+                                            div { role: "tabpanel",
+                                                  id: "first-panel",
+                                                  "aria-labelledby": "tab-first",
+                                                  "First panel content." }
+                                        },
+                                        "second" => rsx! {
+                                            div { role: "tabpanel",
+                                                  id: "second-panel",
+                                                  "aria-labelledby": "tab-second",
+                                                  "Second panel content." }
+                                        },
+                                        "third" => rsx! {
+                                            div { role: "tabpanel",
+                                                  id: "third-panel",
+                                                  "aria-labelledby": "tab-third",
+                                                  "Third panel content." }
+                                        },
+                                        _ => rsx! { div {} },
+                                    }
+                                }
                                 p { "Disabled state:" }
                                 Tabs {
                                     items: vec![
-                                        ("a".into(), "Disabled A".into()),
-                                        ("b".into(), "Disabled B".into()),
+                                        TabItem {
+                                            id: "a".into(),
+                                            label: "Disabled A".into(),
+                                            controls: None,
+                                        },
+                                        TabItem {
+                                            id: "b".into(),
+                                            label: "Disabled B".into(),
+                                            controls: None,
+                                        },
                                     ],
                                     value: "a".to_owned(),
                                     onchange: move |_: String| {},

@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::components::Tabs;
+use crate::components::{TabItem, Tabs};
 use crate::shell::status_bar_view::StatusBarView;
 
 const PLACEHOLDER_SHELL_CSS: Asset = asset!("/assets/shell/placeholder-shell.css");
@@ -23,14 +23,40 @@ pub(crate) fn PlaceholderShell() -> Element {
             div { class: "if-placeholder-shell__center",
                 Tabs {
                     items: vec![
-                        ("mappings".into(), "Mappings".into()),
-                        ("modes".into(),    "Modes".into()),
+                        TabItem {
+                            id: "mappings".into(),
+                            label: "Mappings".into(),
+                            controls: Some("mappings-panel".into()),
+                        },
+                        TabItem {
+                            id: "modes".into(),
+                            label: "Modes".into(),
+                            controls: Some("modes-panel".into()),
+                        },
                     ],
                     value: center_tab.read().clone(),
                     onchange: move |id: String| center_tab.set(id),
                 }
-                div { class: "if-placeholder-shell__center-body",
-                    "Center placeholder — F7+ owns content"
+                {
+                    match center_tab.read().as_str() {
+                        "mappings" => rsx! {
+                            div { class: "if-placeholder-shell__center-body",
+                                role: "tabpanel",
+                                id: "mappings-panel",
+                                "aria-labelledby": "tab-mappings",
+                                "Mappings placeholder — F7 owns content"
+                            }
+                        },
+                        "modes" => rsx! {
+                            div { class: "if-placeholder-shell__center-body",
+                                role: "tabpanel",
+                                id: "modes-panel",
+                                "aria-labelledby": "tab-modes",
+                                "Modes placeholder — F11 owns content"
+                            }
+                        },
+                        _ => rsx! { div {} },
+                    }
                 }
             }
             StatusBarView {}

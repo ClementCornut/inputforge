@@ -38,7 +38,7 @@ pub use slider::Slider;
 pub use spinner::{Spinner, SpinnerSize};
 pub use status_bar::StatusBar;
 pub use switch::Switch;
-pub use tabs::Tabs;
+pub use tabs::{TabItem, Tabs};
 pub use text_input::{InputSize, TextInput};
 pub use tooltip::{Tooltip, TooltipPlacement};
 
