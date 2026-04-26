@@ -13,9 +13,10 @@ use dioxus::prelude::*;
 )]
 use inputforge_gui_dx::components::{
     Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Card, CardPadding, Checkbox, Cluster,
-    Field, Icon, IconButton, InputSize, Label, MenuItem, MenuItems, MenuRoot, MenuTrigger,
-    NumberInput, Select, Separator, SeparatorOrientation, Slider, Spinner, SpinnerSize, Stack,
-    StatusBar, Switch, TabItem, Tabs, TextInput, Tooltip, TooltipPlacement,
+    DialogBody, DialogDescription, DialogFooter, DialogRoot, DialogTitle, Field, Icon, IconButton,
+    InputSize, Label, MenuItem, MenuItems, MenuRoot, MenuTrigger, NumberInput, Select, Separator,
+    SeparatorOrientation, Slider, Spinner, SpinnerSize, Stack, StatusBar, Switch, TabItem, Tabs,
+    TextInput, Tooltip, TooltipPlacement,
 };
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
 use inputforge_gui_dx::theme::ThemeProvider;
@@ -47,6 +48,11 @@ fn gallery_root() -> Element {
     let mut number_demo_precision = use_signal(|| 0.123_456_f64);
     let mut number_demo_size = use_signal(|| 0.0_f64);
     let mut tabs_demo = use_signal(|| "first".to_owned());
+
+    let mut basic_open = use_signal(|| false);
+    let mut non_dismiss_open = use_signal(|| false);
+    let mut backdrop_open = use_signal(|| false);
+    let mut scroll_open = use_signal(|| false);
     rsx! {
         ThemeProvider {
             ToastViewport {}
@@ -85,6 +91,87 @@ fn gallery_root() -> Element {
                                 p {
                                     style: "color: var(--color-text-muted); font-size: var(--text-sm);",
                                     "Hover or focus a toast to pause its timer; press ESC while focused to dismiss; click × to dismiss."
+                                }
+                            }
+                        }
+                    }
+
+                    section {
+                        h2 { "Dialog primitives" }
+                        Card { padding: CardPadding::Md,
+                            Cluster { gap: "--space-3".to_owned(),
+                                Button { onclick: move |_| basic_open.set(true),       "Basic" }
+                                Button { onclick: move |_| non_dismiss_open.set(true), "Non-dismissible" }
+                                Button { onclick: move |_| backdrop_open.set(true),    "Close-on-backdrop" }
+                                Button { onclick: move |_| scroll_open.set(true),      "Scrollable body" }
+                            }
+                        }
+
+                        DialogRoot {
+                            open: basic_open,
+                            onclose: move |()| {},
+                            DialogTitle { "Basic dialog" }
+                            DialogDescription { "ESC dismisses; backdrop click does not." }
+                            DialogBody {}
+                            DialogFooter {
+                                Button {
+                                    variant: ButtonVariant::Primary,
+                                    onclick: move |_| basic_open.set(false),
+                                    "Close"
+                                }
+                            }
+                        }
+
+                        DialogRoot {
+                            open: non_dismiss_open,
+                            onclose: move |()| {},
+                            dismissible: false,
+                            DialogTitle { "Non-dismissible dialog" }
+                            DialogDescription {
+                                "ESC and backdrop click do nothing. Only the explicit Close button resolves this."
+                            }
+                            DialogBody {}
+                            DialogFooter {
+                                Button {
+                                    variant: ButtonVariant::Primary,
+                                    onclick: move |_| non_dismiss_open.set(false),
+                                    "Close"
+                                }
+                            }
+                        }
+
+                        DialogRoot {
+                            open: backdrop_open,
+                            onclose: move |()| {},
+                            close_on_backdrop_click: true,
+                            DialogTitle { "Close-on-backdrop dialog" }
+                            DialogDescription { "Click outside the panel to close." }
+                            DialogBody {}
+                            DialogFooter {
+                                Button {
+                                    variant: ButtonVariant::Primary,
+                                    onclick: move |_| backdrop_open.set(false),
+                                    "Close"
+                                }
+                            }
+                        }
+
+                        DialogRoot {
+                            open: scroll_open,
+                            onclose: move |()| {},
+                            DialogTitle { "Scrollable body" }
+                            DialogDescription { "Long content scrolls inside the body region." }
+                            DialogBody {
+                                {
+                                    let lines = (1..=80).map(|i| rsx! { p { "Line {i}" } });
+                                    rsx! { for el in lines { {el} } }
+                                }
+                            }
+                            DialogFooter {
+                                Button {
+                                    variant: ButtonVariant::Primary,
+                                    onclick: move |_| scroll_open.set(false),
+                                    "Close"
                                 }
                             }
                         }
