@@ -27,6 +27,9 @@ pub fn TextInput(
     #[props(default)] placeholder: Option<String>,
     #[props(default)] disabled: bool,
     #[props(default)] invalid: bool,
+    /// HTML `id` for label↔input coupling when wrapped in `Field`.
+    #[props(default)]
+    id: Option<String>,
     #[props(default = InputSize::Md)] size: InputSize,
     #[props(default)] class: Option<String>,
 ) -> Element {
@@ -36,6 +39,7 @@ pub fn TextInput(
         size.class().to_owned()
     };
     let classes = merge_class("if-text-input", &variant_class, class.as_deref());
+    let id_attr = id.clone().unwrap_or_default();
     let input_handler = move |evt: FormEvent| {
         if let Some(h) = &oninput {
             h.call(evt);
@@ -45,6 +49,7 @@ pub fn TextInput(
         input {
             r#type: "text",
             class: "{classes}",
+            id: "{id_attr}",
             value: "{value}",
             placeholder: placeholder.as_deref().unwrap_or(""),
             disabled,
