@@ -34,6 +34,7 @@ const FIELD_CSS: Asset = asset!("/assets/components/field.css");
 const LAYOUT_CSS: Asset = asset!("/assets/components/layout.css");
 const TABS_CSS: Asset = asset!("/assets/components/tabs.css");
 const STATUS_BAR_CSS: Asset = asset!("/assets/components/status-bar.css");
+const TOAST_CSS: Asset = asset!("/assets/toast/toast.css");
 
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
@@ -70,6 +71,9 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: LAYOUT_CSS }
         Stylesheet { href: TABS_CSS }
         Stylesheet { href: STATUS_BAR_CSS }
+
+        // Toast overlay — last so its z-index cascade wins.
+        Stylesheet { href: TOAST_CSS }
 
         {children}
     }

@@ -12,7 +12,7 @@ pub enum ToastLevel {
     Error,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Toast {
     pub id: u64,
     pub level: ToastLevel,

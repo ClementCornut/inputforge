@@ -1,0 +1,52 @@
+/* Stub — finalized in Task 14 after impeccable:frontend-design.
+   Layout-only: the viewport is fixed, top-right, two stacked ARIA
+   regions; toasts are tab-reachable; per-level accent classes exist
+   but are intentionally bare so frontend-design has clean ground. */
+
+.if-toast-viewport {
+    position: fixed;
+    right: 12px;
+    z-index: var(--z-toast);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    pointer-events: none;
+    max-width: 360px;
+}
+.if-toast-viewport--polite    { top: 12px; }
+.if-toast-viewport--assertive { top: 12px; right: 12px; }
+
+.if-toast {
+    pointer-events: auto;
+    background: var(--color-bg-elevated);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    box-shadow: var(--shadow-3);
+    font-family: var(--font-sans);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    transition: opacity 400ms;
+}
+.if-toast:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+
+.if-toast--info    { border-left: 4px solid var(--color-info); }
+.if-toast--success { border-left: 4px solid var(--color-live); }
+.if-toast--warning { border-left: 4px solid var(--color-warning); }
+.if-toast--error   { border-left: 4px solid var(--color-error); }
+
+.if-toast__message    { flex: 1; }
+.if-toast__count      { color: var(--color-text-muted); margin-left: var(--space-1); }
+.if-toast__close {
+    background: transparent;
+    border: none;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    padding: 0 var(--space-1);
+    font-size: var(--text-md);
+    line-height: 1;
+}
+.if-toast__close:hover         { color: var(--color-text); }
+.if-toast__close:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }

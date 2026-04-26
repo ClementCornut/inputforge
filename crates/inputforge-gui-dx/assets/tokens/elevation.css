@@ -24,3 +24,11 @@
         0 8px 32px rgba(0, 0, 0, 0.55),
         0 0 0 1px rgba(0, 0, 0, 0.4);
 }
+
+/* Toast viewport sits above all shell content and any open <dialog>.
+   Menu's z-index: 1000 (assets/components/menu.css) is the existing top
+   stack; toast goes a tier higher so a warning surfacing during an open
+   menu or dialog remains visible. */
+:root {
+    --z-toast: 1100;
+}
