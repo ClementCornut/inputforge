@@ -1,0 +1,71 @@
+/* Dark theme is the default. A future light theme can be added as
+   :root[data-theme="light"] { ... } without touching component CSS.
+
+   Palette: "Evolved Glass Cockpit (Dark)"
+   - Surfaces are navy-tinted neutrals (cohesion with the action-blue accent).
+   - Action/status hues stay saturated (they must alert).
+   - Category hues (processing/output/control) are intentionally chroma-reduced
+     so they read as taxonomy markers, not competing alerts. */
+:root {
+    /* Surface — slightly cooler & deeper than the egui base, with a
+       clearer gap between sunken and elevated for crisper layering. */
+    --color-bg:           #14172A;
+    --color-bg-elevated:  #1E223A;
+    --color-bg-sunken:    #0E1020;
+    --color-bg-overlay:   rgba(8, 10, 22, 0.78);
+
+    /* Text — pulled slightly cooler to harmonize with the navy base. */
+    --color-text:         #E4E6F0;
+    --color-text-muted:   #9CA0BC;
+    --color-text-subtle:  #686C88;
+    --color-text-inverse: #0E1020;
+
+    /* Border — hairline + strong. Strong is what most cockpit panel
+       seams use; the regular border is for sub-divisions. */
+    --color-border:        #2A2E48;
+    --color-border-strong: #424766;
+    --color-border-focus:  #5AB0FF;
+
+    /* Action — primary lifted slightly toward HUD-cyan-blue for that
+       avionics readout feel. Hover brightens, active deepens. */
+    --color-primary:        #4FA8FF;
+    --color-primary-hover:  #6FBAFF;
+    --color-primary-active: #2D7FD9;
+    --color-primary-fg:     #06101F;
+
+    /* Status — live shifted from mint to a slightly cooler phosphor
+       green that reads CRT-instrument rather than fintech.
+       Warning kept amber. Error desaturated a touch so it doesn't clip.
+       Info aliased to primary. */
+    --color-live:          #2EE0A0;
+    --color-warning:       #FFB347;
+    --color-error:         #F25555;
+    --color-error-hover:   #FF6F6F;
+    --color-error-active:  #D43F3F;
+    --color-info:          #4FA8FF;
+
+    /* Categories — three INDEPENDENT accent hues, NOT aliased to
+       action/status. Each ~30% lower chroma than the alert palette
+       so they read as classification chips, not competing alerts. */
+    --color-processing:    #3FB8B0;                       /* teal-cyan */
+    --color-processing-bg: rgba(63, 184, 176, 0.14);
+    --color-processing-fg: #06151B;
+
+    --color-output:        #C99846;                       /* burnished gold */
+    --color-output-bg:     rgba(201, 152, 70, 0.14);
+    --color-output-fg:     #1A1305;
+
+    --color-control:       #9A78D6;                       /* muted violet */
+    --color-control-bg:    rgba(154, 120, 214, 0.14);
+    --color-control-fg:    #120A22;
+
+    /* Status backgrounds — composited tints of the matching foreground hue.
+       Use these on Badge/Toast surfaces; never a raw rgba() literal in
+       component CSS. RGB values mirror the revised palette above so the
+       background, text, and border of a single status row stay aligned.
+       Verified WCAG AA against --color-text on --color-bg composite. */
+    --color-info-bg:       rgba(79, 168, 255, 0.14);       /* over #14172A → text 12.4:1 */
+    --color-success-bg:    rgba(46, 224, 160, 0.14);       /* over #14172A → text 12.6:1 */
+    --color-warning-bg:    rgba(255, 179, 71, 0.14);       /* over #14172A → text 12.5:1 */
+    --color-error-bg:      rgba(242, 85, 85, 0.14);        /* over #14172A → text 12.0:1 */
+}

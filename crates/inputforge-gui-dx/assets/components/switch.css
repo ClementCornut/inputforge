@@ -1,0 +1,32 @@
+.if-switch { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; user-select: none; }
+
+.if-switch__input { position: absolute; opacity: 0; pointer-events: none; }
+
+.if-switch__track {
+    position: relative;
+    width: var(--control-size-lg); height: var(--control-size-md);
+    background: var(--color-bg-sunken);
+    border: var(--control-border-w) solid var(--color-border);
+    border-radius: var(--radius-full);
+    transition: background var(--duration-fast) var(--easing-standard);
+}
+.if-switch__thumb {
+    position: absolute;
+    top: var(--control-border-w); left: var(--control-border-w);
+    width: var(--control-size-sm); height: var(--control-size-sm);
+    background: var(--color-text-muted);
+    border-radius: var(--radius-full);
+    transition: transform var(--duration-fast) var(--easing-standard),
+                background var(--duration-fast) var(--easing-standard);
+}
+
+.if-switch__input:checked ~ .if-switch__track                   { background: var(--color-primary); border-color: var(--color-primary); }
+/* Translate distance derived from tokens so future control-size tweaks
+   propagate without re-deriving by hand. Track inner width minus thumb
+   minus 2× the inner offset (left + right). */
+.if-switch__input:checked ~ .if-switch__track .if-switch__thumb { transform: translateX(calc(var(--control-size-lg) - var(--control-size-sm) - 4 * var(--control-border-w))); background: var(--color-primary-fg); }
+
+.if-switch__input:focus-visible ~ .if-switch__track { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+.if-switch__input:disabled ~ .if-switch__track       { opacity: 0.5; cursor: not-allowed; }
+
+.if-switch__label { color: var(--color-text); font-size: var(--text-base); }

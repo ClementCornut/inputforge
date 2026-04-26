@@ -1,0 +1,34 @@
+/* Cockpit-brisk durations. No bounce, no elastic, no overshoot —
+   real instruments don't bounce. Custom easings replace generic
+   Material decelerate curves with "instrument settle" feel. */
+:root {
+    --duration-fast: 100ms;   /* button press, hover, focus ring */
+    --duration-base: 180ms;   /* default state transitions */
+    --duration-slow: 240ms;   /* container enter/exit (menu, tooltip) */
+
+    /* Slight initial dwell then clean decelerate.
+       Reads as a needle finding its mark. */
+    --easing-standard:   cubic-bezier(0.32, 0.08, 0.24, 1);
+
+    /* Sharper decelerate for accented moments
+       (alarm reveal, mode switch confirmation). */
+    --easing-emphasized: cubic-bezier(0.50, 0.00, 0.10, 1);
+
+    /* Linear is correct when the animation *is* the data —
+       live axis indicators, progress bound to a real metric.
+       Do not use for chrome transitions. */
+    --easing-linear:     linear;
+}
+
+/* Reduced-motion override. Easings stay (they describe shape, not
+   duration); zeroing the duration tokens is what disables animation
+   for users who request it. Component CSS that uses duration tokens
+   inherits this automatically; CSS that hard-codes ms in transition
+   shorthands does not — keep all timing in tokens. */
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --duration-fast: 0ms;
+        --duration-base: 0ms;
+        --duration-slow: 0ms;
+    }
+}

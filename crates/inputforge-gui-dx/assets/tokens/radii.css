@@ -1,0 +1,9 @@
+/* Tightened for instrument-cluster aesthetic. 6px medium reads
+   consumer-app; 4px is technical without going full-square. */
+:root {
+    --radius-none: 0;
+    --radius-sm:   2px;   /* badges, kbd chips, very small inputs */
+    --radius-md:   4px;   /* buttons, inputs, cards (default) */
+    --radius-lg:   8px;   /* large containers, modals, panel groups */
+    --radius-full: 9999px; /* switch knobs, indicator dots, avatars */
+}

@@ -1,0 +1,3 @@
+.if-separator { background: var(--color-border); }
+.if-separator.if-separator--horizontal { width: 100%; height: 1px; }
+.if-separator.if-separator--vertical   { width: 1px;  height: 100%; }

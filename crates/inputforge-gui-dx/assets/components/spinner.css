@@ -1,0 +1,14 @@
+.if-spinner {
+    display: inline-block;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    /* 1s is the industry-standard spinner pace; --duration-slow is for chrome
+       transitions and rotates too fast for an indeterminate loading indicator. */
+    animation: if-spinner-rotate 1s linear infinite;
+}
+.if-spinner.if-spinner--sm { width: 12px; height: 12px; }
+.if-spinner.if-spinner--md { width: 18px; height: 18px; }
+.if-spinner.if-spinner--lg { width: 28px; height: 28px; border-width: 3px; }
+
+@keyframes if-spinner-rotate { to { transform: rotate(360deg); } }

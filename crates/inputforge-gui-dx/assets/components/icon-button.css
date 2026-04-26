@@ -1,0 +1,52 @@
+.if-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+    color: var(--color-text);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--easing-standard),
+                border-color var(--duration-fast) var(--easing-standard);
+}
+
+.if-icon-button--sm { width: 28px; height: 28px; }
+.if-icon-button--md { width: 36px; height: 36px; }
+.if-icon-button--lg { width: 44px; height: 44px; }
+
+.if-icon-button--ghost {
+    background: transparent;
+    border-color: transparent;
+}
+/* --color-border (not --color-bg-elevated) so the hover surface stays
+   visible when this button sits inside a Card — Card already paints
+   --color-bg-elevated, which would make a same-color hover invisible.
+   Matches the menu-item hover fix in commit 1861051. */
+.if-icon-button--ghost:hover:not(:disabled) {
+    background: var(--color-border);
+    border-color: var(--color-border);
+}
+
+.if-icon-button--primary {
+    background: var(--color-primary);
+    color: var(--color-primary-fg);
+    border-color: var(--color-primary);
+}
+.if-icon-button--primary:hover:not(:disabled) { background: var(--color-primary-hover); border-color: var(--color-primary-hover); }
+
+.if-icon-button--secondary {
+    border-color: var(--color-border-strong);
+}
+.if-icon-button--secondary:hover:not(:disabled) { border-color: var(--color-border-focus); }
+
+.if-icon-button--danger {
+    background: var(--color-error);
+    color: var(--color-text-inverse);
+    border-color: var(--color-error);
+}
+.if-icon-button--danger:hover:not(:disabled) { background: var(--color-error-hover); border-color: var(--color-error-hover); }
+
+.if-icon-button:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+.if-icon-button:active:not(:disabled) { transform: translateY(1px); }
+.if-icon-button:disabled { opacity: 0.5; cursor: not-allowed; }

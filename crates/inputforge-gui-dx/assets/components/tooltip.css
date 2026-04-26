@@ -1,0 +1,29 @@
+.if-tooltip { position: relative; display: inline-flex; }
+
+.if-tooltip__bubble {
+    position: absolute;
+    background: var(--color-bg-overlay);
+    /* Blur the underlying surface so the 0.78-alpha overlay reads as a
+       distinct layer rather than picking up the colors of whatever it
+       happens to sit over (e.g., a Card's --color-bg-elevated). */
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--color-text);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--easing-standard);
+    z-index: 1000;
+    border: 1px solid var(--color-border);
+}
+
+.if-tooltip:hover .if-tooltip__bubble,
+.if-tooltip:focus-within .if-tooltip__bubble { opacity: 1; }
+
+.if-tooltip.if-tooltip--top    .if-tooltip__bubble { bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); }
+.if-tooltip.if-tooltip--bottom .if-tooltip__bubble { top:    calc(100% + 4px); left: 50%; transform: translateX(-50%); }
+.if-tooltip.if-tooltip--left   .if-tooltip__bubble { right:  calc(100% + 4px); top:  50%; transform: translateY(-50%); }
+.if-tooltip.if-tooltip--right  .if-tooltip__bubble { left:   calc(100% + 4px); top:  50%; transform: translateY(-50%); }

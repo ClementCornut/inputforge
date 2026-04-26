@@ -1,0 +1,45 @@
+.if-checkbox { display: inline-flex; align-items: center; cursor: pointer; }
+
+.if-checkbox__input { position: absolute; opacity: 0; pointer-events: none; }
+
+.if-checkbox__box {
+    position: relative;
+    width: 16px; height: 16px;
+    background: var(--color-bg-sunken);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    transition: background var(--duration-fast) var(--easing-standard),
+                border-color var(--duration-fast) var(--easing-standard);
+}
+
+.if-checkbox__input:checked ~ .if-checkbox__box {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+}
+.if-checkbox__input:checked ~ .if-checkbox__box::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 4px; height: 8px;
+    border: solid var(--color-primary-fg);
+    border-width: 0 2px 2px 0;
+    /* -60% Y bias compensates for the rotated checkmark's visual weight
+       sitting below its geometric center. */
+    transform: translate(-50%, -60%) rotate(45deg);
+}
+
+.if-checkbox.if-checkbox--indeterminate .if-checkbox__box {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+}
+.if-checkbox.if-checkbox--indeterminate .if-checkbox__box::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 8px; height: 2px;
+    background: var(--color-primary-fg);
+    transform: translate(-50%, -50%);
+}
+
+.if-checkbox__input:focus-visible ~ .if-checkbox__box { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+.if-checkbox__input:disabled ~ .if-checkbox__box       { opacity: 0.5; cursor: not-allowed; }

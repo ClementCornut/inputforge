@@ -4,6 +4,10 @@ mod app;
 mod bridge;
 mod context;
 
+pub mod components;
+pub mod icons;
+pub mod theme;
+
 use std::sync::{Arc, mpsc};
 
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
