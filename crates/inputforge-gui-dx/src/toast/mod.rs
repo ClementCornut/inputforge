@@ -4,4 +4,4 @@
 pub(crate) mod state;
 // queue, viewport, warnings_bridge are added in later tasks.
 
-pub use state::{TOAST_DURATION, TOAST_MAX_VISIBLE, Toast, ToastLevel, ToastState};
+pub use state::{TOAST_DURATION, TOAST_MAX_VISIBLE, Toast, ToastLevel, ToastState, is_expired};

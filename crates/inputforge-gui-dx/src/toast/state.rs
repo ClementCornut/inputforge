@@ -88,6 +88,45 @@ impl ToastState {
             dismissed: false,
         });
     }
+
+    pub fn dismiss(&mut self, id: u64) {
+        if let Some(t) = self.toasts.iter_mut().find(|t| t.id == id) {
+            t.dismissed = true;
+        }
+    }
+
+    pub fn pause(&mut self, id: u64) {
+        if let Some(t) = self
+            .toasts
+            .iter_mut()
+            .find(|t| t.id == id && !t.dismissed && t.paused.is_none())
+        {
+            t.paused = Some(Instant::now());
+        }
+    }
+
+    pub fn resume(&mut self, id: u64) {
+        if let Some(t) = self.toasts.iter_mut().find(|t| t.id == id && !t.dismissed) {
+            if let Some(start) = t.paused.take() {
+                t.paused_total = t.paused_total.saturating_add(start.elapsed());
+            }
+        }
+    }
+}
+
+/// Compute whether a toast has exceeded `TOAST_DURATION`, excluding paused
+/// intervals (both finalized via `paused_total` and any in-progress pause
+/// observed via `paused`).
+pub fn is_expired(t: &Toast, now: Instant) -> bool {
+    if t.dismissed {
+        return true;
+    }
+    let total = now.saturating_duration_since(t.created);
+    let current_pause = t
+        .paused
+        .map_or(Duration::ZERO, |s| now.saturating_duration_since(s));
+    let effective = total.saturating_sub(t.paused_total + current_pause);
+    effective >= TOAST_DURATION
 }
 
 #[cfg(test)]
@@ -175,5 +214,49 @@ mod tests {
             assert!(!s.toasts[i].dismissed, "non-oldest must stay live");
         }
         assert_eq!(s.toasts.last().unwrap().message, "overflow");
+    }
+
+    #[test]
+    fn dismiss_marks_entry_dismissed() {
+        let mut s = ToastState::default();
+        s.push(ToastLevel::Info, "go");
+        let id = s.toasts[0].id;
+        s.dismiss(id);
+        assert!(s.toasts[0].dismissed);
+        // Idempotent — second dismiss is a no-op.
+        s.dismiss(id);
+        assert!(s.toasts[0].dismissed);
+    }
+
+    #[test]
+    fn pause_resume_accumulates_paused_total() {
+        let mut s = ToastState::default();
+        s.push(ToastLevel::Info, "p");
+        let id = s.toasts[0].id;
+        s.pause(id);
+        std::thread::sleep(Duration::from_millis(8));
+        s.resume(id);
+        let after_first = s.toasts[0].paused_total;
+        assert!(after_first >= Duration::from_millis(7));
+        s.pause(id);
+        std::thread::sleep(Duration::from_millis(5));
+        s.resume(id);
+        let after_second = s.toasts[0].paused_total;
+        assert!(after_second > after_first, "second resume must accumulate");
+    }
+
+    #[test]
+    fn is_expired_excludes_paused_time() {
+        let mut s = ToastState::default();
+        s.push(ToastLevel::Info, "x");
+        let toast = s.toasts[0].clone();
+        let now = toast.created + TOAST_DURATION + Duration::from_millis(1);
+        // No pauses → expired right at TOAST_DURATION.
+        assert!(is_expired(&toast, now));
+
+        // Paused for the entire elapsed window → effective elapsed is zero.
+        let mut t2 = toast.clone();
+        t2.paused = Some(t2.created);
+        assert!(!is_expired(&t2, now));
     }
 }
