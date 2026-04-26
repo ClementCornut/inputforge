@@ -27,6 +27,7 @@ const CARD_CSS: Asset = asset!("/assets/components/card.css");
 const BADGE_CSS: Asset = asset!("/assets/components/badge.css");
 const SEPARATOR_CSS: Asset = asset!("/assets/components/separator.css");
 const SPINNER_CSS: Asset = asset!("/assets/components/spinner.css");
+const TOOLTIP_CSS: Asset = asset!("/assets/components/tooltip.css");
 
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
@@ -56,6 +57,7 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: BADGE_CSS }
         Stylesheet { href: SEPARATOR_CSS }
         Stylesheet { href: SPINNER_CSS }
+        Stylesheet { href: TOOLTIP_CSS }
 
         {children}
     }

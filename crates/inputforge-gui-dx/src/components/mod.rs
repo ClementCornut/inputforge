@@ -13,6 +13,7 @@ pub mod slider;
 pub mod spinner;
 pub mod switch;
 pub mod text_input;
+pub mod tooltip;
 
 pub use badge::{Badge, BadgeVariant};
 pub use button::{Button, ButtonSize, ButtonVariant};
@@ -27,6 +28,7 @@ pub use slider::Slider;
 pub use spinner::{Spinner, SpinnerSize};
 pub use switch::Switch;
 pub use text_input::{InputSize, TextInput};
+pub use tooltip::{Tooltip, TooltipPlacement};
 
 /// Joins a base class, a variant class, and an optional caller class.
 /// Used by every primitive to honor the `class: Option<String>` prop.

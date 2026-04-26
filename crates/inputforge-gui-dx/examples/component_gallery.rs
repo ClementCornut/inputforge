@@ -10,7 +10,7 @@ use dioxus::prelude::*;
 use inputforge_gui_dx::components::{
     Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Card, CardPadding, Checkbox, Icon,
     IconButton, NumberInput, Select, Separator, SeparatorOrientation, Slider, Spinner, SpinnerSize,
-    Switch, TextInput,
+    Switch, TextInput, Tooltip, TooltipPlacement,
 };
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
 use inputforge_gui_dx::theme::ThemeProvider;
@@ -198,6 +198,18 @@ fn gallery_root() -> Element {
                         Spinner { size: SpinnerSize::Sm }
                         Spinner { size: SpinnerSize::Md }
                         Spinner { size: SpinnerSize::Lg }
+                    }
+                }
+
+                section {
+                    h2 { "Tooltip" }
+                    Card { padding: CardPadding::Md,
+                        div { style: "display: flex; gap: var(--space-6); align-items: center;",
+                            Tooltip { content: "Hovers up".to_owned(),    Button { "Top" } }
+                            Tooltip { content: "Hovers down".to_owned(),  placement: TooltipPlacement::Bottom, Button { "Bottom" } }
+                            Tooltip { content: "Hovers left".to_owned(),  placement: TooltipPlacement::Left,   Button { "Left" } }
+                            Tooltip { content: "Hovers right".to_owned(), placement: TooltipPlacement::Right,  Button { "Right" } }
+                        }
                     }
                 }
             }
