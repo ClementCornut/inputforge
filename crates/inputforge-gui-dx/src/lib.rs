@@ -10,6 +10,7 @@ mod tray;
 
 pub mod components;
 pub mod icons;
+pub mod patterns;
 pub mod theme;
 
 #[doc(hidden)]
