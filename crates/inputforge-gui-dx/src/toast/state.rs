@@ -58,6 +58,21 @@ impl ToastState {
             return;
         }
 
+        // Cap — FIFO drain when exceeded. Counts only non-dismissed entries
+        // because dismissed-but-still-in-Vec is the steady state during the
+        // CSS fade-out window.
+        let visible = self.toasts.iter().filter(|t| !t.dismissed).count();
+        if visible >= TOAST_MAX_VISIBLE {
+            if let Some(oldest) = self
+                .toasts
+                .iter_mut()
+                .filter(|t| !t.dismissed)
+                .min_by_key(|t| t.created)
+            {
+                oldest.dismissed = true;
+            }
+        }
+
         // Append. wrapping_add on u64 is fine: id collisions only arise after
         // 18 quintillion pushes against this single ToastState — not realistic.
         let id = self.next_id;
@@ -132,5 +147,33 @@ mod tests {
             second_created > first_created,
             "coalesce must reset created"
         );
+    }
+
+    #[test]
+    fn push_drops_oldest_when_cap_exceeded() {
+        let mut s = ToastState::default();
+        for i in 0..TOAST_MAX_VISIBLE {
+            s.push(ToastLevel::Info, format!("msg-{i}"));
+        }
+        // Fifth push fills the cap exactly. No drain yet.
+        let visible_now = s.toasts.iter().filter(|t| !t.dismissed).count();
+        assert_eq!(visible_now, TOAST_MAX_VISIBLE);
+
+        // Sixth push triggers the drain — the very first toast ("msg-0")
+        // is the oldest non-dismissed entry.
+        s.push(ToastLevel::Info, "overflow");
+
+        let visible_after = s.toasts.iter().filter(|t| !t.dismissed).count();
+        assert_eq!(visible_after, TOAST_MAX_VISIBLE);
+
+        // The Vec carries 6 entries total (5 originally + 1 new). The "msg-0"
+        // entry is now dismissed, every other original entry is still live.
+        assert_eq!(s.toasts.len(), TOAST_MAX_VISIBLE + 1);
+        assert!(s.toasts[0].dismissed, "oldest must be dismissed");
+        assert_eq!(s.toasts[0].message, "msg-0");
+        for i in 1..TOAST_MAX_VISIBLE {
+            assert!(!s.toasts[i].dismissed, "non-oldest must stay live");
+        }
+        assert_eq!(s.toasts.last().unwrap().message, "overflow");
     }
 }
