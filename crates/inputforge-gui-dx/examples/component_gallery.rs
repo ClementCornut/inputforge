@@ -13,9 +13,9 @@ use dioxus::prelude::*;
 )]
 use inputforge_gui_dx::components::{
     Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Card, CardPadding, Checkbox, Field,
-    Icon, IconButton, Label, MenuItem, MenuItems, MenuRoot, MenuTrigger, NumberInput, Select,
-    Separator, SeparatorOrientation, Slider, Spinner, SpinnerSize, Switch, TextInput, Tooltip,
-    TooltipPlacement,
+    Icon, IconButton, InputSize, Label, MenuItem, MenuItems, MenuRoot, MenuTrigger, NumberInput,
+    Select, Separator, SeparatorOrientation, Slider, Spinner, SpinnerSize, Switch, TextInput,
+    Tooltip, TooltipPlacement,
 };
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
 use inputforge_gui_dx::theme::ThemeProvider;
@@ -95,6 +95,9 @@ fn gallery_root() -> Element {
                             TextInput { value: "hello".to_owned(), placeholder: "Type here…".to_owned() }
                             TextInput { value: String::new(), placeholder: "Disabled".to_owned(), disabled: true }
                             TextInput { value: "wrong".to_owned(), invalid: true }
+                            TextInput { value: "Small".to_owned(),  size: InputSize::Sm }
+                            TextInput { value: "Medium".to_owned(), size: InputSize::Md }
+                            TextInput { value: "Large".to_owned(),  size: InputSize::Lg }
                         }
                     }
                 }
@@ -107,6 +110,13 @@ fn gallery_root() -> Element {
                             NumberInput { value: 0.0, min: 0.0, max: 100.0, step: 1.0 }
                             NumberInput { value: 50.0, min: 0.0, max: 100.0, step: 1.0 }
                             NumberInput { value: 0.0, disabled: true }
+                            NumberInput { value: 0.123_456, precision: 2 }
+                        }
+                        div {
+                            style: "display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-3);",
+                            NumberInput { value: 0.0, size: InputSize::Sm }
+                            NumberInput { value: 0.0, size: InputSize::Md }
+                            NumberInput { value: 0.0, size: InputSize::Lg }
                         }
                     }
                 }
@@ -128,6 +138,24 @@ fn gallery_root() -> Element {
                                 value: "alpha".to_owned(),
                                 options: vec![("alpha".to_owned(), "Alpha".to_owned())],
                                 disabled: true,
+                            }
+                        }
+                        div {
+                            style: "display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-3);",
+                            Select {
+                                value: "alpha".to_owned(),
+                                options: vec![("alpha".to_owned(), "Small".to_owned())],
+                                size: InputSize::Sm,
+                            }
+                            Select {
+                                value: "alpha".to_owned(),
+                                options: vec![("alpha".to_owned(), "Medium".to_owned())],
+                                size: InputSize::Md,
+                            }
+                            Select {
+                                value: "alpha".to_owned(),
+                                options: vec![("alpha".to_owned(), "Large".to_owned())],
+                                size: InputSize::Lg,
                             }
                         }
                     }
@@ -236,16 +264,31 @@ fn gallery_root() -> Element {
                     h2 { "Field + Label" }
                     Card { padding: CardPadding::Md,
                         div { style: "display: flex; flex-direction: column; gap: var(--space-4); max-width: 320px;",
+                            // Field couples label↔input by passing the same string
+                            // to `for_id` (Field) and `id` (the wrapped input).
                             Field {
                                 label: "Profile name".to_owned(),
+                                for_id: "profile-name".to_owned(),
                                 helper: "Used in dropdowns.".to_owned(),
                                 required: true,
-                                TextInput { value: String::new(), placeholder: "My profile".to_owned() }
+                                TextInput {
+                                    id: "profile-name".to_owned(),
+                                    value: String::new(),
+                                    placeholder: "My profile".to_owned(),
+                                }
                             }
                             Field {
                                 label: "Sensitivity".to_owned(),
+                                for_id: "sensitivity".to_owned(),
                                 error: "Must be between 0 and 1.".to_owned(),
-                                NumberInput { value: 1.5, min: 0.0, max: 1.0, step: 0.01 }
+                                NumberInput {
+                                    id: "sensitivity".to_owned(),
+                                    value: 1.5,
+                                    min: 0.0,
+                                    max: 1.0,
+                                    step: 0.01,
+                                    precision: 2,
+                                }
                             }
                         }
                     }

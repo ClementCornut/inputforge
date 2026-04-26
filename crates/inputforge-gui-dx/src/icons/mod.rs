@@ -86,7 +86,7 @@ pub enum IconSize {
 
 impl IconSize {
     #[must_use]
-    pub fn class(&self) -> &'static str {
+    pub fn class(self) -> &'static str {
         match self {
             IconSize::Sm => "if-icon--sm",
             IconSize::Md => "if-icon--md",

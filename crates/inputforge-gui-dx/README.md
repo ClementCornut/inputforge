@@ -75,7 +75,7 @@ mounted under `app_root` inherits it.
 
 ## Adding a new icon
 
-1. Drop the `.svg` file under `src/icons/svg/<name>.svg` (Phosphor regular weight, 24×24 viewBox).
+1. Drop the `.svg` file under `src/icons/svg/<name>.svg` (Phosphor regular weight, `viewBox="0 0 256 256"`).
 2. Add a variant to the `Icon` enum in `src/icons/mod.rs`.
 3. Add a match arm in `Icon::svg()` mapping the variant to `include_str!("svg/<name>.svg")`.
 4. Run `cargo test -p inputforge-gui-dx --lib icons::tests` — the well-formedness test will catch corrupt files.
