@@ -8,7 +8,8 @@
 
 use dioxus::prelude::*;
 use inputforge_gui_dx::components::{
-    Button, ButtonSize, ButtonVariant, Checkbox, Icon, IconButton, NumberInput, Select, Slider,
+    Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Card, CardPadding, Checkbox, Icon,
+    IconButton, NumberInput, Select, Separator, SeparatorOrientation, Slider, Spinner, SpinnerSize,
     Switch, TextInput,
 };
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
@@ -140,6 +141,45 @@ fn gallery_root() -> Element {
                         Checkbox { checked: true }
                         Checkbox { checked: false, indeterminate: true }
                         Checkbox { checked: false, disabled: true }
+                    }
+                }
+
+                section {
+                    h2 { "Card" }
+                    div { style: "display: flex; gap: var(--space-3);",
+                        Card { padding: CardPadding::Sm, "Small padding" }
+                        Card { padding: CardPadding::Md, "Medium padding" }
+                        Card { padding: CardPadding::Lg, "Large padding" }
+                    }
+                }
+
+                section {
+                    h2 { "Badge" }
+                    div { style: "display: flex; gap: var(--space-2);",
+                        Badge { variant: BadgeVariant::Neutral, "Neutral" }
+                        Badge { variant: BadgeVariant::Info,    "Info" }
+                        Badge { variant: BadgeVariant::Success, "Success" }
+                        Badge { variant: BadgeVariant::Warning, "Warning" }
+                        Badge { variant: BadgeVariant::Error,   "Error" }
+                    }
+                }
+
+                section {
+                    h2 { "Separator" }
+                    Separator {}
+                    div { style: "display: flex; gap: var(--space-3); align-items: center; height: 30px;",
+                        span { "Left" }
+                        Separator { orientation: SeparatorOrientation::Vertical }
+                        span { "Right" }
+                    }
+                }
+
+                section {
+                    h2 { "Spinner" }
+                    div { style: "display: flex; gap: var(--space-3); align-items: center;",
+                        Spinner { size: SpinnerSize::Sm }
+                        Spinner { size: SpinnerSize::Md }
+                        Spinner { size: SpinnerSize::Lg }
                     }
                 }
             }

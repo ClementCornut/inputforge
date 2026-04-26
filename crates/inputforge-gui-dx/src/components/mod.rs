@@ -1,22 +1,30 @@
 //! Re-exports for the F2 component primitives.
 
+pub mod badge;
 pub mod button;
+pub mod card;
 pub mod checkbox;
 pub mod icon;
 pub mod icon_button;
 pub mod number_input;
 pub mod select;
+pub mod separator;
 pub mod slider;
+pub mod spinner;
 pub mod switch;
 pub mod text_input;
 
+pub use badge::{Badge, BadgeVariant};
 pub use button::{Button, ButtonSize, ButtonVariant};
+pub use card::{Card, CardPadding};
 pub use checkbox::Checkbox;
 pub use icon::Icon;
 pub use icon_button::IconButton;
 pub use number_input::NumberInput;
 pub use select::Select;
+pub use separator::{Separator, SeparatorOrientation};
 pub use slider::Slider;
+pub use spinner::{Spinner, SpinnerSize};
 pub use switch::Switch;
 pub use text_input::{InputSize, TextInput};
 

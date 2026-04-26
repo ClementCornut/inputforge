@@ -1,0 +1,16 @@
+.if-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    line-height: 1;
+    border: 1px solid transparent;
+}
+.if-badge.if-badge--neutral { background: var(--color-bg-sunken);  color: var(--color-text-muted); border-color: var(--color-border); }
+.if-badge.if-badge--info    { background: rgba(74,158,255,0.15);   color: var(--color-info);       border-color: var(--color-info); }
+.if-badge.if-badge--success { background: rgba(0,229,160,0.15);    color: var(--color-live);       border-color: var(--color-live); }
+.if-badge.if-badge--warning { background: rgba(255,179,71,0.15);   color: var(--color-warning);    border-color: var(--color-warning); }
+.if-badge.if-badge--error   { background: rgba(255,107,107,0.15);  color: var(--color-error);      border-color: var(--color-error); }
