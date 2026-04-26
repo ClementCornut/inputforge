@@ -19,6 +19,7 @@ use inputforge_gui_dx::components::{
 };
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
 use inputforge_gui_dx::theme::ThemeProvider;
+use inputforge_gui_dx::{ToastLevel, ToastQueue, ToastState, ToastViewport};
 
 fn main() {
     let _ = tracing_subscriber::fmt()
@@ -33,6 +34,12 @@ fn main() {
     reason = "gallery function intentionally lists all primitives in one place"
 )]
 fn gallery_root() -> Element {
+    // F4 toast infrastructure: install the queue context so any descendant
+    // can `use_context::<ToastQueue>()` and push notifications.
+    let toast_state = use_signal(ToastState::default);
+    let toast_queue = ToastQueue { state: toast_state };
+    use_context_provider(|| toast_queue);
+
     // Interactive demo state for NumberInput steppers — each non-disabled
     // demo wires its own signal so they're independently steppable.
     let mut number_demo = use_signal(|| 50.0_f64);
@@ -42,9 +49,46 @@ fn gallery_root() -> Element {
     let mut tabs_demo = use_signal(|| "first".to_owned());
     rsx! {
         ThemeProvider {
+            ToastViewport {}
             main {
                 Stack { gap: "--space-8".to_owned(), padding: "--space-6".to_owned(),
-                    h1 { "InputForge — Component Gallery (F2)" }
+                    h1 { "InputForge — Component Gallery (F4)" }
+
+                    section {
+                        h2 { "Toasts" }
+                        Card { padding: CardPadding::Md,
+                            Stack { gap: "--space-3".to_owned(),
+                                Cluster { gap: "--space-3".to_owned(),
+                                    Button { onclick: move |_| toast_queue.push(ToastLevel::Info,    "Info toast"),    "Push Info" }
+                                    Button { onclick: move |_| toast_queue.push(ToastLevel::Success, "Saved successfully"), "Push Success" }
+                                    Button { onclick: move |_| toast_queue.push(ToastLevel::Warning, "HidHide unavailable"), "Push Warning" }
+                                    Button { onclick: move |_| toast_queue.push(ToastLevel::Error,   "Engine failed to start"), "Push Error" }
+                                }
+                                Cluster { gap: "--space-3".to_owned(),
+                                    Button {
+                                        onclick: move |_| {
+                                            for _ in 0..10 {
+                                                toast_queue.push(ToastLevel::Warning, "Spammy");
+                                            }
+                                        },
+                                        "Push spam (×10)"
+                                    }
+                                    Button {
+                                        onclick: move |_| {
+                                            for i in 0..7 {
+                                                toast_queue.push(ToastLevel::Info, format!("Distinct {i}"));
+                                            }
+                                        },
+                                        "Push 7 distinct"
+                                    }
+                                }
+                                p {
+                                    style: "color: var(--color-text-muted); font-size: var(--text-sm);",
+                                    "Hover or focus a toast to pause its timer; press ESC while focused to dismiss; click × to dismiss."
+                                }
+                            }
+                        }
+                    }
 
                     section {
                         h2 { "Icon" }

@@ -14,7 +14,7 @@ pub mod theme;
 
 #[doc(hidden)]
 pub use toast::ToastViewport;
-pub use toast::{ToastLevel, ToastQueue};
+pub use toast::{ToastLevel, ToastQueue, ToastState};
 
 use std::sync::{Arc, mpsc};
 
