@@ -3,6 +3,7 @@
 mod app;
 mod bridge;
 mod context;
+mod tray;
 
 pub mod components;
 pub mod icons;
