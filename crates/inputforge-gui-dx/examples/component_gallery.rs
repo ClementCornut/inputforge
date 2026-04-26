@@ -7,7 +7,7 @@
 //! Hot-reload friendly: editing CSS or RSX updates instantly.
 
 use dioxus::prelude::*;
-use inputforge_gui_dx::components::Icon;
+use inputforge_gui_dx::components::{Button, ButtonSize, ButtonVariant, Icon, IconButton};
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
 use inputforge_gui_dx::theme::ThemeProvider;
 
@@ -36,6 +36,35 @@ fn gallery_root() -> Element {
                         Icon { name: IconKind::Settings }
                         Icon { name: IconKind::Save }
                         Icon { name: IconKind::Trash }
+                    }
+                }
+
+                section {
+                    h2 { "Button" }
+                    div {
+                        style: "display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center;",
+                        Button { variant: ButtonVariant::Primary,   "Primary" }
+                        Button { variant: ButtonVariant::Secondary, "Secondary" }
+                        Button { variant: ButtonVariant::Ghost,     "Ghost" }
+                        Button { variant: ButtonVariant::Danger,    "Danger" }
+                        Button { disabled: true, "Disabled" }
+                    }
+                    div {
+                        style: "display: flex; gap: var(--space-3); margin-top: var(--space-3);",
+                        Button { size: ButtonSize::Sm, "Small" }
+                        Button { size: ButtonSize::Md, "Medium" }
+                        Button { size: ButtonSize::Lg, "Large" }
+                    }
+                }
+
+                section {
+                    h2 { "IconButton" }
+                    div {
+                        style: "display: flex; gap: var(--space-3); align-items: center;",
+                        IconButton { icon: IconKind::Settings, label: "Settings" }
+                        IconButton { icon: IconKind::Save,     label: "Save",  variant: ButtonVariant::Primary }
+                        IconButton { icon: IconKind::Trash,    label: "Delete", variant: ButtonVariant::Danger }
+                        IconButton { icon: IconKind::Eye,      label: "Show",   disabled: true }
                     }
                 }
             }
