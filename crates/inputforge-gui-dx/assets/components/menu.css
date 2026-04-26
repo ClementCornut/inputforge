@@ -12,10 +12,16 @@
 .if-menu__trigger:hover  { border-color: var(--color-border-strong); }
 .if-menu__trigger:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
 
+/* No z-index on backdrop. The wrapping .if-menu__items establishes a stacking
+   context at z-index: 1000, which is sufficient to lift the entire menu UI
+   above page content. Within that local context, the backdrop and the list
+   are siblings; with both at z-index: auto, document order wins → backdrop
+   first, list last → list paints on top of the (transparent) backdrop, so
+   pointer events on the list reach the items and clicks elsewhere fall to
+   the backdrop's outside-click handler. */
 .if-menu__backdrop {
     position: fixed;
     inset: 0;
-    z-index: 999;
 }
 .if-menu__items {
     position: absolute;
@@ -30,7 +36,9 @@
     border-radius: var(--radius-md);
     padding: var(--space-1);
     min-width: 160px;
-    box-shadow: var(--shadow-2);
+    /* --shadow-3 is reserved for floating overlays per the elevation system;
+       --shadow-2 is the stamped-panel inset shadow used by Card. */
+    box-shadow: var(--shadow-3);
     display: flex;
     flex-direction: column;
 }
