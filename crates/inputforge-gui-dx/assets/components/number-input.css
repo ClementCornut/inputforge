@@ -1,0 +1,31 @@
+.if-number-input {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-sunken);
+    overflow: hidden;
+}
+
+.if-number-input:focus-within { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+
+.if-number-input__field {
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    padding: var(--space-2) var(--space-3);
+    width: 6ch;
+    text-align: right;
+    -moz-appearance: textfield;
+}
+.if-number-input__field::-webkit-outer-spin-button,
+.if-number-input__field::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.if-number-input__field:focus { outline: none; }
+
+.if-number-input__steppers {
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--color-border);
+}
+.if-number-input__steppers .if-icon-button { width: 22px; height: 50%; border: none; border-radius: 0; }

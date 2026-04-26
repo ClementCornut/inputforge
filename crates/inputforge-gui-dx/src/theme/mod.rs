@@ -17,6 +17,10 @@ const GLOBAL_CSS: Asset = asset!("/assets/global.css");
 const ICON_CSS: Asset = asset!("/assets/components/icon.css");
 const BUTTON_CSS: Asset = asset!("/assets/components/button.css");
 const ICON_BUTTON_CSS: Asset = asset!("/assets/components/icon-button.css");
+const TEXT_INPUT_CSS: Asset = asset!("/assets/components/text-input.css");
+const NUMBER_INPUT_CSS: Asset = asset!("/assets/components/number-input.css");
+const SELECT_CSS: Asset = asset!("/assets/components/select.css");
+const SLIDER_CSS: Asset = asset!("/assets/components/slider.css");
 
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
@@ -36,6 +40,10 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: ICON_CSS }
         Stylesheet { href: BUTTON_CSS }
         Stylesheet { href: ICON_BUTTON_CSS }
+        Stylesheet { href: TEXT_INPUT_CSS }
+        Stylesheet { href: NUMBER_INPUT_CSS }
+        Stylesheet { href: SELECT_CSS }
+        Stylesheet { href: SLIDER_CSS }
 
         {children}
     }
