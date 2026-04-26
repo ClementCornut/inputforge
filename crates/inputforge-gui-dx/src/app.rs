@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 
 use crate::bridge::spawn_polling_task;
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
+use crate::theme::ThemeProvider;
 
 /// Root Dioxus component — assembles `AppContext`, installs it for descendants,
 /// spawns the polling task once, and renders the F1 readout.
@@ -25,7 +26,11 @@ pub(crate) fn app_root() -> Element {
     // One-shot per scope mount; auto-cancelled when the runtime tears down.
     use_hook(|| spawn_polling_task(ctx.clone()));
 
-    rsx! { F1Readout {} }
+    rsx! {
+        ThemeProvider {
+            F1Readout {}
+        }
+    }
 }
 
 #[component]
