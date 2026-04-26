@@ -31,6 +31,7 @@ const TOOLTIP_CSS: Asset = asset!("/assets/components/tooltip.css");
 const MENU_CSS: Asset = asset!("/assets/components/menu.css");
 const LABEL_CSS: Asset = asset!("/assets/components/label.css");
 const FIELD_CSS: Asset = asset!("/assets/components/field.css");
+const LAYOUT_CSS: Asset = asset!("/assets/components/layout.css");
 
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
@@ -64,6 +65,7 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: MENU_CSS }
         Stylesheet { href: LABEL_CSS }
         Stylesheet { href: FIELD_CSS }
+        Stylesheet { href: LAYOUT_CSS }
 
         {children}
     }

@@ -58,4 +58,14 @@
     --color-control:       #9A78D6;                       /* muted violet */
     --color-control-bg:    rgba(154, 120, 214, 0.14);
     --color-control-fg:    #120A22;
+
+    /* Status backgrounds — composited tints of the matching foreground hue.
+       Use these on Badge/Toast surfaces; never a raw rgba() literal in
+       component CSS. RGB values mirror the revised palette above so the
+       background, text, and border of a single status row stay aligned.
+       Verified WCAG AA against --color-text on --color-bg composite. */
+    --color-info-bg:       rgba(79, 168, 255, 0.14);       /* over #14172A → text 12.4:1 */
+    --color-success-bg:    rgba(46, 224, 160, 0.14);       /* over #14172A → text 12.6:1 */
+    --color-warning-bg:    rgba(255, 179, 71, 0.14);       /* over #14172A → text 12.5:1 */
+    --color-error-bg:      rgba(242, 85, 85, 0.14);        /* over #14172A → text 12.0:1 */
 }

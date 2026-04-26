@@ -1,7 +1,7 @@
 .if-slider {
     -webkit-appearance: none;
     width: 100%;
-    height: 4px;
+    height: var(--control-track-h);
     background: var(--color-border);
     border-radius: var(--radius-full);
     outline: none;
@@ -11,17 +11,17 @@
 
 .if-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 16px; height: 16px;
+    width: var(--control-size-sm); height: var(--control-size-sm);
     background: var(--color-primary);
     border-radius: var(--radius-full);
-    border: 2px solid var(--color-bg);
+    border: calc(var(--control-border-w) * 2) solid var(--color-bg);
     cursor: grab;
 }
 .if-slider::-moz-range-thumb {
-    width: 16px; height: 16px;
+    width: var(--control-size-sm); height: var(--control-size-sm);
     background: var(--color-primary);
     border-radius: var(--radius-full);
-    border: 2px solid var(--color-bg);
+    border: calc(var(--control-border-w) * 2) solid var(--color-bg);
     cursor: grab;
 }
 

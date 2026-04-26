@@ -80,6 +80,35 @@ mounted under `app_root` inherits it.
 3. Add a match arm in `Icon::svg()` mapping the variant to `include_str!("svg/<name>.svg")`.
 4. Run `cargo test -p inputforge-gui-dx --lib icons::tests` — the well-formedness test will catch corrupt files.
 
+## Layout primitives
+
+`Stack`, `Cluster`, and `Inset` retire most inline `style:` attributes in
+consumer code. Each accepts a CSS custom-property *name* (e.g. `"--space-4"`)
+for `gap`/`padding` so magic px values stay out of the consumer side:
+
+| Primitive | Direction         | Defaults                        |
+|---        |---                |---                              |
+| `Stack`   | column            | `gap: --space-4`, padding none  |
+| `Cluster` | row, wraps, ⤳cent | `gap: --space-3`, padding none  |
+| `Inset`   | block             | `padding: --space-4`            |
+
+For asymmetric grids (e.g. F1Readout's two-column key/value layout), keep an
+inline `style:` — these primitives intentionally don't model `display: grid`.
+
+## Status backgrounds
+
+Use the `--color-{info,success,warning,error}-bg` tokens for tinted status
+surfaces (Badge, Toast). Never embed `rgba()` literals in component CSS — the
+revised palette would silently drift from the foreground/border tokens.
+
+## Reduced motion
+
+`motion.css` zeroes the `--duration-*` tokens under
+`@media (prefers-reduced-motion: reduce)`. Component CSS that pipes
+animation duration through these tokens disables motion automatically;
+component CSS that hard-codes `ms` in transition shorthands does not — keep
+all timing in tokens.
+
 ## Toolchain prerequisites
 
 - `dx` (dioxus-cli) version 0.7.6 — install via `cargo install dioxus-cli --version 0.7.6`. Required for hot-reload (`dx serve`).

@@ -8,4 +8,13 @@
     --space-8:  32px;
     --space-12: 48px;
     --space-16: 64px;
+
+    /* Component-internal control geometry. Used by switch/slider/toggle
+       primitives so a single touch-target adjustment propagates instead
+       of editing 6 hard-coded pixel values across files. */
+    --control-size-sm: 16px;   /* thumb / inner glyph diameter */
+    --control-size-md: 20px;   /* track height (binary toggle) */
+    --control-size-lg: 36px;   /* track length (binary toggle) */
+    --control-track-h: 4px;    /* slider track thickness */
+    --control-border-w: 1px;   /* control inner offset / thumb border-equivalent */
 }

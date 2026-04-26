@@ -19,3 +19,16 @@
        Do not use for chrome transitions. */
     --easing-linear:     linear;
 }
+
+/* Reduced-motion override. Easings stay (they describe shape, not
+   duration); zeroing the duration tokens is what disables animation
+   for users who request it. Component CSS that uses duration tokens
+   inherits this automatically; CSS that hard-codes ms in transition
+   shorthands does not — keep all timing in tokens. */
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --duration-fast: 0ms;
+        --duration-base: 0ms;
+        --duration-slow: 0ms;
+    }
+}

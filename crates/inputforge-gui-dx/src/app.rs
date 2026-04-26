@@ -64,30 +64,32 @@ fn F1Readout() -> Element {
 
     rsx! {
         main {
-            style: "padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4);",
-            h1 { "InputForge — Dioxus (F1 bridge smoke test)" }
-            crate::components::Card { padding: crate::components::CardPadding::Md,
-                div { style: "display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4);",
-                    crate::components::Label { for_id: None::<String>, "Engine status:" }
-                    div { crate::components::Badge { variant: *status_variant.read(), "{status_text}" } }
+            crate::components::Stack { gap: "--space-4".to_owned(), padding: "--space-6".to_owned(),
+                h1 { "InputForge — Dioxus (F1 bridge smoke test)" }
+                crate::components::Card { padding: crate::components::CardPadding::Md,
+                    // Two-column key/value grid; not a Stack/Cluster fit (asymmetric grid).
+                    div { style: "display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4);",
+                        crate::components::Label { for_id: None::<String>, "Engine status:" }
+                        div { crate::components::Badge { variant: *status_variant.read(), "{status_text}" } }
 
-                    crate::components::Label { for_id: None::<String>, "Current mode:" }
-                    div { strong { "{mode}" } }
+                        crate::components::Label { for_id: None::<String>, "Current mode:" }
+                        div { strong { "{mode}" } }
 
-                    crate::components::Label { for_id: None::<String>, "Active profile:" }
-                    div { "{profile}" }
+                        crate::components::Label { for_id: None::<String>, "Active profile:" }
+                        div { "{profile}" }
 
-                    crate::components::Label { for_id: None::<String>, "Connected devices:" }
-                    div { "{devices}" }
+                        crate::components::Label { for_id: None::<String>, "Connected devices:" }
+                        div { "{devices}" }
 
-                    crate::components::Label { for_id: None::<String>, "Virtual devices:" }
-                    div { "{vdevices}" }
+                        crate::components::Label { for_id: None::<String>, "Virtual devices:" }
+                        div { "{vdevices}" }
 
-                    crate::components::Label { for_id: None::<String>, "Warnings:" }
-                    div { crate::components::Badge { variant: *warnings_variant.read(), "{warnings}" } }
+                        crate::components::Label { for_id: None::<String>, "Warnings:" }
+                        div { crate::components::Badge { variant: *warnings_variant.read(), "{warnings}" } }
+                    }
                 }
+                small { style: "color: var(--color-text-muted);", "Tray wiring: stubbed (F3). Theme: F2 ✓. Layout: F2 ✓." }
             }
-            small { style: "color: var(--color-text-muted);", "Tray wiring: stubbed (F3). Theme: F2 ✓. Layout: F3." }
         }
     }
 }

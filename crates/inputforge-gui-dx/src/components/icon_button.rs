@@ -15,17 +15,8 @@ pub fn IconButton(
     #[props(default)] class: Option<String>,
     onclick: Option<EventHandler<MouseEvent>>,
 ) -> Element {
-    let variant_class = match variant {
-        ButtonVariant::Primary => "if-icon-button--primary",
-        ButtonVariant::Secondary => "if-icon-button--secondary",
-        ButtonVariant::Ghost => "if-icon-button--ghost",
-        ButtonVariant::Danger => "if-icon-button--danger",
-    };
-    let size_class = match size {
-        ButtonSize::Sm => "if-icon-button--sm",
-        ButtonSize::Md => "if-icon-button--md",
-        ButtonSize::Lg => "if-icon-button--lg",
-    };
+    let variant_class = variant.class_for("if-icon-button");
+    let size_class = size.class_for("if-icon-button");
     let combined = merge_class(
         "if-icon-button",
         &format!("{variant_class} {size_class}"),
@@ -43,6 +34,38 @@ pub fn IconButton(
             disabled,
             onclick: click_handler,
             Icon { name: icon }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: every `ButtonVariant` must produce a matching `IconButton` class
+    /// via the shared `class_for(prefix)` delegation. If a new variant is added
+    /// to `ButtonVariant`, this test exercises the full match exhaustively so the
+    /// CSS author knows to ship `.if-icon-button--<modifier>` alongside.
+    #[test]
+    fn icon_button_class_for_every_variant() {
+        for v in [
+            ButtonVariant::Primary,
+            ButtonVariant::Secondary,
+            ButtonVariant::Ghost,
+            ButtonVariant::Danger,
+        ] {
+            let cls = v.class_for("if-icon-button");
+            assert!(cls.starts_with("if-icon-button--"), "got: {cls:?}");
+            assert!(!cls.contains(' '), "got: {cls:?}");
+        }
+    }
+
+    #[test]
+    fn icon_button_class_for_every_size() {
+        for s in [ButtonSize::Sm, ButtonSize::Md, ButtonSize::Lg] {
+            let cls = s.class_for("if-icon-button");
+            assert!(cls.starts_with("if-icon-button--"), "got: {cls:?}");
+            assert!(!cls.contains(' '), "got: {cls:?}");
         }
     }
 }

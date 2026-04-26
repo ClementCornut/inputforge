@@ -13,6 +13,13 @@
 }
 
 @font-face {
+    font-family: 'Inter';
+    src: url('/assets/fonts/Inter-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-display: swap;
+}
+
+@font-face {
     font-family: 'JetBrainsMono';
     src: url('/assets/fonts/JetBrainsMono-Regular.ttf') format('truetype');
     font-weight: 400;
@@ -37,10 +44,6 @@
     --weight-regular:  400;
     --weight-medium:   500;
     --weight-semibold: 600;
-    /* --weight-bold currently renders as faux-bold: only Inter Regular and
-       Inter SemiBold .ttf files are shipped under /assets/fonts/. The first
-       consumer of --weight-bold should ship Inter-Bold.ttf alongside an
-       additional @font-face rule above. */
     --weight-bold:     700;
 
     /* Tightened from 1.2 / 1.5 / 1.7 — instrument-cluster reads denser. */

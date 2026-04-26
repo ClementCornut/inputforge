@@ -18,6 +18,8 @@ Source: https://github.com/phosphor-icons/core
 
 Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
 
+Files bundled: `Inter-Regular.ttf`, `Inter-SemiBold.ttf`, `Inter-Bold.ttf` (all from Inter v4.1, `extras/ttf/`).
+
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
 https://openfontlicense.org

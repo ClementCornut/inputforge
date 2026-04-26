@@ -41,7 +41,6 @@ pub fn NumberInput(
         Some(p) => format!("{:.*}", p, value()),
         None => format!("{}", value()),
     };
-    let id_attr = id.clone().unwrap_or_default();
     let onstep_inc = onstep;
     let onstep_dec = onstep;
     let on_inc = move |_| {
@@ -56,18 +55,32 @@ pub fn NumberInput(
             h.call(next);
         }
     };
+    // HTML5 forbids id="" — so render the attribute only when Some.
     rsx! {
         div { class: "{combined}",
-            input {
-                r#type: "number",
-                class: "if-number-input__field",
-                id: "{id_attr}",
-                value: "{display_value}",
-                min: "{min}",
-                max: "{max}",
-                step: "{step}",
-                disabled,
-                oninput: input_handler,
+            if let Some(ref id_val) = id {
+                input {
+                    r#type: "number",
+                    class: "if-number-input__field",
+                    id: "{id_val}",
+                    value: "{display_value}",
+                    min: "{min}",
+                    max: "{max}",
+                    step: "{step}",
+                    disabled,
+                    oninput: input_handler,
+                }
+            } else {
+                input {
+                    r#type: "number",
+                    class: "if-number-input__field",
+                    value: "{display_value}",
+                    min: "{min}",
+                    max: "{max}",
+                    step: "{step}",
+                    disabled,
+                    oninput: input_handler,
+                }
             }
             div {
                 class: "if-number-input__steppers",

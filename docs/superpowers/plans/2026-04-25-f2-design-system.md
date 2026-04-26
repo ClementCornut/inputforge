@@ -3239,3 +3239,31 @@ The plan covers every section of the spec:
 Code-review fixes applied (2026-04-25): icon CSS aligned with Phosphor regular (fill-based, not stroke); `merge_class` upgraded to skip empty parts and now used by every primitive; Task 17 split into 17a/17b for risk isolation; pre-flight verification of `EngineStatus` variants and `AppState` field visibility added to Task 21; cascade-order check added to Task 8; manganis fallback made atomic; Task 1 commit message corrected (empty dirs not tracked); BOM-defensive SVG checks; dedicated `SpinnerSize` enum.
 
 No placeholders detected. Type names referenced across tasks are consistent (`InputSize` defined in Task 15, reused for input/select/number-input sizing; `SpinnerSize` is its own enum in Task 17a; `BadgeVariant` defined in Task 17a, used in Task 21 F1Readout; `merge_class` lifted from `components::icon` to `components::mod` in Task 14 step 1, imported via `use super::merge_class;` from each primitive). Method signatures match across tasks.
+
+---
+
+## Post-review fixes (2026-04-26)
+
+After the F2 branch reached 28 commits, an end-of-branch code review (`/superpowers:requesting-code-review`) flagged 4 Important and 7 Minor issues plus a few impeccable cross-cutting concerns. All addressed in this branch before merge:
+
+**Important**
+- [x] **I1** — Checkbox indeterminate now syncs the DOM `.indeterminate` IDL property via `use_effect` + `document::eval`, plus `aria-checked="mixed"`. Generates an internal stable id when no caller `id` is supplied. (`src/components/checkbox.rs`)
+- [x] **I2** — Menu compound now handles ArrowDown/ArrowUp/Home/End keyboard nav and auto-focuses the first item when opening, via a small embedded JS focus-walker. (`src/components/menu.rs`)
+- [x] **I3** — Badge backgrounds now reference new `--color-{info,success,warning,error}-bg` tokens; rgba literals removed. Token RGB matches the revised palette. (`assets/tokens/colors.css`, `assets/components/badge.css`)
+- [x] **I4** — TextInput, NumberInput, Select, Slider, and Label now render `id`/`for` only when the prop is `Some`, eliminating HTML5-invalid empty-string attributes on default usage. (5 files under `src/components/`)
+
+**Minor**
+- [x] **M1** — `IconButton` now delegates to `ButtonVariant::class_for(prefix)` / `ButtonSize::class_for(prefix)` instead of duplicating match arms; exhaustive class-delegation tests added. (`src/components/{button,icon_button}.rs`)
+- [x] **M2** — `IconButton` ghost hover background switched from `--color-bg-elevated` to `--color-border` so hover stays visible inside Card. (`assets/components/icon-button.css`)
+- [x] **M3** — Inter-Bold v4.1 ttf shipped; `@font-face` block added; faux-bold warning comment removed; `THIRD_PARTY_LICENSES.md` lists the new file. (`assets/fonts/Inter-Bold.ttf`, `assets/tokens/typography.css`, `THIRD_PARTY_LICENSES.md`)
+- [x] **M4** — `MenuItems` is now always-mounted with the HTML `hidden` attribute when closed; `MenuTrigger` advertises `aria-controls=<menu-id>`. (`src/components/menu.rs`)
+- [x] **M5** — Slider/Switch raw px replaced with new `--control-size-{sm,md,lg}` + `--control-track-h` + `--control-border-w` tokens. (`assets/tokens/spacing.css`, `assets/components/{slider,switch}.css`)
+- [x] **M6** — Stack/Cluster/Inset layout primitives extracted; F1Readout and component_gallery layout sites migrated. (`src/components/layout.rs`, `assets/components/layout.css`, `src/app.rs`, `examples/component_gallery.rs`)
+- [x] **M7** — Tooltip overlays now apply `backdrop-filter: blur(8px)` so the translucency reads as a layer over Card surfaces. (`assets/components/tooltip.css`)
+
+**Impeccable cross-cutting**
+- [x] **A** — `prefers-reduced-motion` media query in `motion.css` zeroes `--duration-*` tokens. Component CSS that pipes durations through tokens disables motion automatically.
+- [x] **B** — WCAG AA verification documented inline in `colors.css` for each new `*-bg` token (≥4.5:1 against `--color-text` on the composited surface).
+- [x] **C** — `impeccable:teach-impeccable` skipped in favor of inline rationale comments on every new token (palette intent, motion philosophy, geometry tokens) — same outcome with no tooling dependency.
+
+Verification: `cargo check`, `cargo test` (22 lib tests), `cargo build --example component_gallery`, `cargo build -p inputforge-app` (default + `--no-default-features --features gui-dioxus`), `cargo clippy -- -D warnings` all clean.

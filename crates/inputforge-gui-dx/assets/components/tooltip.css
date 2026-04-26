@@ -3,6 +3,11 @@
 .if-tooltip__bubble {
     position: absolute;
     background: var(--color-bg-overlay);
+    /* Blur the underlying surface so the 0.78-alpha overlay reads as a
+       distinct layer rather than picking up the colors of whatever it
+       happens to sit over (e.g., a Card's --color-bg-elevated). */
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     color: var(--color-text);
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);

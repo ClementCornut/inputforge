@@ -21,21 +21,33 @@ pub fn Select(
         InputSize::Lg => "if-select--lg",
     };
     let combined = merge_class("if-select", size_class, class.as_deref());
-    let id_attr = id.clone().unwrap_or_default();
     let change_handler = move |evt: FormEvent| {
         if let Some(h) = &onchange {
             h.call(evt);
         }
     };
+    // HTML5 forbids id="" — so render the attribute only when Some.
     rsx! {
-        select {
-            class: "{combined}",
-            id: "{id_attr}",
-            value: "{value}",
-            disabled,
-            onchange: change_handler,
-            for (val, label) in options.iter() {
-                option { value: "{val}", "{label}" }
+        if let Some(ref id_val) = id {
+            select {
+                class: "{combined}",
+                id: "{id_val}",
+                value: "{value}",
+                disabled,
+                onchange: change_handler,
+                for (val, label) in options.iter() {
+                    option { value: "{val}", "{label}" }
+                }
+            }
+        } else {
+            select {
+                class: "{combined}",
+                value: "{value}",
+                disabled,
+                onchange: change_handler,
+                for (val, label) in options.iter() {
+                    option { value: "{val}", "{label}" }
+                }
             }
         }
     }

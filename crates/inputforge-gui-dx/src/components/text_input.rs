@@ -39,21 +39,32 @@ pub fn TextInput(
         size.class().to_owned()
     };
     let classes = merge_class("if-text-input", &variant_class, class.as_deref());
-    let id_attr = id.clone().unwrap_or_default();
     let input_handler = move |evt: FormEvent| {
         if let Some(h) = &oninput {
             h.call(evt);
         }
     };
+    // HTML5 forbids id="" — so render the attribute only when Some.
     rsx! {
-        input {
-            r#type: "text",
-            class: "{classes}",
-            id: "{id_attr}",
-            value: "{value}",
-            placeholder: placeholder.as_deref().unwrap_or(""),
-            disabled,
-            oninput: input_handler,
+        if let Some(ref id_val) = id {
+            input {
+                r#type: "text",
+                class: "{classes}",
+                id: "{id_val}",
+                value: "{value}",
+                placeholder: placeholder.as_deref().unwrap_or(""),
+                disabled,
+                oninput: input_handler,
+            }
+        } else {
+            input {
+                r#type: "text",
+                class: "{classes}",
+                value: "{value}",
+                placeholder: placeholder.as_deref().unwrap_or(""),
+                disabled,
+                oninput: input_handler,
+            }
         }
     }
 }

@@ -1,0 +1,24 @@
+/* Layout primitives. Each takes its gap/padding from a CSS custom
+   property override applied inline by the Rust side, falling back to
+   a sensible default token if the consumer doesn't override.
+   Avoids an explosion of size-modifier classes. */
+
+.if-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-gap, var(--space-4));
+    padding: var(--stack-padding, 0);
+}
+
+.if-cluster {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cluster-gap, var(--space-3));
+    padding: var(--cluster-padding, 0);
+}
+
+.if-inset {
+    padding: var(--inset-padding, var(--space-4));
+}

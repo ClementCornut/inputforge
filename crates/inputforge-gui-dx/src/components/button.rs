@@ -12,13 +12,24 @@ pub enum ButtonVariant {
 
 impl ButtonVariant {
     #[must_use]
-    fn class(self) -> &'static str {
+    pub(crate) fn modifier(self) -> &'static str {
         match self {
-            ButtonVariant::Primary => "if-button--primary",
-            ButtonVariant::Secondary => "if-button--secondary",
-            ButtonVariant::Ghost => "if-button--ghost",
-            ButtonVariant::Danger => "if-button--danger",
+            ButtonVariant::Primary => "primary",
+            ButtonVariant::Secondary => "secondary",
+            ButtonVariant::Ghost => "ghost",
+            ButtonVariant::Danger => "danger",
         }
+    }
+
+    /// Class string for any button-family component.
+    /// `prefix` is the BEM block (e.g. `"if-button"`, `"if-icon-button"`).
+    #[must_use]
+    pub(crate) fn class_for(self, prefix: &str) -> String {
+        format!("{prefix}--{}", self.modifier())
+    }
+
+    fn class(self) -> String {
+        self.class_for("if-button")
     }
 }
 
@@ -31,12 +42,23 @@ pub enum ButtonSize {
 
 impl ButtonSize {
     #[must_use]
-    fn class(self) -> &'static str {
+    pub(crate) fn modifier(self) -> &'static str {
         match self {
-            ButtonSize::Sm => "if-button--sm",
-            ButtonSize::Md => "if-button--md",
-            ButtonSize::Lg => "if-button--lg",
+            ButtonSize::Sm => "sm",
+            ButtonSize::Md => "md",
+            ButtonSize::Lg => "lg",
         }
+    }
+
+    /// Class string for any button-family component.
+    /// `prefix` is the BEM block (e.g. `"if-button"`, `"if-icon-button"`).
+    #[must_use]
+    pub(crate) fn class_for(self, prefix: &str) -> String {
+        format!("{prefix}--{}", self.modifier())
+    }
+
+    fn class(self) -> String {
+        self.class_for("if-button")
     }
 }
 
