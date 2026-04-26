@@ -419,4 +419,46 @@ mod tests {
         assert_eq!(cfg.mapping_names.get(&addr_named), Some(&"Fire".to_owned()));
         assert!(!cfg.mapping_names.contains_key(&addr_unnamed));
     }
+
+    #[test]
+    fn f1_readout_data_binding_contract() {
+        use inputforge_core::state::{AppState, DeviceState, EngineStatus};
+        use inputforge_core::types::{
+            AxisPolarity, DeviceId, DeviceInfo, VJoyAxis, VirtualDeviceConfig,
+        };
+
+        let mut s = AppState::new();
+        s.engine_status = EngineStatus::Running;
+        "Combat".clone_into(&mut s.current_mode);
+        s.warnings.push("low battery".to_owned());
+        s.devices.push(DeviceState {
+            info: DeviceInfo {
+                id: DeviceId("dev-1".to_owned()),
+                name: "Stick".to_owned(),
+                axes: 2,
+                buttons: 4,
+                hats: 1,
+                instance_path: None,
+                axis_polarities: vec![AxisPolarity::Bipolar; 2],
+            },
+            connected: true,
+        });
+        s.virtual_devices.push(VirtualDeviceConfig {
+            device_id: 1,
+            axes: vec![VJoyAxis::X, VJoyAxis::Y],
+            button_count: 4,
+            hat_count: 1,
+        });
+
+        let meta = MetaSnapshot::from_state(&s);
+        let cfg = ConfigSnapshot::from_state(&s);
+
+        // The exact six values F1Readout reads:
+        assert_eq!(meta.engine_status, EngineStatus::Running);
+        assert_eq!(meta.current_mode, "Combat");
+        assert_eq!(meta.profile_name, None); // no profile loaded
+        assert_eq!(cfg.devices.len(), 1);
+        assert_eq!(cfg.virtual_devices.len(), 1);
+        assert_eq!(meta.warnings.len(), 1);
+    }
 }
