@@ -1,0 +1,46 @@
+/* Dark theme is the default. A future light theme can be added as
+   :root[data-theme="light"] { ... } without touching component CSS. */
+:root {
+    /* Surface */
+    --color-bg:           #1A1A2E;
+    --color-bg-elevated:  #2A2A3E;
+    --color-bg-sunken:    #121228;
+    --color-bg-overlay:   rgba(18, 18, 40, 0.85);
+
+    /* Text */
+    --color-text:         #E0E0E8;
+    --color-text-muted:   #A0A0B8;
+    --color-text-subtle:  #707088;
+    --color-text-inverse: #1A1A2E;
+
+    /* Border */
+    --color-border:        #3A3A4E;
+    --color-border-strong: #555570;
+    --color-border-focus:  #4A9EFF;
+
+    /* Action */
+    --color-primary:        #4A9EFF;
+    --color-primary-hover:  #6BB0FF;
+    --color-primary-active: #2E7DD9;
+    --color-primary-fg:     #0A1020;
+
+    /* Status */
+    --color-live:    #00E5A0;
+    --color-warning: #FFB347;
+    --color-error:   #FF6B6B;
+    --color-info:    #4A9EFF;
+
+    /* Categories — three INDEPENDENT accent hues (NOT aliased to
+       action/status). Frontend-design (Task 10) will pick final values. */
+    --color-processing:    #4A9EFF;   /* placeholder */
+    --color-processing-bg: rgba(74, 158, 255, 0.12);
+    --color-processing-fg: #0A1020;
+
+    --color-output:        #00E5A0;   /* placeholder */
+    --color-output-bg:     rgba(0, 229, 160, 0.12);
+    --color-output-fg:     #0A1020;
+
+    --color-control:       #B07FFF;   /* placeholder */
+    --color-control-bg:    rgba(176, 127, 255, 0.12);
+    --color-control-fg:    #0A1020;
+}

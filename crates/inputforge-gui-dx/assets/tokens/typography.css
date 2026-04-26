@@ -1,0 +1,41 @@
+@font-face {
+    font-family: 'Inter';
+    src: url('/assets/fonts/Inter-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Inter';
+    src: url('/assets/fonts/Inter-SemiBold.ttf') format('truetype');
+    font-weight: 600;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'JetBrainsMono';
+    src: url('/assets/fonts/JetBrainsMono-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-display: swap;
+}
+
+:root {
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrainsMono', ui-monospace, 'Cascadia Code', monospace;
+
+    --text-xs:   12px;
+    --text-sm:   13px;
+    --text-base: 14px;
+    --text-md:   15px;
+    --text-lg:   18px;
+    --text-xl:   22px;
+    --text-2xl:  28px;
+
+    --weight-regular:  400;
+    --weight-medium:   500;
+    --weight-semibold: 600;
+
+    --leading-tight:   1.2;
+    --leading-base:    1.5;
+    --leading-relaxed: 1.7;
+}
