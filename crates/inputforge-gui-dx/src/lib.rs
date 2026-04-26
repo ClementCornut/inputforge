@@ -4,6 +4,7 @@ mod app;
 mod bridge;
 mod context;
 mod lifecycle;
+mod shell;
 mod tray;
 
 pub mod components;
