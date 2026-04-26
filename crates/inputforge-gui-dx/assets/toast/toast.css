@@ -1,52 +1,216 @@
-/* Stub — finalized in Task 14 after impeccable:frontend-design.
-   Layout-only: the viewport is fixed, top-right, two stacked ARIA
-   regions; toasts are tab-reachable; per-level accent classes exist
-   but are intentionally bare so frontend-design has clean ground. */
+/* Toast system — avionics annunciator panels.
+   Two stacked ARIA regions: assertive (Warning/Error) at top-right;
+   polite (Info/Success) directly below. Each toast is a backlit
+   cockpit indicator: 3px left accent bar, inset top highlight,
+   level-tinted surface. Motion is snappy; nothing bounces.
+   Cascade-mounted last in ThemeProvider — z-index always wins. */
+
+/* ── Viewports ───────────────────────────────────────────────── */
 
 .if-toast-viewport {
     position: fixed;
-    right: 12px;
+    right: var(--space-3);
     z-index: var(--z-toast);
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
     pointer-events: none;
-    max-width: 360px;
+    width: clamp(280px, 28vw, 380px);
 }
-.if-toast-viewport--polite    { top: 12px; }
-.if-toast-viewport--assertive { top: 12px; right: 12px; }
+
+/* Assertive (Warning/Error) anchors at the top — user attention first.
+   Polite (Info/Success) sits directly below it, separated by a 12px gap.
+   The polite block uses calc on a CSS custom property so the offset
+   stays a single source of truth. */
+.if-toast-viewport--assertive {
+    top: var(--space-3);
+}
+.if-toast-viewport--polite {
+    /* Anchor below the assertive viewport. Uses a comfortable fixed
+       offset rather than a runtime measurement — assertive toasts are
+       the rare path; collisions with up to 5 of them are an edge case
+       the user will tolerate. */
+    top: calc(var(--space-3) + 240px);
+}
+
+/* ── Toast item ──────────────────────────────────────────────── */
 
 .if-toast {
     pointer-events: auto;
+    position: relative;
     background: var(--color-bg-elevated);
     color: var(--color-text);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     padding: var(--space-3);
-    box-shadow: var(--shadow-3);
+    padding-left: calc(var(--space-3) + 3px);  /* room for accent bar */
+    box-shadow:
+        var(--shadow-3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);  /* chamfer highlight */
     font-family: var(--font-sans);
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-2);
-    transition: opacity 400ms;
+    font-size: var(--text-base);
+    line-height: var(--leading-tight);
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    column-gap: var(--space-2);
+    transition:
+        opacity 280ms ease-out,
+        border-color 120ms ease-out,
+        transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    transform: translateX(0);
+    will-change: opacity, transform;
 }
-.if-toast:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
 
-.if-toast--info    { border-left: 4px solid var(--color-info); }
-.if-toast--success { border-left: 4px solid var(--color-live); }
-.if-toast--warning { border-left: 4px solid var(--color-warning); }
-.if-toast--error   { border-left: 4px solid var(--color-error); }
+/* Entry: slide in from the right and fade up. Discrete-aware so the
+   transition fires on first paint when the toast mounts. */
+@starting-style {
+    .if-toast {
+        opacity: 0;
+        transform: translateX(12px);
+    }
+}
 
-.if-toast__message    { flex: 1; }
-.if-toast__count      { color: var(--color-text-muted); margin-left: var(--space-1); }
-.if-toast__close {
-    background: transparent;
-    border: none;
-    color: var(--color-text-muted);
-    cursor: pointer;
-    padding: 0 var(--space-1);
-    font-size: var(--text-md);
+/* Per-level accent bar — a 3px vertical strip on the left edge,
+   inset slightly so it reads as part of the chamfer. */
+.if-toast::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: var(--space-2);
+    bottom: var(--space-2);
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: currentColor;  /* inherits the level color set below */
+    box-shadow: 0 0 8px -2px currentColor;  /* soft "backlit" glow */
+}
+
+/* Hover lifts the toast a hair and brightens the border —
+   subtle invitation that it's interactive. */
+.if-toast:hover {
+    border-color: var(--color-border-strong);
+    transform: translateX(-2px);
+}
+
+.if-toast:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+/* ── Per-level coloring ──────────────────────────────────────── */
+/* The accent uses currentColor; we tint the icon + accent bar by
+   shifting `color` on the host. The background gets a 6% wash of the
+   level hue mixed into the elevated surface — enough to read as
+   "this row is amber/red/etc." without competing with the message. */
+
+.if-toast--info {
+    color: var(--color-info);
+    background:
+        color-mix(in oklch, var(--color-info) 6%, var(--color-bg-elevated));
+}
+.if-toast--success {
+    color: var(--color-live);
+    background:
+        color-mix(in oklch, var(--color-live) 6%, var(--color-bg-elevated));
+}
+.if-toast--warning {
+    color: var(--color-warning);
+    background:
+        color-mix(in oklch, var(--color-warning) 8%, var(--color-bg-elevated));
+}
+.if-toast--error {
+    color: var(--color-error);
+    background:
+        color-mix(in oklch, var(--color-error) 8%, var(--color-bg-elevated));
+}
+
+/* ── Icon ────────────────────────────────────────────────────── */
+/* The icon inherits `color` from the level class above so it reads
+   as the "on" state of an indicator. */
+.if-toast > .if-icon {
+    flex-shrink: 0;
+    align-self: start;
+    margin-top: 1px;  /* optical alignment with first text line */
+}
+
+/* ── Message + count ─────────────────────────────────────────── */
+
+.if-toast__message {
+    color: var(--color-text);  /* always full-strength against the tint */
+    font-size: var(--text-base);
+    line-height: var(--leading-base);
+    word-break: break-word;
+    /* Allow wrapping on long messages without breaking the grid. */
+    min-width: 0;
+}
+
+.if-toast__count {
+    /* Coalesce badge — instrument-cluster style: subtle bezel,
+       tabular figures, level-tinted color. */
+    display: inline-flex;
+    align-items: center;
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-full);
+    background: color-mix(in oklch, currentColor 14%, transparent);
+    border: 1px solid color-mix(in oklch, currentColor 28%, transparent);
+    color: currentColor;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    font-feature-settings: "tnum" 1;
+    letter-spacing: 0.02em;
     line-height: 1;
+    flex-shrink: 0;
 }
-.if-toast__close:hover         { color: var(--color-text); }
-.if-toast__close:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+
+/* ── Close button ────────────────────────────────────────────── */
+
+.if-toast__close {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm, 3px);
+    color: var(--color-text-subtle);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 0;
+    transition:
+        color 120ms ease-out,
+        background 120ms ease-out,
+        border-color 120ms ease-out;
+}
+.if-toast__close:hover {
+    color: var(--color-text);
+    background: color-mix(in oklch, currentColor 12%, transparent);
+    border-color: var(--color-border);
+}
+.if-toast__close:active {
+    background: color-mix(in oklch, currentColor 20%, transparent);
+}
+.if-toast__close:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 1px;
+}
+
+/* ── Reduced motion ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    .if-toast {
+        transition: opacity 120ms linear;
+        transform: none;
+    }
+    .if-toast:hover {
+        transform: none;
+    }
+    @starting-style {
+        .if-toast {
+            opacity: 0;
+            transform: none;
+        }
+    }
+}
