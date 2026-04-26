@@ -19,6 +19,7 @@ use inputforge_gui_dx::components::{
     TextInput, Tooltip, TooltipPlacement,
 };
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
+use inputforge_gui_dx::patterns::DirtyConfirmDialog;
 use inputforge_gui_dx::theme::ThemeProvider;
 use inputforge_gui_dx::{ToastLevel, ToastQueue, ToastState, ToastViewport};
 
@@ -33,6 +34,10 @@ fn main() {
 #[allow(
     clippy::too_many_lines,
     reason = "gallery function intentionally lists all primitives in one place"
+)]
+#[allow(
+    clippy::similar_names,
+    reason = "dirty_a_*/dirty_b_* pairs mirror the two-dialog demo layout"
 )]
 fn gallery_root() -> Element {
     // F4 toast infrastructure: install the queue context so any descendant
@@ -53,6 +58,11 @@ fn gallery_root() -> Element {
     let mut non_dismiss_open = use_signal(|| false);
     let mut backdrop_open = use_signal(|| false);
     let mut scroll_open = use_signal(|| false);
+
+    let mut dirty_a_open = use_signal(|| false);
+    let mut dirty_b_open = use_signal(|| false);
+    let mut dirty_a_outcome = use_signal(String::new);
+    let mut dirty_b_outcome = use_signal(String::new);
     rsx! {
         ThemeProvider {
             ToastViewport {}
@@ -174,6 +184,61 @@ fn gallery_root() -> Element {
                                     "Close"
                                 }
                             }
+                        }
+                    }
+
+                    section {
+                        h2 { "DirtyConfirmDialog" }
+                        Card { padding: CardPadding::Md,
+                            Stack { gap: "--space-3".to_owned(),
+                                Cluster { gap: "--space-3".to_owned(),
+                                    Button {
+                                        onclick: move |_| {
+                                            dirty_a_outcome.set(String::new());
+                                            dirty_a_open.set(true);
+                                        },
+                                        "Switch input (dirty)"
+                                    }
+                                    span {
+                                        style: "color: var(--color-text-muted);",
+                                        "Last outcome: "
+                                        code { "{dirty_a_outcome.read()}" }
+                                    }
+                                }
+                                Cluster { gap: "--space-3".to_owned(),
+                                    Button {
+                                        onclick: move |_| {
+                                            dirty_b_outcome.set(String::new());
+                                            dirty_b_open.set(true);
+                                        },
+                                        "With custom copy"
+                                    }
+                                    span {
+                                        style: "color: var(--color-text-muted);",
+                                        "Last outcome: "
+                                        code { "{dirty_b_outcome.read()}" }
+                                    }
+                                }
+                            }
+                        }
+
+                        DirtyConfirmDialog {
+                            open: dirty_a_open,
+                            oncancel:  move |()| dirty_a_outcome.set("cancel".to_owned()),
+                            ondiscard: move |()| dirty_a_outcome.set("discard".to_owned()),
+                            onsave:    move |()| dirty_a_outcome.set("save".to_owned()),
+                        }
+
+                        DirtyConfirmDialog {
+                            open: dirty_b_open,
+                            title: Some("Switch profile?".to_owned()),
+                            message: Some(
+                                "Profile X has unsaved mappings. Saving applies them now.".to_owned()
+                            ),
+                            save_label: Some("Save & Switch".to_owned()),
+                            oncancel:  move |()| dirty_b_outcome.set("cancel".to_owned()),
+                            ondiscard: move |()| dirty_b_outcome.set("discard".to_owned()),
+                            onsave:    move |()| dirty_b_outcome.set("save".to_owned()),
                         }
                     }
 
