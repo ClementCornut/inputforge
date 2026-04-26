@@ -7,10 +7,14 @@
 //! Hot-reload friendly: editing CSS or RSX updates instantly.
 
 use dioxus::prelude::*;
+#[allow(
+    unused_imports,
+    reason = "Label is re-exported for consumers; Field uses it internally"
+)]
 use inputforge_gui_dx::components::{
-    Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Card, CardPadding, Checkbox, Icon,
-    IconButton, MenuItem, MenuItems, MenuRoot, MenuTrigger, NumberInput, Select, Separator,
-    SeparatorOrientation, Slider, Spinner, SpinnerSize, Switch, TextInput, Tooltip,
+    Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Card, CardPadding, Checkbox, Field,
+    Icon, IconButton, Label, MenuItem, MenuItems, MenuRoot, MenuTrigger, NumberInput, Select,
+    Separator, SeparatorOrientation, Slider, Spinner, SpinnerSize, Switch, TextInput, Tooltip,
     TooltipPlacement,
 };
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
@@ -223,6 +227,25 @@ fn gallery_root() -> Element {
                                 MenuItem { "First action" }
                                 MenuItem { "Second action" }
                                 MenuItem { disabled: true, "Disabled action" }
+                            }
+                        }
+                    }
+                }
+
+                section {
+                    h2 { "Field + Label" }
+                    Card { padding: CardPadding::Md,
+                        div { style: "display: flex; flex-direction: column; gap: var(--space-4); max-width: 320px;",
+                            Field {
+                                label: "Profile name".to_owned(),
+                                helper: "Used in dropdowns.".to_owned(),
+                                required: true,
+                                TextInput { value: String::new(), placeholder: "My profile".to_owned() }
+                            }
+                            Field {
+                                label: "Sensitivity".to_owned(),
+                                error: "Must be between 0 and 1.".to_owned(),
+                                NumberInput { value: 1.5, min: 0.0, max: 1.0, step: 0.01 }
                             }
                         }
                     }

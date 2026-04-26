@@ -29,6 +29,8 @@ const SEPARATOR_CSS: Asset = asset!("/assets/components/separator.css");
 const SPINNER_CSS: Asset = asset!("/assets/components/spinner.css");
 const TOOLTIP_CSS: Asset = asset!("/assets/components/tooltip.css");
 const MENU_CSS: Asset = asset!("/assets/components/menu.css");
+const LABEL_CSS: Asset = asset!("/assets/components/label.css");
+const FIELD_CSS: Asset = asset!("/assets/components/field.css");
 
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
@@ -60,6 +62,8 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: SPINNER_CSS }
         Stylesheet { href: TOOLTIP_CSS }
         Stylesheet { href: MENU_CSS }
+        Stylesheet { href: LABEL_CSS }
+        Stylesheet { href: FIELD_CSS }
 
         {children}
     }
