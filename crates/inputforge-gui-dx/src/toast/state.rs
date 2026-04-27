@@ -18,7 +18,9 @@ pub struct Toast {
     pub level: ToastLevel,
     pub message: String,
     /// Dedupe coalesce count — starts at 1; `push` of an exact duplicate
-    /// against a non-dismissed entry increments this.
+    /// against the *latest visible* entry (same level + message) increments
+    /// this. Older same-content entries are never eligible because newer
+    /// toasts of different content have rendered on top of them.
     pub count: u32,
     pub created: Instant,
     /// Some(start) while the toast is hover/focus-paused.
@@ -43,24 +45,33 @@ pub const TOAST_MAX_VISIBLE: usize = 5;
 
 impl ToastState {
     pub fn push(&mut self, level: ToastLevel, message: impl Into<String>) {
+        let now = Instant::now();
         let msg = message.into();
 
-        // Coalesce — exact (level, message) match against non-dismissed entries.
-        if let Some(t) = self
-            .toasts
-            .iter_mut()
-            .find(|t| !t.dismissed && t.level == level && t.message == msg)
-        {
-            t.count = t.count.saturating_add(1);
-            t.created = Instant::now();
-            t.paused = None;
-            t.paused_total = Duration::ZERO;
-            return;
+        // GC entries that are no longer visible (dismissed OR time-expired —
+        // `is_expired` covers both). Without this, a stale entry that's gone
+        // from the screen still sits in the Vec and would be resurrected by a
+        // matching push below, reappearing with ×2 at its original position
+        // (above newer toasts pushed in the meantime).
+        self.toasts.retain(|t| !is_expired(t, now));
+
+        // Coalesce — only with the *last* entry, and only when it matches.
+        // Older same-content entries are never eligible: a newer toast of
+        // different content has rendered on top of them, and incrementing
+        // the older one would re-order the visual stack.
+        if let Some(last) = self.toasts.last_mut() {
+            if last.level == level && last.message == msg {
+                last.count = last.count.saturating_add(1);
+                last.created = now;
+                last.paused = None;
+                last.paused_total = Duration::ZERO;
+                return;
+            }
         }
 
         // Cap — FIFO drain when exceeded. Counts only non-dismissed entries
-        // because dismissed-but-still-in-Vec is the steady state during the
-        // CSS fade-out window.
+        // (post-GC, the only entries left are visible ones, but a prior cap
+        // drain may have left a dismissed entry from the same tick).
         let visible = self.toasts.iter().filter(|t| !t.dismissed).count();
         if visible >= TOAST_MAX_VISIBLE {
             if let Some(oldest) = self
@@ -82,7 +93,7 @@ impl ToastState {
             level,
             message: msg,
             count: 1,
-            created: Instant::now(),
+            created: now,
             paused: None,
             paused_total: Duration::ZERO,
             dismissed: false,
@@ -173,6 +184,48 @@ mod tests {
         assert_eq!(s.toasts[1].id, 1);
         assert_eq!(s.toasts[2].id, 2);
         assert_eq!(s.next_id, 3);
+    }
+
+    #[test]
+    fn push_does_not_coalesce_with_expired_entry() {
+        // After a toast has timed out and disappeared from the screen, a
+        // subsequent push of the same (level, message) must produce a fresh
+        // entry — not resurrect the old one with `count = 2`.
+        let mut s = ToastState::default();
+        s.push(ToastLevel::Info, "tick");
+        let first_id = s.toasts[0].id;
+        // Backdate the entry past TOAST_DURATION so it's time-expired.
+        s.toasts[0].created -= TOAST_DURATION + Duration::from_millis(1);
+
+        s.push(ToastLevel::Info, "tick");
+
+        // Old entry was GC'd; only the fresh one remains, count = 1, new id.
+        assert_eq!(s.toasts.len(), 1);
+        assert_eq!(s.toasts[0].count, 1);
+        assert_ne!(
+            s.toasts[0].id, first_id,
+            "must be a fresh entry, not a resurrected one"
+        );
+    }
+
+    #[test]
+    fn push_only_coalesces_with_latest_entry() {
+        // Newer toast of different content sits between two same-content
+        // pushes — the third push must NOT coalesce with the first; it
+        // appends a fresh entry at the end so the user sees the repeat
+        // below the newest unrelated toast.
+        let mut s = ToastState::default();
+        s.push(ToastLevel::Info, "alpha");
+        s.push(ToastLevel::Info, "beta");
+        s.push(ToastLevel::Info, "alpha");
+
+        assert_eq!(s.toasts.len(), 3);
+        assert_eq!(s.toasts[0].message, "alpha");
+        assert_eq!(s.toasts[0].count, 1);
+        assert_eq!(s.toasts[1].message, "beta");
+        assert_eq!(s.toasts[1].count, 1);
+        assert_eq!(s.toasts[2].message, "alpha");
+        assert_eq!(s.toasts[2].count, 1);
     }
 
     #[test]
