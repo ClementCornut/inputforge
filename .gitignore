@@ -9,3 +9,6 @@ lcov.info
 .vscode/
 .idea/
 **/*/*.local.*
+
+# Brainstorming visual-companion sessions (mockups, ephemeral state)
+.superpowers/
