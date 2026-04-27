@@ -12,3 +12,7 @@ lcov.info
 
 # Brainstorming visual-companion sessions (mockups, ephemeral state)
 .superpowers/
+
+# Python bytecode caches
+__pycache__/
+*.pyc
