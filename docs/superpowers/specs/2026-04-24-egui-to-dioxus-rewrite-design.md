@@ -21,7 +21,7 @@ A secondary motivation: the existing UI has structural UX problems that are bett
 
 - **100% Rust.** No Node.js, npm, or JS frontend toolchain.
 - **All work lands on `main`** as incremental, shippable merges. No long-lived branch.
-- **egui stays the default GUI** until the Dioxus version reaches parity across all core and secondary surfaces (end of F14).
+- **egui stays the default GUI** until the Dioxus version reaches parity across all core and secondary surfaces. Per F5, the default feature flag flips at the end of **F13** (Profiles side panel + Snapshots + no-profile empty state) — that is the point at which all core and secondary surfaces are in place and the GUI is shippable.
 - **Per-feature focused plans** will be written separately (via `superpowers:writing-plans`). This document is a master plan, not an implementation plan.
 - **UX-first per feature.** Each feature invokes `impeccable:frontend-design` as part of its focused plan. A dedicated audit/polish pass runs at F16.
 - **Preserve the engine contract.** The Dioxus GUI reuses the existing `Arc<RwLock<AppState>>` read path and `mpsc::Sender<EngineCommand>` write path without changes to the engine side.
@@ -52,9 +52,9 @@ Dioxus Desktop uses WebView2 under the hood. On Windows 10+ (the project's targe
 
 1. Create `crates/inputforge-gui-dx` alongside the existing `crates/inputforge-gui`.
 2. Add `gui-egui` (default) and `gui-dioxus` cargo features to `inputforge-app`. `launch_gui` dispatches to the selected crate at startup.
-3. Each master-plan feature (F1–F14) lands as a merge to `main`. After each merge, `cargo build --features gui-dioxus` and `cargo build --features gui-egui` must both succeed; egui remains the default runtime behavior.
-4. At **F14 completion** (all core + secondary surfaces built, tray integration already in place via F3), flip the default feature to `gui-dioxus`.
-5. At **F16**, delete the `inputforge-gui` crate, rename `inputforge-gui-dx` → `inputforge-gui`, and remove egui dependencies from the workspace.
+3. Each master-plan feature (F1–F17) lands as a merge to `main`. After each merge, `cargo build --features gui-dioxus` and `cargo build --features gui-egui` must both succeed; egui remains the default runtime behavior.
+4. At **F13 completion** (all core + secondary surfaces built, tray integration already in place via F3), flip the default feature to `gui-dioxus`. F14 (mode editing extras) and F15 (settings UI) ship after the flip, on top of the now-default Dioxus GUI.
+5. At **F17**, delete the `inputforge-gui` crate, rename `inputforge-gui-dx` → `inputforge-gui`, and remove egui dependencies from the workspace.
 
 This is chosen over a full-cutover branch because "on `main`" is a stated constraint and solo-maintainer workflow benefits from always-shippable increments. It is chosen over running both frameworks in the same process because event-loop ownership conflicts would be costly to resolve.
 
@@ -90,7 +90,7 @@ This is chosen over a full-cutover branch because "on `main`" is a stated constr
 - Pluggable layout container sketched as today's three-panel + status bar structure — explicitly a placeholder expected to be reshaped by F5.
 - Tab bar component usable for later view-switching.
 - Menubar / toolbar region.
-- **Tray integration:** bridge `muda::MenuEvent` from the tray thread into Dioxus context (channel + Signal or direct command-channel fanout). Wire Show / Hide / Quit actions to the Dioxus window lifecycle. Tray is infrastructure, not a feature — placing it here guarantees a production-viable default once it flips at F14.
+- **Tray integration:** bridge `muda::MenuEvent` from the tray thread into Dioxus context (channel + Signal or direct command-channel fanout). Wire Show / Hide / Quit actions to the Dioxus window lifecycle. Tray is infrastructure, not a feature — placing it here guarantees a production-viable default once the feature flag flips at F13.
 
 **Acceptance:** a runnable shell frames empty panel regions with correct sizing/responsiveness; tray menu actions behave identically to the egui build; the shell is intentionally minimal so F5 can revise it cheaply.
 
@@ -104,63 +104,68 @@ This is chosen over a full-cutover branch because "on `main`" is a stated constr
 
 ### Architecture Pass
 
-#### F5. Architecture & IA Redesign Pass
+#### F5. Architecture & IA Redesign Pass — *Resolved*
 
-- Audit the current egui GUI's information architecture: three-panel layout; Mappings/Modes tabs; floating Calibration / Input Viewer / Profile windows; device-first navigation; clickable status-bar profile name; the separation between mapping editing and live testing.
-- Identify UX problems at the **structural** level only. Visual/styling problems are per-feature and F16.
-- Answer concretely: should Mappings and Modes share a view? Should the Input Viewer be docked rather than floating? Is device-first the right navigation root, or should it be mapping-first or profile-first? Where does calibration belong in the flow? Does the status bar earn its space? Should profile management be a top-level surface or a menu action? Are any current floating windows actually modal workflows that would serve users better inline?
-- Invoke `impeccable:critique` on the current design, then `impeccable:frontend-design` + `impeccable:distill` + `impeccable:arrange` to propose the new IA.
-- Produce a layout-and-navigation spec: wireframes, screen inventory, navigation flow, and a revised feature decomposition.
+Spec: [`2026-04-27-f5-architecture-ia-redesign-design.md`](./2026-04-27-f5-architecture-ia-redesign-design.md).
 
-**Acceptance:** a dated design doc in `docs/superpowers/specs/` describing the new IA and rewriting the F6–F14 feature list. After F5 merges, this master plan is updated to reflect the final feature set.
+F5 audited the current egui IA at the structural level and committed a clean-slate redesign anchored in PRODUCT.md's authoring/tuning session shapes and DESIGN.md's surface rules. Outcomes that affect this plan:
 
-### Core Screens — *provisional pending F5*
+- **Navigation root re-rooted from device-first to mapping-list, mode-scoped.**
+- **Floating windows eliminated.** Calibration, Input Viewer, and Profile manager collapse into two right-side panels (Devices, Profiles) that share one slot via Replace discipline.
+- **Save model becomes auto-commit + session undo + on-disk snapshots.** Working-copy gating is removed; calibration is the only explicit-save surface.
+- **F6 onwards rewritten.** The provisional F6–F14 feature list in this plan is replaced by the F6–F17 sequence below. F1–F4 are unchanged and complete.
+- **Default feature flag flip moves from F14 → F13.**
+- **Feature count grows by one** (F1–F17 instead of F1–F16) to accommodate F15 (Settings UI) for the global preferences whose data layer F6 introduces.
 
-The following features are the current sketch based on today's structure. Their scope, sequencing, and even existence may change once F5 completes. Their focused plans will not be written until after F5.
+**Acceptance:** the design doc above is committed; this master plan now incorporates the final feature set.
 
-#### F6. Left Panel — Device List + Input Tree *(provisional)*
+### Core Screens — *resolved by F5*
 
-Device list with connection status; expandable input tree with mapping indicators; selection state for device + input.
+#### F6. Snapshot module + preferences core in `inputforge-core`
 
-#### F7. Mapping Editor — Shell + Action List *(provisional)*
+Core-only feature, no GUI. Owns `crates/inputforge-core/src/snapshot/` (Snapshot/SnapshotKind/SnapshotConfig types, ULID ids, BLAKE3 content hashing, atomic file writes, FIFO eviction respecting pinned flags, AutoSessionStart and AutoBeforeRestore triggers, `<profile>.snapshots/` storage with index recovery from snapshot file headers); the `AppState.mode_force: Option<ForcedMode>` field plus the `ForcedMode` enum and `EngineCommand::ForceMode | ReleaseMode` lifecycle commands that pause mode-change rules while forced; and the `inputforge_core::preferences` module (typed `Preferences` struct, OS-specific TOML location via `directories`, defaults-on-first-launch, `EngineCommand::ReloadPreferences`). Snapshot module reads `SnapshotConfig` from `Preferences` from day one — direct TOML edits are honored before any UI exists.
 
-Center panel for Mappings; action list / card layout; empty state; add/remove.
+#### F7. Chrome shell — top bar, mode tabs, status bar, banner
 
-#### F8. Mapping Editor — Action Config Forms *(provisional)*
+Replaces F3's placeholder shell. Owns the top bar (engine pill, profile name, mode tabs, secondary tools cluster), the divergence/forced banner, the thin status bar, all chrome-level click handlers, and the side-panel **Replace discipline** (the shared right-side panel slot — F12 and F13 plug content in). Reads `mode_force` through the existing `pub(crate) MetaSnapshot` projection.
 
-Mode-action form and vJoy-output form (axis / button / hat, target device, polarity); validation and dirty tracking.
+#### F8. Mapping list (left rail)
 
-#### F9. Mapping Editor — Curve Editor *(provisional)*
+Mode-scoped mapping list grouped by output category (Axes / Buttons / Hats), filter input, group headers, row component (name + source + glyph annotations), `+ Add mapping` expanding row, empty state, mapping-list keyboard navigation. **Owns the live-capture primitive** (a GUI-only modal state that subscribes to `AppState.input_cache` and emits the next observed input event — mirrors today's calibration `Record range` pattern; no new engine command). The primitive is reused by F9 (`change input`, secondary-input picker), F10/F11 (any "press an input" affordance in stage editors), and F12 (axis drill-in `Record range` after migration).
 
-SVG-based bezier curve editor with interactive point/handle drag, symmetric mode, axis labels, live-value overlay. Heaviest widget in the rewrite — its focused plan will likely have multiple internal steps.
+#### F9. Mapping editor (pipeline structure)
 
-#### F10. Mapping Editor — Deadzone Editor *(provisional)*
+Heaviest IA-level surface. Owns the editor frame (header, name field, input field, live readout, pipeline graph, undo recap, inactive-in-runtime hint); the pipeline-graph component (chain layout, Conditional branch rendering, MergeAxis stage with secondary-input picker, stage add/remove/reorder); the per-mapping session-undo log; and live-input/output binding to F1's polling Signal. All edits commit live via `EngineCommand::SetMapping` — no save buttons. F10 and F11 own the heavy widgets that live inside curve and deadzone stages.
 
-Deadzone visualization with inner/outer controls; linked to the live axis value readout.
+#### F10. Curve editor (SVG inside curve stage) — *signature feature*
 
-#### F11. Mode Editor *(provisional)*
+The primary tool of the tuning session; flagged for visual ambition. Owns the SVG bezier curve editor: control-point and handle drag, symmetric mode, axis labels and ticks, live-value tracking dot, keyboard manipulation. Bezier math is a direct port of `crates/inputforge-gui/src/widgets/curve_editor/mutation.rs` (no re-derivation). Reference quality bar: synthesizer envelope editors and DAW LFO designers.
 
-Mode tree view; create/rename/delete; active-mode indicator.
+#### F11. Deadzone editor (SVG inside deadzone stage) — *signature feature*
 
-### Secondary Surfaces — *provisional pending F5*
+Coherent with F10's animation timing and precision feel. Owns the deadzone visualization (input axis vs deadzone-applied output), inner/outer threshold drag handles on the curve, numeric input fields, live overlay showing where the live signal currently sits on the input-output curve.
 
-Floating-vs-docked status may change at F5.
+### Secondary Surfaces — *resolved by F5*
 
-#### F12. Input Viewer Surface *(provisional)*
+#### F12. Devices side panel + Calibration drill-in
 
-Live per-device visualization: axis bars (SVG, polarity + percentage), button grid, hat indicator. This feature exercises the live-polling path most heavily.
+Right-side panel that plugs into F7's Replace slot. Owns the device-list section (connection dot, name, coverage, disconnection display); the device drill-in section (axes/buttons/hats with live values + role badges + the subtle `cal` pill); the axis drill-in calibration editor (raw + calibrated bars, Min/Center−/Center+/Max number fields, Record range / Set center / Reset, amber dirty banner — calibration remains the only explicit-save surface in the GUI); used-by backref panel listing every mapping touching the axis.
 
-#### F13. Calibration Surface *(provisional)*
+#### F13. Profiles side panel + Snapshots + no-profile empty state — *feature flag flips here*
 
-Live range detection visualization; calibration parameter editor; apply/reset flow.
+Right-side panel that plugs into F7's Replace slot. Owns the profile library + Snapshots sub-section; per-row hover-revealed actions; `+ New` inline expanding-row flow with template radio (Blank / Copy from active / Copy from selected); `Open file…` OS picker; per-snapshot actions (Pin/Unpin · Rename · Delete · Restore →) wired to F6's snapshot commands; and the no-profile workspace empty state (`+ New profile`, `Open file…`, library pointer; engine forced Stopped). Profile rename, snapshot rename, and `+ New` name commit on Enter or blur — Esc cancels. **Default feature flag flips to `gui-dioxus` when this merges** — all core and secondary surfaces are in place at this point; tray was wired in F3.
 
-#### F14. Profile Surface *(provisional)*
+#### F14. Mode editing (beyond tab CRUD)
 
-Profile CRUD; load/save/switch; integration with the existing profile manager. **Default feature flag flips to `gui-dioxus` when this merges**, per the migration strategy — all core and secondary surfaces now exist and tray integration is already wired from F3.
+Downscoped from the old F11 mode editor. Most mode CRUD (create/rename/delete/select/activate, default-mode selection) lives in F7's mode-tab right-click menu. F14 owns what's left: the `ChangeMode { strategy }` action editor inside the pipeline (a mode-change is just a regular `Action`, so it gets pipeline-stage treatment); strategy picker (`SetMode` / `CycleModes`); and any mode-tree visualization if implementation discovers users need one (default plan: do not).
+
+#### F15. Settings UI — preferences editor surface
+
+Editor on top of F6's preferences core. Owns the settings surface (panel sub-section or dialog — F15 brainstorm decides), the form components that bind to F6's `Preferences` struct, and the commit flow (write TOML → dispatch `EngineCommand::ReloadPreferences`). Does **not** own schema, location, or defaults — those are F6's. Lands after the feature flag flip (F13), on top of the already-default Dioxus GUI.
 
 ### Integration + Finish
 
-#### F15. UX Polish & Audit
+#### F16. UX Polish & Audit
 
 - Run `impeccable:audit` against the built application.
 - Apply `impeccable:polish`, `impeccable:typeset`, `impeccable:harden`, and `impeccable:animate` where motion earns its keep.
@@ -169,9 +174,9 @@ Profile CRUD; load/save/switch; integration with the existing profile manager. *
 
 **Acceptance:** audit report items at or above "medium" severity are resolved; keyboard-only use of the app is possible end-to-end.
 
-#### F16. Cutover & Cleanup
+#### F17. Cutover & Cleanup
 
-- Confirm production parity (Dioxus is already the default since F14).
+- Confirm production parity (Dioxus is already the default since F13).
 - Delete `crates/inputforge-gui` (egui crate).
 - Rename `crates/inputforge-gui-dx` → `crates/inputforge-gui`.
 - Drop `eframe`, `egui`, `egui_extras`, `egui_plot`, `egui_kittest` from workspace dependencies.
@@ -189,12 +194,12 @@ Profile CRUD; load/save/switch; integration with the existing profile manager. *
 
 ## Open Questions (Resolve Per Feature, Not Here)
 
-- **Testing story for Dioxus GUI.** `egui_kittest` snapshot tests are dropped at F16. Options include: (a) accept-reduced UI testing (rely on logic-layer tests in `inputforge-core`); (b) Playwright or similar against the WebView; (c) Dioxus-native renderer testing as that ecosystem matures. Decided per feature; F15 or F16 is the latest we should commit to an approach.
+- **Testing story for Dioxus GUI.** `egui_kittest` snapshot tests are dropped at F17. Options include: (a) accept-reduced UI testing (rely on logic-layer tests in `inputforge-core`); (b) Playwright or similar against the WebView; (c) Dioxus-native renderer testing as that ecosystem matures. Decided per feature; F16 or F17 is the latest we should commit to an approach.
 - **Hot-reload ergonomics in release workflow.** Determine whether a dev-only script is needed. Deferred to F1 implementation detail.
 - **Light theme.** Out of scope until explicitly needed.
 - **Localization / i18n.** Out of scope; not present today.
 
-## Success Criteria (end-state after F16)
+## Success Criteria (end-state after F17)
 
 - `inputforge-gui` is a Dioxus Desktop crate.
 - No egui dependencies in the workspace.
@@ -203,7 +208,7 @@ Profile CRUD; load/save/switch; integration with the existing profile manager. *
 
 ## Risks
 
-- **F5 changes downstream feature decomposition significantly.** Accepted — that is the point of F5. F6–F14 are explicitly provisional.
-- **Curve editor (F9) porting is nontrivial.** SVG + pointer events are a well-trodden pattern, but correctness of bezier math and symmetric mode needs direct porting of the existing logic, not re-derivation.
+- **F5 reshaped the downstream feature decomposition.** Accepted — that was the point of F5. The provisional F6–F14 sketch was replaced by the resolved F6–F17 sequence above. See the F5 spec for full traceability.
+- **Curve editor (F10) porting is nontrivial.** SVG + pointer events are a well-trodden pattern, but correctness of bezier math and symmetric mode needs direct porting of the existing logic at `crates/inputforge-gui/src/widgets/curve_editor/mutation.rs`, not re-derivation.
 - **Webview runtime on older Windows.** WebView2 is pre-installed on Windows 10 20H1+ and all Windows 11. Older systems may need the evergreen runtime installer. Acceptable for a configuration tool.
 - **Loss of `egui_kittest` snapshot tests.** See Open Questions.
