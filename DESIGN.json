@@ -1,0 +1,350 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-04-27T00:00:00Z",
+  "title": "Design System: InputForge",
+  "extensions": {
+    "colorMeta": {
+      "_canonicalSource": "Hex tokens in DESIGN.md frontmatter are canonical. OKLCH values here are derived via deterministic sRGB->OKLCH conversion (D65, OKLab spec). Tonal ramps are anchored at the canonical L value, with chroma falling off near both lightness extremes.",
+      "primary": {
+        "role": "primary",
+        "displayName": "HUD Cyan-Blue",
+        "hex": "#4FA8FF",
+        "canonical": "oklch(0.716 0.153 250.4)",
+        "tonalRamp": [
+          "oklch(0.18 0.084 250.4)",
+          "oklch(0.28 0.116 250.4)",
+          "oklch(0.4 0.142 250.4)",
+          "oklch(0.52 0.153 250.4)",
+          "oklch(0.63 0.15 250.4)",
+          "oklch(0.716 0.139 250.4)",
+          "oklch(0.82 0.116 250.4)",
+          "oklch(0.92 0.084 250.4)"
+        ]
+      },
+      "live": {
+        "role": "status-success",
+        "displayName": "CRT Phosphor Green",
+        "hex": "#2EE0A0",
+        "canonical": "oklch(0.806 0.165 162.7)",
+        "tonalRamp": [
+          "oklch(0.18 0.09 162.7)",
+          "oklch(0.28 0.125 162.7)",
+          "oklch(0.4 0.153 162.7)",
+          "oklch(0.52 0.165 162.7)",
+          "oklch(0.63 0.162 162.7)",
+          "oklch(0.72 0.15 162.7)",
+          "oklch(0.806 0.129 162.7)",
+          "oklch(0.92 0.09 162.7)"
+        ]
+      },
+      "warning": {
+        "role": "status-warning",
+        "displayName": "Annunciator Amber",
+        "hex": "#FFB347",
+        "canonical": "oklch(0.821 0.149 72.1)",
+        "tonalRamp": [
+          "oklch(0.18 0.081 72.1)",
+          "oklch(0.28 0.113 72.1)",
+          "oklch(0.4 0.138 72.1)",
+          "oklch(0.52 0.148 72.1)",
+          "oklch(0.63 0.145 72.1)",
+          "oklch(0.72 0.134 72.1)",
+          "oklch(0.821 0.113 72.1)",
+          "oklch(0.92 0.081 72.1)"
+        ]
+      },
+      "error": {
+        "role": "status-error",
+        "displayName": "Annunciator Red",
+        "hex": "#F25555",
+        "canonical": "oklch(0.662 0.193 24.1)",
+        "tonalRamp": [
+          "oklch(0.18 0.106 24.1)",
+          "oklch(0.28 0.147 24.1)",
+          "oklch(0.4 0.179 24.1)",
+          "oklch(0.52 0.193 24.1)",
+          "oklch(0.662 0.185 24.1)",
+          "oklch(0.72 0.175 24.1)",
+          "oklch(0.82 0.147 24.1)",
+          "oklch(0.92 0.106 24.1)"
+        ]
+      },
+      "error-active": {
+        "role": "status-error-active",
+        "displayName": "Annunciator Red Active",
+        "hex": "#DD4846",
+        "canonical": "oklch(0.611 0.186 25.2)",
+        "comment": "Lifted from #D43F3F to clear AA with text-inverse (4.6x) on the depressed-button surface."
+      },
+      "processing": {
+        "role": "category",
+        "displayName": "Processing Teal-Cyan",
+        "hex": "#3FB8B0",
+        "canonical": "oklch(0.714 0.106 188.8)",
+        "tonalRamp": [
+          "oklch(0.18 0.058 188.8)",
+          "oklch(0.28 0.08 188.8)",
+          "oklch(0.4 0.098 188.8)",
+          "oklch(0.52 0.106 188.8)",
+          "oklch(0.63 0.104 188.8)",
+          "oklch(0.714 0.097 188.8)",
+          "oklch(0.82 0.08 188.8)",
+          "oklch(0.92 0.058 188.8)"
+        ]
+      },
+      "output": {
+        "role": "category",
+        "displayName": "Output Burnished Gold",
+        "hex": "#C99846",
+        "canonical": "oklch(0.71 0.115 77.9)",
+        "tonalRamp": [
+          "oklch(0.18 0.063 77.9)",
+          "oklch(0.28 0.087 77.9)",
+          "oklch(0.4 0.106 77.9)",
+          "oklch(0.52 0.115 77.9)",
+          "oklch(0.63 0.113 77.9)",
+          "oklch(0.71 0.105 77.9)",
+          "oklch(0.82 0.087 77.9)",
+          "oklch(0.92 0.063 77.9)"
+        ]
+      },
+      "control": {
+        "role": "category",
+        "displayName": "Control Muted Violet",
+        "hex": "#9A78D6",
+        "canonical": "oklch(0.645 0.14 299.1)",
+        "tonalRamp": [
+          "oklch(0.18 0.077 299.1)",
+          "oklch(0.28 0.106 299.1)",
+          "oklch(0.4 0.13 299.1)",
+          "oklch(0.52 0.14 299.1)",
+          "oklch(0.645 0.136 299.1)",
+          "oklch(0.72 0.127 299.1)",
+          "oklch(0.82 0.106 299.1)",
+          "oklch(0.92 0.077 299.1)"
+        ]
+      },
+      "control-badge-text": {
+        "role": "category-badge-text",
+        "displayName": "Control Badge Text",
+        "hex": "#B89BEA",
+        "canonical": "oklch(0.745 0.115 300.5)",
+        "comment": "The legibility-tuned text color for control badges. Canonical control violet (#9A78D6) cannot clear AA against its own 14% tint (3.7x); this brighter ramp step does (5.5x). Badge text only — borders, fills, and chip surfaces still use canonical control."
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "Hangar Navy",
+        "hex": "#14172A",
+        "canonical": "oklch(0.212 0.038 275.9)",
+        "tonalRamp": [
+          "oklch(0.212 0.024 275.9)",
+          "oklch(0.28 0.029 275.9)",
+          "oklch(0.4 0.035 275.9)",
+          "oklch(0.52 0.038 275.9)",
+          "oklch(0.63 0.037 275.9)",
+          "oklch(0.72 0.034 275.9)",
+          "oklch(0.82 0.029 275.9)",
+          "oklch(0.92 0.021 275.9)"
+        ]
+      },
+      "bg-elevated": {
+        "role": "neutral",
+        "displayName": "Panel Navy",
+        "hex": "#1E223A",
+        "canonical": "oklch(0.261 0.045 275.6)"
+      },
+      "bg-sunken": {
+        "role": "neutral",
+        "displayName": "Recess Navy",
+        "hex": "#0E1020",
+        "canonical": "oklch(0.18 0.033 277.1)"
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Instrument Text",
+        "hex": "#E4E6F0",
+        "canonical": "oklch(0.926 0.014 277.1)"
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Telemetry Text",
+        "hex": "#9CA0BC",
+        "canonical": "oklch(0.712 0.041 278.9)"
+      },
+      "text-subtle": {
+        "role": "neutral",
+        "displayName": "Subtle Text",
+        "hex": "#8589A7",
+        "canonical": "oklch(0.637 0.045 279.1)",
+        "comment": "Lifted from #686C88 to clear WCAG 2.2 AA on bg-elevated (was 3.0x; now 4.6x). Used for placeholder and tertiary text."
+      },
+      "border-focus": {
+        "role": "neutral",
+        "displayName": "Focus Cyan",
+        "hex": "#5AB0FF",
+        "canonical": "oklch(0.738 0.142 248.6)"
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Empty states, wizard intros, hero numerics. Rare." },
+      "headline": { "displayName": "Headline", "purpose": "Screen headings inside the shell." },
+      "title": { "displayName": "Title", "purpose": "Section headings, panel titles, dialog title." },
+      "emphasized-body": { "displayName": "Emphasized Body", "purpose": "Button labels, card titles, dialog description. The 16/600 step between title and body." },
+      "body": { "displayName": "Body", "purpose": "Default inputs, default labels, default prose. Cap at 65–75ch where prose runs." },
+      "label": { "displayName": "Label", "purpose": "Helper text, badges, dense cells, status-bar text. Adjacent to a caption at 11/400, the +500 weight delta carries the hierarchy." },
+      "caption": { "displayName": "Caption", "purpose": "Tabular captions, tick labels, kbd chips. The smallest legitimate text." },
+      "mono": { "displayName": "Mono", "purpose": "Live numerics: number-input fields, axis readouts, calibration thresholds, count badges." }
+    },
+    "shadows": [
+      { "name": "shadow-0", "value": "none", "purpose": "Default for almost every surface. Layering comes from luminance, not blur." },
+      { "name": "shadow-1", "value": "inset 0 1px 0 rgba(255, 255, 255, 0.04)", "purpose": "Chamfer highlight. A 1px light bloom on the upper edge of an elevated panel." },
+      { "name": "shadow-2", "value": "0 1px 0 rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05)", "purpose": "Stamped-panel. 1px hard ridge below plus chamfer above. No blur. Used by Card." },
+      { "name": "shadow-3", "value": "0 8px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.4)", "purpose": "Genuine overlay. Reserved for menus, tooltips, dialogs, toasts. Nothing else." }
+    ],
+    "motion": [
+      { "name": "duration-fast", "value": "100ms", "purpose": "Hover, focus, press, opacity fade, colour transition. Anything synchronous with the input event." },
+      { "name": "duration-base", "value": "180ms", "purpose": "Tab indicator slide, toast entry transform, dialog backdrop fade." },
+      { "name": "duration-slow", "value": "240ms", "purpose": "Dialog open scale + opacity, larger panel enter/exit. Reserved for spatial transitions large enough to want a touch of weight." },
+      { "name": "easing-fast", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Ease-out-expo. The synchronous curve. Used for every <=180ms transition on hover, focus, press, opacity, colour. Response begins immediately with the input event." },
+      { "name": "easing-standard", "value": "cubic-bezier(0.32, 0.08, 0.24, 1)", "purpose": "The 'needle finding its mark' curve. Slight initial dwell, clean decelerate. Used only for >=240ms container enter/exit (Dialog open, Toast slide). At <=180ms the dwell reads as latency; use easing-fast instead." },
+      { "name": "easing-emphasized", "value": "cubic-bezier(0.50, 0.00, 0.10, 1)", "purpose": "Sharper decelerate for accented moments (alarm reveal, mode switch confirmation)." },
+      { "name": "easing-linear", "value": "linear", "purpose": "Only when the animation IS the data: live axis indicators, real-metric progress. Also the easing under prefers-reduced-motion. Never on chrome." }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single action color in the system. Used sparingly per The One Action Color Rule.",
+      "html": "<button class=\"ds-btn-primary\">Activate engine</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 16px; background: var(--color-primary, #4FA8FF); color: var(--color-primary-fg, #06101F); border: 1px solid var(--color-primary, #4FA8FF); border-radius: 4px; font-family: Inter, system-ui, sans-serif; font-weight: 500; font-size: 14px; cursor: pointer; transition: background 100ms cubic-bezier(0.16, 1, 0.3, 1), border-color 100ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-btn-primary:hover { background: var(--color-primary-hover, #6FBAFF); border-color: var(--color-primary-hover, #6FBAFF); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-border-focus, #5AB0FF); outline-offset: 2px; } .ds-btn-primary:active { transform: translateY(1px); background: var(--color-primary-active, #2D7FD9); border-color: var(--color-primary-active, #2D7FD9); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Default action surface. Strong border carries the affordance, not a fill.",
+      "html": "<button class=\"ds-btn-secondary\">Save profile</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 16px; background: var(--color-bg-elevated, #1E223A); color: var(--color-text, #E4E6F0); border: 1px solid var(--color-border-strong, #424766); border-radius: 4px; font-family: Inter, system-ui, sans-serif; font-weight: 500; font-size: 14px; cursor: pointer; transition: background 100ms cubic-bezier(0.16, 1, 0.3, 1), border-color 100ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-btn-secondary:hover { border-color: var(--color-border-focus, #5AB0FF); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--color-border-focus, #5AB0FF); outline-offset: 2px; } .ds-btn-secondary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Transparent at rest. Hover fills with elevated-navy plus a hairline so the affordance reads on dark surfaces.",
+      "html": "<button class=\"ds-btn-ghost\">Cancel</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 16px; background: transparent; color: var(--color-text, #E4E6F0); border: 1px solid transparent; border-radius: 4px; font-family: Inter, system-ui, sans-serif; font-weight: 500; font-size: 14px; cursor: pointer; transition: background 100ms cubic-bezier(0.16, 1, 0.3, 1), border-color 100ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-btn-ghost:hover { background: var(--color-bg-elevated, #1E223A); border-color: var(--color-border, #2A2E48); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--color-border-focus, #5AB0FF); outline-offset: 2px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat-with-hairline by default. Cards do not float; surface luminance plus 1px border carries the lift.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card__title\">Mapping</div><div class=\"ds-card__body\">Stick X axis routes to vJoy 1 axis X with a curve and an outer deadzone.</div></div>",
+      "css": ".ds-card { background: var(--color-bg-elevated, #1E223A); border: 1px solid var(--color-border, #2A2E48); border-radius: 4px; padding: 16px; font-family: Inter, system-ui, sans-serif; color: var(--color-text, #E4E6F0); } .ds-card__title { font-size: 16px; font-weight: 600; line-height: 1.45; margin-bottom: 8px; } .ds-card__body { font-size: 14px; line-height: 1.45; color: var(--color-text-muted, #9CA0BC); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "text-input",
+      "description": "Sunken navy reads as recessed. Focus raises border to focus-cyan with a 2px outline.",
+      "html": "<input class=\"ds-input\" placeholder=\"Profile name\" />",
+      "css": ".ds-input { display: inline-block; border: 1px solid var(--color-border, #2A2E48); border-radius: 4px; background: var(--color-bg-sunken, #0E1020); color: var(--color-text, #E4E6F0); font-family: Inter, system-ui, sans-serif; font-size: 14px; padding: 8px 12px; transition: border-color 100ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-input::placeholder { color: var(--color-text-subtle, #8589A7); } .ds-input:hover:not(:disabled) { border-color: var(--color-border-strong, #424766); } .ds-input:focus-visible { outline: 2px solid var(--color-border-focus, #5AB0FF); outline-offset: 2px; border-color: var(--color-border-focus, #5AB0FF); }"
+    },
+    {
+      "name": "Number Input",
+      "kind": "input",
+      "refersTo": "number-input",
+      "description": "Mono numerals, right-aligned, 6ch wide field with vertical steppers separated by a hairline. Native spinners hidden cross-browser.",
+      "html": "<div class=\"ds-num\"><input class=\"ds-num__field\" type=\"text\" value=\"0.875\" /><div class=\"ds-num__steppers\"><button class=\"ds-num__step\" aria-label=\"Increment\"><svg width=\"10\" height=\"10\" viewBox=\"0 0 10 10\"><path d=\"M2 6 L5 3 L8 6\" stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></button><button class=\"ds-num__step\" aria-label=\"Decrement\"><svg width=\"10\" height=\"10\" viewBox=\"0 0 10 10\"><path d=\"M2 4 L5 7 L8 4\" stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></button></div></div>",
+      "css": ".ds-num { display: inline-flex; align-items: stretch; border: 1px solid var(--color-border, #2A2E48); border-radius: 4px; background: var(--color-bg-sunken, #0E1020); overflow: hidden; font-family: Inter, system-ui, sans-serif; } .ds-num:focus-within { outline: 2px solid var(--color-border-focus, #5AB0FF); outline-offset: 2px; } .ds-num__field { border: none; background: transparent; color: var(--color-text, #E4E6F0); font-family: JetBrainsMono, ui-monospace, monospace; font-size: 14px; font-feature-settings: \"tnum\" 1, \"ss03\" 1; padding: 8px 12px; width: 6ch; text-align: right; } .ds-num__field:focus { outline: none; } .ds-num__steppers { display: flex; flex-direction: column; border-left: 1px solid var(--color-border, #2A2E48); } .ds-num__step { width: 22px; height: 50%; background: transparent; border: none; color: var(--color-text-muted, #9CA0BC); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: background 100ms cubic-bezier(0.16, 1, 0.3, 1), color 100ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-num__step + .ds-num__step { border-top: 1px solid var(--color-border, #2A2E48); } .ds-num__step:hover { background: var(--color-bg-elevated, #1E223A); color: var(--color-text, #E4E6F0); }"
+    },
+    {
+      "name": "Switch",
+      "kind": "input",
+      "refersTo": "switch-track-checked",
+      "description": "Sunken track flips to primary on check. Thumb travel is derived from token math so resizing the track propagates.",
+      "html": "<label class=\"ds-switch\"><input class=\"ds-switch__input\" type=\"checkbox\" checked /><span class=\"ds-switch__track\"><span class=\"ds-switch__thumb\"></span></span><span class=\"ds-switch__label\">Engine running</span></label>",
+      "css": ".ds-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-family: Inter, system-ui, sans-serif; font-size: 14px; color: var(--color-text, #E4E6F0); } .ds-switch__input { position: absolute; opacity: 0; pointer-events: none; } .ds-switch__track { position: relative; width: 36px; height: 20px; background: var(--color-bg-sunken, #0E1020); border: 1px solid var(--color-border, #2A2E48); border-radius: 9999px; transition: background 100ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-switch__thumb { position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; background: var(--color-text-muted, #9CA0BC); border-radius: 9999px; transition: transform 100ms cubic-bezier(0.16, 1, 0.3, 1), background 100ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-switch__input:checked ~ .ds-switch__track { background: var(--color-primary, #4FA8FF); border-color: var(--color-primary, #4FA8FF); } .ds-switch__input:checked ~ .ds-switch__track .ds-switch__thumb { transform: translateX(16px); background: var(--color-primary-fg, #06101F); } .ds-switch__input:focus-visible ~ .ds-switch__track { outline: 2px solid var(--color-border-focus, #5AB0FF); outline-offset: 2px; }"
+    },
+    {
+      "name": "Tabs",
+      "kind": "nav",
+      "refersTo": "tab-active",
+      "description": "Etched-selector tabs. The 3px primary underline overlaps the 1px tablist border so the indicator anchors to the panel edge rather than floating above it.",
+      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab ds-tab--active\">Mappings</button><button class=\"ds-tab\">Outputs</button><button class=\"ds-tab\">Calibration</button></div>",
+      "css": ".ds-tabs { display: flex; flex-direction: row; align-items: stretch; gap: 4px; border-bottom: 1px solid var(--color-border-strong, #424766); padding: 0 4px; font-family: Inter, system-ui, sans-serif; } .ds-tab { appearance: none; background: transparent; border: 0; border-bottom: 3px solid transparent; color: var(--color-text-muted, #9CA0BC); font: inherit; font-size: 14px; font-weight: 500; letter-spacing: 0.01em; padding: 8px 12px; margin-bottom: -1px; cursor: pointer; transition: color 180ms cubic-bezier(0.16, 1, 0.3, 1), border-color 180ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-tab:hover { color: var(--color-text, #E4E6F0); } .ds-tab--active { color: var(--color-text, #E4E6F0); border-bottom-color: var(--color-primary, #4FA8FF); } .ds-tab:focus-visible { outline: 2px solid var(--color-border-focus, #5AB0FF); outline-offset: -3px; border-radius: 2px; }"
+    },
+    {
+      "name": "Status Bar",
+      "kind": "custom",
+      "refersTo": "status-bar",
+      "description": "Telemetry strip at the bottom of the shell. Sunken navy plus a 1px strong border on top reads as recessed instrument readout.",
+      "html": "<div class=\"ds-statusbar\"><div class=\"ds-statusbar__slot\"><span class=\"ds-dot ds-dot--live\"></span><span>Running</span></div><div class=\"ds-statusbar__slot ds-statusbar__slot--mid\">Mode <span class=\"ds-mode\">Combat</span></div><div class=\"ds-statusbar__slot\">2/2 devices</div></div>",
+      "css": ".ds-statusbar { display: flex; align-items: center; height: 28px; padding: 0 12px; border-top: 1px solid var(--color-border-strong, #424766); background: var(--color-bg-sunken, #0E1020); color: var(--color-text-muted, #9CA0BC); font-family: Inter, system-ui, sans-serif; font-size: 12px; gap: 12px; } .ds-statusbar__slot { display: flex; flex-direction: row; align-items: center; gap: 8px; min-width: 0; } .ds-statusbar__slot--mid { flex: 1; } .ds-dot { width: 8px; height: 8px; border-radius: 9999px; flex-shrink: 0; } .ds-dot--live { background: var(--color-live, #2EE0A0); box-shadow: 0 0 6px -2px var(--color-live, #2EE0A0); } .ds-mode { color: var(--color-control, #9A78D6); font-weight: 500; }"
+    },
+    {
+      "name": "Annunciator Toast",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Signature component. Backlit cockpit indicator with a chamfer-aligned 3px left accent stripe and a level-tinted surface.",
+      "html": "<div class=\"ds-toast ds-toast--warning\" role=\"alert\"><svg class=\"ds-toast__icon\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\"><path d=\"M8 1.5L15 14H1L8 1.5Z\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linejoin=\"round\"/><path d=\"M8 6V9\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><circle cx=\"8\" cy=\"11.5\" r=\"0.75\" fill=\"currentColor\"/></svg><span class=\"ds-toast__msg\">HidHide unavailable. Falling back to direct passthrough.</span><span class=\"ds-toast__count\">3</span><button class=\"ds-toast__close\" aria-label=\"Dismiss\">×</button></div>",
+      "css": ".ds-toast { pointer-events: auto; position: relative; background: color-mix(in oklch, var(--color-warning, #FFB347) 8%, var(--color-bg-elevated, #1E223A)); color: var(--color-warning, #FFB347); border: 1px solid var(--color-border, #2A2E48); border-radius: 4px; padding: 12px 12px 12px 15px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04); font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.15; display: flex; align-items: center; gap: 8px; max-width: 380px; } .ds-toast::before { content: \"\"; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 2px 2px 0; background: currentColor; box-shadow: 0 0 8px -2px currentColor; } .ds-toast__icon { flex-shrink: 0; color: currentColor; } .ds-toast__msg { color: var(--color-text, #E4E6F0); flex: 1; min-width: 0; line-height: 1.45; } .ds-toast__count { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 9999px; background: color-mix(in oklch, currentColor 14%, transparent); border: 1px solid color-mix(in oklch, currentColor 28%, transparent); color: currentColor; font-family: JetBrainsMono, ui-monospace, monospace; font-size: 11px; font-weight: 500; font-feature-settings: \"tnum\" 1; letter-spacing: 0.02em; line-height: 1; flex-shrink: 0; } .ds-toast__close { flex-shrink: 0; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; border-radius: 2px; color: var(--color-text-subtle, #8589A7); cursor: pointer; font-size: 18px; line-height: 1; padding: 0; } .ds-toast__close:hover { color: var(--color-text, #E4E6F0); background: color-mix(in oklch, currentColor 12%, transparent); border-color: var(--color-border, #2A2E48); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Evolved Glass Cockpit (Dark)",
+    "overview": "InputForge's interface is an instrument-panel for a sim-input pipeline. Every surface borrows from the visual grammar of avionics multi-function displays and software DAW chrome: precise typography, deep navy-tinted neutrals, HUD-blue actions, CRT-phosphor green for live signal, taxonomy hues that stay subordinate to alerts. Density is high because the audience is high. Hierarchy and contrast carry the weight, never decoration. The system is *evolved* glass cockpit because it deliberately rejects the literal-skeumorphic cockpit (rivets, brushed-metal bezels, fake chamfers as ornament) in favor of a flat, panel-luminance-layered surface where chamfers exist as 1px inset highlights, not raised plastic. It also rejects the CRT-as-aesthetic move (scanlines, glow bloom, retro-amber-monochrome) because that nostalgia treats the instrument as decoration.",
+    "keyCharacteristics": [
+      "Layering by luminance, not by shadow.",
+      "Information dense.",
+      "Color used as signal, never as garnish.",
+      "Inter with deliberate OpenType (tnum, ss03, cv11).",
+      "Cockpit-brisk motion. easing-fast (ease-out-expo) for <=180ms hover/focus/press; easing-standard (slight initial dwell) for >=240ms container enter/exit. No bounce, no elastic, no overshoot.",
+      "Inline-first editing surfaces. The cure for the JoystickGremlin Tk anti-reference is editing in place — Dialog is reserved for dirty-state, destructive, and OS-owned modals only."
+    ],
+    "rules": [
+      { "name": "The One Action Color Rule", "body": "HUD Cyan-Blue is the only action color in the system. There is no second action color. There is no accent color.", "section": "colors" },
+      { "name": "The Subordinate Categories Rule", "body": "Processing teal, output gold, and control violet are deliberately desaturated relative to the alert palette. They are never used at full chroma, never used for actions, and never used as decoration.", "section": "colors" },
+      { "name": "The No Pure Black, No Pure White Rule", "body": "All neutrals are tinted toward the navy hue. #000 and #fff are forbidden anywhere in component CSS.", "section": "colors" },
+      { "name": "The Tabular Figures Rule", "body": "Numeric values that line up in a column use font-feature-settings 'tnum' 1.", "section": "typography" },
+      { "name": "The Mono For Live Numerics Rule", "body": "JetBrainsMono is reserved for inputs and readouts whose value the engine actually owns. UI labels and prose stay Inter. Mono is not a stylistic choice; it is a precision affordance.", "section": "typography" },
+      { "name": "The 65ch Rule", "body": "Any prose longer than two lines is capped at 65–75ch.", "section": "typography" },
+      { "name": "The Cards Don't Float Rule", "body": "A Card uses shadow-2 (stamped) or shadow-0 (flat). It never uses shadow-3.", "section": "elevation" },
+      { "name": "The Real Float Rule", "body": "shadow-3 is permitted only on a surface that genuinely floats above the canvas: a menu list, a tooltip bubble, a dialog panel, a toast item.", "section": "elevation" },
+      { "name": "The Glassmorphism Exception Rule", "body": "Tooltips are the single permitted use of backdrop-filter: blur(). Nothing else gets backdrop-filter.", "section": "elevation" },
+      { "name": "The Sub-Pixel Curve Rule", "body": "easing-standard has a tiny ease-in (Y at P1 = 0.08). At >=240ms it reads as the panel settling on its detent. At <=180ms it reads as latency between the user's gesture and the response. For hover/focus/press transitions, use easing-fast.", "section": "motion" },
+      { "name": "The No Bounce Rule", "body": "No bounce, no elastic, no overshoot. easing-fast and easing-standard are the entire vocabulary. If a component spec calls for spring physics, the spec is wrong.", "section": "motion" },
+      { "name": "The Inline-First Rule", "body": "If a property has a single editable value, it is edited where it is displayed. The dialog opening on click is the canonical Tk failure; the system rejects it as a default. A dialog is justified only when this rule has been actively considered and rejected for a stated reason.", "section": "surfaces" },
+      { "name": "The No Modal-On-Modal Rule", "body": "A Dialog never opens another Dialog. If a confirmation is needed inside a flow already inside a Dialog, the flow itself is too deep — flatten it to an in-shell surface.", "section": "surfaces" }
+    ],
+    "dos": [
+      "Do layer surfaces by luminance plus a 1px hairline. Never by drop shadow.",
+      "Do use shadow-3 only on surfaces that genuinely float (menu, tooltip, dialog, toast).",
+      "Do keep numeric values in a tabular column on JetBrainsMono with tnum enabled.",
+      "Do keep the action color singular. HUD Cyan-Blue is the only action color.",
+      "Do carry status through shape and label, not color alone.",
+      "Do raise inactive elements to bright text on hover.",
+      "Do put real device names and real input addresses on the screen.",
+      "Do keep tightened leading (1.15 for headers, 1.45 for body) for instrument-cluster density."
+    ],
+    "donts": [
+      "Don't use #000 or #fff anywhere. All neutrals tint toward the navy hue.",
+      "Don't add side-stripe borders (border-left or border-right greater than 1px) to cards, list items, callouts, or panels. The Toast accent stripe is the one documented exception — it is the peripheral-vision channel for an ambient corner-of-viewport surface. Other surfaces sit in the foveal field and have no peripheral-channel argument; the rule does not extend.",
+      "Don't apply gradient text (background-clip: text plus a gradient).",
+      "Don't use backdrop-filter outside of Tooltip.",
+      "Don't float Cards with soft drop shadows.",
+      "Don't let category hues compete with status hues.",
+      "Don't add bounce, elastic, or overshoot to motion. easing-fast for <=180ms transitions, easing-standard for >=240ms container enter/exit.",
+      "Don't render a caption (11/400) and a label (12/500) at the same weight when they sit adjacent. Weight contrast is what carries the hierarchy in the dense range.",
+      "Don't use big number cards, soft pastel shadows, friendly empty-state illustrations, marketing-style stat tiles, or 'Welcome back' greetings. Empty states use Display-typography numerics or instrument-style 'no signal' framings — never SVG illustrations.",
+      "Don't use cyan glows, RGB edge lighting, gradient angles, or 'esports' type.",
+      "Don't use grey system-default forms, modal-after-modal flows, dialog-soup confirmation chains, or Tk-era widget chrome.",
+      "Don't wrap every region in a Card.",
+      "Don't nest Cards.",
+      "Don't use modals for confirmations that can be inline. See section 6 Surfaces for inline / expanding-row / side-panel / dialog assignment and the list of forbidden dialog uses."
+    ]
+  }
+}
