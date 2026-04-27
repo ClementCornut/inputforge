@@ -8,8 +8,9 @@
    never collides with the underline indicator. Disabled fades the
    label and resolves the active indicator to a muted swatch via
    color-mix so the strip no longer reads as live. Transitions use
-   the F2 motion tokens (--duration-base + --easing-standard, the
-   "needle finding its mark" curve). */
+   --duration-base (180ms) + --easing-fast — sub-200ms is the
+   easing-fast lane per DESIGN.md section 5; the dwell of
+   easing-standard reads as latency at this duration. */
 
 .if-tabs {
     display: flex;
@@ -36,8 +37,8 @@
     margin-bottom: -1px;
     cursor: pointer;
     transition:
-        color var(--duration-base) var(--easing-standard),
-        border-color var(--duration-base) var(--easing-standard);
+        color var(--duration-base) var(--easing-fast),
+        border-color var(--duration-base) var(--easing-fast);
 }
 
 .if-tab:hover:not([disabled]) {

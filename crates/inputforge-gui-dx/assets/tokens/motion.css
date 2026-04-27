@@ -1,13 +1,28 @@
-/* Cockpit-brisk durations. No bounce, no elastic, no overshoot —
-   real instruments don't bounce. Custom easings replace generic
-   Material decelerate curves with "instrument settle" feel. */
-:root {
-    --duration-fast: 100ms;   /* button press, hover, focus ring */
-    --duration-base: 180ms;   /* default state transitions */
-    --duration-slow: 240ms;   /* container enter/exit (menu, tooltip) */
+/* Cockpit-brisk durations and two-curve easing vocabulary.
+   No bounce, no elastic, no overshoot — real instruments don't bounce.
 
-    /* Slight initial dwell then clean decelerate.
-       Reads as a needle finding its mark. */
+   Two easing tokens, assigned by transition kind:
+
+   --easing-fast (ease-out-expo) — the synchronous curve for response-to-
+   input transitions (hover, focus, press, opacity, colour). Begins
+   immediately with the input event; carries deceleration, no initial
+   dwell. Used at <=180ms.
+
+   --easing-standard (the dwell curve) — the "needle finding its mark"
+   curve for spatial container enter/exit (Dialog open, Toast slide).
+   The slight ease-in (Y at P1 = 0.08) reads as panel weight at >=240ms
+   but as latency at <=180ms; do not use it on hover/focus/press.
+
+   See DESIGN.md section 5. */
+:root {
+    --duration-fast: 100ms;   /* hover, focus, press, opacity fade, colour transition */
+    --duration-base: 180ms;   /* tab indicator slide, toast entry transform */
+    --duration-slow: 240ms;   /* dialog open scale + opacity, larger panel enter/exit */
+
+    /* Synchronous response. Use for every <=180ms transition. */
+    --easing-fast:       cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* Container settle. Use only at >=240ms. */
     --easing-standard:   cubic-bezier(0.32, 0.08, 0.24, 1);
 
     /* Sharper decelerate for accented moments
@@ -16,15 +31,19 @@
 
     /* Linear is correct when the animation *is* the data —
        live axis indicators, progress bound to a real metric.
-       Do not use for chrome transitions. */
+       Also the easing under prefers-reduced-motion (set via duration
+       collapse below; component CSS that uses tokens inherits this). */
     --easing-linear:     linear;
 }
 
-/* Reduced-motion override. Easings stay (they describe shape, not
-   duration); zeroing the duration tokens is what disables animation
-   for users who request it. Component CSS that uses duration tokens
-   inherits this automatically; CSS that hard-codes ms in transition
-   shorthands does not — keep all timing in tokens. */
+/* Reduced-motion override per DESIGN.md global rule (section 5):
+     - Durations collapse to 0ms (no chrome animation).
+     - Easings stay declared but become irrelevant once durations are 0.
+     - Spatial transforms (slide, scale, translate) drop to opacity-only;
+       components that animate transform on entry must also gate their
+       transform under this query. Component CSS that uses duration tokens
+       inherits this automatically; CSS that hard-codes ms in transition
+       shorthands does not — keep all timing in tokens. */
 @media (prefers-reduced-motion: reduce) {
     :root {
         --duration-fast: 0ms;

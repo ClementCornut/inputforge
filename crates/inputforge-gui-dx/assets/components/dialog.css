@@ -18,15 +18,19 @@
   inset: 0;
   margin: auto;
   /* Open animation — runs when the dialog flips from closed→open
-       via showModal(). transition-behavior allows the discrete
-       `display: block` switch to participate in the timeline. */
+     via showModal(). transition-behavior allows the discrete
+     `display: block` switch to participate in the timeline.
+     --duration-slow (240ms) + --easing-standard per DESIGN.md
+     section 5: dialog open is a >=240ms container enter, so the
+     "needle finding its mark" dwell curve reads as panel weight
+     rather than as latency. */
   opacity: 1;
   transform: scale(1);
   transition:
-    opacity 180ms ease-out,
-    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    overlay 180ms ease-out allow-discrete,
-    display 180ms ease-out allow-discrete;
+    opacity var(--duration-slow) var(--easing-standard),
+    transform var(--duration-slow) var(--easing-standard),
+    overlay var(--duration-slow) var(--easing-standard) allow-discrete,
+    display var(--duration-slow) var(--easing-standard) allow-discrete;
 }
 
 /* @starting-style is the from-state when the dialog opens.
@@ -42,11 +46,14 @@
 
 .if-dialog::backdrop {
   background: var(--color-bg-overlay);
+  /* Backdrop fades on the same dwell curve as the panel but slightly
+     faster (--duration-base 180ms) so the dim arrives a beat before
+     the panel settles. */
   transition:
-    background-color 180ms ease-out,
-    opacity 180ms ease-out,
-    overlay 180ms ease-out allow-discrete,
-    display 180ms ease-out allow-discrete;
+    background-color var(--duration-base) var(--easing-standard),
+    opacity var(--duration-base) var(--easing-standard),
+    overlay var(--duration-base) var(--easing-standard) allow-discrete,
+    display var(--duration-base) var(--easing-standard) allow-discrete;
 }
 @starting-style {
   .if-dialog[open]::backdrop {
@@ -144,12 +151,16 @@
 }
 
 /* ── Reduced motion ─────────────────────────────────────────── */
+/* Per DESIGN.md section 5 global rule: durations collapse to <=100ms,
+   easings collapse to linear, spatial transforms drop to opacity-only.
+   The scale transform on @starting-style becomes `none` so the panel
+   simply fades in. */
 @media (prefers-reduced-motion: reduce) {
   .if-dialog {
     transition:
-      opacity 120ms linear,
-      overlay 120ms linear allow-discrete,
-      display 120ms linear allow-discrete;
+      opacity 100ms linear,
+      overlay 100ms linear allow-discrete,
+      display 100ms linear allow-discrete;
     transform: none;
   }
   @starting-style {
@@ -160,8 +171,8 @@
   }
   .if-dialog::backdrop {
     transition:
-      background-color 120ms linear,
-      overlay 120ms linear allow-discrete,
-      display 120ms linear allow-discrete;
+      background-color 100ms linear,
+      overlay 100ms linear allow-discrete,
+      display 100ms linear allow-discrete;
   }
 }

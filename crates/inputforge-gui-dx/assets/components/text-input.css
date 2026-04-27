@@ -6,7 +6,7 @@
     color: var(--color-text);
     font-family: var(--font-sans);
     padding: var(--space-2) var(--space-3);
-    transition: border-color var(--duration-fast) var(--easing-standard);
+    transition: border-color var(--duration-fast) var(--easing-fast);
 }
 
 .if-text-input::placeholder { color: var(--color-text-subtle); }
@@ -20,3 +20,15 @@
 .if-text-input.if-text-input--sm { font-size: var(--text-sm);  padding: var(--space-1) var(--space-2); }
 .if-text-input.if-text-input--md { font-size: var(--text-base); padding: var(--space-2) var(--space-3); }
 .if-text-input.if-text-input--lg { font-size: var(--text-md);  padding: var(--space-3) var(--space-4); }
+
+/* Dense-row focus variant (DESIGN.md I6 / section 7 Inputs).
+   When inputs ship in tightly-packed rows (number-input columns in
+   calibration, axis-readout fields) the default 2px outline at +2px
+   offset clips into neighbouring inputs at 4px gaps. The inset
+   variant tucks the focus ring inside the input boundary. */
+.if-text-input.if-text-input--inset:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: -2px;
+    box-shadow: inset 0 0 0 1px var(--color-border-focus);
+    border-color: var(--color-border-focus);
+}

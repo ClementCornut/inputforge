@@ -7,8 +7,8 @@
     background: var(--color-bg-elevated);
     color: var(--color-text);
     cursor: pointer;
-    transition: background var(--duration-fast) var(--easing-standard),
-                border-color var(--duration-fast) var(--easing-standard);
+    transition: background var(--duration-fast) var(--easing-fast),
+                border-color var(--duration-fast) var(--easing-fast);
 }
 
 .if-icon-button--sm { width: 28px; height: 28px; }
@@ -50,3 +50,8 @@
 .if-icon-button:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
 .if-icon-button:active:not(:disabled) { transform: translateY(1px); }
 .if-icon-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Standard-DPR press fallback per DESIGN.md M3. */
+@media (resolution: < 2dppx) {
+    .if-icon-button:active:not(:disabled) { transform: translateY(2px); }
+}

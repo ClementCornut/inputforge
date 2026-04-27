@@ -14,10 +14,14 @@
     --color-bg-sunken:    #0E1020;
     --color-bg-overlay:   rgba(8, 10, 22, 0.78);
 
-    /* Text — pulled slightly cooler to harmonize with the navy base. */
+    /* Text — pulled slightly cooler to harmonize with the navy base.
+       text-subtle was lifted from #686C88 (which failed WCAG 2.2 AA at
+       3.0x against bg-elevated) to #8589A7 (5.2x on bg, 4.6x on
+       bg-elevated). Placeholder and tertiary text are real text per
+       SC 1.4.3 and must clear AA. */
     --color-text:         #E4E6F0;
     --color-text-muted:   #9CA0BC;
-    --color-text-subtle:  #686C88;
+    --color-text-subtle:  #8589A7;
     --color-text-inverse: #0E1020;
 
     /* Border — hairline + strong. Strong is what most cockpit panel
@@ -41,31 +45,43 @@
     --color-warning:       #FFB347;
     --color-error:         #F25555;
     --color-error-hover:   #FF6F6F;
-    --color-error-active:  #D43F3F;
+    /* error-active was #D43F3F. text-inverse on it cleared only 4.1x —
+       below the 4.5x AA floor for normal text on a button surface.
+       Lifted by ~0.025 L (oklch) to #DD4846, which clears 4.6x. The
+       active state still sits 0.05 L below the resting #F25555 so the
+       button still reads as visibly depressed on press. */
+    --color-error-active:  #DD4846;
     --color-info:          #4FA8FF;
 
     /* Categories — three INDEPENDENT accent hues, NOT aliased to
        action/status. Each ~30% lower chroma than the alert palette
-       so they read as classification chips, not competing alerts. */
-    --color-processing:    #3FB8B0;                       /* teal-cyan */
-    --color-processing-bg: rgba(63, 184, 176, 0.14);
-    --color-processing-fg: #06151B;
+       so they read as classification chips, not competing alerts.
+       Category badges follow the status-badge pattern: the canonical
+       hue itself reads as text on a 14% tint of itself mixed into
+       bg-elevated. The previous deepest-of-deep *-fg foreground
+       tokens (#06151B / #1A1305 / #120A22) failed AA at 1.5x and
+       were dropped. control-badge-text exists because canonical
+       control violet cannot clear AA against its own 14% tint
+       (3.7x); the brighter ramp step #B89BEA does (5.5x). */
+    --color-processing:         #3FB8B0;                       /* teal-cyan, 5.1x on 14% tint */
+    --color-processing-bg:      rgba(63, 184, 176, 0.14);
 
-    --color-output:        #C99846;                       /* burnished gold */
-    --color-output-bg:     rgba(201, 152, 70, 0.14);
-    --color-output-fg:     #1A1305;
+    --color-output:             #C99846;                       /* burnished gold, 4.8x on 14% tint */
+    --color-output-bg:          rgba(201, 152, 70, 0.14);
 
-    --color-control:       #9A78D6;                       /* muted violet */
-    --color-control-bg:    rgba(154, 120, 214, 0.14);
-    --color-control-fg:    #120A22;
+    --color-control:            #9A78D6;                       /* muted violet — borders and surfaces */
+    --color-control-bg:         rgba(154, 120, 214, 0.14);
+    --color-control-badge-text: #B89BEA;                       /* AA-tuned badge text only — 5.5x on 14% control tint */
 
     /* Status backgrounds — composited tints of the matching foreground hue.
        Use these on Badge/Toast surfaces; never a raw rgba() literal in
-       component CSS. RGB values mirror the revised palette above so the
-       background, text, and border of a single status row stay aligned.
-       Verified WCAG AA against --color-text on --color-bg composite. */
-    --color-info-bg:       rgba(79, 168, 255, 0.14);       /* over #14172A → text 12.4:1 */
-    --color-success-bg:    rgba(46, 224, 160, 0.14);       /* over #14172A → text 12.6:1 */
-    --color-warning-bg:    rgba(255, 179, 71, 0.14);       /* over #14172A → text 12.5:1 */
-    --color-error-bg:      rgba(242, 85, 85, 0.14);        /* over #14172A → text 12.0:1 */
+       component CSS. The matching hue reads as the text on the composited
+       tint. Verified ratios are hue-as-text against the composited tint
+       mixed into bg-elevated. The error pair fails AA (3.9x) with the
+       canonical hue, so error badges use the brighter --color-error-hover
+       step (4.9x) — same pattern as control-badge-text. */
+    --color-info-bg:       rgba(79, 168, 255, 0.14);       /* primary text 4.9x on tint */
+    --color-success-bg:    rgba(46, 224, 160, 0.14);       /* live    text 6.7x on tint */
+    --color-warning-bg:    rgba(255, 179, 71, 0.14);       /* warning text 6.6x on tint */
+    --color-error-bg:      rgba(242, 85, 85, 0.14);        /* error-hover text 4.9x on tint (canonical fails 3.9x) */
 }

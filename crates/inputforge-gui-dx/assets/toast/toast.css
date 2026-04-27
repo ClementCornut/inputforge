@@ -45,10 +45,14 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    /* Per DESIGN.md section 7 Toast: opacity --duration-slow with
+       --easing-standard, transform --duration-base with --easing-standard
+       (toast slide is a container-enter spatial motion), border-color
+       hover --duration-fast with --easing-fast (synchronous response). */
     transition:
-        opacity 280ms ease-out,
-        border-color 120ms ease-out,
-        transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        opacity var(--duration-slow) var(--easing-standard),
+        border-color var(--duration-fast) var(--easing-fast),
+        transform var(--duration-base) var(--easing-standard);
     transform: translateX(0);
     will-change: opacity, transform;
 }
@@ -172,9 +176,9 @@
     line-height: 1;
     padding: 0;
     transition:
-        color 120ms ease-out,
-        background 120ms ease-out,
-        border-color 120ms ease-out;
+        color var(--duration-fast) var(--easing-fast),
+        background var(--duration-fast) var(--easing-fast),
+        border-color var(--duration-fast) var(--easing-fast);
 }
 .if-toast__close:hover {
     color: var(--color-text);
@@ -190,9 +194,13 @@
 }
 
 /* ── Reduced motion ─────────────────────────────────────────── */
+/* Per DESIGN.md section 5 global rule: durations <=100ms, easing linear,
+   spatial transforms (slide, scale, translate) drop to opacity-only.
+   The translateX entry collapses to a plain fade; the hover nudge
+   disappears entirely. */
 @media (prefers-reduced-motion: reduce) {
     .if-toast {
-        transition: opacity 120ms linear;
+        transition: opacity 100ms linear;
         transform: none;
     }
     .if-toast:hover {

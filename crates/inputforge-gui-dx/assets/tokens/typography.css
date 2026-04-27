@@ -30,26 +30,31 @@
     --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrainsMono', ui-monospace, 'Cascadia Code', monospace;
 
-    /* Six perceptually distinct sizes (preserving all seven token names).
-       Removes the 13/14/15 cluster from the placeholder. Step ratio ~1.25
-       once past the dense-UI sub-steps at the small end. */
-    --text-xs:   11px;   /* tabular captions, tick labels, kbd chips */
-    --text-sm:   12px;   /* helper text, badges, dense cells */
-    --text-base: 14px;   /* default body & inputs */
-    --text-md:   16px;   /* emphasized body, button labels, card titles */
-    --text-lg:   20px;   /* section headings, panel titles */
-    --text-xl:   24px;   /* screen headings inside the shell */
-    --text-2xl:  32px;   /* empty states, wizard intros, hero numerics */
+    /* Seven sizes, hand-tuned for the dense instrument-cluster range
+       (11-16px) and a modular ratio above (16-32px, ~1.25 between
+       steps). In the dense range adjacent steps are weight-distinguished,
+       not size-distinguished — caption (xs/400) and label (sm/500)
+       sit at 1px apart; the 100-weight delta is what carries the
+       hierarchy, not the sub-pixel size delta. See DESIGN.md section 3. */
+    --text-xs:   11px;   /* caption: tabular captions, tick labels, kbd chips. Always weight 400. */
+    --text-sm:   12px;   /* label:   helper text, badges, dense cells.       Always weight 500. */
+    --text-base: 14px;   /* body:    default body, inputs, prose */
+    --text-md:   16px;   /* emphasized-body: button labels, card titles, dialog description */
+    --text-lg:   20px;   /* title:    section headings, panel titles */
+    --text-xl:   24px;   /* headline: screen headings inside the shell */
+    --text-2xl:  32px;   /* display:  empty states, wizard intros, hero numerics */
 
     --weight-regular:  400;
     --weight-medium:   500;
     --weight-semibold: 600;
     --weight-bold:     700;
 
-    /* Tightened from 1.2 / 1.5 / 1.7 — instrument-cluster reads denser. */
+    /* Tightened from 1.2 / 1.5 — instrument-cluster reads denser.
+       1.15 for headers (display, headline, title), 1.45 for body and
+       labels. No 1.6 step — the prior --leading-relaxed went unused
+       and was dropped per DESIGN.md M1. */
     --leading-tight:   1.15;
     --leading-base:    1.45;
-    --leading-relaxed: 1.6;
 
     /* Inter feature flags applied at the body level via global.css.
        Exposed here as a token so component CSS can opt out

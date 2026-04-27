@@ -34,9 +34,15 @@
     min-width: 0;
 }
 
-/* Middle slot claims leftover space so end stays anchored at the right. */
+/* Middle slot claims leftover space so end stays anchored at the right.
+   Per DESIGN.md M2: when the window is too narrow to fit start + middle
+   + end at full width, the middle text truncates with ellipsis. No
+   marquee, no wrap, no horizontal scroll — the bar height stays at 28px. */
 .if-status-bar__middle {
     flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .if-status-bar__end {

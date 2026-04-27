@@ -13,4 +13,8 @@
 .if-badge.if-badge--info    { background: var(--color-info-bg);     color: var(--color-info);       border-color: var(--color-info); }
 .if-badge.if-badge--success { background: var(--color-success-bg);  color: var(--color-live);       border-color: var(--color-live); }
 .if-badge.if-badge--warning { background: var(--color-warning-bg);  color: var(--color-warning);    border-color: var(--color-warning); }
-.if-badge.if-badge--error   { background: var(--color-error-bg);    color: var(--color-error);      border-color: var(--color-error); }
+/* Error badge text uses --color-error-hover (the brighter ramp step,
+   4.9x on the 14% tint) because the canonical --color-error fails AA
+   at 3.9x against its own 14% tint. The border still uses canonical
+   --color-error to anchor the chip's level identity. */
+.if-badge.if-badge--error   { background: var(--color-error-bg);    color: var(--color-error-hover); border-color: var(--color-error); }

@@ -8,7 +8,7 @@
     background: var(--color-bg-sunken);
     border: var(--control-border-w) solid var(--color-border);
     border-radius: var(--radius-full);
-    transition: background var(--duration-fast) var(--easing-standard);
+    transition: background var(--duration-fast) var(--easing-fast);
 }
 .if-switch__thumb {
     position: absolute;
@@ -16,8 +16,8 @@
     width: var(--control-size-sm); height: var(--control-size-sm);
     background: var(--color-text-muted);
     border-radius: var(--radius-full);
-    transition: transform var(--duration-fast) var(--easing-standard),
-                background var(--duration-fast) var(--easing-standard);
+    transition: transform var(--duration-fast) var(--easing-fast),
+                background var(--duration-fast) var(--easing-fast);
 }
 
 .if-switch__input:checked ~ .if-switch__track                   { background: var(--color-primary); border-color: var(--color-primary); }
