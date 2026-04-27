@@ -7,8 +7,16 @@ use crate::icons::{Icon as IconKind, IconSize};
 use crate::toast::queue::ToastQueue;
 use crate::toast::state::{Toast, ToastLevel};
 
-/// Renders the toast queue. Two stacked ARIA regions split visible toasts
-/// by level so AT picks the correct delivery verb without per-item tagging.
+/// Renders the toast queue. Single fixed-positioned `.if-toast-stack`
+/// container anchored at top-right; toasts render in chronological
+/// (insertion) order regardless of level so a Success pushed after a
+/// Warning lands BELOW the warning, not above it.
+///
+/// ARIA: the stack itself is `role="status"` / `aria-live="polite"`;
+/// individual Warning/Error items override with `role="alert"` so AT
+/// still announces them assertively. This keeps the visual order
+/// chronological and the ARIA delivery per-level without splitting
+/// the visible stack.
 ///
 /// Tick mechanism: a `use_signal(Instant::now)` Signal is updated every 250 ms
 /// by a tokio interval; reading it in the body produces the per-tick re-render
@@ -31,31 +39,12 @@ pub fn ToastViewport() -> Element {
     let now = *now_signal.read();
     let toasts = queue.visible(now);
 
-    let polite: Vec<Toast> = toasts
-        .iter()
-        .filter(|t| matches!(t.level, ToastLevel::Info | ToastLevel::Success))
-        .cloned()
-        .collect();
-    let assertive: Vec<Toast> = toasts
-        .iter()
-        .filter(|t| matches!(t.level, ToastLevel::Warning | ToastLevel::Error))
-        .cloned()
-        .collect();
-
     rsx! {
         div {
-            class: "if-toast-viewport if-toast-viewport--polite",
+            class: "if-toast-stack",
             role: "status",
             "aria-live": "polite",
-            for t in polite {
-                ToastItem { key: "{t.id}", toast: t }
-            }
-        }
-        div {
-            class: "if-toast-viewport if-toast-viewport--assertive",
-            role: "alert",
-            "aria-live": "assertive",
-            for t in assertive {
+            for t in toasts {
                 ToastItem { key: "{t.id}", toast: t }
             }
         }
@@ -71,6 +60,13 @@ fn ToastItem(toast: Toast) -> Element {
         ToastLevel::Success => ("if-toast--success", IconKind::Check),
         ToastLevel::Warning => ("if-toast--warning", IconKind::Warning),
         ToastLevel::Error => ("if-toast--error", IconKind::Error),
+    };
+    // Per-item role override: Warning/Error get `role="alert"` so AT
+    // announces them assertively even though the stack container is
+    // `aria-live="polite"`. Info/Success inherit polite from the stack.
+    let item_role = match toast.level {
+        ToastLevel::Warning | ToastLevel::Error => Some("alert"),
+        ToastLevel::Info | ToastLevel::Success => None,
     };
     let count = toast.count;
     let message = toast.message.clone();
@@ -89,6 +85,7 @@ fn ToastItem(toast: Toast) -> Element {
     rsx! {
         div {
             class: "if-toast {level_class}",
+            role: item_role,
             tabindex: "0",
             onmouseenter,
             onmouseleave,

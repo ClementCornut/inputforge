@@ -1,14 +1,17 @@
 /* Toast system — avionics annunciator panels.
-   Two stacked ARIA regions: assertive (Warning/Error) at top-right;
-   polite (Info/Success) directly below. Each toast is a backlit
-   cockpit indicator: 3px left accent bar, inset top highlight,
-   level-tinted surface. Motion is snappy; nothing bounces.
-   Cascade-mounted last in ThemeProvider — z-index always wins. */
+   Single fixed-positioned stack at top-right; toasts render in
+   chronological order regardless of level (Warning/Error get
+   `role="alert"` per item to preserve assertive announcements).
+   Each toast is a backlit cockpit indicator: 3px left accent bar,
+   inset top highlight, level-tinted surface. Motion is snappy;
+   nothing bounces. Cascade-mounted last in ThemeProvider — z-index
+   always wins. */
 
-/* ── Viewports ───────────────────────────────────────────────── */
+/* ── Stack ───────────────────────────────────────────────────── */
 
-.if-toast-viewport {
+.if-toast-stack {
     position: fixed;
+    top: var(--space-3);
     right: var(--space-3);
     z-index: var(--z-toast);
     display: flex;
@@ -16,21 +19,6 @@
     gap: var(--space-2);
     pointer-events: none;
     width: clamp(280px, 28vw, 380px);
-}
-
-/* Assertive (Warning/Error) anchors at the top — user attention first.
-   Polite (Info/Success) sits directly below it, separated by a 12px gap.
-   The polite block uses calc on a CSS custom property so the offset
-   stays a single source of truth. */
-.if-toast-viewport--assertive {
-    top: var(--space-3);
-}
-.if-toast-viewport--polite {
-    /* Anchor below the assertive viewport. Uses a comfortable fixed
-       offset rather than a runtime measurement — assertive toasts are
-       the rare path; collisions with up to 5 of them are an edge case
-       the user will tolerate. */
-    top: calc(var(--space-3) + 240px);
 }
 
 /* ── Toast item ──────────────────────────────────────────────── */
@@ -50,10 +38,13 @@
     font-family: var(--font-sans);
     font-size: var(--text-base);
     line-height: var(--leading-tight);
-    display: grid;
-    grid-template-columns: auto 1fr auto auto;
+    /* Flex row: icon | message (flex:1) | optional count | close. The
+       message claims leftover space; the count slots between message
+       and close when present and the close button stays anchored at
+       the right edge — adding/removing the count never shifts close. */
+    display: flex;
     align-items: center;
-    column-gap: var(--space-2);
+    gap: var(--space-2);
     transition:
         opacity 280ms ease-out,
         border-color 120ms ease-out,
@@ -129,8 +120,6 @@
    as the "on" state of an indicator. */
 .if-toast > .if-icon {
     flex-shrink: 0;
-    align-self: start;
-    margin-top: 1px;  /* optical alignment with first text line */
 }
 
 /* ── Message + count ─────────────────────────────────────────── */
@@ -140,7 +129,9 @@
     font-size: var(--text-base);
     line-height: var(--leading-base);
     word-break: break-word;
-    /* Allow wrapping on long messages without breaking the grid. */
+    /* Claim leftover row space and allow wrapping on long messages
+       (`min-width: 0` lets a flex child shrink past its content min). */
+    flex: 1;
     min-width: 0;
 }
 
