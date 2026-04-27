@@ -7,73 +7,78 @@
 /* ── Native <dialog> reset ───────────────────────────────────── */
 
 .if-dialog {
-    background: transparent;
-    border: none;
-    padding: 0;
-    color: var(--color-text);
-    /* Native :modal centers the dialog; we just constrain width. */
-    max-width: min(560px, calc(100vw - 32px));
-    /* Override UA stylesheets that may set `inset: 0` and stretch
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--color-text);
+  /* Native :modal centers the dialog; we just constrain width. */
+  max-width: min(560px, calc(100vw - 32px));
+  /* Override UA stylesheets that may set `inset: 0` and stretch
        the dialog into the viewport — we want content-sized height. */
-    inset: 0;
-    margin: auto;
-    /* Open animation — runs when the dialog flips from closed→open
+  inset: 0;
+  margin: auto;
+  /* Open animation — runs when the dialog flips from closed→open
        via showModal(). transition-behavior allows the discrete
        `display: block` switch to participate in the timeline. */
-    opacity: 1;
-    transform: scale(1);
-    transition:
-        opacity 180ms ease-out,
-        transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
-        overlay 180ms ease-out allow-discrete,
-        display 180ms ease-out allow-discrete;
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity 180ms ease-out,
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    overlay 180ms ease-out allow-discrete,
+    display 180ms ease-out allow-discrete;
 }
 
 /* @starting-style is the from-state when the dialog opens.
    WebView2/Chromium supports it; older Safari does not (out of scope). */
 @starting-style {
-    .if-dialog[open] {
-        opacity: 0;
-        transform: scale(0.96);
-    }
+  .if-dialog[open] {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 }
 
 /* ── ::backdrop ─────────────────────────────────────────────── */
 
 .if-dialog::backdrop {
-    background: var(--color-bg-overlay);
-    transition:
-        background-color 180ms ease-out,
-        opacity 180ms ease-out,
-        overlay 180ms ease-out allow-discrete,
-        display 180ms ease-out allow-discrete;
+  background: var(--color-bg-overlay);
+  transition:
+    background-color 180ms ease-out,
+    opacity 180ms ease-out,
+    overlay 180ms ease-out allow-discrete,
+    display 180ms ease-out allow-discrete;
 }
 @starting-style {
-    .if-dialog[open]::backdrop {
-        background-color: transparent;
-    }
+  .if-dialog[open]::backdrop {
+    background-color: transparent;
+  }
 }
 
 /* ── Panel surface ───────────────────────────────────────────── */
 
 .if-dialog__panel {
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-md);
-    padding: var(--space-6);
-    /* shadow-3 (overlay) + inset top highlight (chamfer) — same
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  /* shadow-3 (overlay) + inset top highlight (chamfer) — same
        motif as toast, scaled up for a larger surface. */
-    box-shadow:
-        var(--shadow-3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    font-family: var(--font-sans);
-    color: var(--color-text);
-    display: grid;
-    grid-template-rows: auto auto 1fr auto;
-    row-gap: var(--space-4);
-    max-height: min(80vh, 720px);
-    /* Prevent panel from horizontal-scrolling its scrollbar gutter. */
-    overflow: hidden;
+  box-shadow:
+    var(--shadow-3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  /* Flex column: title, desc, body (flex:1), footer. The body claims
+       leftover space, so the footer parks at the panel's bottom whether
+       or not body content exists — no grid `1fr` track to recalc when
+       the body collapses, no `:empty` special-case needed. */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: min(30vh, 360px);
+  max-height: min(80vh, 720px);
+  /* Prevent panel from horizontal-scrolling its scrollbar gutter. */
+  overflow: hidden;
 }
 
 /* ── Title ───────────────────────────────────────────────────── */
@@ -81,13 +86,13 @@
    tracking tightening to feel set rather than typed. */
 
 .if-dialog__title {
-    margin: 0;
-    font-family: var(--font-sans);
-    font-size: var(--text-lg);
-    font-weight: var(--weight-semibold);
-    letter-spacing: -0.01em;
-    line-height: var(--leading-tight);
-    color: var(--color-text);
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+  line-height: var(--leading-tight);
+  color: var(--color-text);
 }
 
 /* ── Description ─────────────────────────────────────────────── */
@@ -95,33 +100,28 @@
    prose reads cleanly. */
 
 .if-dialog__desc {
-    margin: 0;
-    color: var(--color-text-muted);
-    font-size: var(--text-base);
-    line-height: var(--leading-base);
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
 }
 
 /* ── Body (scroll region) ────────────────────────────────────── */
-/* `min-height: 0` is the load-bearing rule that lets the grid
-   row shrink and the overflow take over. */
+/* `flex: 1` claims leftover space (or zero when there is none, with
+   `min-height: 0` allowing it to shrink past content height). When
+   the body is empty, it just contributes zero/leftover space without
+   needing a `:empty` special-case — the flex parent handles it. */
 
 .if-dialog__body {
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    /* Scrollbar gutter so content doesn't jump when the bar appears.
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Scrollbar gutter so content doesn't jump when the bar appears.
        Nice-to-have on Chromium-based renderers (WebView2 included). */
-    scrollbar-gutter: stable;
-    /* Subtle hairline above body when scrolled — fades in via JS hook
-       in a future task; for now the empty rule reserves the slot. */
-}
-
-/* When DialogBody is empty, the wrapper renders an empty <div>.
-   Collapse it so the row doesn't add a visible gap between the
-   description and the footer. (Plan-noted gotcha for compositions
-   like DirtyConfirmDialog where the description IS the body.) */
-.if-dialog__body:empty {
-    display: none;
+  scrollbar-gutter: stable;
+  /* Subtle hairline above body when scrolled — fades in via JS hook
+       in a future task. */
 }
 
 /* ── Footer ─────────────────────────────────────────────────── */
@@ -129,42 +129,39 @@
    "this is the action band" without needing extra vertical padding. */
 
 .if-dialog__footer {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: var(--space-2);
-    padding-top: var(--space-4);
-    border-top: 1px solid var(--color-border);
-    /* Pull the divider flush with the panel padding by extending
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  /* Pull the divider flush with the panel padding by extending
        horizontally. Negative margins are intentional here; the panel
        padding then "comes back" via padding-top above. */
-    margin: 0 calc(var(--space-6) * -1);
-    padding-left: var(--space-6);
-    padding-right: var(--space-6);
+  margin: 0 calc(var(--space-6) * -1);
+  padding-left: var(--space-6);
+  padding-right: var(--space-6);
 }
-
-/* When body collapses, footer's top divider still reads correctly
-   because the description sits directly above it. No special-case. */
 
 /* ── Reduced motion ─────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-    .if-dialog {
-        transition:
-            opacity 120ms linear,
-            overlay 120ms linear allow-discrete,
-            display 120ms linear allow-discrete;
-        transform: none;
+  .if-dialog {
+    transition:
+      opacity 120ms linear,
+      overlay 120ms linear allow-discrete,
+      display 120ms linear allow-discrete;
+    transform: none;
+  }
+  @starting-style {
+    .if-dialog[open] {
+      opacity: 0;
+      transform: none;
     }
-    @starting-style {
-        .if-dialog[open] {
-            opacity: 0;
-            transform: none;
-        }
-    }
-    .if-dialog::backdrop {
-        transition:
-            background-color 120ms linear,
-            overlay 120ms linear allow-discrete,
-            display 120ms linear allow-discrete;
-    }
+  }
+  .if-dialog::backdrop {
+    transition:
+      background-color 120ms linear,
+      overlay 120ms linear allow-discrete,
+      display 120ms linear allow-discrete;
+  }
 }
