@@ -10,11 +10,10 @@
    own styles. The font scale drops to --text-sm for the same reason —
    this strip is supporting context, not primary content. min-width:0
    on slots permits flex-shrink truncation in narrow viewports
-   without collapsing the grid. */
+   without collapsing the row. */
 
 .if-status-bar {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
+    display: flex;
     align-items: center;
     height: 28px;
     padding: 0 var(--space-3);
@@ -33,6 +32,11 @@
     align-items: center;
     gap: var(--space-2);
     min-width: 0;
+}
+
+/* Middle slot claims leftover space so end stays anchored at the right. */
+.if-status-bar__middle {
+    flex: 1;
 }
 
 .if-status-bar__end {
