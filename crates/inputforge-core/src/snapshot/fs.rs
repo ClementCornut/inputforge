@@ -15,7 +15,7 @@ use crate::error::{EngineError, Result};
 ///
 /// Returns [`EngineError::ProfilePathHasNoParent`] when `profile_path`
 /// has no parent directory.
-#[allow(dead_code, reason = "wired in Task 7")]
+#[allow(dead_code, reason = "callers wired in later")]
 pub(crate) fn snapshots_dir_for(profile_path: &Path) -> Result<PathBuf> {
     let parent = profile_path
         .parent()
@@ -46,7 +46,7 @@ pub(crate) fn snapshots_dir_for(profile_path: &Path) -> Result<PathBuf> {
 /// has no parent directory, [`EngineError::SnapshotDirCreate`] when the
 /// parent directory cannot be created, or [`EngineError::Io`] for
 /// read/write failures.
-#[allow(dead_code, reason = "wired in Task 7")]
+#[allow(dead_code, reason = "callers wired in later")]
 pub(crate) fn atomic_write(dest: &Path, bytes: &[u8]) -> Result<()> {
     let parent = dest
         .parent()
