@@ -1421,7 +1421,7 @@ fn make_engine_with_disk_profile() -> (
         let mut s = state.write();
         s.profile_path = Some(path.clone());
         s.engine_status = EngineStatus::Running;
-    }
+    };
 
     let (tx, rx) = mpsc::channel();
     let engine = Engine::new(
@@ -1799,7 +1799,7 @@ fn restore_snapshot_clears_mode_force() {
         let mut s = state.write();
         s.profile_path = Some(path.clone());
         s.engine_status = EngineStatus::Running;
-    }
+    };
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -1944,7 +1944,7 @@ fn sequential_eight_then_ninth_evicts_oldest() {
         let mut s = state.write();
         s.profile_path = Some(path.clone());
         s.engine_status = EngineStatus::Running;
-    }
+    };
 
     let (tx, rx) = mpsc::channel();
     let settings = AppSettings {
@@ -2002,5 +2002,54 @@ fn sequential_eight_then_ninth_evicts_oldest() {
     assert!(
         !after.iter().any(|s| s.id == oldest_id),
         "oldest must be evicted"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// F6 acceptance criterion: restore corrupt target (Task 27)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn restore_corrupt_target_fires_auto_before_restore_then_errors() {
+    let (mut engine, state, tx, _dir, path) = make_engine_with_disk_profile();
+
+    // Create a snapshot to obtain a real id, then corrupt its meta header.
+    tx.send(EngineCommand::CreateSnapshot {
+        kind: crate::snapshot::SnapshotKind::Manual,
+        label: None,
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    let snap = crate::snapshot::list(&path).unwrap()[0].clone();
+
+    let snap_dir = crate::snapshot::__test_snap_dir(&path).unwrap();
+    let snap_file = snap_dir.join(format!("{}.toml", snap.id));
+    // Replace the file with garbage that fails [snapshot_meta] parsing
+    // but is still a valid TOML *file* — pick a TOML that lacks the meta table.
+    std::fs::write(&snap_file, "[not_meta]\nid = \"garbage\"\n").unwrap();
+
+    let pre_name = state
+        .read()
+        .active_profile
+        .as_ref()
+        .unwrap()
+        .name()
+        .to_owned();
+    let result = engine.handle_command(EngineCommand::RestoreSnapshot { id: snap.id });
+    assert!(result.is_err(), "corrupt target must error");
+
+    // Live profile semantically unchanged (rollback restored original content).
+    assert_eq!(
+        state.read().active_profile.as_ref().unwrap().name(),
+        pre_name,
+        "active profile must be rolled back to the original"
+    );
+    // AutoBeforeRestore was added.
+    assert!(
+        crate::snapshot::list(&path)
+            .unwrap()
+            .iter()
+            .any(|s| matches!(s.kind, crate::snapshot::SnapshotKind::AutoBeforeRestore)),
+        "AutoBeforeRestore must exist even though restore failed"
     );
 }
