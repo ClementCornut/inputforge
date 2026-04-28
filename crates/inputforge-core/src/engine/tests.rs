@@ -1927,3 +1927,80 @@ fn restore_snapshot_auto_rollback_on_reload_failure() {
         "AutoBeforeRestore must survive a rolled-back restore"
     );
 }
+
+// ---------------------------------------------------------------------------
+// F6 acceptance criterion: sequential 8+1 snapshot eviction (Task 25)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sequential_eight_then_ninth_evicts_oldest() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("TFM_Throttle.toml");
+    let profile = make_profile(simple_mode_tree(), vec![]);
+    profile.save(&path).unwrap();
+
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile.clone())));
+    {
+        let mut s = state.write();
+        s.profile_path = Some(path.clone());
+        s.engine_status = EngineStatus::Running;
+    }
+
+    let (tx, rx) = mpsc::channel();
+    let settings = AppSettings {
+        last_profile: None,
+        snapshot: crate::snapshot::SnapshotConfig {
+            max_count: 8,
+            skip_if_unchanged: false,
+        },
+    };
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        settings,
+    );
+
+    let mut ids = Vec::new();
+    for _ in 0..8 {
+        tx.send(EngineCommand::CreateSnapshot {
+            kind: crate::snapshot::SnapshotKind::AutoSessionStart,
+            label: None,
+        })
+        .unwrap();
+        engine.tick().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    let listed = crate::snapshot::list(&path).unwrap();
+    assert_eq!(listed.len(), 8);
+    let mut taken_ats: Vec<_> = listed.iter().map(|s| s.taken_at).collect();
+    taken_ats.sort();
+    assert_eq!(
+        taken_ats,
+        listed.iter().rev().map(|s| s.taken_at).collect::<Vec<_>>()
+    );
+    let mut id_set = std::collections::HashSet::new();
+    for s in &listed {
+        ids.push(s.id);
+        id_set.insert(s.id);
+    }
+    assert_eq!(id_set.len(), 8, "all ids distinct");
+
+    // 9th dispatch: oldest unpinned must be evicted.
+    let oldest_id = listed.last().unwrap().id;
+    tx.send(EngineCommand::CreateSnapshot {
+        kind: crate::snapshot::SnapshotKind::AutoSessionStart,
+        label: None,
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    let after = crate::snapshot::list(&path).unwrap();
+    assert_eq!(after.len(), 8, "max_count = 8 enforced");
+    assert!(
+        !after.iter().any(|s| s.id == oldest_id),
+        "oldest must be evicted"
+    );
+}
