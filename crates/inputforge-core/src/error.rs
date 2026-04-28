@@ -46,6 +46,32 @@ pub enum EngineError {
     #[error("mode cycle detected: {path:?}")]
     ModeCycleDetected { path: Vec<String> },
 
+    #[error("snapshot not found: {id}")]
+    SnapshotNotFound { id: String },
+
+    #[error("snapshot file corrupt at {path}: {reason}")]
+    SnapshotCorrupt { path: PathBuf, reason: String },
+
+    #[error("snapshot directory I/O error at {path}: {source}")]
+    SnapshotDirIo {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("snapshot id is not a valid ULID: {value}")]
+    SnapshotIdInvalid { value: String },
+
+    #[error("could not create snapshot directory at {path}: {source}")]
+    SnapshotDirCreate {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("profile path has no parent directory: {path}")]
+    ProfilePathHasNoParent { path: PathBuf },
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -116,5 +142,40 @@ mod tests {
 
         let err: Result<i32> = Err(EngineError::VJoyDriverMissing);
         err.unwrap_err();
+    }
+
+    #[test]
+    fn engine_error_display_snapshot_not_found() {
+        let err = EngineError::SnapshotNotFound {
+            id: "01H8ZK".to_owned(),
+        };
+        assert!(err.to_string().contains("01H8ZK"));
+    }
+
+    #[test]
+    fn engine_error_display_snapshot_corrupt() {
+        let err = EngineError::SnapshotCorrupt {
+            path: PathBuf::from("/tmp/snap.toml"),
+            reason: "missing meta".to_owned(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("/tmp/snap.toml"));
+        assert!(msg.contains("missing meta"));
+    }
+
+    #[test]
+    fn engine_error_display_snapshot_id_invalid() {
+        let err = EngineError::SnapshotIdInvalid {
+            value: "not-a-ulid".to_owned(),
+        };
+        assert!(err.to_string().contains("not-a-ulid"));
+    }
+
+    #[test]
+    fn engine_error_display_profile_path_has_no_parent() {
+        let err = EngineError::ProfilePathHasNoParent {
+            path: PathBuf::from("foo.toml"),
+        };
+        assert!(err.to_string().contains("foo.toml"));
     }
 }
