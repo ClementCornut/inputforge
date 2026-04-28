@@ -314,6 +314,46 @@ fn count_orphans(snap_dir: &Path, cached: &[Snapshot]) -> Result<usize> {
     Ok(orphans)
 }
 
+/// Restore the live profile to a snapshot's content.
+///
+/// Strips `[snapshot_meta]` from the snapshot file and atomically
+/// writes the result to `profile_path`. Caller (engine) is responsible
+/// for taking `AutoBeforeRestore` first and reloading in-memory state
+/// after this returns.
+///
+/// # Errors
+///
+/// [`EngineError::SnapshotNotFound`] when `id` is unknown,
+/// [`EngineError::SnapshotCorrupt`] when the snapshot file lacks a
+/// parseable `[snapshot_meta]` header, or [`EngineError::Io`] on
+/// filesystem failure.
+pub fn restore(profile_path: &Path, id: &SnapshotId) -> Result<()> {
+    let snap_dir = fs::snapshots_dir_for(profile_path)?;
+    let snap_path = snap_dir.join(format!("{id}.toml"));
+    if !snap_path.exists() {
+        return Err(EngineError::SnapshotNotFound { id: id.to_string() });
+    }
+    let body = std::fs::read_to_string(&snap_path)?;
+    let mut value: toml::Value =
+        toml::from_str(&body).map_err(|e| EngineError::SnapshotCorrupt {
+            path: snap_path.clone(),
+            reason: e.to_string(),
+        })?;
+    if let Some(table) = value.as_table_mut() {
+        table.remove("snapshot_meta");
+    }
+    let stripped = toml::to_string(&value)?;
+    fs::atomic_write(profile_path, stripped.as_bytes())?;
+
+    tracing::info!(
+        target: "snapshot",
+        id = %id,
+        profile_path = %profile_path.display(),
+        "snapshot restored to live profile"
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -531,5 +571,43 @@ mod tests {
 
         rename(&path, &snap.id, None).unwrap();
         assert!(list(&path).unwrap()[0].label.is_none());
+    }
+
+    // ── restore() tests ───────────────────────────────────────────────────────
+
+    #[test]
+    fn restore_strips_meta_and_writes_profile() {
+        let (_dir, path) = fresh_profile_dir();
+        let cfg = SnapshotConfig::default();
+        let original_body = std::fs::read_to_string(&path).unwrap();
+        let snap = create(&path, SnapshotKind::Manual, None, &cfg)
+            .unwrap()
+            .unwrap();
+
+        // Mutate the live profile.
+        std::fs::write(
+            &path,
+            "[profile]\nid = \"550e8400-e29b-41d4-a716-446655440099\"\n\
+            name = \"changed\"\nstartup_mode = \"Default\"\n\n[modes]\nDefault = []\n",
+        )
+        .unwrap();
+
+        // Restore. Snapshot file is unchanged on disk; live profile is rewritten.
+        restore(&path, &snap.id).unwrap();
+
+        let restored = std::fs::read_to_string(&path).unwrap();
+        // Restored body must NOT contain the meta table.
+        assert!(!restored.contains("[snapshot_meta]"));
+        // Round-trip equality (TOML reformats; semantic equality only).
+        let original_value: toml::Value = toml::from_str(&original_body).unwrap();
+        let restored_value: toml::Value = toml::from_str(&restored).unwrap();
+        assert_eq!(original_value, restored_value);
+    }
+
+    #[test]
+    fn restore_unknown_id_returns_not_found() {
+        let (_dir, path) = fresh_profile_dir();
+        let err = restore(&path, &SnapshotId(Ulid::new())).unwrap_err();
+        assert!(matches!(err, EngineError::SnapshotNotFound { .. }));
     }
 }
