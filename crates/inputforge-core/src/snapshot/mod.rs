@@ -108,16 +108,99 @@ struct MetaWrapper {
     snapshot_meta: Snapshot,
 }
 
-/// Return all snapshots for `profile_path`, ordered newest-first.
+/// List all snapshots for a profile, newest first.
 ///
-/// (Stub — full implementation lands once `list` is complete.)
+/// Reads `<stem>.snapshots/index.toml` and verifies entries against the
+/// snapshot files on disk. If the index is missing, unparseable, or
+/// out of sync, rebuilds it from snapshot file headers.
 ///
 /// # Errors
 ///
-/// Currently infallible; reserved for I/O errors once the real
-/// implementation replaces this stub.
-pub fn list(_profile_path: &Path) -> Result<Vec<Snapshot>> {
-    Ok(Vec::new())
+/// Returns [`crate::error::EngineError::SnapshotDirIo`] on directory
+/// read failure.
+pub fn list(profile_path: &Path) -> Result<Vec<Snapshot>> {
+    let snap_dir = fs::snapshots_dir_for(profile_path)?;
+    let index_path = snap_dir.join("index.toml");
+
+    // Try cached path first.
+    let cached = index::read_index(&index_path)?;
+
+    // Verify each cached entry's file exists; rebuild if any are missing
+    // or if the snapshot dir contains files not represented in the index.
+    let needs_rebuild = if cached.is_empty() && snap_dir.exists() {
+        true
+    } else {
+        let mut entries_match = true;
+        for entry in &cached {
+            let expected = snap_dir.join(format!("{}.toml", entry.id));
+            if !expected.exists() {
+                entries_match = false;
+                break;
+            }
+        }
+        if entries_match {
+            // Detect orphan files (present on disk, missing from index).
+            count_orphans(&snap_dir, &cached)? > 0
+        } else {
+            true
+        }
+    };
+
+    let mut entries = if needs_rebuild {
+        let rebuilt = index::rebuild_from_dir(&snap_dir)?;
+        // Persist the rebuilt index, but don't propagate write errors —
+        // a failed write is recoverable on the next `list()`.
+        if !rebuilt.is_empty() || cached != rebuilt {
+            if let Err(e) = index::write_index(&index_path, &rebuilt) {
+                tracing::warn!(
+                    target: "snapshot",
+                    path = %index_path.display(),
+                    error = %e,
+                    "failed to persist rebuilt index"
+                );
+            }
+        }
+        rebuilt
+    } else {
+        cached
+    };
+    index::ensure_sorted_newest_first(&mut entries);
+    Ok(entries)
+}
+
+fn count_orphans(snap_dir: &Path, cached: &[Snapshot]) -> Result<usize> {
+    use std::collections::HashSet;
+    let known: HashSet<String> = cached.iter().map(|s| format!("{}.toml", s.id)).collect();
+    let mut orphans = 0usize;
+    let read = match std::fs::read_dir(snap_dir) {
+        Ok(r) => r,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(source) => {
+            return Err(EngineError::SnapshotDirIo {
+                path: snap_dir.to_path_buf(),
+                source,
+            });
+        }
+    };
+    for entry in read.flatten() {
+        let name = entry.file_name();
+        let Some(name_str) = name.to_str() else {
+            continue;
+        };
+        // Case-insensitive `.toml` check — paths on Windows are case-insensitive
+        // and clippy::case_sensitive_file_extension_comparisons rejects raw
+        // `ends_with(".toml")` for that reason.
+        let is_toml = Path::new(name_str)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"));
+        if !is_toml || name_str == "index.toml" {
+            continue;
+        }
+        if !known.contains(name_str) {
+            orphans += 1;
+        }
+    }
+    Ok(orphans)
 }
 
 #[cfg(test)]
@@ -162,7 +245,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "dedup logic depends on list(); enable once list() lands"]
     fn create_auto_session_start_dedupes_unchanged_content() {
         let (_dir, path) = fresh_profile_dir();
         let cfg = SnapshotConfig::default();
@@ -191,5 +273,75 @@ mod tests {
         let a = create(&path, SnapshotKind::AutoSessionStart, None, &cfg).unwrap();
         let b = create(&path, SnapshotKind::AutoSessionStart, None, &cfg).unwrap();
         assert!(a.is_some() && b.is_some());
+    }
+
+    // ── list() tests ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn list_empty_when_no_snapshots() {
+        let (_dir, path) = fresh_profile_dir();
+        assert!(list(&path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn list_returns_newest_first_by_taken_at() {
+        let (_dir, path) = fresh_profile_dir();
+        let cfg = SnapshotConfig {
+            max_count: 100,
+            skip_if_unchanged: false,
+        };
+        let a = create(&path, SnapshotKind::Manual, None, &cfg)
+            .unwrap()
+            .unwrap();
+        // Force monotonically increasing wall clock.
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        std::fs::write(
+            &path,
+            "[profile]\nid = \"550e8400-e29b-41d4-a716-446655440001\"\n\
+            name = \"changed\"\nstartup_mode = \"Default\"\n\n[modes]\nDefault = []\n",
+        )
+        .unwrap();
+        let b = create(&path, SnapshotKind::Manual, None, &cfg)
+            .unwrap()
+            .unwrap();
+        let listed = list(&path).unwrap();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].id, b.id, "newer must come first");
+        assert_eq!(listed[1].id, a.id);
+    }
+
+    #[test]
+    fn list_rebuilds_when_index_missing() {
+        let (_dir, path) = fresh_profile_dir();
+        let cfg = SnapshotConfig::default();
+        let snap = create(&path, SnapshotKind::Manual, None, &cfg)
+            .unwrap()
+            .unwrap();
+
+        // Delete index.toml; the snapshot file remains.
+        let snap_dir = fs::snapshots_dir_for(&path).unwrap();
+        std::fs::remove_file(snap_dir.join("index.toml")).unwrap();
+
+        let listed = list(&path).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, snap.id);
+    }
+
+    #[test]
+    fn list_skips_files_with_malformed_meta() {
+        let (_dir, path) = fresh_profile_dir();
+        let cfg = SnapshotConfig::default();
+        let _ = create(&path, SnapshotKind::Manual, None, &cfg)
+            .unwrap()
+            .unwrap();
+
+        let snap_dir = fs::snapshots_dir_for(&path).unwrap();
+        // Drop a garbage TOML file; rebuild must skip it without erroring.
+        std::fs::write(snap_dir.join("garbage.toml"), "not [valid] toml = =").unwrap();
+        // Force rebuild path.
+        std::fs::remove_file(snap_dir.join("index.toml")).unwrap();
+
+        let listed = list(&path).unwrap();
+        assert_eq!(listed.len(), 1, "garbage file must be skipped, not error");
     }
 }

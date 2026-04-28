@@ -23,16 +23,10 @@ struct IndexFile {
 ///
 /// Returns `Err` only for unexpected I/O failures; missing or corrupt
 /// index files are treated as empty and do not propagate an error.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "called only by tests; production caller lands with list()"
-    )
-)]
 #[allow(
     clippy::unnecessary_wraps,
-    reason = "Result<Vec<>> signals operation completion"
+    reason = "Result<Vec<>> signals operation completion; the Ok(Vec::new()) \
+              branches are intentional — callers treat empty-vec as rebuild trigger"
 )]
 pub(crate) fn read_index(path: &Path) -> Result<Vec<Snapshot>> {
     match std::fs::read_to_string(path) {
@@ -73,6 +67,82 @@ pub(crate) fn write_index(path: &Path, entries: &[Snapshot]) -> Result<()> {
     };
     let body = toml::to_string_pretty(&file)?;
     atomic_write(path, body.as_bytes())
+}
+
+/// Walk `<stem>.snapshots/` and reconstruct the entries list from each
+/// `<id>.toml`'s `[snapshot_meta]` header.
+///
+/// Files whose `[snapshot_meta]` header is missing or malformed are
+/// logged and skipped (treated as deleted for `prune` purposes).
+/// Files with a valid header are included in the returned list.
+///
+/// # Errors
+///
+/// Returns [`crate::error::EngineError::SnapshotDirIo`] if the
+/// directory cannot be read.
+pub(crate) fn rebuild_from_dir(dir: &Path) -> Result<Vec<Snapshot>> {
+    let mut out = Vec::new();
+    let read = match std::fs::read_dir(dir) {
+        Ok(r) => r,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+        Err(source) => {
+            return Err(crate::error::EngineError::SnapshotDirIo {
+                path: dir.to_path_buf(),
+                source,
+            });
+        }
+    };
+    for entry in read.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("toml") {
+            continue;
+        }
+        if path.file_name().and_then(|s| s.to_str()) == Some("index.toml") {
+            continue;
+        }
+        let body = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(
+                    target: "snapshot",
+                    path = %path.display(),
+                    error = %e,
+                    "snapshot file unreadable; skipping"
+                );
+                continue;
+            }
+        };
+        match toml::from_str::<MetaProbe>(&body) {
+            Ok(probe) => out.push(probe.snapshot_meta),
+            Err(e) => {
+                tracing::warn!(
+                    target: "snapshot",
+                    path = %path.display(),
+                    error = %e,
+                    "snapshot meta malformed; skipping"
+                );
+            }
+        }
+    }
+    sort_newest_first(&mut out);
+    Ok(out)
+}
+
+fn sort_newest_first(entries: &mut [Snapshot]) {
+    entries.sort_by(|a, b| {
+        b.taken_at
+            .cmp(&a.taken_at)
+            .then_with(|| b.id.0.cmp(&a.id.0))
+    });
+}
+
+#[derive(Deserialize)]
+struct MetaProbe {
+    snapshot_meta: Snapshot,
+}
+
+pub(crate) fn ensure_sorted_newest_first(entries: &mut [Snapshot]) {
+    sort_newest_first(entries);
 }
 
 #[cfg(test)]
