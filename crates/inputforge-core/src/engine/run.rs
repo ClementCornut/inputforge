@@ -326,6 +326,15 @@ impl Engine {
             EngineCommand::Shutdown => {
                 self.shutdown = true;
             }
+            // Real handlers wired in later tasks (Tasks 19–22).
+            EngineCommand::ForceMode { .. }
+            | EngineCommand::ReleaseMode
+            | EngineCommand::ReloadSettings
+            | EngineCommand::CreateSnapshot { .. }
+            | EngineCommand::DeleteSnapshot { .. }
+            | EngineCommand::PinSnapshot { .. }
+            | EngineCommand::RenameSnapshot { .. }
+            | EngineCommand::RestoreSnapshot { .. } => {}
         }
         Ok(())
     }
