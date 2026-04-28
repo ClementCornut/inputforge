@@ -198,6 +198,87 @@ pub fn delete(profile_path: &Path, id: &SnapshotId) -> Result<()> {
     Ok(())
 }
 
+/// Pin or unpin a snapshot. Pinned snapshots are exempt from FIFO eviction.
+///
+/// # Errors
+///
+/// Returns [`EngineError::SnapshotNotFound`] when `id` is unknown,
+/// [`EngineError::Io`] on filesystem failure.
+pub fn pin(profile_path: &Path, id: &SnapshotId, pinned: bool) -> Result<()> {
+    mutate_meta(profile_path, id, |snap| snap.pinned = pinned)?;
+    tracing::info!(
+        target: "snapshot",
+        id = %id,
+        pinned,
+        "snapshot pin updated"
+    );
+    Ok(())
+}
+
+/// Rename a snapshot's display label. Pass `None` to clear.
+///
+/// # Errors
+///
+/// Returns [`EngineError::SnapshotNotFound`] when `id` is unknown,
+/// [`EngineError::Io`] on filesystem failure.
+pub fn rename(profile_path: &Path, id: &SnapshotId, label: Option<String>) -> Result<()> {
+    let log_label = label.clone();
+    mutate_meta(profile_path, id, |snap| snap.label = label)?;
+    tracing::info!(
+        target: "snapshot",
+        id = %id,
+        ?log_label,
+        "snapshot renamed"
+    );
+    Ok(())
+}
+
+fn mutate_meta(profile_path: &Path, id: &SnapshotId, f: impl FnOnce(&mut Snapshot)) -> Result<()> {
+    let snap_dir = fs::snapshots_dir_for(profile_path)?;
+    let snap_path = snap_dir.join(format!("{id}.toml"));
+    if !snap_path.exists() {
+        return Err(EngineError::SnapshotNotFound { id: id.to_string() });
+    }
+    let body = std::fs::read_to_string(&snap_path)?;
+    // Parse the full file as a Value, mutate the meta sub-table, re-serialize.
+    let mut value: toml::Value =
+        toml::from_str(&body).map_err(|e| EngineError::SnapshotCorrupt {
+            path: snap_path.clone(),
+            reason: e.to_string(),
+        })?;
+    let meta_table = value
+        .as_table_mut()
+        .and_then(|t| t.remove("snapshot_meta"))
+        .ok_or_else(|| EngineError::SnapshotCorrupt {
+            path: snap_path.clone(),
+            reason: "missing [snapshot_meta] table".to_owned(),
+        })?;
+    let mut snap: Snapshot =
+        meta_table
+            .try_into()
+            .map_err(|e: toml::de::Error| EngineError::SnapshotCorrupt {
+                path: snap_path.clone(),
+                reason: e.to_string(),
+            })?;
+    f(&mut snap);
+
+    // Re-serialize: meta wrapper first, then the rest of the value.
+    let meta_str = toml::to_string(&MetaWrapper {
+        snapshot_meta: snap.clone(),
+    })?;
+    let rest_str = toml::to_string(&value)?;
+    let combined = format!("{meta_str}\n{rest_str}");
+    fs::atomic_write(&snap_path, combined.as_bytes())?;
+
+    // Update index.
+    let mut entries = list(profile_path)?;
+    if let Some(slot) = entries.iter_mut().find(|s| s.id == *id) {
+        *slot = snap;
+    }
+    index::write_index(&snap_dir.join("index.toml"), &entries)?;
+    Ok(())
+}
+
 fn count_orphans(snap_dir: &Path, cached: &[Snapshot]) -> Result<usize> {
     use std::collections::HashSet;
     let known: HashSet<String> = cached.iter().map(|s| format!("{}.toml", s.id)).collect();
@@ -397,5 +478,58 @@ mod tests {
         let bogus = SnapshotId(Ulid::new());
         let err = delete(&path, &bogus).unwrap_err();
         assert!(matches!(err, EngineError::SnapshotNotFound { .. }));
+    }
+
+    #[test]
+    fn pin_toggles_persisted_state() {
+        let (_dir, path) = fresh_profile_dir();
+        let cfg = SnapshotConfig::default();
+        let snap = create(&path, SnapshotKind::AutoSessionStart, None, &cfg)
+            .unwrap()
+            .unwrap();
+        assert!(!snap.pinned);
+
+        pin(&path, &snap.id, true).unwrap();
+        assert!(
+            list(&path)
+                .unwrap()
+                .iter()
+                .find(|s| s.id == snap.id)
+                .unwrap()
+                .pinned
+        );
+
+        pin(&path, &snap.id, false).unwrap();
+        assert!(
+            !list(&path)
+                .unwrap()
+                .iter()
+                .find(|s| s.id == snap.id)
+                .unwrap()
+                .pinned
+        );
+    }
+
+    #[test]
+    fn pin_unknown_id_returns_not_found() {
+        let (_dir, path) = fresh_profile_dir();
+        let err = pin(&path, &SnapshotId(Ulid::new()), true).unwrap_err();
+        assert!(matches!(err, EngineError::SnapshotNotFound { .. }));
+    }
+
+    #[test]
+    fn rename_updates_label() {
+        let (_dir, path) = fresh_profile_dir();
+        let cfg = SnapshotConfig::default();
+        let snap = create(&path, SnapshotKind::Manual, None, &cfg)
+            .unwrap()
+            .unwrap();
+
+        rename(&path, &snap.id, Some("new label".to_owned())).unwrap();
+        let listed = list(&path).unwrap();
+        assert_eq!(listed[0].label.as_deref(), Some("new label"));
+
+        rename(&path, &snap.id, None).unwrap();
+        assert!(list(&path).unwrap()[0].label.is_none());
     }
 }
