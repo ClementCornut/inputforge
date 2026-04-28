@@ -1384,6 +1384,48 @@ fn set_mapping_refreshes_outputs_from_cached_axis_values() {
 }
 
 // ---------------------------------------------------------------------------
+// Snapshot helper: engine backed by a real on-disk profile file.
+// ---------------------------------------------------------------------------
+
+/// Build an engine whose profile is already persisted to a temp file.
+///
+/// Returns `(engine, state, tx, dir, path)` where:
+/// - `dir` is the [`tempfile::TempDir`] whose lifetime keeps the temp
+///   directory alive — callers must bind it to a local variable.
+/// - `path` is the absolute path to the profile TOML.
+fn make_engine_with_disk_profile() -> (
+    Engine,
+    Arc<RwLock<AppState>>,
+    mpsc::Sender<EngineCommand>,
+    tempfile::TempDir,
+    std::path::PathBuf,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("TFM_Throttle.toml");
+    let profile = make_profile(simple_mode_tree(), vec![]);
+    profile.save(&path).unwrap();
+
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    {
+        let mut s = state.write();
+        s.profile_path = Some(path.clone());
+        s.engine_status = EngineStatus::Running;
+    }
+
+    let (tx, rx) = mpsc::channel();
+    let engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+    );
+    (engine, state, tx, dir, path)
+}
+
+// ---------------------------------------------------------------------------
 // F6 forced-mode tests
 // ---------------------------------------------------------------------------
 
@@ -1522,4 +1564,98 @@ fn reload_settings_picks_up_disk_edits() {
         engine.settings.snapshot.max_count, 999,
         "ReloadSettings must replace in-memory settings"
     );
+}
+
+// ---------------------------------------------------------------------------
+// F6 snapshot command handler tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn create_snapshot_command_writes_to_disk() {
+    let (mut engine, _state, tx, _dir, path) = make_engine_with_disk_profile();
+    tx.send(EngineCommand::CreateSnapshot {
+        kind: crate::snapshot::SnapshotKind::Manual,
+        label: Some("v1".to_owned()),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let listed = crate::snapshot::list(&path).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].label.as_deref(), Some("v1"));
+}
+
+#[test]
+fn create_snapshot_no_profile_is_silent_noop() {
+    let (mut engine, _state, tx) = make_engine_no_profile(MockInputSource::default());
+    tx.send(EngineCommand::CreateSnapshot {
+        kind: crate::snapshot::SnapshotKind::Manual,
+        label: None,
+    })
+    .unwrap();
+    engine.tick().unwrap(); // must not panic
+}
+
+#[test]
+fn pin_snapshot_via_command_persists() {
+    let (mut engine, _state, tx, _dir, path) = make_engine_with_disk_profile();
+    tx.send(EngineCommand::CreateSnapshot {
+        kind: crate::snapshot::SnapshotKind::AutoSessionStart,
+        label: None,
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    let snap = crate::snapshot::list(&path).unwrap()[0].clone();
+    assert!(!snap.pinned);
+
+    tx.send(EngineCommand::PinSnapshot {
+        id: snap.id,
+        pinned: true,
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    assert!(crate::snapshot::list(&path).unwrap()[0].pinned);
+}
+
+#[test]
+fn rename_snapshot_via_command_persists() {
+    let (mut engine, _state, tx, _dir, path) = make_engine_with_disk_profile();
+    tx.send(EngineCommand::CreateSnapshot {
+        kind: crate::snapshot::SnapshotKind::Manual,
+        label: None,
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    let snap = crate::snapshot::list(&path).unwrap()[0].clone();
+
+    tx.send(EngineCommand::RenameSnapshot {
+        id: snap.id,
+        label: Some("new".to_owned()),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    assert_eq!(
+        crate::snapshot::list(&path).unwrap()[0].label.as_deref(),
+        Some("new")
+    );
+}
+
+#[test]
+fn delete_snapshot_via_command_removes() {
+    let (mut engine, _state, tx, _dir, path) = make_engine_with_disk_profile();
+    tx.send(EngineCommand::CreateSnapshot {
+        kind: crate::snapshot::SnapshotKind::Manual,
+        label: None,
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    let snap = crate::snapshot::list(&path).unwrap()[0].clone();
+
+    tx.send(EngineCommand::DeleteSnapshot { id: snap.id })
+        .unwrap();
+    engine.tick().unwrap();
+
+    assert!(crate::snapshot::list(&path).unwrap().is_empty());
 }

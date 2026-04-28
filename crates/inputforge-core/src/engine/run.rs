@@ -255,6 +255,11 @@ impl Engine {
     }
 
     /// Handle a single engine command.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "single match dispatch; each arm is a distinct command — \
+                  splitting into sub-functions would obscure the command flow"
+    )]
     pub(crate) fn handle_command(&mut self, cmd: EngineCommand) -> Result<()> {
         match cmd {
             EngineCommand::LoadProfile(path) => {
@@ -338,12 +343,53 @@ impl Engine {
                 self.settings = crate::settings::AppSettings::load();
                 tracing::info!(target: "engine", "settings reloaded");
             }
-            // Real handlers wired in later tasks (Tasks 21–22).
-            EngineCommand::CreateSnapshot { .. }
-            | EngineCommand::DeleteSnapshot { .. }
-            | EngineCommand::PinSnapshot { .. }
-            | EngineCommand::RenameSnapshot { .. }
-            | EngineCommand::RestoreSnapshot { .. } => {}
+            EngineCommand::CreateSnapshot { kind, label } => {
+                let path = self.state.read().profile_path.clone();
+                if let Some(path) = path {
+                    let _ = crate::snapshot::create(&path, kind, label, &self.settings.snapshot)?;
+                    let _ = crate::snapshot::prune(&path, &self.settings.snapshot)?;
+                } else {
+                    tracing::warn!(
+                        target: "snapshot",
+                        "CreateSnapshot dispatched with no profile loaded"
+                    );
+                }
+            }
+            EngineCommand::DeleteSnapshot { id } => {
+                let path = self.state.read().profile_path.clone();
+                if let Some(path) = path {
+                    crate::snapshot::delete(&path, &id)?;
+                } else {
+                    tracing::warn!(
+                        target: "snapshot",
+                        "DeleteSnapshot dispatched with no profile loaded"
+                    );
+                }
+            }
+            EngineCommand::PinSnapshot { id, pinned } => {
+                let path = self.state.read().profile_path.clone();
+                if let Some(path) = path {
+                    crate::snapshot::pin(&path, &id, pinned)?;
+                } else {
+                    tracing::warn!(
+                        target: "snapshot",
+                        "PinSnapshot dispatched with no profile loaded"
+                    );
+                }
+            }
+            EngineCommand::RenameSnapshot { id, label } => {
+                let path = self.state.read().profile_path.clone();
+                if let Some(path) = path {
+                    crate::snapshot::rename(&path, &id, label)?;
+                } else {
+                    tracing::warn!(
+                        target: "snapshot",
+                        "RenameSnapshot dispatched with no profile loaded"
+                    );
+                }
+            }
+            // Real handler wired in Task 22.
+            EngineCommand::RestoreSnapshot { .. } => {}
         }
         Ok(())
     }
