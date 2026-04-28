@@ -170,6 +170,34 @@ pub fn list(profile_path: &Path) -> Result<Vec<Snapshot>> {
     Ok(entries)
 }
 
+/// Delete a snapshot by id.
+///
+/// # Errors
+///
+/// Returns [`EngineError::SnapshotNotFound`] if no snapshot with `id`
+/// exists, or [`EngineError::Io`] on filesystem failure.
+pub fn delete(profile_path: &Path, id: &SnapshotId) -> Result<()> {
+    let snap_dir = fs::snapshots_dir_for(profile_path)?;
+    let snap_path = snap_dir.join(format!("{id}.toml"));
+    if !snap_path.exists() {
+        return Err(EngineError::SnapshotNotFound { id: id.to_string() });
+    }
+    std::fs::remove_file(&snap_path)?;
+
+    // Update index.
+    let mut entries = list(profile_path)?;
+    entries.retain(|s| s.id != *id);
+    index::write_index(&snap_dir.join("index.toml"), &entries)?;
+
+    tracing::info!(
+        target: "snapshot",
+        id = %id,
+        profile_path = %profile_path.display(),
+        "snapshot deleted"
+    );
+    Ok(())
+}
+
 fn count_orphans(snap_dir: &Path, cached: &[Snapshot]) -> Result<usize> {
     use std::collections::HashSet;
     let known: HashSet<String> = cached.iter().map(|s| format!("{}.toml", s.id)).collect();
@@ -345,5 +373,29 @@ mod tests {
 
         let listed = list(&path).unwrap();
         assert_eq!(listed.len(), 1, "garbage file must be skipped, not error");
+    }
+
+    // ── delete() tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn delete_removes_file_and_index_entry() {
+        let (_dir, path) = fresh_profile_dir();
+        let cfg = SnapshotConfig::default();
+        let snap = create(&path, SnapshotKind::Manual, None, &cfg)
+            .unwrap()
+            .unwrap();
+        delete(&path, &snap.id).unwrap();
+
+        let snap_dir = fs::snapshots_dir_for(&path).unwrap();
+        assert!(!snap_dir.join(format!("{}.toml", snap.id)).exists());
+        assert!(list(&path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_unknown_id_returns_not_found() {
+        let (_dir, path) = fresh_profile_dir();
+        let bogus = SnapshotId(Ulid::new());
+        let err = delete(&path, &bogus).unwrap_err();
+        assert!(matches!(err, EngineError::SnapshotNotFound { .. }));
     }
 }
