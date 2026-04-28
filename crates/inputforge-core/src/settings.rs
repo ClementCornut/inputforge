@@ -1,11 +1,12 @@
 // Application-level settings (persisted outside profiles)
-// Rust guideline compliant 2026-03-07
+// Rust guideline compliant 2026-04-28
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use crate::snapshot::SnapshotConfig;
 
 /// Application-wide settings persisted between sessions.
 ///
@@ -15,6 +16,15 @@ use crate::error::Result;
 pub struct AppSettings {
     /// Path to the last loaded profile, if any.
     pub last_profile: Option<PathBuf>,
+
+    /// Snapshot subsystem configuration.
+    ///
+    /// Persisted as a `[snapshot]` sub-table in `settings.toml`; users can
+    /// hand-edit values directly. F15 will ship a typed UI editor on top of
+    /// this. Missing `[snapshot]` table (pre-F6 files) loads with defaults
+    /// via `#[serde(default)]`.
+    #[serde(default)]
+    pub snapshot: SnapshotConfig,
 }
 
 impl AppSettings {
@@ -164,6 +174,7 @@ mod tests {
 
         let settings = AppSettings {
             last_profile: Some(PathBuf::from("C:/profiles/my_profile.toml")),
+            ..Default::default()
         };
 
         settings.save_to(&settings_path).unwrap();
@@ -183,7 +194,10 @@ mod tests {
 
     #[test]
     fn serde_roundtrip_with_none() {
-        let settings = AppSettings { last_profile: None };
+        let settings = AppSettings {
+            last_profile: None,
+            ..Default::default()
+        };
         let toml_str = toml::to_string(&settings).unwrap();
         let back: AppSettings = toml::from_str(&toml_str).unwrap();
         assert_eq!(settings, back);
@@ -193,6 +207,7 @@ mod tests {
     fn serde_roundtrip_with_path() {
         let settings = AppSettings {
             last_profile: Some(PathBuf::from("/some/path/profile.toml")),
+            ..Default::default()
         };
         let toml_str = toml::to_string(&settings).unwrap();
         let back: AppSettings = toml::from_str(&toml_str).unwrap();
@@ -208,6 +223,7 @@ mod tests {
         // 1. save_to() creates the parent directory and file.
         let settings = AppSettings {
             last_profile: Some(PathBuf::from("test_profile.toml")),
+            ..Default::default()
         };
         settings.save_to(&path).unwrap();
         assert!(path.exists(), "settings file should exist after save_to");
@@ -220,5 +236,47 @@ mod tests {
         std::fs::write(&path, "this is not valid toml {{{{").unwrap();
         let loaded = AppSettings::load_from(&path);
         assert_eq!(loaded, AppSettings::default());
+    }
+
+    #[test]
+    fn settings_default_has_default_snapshot_config() {
+        let s = AppSettings::default();
+        assert_eq!(s.snapshot, SnapshotConfig::default());
+    }
+
+    #[test]
+    fn pre_f6_settings_loads_with_default_snapshot_table() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.toml");
+        // Write a pre-F6 file: no [snapshot] table.
+        std::fs::write(&path, "last_profile = \"C:/foo.toml\"\n").unwrap();
+
+        let loaded = AppSettings::load_from(&path);
+        assert_eq!(loaded.snapshot, SnapshotConfig::default());
+        assert_eq!(loaded.last_profile, Some(PathBuf::from("C:/foo.toml")));
+    }
+
+    #[test]
+    fn settings_round_trips_with_custom_snapshot_table() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.toml");
+
+        let s = AppSettings {
+            last_profile: None,
+            snapshot: SnapshotConfig {
+                max_count: 7,
+                skip_if_unchanged: false,
+            },
+        };
+        s.save_to(&path).unwrap();
+
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            body.contains("[snapshot]"),
+            "expected [snapshot] table on disk; got: {body}"
+        );
+
+        let loaded = AppSettings::load_from(&path);
+        assert_eq!(loaded, s);
     }
 }
