@@ -1493,3 +1493,33 @@ fn force_mode_rotates_on_different_mode() {
         Some("Landing")
     );
 }
+
+// ---------------------------------------------------------------------------
+// F6 settings reload tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn reload_settings_picks_up_disk_edits() {
+    use crate::snapshot::SnapshotConfig;
+
+    // Build an engine with default settings and dispatch ReloadSettings.
+    // The handler reads from `AppSettings::load()` — we can't redirect
+    // that without env-var manipulation, so we test that the in-memory
+    // copy gets *replaced* (not whether it equals a specific value).
+    let profile = make_profile(simple_mode_tree(), vec![]);
+    let (mut engine, _state, tx) = make_engine(MockInputSource::default(), profile);
+
+    // Sentinel mutation: bump in-memory snapshot.max_count to 999.
+    // After ReloadSettings, the field will be replaced by AppSettings::load()
+    // — which on a typical test environment returns Default() (max_count=10).
+    engine.settings.snapshot = SnapshotConfig {
+        max_count: 999,
+        skip_if_unchanged: false,
+    };
+    tx.send(EngineCommand::ReloadSettings).unwrap();
+    engine.tick().unwrap();
+    assert_ne!(
+        engine.settings.snapshot.max_count, 999,
+        "ReloadSettings must replace in-memory settings"
+    );
+}

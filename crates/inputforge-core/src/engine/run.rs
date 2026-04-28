@@ -334,9 +334,12 @@ impl Engine {
                 self.state.write().mode_force = None;
                 tracing::info!(target: "engine", "ReleaseMode applied");
             }
-            // Real handlers wired in later tasks (Tasks 20–22).
-            EngineCommand::ReloadSettings
-            | EngineCommand::CreateSnapshot { .. }
+            EngineCommand::ReloadSettings => {
+                self.settings = crate::settings::AppSettings::load();
+                tracing::info!(target: "engine", "settings reloaded");
+            }
+            // Real handlers wired in later tasks (Tasks 21–22).
+            EngineCommand::CreateSnapshot { .. }
             | EngineCommand::DeleteSnapshot { .. }
             | EngineCommand::PinSnapshot { .. }
             | EngineCommand::RenameSnapshot { .. }
