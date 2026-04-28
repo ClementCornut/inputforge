@@ -26,6 +26,11 @@ tracing = { workspace = true }
 parking_lot = { workspace = true }
 uuid = { workspace = true }
 dirs = { workspace = true }
+tempfile = { workspace = true }
+
+blake3 = { workspace = true }
+chrono = { workspace = true }
+ulid = { workspace = true }
 
 # Hardware I/O (optional, behind feature gates)
 sdl3 = { workspace = true, optional = true }
@@ -34,7 +39,6 @@ windows = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
-tempfile = { workspace = true }
 
 [lints]
 workspace = true

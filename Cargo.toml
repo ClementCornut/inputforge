@@ -36,6 +36,11 @@ clap = { version = "4.5", features = ["derive"] }
 
 # Identifiers
 uuid = { version = "1.21", features = ["v4"] }
+ulid = { version = "1.2.1", features = ["serde"] }
+
+# Snapshot subsystem
+blake3 = "1.8.5"
+chrono = { version = "0.4.44", features = ["serde"] }
 
 # Allocator
 mimalloc = "0.1"
