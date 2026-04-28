@@ -16,7 +16,6 @@ use crate::error::Result;
 /// valid TOML. Re-serialization (`toml::to_string`) for valid `Value`
 /// trees is infallible in practice but is mapped to `ProfileWrite`
 /// for completeness.
-#[allow(dead_code, reason = "callers wired in once snapshot::create lands")]
 pub(crate) fn hash_canonical_toml(body: &str) -> Result<[u8; 32]> {
     let value: toml::Value = toml::from_str(body)?;
     let canonical = toml::to_string(&value)?;

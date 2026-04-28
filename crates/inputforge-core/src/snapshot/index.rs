@@ -9,7 +9,6 @@ use crate::error::Result;
 use super::fs::atomic_write;
 use super::types::Snapshot;
 
-#[allow(dead_code, reason = "callers wired in later")]
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct IndexFile {
     #[serde(default)]
@@ -19,7 +18,18 @@ struct IndexFile {
 /// Read the index file at `path`. Returns an empty vec if the file is
 /// missing, unparseable, or truncated — these conditions are recoverable
 /// by a rebuild from snapshot file headers, performed by the caller.
-#[allow(dead_code, reason = "callers wired in later")]
+///
+/// # Errors
+///
+/// Returns `Err` only for unexpected I/O failures; missing or corrupt
+/// index files are treated as empty and do not propagate an error.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "called only by tests; production caller lands with list()"
+    )
+)]
 #[allow(
     clippy::unnecessary_wraps,
     reason = "Result<Vec<>> signals operation completion"
@@ -57,7 +67,6 @@ pub(crate) fn read_index(path: &Path) -> Result<Vec<Snapshot>> {
 ///
 /// Returns [`crate::error::EngineError::Io`] / `ProfileWrite` on
 /// serialize/write failure.
-#[allow(dead_code, reason = "callers wired in later")]
 pub(crate) fn write_index(path: &Path, entries: &[Snapshot]) -> Result<()> {
     let file = IndexFile {
         entries: entries.to_vec(),
