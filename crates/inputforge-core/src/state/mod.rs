@@ -20,8 +20,22 @@ pub use status::EngineStatus;
 
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 use crate::profile::Profile;
 use crate::types::VirtualDeviceConfig;
+
+/// Sticky forced-mode override.
+///
+/// While `Some` on `AppState`, mode-change rules are paused: pipeline
+/// `Action::ChangeMode` outputs and `ReleaseCallback::PopTemporaryMode`
+/// are no-ops. Cleared by `EngineCommand::ReleaseMode` or by a
+/// `LoadProfile` (which always resets the override).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ForcedMode {
+    /// Name of the mode held by the override.
+    pub mode: String,
+}
 
 /// Top-level shared state for the application.
 ///
@@ -57,6 +71,9 @@ pub struct AppState {
     /// The GUI closes its viewport and the main loop checks this flag
     /// after the GUI returns to decide whether to enter the tray loop.
     pub quit_requested: bool,
+    /// When `Some`, the engine is in a forced-mode override; mode-change
+    /// rules are paused.
+    pub mode_force: Option<ForcedMode>,
 }
 
 impl AppState {
@@ -75,6 +92,7 @@ impl AppState {
             profile_path: None,
             warnings: Vec::new(),
             quit_requested: false,
+            mode_force: None,
         }
     }
 
@@ -113,6 +131,7 @@ impl AppState {
             profile_path: None,
             warnings: Vec::new(),
             quit_requested: false,
+            mode_force: None,
         }
     }
 }
@@ -148,5 +167,21 @@ mod tests {
         let debug = format!("{state:?}");
         assert!(debug.contains("AppState"));
         assert!(debug.contains("current_mode"));
+    }
+
+    #[test]
+    fn app_state_new_mode_force_is_none() {
+        let state = AppState::new();
+        assert!(state.mode_force.is_none());
+    }
+
+    #[test]
+    fn forced_mode_serde_round_trip() {
+        let f = ForcedMode {
+            mode: "Combat".to_owned(),
+        };
+        let s = toml::to_string(&f).unwrap();
+        let back: ForcedMode = toml::from_str(&s).unwrap();
+        assert_eq!(f, back);
     }
 }
