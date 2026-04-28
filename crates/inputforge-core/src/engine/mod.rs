@@ -26,6 +26,7 @@ use crate::device::traits::{DeviceHider, InputSource};
 use crate::mode::ModeState;
 use crate::output::traits::{KeyboardSink, OutputSink};
 use crate::pipeline::PipelineOutput;
+use crate::settings::AppSettings;
 use crate::state::AppState;
 use crate::types::InputEvent;
 
@@ -57,6 +58,12 @@ pub struct Engine {
     /// Set on `Activate`/`Resume` so vJoy reflects current physical
     /// device positions immediately, without waiting for a new input event.
     pending_output_refresh: bool,
+    /// Application-wide settings; refreshed by `EngineCommand::ReloadSettings`.
+    #[expect(
+        dead_code,
+        reason = "will be read by snapshot and ReloadSettings handlers in Tasks 20-23"
+    )]
+    pub(crate) settings: AppSettings,
 }
 
 impl std::fmt::Debug for Engine {
@@ -89,6 +96,7 @@ impl Engine {
         hider: Box<dyn DeviceHider>,
         state: Arc<RwLock<AppState>>,
         commands: mpsc::Receiver<EngineCommand>,
+        settings: AppSettings,
     ) -> Self {
         let startup_mode = {
             let s = state.read();
@@ -122,6 +130,7 @@ impl Engine {
             output_buffer: Vec::new(),
             shutdown: false,
             pending_output_refresh: false,
+            settings,
         }
     }
 }

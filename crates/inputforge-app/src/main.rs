@@ -223,7 +223,15 @@ fn run_engine_inner(
         }
     };
 
-    let mut engine = Engine::new(input, output, keyboard, hider, state, commands);
+    let mut engine = Engine::new(
+        input,
+        output,
+        keyboard,
+        hider,
+        state,
+        commands,
+        AppSettings::load(),
+    );
     engine.run()?;
     Ok(())
 }

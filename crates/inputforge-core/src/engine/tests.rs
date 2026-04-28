@@ -21,6 +21,7 @@ use crate::mode::{ModeState, ModeTree};
 use crate::output::mock::{KeyboardCall, MockKeyboardSink, MockOutputSink, OutputCall};
 use crate::pipeline::PipelineOutput;
 use crate::profile::Profile;
+use crate::settings::AppSettings;
 use crate::state::{AppState, DeviceState, EngineStatus, InputCacheStore, OutputCacheStore};
 use crate::types::{
     AxisValue, DeviceId, DeviceInfo, HatDirection, InputAddress, InputEvent, InputId, InputValue,
@@ -136,6 +137,7 @@ fn make_engine(
         Box::new(MockDeviceHider::default()),
         Arc::clone(&state),
         rx,
+        AppSettings::default(),
     );
 
     (engine, state, tx)
@@ -694,6 +696,7 @@ fn make_engine_no_profile(
         Box::new(MockDeviceHider::default()),
         Arc::clone(&state),
         rx,
+        AppSettings::default(),
     );
 
     (engine, state, tx)
@@ -1282,6 +1285,7 @@ fn activate_refreshes_outputs_from_cached_axis_values() {
         Box::new(MockDeviceHider::default()),
         Arc::clone(&state),
         rx,
+        AppSettings::default(),
     );
 
     // Tick 1 (Stopped): input cache is updated, mappings are not evaluated.
