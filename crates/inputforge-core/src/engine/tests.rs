@@ -1661,6 +1661,78 @@ fn delete_snapshot_via_command_removes() {
 }
 
 // ---------------------------------------------------------------------------
+// F6 LoadProfile AutoSessionStart tests (Task 23)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn load_profile_creates_auto_session_start_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("TFM_Throttle.toml");
+    let profile = make_profile(simple_mode_tree(), vec![]);
+    profile.save(&path).unwrap();
+
+    let state = Arc::new(RwLock::new(AppState::new()));
+    state.write().engine_status = EngineStatus::Running;
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+    );
+
+    tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
+    engine.tick().unwrap();
+
+    let listed = crate::snapshot::list(&path).unwrap();
+    assert_eq!(
+        listed.len(),
+        1,
+        "LoadProfile must create one AutoSessionStart"
+    );
+    assert!(matches!(
+        listed[0].kind,
+        crate::snapshot::SnapshotKind::AutoSessionStart
+    ));
+}
+
+#[test]
+fn load_profile_dedupes_auto_session_start_on_identical_content() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("TFM_Throttle.toml");
+    let profile = make_profile(simple_mode_tree(), vec![]);
+    profile.save(&path).unwrap();
+
+    let state = Arc::new(RwLock::new(AppState::new()));
+    state.write().engine_status = EngineStatus::Running;
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+    );
+
+    tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
+    engine.tick().unwrap();
+    tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
+    engine.tick().unwrap();
+
+    let listed = crate::snapshot::list(&path).unwrap();
+    assert_eq!(
+        listed.len(),
+        1,
+        "second load with identical content must dedup"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // F6 RestoreSnapshot handler tests (Task 22)
 // ---------------------------------------------------------------------------
 

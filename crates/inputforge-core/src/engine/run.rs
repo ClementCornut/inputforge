@@ -266,6 +266,13 @@ impl Engine {
                 self.reload_profile_from_disk(&path)?;
                 // A forced-mode override should not survive a profile change.
                 self.state.write().mode_force = None;
+                let _ = crate::snapshot::create(
+                    &path,
+                    crate::snapshot::SnapshotKind::AutoSessionStart,
+                    None,
+                    &self.settings.snapshot,
+                )?;
+                let _ = crate::snapshot::prune(&path, &self.settings.snapshot)?;
             }
             EngineCommand::Activate | EngineCommand::Resume => {
                 let mut state = self.state.write();
