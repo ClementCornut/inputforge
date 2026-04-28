@@ -354,6 +354,53 @@ pub fn restore(profile_path: &Path, id: &SnapshotId) -> Result<()> {
     Ok(())
 }
 
+/// Apply FIFO eviction down to `cfg.max_count`, skipping pinned
+/// snapshots. Returns the number of snapshots evicted.
+///
+/// # Errors
+///
+/// Returns [`EngineError::SnapshotDirIo`] on directory read failure,
+/// or [`EngineError::Io`] on file delete failure.
+pub fn prune(profile_path: &Path, cfg: &SnapshotConfig) -> Result<usize> {
+    let entries = list(profile_path)?;
+    let unpinned_count = entries.iter().filter(|s| !s.pinned).count();
+    if unpinned_count <= cfg.max_count {
+        return Ok(0);
+    }
+    // `entries` is newest-first; evict the oldest unpinned first.
+    let to_evict = unpinned_count - cfg.max_count;
+    let mut victims: Vec<SnapshotId> = entries
+        .iter()
+        .rev() // oldest first
+        .filter(|s| !s.pinned)
+        .take(to_evict)
+        .map(|s| s.id)
+        .collect();
+
+    let mut evicted = 0usize;
+    while let Some(id) = victims.pop() {
+        match delete(profile_path, &id) {
+            Ok(()) => evicted += 1,
+            Err(e) => {
+                tracing::warn!(
+                    target: "snapshot",
+                    id = %id,
+                    error = %e,
+                    "prune: delete failed; continuing"
+                );
+            }
+        }
+    }
+    if evicted > 0 {
+        tracing::info!(
+            target: "snapshot",
+            evicted,
+            "snapshots pruned"
+        );
+    }
+    Ok(evicted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -609,5 +656,83 @@ mod tests {
         let (_dir, path) = fresh_profile_dir();
         let err = restore(&path, &SnapshotId(Ulid::new())).unwrap_err();
         assert!(matches!(err, EngineError::SnapshotNotFound { .. }));
+    }
+
+    // ── prune() tests ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn prune_evicts_oldest_unpinned() {
+        let (_dir, path) = fresh_profile_dir();
+        let cfg = SnapshotConfig {
+            max_count: 2,
+            skip_if_unchanged: false,
+        };
+
+        // Create 3 unpinned snapshots, mutating profile content between each
+        // so dedup wouldn't apply even if the kind allowed it.
+        let mut ids = Vec::new();
+        for i in 0..3 {
+            std::fs::write(
+                &path,
+                format!(
+                    "[profile]\nid = \"550e8400-e29b-41d4-a716-44665544000{i}\"\n\
+                name = \"v{i}\"\nstartup_mode = \"Default\"\n\n[modes]\nDefault = []\n"
+                ),
+            )
+            .unwrap();
+            let s = create(&path, SnapshotKind::AutoSessionStart, None, &cfg)
+                .unwrap()
+                .unwrap();
+            ids.push(s.id);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+
+        let evicted = prune(&path, &cfg).unwrap();
+        assert_eq!(evicted, 1);
+        let remaining: Vec<_> = list(&path).unwrap().iter().map(|s| s.id).collect();
+        assert!(remaining.contains(&ids[1]));
+        assert!(remaining.contains(&ids[2]));
+        assert!(!remaining.contains(&ids[0]), "oldest must be evicted");
+    }
+
+    #[test]
+    fn prune_skips_pinned_snapshots() {
+        let (_dir, path) = fresh_profile_dir();
+        let cfg = SnapshotConfig {
+            max_count: 1,
+            skip_if_unchanged: false,
+        };
+
+        let s1 = create(&path, SnapshotKind::AutoSessionStart, None, &cfg)
+            .unwrap()
+            .unwrap();
+        pin(&path, &s1.id, true).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+
+        std::fs::write(
+            &path,
+            "[profile]\nid = \"550e8400-e29b-41d4-a716-446655440042\"\n\
+            name = \"v2\"\nstartup_mode = \"Default\"\n\n[modes]\nDefault = []\n",
+        )
+        .unwrap();
+        let s2 = create(&path, SnapshotKind::AutoSessionStart, None, &cfg)
+            .unwrap()
+            .unwrap();
+
+        let _ = prune(&path, &cfg).unwrap();
+        let remaining: Vec<_> = list(&path).unwrap().iter().map(|s| s.id).collect();
+        assert!(remaining.contains(&s1.id), "pinned must survive");
+        assert!(remaining.contains(&s2.id));
+    }
+
+    #[test]
+    fn prune_no_op_under_max_count() {
+        let (_dir, path) = fresh_profile_dir();
+        let cfg = SnapshotConfig {
+            max_count: 10,
+            skip_if_unchanged: false,
+        };
+        create(&path, SnapshotKind::Manual, None, &cfg).unwrap();
+        assert_eq!(prune(&path, &cfg).unwrap(), 0);
     }
 }
