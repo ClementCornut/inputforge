@@ -7,6 +7,7 @@
 //! logic into `tick` makes unit testing straightforward without
 //! dealing with the loop or sleep.
 
+use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -257,36 +258,9 @@ impl Engine {
     fn handle_command(&mut self, cmd: EngineCommand) -> Result<()> {
         match cmd {
             EngineCommand::LoadProfile(path) => {
-                let profile = Profile::load(&path)?;
-                let startup_mode = profile.settings().startup_mode().to_owned();
-                self.mode_state = crate::mode::ModeState::new(startup_mode.clone());
-                self.callbacks.clear();
-
-                let mut state = self.state.write();
-
-                // Load calibrations from profile.
-                state.calibrations = DeviceCalibrationStore::new();
-                for entry in profile.calibrations() {
-                    match entry.to_calibration() {
-                        Ok(cal) => {
-                            state
-                                .calibrations
-                                .set(entry.device.clone(), entry.axis, cal);
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                device = %entry.device.0,
-                                axis = entry.axis,
-                                error = %e,
-                                "skipping invalid calibration entry"
-                            );
-                        }
-                    }
-                }
-
-                state.active_profile = Some(profile);
-                state.profile_path = Some(path);
-                state.current_mode = startup_mode;
+                self.reload_profile_from_disk(&path)?;
+                // A forced-mode override should not survive a profile change.
+                self.state.write().mode_force = None;
             }
             EngineCommand::Activate | EngineCommand::Resume => {
                 let mut state = self.state.write();
@@ -336,6 +310,51 @@ impl Engine {
             | EngineCommand::RenameSnapshot { .. }
             | EngineCommand::RestoreSnapshot { .. } => {}
         }
+        Ok(())
+    }
+
+    /// Reload the active profile from disk and rebuild dependent in-memory state.
+    ///
+    /// Resets calibrations, mode state, callbacks, and the active profile to
+    /// match `path` on disk. Shared between `LoadProfile` and `RestoreSnapshot`.
+    ///
+    /// **Does not** touch `state.mode_force` — the caller is responsible for
+    /// that policy decision.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the profile file cannot be read or parsed.
+    fn reload_profile_from_disk(&mut self, path: &Path) -> Result<()> {
+        let profile = Profile::load(path)?;
+        let startup_mode = profile.settings().startup_mode().to_owned();
+        self.mode_state = crate::mode::ModeState::new(startup_mode.clone());
+        self.callbacks.clear();
+
+        let mut state = self.state.write();
+
+        // Load calibrations from profile.
+        state.calibrations = DeviceCalibrationStore::new();
+        for entry in profile.calibrations() {
+            match entry.to_calibration() {
+                Ok(cal) => {
+                    state
+                        .calibrations
+                        .set(entry.device.clone(), entry.axis, cal);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        device = %entry.device.0,
+                        axis = entry.axis,
+                        error = %e,
+                        "skipping invalid calibration entry"
+                    );
+                }
+            }
+        }
+
+        state.active_profile = Some(profile);
+        state.profile_path = Some(path.to_path_buf());
+        state.current_mode = startup_mode;
         Ok(())
     }
 
