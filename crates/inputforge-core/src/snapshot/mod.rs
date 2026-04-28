@@ -148,9 +148,11 @@ pub fn list(profile_path: &Path) -> Result<Vec<Snapshot>> {
 
     let mut entries = if needs_rebuild {
         let rebuilt = index::rebuild_from_dir(&snap_dir)?;
-        // Persist the rebuilt index, but don't propagate write errors —
-        // a failed write is recoverable on the next `list()`.
-        if !rebuilt.is_empty() || cached != rebuilt {
+        // Persist the rebuilt index only when it differs from the cached
+        // contents — a redundant write would just rewrite the same bytes.
+        // Don't propagate write errors: a failed write is recoverable on
+        // the next `list()`.
+        if cached != rebuilt {
             if let Err(e) = index::write_index(&index_path, &rebuilt) {
                 tracing::warn!(
                     target: "snapshot",

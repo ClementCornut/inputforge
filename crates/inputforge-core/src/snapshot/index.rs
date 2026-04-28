@@ -94,7 +94,14 @@ pub(crate) fn rebuild_from_dir(dir: &Path) -> Result<Vec<Snapshot>> {
     };
     for entry in read.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("toml") {
+        // Case-insensitive `.toml` match so paths on case-insensitive
+        // filesystems (Windows, macOS default) don't disagree with the
+        // orphan check in `list::count_orphans`, which would otherwise
+        // cause perpetual rebuilds.
+        if !path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
+        {
             continue;
         }
         if path.file_name().and_then(|s| s.to_str()) == Some("index.toml") {
