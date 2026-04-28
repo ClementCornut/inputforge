@@ -59,10 +59,7 @@ pub struct Engine {
     /// device positions immediately, without waiting for a new input event.
     pending_output_refresh: bool,
     /// Application-wide settings; refreshed by `EngineCommand::ReloadSettings`.
-    #[expect(
-        dead_code,
-        reason = "will be read by snapshot and ReloadSettings handlers in Tasks 20-23"
-    )]
+    #[expect(dead_code, reason = "read by command handlers wired in later")]
     pub(crate) settings: AppSettings,
 }
 
