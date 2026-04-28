@@ -2,8 +2,6 @@
 //!
 //! See decision D14 in the F6 design spec.
 
-// Rust guideline compliant 2026-04-28
-
 use crate::error::Result;
 
 /// Hash a profile TOML body via canonical-round-trip + BLAKE3.
@@ -18,7 +16,7 @@ use crate::error::Result;
 /// valid TOML. Re-serialization (`toml::to_string`) for valid `Value`
 /// trees is infallible in practice but is mapped to `ProfileWrite`
 /// for completeness.
-#[allow(dead_code, reason = "called by snapshot::create in Task 8")]
+#[allow(dead_code, reason = "callers wired in once snapshot::create lands")]
 pub(crate) fn hash_canonical_toml(body: &str) -> Result<[u8; 32]> {
     let value: toml::Value = toml::from_str(body)?;
     let canonical = toml::to_string(&value)?;
