@@ -388,8 +388,48 @@ impl Engine {
                     );
                 }
             }
-            // Real handler wired in Task 22.
-            EngineCommand::RestoreSnapshot { .. } => {}
+            EngineCommand::RestoreSnapshot { id } => {
+                let path = self.state.read().profile_path.clone();
+                let Some(path) = path else {
+                    tracing::warn!(target: "snapshot", "RestoreSnapshot dispatched with no profile loaded");
+                    return Ok(());
+                };
+
+                // Step 1 — capture AutoBeforeRestore (always fires; never deduped).
+                let auto = crate::snapshot::create(
+                    &path,
+                    crate::snapshot::SnapshotKind::AutoBeforeRestore,
+                    None,
+                    &self.settings.snapshot,
+                )?;
+                let _ = crate::snapshot::prune(&path, &self.settings.snapshot)?;
+
+                // Step 2 — strip meta + atomically write target body to live path.
+                crate::snapshot::restore(&path, &id)?;
+
+                // Step 3 — reload from disk; auto-rollback on failure.
+                if let Err(reload_err) = self.reload_profile_from_disk(&path) {
+                    tracing::error!(
+                        target: "snapshot",
+                        ?reload_err,
+                        "restore reload failed; rolling back to AutoBeforeRestore"
+                    );
+                    if let Some(auto_snap) = auto {
+                        crate::snapshot::restore(&path, &auto_snap.id)?;
+                        self.reload_profile_from_disk(&path)?;
+                    }
+                    return Err(reload_err);
+                }
+
+                // Successful restore clears mode_force (snapshot's mode tree may differ).
+                self.state.write().mode_force = None;
+
+                tracing::info!(
+                    target: "snapshot",
+                    id = %id,
+                    "RestoreSnapshot complete"
+                );
+            }
         }
         Ok(())
     }

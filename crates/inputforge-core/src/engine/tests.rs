@@ -1659,3 +1659,142 @@ fn delete_snapshot_via_command_removes() {
 
     assert!(crate::snapshot::list(&path).unwrap().is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// F6 RestoreSnapshot handler tests (Task 22)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn restore_snapshot_round_trip() {
+    let (mut engine, state, tx, _dir, path) = make_engine_with_disk_profile();
+
+    // Snapshot v1.
+    tx.send(EngineCommand::CreateSnapshot {
+        kind: crate::snapshot::SnapshotKind::Manual,
+        label: Some("v1".to_owned()),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    let v1 = crate::snapshot::list(&path).unwrap()[0].clone();
+
+    // Mutate the live profile by hand to a different (still-valid) body.
+    let new_body = "[profile]\nid = \"550e8400-e29b-41d4-a716-446655440099\"\n\
+        name = \"v2\"\nstartup_mode = \"Default\"\n\n[modes]\nDefault = []\n";
+    std::fs::write(&path, new_body).unwrap();
+    // Force an explicit reload so engine sees v2 in-memory before restoring.
+    tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
+    engine.tick().unwrap();
+    assert_eq!(state.read().active_profile.as_ref().unwrap().name(), "v2");
+
+    // Restore v1.
+    tx.send(EngineCommand::RestoreSnapshot { id: v1.id })
+        .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    assert_eq!(s.active_profile.as_ref().unwrap().name(), "Test");
+    // AutoBeforeRestore must exist in the snapshot list.
+    let listed = crate::snapshot::list(&path).unwrap();
+    assert!(
+        listed
+            .iter()
+            .any(|s| matches!(s.kind, crate::snapshot::SnapshotKind::AutoBeforeRestore)),
+        "AutoBeforeRestore must be created"
+    );
+}
+
+#[test]
+fn restore_snapshot_clears_mode_force() {
+    // Use a profile that includes "Combat" so ForceMode succeeds.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("TFM_Throttle.toml");
+    let profile = make_profile(two_mode_tree(), vec![]);
+    profile.save(&path).unwrap();
+
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    {
+        let mut s = state.write();
+        s.profile_path = Some(path.clone());
+        s.engine_status = EngineStatus::Running;
+    }
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+    );
+
+    tx.send(EngineCommand::CreateSnapshot {
+        kind: crate::snapshot::SnapshotKind::Manual,
+        label: None,
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    tx.send(EngineCommand::ForceMode {
+        mode: "Combat".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    assert!(state.read().mode_force.is_some());
+
+    let snap_id = crate::snapshot::list(&path).unwrap()[0].id;
+    tx.send(EngineCommand::RestoreSnapshot { id: snap_id })
+        .unwrap();
+    engine.tick().unwrap();
+
+    assert!(
+        state.read().mode_force.is_none(),
+        "restore must clear mode_force"
+    );
+}
+
+#[test]
+fn restore_snapshot_auto_rollback_on_reload_failure() {
+    let (mut engine, state, tx, _dir, path) = make_engine_with_disk_profile();
+
+    // Take snapshot of valid profile.
+    tx.send(EngineCommand::CreateSnapshot {
+        kind: crate::snapshot::SnapshotKind::Manual,
+        label: None,
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    let snap = crate::snapshot::list(&path).unwrap()[0].clone();
+
+    // Corrupt the snapshot's profile body so post-restore reload fails.
+    let snap_dir = crate::snapshot::__test_snap_dir(&path).unwrap();
+    let snap_file = snap_dir.join(format!("{}.toml", snap.id));
+    let body = std::fs::read_to_string(&snap_file).unwrap();
+    let (meta, _profile_part) = body.split_once("\n\n").unwrap();
+    let bad_profile = "\n\n[profile]\nid = \"550e8400-e29b-41d4-a716-446655440000\"\n\
+        name = \"x\"\nstartup_mode = \"NonExistent\"\n\n[modes]\nDefault = []\n";
+    std::fs::write(&snap_file, format!("{meta}{bad_profile}")).unwrap();
+
+    let pre_restore_name = state
+        .read()
+        .active_profile
+        .as_ref()
+        .unwrap()
+        .name()
+        .to_owned();
+    let result = engine.handle_command(EngineCommand::RestoreSnapshot { id: snap.id });
+    assert!(result.is_err(), "restore must propagate the reload error");
+
+    // Engine state must equal pre-restore (rolled back via AutoBeforeRestore).
+    assert_eq!(
+        state.read().active_profile.as_ref().unwrap().name(),
+        pre_restore_name
+    );
+    // AutoBeforeRestore must remain in the buffer.
+    assert!(
+        crate::snapshot::list(&path)
+            .unwrap()
+            .iter()
+            .any(|s| matches!(s.kind, crate::snapshot::SnapshotKind::AutoBeforeRestore)),
+        "AutoBeforeRestore must survive a rolled-back restore"
+    );
+}

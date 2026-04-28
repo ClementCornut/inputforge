@@ -6,6 +6,13 @@
 pub use self::config::SnapshotConfig;
 pub use self::types::{Snapshot, SnapshotId, SnapshotKind};
 
+#[cfg(test)]
+#[allow(
+    unused_imports,
+    reason = "re-exported for engine/tests.rs; clippy sees it as unused in the lib target"
+)]
+pub(crate) use self::fs::snapshots_dir_for as __test_snap_dir;
+
 pub(crate) mod config;
 pub(crate) mod fs;
 pub(crate) mod hash;
