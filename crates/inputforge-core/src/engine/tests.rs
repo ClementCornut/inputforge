@@ -169,6 +169,7 @@ fn process_outputs_set_axis() {
         &tree,
         &mut callbacks,
         &trigger,
+        false,
     )
     .unwrap();
 
@@ -205,6 +206,7 @@ fn process_outputs_set_button() {
         &tree,
         &mut callbacks,
         &trigger,
+        false,
     )
     .unwrap();
 
@@ -251,6 +253,7 @@ fn process_outputs_send_key_only_on_press() {
         &tree,
         &mut callbacks,
         &trigger,
+        false,
     )
     .unwrap();
     assert_eq!(kb.calls(), &[KeyboardCall::SendKey(combo.clone())]);
@@ -269,6 +272,7 @@ fn process_outputs_send_key_only_on_press() {
         &tree,
         &mut callbacks2,
         &trigger,
+        false,
     )
     .unwrap();
     assert!(kb2.calls().is_empty());
@@ -298,6 +302,7 @@ fn process_outputs_change_mode_switch_to() {
         &tree,
         &mut callbacks,
         &trigger,
+        false,
     )
     .unwrap();
 
@@ -329,6 +334,7 @@ fn process_outputs_temporary_mode_registers_callback() {
         &tree,
         &mut callbacks,
         &trigger,
+        false,
     )
     .unwrap();
 
@@ -738,6 +744,7 @@ fn process_outputs_set_axis_wrong_output_id() {
         &tree,
         &mut callbacks,
         &trigger,
+        false,
     )
     .unwrap();
 
@@ -767,6 +774,7 @@ fn process_outputs_set_button_wrong_output_id() {
         &tree,
         &mut callbacks,
         &trigger,
+        false,
     )
     .unwrap();
 
@@ -798,6 +806,7 @@ fn process_outputs_mode_change_no_op() {
         &tree,
         &mut callbacks,
         &trigger,
+        false,
     )
     .unwrap();
 
@@ -830,6 +839,7 @@ fn process_outputs_previous_mode() {
         &tree,
         &mut callbacks,
         &trigger,
+        false,
     )
     .unwrap();
 
@@ -866,6 +876,7 @@ fn process_outputs_cycle_mode() {
         &tree,
         &mut callbacks,
         &trigger,
+        false,
     )
     .unwrap();
 
@@ -1821,6 +1832,52 @@ fn restore_snapshot_clears_mode_force() {
     assert!(
         state.read().mode_force.is_none(),
         "restore must clear mode_force"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// F6 Task 24: mode-pause gate tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn forced_mode_blocks_change_mode_pipeline_output() {
+    // Mapping: button press → ChangeMode SwitchTo("Combat").
+    let mapping = Mapping {
+        input: button_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::ChangeMode {
+            strategy: ModeChangeStrategy::SwitchTo {
+                mode: "Combat".to_owned(),
+            },
+        }],
+    };
+    let profile = make_profile(three_mode_tree(), vec![mapping]);
+    let mut input = MockInputSource::default();
+    input.events.push(button_event(0, true));
+
+    let (mut engine, state, tx) = make_engine(input, profile);
+
+    // Force into Landing first.
+    tx.send(EngineCommand::ForceMode {
+        mode: "Landing".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    assert_eq!(state.read().current_mode, "Landing");
+
+    // Tick processes the button event; ChangeMode would normally switch to
+    // Combat, but the gate must block it.
+    engine.input = Box::new({
+        let mut src = MockInputSource::default();
+        src.events.push(button_event(0, true));
+        src
+    });
+    engine.tick().unwrap();
+    assert_eq!(
+        state.read().current_mode,
+        "Landing",
+        "forced mode must block ChangeMode pipeline output"
     );
 }
 

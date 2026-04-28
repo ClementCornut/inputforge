@@ -61,6 +61,11 @@ impl Engine {
     /// # Errors
     ///
     /// Returns an error if output writing fails.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "single-frame logic is intentionally co-located for readability; \
+                  splitting into sub-functions would obscure the event-processing flow"
+    )]
     pub fn tick(&mut self) -> Result<()> {
         self.process_commands()?;
 
@@ -89,10 +94,14 @@ impl Engine {
 
         // Get profile data needed for this frame.
         // Clone mappings + mode tree to avoid holding the lock during processing.
-        let (mappings, mode_tree) = {
+        let (mappings, mode_tree, mode_forced) = {
             let state = self.state.read();
             match &state.active_profile {
-                Some(profile) => (profile.mappings().to_vec(), profile.modes().clone()),
+                Some(profile) => (
+                    profile.mappings().to_vec(),
+                    profile.modes().clone(),
+                    state.mode_force.is_some(),
+                ),
                 None => return Ok(()),
             }
         };
@@ -128,7 +137,9 @@ impl Engine {
                 for callback in callbacks {
                     match callback {
                         ReleaseCallback::PopTemporaryMode => {
-                            self.mode_state.pop_temporary();
+                            if !mode_forced {
+                                self.mode_state.pop_temporary();
+                            }
                         }
                         ReleaseCallback::Custom(f) => f(),
                     }
@@ -169,6 +180,7 @@ impl Engine {
                 &mode_tree,
                 &mut self.callbacks,
                 &event.source,
+                mode_forced,
             )?;
 
             self.output_buffer.extend_from_slice(&outputs);

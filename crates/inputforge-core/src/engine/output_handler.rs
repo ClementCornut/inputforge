@@ -30,6 +30,11 @@ pub(super) struct OutputResult {
 ///
 /// Uses exhaustive matching on [`PipelineOutput`] so new variants
 /// cause compile errors rather than silent no-ops.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "all parameters are distinct concerns; extracting a context struct \
+              would add indirection without improving call-site clarity"
+)]
 pub(super) fn process_pipeline_outputs(
     outputs: &[PipelineOutput],
     output_sink: &mut dyn OutputSink,
@@ -38,6 +43,7 @@ pub(super) fn process_pipeline_outputs(
     mode_tree: &ModeTree,
     callbacks: &mut CallbackRegistry,
     triggering_input: &InputAddress,
+    mode_forced: bool,
 ) -> Result<OutputResult> {
     let mut mode_changed = false;
 
@@ -69,6 +75,10 @@ pub(super) fn process_pipeline_outputs(
                 }
             }
             PipelineOutput::ChangeMode { strategy } => {
+                if mode_forced {
+                    // Forced override active — pipeline mode changes are paused.
+                    continue;
+                }
                 let old_mode = mode_state.current().to_owned();
                 apply_mode_change(strategy, mode_state, mode_tree, callbacks, triggering_input);
                 if mode_state.current() != old_mode {
