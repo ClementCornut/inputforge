@@ -671,11 +671,20 @@ fn hat_event(index: u8, direction: HatDirection) -> InputEvent {
     }
 }
 
-/// Build a `ModeTree` with Default → Combat → Racing (three modes).
-fn three_mode_tree() -> ModeTree {
+/// Build a `ModeTree` with Default → Combat and Default → Racing.
+fn combat_racing_tree() -> ModeTree {
     let map = HashMap::from([(
         "Default".to_owned(),
         vec!["Combat".to_owned(), "Racing".to_owned()],
+    )]);
+    ModeTree::from_adjacency(&map).unwrap()
+}
+
+/// Build a `ModeTree` with Default → Combat and Default → Landing.
+fn three_mode_tree() -> ModeTree {
+    let map = HashMap::from([(
+        "Default".to_owned(),
+        vec!["Combat".to_owned(), "Landing".to_owned()],
     )]);
     ModeTree::from_adjacency(&map).unwrap()
 }
@@ -830,7 +839,7 @@ fn process_outputs_previous_mode() {
 
 #[test]
 fn process_outputs_cycle_mode() {
-    let tree = three_mode_tree();
+    let tree = combat_racing_tree();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(0);
@@ -1372,4 +1381,115 @@ fn set_mapping_refreshes_outputs_from_cached_axis_values() {
     drop(s);
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_dir(&dir);
+}
+
+// ---------------------------------------------------------------------------
+// F6 forced-mode tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn force_mode_from_unforced_switches_and_sets_force() {
+    let profile = make_profile(three_mode_tree(), vec![]);
+    let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
+
+    tx.send(EngineCommand::ForceMode {
+        mode: "Combat".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    assert_eq!(s.current_mode, "Combat");
+    assert_eq!(
+        s.mode_force.as_ref().map(|f| f.mode.as_str()),
+        Some("Combat")
+    );
+}
+
+#[test]
+fn release_mode_clears_force_keeps_current_mode() {
+    let profile = make_profile(three_mode_tree(), vec![]);
+    let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
+
+    tx.send(EngineCommand::ForceMode {
+        mode: "Combat".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    tx.send(EngineCommand::ReleaseMode).unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    assert!(s.mode_force.is_none());
+    assert_eq!(
+        s.current_mode, "Combat",
+        "release does not change current mode"
+    );
+}
+
+#[test]
+fn force_mode_unknown_mode_returns_mode_not_found() {
+    let profile = make_profile(three_mode_tree(), vec![]);
+    let (mut engine, state, _tx) = make_engine(MockInputSource::default(), profile);
+
+    let err = engine.handle_command(EngineCommand::ForceMode {
+        mode: "Nope".to_owned(),
+    });
+    assert!(
+        matches!(err, Err(crate::error::EngineError::ModeNotFound { .. })),
+        "expected ModeNotFound, got {err:?}"
+    );
+    assert!(
+        state.read().mode_force.is_none(),
+        "state must be unchanged on error"
+    );
+}
+
+#[test]
+fn force_mode_idempotent_on_same_mode() {
+    let profile = make_profile(three_mode_tree(), vec![]);
+    let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
+
+    tx.send(EngineCommand::ForceMode {
+        mode: "Combat".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let force_before = state.read().mode_force.clone();
+
+    tx.send(EngineCommand::ForceMode {
+        mode: "Combat".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let force_after = state.read().mode_force.clone();
+    assert_eq!(force_before, force_after);
+}
+
+#[test]
+fn force_mode_rotates_on_different_mode() {
+    let profile = make_profile(three_mode_tree(), vec![]);
+    let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
+
+    tx.send(EngineCommand::ForceMode {
+        mode: "Combat".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    tx.send(EngineCommand::ForceMode {
+        mode: "Landing".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    assert_eq!(s.current_mode, "Landing");
+    assert_eq!(
+        s.mode_force.as_ref().map(|f| f.mode.as_str()),
+        Some("Landing")
+    );
 }

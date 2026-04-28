@@ -255,7 +255,7 @@ impl Engine {
     }
 
     /// Handle a single engine command.
-    fn handle_command(&mut self, cmd: EngineCommand) -> Result<()> {
+    pub(crate) fn handle_command(&mut self, cmd: EngineCommand) -> Result<()> {
         match cmd {
             EngineCommand::LoadProfile(path) => {
                 self.reload_profile_from_disk(&path)?;
@@ -300,10 +300,42 @@ impl Engine {
             EngineCommand::Shutdown => {
                 self.shutdown = true;
             }
-            // Real handlers wired in later tasks (Tasks 19–22).
-            EngineCommand::ForceMode { .. }
-            | EngineCommand::ReleaseMode
-            | EngineCommand::ReloadSettings
+            EngineCommand::ForceMode { mode } => {
+                // D15: idempotent same-mode; rotate on different-mode.
+                let already_same = self
+                    .state
+                    .read()
+                    .mode_force
+                    .as_ref()
+                    .is_some_and(|f| f.mode == mode);
+                if already_same {
+                    return Ok(());
+                }
+                // Read mode tree from active_profile (may be absent — return early).
+                let tree = if let Some(p) = self.state.read().active_profile.as_ref() {
+                    p.modes().clone()
+                } else {
+                    tracing::warn!(
+                        target: "engine",
+                        "ForceMode dispatched with no profile; ignoring"
+                    );
+                    return Ok(());
+                };
+                self.mode_state.switch_to(&mode, &tree)?;
+                {
+                    let mut state = self.state.write();
+                    state.mode_force = Some(crate::state::ForcedMode { mode: mode.clone() });
+                    mode.clone_into(&mut state.current_mode);
+                };
+                self.pending_output_refresh = true;
+                tracing::info!(target: "engine", mode = %mode, "ForceMode applied");
+            }
+            EngineCommand::ReleaseMode => {
+                self.state.write().mode_force = None;
+                tracing::info!(target: "engine", "ReleaseMode applied");
+            }
+            // Real handlers wired in later tasks (Tasks 20–22).
+            EngineCommand::ReloadSettings
             | EngineCommand::CreateSnapshot { .. }
             | EngineCommand::DeleteSnapshot { .. }
             | EngineCommand::PinSnapshot { .. }
