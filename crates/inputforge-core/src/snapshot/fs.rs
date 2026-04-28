@@ -104,4 +104,38 @@ mod tests {
         atomic_write(&dest, b"new").unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"new");
     }
+
+    #[test]
+    fn atomic_write_leaves_no_temp_file_after_success() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("snap.toml");
+        atomic_write(&dest, b"hello").unwrap();
+        let entries: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(std::result::Result::ok)
+            .map(|e| e.file_name())
+            .collect();
+        // Only `snap.toml` should remain.
+        assert_eq!(
+            entries.len(),
+            1,
+            "tempfile must be persisted, not left behind"
+        );
+        assert_eq!(entries[0].to_str(), Some("snap.toml"));
+    }
+
+    #[test]
+    fn dropped_temp_does_not_create_destination() {
+        // Sanity: tempfile semantics — dropping without persist leaves nothing.
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let _tmp = tempfile::NamedTempFile::new_in(dir.path()).unwrap();
+            // Drop without persist.
+        }
+        let entries: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(std::result::Result::ok)
+            .collect();
+        assert!(entries.is_empty(), "dropped tempfile must self-clean");
+    }
 }
