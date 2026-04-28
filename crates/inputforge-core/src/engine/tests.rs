@@ -510,8 +510,9 @@ fn tick_skips_processing_when_paused() {
 
     engine.tick().unwrap();
 
-    // Input cache should be empty since processing was skipped.
-    assert!(state.read().input_cache.get_all_axis_entries().is_empty());
+    // The input cache is updated unconditionally so the GUI can display live
+    // values even when paused.  What must NOT happen is output: no vJoy write.
+    assert_eq!(state.read().input_cache.get_all_axis_entries().len(), 1);
 }
 
 #[test]
@@ -962,8 +963,9 @@ fn tick_no_profile_returns_early() {
     let (mut engine, state, _tx) = make_engine_no_profile(input);
     engine.tick().unwrap();
 
-    // Events are not processed when no profile is loaded.
-    assert!(state.read().input_cache.get_all_axis_entries().is_empty());
+    // The input cache is updated unconditionally so the GUI can display live
+    // values even when no profile is loaded.  No output is produced.
+    assert_eq!(state.read().input_cache.get_all_axis_entries().len(), 1);
 }
 
 #[test]
@@ -1221,12 +1223,15 @@ fn tick_axis_with_calibration_applies_transform() {
     };
     let profile = make_profile(simple_mode_tree(), vec![mapping]);
 
-    // Calibration: raw range [-100, 100], no center deadzone.
-    // Input of 50 should map to 0.5 after calibration.
-    let cal = Calibration::new(-100.0, 0.0, 0.0, 100.0, true).unwrap();
+    // Calibration over the normalised range [-1.0, 1.0] with no centre
+    // deadzone.  Input of 0.5 passes through calibration unchanged (identity
+    // transform), so we can verify the cache stores the raw value and that
+    // calibration does not corrupt it.
+    let cal = Calibration::new(-1.0, 0.0, 0.0, 1.0, true).unwrap();
 
     let mut input = MockInputSource::default();
-    input.events.push(axis_event(0, 50.0));
+    // axis_event uses AxisValue::new which clamps to [-1.0, 1.0]; 0.5 is safe.
+    input.events.push(axis_event(0, 0.5));
 
     let (mut engine, state, _tx) = make_engine(input, profile);
 
@@ -1235,12 +1240,13 @@ fn tick_axis_with_calibration_applies_transform() {
 
     engine.tick().unwrap();
 
-    // Verify the input cache received the raw value.
+    // Verify the input cache received the raw value (cache stores raw, not
+    // the calibrated value used by the pipeline).
     let s = state.read();
     let cached = s.input_cache.get_all_axis_entries();
     assert_eq!(cached.len(), 1);
-    // The raw value in the cache should be 50.0 (cache stores raw).
-    assert!((cached[0].1 - 50.0).abs() < f64::EPSILON);
+    // The raw value in the cache should be 0.5.
+    assert!((cached[0].1 - 0.5).abs() < f64::EPSILON);
 }
 
 #[test]
