@@ -274,7 +274,7 @@ impl Engine {
     )]
     #[expect(
         clippy::match_same_arms,
-        reason = "stub arms for Tasks 10–13 are intentionally separate; \
+        reason = "stub arms for Tasks 11–13 are intentionally separate; \
                   they will gain distinct bodies when implemented"
     )]
     pub(crate) fn handle_command(&mut self, cmd: EngineCommand) -> Result<()> {
@@ -411,8 +411,38 @@ impl Engine {
                     );
                 }
             }
-            EngineCommand::AddMode { .. } => {
-                // Implemented in Task 10.
+            EngineCommand::AddMode { name, parent } => {
+                if name.trim().is_empty() {
+                    return Err(crate::error::EngineError::InvalidConfig {
+                        reason: "mode name cannot be empty".to_owned(),
+                    });
+                }
+                // Bind the read-guarded snapshot in its own scope before
+                // acquiring the write lock to avoid a non-reentrant deadlock
+                // if the rvalue temporary's drop point ever shifts.
+                let path = { self.state.read().profile_path.clone() };
+                let mut state = self.state.write();
+                let Some(profile) = state.active_profile.as_mut() else {
+                    tracing::warn!(target: "engine", "AddMode dispatched with no profile; ignoring");
+                    return Ok(());
+                };
+                let parent_name = parent
+                    .clone()
+                    .unwrap_or_else(|| profile.modes().root().name().to_owned());
+                let new_tree = profile.modes().with_added_child(&parent_name, &name)?;
+                profile.set_modes(new_tree);
+                if let Some(path) = path.as_ref() {
+                    profile.save(path).map_err(|e| {
+                        tracing::error!(
+                            target: "engine",
+                            path = %path.display(),
+                            error = %e,
+                            "failed to persist AddMode"
+                        );
+                        e
+                    })?;
+                }
+                tracing::info!(target: "engine", mode = %name, parent = %parent_name, "AddMode applied");
             }
             EngineCommand::RenameMode { .. } => {
                 // Implemented in Task 11.

@@ -1410,11 +1410,14 @@ fn set_mapping_refreshes_outputs_from_cached_axis_values() {
 
 /// Build an engine whose profile is already persisted to a temp file.
 ///
+/// Uses a simple single-mode tree (`Default` only).  The snapshot tests
+/// only need a real on-disk file and do not care about the mode-tree shape.
+///
 /// Returns `(engine, state, tx, dir, path)` where:
 /// - `dir` is the [`tempfile::TempDir`] whose lifetime keeps the temp
 ///   directory alive — callers must bind it to a local variable.
 /// - `path` is the absolute path to the profile TOML.
-fn make_engine_with_disk_profile() -> (
+fn make_engine_with_simple_disk_profile() -> (
     Engine,
     Arc<RwLock<AppState>>,
     mpsc::Sender<EngineCommand>,
@@ -1605,7 +1608,7 @@ fn reload_settings_picks_up_disk_edits() {
 
 #[test]
 fn create_snapshot_command_writes_to_disk() {
-    let (mut engine, _state, tx, _dir, path) = make_engine_with_disk_profile();
+    let (mut engine, _state, tx, _dir, path) = make_engine_with_simple_disk_profile();
     tx.send(EngineCommand::CreateSnapshot {
         kind: crate::snapshot::SnapshotKind::Manual,
         label: Some("v1".to_owned()),
@@ -1631,7 +1634,7 @@ fn create_snapshot_no_profile_is_silent_noop() {
 
 #[test]
 fn pin_snapshot_via_command_persists() {
-    let (mut engine, _state, tx, _dir, path) = make_engine_with_disk_profile();
+    let (mut engine, _state, tx, _dir, path) = make_engine_with_simple_disk_profile();
     tx.send(EngineCommand::CreateSnapshot {
         kind: crate::snapshot::SnapshotKind::AutoSessionStart,
         label: None,
@@ -1653,7 +1656,7 @@ fn pin_snapshot_via_command_persists() {
 
 #[test]
 fn rename_snapshot_via_command_persists() {
-    let (mut engine, _state, tx, _dir, path) = make_engine_with_disk_profile();
+    let (mut engine, _state, tx, _dir, path) = make_engine_with_simple_disk_profile();
     tx.send(EngineCommand::CreateSnapshot {
         kind: crate::snapshot::SnapshotKind::Manual,
         label: None,
@@ -1677,7 +1680,7 @@ fn rename_snapshot_via_command_persists() {
 
 #[test]
 fn delete_snapshot_via_command_removes() {
-    let (mut engine, _state, tx, _dir, path) = make_engine_with_disk_profile();
+    let (mut engine, _state, tx, _dir, path) = make_engine_with_simple_disk_profile();
     tx.send(EngineCommand::CreateSnapshot {
         kind: crate::snapshot::SnapshotKind::Manual,
         label: None,
@@ -1773,7 +1776,7 @@ fn load_profile_dedupes_auto_session_start_on_identical_content() {
 
 #[test]
 fn restore_snapshot_round_trip() {
-    let (mut engine, state, tx, _dir, path) = make_engine_with_disk_profile();
+    let (mut engine, state, tx, _dir, path) = make_engine_with_simple_disk_profile();
 
     // Snapshot v1.
     tx.send(EngineCommand::CreateSnapshot {
@@ -1908,7 +1911,7 @@ fn forced_mode_blocks_change_mode_pipeline_output() {
 
 #[test]
 fn restore_snapshot_auto_rollback_on_reload_failure() {
-    let (mut engine, state, tx, _dir, path) = make_engine_with_disk_profile();
+    let (mut engine, state, tx, _dir, path) = make_engine_with_simple_disk_profile();
 
     // Take snapshot of valid profile.
     tx.send(EngineCommand::CreateSnapshot {
@@ -2037,7 +2040,7 @@ fn sequential_eight_then_ninth_evicts_oldest() {
 
 #[test]
 fn restore_corrupt_target_fires_auto_before_restore_then_errors() {
-    let (mut engine, state, tx, _dir, path) = make_engine_with_disk_profile();
+    let (mut engine, state, tx, _dir, path) = make_engine_with_simple_disk_profile();
 
     // Create a snapshot to obtain a real id, then corrupt its meta header.
     tx.send(EngineCommand::CreateSnapshot {
@@ -2077,5 +2080,167 @@ fn restore_corrupt_target_fires_auto_before_restore_then_errors() {
             .iter()
             .any(|s| matches!(s.kind, crate::snapshot::SnapshotKind::AutoBeforeRestore)),
         "AutoBeforeRestore must exist even though restore failed"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// F7 mode CRUD: AddMode
+// ---------------------------------------------------------------------------
+
+/// Build an engine with a 3-mode profile loaded on disk so handlers can persist.
+fn make_engine_with_disk_profile() -> (
+    Engine,
+    Arc<RwLock<AppState>>,
+    mpsc::Sender<EngineCommand>,
+    tempfile::TempDir,
+    PathBuf,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.toml");
+    let profile = make_profile(three_mode_tree(), vec![]);
+    profile.save(&path).unwrap();
+
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    {
+        let mut s = state.write();
+        s.profile_path = Some(path.clone());
+        s.engine_status = EngineStatus::Running;
+    }
+    let (tx, rx) = mpsc::channel();
+    let engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+        PathBuf::new(),
+    );
+    (engine, state, tx, dir, path)
+}
+
+#[test]
+fn add_mode_appends_under_root_by_default() {
+    let (mut engine, state, tx, _dir, path) = make_engine_with_disk_profile();
+    tx.send(EngineCommand::AddMode {
+        name: "Approach".to_owned(),
+        parent: None,
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    let modes = s.active_profile.as_ref().unwrap().modes();
+    assert!(modes.contains("Approach"));
+    let root = modes.root();
+    assert!(root.children().iter().any(|c| c.name() == "Approach"));
+
+    // Persisted to disk.
+    drop(s);
+    let reloaded = Profile::load(&path).unwrap();
+    assert!(reloaded.modes().contains("Approach"));
+}
+
+#[test]
+fn add_mode_under_named_parent() {
+    let (mut engine, state, tx, _dir, _path) = make_engine_with_disk_profile();
+    tx.send(EngineCommand::AddMode {
+        name: "Bombs".to_owned(),
+        parent: Some("Combat".to_owned()),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    let combat = s
+        .active_profile
+        .as_ref()
+        .unwrap()
+        .modes()
+        .find_mode("Combat")
+        .unwrap();
+    assert!(combat.children().iter().any(|c| c.name() == "Bombs"));
+}
+
+#[test]
+fn add_mode_rejects_empty_name() {
+    let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine.handle_command(EngineCommand::AddMode {
+        name: "".to_owned(),
+        parent: None,
+    });
+    assert!(err.is_err(), "expected error on empty name");
+    // Profile unchanged.
+    let s = state.read();
+    let modes = s.active_profile.as_ref().unwrap().modes().all_modes();
+    assert_eq!(modes.len(), 3);
+}
+
+#[test]
+fn add_mode_rejects_duplicate_name() {
+    let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine.handle_command(EngineCommand::AddMode {
+        name: "Combat".to_owned(),
+        parent: None,
+    });
+    assert!(err.is_err(), "expected error on duplicate name");
+    assert_eq!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .modes()
+            .all_modes()
+            .len(),
+        3
+    );
+}
+
+#[test]
+fn add_mode_rejects_unknown_parent() {
+    let (mut engine, _state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine.handle_command(EngineCommand::AddMode {
+        name: "Foo".to_owned(),
+        parent: Some("Nope".to_owned()),
+    });
+    assert!(err.is_err());
+}
+
+#[test]
+fn add_mode_no_active_profile_is_no_op() {
+    let (mut engine, state, _tx) = make_engine_no_profile(MockInputSource::default());
+    engine
+        .handle_command(EngineCommand::AddMode {
+            name: "Foo".to_owned(),
+            parent: None,
+        })
+        .unwrap();
+    assert!(state.read().active_profile.is_none());
+}
+
+#[test]
+fn add_mode_returns_err_when_persist_fails() {
+    let (mut engine, state, _tx, _dir, path) = make_engine_with_disk_profile();
+    // Make the profile path point at a directory to force save() to fail.
+    {
+        let mut s = state.write();
+        s.profile_path = Some(path.parent().unwrap().to_path_buf());
+    }
+    let err = engine.handle_command(EngineCommand::AddMode {
+        name: "Approach".to_owned(),
+        parent: None,
+    });
+    assert!(err.is_err(), "expected persistence error to propagate");
+    // In-memory mutation is intentionally retained.
+    assert!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .modes()
+            .contains("Approach")
     );
 }
