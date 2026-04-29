@@ -1,4 +1,3 @@
-// Rust guideline compliant 2026-04-29
 mod logic;
 
 use dioxus::prelude::*;
