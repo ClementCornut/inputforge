@@ -433,43 +433,41 @@ pub(crate) fn ModeTabs() -> Element {
                 }
                 delete_target.set(None);
             },
-            if delete_target.read().is_some() {
-                crate::components::DialogTitle { "Delete mode" }
-                // Body splits the prose question from the numeric blast-
-                // radius readout. The lead carries the action; the mono
-                // count strip below carries the consequence. Cockpit
-                // vocabulary: a system-status caption ("MODES" / "MAPPINGS")
-                // beside its tabular-nums value reads as a real instrument-
-                // panel readout, which fits a destructive-confirm better
-                // than a single prose sentence.
-                crate::components::DialogBody {
-                    "Delete '{display_name}'?"
-                    div { class: "if-modetab-delete-confirm__counts",
-                        span { strong { "{modes_count}" } " modes" }
-                        span { strong { "{mappings_count}" } " mappings" }
-                    }
+            crate::components::DialogTitle { "Delete mode" }
+            // Body splits the prose question from the numeric blast-
+            // radius readout. The lead carries the action; the mono
+            // count strip below carries the consequence. Cockpit
+            // vocabulary: a system-status caption ("MODES" / "MAPPINGS")
+            // beside its tabular-nums value reads as a real instrument-
+            // panel readout, which fits a destructive-confirm better
+            // than a single prose sentence.
+            crate::components::DialogBody {
+                "Delete '{display_name}'?"
+                div { class: "if-modetab-delete-confirm__counts",
+                    span { strong { "{modes_count}" } " modes" }
+                    span { strong { "{mappings_count}" } " mappings" }
                 }
-                crate::components::DialogFooter {
-                    crate::components::Button {
-                        variant: crate::components::ButtonVariant::Ghost,
-                        onmounted: move |evt: MountedEvent| {
-                            spawn(async move {
-                                let _ = evt.data().set_focus(true).await;
-                            });
-                        },
-                        onclick: move |_| { delete_target.set(None); },
-                        "Cancel"
-                    }
-                    crate::components::Button {
-                        variant: crate::components::ButtonVariant::Secondary,
-                        onclick: move |_| {
-                            let _ = cmd_for_delete.send(EngineCommand::DeleteMode {
-                                name: confirm_name.clone(),
-                            });
-                            delete_target.set(None);
-                        },
-                        "Delete"
-                    }
+            }
+            crate::components::DialogFooter {
+                crate::components::Button {
+                    variant: crate::components::ButtonVariant::Ghost,
+                    onmounted: move |evt: MountedEvent| {
+                        spawn(async move {
+                            let _ = evt.data().set_focus(true).await;
+                        });
+                    },
+                    onclick: move |_| { delete_target.set(None); },
+                    "Cancel"
+                }
+                crate::components::Button {
+                    variant: crate::components::ButtonVariant::Secondary,
+                    onclick: move |_| {
+                        let _ = cmd_for_delete.send(EngineCommand::DeleteMode {
+                            name: confirm_name.clone(),
+                        });
+                        delete_target.set(None);
+                    },
+                    "Confirm"
                 }
             }
         }
