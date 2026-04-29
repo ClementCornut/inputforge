@@ -2,10 +2,6 @@
 
 use crate::frame::view_state::PanelSlot;
 
-#[allow(
-    dead_code,
-    reason = "consumed by ToolsCluster in Task 25; rsx! macro is opaque to rustc"
-)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Tool {
     Devices,
@@ -13,10 +9,6 @@ pub(crate) enum Tool {
     Profiles,
 }
 
-#[allow(
-    dead_code,
-    reason = "consumed by ToolsCluster in Task 25; rsx! macro is opaque to rustc"
-)]
 /// Whether a given tool button should render as active.
 ///
 /// Exclusive — at most one of (Devices, Calibration, Profiles) may be active

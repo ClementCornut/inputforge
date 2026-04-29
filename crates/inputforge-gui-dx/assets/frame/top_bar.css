@@ -71,3 +71,35 @@
     font-style: italic;
     cursor: default;
 }
+
+.if-tools-cluster {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.if-tools-cluster__button {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--color-text-muted);
+    padding: var(--space-1) 0.625rem;
+    font-size: var(--text-sm);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+}
+
+.if-tools-cluster__button:hover:not([disabled]) {
+    color: var(--color-text);
+    background: var(--color-bg-hover);
+}
+
+.if-tools-cluster__button[aria-pressed="true"] {
+    color: var(--color-text);
+    background: var(--color-bg-hover);
+    border-color: var(--color-border);
+}
+
+.if-tools-cluster__button[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
