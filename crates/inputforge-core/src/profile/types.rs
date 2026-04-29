@@ -53,6 +53,17 @@ impl ProfileSettings {
     pub fn startup_mode(&self) -> &str {
         &self.startup_mode
     }
+
+    /// Set the startup mode.
+    ///
+    /// Caller must validate that `mode` exists in the profile's [`ModeTree`].
+    /// This method only mutates the field and performs no cross-profile
+    /// validation.
+    ///
+    /// [`ModeTree`]: crate::mode::ModeTree
+    pub fn set_startup_mode(&mut self, mode: String) {
+        self.startup_mode = mode;
+    }
 }
 
 /// Serializable calibration entry for a specific device axis.
@@ -183,5 +194,27 @@ mod tests {
         let json = serde_json::to_string(&entry).unwrap();
         let back: CalibrationEntry = serde_json::from_str(&json).unwrap();
         assert_eq!(entry, back);
+    }
+
+    #[test]
+    fn set_startup_mode_replaces_value() {
+        let mut s = ProfileSettings {
+            startup_mode: "Default".to_owned(),
+        };
+        s.set_startup_mode("Combat".to_owned());
+        assert_eq!(s.startup_mode(), "Combat");
+    }
+
+    #[test]
+    fn set_startup_mode_accepts_unknown_name() {
+        // Locks the no-validation contract. `Profile::rename_mode_refs`
+        // (Task 8) calls this with the renamed-to name BEFORE the tree itself
+        // is updated; if a future PR adds existence-checking here, that
+        // cascade breaks. This test pins the contract.
+        let mut s = ProfileSettings {
+            startup_mode: "Default".to_owned(),
+        };
+        s.set_startup_mode("ModeThatDoesNotExist".to_owned());
+        assert_eq!(s.startup_mode(), "ModeThatDoesNotExist");
     }
 }
