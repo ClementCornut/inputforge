@@ -69,6 +69,11 @@ pub fn Button(
     #[props(default)] disabled: bool,
     #[props(default)] class: Option<String>,
     onclick: Option<EventHandler<MouseEvent>>,
+    /// Forwarded to the inner <button>'s `onmounted` so callers can move
+    /// focus to it on mount. Used by the F4 confirm dialog to put initial
+    /// focus on Cancel (the safer default).
+    #[props(default)]
+    onmounted: Option<EventHandler<MountedEvent>>,
     children: Element,
 ) -> Element {
     let variant_class = format!("{} {}", variant.class(), size.class());
@@ -78,11 +83,17 @@ pub fn Button(
             handler.call(evt);
         }
     };
+    let mounted_handler = move |evt: MountedEvent| {
+        if let Some(handler) = &onmounted {
+            handler.call(evt);
+        }
+    };
     rsx! {
         button {
             class: "{combined}",
             disabled,
             onclick: click_handler,
+            onmounted: mounted_handler,
             {children}
         }
     }
@@ -91,6 +102,7 @@ pub fn Button(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dioxus_ssr::render;
 
     /// Regression: every component must compose its class string via `merge_class`,
     /// not inline `format!`, to avoid the trailing-space bug when no caller class is
@@ -102,5 +114,26 @@ mod tests {
         let combined = merge_class("if-button", &format!("{v_class} {s_class}"), None);
         assert!(!combined.ends_with(' '), "got: {combined:?}");
         assert_eq!(combined, "if-button if-button--primary if-button--md");
+    }
+
+    /// Regression: `onmounted` must be forwarded to the inner `<button>` so the
+    /// F4 confirm dialog can move focus to Cancel on first render. Renders the
+    /// component to HTML and asserts presence of the button element.
+    #[test]
+    fn button_renders_and_accepts_onmounted_prop() {
+        fn harness() -> Element {
+            rsx! {
+                Button {
+                    onmounted: move |_evt: MountedEvent| {},
+                    onclick: move |_| {},
+                    "Cancel"
+                }
+            }
+        }
+        let mut vdom = VirtualDom::new(harness);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert!(html.contains("<button"), "got: {html}");
+        assert!(html.contains("Cancel"), "got: {html}");
     }
 }

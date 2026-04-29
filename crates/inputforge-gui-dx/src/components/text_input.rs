@@ -32,6 +32,15 @@ pub fn TextInput(
     id: Option<String>,
     #[props(default = InputSize::Md)] size: InputSize,
     #[props(default)] class: Option<String>,
+    /// Forwarded to the inner <input> as `aria-describedby`. Used by inline
+    /// editors to wire validation error spans (`role="alert"`) so AT users
+    /// hear the message when typing produces an invalid name.
+    #[props(default)]
+    aria_describedby: Option<String>,
+    /// Forwarded to the inner <input>'s `onmounted` so callers can move
+    /// focus to it on appearance (e.g., inline-rename / inline-add open).
+    #[props(default)]
+    onmounted: Option<EventHandler<MountedEvent>>,
 ) -> Element {
     let variant_class = if invalid {
         format!("{} if-text-input--invalid", size.class())
@@ -44,6 +53,12 @@ pub fn TextInput(
             h.call(evt);
         }
     };
+    let mounted_handler = move |evt: MountedEvent| {
+        if let Some(handler) = &onmounted {
+            handler.call(evt);
+        }
+    };
+    let described_by = aria_describedby.clone().unwrap_or_default();
     // HTML5 forbids id="" — so render the attribute only when Some.
     rsx! {
         if let Some(ref id_val) = id {
@@ -54,7 +69,9 @@ pub fn TextInput(
                 value: "{value}",
                 placeholder: placeholder.as_deref().unwrap_or(""),
                 disabled,
+                "aria-describedby": "{described_by}",
                 oninput: input_handler,
+                onmounted: mounted_handler,
             }
         } else {
             input {
@@ -63,8 +80,35 @@ pub fn TextInput(
                 value: "{value}",
                 placeholder: placeholder.as_deref().unwrap_or(""),
                 disabled,
+                "aria-describedby": "{described_by}",
                 oninput: input_handler,
+                onmounted: mounted_handler,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dioxus_ssr::render;
+
+    #[test]
+    fn text_input_forwards_aria_describedby() {
+        fn harness() -> Element {
+            let v: Signal<String> = use_signal(String::new);
+            let v_ro: ReadSignal<String> = v.into();
+            rsx! {
+                TextInput {
+                    value: v_ro,
+                    aria_describedby: "err-id".to_owned(),
+                    oninput: move |_| {},
+                }
+            }
+        }
+        let mut vdom = VirtualDom::new(harness);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert!(html.contains("aria-describedby=\"err-id\""), "got: {html}");
     }
 }
