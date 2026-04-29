@@ -51,6 +51,24 @@ impl CycleModes {
     pub fn modes(&self) -> &[String] {
         &self.0
     }
+
+    /// Return a new `CycleModes` with every entry equal to `from` replaced by `to`.
+    ///
+    /// Re-runs constructor validation so a rename that produces a duplicate
+    /// (`from` mapped onto an already-present `to`) is rejected.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::InvalidConfig`] if the substitution would
+    /// introduce a duplicate.
+    pub fn with_renamed(&self, from: &str, to: &str) -> Result<Self> {
+        let updated: Vec<String> = self
+            .0
+            .iter()
+            .map(|m| if m == from { to.to_owned() } else { m.clone() })
+            .collect();
+        Self::new(updated)
+    }
 }
 
 impl Serialize for CycleModes {
@@ -154,5 +172,36 @@ mod tests {
         assert_eq!(modes.modes().len(), 2);
         assert_eq!(modes.modes()[0], "A");
         assert_eq!(modes.modes()[1], "B");
+    }
+
+    #[test]
+    fn with_renamed_substitutes_one_entry() {
+        let modes = CycleModes::new(vec!["A".to_owned(), "B".to_owned(), "C".to_owned()]).unwrap();
+        let renamed = modes.with_renamed("B", "Beta").unwrap();
+        assert_eq!(
+            renamed.modes(),
+            &["A".to_owned(), "Beta".to_owned(), "C".to_owned()]
+        );
+    }
+
+    #[test]
+    fn with_renamed_no_match_clones() {
+        let modes = CycleModes::new(vec!["A".to_owned(), "B".to_owned()]).unwrap();
+        let renamed = modes.with_renamed("X", "Y").unwrap();
+        assert_eq!(renamed.modes(), modes.modes());
+    }
+
+    #[test]
+    fn with_renamed_collision_returns_error() {
+        let modes = CycleModes::new(vec!["A".to_owned(), "B".to_owned(), "C".to_owned()]).unwrap();
+        let err = modes.with_renamed("A", "B").unwrap_err();
+        assert!(err.to_string().contains("duplicate"));
+    }
+
+    #[test]
+    fn with_renamed_from_equals_to_is_clone() {
+        let modes = CycleModes::new(vec!["A".to_owned(), "B".to_owned()]).unwrap();
+        let renamed = modes.with_renamed("A", "A").unwrap();
+        assert_eq!(renamed.modes(), modes.modes());
     }
 }
