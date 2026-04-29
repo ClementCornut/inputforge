@@ -1,0 +1,15 @@
+.if-frame-status-bar {
+    border-top: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+.if-frame-status-bar__path {
+    color: var(--color-text-muted);
+}
+
+.if-frame-status-bar__path-empty {
+    color: var(--color-text-subtle);
+}
