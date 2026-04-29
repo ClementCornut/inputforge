@@ -1,0 +1,24 @@
+/* EmptyState mounts as a sibling of `.if-layout__main` in the no-profile
+   branch (NOT inside `__main`). Under the outer flex column, it gets
+   `flex: 1 1 auto` to fill the row that `__main` would have occupied
+   when a profile is loaded. */
+.if-empty-state {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-8);
+}
+
+.if-empty-state__heading {
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: var(--space-2);
+}
+
+.if-empty-state__hint {
+    font-size: var(--text-base);
+    color: var(--color-text-muted);
+}

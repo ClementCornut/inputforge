@@ -2,6 +2,12 @@ mod empty_state;
 
 use dioxus::prelude::*;
 
+#[expect(
+    dead_code,
+    reason = "rsx! macro is opaque to rustc; constant is consumed by Stylesheet { href: LAYOUT_CSS }"
+)]
+const LAYOUT_CSS: Asset = asset!("/assets/frame/layout.css");
+
 use crate::context::AppContext;
 use crate::frame::banner::Banner;
 use crate::frame::panel_slot::PanelSlot as PanelSlotComponent;
@@ -27,6 +33,7 @@ pub(crate) fn Layout() -> Element {
 
     rsx! {
         div { class: "if-layout",
+            Stylesheet { href: LAYOUT_CSS }
             TopBar {}
             Banner {}
             if p {

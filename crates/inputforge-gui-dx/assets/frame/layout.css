@@ -1,0 +1,47 @@
+/* Project rule: every `display` defaults to flex; grid only for true 2D
+   layouts where rows AND columns must align across siblings. F7's chrome
+   is a 1D column-stack (top bar / banner / main / status) with one
+   growing element, and the inner main row is a 1D row-flow (rail /
+   center / panel slot) with one growing element — canonical flex use
+   cases. (Memory: feedback_dialog_flexbox.) */
+.if-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--color-bg);
+    color: var(--color-text);
+}
+
+/* Top bar / banner / main / status are direct children. The 40px and
+   28px tracks become explicit `flex-basis`; the banner is content-sized
+   and collapses to 0 when its component renders `rsx!{}`; main grows to
+   fill remaining space. `min-height: 0` lets `__main` shrink past its
+   intrinsic min-content (required for the inner overflow-y: auto on
+   rail and center to engage). */
+.if-top-bar         { flex: 0 0 40px; }
+.if-banner          { flex: 0 0 auto; }
+.if-layout__main    { flex: 1 1 auto; min-height: 0; }
+.if-status-bar      { flex: 0 0 28px; }
+
+.if-layout__main {
+    display: flex;
+    flex-direction: row;
+}
+
+.if-layout__rail {
+    flex: 0 0 280px;
+    border-right: 1px solid var(--color-border);
+    overflow-y: auto;
+    padding: var(--space-3);
+}
+
+.if-layout__center {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: var(--space-3);
+    min-width: 0;
+}
+
+/* `.if-panel-slot` (sized 320px when mounted) is a flex sibling here.
+   When `panel_slot == None`, it isn't rendered, so no flex item is
+   produced and `__center` reclaims the space naturally. */
