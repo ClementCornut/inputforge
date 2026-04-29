@@ -231,6 +231,40 @@ impl ModeTree {
         Ok(Self { root })
     }
 
+    /// Return a new tree with the node named `from` renamed to `to`.
+    ///
+    /// A rename to the same name is a no-op clone.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::ModeNotFound`] if `from` is absent, or
+    /// [`EngineError::InvalidConfig`] if `to` is already present (and
+    /// differs from `from`).
+    pub fn with_renamed(&self, from: &str, to: &str) -> Result<Self> {
+        if from == to {
+            return Ok(self.clone());
+        }
+        if !self.contains(from) {
+            return Err(EngineError::ModeNotFound {
+                name: from.to_owned(),
+            });
+        }
+        if self.contains(to) {
+            return Err(EngineError::InvalidConfig {
+                reason: format!("mode '{to}' already exists"),
+            });
+        }
+        let mut root = self.root.clone();
+        // `rename_node` returns false only if `from` is absent, but the
+        // `contains` guard above guarantees it's present.
+        let renamed = rename_node(&mut root, from, to);
+        debug_assert!(
+            renamed,
+            "rename_node failed despite contains({from}) — invariant violated"
+        );
+        Ok(Self { root })
+    }
+
     /// Convert the tree back to a flat adjacency map for serialization.
     fn to_adjacency_map(&self) -> HashMap<&str, Vec<&str>> {
         let mut map = HashMap::new();
@@ -322,6 +356,20 @@ fn attach_child(node: &mut ModeNode, parent: &str, name: &str) -> bool {
     }
     for child in &mut node.children {
         if attach_child(child, parent, name) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Walk the mutable tree DFS; rename the first matching node and return.
+fn rename_node(node: &mut ModeNode, from: &str, to: &str) -> bool {
+    if node.name == from {
+        to.clone_into(&mut node.name);
+        return true;
+    }
+    for child in &mut node.children {
+        if rename_node(child, from, to) {
             return true;
         }
     }
@@ -723,5 +771,53 @@ mod tests {
         let result: std::result::Result<ModeTree, _> = serde_json::from_str("{}");
         let err = result.unwrap_err();
         assert!(err.to_string().contains("empty"));
+    }
+
+    // --- with_renamed ---
+
+    #[test]
+    fn with_renamed_root() {
+        let tree = test_tree();
+        let updated = tree.with_renamed("Default", "Root").unwrap();
+        assert_eq!(updated.root().name(), "Root");
+        assert!(updated.contains("Combat"));
+    }
+
+    #[test]
+    fn with_renamed_internal_node_preserves_children() {
+        let tree = test_tree();
+        let updated = tree.with_renamed("Combat", "Fighter").unwrap();
+        let fighter = updated.find_mode("Fighter").unwrap();
+        assert_eq!(fighter.children().len(), 2);
+        assert!(updated.find_mode("Combat").is_none());
+    }
+
+    #[test]
+    fn with_renamed_leaf() {
+        let tree = test_tree();
+        let updated = tree.with_renamed("Missiles", "Rockets").unwrap();
+        assert!(updated.contains("Rockets"));
+        assert!(!updated.contains("Missiles"));
+    }
+
+    #[test]
+    fn with_renamed_rejects_collision() {
+        let tree = test_tree();
+        let err = tree.with_renamed("Combat", "Landing").unwrap_err();
+        assert!(err.to_string().contains("Landing"));
+    }
+
+    #[test]
+    fn with_renamed_rejects_unknown_from() {
+        let tree = test_tree();
+        let err = tree.with_renamed("Nope", "Foo").unwrap_err();
+        assert!(err.to_string().contains("Nope"));
+    }
+
+    #[test]
+    fn with_renamed_no_op_when_from_equals_to() {
+        let tree = test_tree();
+        let updated = tree.with_renamed("Combat", "Combat").unwrap();
+        assert_eq!(updated, tree);
     }
 }
