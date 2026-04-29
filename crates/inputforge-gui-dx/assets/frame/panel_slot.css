@@ -1,0 +1,18 @@
+/* Sized via flex-basis under the outer `.if-layout__main` flex row. When
+   the component isn't mounted (panel_slot == None), no flex item is
+   produced, so `.if-layout__center` reclaims the space. */
+.if-panel-slot {
+    flex: 0 0 320px;
+    border-left: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+    overflow-y: auto;
+    padding: var(--space-3);
+    color: var(--color-text);
+    font-size: var(--text-base);
+}
+
+/* When a future task (impeccable:animate) adds a slide-in transition for
+   the panel, it MUST use --duration-* tokens — the project's
+   `motion.css` collapses every duration to 0ms under
+   `prefers-reduced-motion: reduce`, which means token-based transitions
+   inherit RM-correctness for free. Hard-coded ms values bypass that. */
