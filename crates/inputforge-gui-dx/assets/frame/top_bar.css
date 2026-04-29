@@ -1,10 +1,17 @@
+/* The top bar is the upper cockpit panel — same structural-seam
+   vocabulary as the rail and panel-slot (`border-strong` seam below,
+   `--shadow-1` inset top highlight, elevated surface). 32a established
+   that all panel boundaries read as instrument-cluster seams; the bar
+   above the working row inherits that language. The 40px height is
+   structural (matches the egui shell), not on the spacing scale. */
 .if-top-bar {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     padding: 0 var(--space-3);
     background: var(--color-bg-elevated);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border-strong);
+    box-shadow: var(--shadow-1);
     height: 100%;
 }
 
@@ -19,6 +26,14 @@
     flex: 1 1 auto;
 }
 
+/* Engine pill — a cockpit readout chip. The 0.625rem horizontal padding
+   is the documented off-scale literal that gives the pill its rounded-
+   capsule proportions; the 0.05em letter-spacing is the same mono-uppercase
+   tracking 32a uses on eyebrow captions, scaled down for chip size. The
+   variant tints layer a low-alpha hue wash beneath the resting border so
+   the chip reads as a phosphor-lit indicator, not a flat outline. Color
+   transitions use the synchronous fast curve (state changes follow input
+   events: engine activation / a profile arriving). */
 .if-engine-pill {
     display: flex;
     align-items: center;
@@ -30,9 +45,13 @@
     color: var(--color-text);
     cursor: pointer;
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    transition:
+        color var(--duration-fast) var(--easing-fast),
+        background-color var(--duration-fast) var(--easing-fast),
+        border-color var(--duration-fast) var(--easing-fast);
 }
 
 .if-engine-pill[disabled] {
@@ -40,35 +59,73 @@
     opacity: 0.5;
 }
 
+/* The dot is the LED face. `currentColor` carries the variant hue, and
+   the box-shadow is a 0/0/0 spread halo — no blur, just a flat ring at
+   the same hue at low alpha. Reads as light leaking around a panel-
+   mounted indicator, not a glow effect. */
 .if-engine-pill__dot {
     width: var(--space-2);
     height: var(--space-2);
-    border-radius: 50%;
+    border-radius: var(--radius-full);
     background: currentColor;
+    box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 24%, transparent);
 }
 
-.if-engine-pill--live    { color: var(--color-live); border-color: color-mix(in srgb, var(--color-live) 40%, transparent); }
-.if-engine-pill--warning { color: var(--color-warning); border-color: color-mix(in srgb, var(--color-warning) 40%, transparent); }
-.if-engine-pill--error   { color: var(--color-error);   border-color: color-mix(in srgb, var(--color-error) 40%, transparent); }
+.if-engine-pill__label {
+    font-variant-numeric: tabular-nums;
+}
 
+.if-engine-pill--live {
+    color: var(--color-live);
+    background: color-mix(in srgb, var(--color-live) 10%, transparent);
+    border-color: color-mix(in srgb, var(--color-live) 40%, transparent);
+}
+.if-engine-pill--warning {
+    color: var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+    border-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
+}
+.if-engine-pill--error {
+    color: var(--color-error);
+    background: color-mix(in srgb, var(--color-error) 10%, transparent);
+    border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
+}
+
+/* Profile name — the loaded variant is a filesystem-flavoured readout
+   slot, so it picks up mono + tabular figures (matching the eyebrow
+   font family established in 32a). A 1px transparent border reserves
+   geometry so the hover/focus border doesn't cause a 1px reflow. The
+   empty variant drops italic — italic + tabular-nums fights the
+   instrument-cluster type system; uppercase + tracking reads as a
+   system status caption instead, same idiom as the engine pill. */
 .if-profile-name {
     background: transparent;
-    border: 0;
+    border: 1px solid transparent;
     color: var(--color-text);
     cursor: pointer;
-    font-size: var(--text-base);
-    font-weight: 500;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
     padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
+    transition:
+        color var(--duration-fast) var(--easing-fast),
+        background-color var(--duration-fast) var(--easing-fast),
+        border-color var(--duration-fast) var(--easing-fast);
 }
 
 .if-profile-name--loaded:hover {
-    background: var(--color-bg-hover);
+    background: var(--color-border);
+    border-color: var(--color-border-strong);
 }
 
 .if-profile-name--empty {
-    color: var(--color-text-muted);
-    font-style: italic;
+    color: var(--color-text-subtle);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-regular);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
     cursor: default;
 }
 
@@ -78,30 +135,53 @@
     gap: var(--space-1);
 }
 
+/* Tools cluster button — resting reads as muted text on transparent
+   chrome, hover lifts to the hover surface, pressed (`aria-pressed`)
+   reads as a panel that has been latched on: elevated background, a
+   strong-border outline so the chip looks seated into the bar (matches
+   the cockpit-panel-seam vocabulary), plus the `--shadow-1` inset top
+   highlight so the chip catches light like the rail and panel-slot do.
+   0.625rem padding is the same off-scale literal used by the engine
+   pill — the two regions read as one chip family. Disabled has no
+   transition (animating disabled is a UX anti-pattern; 32b's polish
+   goal calls this out explicitly). */
 .if-tools-cluster__button {
     background: transparent;
     border: 1px solid transparent;
     color: var(--color-text-muted);
     padding: var(--space-1) 0.625rem;
     font-size: var(--text-sm);
-    border-radius: var(--radius-md);
+    font-weight: var(--weight-medium);
+    border-radius: var(--radius-sm);
     cursor: pointer;
+    transition:
+        color var(--duration-fast) var(--easing-fast),
+        background-color var(--duration-fast) var(--easing-fast),
+        border-color var(--duration-fast) var(--easing-fast);
 }
 
 .if-tools-cluster__button:hover:not([disabled]) {
     color: var(--color-text);
-    background: var(--color-bg-hover);
+    background: var(--color-border);
 }
 
 .if-tools-cluster__button[aria-pressed="true"] {
     color: var(--color-text);
-    background: var(--color-bg-hover);
-    border-color: var(--color-border);
+    background: var(--color-bg-elevated);
+    border-color: var(--color-border-strong);
+    box-shadow: var(--shadow-1);
 }
 
 .if-tools-cluster__button[disabled] {
     opacity: 0.4;
     cursor: not-allowed;
+    transition: none;
+}
+
+.if-tools-cluster__button:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: -1px;
+    border-radius: var(--radius-sm);
 }
 
 .if-mode-tabs {
