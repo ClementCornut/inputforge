@@ -1,3 +1,5 @@
+mod logic;
+
 use dioxus::prelude::*;
 
 #[component]
