@@ -346,11 +346,10 @@ impl Engine {
                     return Ok(());
                 };
                 self.mode_state.switch_to(&mode, &tree)?;
-                {
-                    let mut state = self.state.write();
-                    state.mode_force = Some(crate::state::ForcedMode { mode: mode.clone() });
-                    mode.clone_into(&mut state.current_mode);
-                };
+                let mut state = self.state.write();
+                state.mode_force = Some(crate::state::ForcedMode { mode: mode.clone() });
+                mode.clone_into(&mut state.current_mode);
+                drop(state);
                 self.pending_output_refresh = true;
                 tracing::info!(target: "engine", mode = %mode, "ForceMode applied");
             }
