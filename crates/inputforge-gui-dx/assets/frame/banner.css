@@ -1,0 +1,30 @@
+.if-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--text-sm);
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+}
+
+.if-banner__copy {
+    flex: 1 1 auto;
+}
+
+.if-banner--diverged {
+    /* Canonical control tint (14% control-violet on bg-elevated) — AA-tuned;
+       earlier 0.08 alpha was sub-AA for the muted text variant. */
+    background: var(--color-control-bg);
+    border-bottom-color: color-mix(in srgb, var(--color-control) 40%, transparent);
+    /* `--color-control-badge-text` is the AA-tuned brighter step that
+       clears 5.5x against the 14% tint; `--color-control` itself fails
+       AA at 3.7x on its own background tint. */
+    color: var(--color-control-badge-text);
+}
+
+.if-banner--forced {
+    background: var(--color-warning-bg);
+    border-bottom-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
+    color: var(--color-warning);
+}
