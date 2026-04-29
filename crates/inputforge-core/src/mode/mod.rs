@@ -184,6 +184,23 @@ impl ModeTree {
         names
     }
 
+    /// Return the names of all proper descendants of `name`, DFS pre-order
+    /// (excluding `name` itself).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::ModeNotFound`] if `name` is not in the tree.
+    pub fn descendants_of(&self, name: &str) -> Result<Vec<String>> {
+        let node = find_node(&self.root, name).ok_or_else(|| EngineError::ModeNotFound {
+            name: name.to_owned(),
+        })?;
+        let mut out = Vec::new();
+        for child in &node.children {
+            collect_descendants(child, &mut out);
+        }
+        Ok(out)
+    }
+
     /// Convert the tree back to a flat adjacency map for serialization.
     fn to_adjacency_map(&self) -> HashMap<&str, Vec<&str>> {
         let mut map = HashMap::new();
@@ -252,6 +269,14 @@ fn collect_names_vec<'a>(node: &'a ModeNode, names: &mut Vec<&'a str>) {
     names.push(node.name.as_str());
     for child in &node.children {
         collect_names_vec(child, names);
+    }
+}
+
+/// Collect this node and every descendant (DFS pre-order) into `out`.
+fn collect_descendants(node: &ModeNode, out: &mut Vec<String>) {
+    out.push(node.name.clone());
+    for child in &node.children {
+        collect_descendants(child, out);
     }
 }
 
@@ -451,6 +476,66 @@ mod tests {
         assert!(modes.contains(&"Missiles"));
         assert!(modes.contains(&"Guns"));
         assert!(modes.contains(&"Landing"));
+    }
+
+    // --- descendants_of ---
+
+    #[test]
+    fn descendants_of_root_returns_all_others_dfs_preorder() {
+        // test_tree() is `Default → [Combat → [Missiles, Guns], Landing]`.
+        // The doc-comment promises DFS pre-order — assert the actual order
+        // (no sort) so a future implementation that returns BFS or sorted
+        // output fails this test loudly.
+        let tree = test_tree();
+        let got = tree.descendants_of("Default").unwrap();
+        assert_eq!(got, vec!["Combat", "Missiles", "Guns", "Landing"]);
+    }
+
+    #[test]
+    fn descendants_of_internal_returns_subtree_dfs_preorder() {
+        let tree = test_tree();
+        let got = tree.descendants_of("Combat").unwrap();
+        assert_eq!(got, vec!["Missiles", "Guns"]);
+    }
+
+    #[test]
+    fn descendants_of_leaf_returns_empty() {
+        let tree = test_tree();
+        let got = tree.descendants_of("Missiles").unwrap();
+        assert!(got.is_empty());
+    }
+
+    #[test]
+    fn descendants_of_unknown_errors() {
+        let tree = test_tree();
+        let err = tree.descendants_of("Nope").unwrap_err();
+        assert!(err.to_string().contains("Nope"));
+    }
+
+    #[test]
+    fn descendants_of_depth_three_dfs_preorder() {
+        // Synthetic depth-3 tree where order distinguishes DFS pre-order from
+        // BFS or any sort — Combat → Bombs → [Conventional, Smart],
+        // Combat → Guns. test_tree() doesn't go this deep.
+        use std::collections::HashMap;
+        let map = HashMap::from([
+            ("Default".to_owned(), vec!["Combat".to_owned()]),
+            (
+                "Combat".to_owned(),
+                vec!["Bombs".to_owned(), "Guns".to_owned()],
+            ),
+            (
+                "Bombs".to_owned(),
+                vec!["Conventional".to_owned(), "Smart".to_owned()],
+            ),
+        ]);
+        let tree = ModeTree::from_adjacency(&map).unwrap();
+        let got = tree.descendants_of("Default").unwrap();
+        assert_eq!(
+            got,
+            vec!["Combat", "Bombs", "Conventional", "Smart", "Guns"],
+            "DFS pre-order: parent before children, first sibling before its siblings"
+        );
     }
 
     // --- Serde ---
