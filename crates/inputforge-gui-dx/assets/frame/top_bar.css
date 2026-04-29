@@ -268,6 +268,15 @@
 .if-mode-tab__marker--natural { color: var(--color-live); }
 .if-mode-tab__marker--forced  { color: var(--color-warning); }
 
+/* The menu backdrop is a pointer-event sink positioned beneath the
+   floating list. The component-level `.if-menu__backdrop` rule in
+   `assets/components/menu.css` is intentionally distinct: that one
+   relies on the menu's local stacking context (z-index: 1000 on
+   `.if-menu__items`), while the mode-tabs context menu is hand-rolled
+   and lifts its own pair to z-index 100/101. Cross-primitive
+   consolidation is a follow-up; the duplication is documented here.
+   Tokenization: transparent background — backdrop is invisible by
+   contract, only the click sink matters. */
 .if-menu__backdrop {
     position: fixed;
     inset: 0;
@@ -275,13 +284,24 @@
     z-index: 100;
 }
 
+/* Mode-tab context menu — a floating cockpit overlay panel.
+   Vocabulary: `border-strong` outline + `--shadow-3` (the genuine
+   floating-overlay shadow tier per elevation.css) + `--shadow-1` inset
+   top highlight (chamfer), same idiom dialog.css uses for its panel.
+   The 12rem min-width is a documented structural literal — keeps the
+   menu wide enough to fit the longest action label ("Set as default")
+   without per-locale recalculation. Internal padding hugs the items
+   so the structural border reads as the panel edge. */
 .if-modetab-context-menu {
     list-style: none;
     margin: 0;
     padding: var(--space-1) 0;
     background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-md);
+    box-shadow:
+        var(--shadow-3),
+        var(--shadow-1);
     min-width: 12rem;
     z-index: 101;
 }
@@ -291,27 +311,53 @@
     padding: 0;
 }
 
+/* Menu items follow the canonical `.if-menu__item` convention from
+   components/menu.css: full-width row, transparent background, inherit
+   typography from the panel. Tracking 0.01em matches the mode-tab and
+   .if-tab base — the menu reads as part of the same instrument family
+   rather than as a foreign overlay. Color/background transition on the
+   synchronous fast lane (state changes follow input events). */
 .if-modetab-context-menu button {
     display: block;
     width: 100%;
     text-align: left;
     background: transparent;
     border: 0;
-    padding: var(--space-1) var(--space-3);
+    padding: var(--space-2) var(--space-3);
     color: var(--color-text);
-    font-size: var(--text-base);
+    font: inherit;
+    font-weight: var(--weight-medium);
+    letter-spacing: 0.01em;
     cursor: pointer;
+    transition:
+        color var(--duration-fast) var(--easing-fast),
+        background-color var(--duration-fast) var(--easing-fast);
 }
 
+/* Hover/focus uses `--color-border` — the menu-hover convention 32b
+   established for `.if-tools-cluster__button` and that
+   `.if-menu__item:hover` uses in components/menu.css. `--color-bg`
+   would be darker than the menu surface itself (bg-elevated is
+   lighter than bg) and read as a hole instead of a highlight. */
 .if-modetab-context-menu button:hover:not([aria-disabled="true"]),
 .if-modetab-context-menu button:focus-visible {
-    background: var(--color-bg);
+    background: var(--color-border);
     outline: none;
 }
 
+/* Disabled-item contrast: subtle text + 0.5 opacity matches the
+   `.if-menu__item:disabled` convention. Communicates "available but
+   inactive" without making the row invisible — disabled items still
+   need to be readable for AT users and to explain the structure of
+   the menu (Activate/Rename/Delete/Set as default) at a glance. The
+   transition is suppressed so the disabled state doesn't animate
+   color on hover (UX anti-pattern, same idiom 32b applied to
+   .if-tools-cluster__button[disabled]). */
 .if-modetab-context-menu button[aria-disabled="true"] {
     color: var(--color-text-subtle);
+    opacity: 0.5;
     cursor: not-allowed;
+    transition: none;
 }
 
 /* Tail `+` add-tab — inherits the .if-mode-tab base (muted text that
@@ -328,15 +374,70 @@
     padding: 0 var(--space-2);
 }
 
+/* Inline editor slot — replaces a tab button (add) or a single tab
+   button (rename) with a TextInput + optional error span. The TextInput
+   primitive already supplies its own bg-sunken backplate and border, so
+   the wrapper stays transparent and only reserves geometry: gap matches
+   the mode-tab inter-element gap (0.375rem feels too tight for an input
+   with its own padding; --space-2 is the authored size that pairs the
+   input with its trailing error span without crowding). The
+   `margin-bottom: -1px` mirrors `.if-mode-tab` so the slot height stays
+   stable when an editor swaps in mid-tablist (no 1px reflow against
+   the top-bar's --color-border-strong seam below). The vertical 1px
+   padding reserves room for the input's focus ring without clipping
+   against the bar height. */
 .if-mode-tab--add-inline,
 .if-mode-tab--rename-inline {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: 0 var(--space-2);
+    padding: 1px var(--space-2);
+    margin-bottom: -1px;
 }
 
+/* Error caption — system-status idiom scaled to inline-error size.
+   The error hue carries the alert; weight-medium + 0.01em letter-
+   spacing pulls the caption into the instrument-cluster tracking
+   family so it reads as a structured readout, not a stray prose
+   string. Stays in --font-sans (not mono) because the message is
+   prose with apostrophes and quotes ("'Foo' already exists") that
+   the mono face would render with off-balance spacing. */
 .if-mode-tab__error {
     font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    letter-spacing: 0.01em;
     color: var(--color-error);
+}
+
+/* F4 destructive-confirm body — splits the prose question from the
+   numeric readout. The lead is plain prose ("Delete 'Foo'?") rendered
+   by the parent DialogBody primitive; the counts strip below is a mono
+   eyebrow caption following the cockpit-readout idiom (font-mono +
+   uppercase + 0.18em tracking + tabular-nums) that 32a established for
+   system-status text. The hairline rule above the counts mirrors the
+   instrument-panel separator from empty_state; reads as "this is the
+   blast radius of the action" rather than as an extension of the
+   sentence above. */
+.if-modetab-delete-confirm__counts {
+    display: flex;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--color-border);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-regular);
+    color: var(--color-text-subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Number value in the count strip — bumps to bright text so the
+   numeric magnitudes read as the data, with the surrounding caption
+   reading as the legend. Same idiom as a real instrument-panel
+   readout: a small mono label beside a brighter mono number. */
+.if-modetab-delete-confirm__counts strong {
+    color: var(--color-text);
+    font-weight: var(--weight-medium);
 }

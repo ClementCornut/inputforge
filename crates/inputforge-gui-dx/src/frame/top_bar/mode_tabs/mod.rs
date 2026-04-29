@@ -435,8 +435,19 @@ pub(crate) fn ModeTabs() -> Element {
             },
             if delete_target.read().is_some() {
                 crate::components::DialogTitle { "Delete mode" }
+                // Body splits the prose question from the numeric blast-
+                // radius readout. The lead carries the action; the mono
+                // count strip below carries the consequence. Cockpit
+                // vocabulary: a system-status caption ("MODES" / "MAPPINGS")
+                // beside its tabular-nums value reads as a real instrument-
+                // panel readout, which fits a destructive-confirm better
+                // than a single prose sentence.
                 crate::components::DialogBody {
-                    "Delete '{display_name}'? This drops {modes_count} mode(s) and {mappings_count} mapping(s)."
+                    "Delete '{display_name}'?"
+                    div { class: "if-modetab-delete-confirm__counts",
+                        span { strong { "{modes_count}" } " modes" }
+                        span { strong { "{mappings_count}" } " mappings" }
+                    }
                 }
                 crate::components::DialogFooter {
                     crate::components::Button {
