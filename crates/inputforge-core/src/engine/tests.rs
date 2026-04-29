@@ -6,6 +6,7 @@
 //! the mock I/O implementations.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -138,6 +139,7 @@ fn make_engine(
         Arc::clone(&state),
         rx,
         AppSettings::default(),
+        PathBuf::new(),
     );
 
     (engine, state, tx)
@@ -713,6 +715,7 @@ fn make_engine_no_profile(
         Arc::clone(&state),
         rx,
         AppSettings::default(),
+        PathBuf::new(),
     );
 
     (engine, state, tx)
@@ -1312,6 +1315,7 @@ fn activate_refreshes_outputs_from_cached_axis_values() {
         Arc::clone(&state),
         rx,
         AppSettings::default(),
+        PathBuf::new(),
     );
 
     // Tick 1 (Stopped): input cache is updated, mappings are not evaluated.
@@ -1415,7 +1419,7 @@ fn make_engine_with_disk_profile() -> (
     Arc<RwLock<AppState>>,
     mpsc::Sender<EngineCommand>,
     tempfile::TempDir,
-    std::path::PathBuf,
+    PathBuf,
 ) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("TFM_Throttle.toml");
@@ -1438,6 +1442,7 @@ fn make_engine_with_disk_profile() -> (
         Arc::clone(&state),
         rx,
         AppSettings::default(),
+        PathBuf::new(),
     );
     (engine, state, tx, dir, path)
 }
@@ -1559,28 +1564,39 @@ fn force_mode_rotates_on_different_mode() {
 
 #[test]
 fn reload_settings_picks_up_disk_edits() {
-    use crate::snapshot::SnapshotConfig;
+    let dir = tempfile::tempdir().unwrap();
+    let settings_path = dir.path().join("settings.toml");
+    std::fs::write(
+        &settings_path,
+        "[snapshot]\nmax_count = 5\nskip_if_unchanged = false\n",
+    )
+    .unwrap();
 
-    // Build an engine with default settings and dispatch ReloadSettings.
-    // The handler reads from `AppSettings::load()` — we can't redirect
-    // that without env-var manipulation, so we test that the in-memory
-    // copy gets *replaced* (not whether it equals a specific value).
     let profile = make_profile(simple_mode_tree(), vec![]);
-    let (mut engine, _state, tx) = make_engine(MockInputSource::default(), profile);
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    state.write().engine_status = EngineStatus::Running;
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+        settings_path.clone(),
+    );
 
-    // Sentinel mutation: bump in-memory snapshot.max_count to 999.
-    // After ReloadSettings, the field will be replaced by AppSettings::load()
-    // — which on a typical test environment returns Default() (max_count=10).
-    engine.settings.snapshot = SnapshotConfig {
-        max_count: 999,
-        skip_if_unchanged: false,
-    };
+    // Sentinel mutation; after ReloadSettings, the field must reflect the
+    // tempdir-backed file, not the developer's real %APPDATA%.
+    engine.settings.snapshot.max_count = 999;
     tx.send(EngineCommand::ReloadSettings).unwrap();
     engine.tick().unwrap();
-    assert_ne!(
-        engine.settings.snapshot.max_count, 999,
-        "ReloadSettings must replace in-memory settings"
+    assert_eq!(
+        engine.settings.snapshot.max_count, 5,
+        "ReloadSettings must read from settings_path"
     );
+    assert!(!engine.settings.snapshot.skip_if_unchanged);
 }
 
 // ---------------------------------------------------------------------------
@@ -1699,6 +1715,7 @@ fn load_profile_creates_auto_session_start_snapshot() {
         Arc::clone(&state),
         rx,
         AppSettings::default(),
+        PathBuf::new(),
     );
 
     tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
@@ -1734,6 +1751,7 @@ fn load_profile_dedupes_auto_session_start_on_identical_content() {
         Arc::clone(&state),
         rx,
         AppSettings::default(),
+        PathBuf::new(),
     );
 
     tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
@@ -1815,6 +1833,7 @@ fn restore_snapshot_clears_mode_force() {
         Arc::clone(&state),
         rx,
         AppSettings::default(),
+        PathBuf::new(),
     );
 
     tx.send(EngineCommand::CreateSnapshot {
@@ -1968,6 +1987,7 @@ fn sequential_eight_then_ninth_evicts_oldest() {
         Arc::clone(&state),
         rx,
         settings,
+        PathBuf::new(),
     );
 
     let mut ids = Vec::new();

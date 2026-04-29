@@ -359,7 +359,7 @@ impl Engine {
                 tracing::info!(target: "engine", "ReleaseMode applied");
             }
             EngineCommand::ReloadSettings => {
-                self.settings = crate::settings::AppSettings::load();
+                self.settings = crate::settings::AppSettings::load_from(&self.settings_path);
                 tracing::info!(target: "engine", "settings reloaded");
             }
             EngineCommand::CreateSnapshot { kind, label } => {

@@ -16,6 +16,7 @@ mod tests;
 
 pub use command::EngineCommand;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc;
 
@@ -60,6 +61,10 @@ pub struct Engine {
     pending_output_refresh: bool,
     /// Application-wide settings; refreshed by `EngineCommand::ReloadSettings`.
     pub(crate) settings: AppSettings,
+    /// Disk path the `ReloadSettings` handler reads from. Production passes
+    /// `AppSettings::settings_path()`; tests inject a tempdir path so they
+    /// don't touch the developer's real `%APPDATA%`.
+    pub(crate) settings_path: PathBuf,
 }
 
 impl std::fmt::Debug for Engine {
@@ -85,6 +90,11 @@ impl Engine {
     /// Construct and call [`run`](Self::run) on the same thread where
     /// the `InputSource` was created.
     #[must_use]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "constructor wires every I/O dependency explicitly; a builder \
+                  would not improve clarity for this single caller"
+    )]
     pub fn new(
         input: Box<dyn InputSource>,
         output: Box<dyn OutputSink>,
@@ -93,6 +103,7 @@ impl Engine {
         state: Arc<RwLock<AppState>>,
         commands: mpsc::Receiver<EngineCommand>,
         settings: AppSettings,
+        settings_path: PathBuf,
     ) -> Self {
         let startup_mode = {
             let s = state.read();
@@ -127,6 +138,7 @@ impl Engine {
             shutdown: false,
             pending_output_refresh: false,
             settings,
+            settings_path,
         }
     }
 }

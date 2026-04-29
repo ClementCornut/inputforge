@@ -231,6 +231,7 @@ fn run_engine_inner(
         state,
         commands,
         AppSettings::load(),
+        AppSettings::settings_path(),
     );
     engine.run()?;
     Ok(())
