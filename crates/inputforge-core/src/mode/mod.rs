@@ -201,6 +201,36 @@ impl ModeTree {
         Ok(out)
     }
 
+    /// Return a new tree with `name` added as a child of `parent`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::ModeNotFound`] if `parent` does not exist, or
+    /// [`EngineError::InvalidConfig`] if `name` already exists anywhere in
+    /// the tree.
+    pub fn with_added_child(&self, parent: &str, name: &str) -> Result<Self> {
+        if !self.contains(parent) {
+            return Err(EngineError::ModeNotFound {
+                name: parent.to_owned(),
+            });
+        }
+        if self.contains(name) {
+            return Err(EngineError::InvalidConfig {
+                reason: format!("mode '{name}' already exists"),
+            });
+        }
+        let mut root = self.root.clone();
+        // `attach_child` returns false only if `parent` is missing, but the
+        // `contains` guard above guarantees it's present. The debug_assert
+        // catches future refactors that drift the precondition.
+        let attached = attach_child(&mut root, parent, name);
+        debug_assert!(
+            attached,
+            "attach_child failed despite contains({parent}) — invariant violated"
+        );
+        Ok(Self { root })
+    }
+
     /// Convert the tree back to a flat adjacency map for serialization.
     fn to_adjacency_map(&self) -> HashMap<&str, Vec<&str>> {
         let mut map = HashMap::new();
@@ -278,6 +308,24 @@ fn collect_descendants(node: &ModeNode, out: &mut Vec<String>) {
     for child in &node.children {
         collect_descendants(child, out);
     }
+}
+
+/// Walk the mutable tree DFS pre-order; when the parent matches, push a leaf
+/// child with `name`. Returns once it has appended (early-exit short-circuit).
+fn attach_child(node: &mut ModeNode, parent: &str, name: &str) -> bool {
+    if node.name == parent {
+        node.children.push(ModeNode {
+            name: name.to_owned(),
+            children: Vec::new(),
+        });
+        return true;
+    }
+    for child in &mut node.children {
+        if attach_child(child, parent, name) {
+            return true;
+        }
+    }
+    false
 }
 
 /// Recursively build the adjacency map from the tree.
@@ -564,6 +612,59 @@ mod tests {
         let toml_str = toml::to_string(&tree).unwrap();
         let back: ModeTree = toml::from_str(&toml_str).unwrap();
         assert_eq!(tree, back);
+    }
+
+    // --- with_added_child ---
+
+    #[test]
+    fn with_added_child_appends_at_parent() {
+        let tree = test_tree();
+        let updated = tree.with_added_child("Combat", "Bombs").unwrap();
+        let combat = updated.find_mode("Combat").unwrap();
+        assert!(
+            combat
+                .children()
+                .iter()
+                .any(|c: &ModeNode| c.name() == "Bombs")
+        );
+        // Original is unchanged.
+        assert!(
+            tree.find_mode("Combat")
+                .unwrap()
+                .children()
+                .iter()
+                .all(|c: &ModeNode| c.name() != "Bombs")
+        );
+    }
+
+    #[test]
+    fn with_added_child_to_leaf_makes_it_internal() {
+        let tree = test_tree();
+        let updated = tree.with_added_child("Landing", "Gear").unwrap();
+        let landing = updated.find_mode("Landing").unwrap();
+        assert_eq!(landing.children().len(), 1);
+        assert_eq!(landing.children()[0].name(), "Gear");
+    }
+
+    #[test]
+    fn with_added_child_rejects_unknown_parent() {
+        let tree = test_tree();
+        let err = tree.with_added_child("Nope", "Foo").unwrap_err();
+        assert!(err.to_string().contains("Nope"));
+    }
+
+    #[test]
+    fn with_added_child_rejects_duplicate_name() {
+        let tree = test_tree();
+        let err = tree.with_added_child("Default", "Combat").unwrap_err();
+        assert!(err.to_string().contains("Combat"));
+    }
+
+    #[test]
+    fn with_added_child_rejects_root_name_collision() {
+        let tree = test_tree();
+        let err = tree.with_added_child("Combat", "Default").unwrap_err();
+        assert!(err.to_string().contains("Default"));
     }
 
     // --- Validation ---
