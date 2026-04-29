@@ -184,6 +184,18 @@
     border-radius: var(--radius-sm);
 }
 
+/* Mode tabs — the editing-mode selector inherits the canonical
+   .if-tabs vocabulary (assets/components/tabs.css): muted label that
+   raises to bright on hover, 3px underline indicator on the active
+   tab, indicator anchored to the bar seam via margin-bottom: -1px so
+   the active underline overlays the top-bar's --color-border-strong
+   bottom edge rather than floating above it. The 0.875rem horizontal
+   tab padding and 0.375rem inter-element gap are documented off-scale
+   sub-step values (between --space-2 and --space-3) tuned for the
+   bar's 40px height — they keep the tab labels denser than a generic
+   .if-tabs row without breaking the spacing-token convention.
+   Transitions use --duration-base + --easing-fast: same lane the
+   canonical primitive uses, sub-200ms synchronous response. */
 .if-mode-tabs {
     display: flex;
     align-items: stretch;
@@ -197,22 +209,34 @@
     border: 0;
     color: var(--color-text-muted);
     padding: 0 0.875rem;
-    font-size: var(--text-base);
+    font: inherit;
+    font-weight: var(--weight-medium);
+    letter-spacing: 0.01em;
     height: 100%;
     cursor: pointer;
-    border-bottom: 2px solid transparent;
+    /* 3px underline matches the canonical .if-tabs indicator weight;
+       margin-bottom: -1px overlaps the top-bar's --color-border-strong
+       seam so the active strip reads as a panel-edge indicator. */
+    border-bottom: 3px solid transparent;
+    margin-bottom: -1px;
     display: flex;
     align-items: center;
     gap: 0.375rem;
+    transition:
+        color var(--duration-base) var(--easing-fast),
+        border-color var(--duration-base) var(--easing-fast);
 }
 
 .if-mode-tab:hover:not([disabled]) {
     color: var(--color-text);
 }
 
+/* Active tab uses --color-primary (the One Action Color) for the
+   underline, not --color-border-focus — focus-cyan is reserved for
+   focus rings per the token's name and DESIGN.md section 7. */
 .if-mode-tab--active {
     color: var(--color-text);
-    border-bottom-color: var(--color-border-focus);
+    border-bottom-color: var(--color-primary);
 }
 
 /* Roving tabindex hands focus to the active tab on arrow nav. Without a
@@ -225,15 +249,24 @@
     border-radius: var(--radius-sm);
 }
 
+/* Runtime marker — the LED-face idiom established by .if-engine-pill
+   in 32b: currentColor carries the variant hue to both the dot fill
+   and the surrounding flat halo, so a single shadow rule serves both
+   --natural and --forced. The 0/0/0-spread shadow at 24% reads as
+   light leaking around a panel-mounted indicator, not a glow effect.
+   Aligns the mode-tabs with the engine-pill as one LED family across
+   the top bar. */
 .if-mode-tab__marker {
     width: 0.375rem;
     height: 0.375rem;
     border-radius: var(--radius-full);
     display: inline-block;
+    background: currentColor;
+    box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 24%, transparent);
 }
 
-.if-mode-tab__marker--natural { background: var(--color-live); }
-.if-mode-tab__marker--forced  { background: var(--color-warning); }
+.if-mode-tab__marker--natural { color: var(--color-live); }
+.if-mode-tab__marker--forced  { color: var(--color-warning); }
 
 .if-menu__backdrop {
     position: fixed;
@@ -281,10 +314,17 @@
     cursor: not-allowed;
 }
 
+/* Tail `+` add-tab — inherits the .if-mode-tab base (muted text that
+   brightens on hover, the same focus ring); overrides only what makes
+   it read as a tail action rather than a peer mode tab. The glyph is
+   carried at --text-base / --weight-medium (the same as a real tab)
+   so the `+` is discoverable without visually outranking the named
+   tabs; semibold + --text-md previously made the tail louder than its
+   neighbours, which the polish-goal explicitly flagged. The reduced
+   horizontal padding (--space-2 vs the 0.875rem of a named tab) keeps
+   the glyph closer to the last tab so it reads as appended, not as
+   the head of a separate group. */
 .if-mode-tab--add {
-    color: var(--color-text-muted);
-    font-weight: var(--weight-semibold);
-    font-size: var(--text-md);
     padding: 0 var(--space-2);
 }
 
