@@ -106,8 +106,9 @@ pub(crate) fn AddInline(open: Signal<bool>) -> Element {
                 match evt.key() {
                     Key::Enter => {
                         evt.prevent_default();
+                        let raw = value.read().clone();
                         run_commit(
-                            &value.read().clone(),
+                            &raw,
                             &modes_for_keydown,
                             &commands_for_keydown,
                             editing,

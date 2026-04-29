@@ -106,8 +106,9 @@ pub(crate) fn RenameInline(from: String, state: Signal<Option<String>>) -> Eleme
                 match evt.key() {
                     Key::Enter => {
                         evt.prevent_default();
+                        let raw = value.read().clone();
                         run_commit(
-                            &value.read().clone(),
+                            &raw,
                             &from_for_keydown,
                             &modes_for_keydown,
                             &commands_for_keydown,
