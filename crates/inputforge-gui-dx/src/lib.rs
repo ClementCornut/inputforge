@@ -3,6 +3,7 @@
 mod app;
 mod bridge;
 mod context;
+mod frame;
 mod lifecycle;
 mod shell;
 pub mod toast;
