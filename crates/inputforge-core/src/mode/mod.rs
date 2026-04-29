@@ -265,6 +265,38 @@ impl ModeTree {
         Ok(Self { root })
     }
 
+    /// Return a new tree with the subtree rooted at `name` removed.
+    ///
+    /// **Caller invariant:** the caller is responsible for pre-validating
+    /// that `ProfileSettings::startup_mode` is **not** in the subtree being
+    /// removed. This method does not check — `DeleteMode` runs that check
+    /// before invoking. Removing a subtree containing the startup mode
+    /// would leave the profile in an inconsistent state on next load.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::InvalidConfig`] if `name` is the root, or
+    /// [`EngineError::ModeNotFound`] if `name` is absent.
+    pub fn with_subtree_removed(&self, name: &str) -> Result<Self> {
+        if self.root.name == name {
+            return Err(EngineError::InvalidConfig {
+                reason: "cannot delete root mode".to_owned(),
+            });
+        }
+        if !self.contains(name) {
+            return Err(EngineError::ModeNotFound {
+                name: name.to_owned(),
+            });
+        }
+        let mut root = self.root.clone();
+        let removed = remove_subtree(&mut root, name);
+        debug_assert!(
+            removed,
+            "remove_subtree failed despite contains({name}) — invariant violated"
+        );
+        Ok(Self { root })
+    }
+
     /// Convert the tree back to a flat adjacency map for serialization.
     fn to_adjacency_map(&self) -> HashMap<&str, Vec<&str>> {
         let mut map = HashMap::new();
@@ -370,6 +402,20 @@ fn rename_node(node: &mut ModeNode, from: &str, to: &str) -> bool {
     }
     for child in &mut node.children {
         if rename_node(child, from, to) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Walk the mutable tree DFS; drop the first child whose name matches.
+fn remove_subtree(node: &mut ModeNode, name: &str) -> bool {
+    if let Some(idx) = node.children.iter().position(|c| c.name == name) {
+        node.children.remove(idx);
+        return true;
+    }
+    for child in &mut node.children {
+        if remove_subtree(child, name) {
             return true;
         }
     }
@@ -819,5 +865,41 @@ mod tests {
         let tree = test_tree();
         let updated = tree.with_renamed("Combat", "Combat").unwrap();
         assert_eq!(updated, tree);
+    }
+
+    // --- with_subtree_removed ---
+
+    #[test]
+    fn with_subtree_removed_drops_leaf() {
+        let tree = test_tree();
+        let updated = tree.with_subtree_removed("Missiles").unwrap();
+        assert!(!updated.contains("Missiles"));
+        assert!(updated.contains("Combat"));
+        assert!(updated.contains("Guns"));
+    }
+
+    #[test]
+    fn with_subtree_removed_drops_internal_node_and_descendants() {
+        let tree = test_tree();
+        let updated = tree.with_subtree_removed("Combat").unwrap();
+        assert!(!updated.contains("Combat"));
+        assert!(!updated.contains("Missiles"));
+        assert!(!updated.contains("Guns"));
+        assert!(updated.contains("Landing"));
+        assert!(updated.contains("Default"));
+    }
+
+    #[test]
+    fn with_subtree_removed_rejects_root() {
+        let tree = test_tree();
+        let err = tree.with_subtree_removed("Default").unwrap_err();
+        assert!(err.to_string().contains("root"));
+    }
+
+    #[test]
+    fn with_subtree_removed_rejects_unknown() {
+        let tree = test_tree();
+        let err = tree.with_subtree_removed("Nope").unwrap_err();
+        assert!(err.to_string().contains("Nope"));
     }
 }
