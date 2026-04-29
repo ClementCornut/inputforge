@@ -138,11 +138,9 @@ pub(crate) fn ModeTabContextMenu(
     };
 
     let activate_onmounted = move |evt: MountedEvent| {
-        if !flags.activate_disabled {
-            spawn(async move {
-                let _ = evt.data().set_focus(true).await;
-            });
-        }
+        spawn(async move {
+            let _ = evt.data().set_focus(true).await;
+        });
     };
     let activate_onclick = {
         let mut open = open;
