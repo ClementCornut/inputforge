@@ -272,6 +272,11 @@ impl Engine {
         reason = "single match dispatch; each arm is a distinct command — \
                   splitting into sub-functions would obscure the command flow"
     )]
+    #[expect(
+        clippy::match_same_arms,
+        reason = "stub arms for Tasks 10–13 are intentionally separate; \
+                  they will gain distinct bodies when implemented"
+    )]
     pub(crate) fn handle_command(&mut self, cmd: EngineCommand) -> Result<()> {
         match cmd {
             EngineCommand::LoadProfile(path) => {
@@ -405,6 +410,18 @@ impl Engine {
                         "RenameSnapshot dispatched with no profile loaded"
                     );
                 }
+            }
+            EngineCommand::AddMode { .. } => {
+                // Implemented in Task 10.
+            }
+            EngineCommand::RenameMode { .. } => {
+                // Implemented in Task 11.
+            }
+            EngineCommand::DeleteMode { .. } => {
+                // Implemented in Task 12.
+            }
+            EngineCommand::SetDefaultMode { .. } => {
+                // Implemented in Task 13.
             }
             EngineCommand::RestoreSnapshot { id } => {
                 let path = self.state.read().profile_path.clone();

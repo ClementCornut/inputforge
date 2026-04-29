@@ -77,6 +77,26 @@ pub enum EngineCommand {
     /// Engine handler takes an `AutoBeforeRestore` snapshot first;
     /// auto-rolls back to it if the post-restore reload fails (D16).
     RestoreSnapshot { id: SnapshotId },
+
+    /// Add a new mode under the profile's existing root, or under `parent`
+    /// if specified. Default placement: as a child of the root mode.
+    AddMode {
+        name: String,
+        parent: Option<String>,
+    },
+
+    /// Rename a mode in the active profile's mode tree, cascading the rename
+    /// across all mappings, action graphs, and `startup_mode`.
+    RenameMode { from: String, to: String },
+
+    /// Delete a mode and its descendants. Cascade-drops every mapping scoped
+    /// to any deleted mode. Errors if the mode is the root or its subtree
+    /// contains the profile's startup mode.
+    DeleteMode { name: String },
+
+    /// Set the profile's startup mode. Errors if the named mode is not in
+    /// the active profile's mode tree.
+    SetDefaultMode { name: String },
 }
 
 #[cfg(test)]
@@ -113,5 +133,41 @@ mod tests {
                 .contains("RenameSnapshot")
         );
         assert!(format!("{:?}", EngineCommand::RestoreSnapshot { id }).contains("RestoreSnapshot"));
+
+        let c = EngineCommand::AddMode {
+            name: "Combat".to_owned(),
+            parent: None,
+        };
+        assert!(format!("{c:?}").contains("AddMode"));
+
+        let c = EngineCommand::RenameMode {
+            from: "Combat".to_owned(),
+            to: "Fighter".to_owned(),
+        };
+        assert!(format!("{c:?}").contains("RenameMode"));
+
+        let c = EngineCommand::DeleteMode {
+            name: "Combat".to_owned(),
+        };
+        assert!(format!("{c:?}").contains("DeleteMode"));
+
+        let c = EngineCommand::SetDefaultMode {
+            name: "Combat".to_owned(),
+        };
+        assert!(format!("{c:?}").contains("SetDefaultMode"));
+    }
+
+    #[test]
+    fn engine_command_derives_debug_partialeq() {
+        let a = EngineCommand::AddMode {
+            name: "Combat".to_owned(),
+            parent: None,
+        };
+        let b = EngineCommand::AddMode {
+            name: "Combat".to_owned(),
+            parent: None,
+        };
+        assert_eq!(a, b, "PartialEq must hold across the new variants");
+        let _: String = format!("{a:?}");
     }
 }
