@@ -50,3 +50,24 @@
 .if-engine-pill--live    { color: var(--color-live); border-color: color-mix(in srgb, var(--color-live) 40%, transparent); }
 .if-engine-pill--warning { color: var(--color-warning); border-color: color-mix(in srgb, var(--color-warning) 40%, transparent); }
 .if-engine-pill--error   { color: var(--color-error);   border-color: color-mix(in srgb, var(--color-error) 40%, transparent); }
+
+.if-profile-name {
+    background: transparent;
+    border: 0;
+    color: var(--color-text);
+    cursor: pointer;
+    font-size: var(--text-base);
+    font-weight: 500;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-md);
+}
+
+.if-profile-name--loaded:hover {
+    background: var(--color-bg-hover);
+}
+
+.if-profile-name--empty {
+    color: var(--color-text-muted);
+    font-style: italic;
+    cursor: default;
+}
