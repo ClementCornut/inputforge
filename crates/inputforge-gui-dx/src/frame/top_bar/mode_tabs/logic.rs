@@ -19,10 +19,6 @@ pub(crate) struct RuntimeMarker {
 /// `tab_index = None` when no profile is loaded or `current_mode` does not
 /// match any tab (e.g., engine is running a mode that was renamed mid-flight).
 /// In that case the renderer omits the dot entirely.
-#[allow(
-    dead_code,
-    reason = "consumed by ModeTabs in Task 29 and inline editors in Task 31"
-)]
 pub(crate) fn runtime_marker(
     modes: &[String],
     current_mode: &str,
