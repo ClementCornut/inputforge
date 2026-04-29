@@ -69,6 +69,7 @@ muda = "0.17"
 
 # GUI
 dioxus = "0.7.6"
+dioxus-ssr = "0.7.6"
 eframe = "0.33"
 egui = "0.33"
 egui_extras = { version = "0.33", features = ["image"] }

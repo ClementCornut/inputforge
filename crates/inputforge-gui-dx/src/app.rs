@@ -3,16 +3,17 @@ use dioxus::prelude::*;
 use crate::LaunchParams;
 use crate::bridge::spawn_polling_task;
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
+use crate::frame;
 use crate::lifecycle;
-use crate::shell::PlaceholderShell;
 use crate::theme::ThemeProvider;
 use crate::toast::{ToastQueue, ToastState, ToastViewport, install_warnings_bridge};
 use crate::tray;
 use crate::tray::action::TrayAction;
 
 /// Root Dioxus component — assembles `AppContext`, installs it for descendants,
-/// spawns the polling task, wires the tray bridge (channel + handler + listener),
-/// applies `--start-minimized`, and renders the placeholder shell.
+/// installs `ViewState` for frame chrome, spawns the polling task, wires the
+/// tray bridge (channel + handler + listener), applies `--start-minimized`,
+/// and renders the F7 frame layout.
 pub(crate) fn app_root() -> Element {
     let raw = use_context::<RawHandles>();
     let params = use_context::<LaunchParams>();
@@ -30,6 +31,9 @@ pub(crate) fn app_root() -> Element {
         live,
     };
     use_context_provider(|| ctx.clone());
+
+    let view = frame::use_view_state_provider(ctx.meta);
+    use_context_provider(|| view);
 
     // F4: ToastQueue context — Signal lives in app_root's scope, mirroring the
     // F1 AppContext pattern. Calling Signal::new() outside a hook leaks per
@@ -69,7 +73,87 @@ pub(crate) fn app_root() -> Element {
     rsx! {
         ThemeProvider {
             ToastViewport {}
-            PlaceholderShell {}
+            frame::Layout {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, mpsc};
+
+    use dioxus::prelude::*;
+    use dioxus_ssr::render;
+    use parking_lot::RwLock;
+
+    use inputforge_core::settings::AppSettings;
+    use inputforge_core::state::AppState;
+
+    use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
+    use crate::frame;
+    use crate::tray::action::TrayMenuIds;
+    use crate::{LaunchParams, theme::ThemeProvider};
+
+    /// Minimal test harness: provides `RawHandles`, `LaunchParams`,
+    /// `AppContext`, and `ViewState` in scope, then renders `frame::Layout`.
+    /// Mirrors what `app_root` does at runtime, without the tray/polling
+    /// hooks that require a live Dioxus desktop runtime.
+    fn frame_layout_harness() -> Element {
+        // --- minimal stubs for context providers ---
+        let (cmd_tx, _cmd_rx) = mpsc::channel();
+        let raw = RawHandles {
+            state: Arc::new(RwLock::new(AppState::new())),
+            commands: cmd_tx,
+            settings: Arc::new(AppSettings::default()),
+        };
+        use_context_provider(|| raw.clone());
+        use_context_provider(|| LaunchParams {
+            start_minimized: false,
+            tray_menu_ids: TrayMenuIds {
+                show: muda::MenuId::new("show"),
+                toggle: muda::MenuId::new("toggle"),
+                quit: muda::MenuId::new("quit"),
+            },
+        });
+
+        let meta = use_signal(MetaSnapshot::default);
+        let config = use_signal(ConfigSnapshot::default);
+        let live = use_signal(LiveSnapshot::default);
+        let ctx = AppContext {
+            state: Arc::clone(&raw.state),
+            commands: raw.commands.clone(),
+            settings: Arc::clone(&raw.settings),
+            meta,
+            config,
+            live,
+        };
+        use_context_provider(|| ctx.clone());
+
+        let view = frame::use_view_state_provider(ctx.meta);
+        use_context_provider(|| view);
+
+        rsx! {
+            ThemeProvider {
+                frame::Layout {}
+            }
+        }
+    }
+
+    /// Contract: after Task 18, the rendered HTML must contain the `if-layout`
+    /// class (`Frame::Layout` is mounted) and must NOT contain
+    /// `if-placeholder-shell` (`PlaceholderShell` is gone).
+    #[test]
+    fn app_root_mounts_frame_layout_not_placeholder_shell() {
+        let mut vdom = VirtualDom::new(frame_layout_harness);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert!(
+            html.contains("if-layout"),
+            "frame::Layout should mount: expected `if-layout` class in rendered HTML, got: {html}"
+        );
+        assert!(
+            !html.contains("if-placeholder-shell"),
+            "PlaceholderShell must not render: found `if-placeholder-shell` class"
+        );
     }
 }

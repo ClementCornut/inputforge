@@ -60,6 +60,7 @@ pub(crate) fn StatusBarView() -> Element {
     }
 }
 
+#[allow(dead_code, reason = "shell/ stays compilable until Task 32 removes it")]
 fn status_to_variant(s: EngineStatus) -> BadgeVariant {
     match s {
         EngineStatus::Running => BadgeVariant::Success,
@@ -68,6 +69,7 @@ fn status_to_variant(s: EngineStatus) -> BadgeVariant {
     }
 }
 
+#[allow(dead_code, reason = "shell/ stays compilable until Task 32 removes it")]
 fn status_label(s: EngineStatus) -> &'static str {
     match s {
         EngineStatus::Running => "Running",

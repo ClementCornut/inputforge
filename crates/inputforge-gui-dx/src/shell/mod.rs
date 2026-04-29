@@ -20,4 +20,8 @@
 mod placeholder;
 mod status_bar_view;
 
+#[allow(
+    unused_imports,
+    reason = "shell/ stays compilable until Task 32 removes it"
+)]
 pub(crate) use placeholder::PlaceholderShell;

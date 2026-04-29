@@ -2,7 +2,7 @@ mod empty_state;
 
 use dioxus::prelude::*;
 
-#[expect(
+#[allow(
     dead_code,
     reason = "rsx! macro is opaque to rustc; constant is consumed by Stylesheet { href: LAYOUT_CSS }"
 )]

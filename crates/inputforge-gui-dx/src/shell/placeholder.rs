@@ -3,6 +3,7 @@ use dioxus::prelude::*;
 use crate::components::{TabItem, Tabs};
 use crate::shell::status_bar_view::StatusBarView;
 
+#[allow(dead_code, reason = "shell/ stays compilable until Task 32 removes it")]
 const PLACEHOLDER_SHELL_CSS: Asset = asset!("/assets/shell/placeholder-shell.css");
 
 /// Disposable four-region shell grid. Mounted by `app_root`; F5 replaces
