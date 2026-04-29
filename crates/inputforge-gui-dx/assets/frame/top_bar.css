@@ -200,3 +200,23 @@
     color: var(--color-text-subtle);
     cursor: not-allowed;
 }
+
+.if-mode-tab--add {
+    color: var(--color-text-muted);
+    font-weight: var(--weight-semibold);
+    font-size: var(--text-md);
+    padding: 0 var(--space-2);
+}
+
+.if-mode-tab--add-inline,
+.if-mode-tab--rename-inline {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0 var(--space-2);
+}
+
+.if-mode-tab__error {
+    font-size: var(--text-sm);
+    color: var(--color-error);
+}

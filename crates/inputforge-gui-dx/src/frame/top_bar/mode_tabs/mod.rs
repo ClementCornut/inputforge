@@ -1,5 +1,7 @@
+mod add_inline;
 mod context_menu;
 mod logic;
+mod rename_inline;
 
 use std::rc::Rc;
 
@@ -13,6 +15,13 @@ use crate::frame::view_state::ViewState;
 use logic::{MarkerColor, runtime_marker};
 
 #[component]
+#[allow(
+    unused_qualifications,
+    reason = "Dioxus 0.7 RSX macro emits redundant `dioxus_elements::*` qualifications \
+              on per-element event listeners with bound closures (the macro suggests \
+              shorthand-with-no-prop-name as a fix, which would erase the intent). \
+              This is a macro-level artifact, not authored qualifications."
+)]
 pub(crate) fn ModeTabs() -> Element {
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
@@ -50,12 +59,11 @@ pub(crate) fn ModeTabs() -> Element {
     // Hoisted above the per-tab loop so the keydown closure can read
     // `renaming.peek()` and skip the index whose tab is currently
     // swapped to a `RenameInline` editor (the button isn't mounted, so
-    // arrow-rolling onto it lands focus nowhere). Set by T31 below.
-    let renaming: Signal<Option<String>> = use_signal(|| None);
-    // Same forward-declaration for the add-inline tail editor and the
-    // F4 delete-confirm target — T31 step 3 reads these.
-    let _adding: Signal<bool> = use_signal(|| false);
-    let _delete_target: Signal<Option<String>> = use_signal(|| None);
+    // arrow-rolling onto it lands focus nowhere).
+    let mut renaming: Signal<Option<String>> = use_signal(|| None);
+    // Tail `+` inline editor open-state and F4 delete-confirm target.
+    let mut adding: Signal<bool> = use_signal(|| false);
+    let mut delete_target: Signal<Option<String>> = use_signal(|| None);
 
     // Which tab's context menu is open (if any), with anchor coords.
     // Hoisted so per-tab handlers can write and the post-loop render can
@@ -63,6 +71,74 @@ pub(crate) fn ModeTabs() -> Element {
     let mut open_for_tab: Signal<Option<(String, context_menu::AnchorRect)>> = use_signal(|| None);
 
     let editing_now = editing.read().clone();
+
+    // T31: F4 destructive-confirm dialog open-state mirrored from
+    // `delete_target`. Two effects keep them in sync — one drives
+    // `dialog_open` from `delete_target`, the other clears
+    // `delete_target` if `dialog_open` flips back to false (ESC path).
+    let mut dialog_open: Signal<bool> = use_signal(|| false);
+    use_effect(move || {
+        let want = delete_target.read().is_some();
+        if *dialog_open.peek() != want {
+            dialog_open.set(want);
+        }
+    });
+    use_effect(move || {
+        let is_open = *dialog_open.read();
+        if !is_open && delete_target.peek().is_some() {
+            delete_target.set(None);
+        }
+    });
+
+    // T31 Step 3a: focus newly-created tab once it appears in `modes`.
+    // Sentinel-guarded so it only fires on transitions, not every meta
+    // tick — without `last_focused`, this would steal focus from any
+    // in-flight inline editor on every tick.
+    let editing_for_focus = view.editing_mode;
+    let mut last_focused: Signal<Option<String>> = use_signal(|| None);
+    use_effect(move || {
+        let modes = mode_data.read().0.clone();
+        let target = editing_for_focus.read().clone();
+        if last_focused.peek().as_ref() == Some(&target) {
+            return;
+        }
+        if renaming.peek().is_some() || *adding.peek() {
+            return;
+        }
+        if let Some(idx) = modes.iter().position(|m| m == &target) {
+            if let Some(node) = tab_refs.read().get(idx).and_then(Clone::clone) {
+                last_focused.set(Some(target));
+                spawn(async move {
+                    let _ = node.set_focus(true).await;
+                });
+            }
+        }
+    });
+
+    // Pre-compute the affected counts every render — cheap walk.
+    let (display_name, modes_count, mappings_count) = match delete_target.read().as_ref() {
+        Some(name) => {
+            let s = ctx.state.read();
+            let counts = s.active_profile.as_ref().map_or((1, 0), |p| {
+                let descendants = p.modes().descendants_of(name).unwrap_or_default();
+                let modes_count = 1 + descendants.len();
+                let mut deleted: Vec<String> = descendants;
+                deleted.push(name.clone());
+                let mappings_count = p
+                    .mappings()
+                    .iter()
+                    .filter(|m| deleted.iter().any(|d| d == &m.mode))
+                    .count();
+                (modes_count, mappings_count)
+            });
+            (name.clone(), counts.0, counts.1)
+        }
+        None => (String::new(), 0, 0),
+    };
+
+    let cmd_for_delete = ctx.commands.clone();
+    let confirm_name = display_name.clone();
+    let restore_idx_for_dialog = modes_now.iter().position(|m| m == &display_name);
 
     rsx! {
         // aria-label is required because the tablist has no visible
@@ -199,44 +275,54 @@ pub(crate) fn ModeTabs() -> Element {
                         refs[idx] = Some(evt.data());
                     };
 
-                    rsx! {
-                        button {
-                            key: "{name}",
-                            id: "{tab_id}",
-                            r#type: "button",
-                            class: if is_active { "if-mode-tab if-mode-tab--active" } else { "if-mode-tab" },
-                            role: "tab",
-                            "aria-selected": "{is_active}",
-                            "aria-haspopup": "menu",
-                            "aria-expanded": "{menu_open}",
-                            // Only emit aria-controls while the menu is
-                            // mounted — pointing at a missing id confuses
-                            // AT.
-                            "aria-controls": menu_open.then(|| menu_id.clone()),
-                            tabindex: if is_active { "0" } else { "-1" },
-                            onclick,
-                            oncontextmenu,
-                            onkeydown,
-                            onmounted,
-                            "{name}"
-                            if let Some(color) = marker_for_tab {
-                                // Visual marker dot.
-                                span {
-                                    class: match color {
-                                        MarkerColor::Natural => "if-mode-tab__marker if-mode-tab__marker--natural",
-                                        MarkerColor::Forced  => "if-mode-tab__marker if-mode-tab__marker--forced",
-                                    },
-                                    "aria-hidden": "true",
-                                }
-                                // sr-only sibling so AT users get the
-                                // semantic ("Engine running" / "forced")
-                                // that color alone cannot convey.
-                                span {
-                                    class: "if-sr-only",
-                                    {match color {
-                                        MarkerColor::Natural => "Engine running",
-                                        MarkerColor::Forced  => "Engine running (forced)",
-                                    }}
+                    if renaming.read().as_deref() == Some(name.as_str()) {
+                        rsx! {
+                            rename_inline::RenameInline {
+                                key: "{name}",
+                                from: name.clone(),
+                                state: renaming,
+                            }
+                        }
+                    } else {
+                        rsx! {
+                            button {
+                                key: "{name}",
+                                id: "{tab_id}",
+                                r#type: "button",
+                                class: if is_active { "if-mode-tab if-mode-tab--active" } else { "if-mode-tab" },
+                                role: "tab",
+                                "aria-selected": "{is_active}",
+                                "aria-haspopup": "menu",
+                                "aria-expanded": "{menu_open}",
+                                // Only emit aria-controls while the menu is
+                                // mounted — pointing at a missing id confuses
+                                // AT.
+                                "aria-controls": menu_open.then(|| menu_id.clone()),
+                                tabindex: if is_active { "0" } else { "-1" },
+                                onclick,
+                                oncontextmenu,
+                                onkeydown,
+                                onmounted,
+                                "{name}"
+                                if let Some(color) = marker_for_tab {
+                                    // Visual marker dot.
+                                    span {
+                                        class: match color {
+                                            MarkerColor::Natural => "if-mode-tab__marker if-mode-tab__marker--natural",
+                                            MarkerColor::Forced  => "if-mode-tab__marker if-mode-tab__marker--forced",
+                                        },
+                                        "aria-hidden": "true",
+                                    }
+                                    // sr-only sibling so AT users get the
+                                    // semantic ("Engine running" / "forced")
+                                    // that color alone cannot convey.
+                                    span {
+                                        class: "if-sr-only",
+                                        {match color {
+                                            MarkerColor::Natural => "Engine running",
+                                            MarkerColor::Forced  => "Engine running (forced)",
+                                        }}
+                                    }
                                 }
                             }
                         }
@@ -288,7 +374,6 @@ pub(crate) fn ModeTabs() -> Element {
                     };
 
                     let modes_for_close = modes_for_flags.clone();
-                    let cmd_delete_for_now = ctx.commands.clone();
 
                     rsx! {
                         context_menu::ModeTabContextMenu {
@@ -306,26 +391,74 @@ pub(crate) fn ModeTabs() -> Element {
                                     }
                                 }
                             },
-                            on_rename: move |_n: String| {
-                                // T31 wires this to set
-                                // `renaming.set(Some(n))`. For now, just
-                                // close.
+                            on_rename: move |n: String| {
+                                renaming.set(Some(n));
                                 open_for_tab.set(None);
                             },
                             on_delete: move |n: String| {
-                                // TODO(F7-Task-31): swap this to open the
-                                // F4 destructive-confirm dialog. T30
-                                // ships the direct dispatch behind the
-                                // merge-contract; T31 closes that gap.
-                                let _ = cmd_delete_for_now.send(EngineCommand::DeleteMode {
-                                    name: n,
-                                });
+                                delete_target.set(Some(n));
                                 open_for_tab.set(None);
                             },
                         }
                     }
                 } else {
                     rsx! {}
+                }
+            }
+            // T31: tail `+` add tab — swaps to inline editor when open.
+            if *adding.read() {
+                add_inline::AddInline { open: adding }
+            } else {
+                button {
+                    r#type: "button",
+                    class: "if-mode-tab if-mode-tab--add",
+                    onclick: move |_| adding.set(true),
+                    "aria-label": "Add mode",
+                    "+"
+                }
+            }
+        }
+        // T31: F4 destructive-confirm dialog for Delete. Lives outside the
+        // tablist so the dialog backdrop doesn't disturb tab layout.
+        crate::components::DialogRoot {
+            open: dialog_open,
+            onclose: move |()| {
+                if let Some(idx) = restore_idx_for_dialog {
+                    let target_idx = idx.min(tab_refs.read().len().saturating_sub(1));
+                    if let Some(node) = tab_refs.read().get(target_idx).and_then(Clone::clone) {
+                        spawn(async move {
+                            let _ = node.set_focus(true).await;
+                        });
+                    }
+                }
+                delete_target.set(None);
+            },
+            if delete_target.read().is_some() {
+                crate::components::DialogTitle { "Delete mode" }
+                crate::components::DialogBody {
+                    "Delete '{display_name}'? This drops {modes_count} mode(s) and {mappings_count} mapping(s)."
+                }
+                crate::components::DialogFooter {
+                    crate::components::Button {
+                        variant: crate::components::ButtonVariant::Ghost,
+                        onmounted: move |evt: MountedEvent| {
+                            spawn(async move {
+                                let _ = evt.data().set_focus(true).await;
+                            });
+                        },
+                        onclick: move |_| { delete_target.set(None); },
+                        "Cancel"
+                    }
+                    crate::components::Button {
+                        variant: crate::components::ButtonVariant::Secondary,
+                        onclick: move |_| {
+                            let _ = cmd_for_delete.send(EngineCommand::DeleteMode {
+                                name: confirm_name.clone(),
+                            });
+                            delete_target.set(None);
+                        },
+                        "Delete"
+                    }
                 }
             }
         }
