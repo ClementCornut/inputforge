@@ -154,3 +154,49 @@
 
 .if-mode-tab__marker--natural { background: var(--color-live); }
 .if-mode-tab__marker--forced  { background: var(--color-warning); }
+
+.if-menu__backdrop {
+    position: fixed;
+    inset: 0;
+    background: transparent;
+    z-index: 100;
+}
+
+.if-modetab-context-menu {
+    list-style: none;
+    margin: 0;
+    padding: var(--space-1) 0;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    min-width: 12rem;
+    z-index: 101;
+}
+
+.if-modetab-context-menu li {
+    margin: 0;
+    padding: 0;
+}
+
+.if-modetab-context-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    padding: var(--space-1) var(--space-3);
+    color: var(--color-text);
+    font-size: var(--text-base);
+    cursor: pointer;
+}
+
+.if-modetab-context-menu button:hover:not([aria-disabled="true"]),
+.if-modetab-context-menu button:focus-visible {
+    background: var(--color-bg);
+    outline: none;
+}
+
+.if-modetab-context-menu button[aria-disabled="true"] {
+    color: var(--color-text-subtle);
+    cursor: not-allowed;
+}

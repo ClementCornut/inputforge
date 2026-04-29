@@ -3441,6 +3441,7 @@ dependencies = [
  "muda",
  "parking_lot",
  "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
