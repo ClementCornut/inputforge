@@ -1,18 +1,74 @@
 /* Sized via flex-basis under the outer `.if-layout__main` flex row. When
    the component isn't mounted (panel_slot == None), no flex item is
-   produced, so `.if-layout__center` reclaims the space. */
+   produced, so `.if-layout__center` reclaims the space.
+
+   The aside is the right cockpit panel — same structural-seam vocabulary
+   as the rail (`border-strong` seam, top inset highlight, elevated
+   surface). The header treatment lifts the placeholder text into a
+   proper section-title rhythm so future content (F12/F13) inherits a
+   real visual hierarchy instead of bare strings. */
 .if-panel-slot {
     flex: 0 0 320px;
-    border-left: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
     background: var(--color-bg-elevated);
+    border-left: 1px solid var(--color-border-strong);
+    box-shadow: var(--shadow-1);
     overflow-y: auto;
-    padding: var(--space-3);
+    padding: var(--space-4) var(--space-3);
     color: var(--color-text);
     font-size: var(--text-base);
+
+    /* Subtle entrance affordance. The aside is mounted/unmounted as a
+       whole when `panel_slot` toggles, so a CSS transition on the
+       element wouldn't fire on entry — a keyframed animation does, and
+       inherits reduced-motion correctness because durations collapse to
+       0ms under the `motion.css` token override. */
+    animation: if-panel-slot-enter var(--duration-slow) var(--easing-standard) both;
 }
 
-/* When a future task (impeccable:animate) adds a slide-in transition for
-   the panel, it MUST use --duration-* tokens — the project's
-   `motion.css` collapses every duration to 0ms under
-   `prefers-reduced-motion: reduce`, which means token-based transitions
-   inherit RM-correctness for free. Hard-coded ms values bypass that. */
+@keyframes if-panel-slot-enter {
+    from {
+        opacity: 0;
+        transform: translateX(var(--space-2));
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Section-title rhythm — same scale as a panel title (`--text-lg`),
+   semibold for legibility, uppercase eyebrow caption underneath in
+   `--font-mono` to mark the panel taxonomy ("F12", "F13"). Two-tier
+   header pattern matches the cockpit/instrument vocabulary used in the
+   empty-state and engine pill. */
+.if-panel-slot__header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.if-panel-slot__caption {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-regular);
+    color: var(--color-text-subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+}
+
+.if-panel-slot__title {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-tight);
+    color: var(--color-text);
+}
+
+.if-panel-slot__body {
+    color: var(--color-text-muted);
+    font-size: var(--text-base);
+}

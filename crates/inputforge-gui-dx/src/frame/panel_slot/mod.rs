@@ -17,14 +17,22 @@ pub(crate) fn PanelSlot() -> Element {
                 aside {
                     class: "if-panel-slot if-panel-slot--devices",
                     "aria-label": "Devices panel",
-                    "Devices panel — F12 owns content"
+                    header { class: "if-panel-slot__header",
+                        div { class: "if-panel-slot__caption", "Panel · F12" }
+                        h2 { class: "if-panel-slot__title", "Devices" }
+                    }
+                    div { class: "if-panel-slot__body", "F12 owns content" }
                 }
             },
             PanelSlotEnum::Profiles => rsx! {
                 aside {
                     class: "if-panel-slot if-panel-slot--profiles",
                     "aria-label": "Profiles panel",
-                    "Profiles panel — F13 owns content"
+                    header { class: "if-panel-slot__header",
+                        div { class: "if-panel-slot__caption", "Panel · F13" }
+                        h2 { class: "if-panel-slot__title", "Profiles" }
+                    }
+                    div { class: "if-panel-slot__body", "F13 owns content" }
                 }
             },
         }

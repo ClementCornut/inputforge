@@ -23,23 +23,40 @@
 .if-layout__main    { flex: 1 1 auto; min-height: 0; }
 .if-status-bar      { flex: 0 0 28px; }
 
+/* The instrument-cluster reading: the working surface (center) is
+   recessed between two elevated cockpit rails. `__main` sits on the
+   sunken background so the rail's elevated panel reads as a deliberate
+   raised seam, not arbitrary chrome. */
 .if-layout__main {
     display: flex;
     flex-direction: row;
+    background: var(--color-bg-sunken);
 }
 
+/* The rail is the left cockpit panel: elevated surface, structural
+   `border-strong` seam (matches the cockpit-panel-seam vocabulary
+   established in elevation.css), and a top inset highlight that mimics
+   light catching the chamfer. Vertical rhythm is one step looser than
+   horizontal — instrument lists read denser horizontally than they
+   stack vertically. */
 .if-layout__rail {
     flex: 0 0 280px;
-    border-right: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+    border-right: 1px solid var(--color-border-strong);
+    box-shadow: var(--shadow-1);
     overflow-y: auto;
-    padding: var(--space-3);
+    padding: var(--space-4) var(--space-3);
 }
 
+/* The center is the working surface — sunken, with horizontal padding
+   one step wider than the rail to create breathing room around the
+   primary editor canvas. */
 .if-layout__center {
     flex: 1 1 auto;
     overflow-y: auto;
-    padding: var(--space-3);
+    padding: var(--space-4);
     min-width: 0;
+    color: var(--color-text);
 }
 
 /* `.if-panel-slot` (sized 320px when mounted) is a flex sibling here.

@@ -1,24 +1,55 @@
 /* EmptyState mounts as a sibling of `.if-layout__main` in the no-profile
    branch (NOT inside `__main`). Under the outer flex column, it gets
    `flex: 1 1 auto` to fill the row that `__main` would have occupied
-   when a profile is loaded. */
+   when a profile is loaded.
+
+   Cockpit-readout treatment: a small mono eyebrow (system-status idiom),
+   a display-scale headline, a hairline rule (instrument-panel detail),
+   and a muted hint. The structure communicates "the rig is online but
+   no profile is mounted" at a glance — same language as the engine
+   pill, just at hero scale. */
 .if-empty-state {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: var(--space-3);
     padding: var(--space-8);
+    background: var(--color-bg-sunken);
+    text-align: center;
+}
+
+/* Mono eyebrow — the engine-pill / status-readout idiom at empty-state
+   scale. Tabular figures via `--font-mono`; uppercase + letter-spacing
+   matches the engine pill so the two surfaces read as the same family. */
+.if-empty-state__eyebrow {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-regular);
+    color: var(--color-text-subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
 }
 
 .if-empty-state__heading {
-    font-size: var(--text-lg);
-    font-weight: 600;
+    font-size: var(--text-2xl);
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-tight);
     color: var(--color-text);
-    margin-bottom: var(--space-2);
+}
+
+/* Hairline rule between heading and hint — a fixed-length `border-strong`
+   stroke. Reads as an instrument-panel separator, not a generic divider:
+   the cockpit vocabulary says structural seams use `border-strong`. */
+.if-empty-state__rule {
+    width: var(--space-12);
+    height: 1px;
+    background: var(--color-border-strong);
 }
 
 .if-empty-state__hint {
     font-size: var(--text-base);
     color: var(--color-text-muted);
+    max-width: 36ch;
 }
