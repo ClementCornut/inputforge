@@ -272,11 +272,6 @@ impl Engine {
         reason = "single match dispatch; each arm is a distinct command — \
                   splitting into sub-functions would obscure the command flow"
     )]
-    #[expect(
-        clippy::match_same_arms,
-        reason = "stub arms for Tasks 11–13 are intentionally separate; \
-                  they will gain distinct bodies when implemented"
-    )]
     pub(crate) fn handle_command(&mut self, cmd: EngineCommand) -> Result<()> {
         match cmd {
             EngineCommand::LoadProfile(path) => {
@@ -505,8 +500,99 @@ impl Engine {
                     "RenameMode applied"
                 );
             }
-            EngineCommand::DeleteMode { .. } => {
-                // Implemented in Task 12.
+            EngineCommand::DeleteMode { name } => {
+                let path = { self.state.read().profile_path.clone() };
+                let mut state = self.state.write();
+                let Some(profile) = state.active_profile.as_mut() else {
+                    tracing::warn!(target: "engine", "DeleteMode dispatched with no profile; ignoring");
+                    return Ok(());
+                };
+
+                // Pre-validation.
+                if profile.modes().root().name() == name {
+                    return Err(crate::error::EngineError::InvalidConfig {
+                        reason: "cannot delete root mode".to_owned(),
+                    });
+                }
+                if !profile.modes().contains(&name) {
+                    return Err(crate::error::EngineError::ModeNotFound { name: name.clone() });
+                }
+
+                // Compute the deleted set (subtree + name).
+                let descendants = profile.modes().descendants_of(&name)?;
+                let mut deleted: Vec<String> = descendants;
+                deleted.push(name.clone());
+
+                let startup = profile.settings().startup_mode().to_owned();
+                if deleted.iter().any(|m| m == &startup) {
+                    return Err(crate::error::EngineError::InvalidConfig {
+                        reason: format!(
+                            "cannot delete mode '{name}' — its subtree contains startup mode '{startup}'"
+                        ),
+                    });
+                }
+
+                // Apply the tree mutation.
+                let new_tree = profile.modes().with_subtree_removed(&name)?;
+                profile.set_modes(new_tree);
+
+                // Cascade-drop every mapping scoped to a deleted mode.
+                let mut mappings_dropped = 0usize;
+                for m in &deleted {
+                    mappings_dropped += profile.remove_mappings_for_mode(m);
+                }
+
+                // Runtime state cascade.
+                if deleted.iter().any(|m| m == &state.current_mode) {
+                    startup.clone_into(&mut state.current_mode);
+                }
+                if state
+                    .mode_force
+                    .as_ref()
+                    .is_some_and(|f| deleted.iter().any(|m| m == &f.mode))
+                {
+                    state.mode_force = None;
+                }
+                drop(state);
+
+                // ModeState reset.
+                if deleted.iter().any(|m| m == self.mode_state.current()) {
+                    let tree = self
+                        .state
+                        .read()
+                        .active_profile
+                        .as_ref()
+                        .map(|p| p.modes().clone());
+                    if let Some(tree) = tree {
+                        self.mode_state.switch_to(&startup, &tree)?;
+                    }
+                }
+                self.mode_state.clear_stack_entries(&deleted);
+
+                if let Some(path) = path.as_ref() {
+                    self.state
+                        .read()
+                        .active_profile
+                        .as_ref()
+                        .unwrap()
+                        .save(path)
+                        .map_err(|e| {
+                            tracing::error!(
+                                target: "engine",
+                                path = %path.display(),
+                                error = %e,
+                                "failed to persist DeleteMode"
+                            );
+                            e
+                        })?;
+                }
+
+                tracing::info!(
+                    target: "engine",
+                    modes_deleted = ?deleted,
+                    mappings_dropped,
+                    "DeleteMode applied"
+                );
             }
             EngineCommand::SetDefaultMode { .. } => {
                 // Implemented in Task 13.

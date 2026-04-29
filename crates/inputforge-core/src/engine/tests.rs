@@ -2697,3 +2697,291 @@ fn rename_mode_rewrites_multi_entry_stack() {
 
     assert_eq!(engine.mode_state.current(), "Ace");
 }
+
+// ---------------------------------------------------------------------------
+// F7 mode CRUD: DeleteMode
+// ---------------------------------------------------------------------------
+
+#[test]
+fn delete_mode_removes_leaf() {
+    let (mut engine, state, tx, _dir, path) = make_engine_with_disk_profile();
+    tx.send(EngineCommand::DeleteMode {
+        name: "Landing".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    assert!(
+        !s.active_profile
+            .as_ref()
+            .unwrap()
+            .modes()
+            .contains("Landing")
+    );
+    drop(s);
+    let reloaded = Profile::load(&path).unwrap();
+    assert!(!reloaded.modes().contains("Landing"));
+}
+
+#[test]
+fn delete_mode_cascades_subtree_and_mappings() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.toml");
+
+    // Build a tree with Combat → [Missiles, Guns] so DeleteMode("Combat")
+    // hits children + mappings.
+    let map = HashMap::from([
+        (
+            "Default".to_owned(),
+            vec!["Combat".to_owned(), "Landing".to_owned()],
+        ),
+        (
+            "Combat".to_owned(),
+            vec!["Missiles".to_owned(), "Guns".to_owned()],
+        ),
+    ]);
+    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let mappings = vec![
+        Mapping {
+            input: axis_addr(0),
+            mode: "Combat".to_owned(),
+            name: None,
+            actions: vec![Action::Invert],
+        },
+        Mapping {
+            input: axis_addr(1),
+            mode: "Missiles".to_owned(),
+            name: None,
+            actions: vec![Action::Invert],
+        },
+        Mapping {
+            input: axis_addr(2),
+            mode: "Default".to_owned(),
+            name: None,
+            actions: vec![Action::Invert],
+        },
+    ];
+    let profile = make_profile(modes, mappings);
+    profile.save(&path).unwrap();
+
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    {
+        let mut s = state.write();
+        s.profile_path = Some(path.clone());
+        s.engine_status = EngineStatus::Running;
+    }
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+        PathBuf::new(),
+    );
+
+    tx.send(EngineCommand::DeleteMode {
+        name: "Combat".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    let modes = s.active_profile.as_ref().unwrap().modes();
+    assert!(!modes.contains("Combat"));
+    assert!(!modes.contains("Missiles"));
+    assert!(!modes.contains("Guns"));
+    assert!(modes.contains("Default"));
+    let mappings = s.active_profile.as_ref().unwrap().mappings();
+    assert_eq!(mappings.len(), 1);
+    assert_eq!(mappings[0].mode, "Default");
+}
+
+#[test]
+fn delete_mode_rejects_root() {
+    let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine.handle_command(EngineCommand::DeleteMode {
+        name: "Default".to_owned(),
+    });
+    assert!(err.is_err());
+    assert!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .modes()
+            .contains("Default")
+    );
+}
+
+#[test]
+fn delete_mode_rejects_when_subtree_contains_startup_mode() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.toml");
+    let modes = three_mode_tree();
+    // Profile that boots into Combat; DeleteMode("Combat") must reject.
+    let profile = Profile::new(
+        "BootCombat".to_owned(),
+        vec![],
+        modes,
+        vec![],
+        vec![],
+        "Combat".to_owned(),
+    );
+    profile.save(&path).unwrap();
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    {
+        let mut s = state.write();
+        s.profile_path = Some(path.clone());
+        s.engine_status = EngineStatus::Running;
+    }
+    let (_tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+        PathBuf::new(),
+    );
+
+    let err = engine.handle_command(EngineCommand::DeleteMode {
+        name: "Combat".to_owned(),
+    });
+    assert!(
+        err.is_err(),
+        "must reject when subtree contains startup_mode"
+    );
+    assert!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .modes()
+            .contains("Combat")
+    );
+}
+
+#[test]
+fn delete_mode_resets_current_and_clears_force_when_referenced() {
+    let (mut engine, state, tx, _dir, _path) = make_engine_with_disk_profile();
+    // Force into Combat.
+    tx.send(EngineCommand::ForceMode {
+        mode: "Combat".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    tx.send(EngineCommand::DeleteMode {
+        name: "Combat".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    assert_eq!(s.current_mode, "Default", "current_mode resets to startup");
+    assert!(
+        s.mode_force.is_none(),
+        "mode_force cleared by delete cascade"
+    );
+}
+
+#[test]
+fn delete_mode_rejects_unknown_name() {
+    let (mut engine, _state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine.handle_command(EngineCommand::DeleteMode {
+        name: "Nope".to_owned(),
+    });
+    assert!(err.is_err());
+}
+
+#[test]
+fn delete_mode_resets_when_active_is_descendant() {
+    // Spec invariant: deleting an ancestor of the active mode must reset
+    // current_mode to startup_mode and purge every removed name from the
+    // ModeState stack.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.toml");
+    let map = HashMap::from([
+        (
+            "Default".to_owned(),
+            vec!["Combat".to_owned(), "Landing".to_owned()],
+        ),
+        (
+            "Combat".to_owned(),
+            vec!["Missiles".to_owned(), "Guns".to_owned()],
+        ),
+    ]);
+    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let profile = make_profile(modes, vec![]);
+    profile.save(&path).unwrap();
+
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    {
+        let mut s = state.write();
+        s.profile_path = Some(path.clone());
+        s.engine_status = EngineStatus::Running;
+    }
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+        PathBuf::new(),
+    );
+
+    // Force into Missiles (descendant of Combat).
+    tx.send(EngineCommand::ForceMode {
+        mode: "Missiles".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    // Push another descendant so the stack is non-trivial.
+    let tree = state
+        .read()
+        .active_profile
+        .as_ref()
+        .unwrap()
+        .modes()
+        .clone();
+    engine.mode_state.push_temporary("Guns", &tree).unwrap();
+
+    // Delete Combat — every descendant (Missiles, Guns) and Combat itself
+    // must be purged from current_mode and the stack.
+    tx.send(EngineCommand::DeleteMode {
+        name: "Combat".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    assert_eq!(
+        s.current_mode, "Default",
+        "current_mode must reset to startup"
+    );
+    assert!(s.mode_force.is_none(), "mode_force must be cleared");
+    assert_eq!(
+        engine.mode_state.current(),
+        "Default",
+        "ModeState::current resets"
+    );
+    // pop_temporary is a no-op on an empty stack — the post-delete current
+    // stays "Default".
+    engine.mode_state.pop_temporary();
+    assert_eq!(
+        engine.mode_state.current(),
+        "Default",
+        "stack must be purged of removed names"
+    );
+}

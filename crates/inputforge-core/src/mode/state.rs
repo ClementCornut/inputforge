@@ -90,6 +90,13 @@ impl ModeState {
         self.pop_temporary();
     }
 
+    /// Drop every stack entry whose name is in `removed`. Used by
+    /// [`EngineCommand::DeleteMode`] cascade.
+    pub fn clear_stack_entries(&mut self, removed: &[String]) {
+        self.stack
+            .retain(|entry| !removed.iter().any(|r| r == entry));
+    }
+
     /// Rewrite every entry equal to `from` to `to`, both `current` and the
     /// temporary stack. Used by [`EngineCommand::RenameMode`] cascade.
     pub fn rename_in_place(&mut self, from: &str, to: &str) {
@@ -331,5 +338,19 @@ mod tests {
         // Stack should be cleared.
         state.pop_temporary();
         assert_eq!(state.current(), state.current()); // no change
+    }
+
+    // --- clear_stack_entries ---
+
+    #[test]
+    fn clear_stack_entries_drops_named() {
+        let tree = test_tree();
+        let mut state = ModeState::new("Default".to_owned());
+        state.push_temporary("Combat", &tree).unwrap();
+        state.clear_stack_entries(&["Default".to_owned()]);
+        assert_eq!(state.current(), "Combat");
+        state.pop_temporary();
+        // Stack now empty (Default was dropped). pop_temporary on empty stack is no-op.
+        assert_eq!(state.current(), "Combat");
     }
 }
