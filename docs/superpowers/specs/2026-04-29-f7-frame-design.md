@@ -14,7 +14,7 @@
 F7 is the chrome-shell upgrade — the third foundation feature after F5's IA redesign and F6's snapshot/preferences/`mode_force` core work. F7 replaces F3's disposable `PlaceholderShell` with the real F5 layout:
 
 - a top bar carrying the engine pill, profile name, mode tabs, and the secondary tools cluster;
-- a conditional divergence/forced-mode banner sitting between the top bar and the main grid;
+- a conditional divergence/forced-mode banner sitting between the top bar and the main row;
 - a thin status bar at the bottom with three glance-only slots (warnings · device count · profile path);
 - a right-side panel slot that F12 (Devices) and F13 (Profiles) plug into.
 
@@ -71,7 +71,7 @@ src/
 │   ├── view_state.rs            #   ViewState struct + PanelSlot enum + provider hook
 │   │
 │   ├── layout/
-│   │   ├── mod.rs               #   Layout component: grid OR empty_state branch on profile_name.is_some()
+│   │   ├── mod.rs               #   Layout component: main-row OR empty_state branch on profile_name.is_some()
 │   │   └── empty_state.rs       #   no-profile fallback (F7 stub; F13 replaces with the real workspace empty state)
 │   │
 │   ├── top_bar/
@@ -203,7 +203,7 @@ impl MetaSnapshot {
                             .map(|p| p.modes().all_modes().into_iter().map(str::to_owned).collect())
                             .unwrap_or_default(),
             startup_mode:  s.active_profile.as_ref()
-                            .map(|p| p.settings().startup_mode.clone()),
+                            .map(|p| p.settings().startup_mode().to_owned()),
         }
     }
 }
@@ -211,7 +211,11 @@ impl MetaSnapshot {
 
 `PartialEq` derived on the whole struct keeps F1's polling-task `Signal::set` no-op-on-equal contract intact — the polling task sets the Signal on every tick, but the gate suppresses re-renders when nothing changed.
 
-**Memory-allocation note for steady-state ticks.** `from_state` clones `current_mode`, `profile_name`, `profile_path`, `warnings`, `mode_force`, `modes` (`Vec<String>`), and `startup_mode` on every call. The old projection already did 4 such clones; F7 adds 3 more. At 60Hz this is ~420 small allocations/sec — negligible. Worth flagging for a future `simplify` pass if profiling reveals it as a hotspot; out of scope for F7.
+**Import path for `ForcedMode`.** `ForcedMode` is reachable via `inputforge_core::state::ForcedMode` without any `pub use` change — `state` is `pub mod` and `ForcedMode` is `pub struct`. The `context.rs` import becomes `use inputforge_core::state::{AppState, DeviceState, EngineStatus, ForcedMode};`.
+
+**Memory-allocation note for steady-state ticks.** `from_state` clones up to 7 fields per call. The polling task gates `Signal::set` on `PartialEq`, so steady-state ticks (no engine state change) pay the projection-clone cost but suppress every downstream allocation. Worth flagging for a future `simplify` pass if profiling reveals the projection clones themselves as a hotspot; out of scope for F7.
+
+**Hierarchy queries do not pass through `MetaSnapshot.modes`.** The `modes` field is intentionally a flat `Vec<String>` (DFS pre-order). Components that need parent/child relationships — currently only the F4 destructive-delete-confirm dialog computing `(modes_count, mappings_count)` — read directly from `ctx.state.read().active_profile.modes()`. Rationale: keeping the snapshot cheap-to-clone and `PartialEq`-stable matters more than centralizing every read, and the consumer surface for hierarchy is small (one rare dialog) and may grow only in F11 (modes panel), which is similarly a tree-view rather than a steady-state subscription.
 
 ### `app_root` (`app.rs`) shape
 
@@ -246,7 +250,7 @@ pub(crate) fn app_root() -> Element {
         tray::spawn_listener_task(rx, ctx.clone());
         tx
     });
-    tray::install_event_handler(params.tray_menu_ids.clone(), tx);
+    tray::install_event_handler(params.tray_menu_ids.clone(), tx);  // unchanged from F3
 
     use_hook(|| lifecycle::apply_start_minimized(params.start_minimized));
 
@@ -265,13 +269,13 @@ pub(crate) fn app_root() -> Element {
 
 ### Layout (`frame/layout/`)
 
-`Layout` is the single component `app_root` mounts. It owns the grid template + the no-profile branch.
+`Layout` is the single component `app_root` mounts. It owns the layout shell + the no-profile branch.
 
 ```rust
 #[component]
 pub(crate) fn Layout() -> Element {
     let ctx = use_context::<AppContext>();
-    let _   = use_context::<ViewState>();   // ensure provider is installed
+    let _   = use_context::<ViewState>();   // panics if app_root forgot the provider; do not remove
 
     let has_profile = use_memo(move || ctx.meta.read().profile_name.is_some());
 
@@ -293,26 +297,33 @@ pub(crate) fn Layout() -> Element {
 }
 ```
 
-CSS grid template:
+CSS layout shell — flex column on the outer chrome, flex row on the inner main. (Project rule: every `display` defaults to flex; grid only for true 2D alignment. F7 chrome is two stacked 1D flows, so flex is the canonical fit.)
 
 ```css
 .if-layout {
-    display: grid;
-    grid-template-rows: 40px auto 1fr 28px;       /* top-bar | banner | main | status */
+    display: flex;
+    flex-direction: column;
     height: 100vh;
 }
+.if-top-bar      { flex: 0 0 40px; }
+.if-banner       { flex: 0 0 auto; }   /* content height; 0 when component renders rsx!{} */
+.if-layout__main { flex: 1 1 auto; min-height: 0; }
+.if-status-bar   { flex: 0 0 28px; }
+
 .if-layout__main {
-    display: grid;
-    grid-template-columns: 280px 1fr auto;        /* rail | center | right panel slot */
-    min-height: 0;                                 /* allow children to scroll */
+    display: flex;
+    flex-direction: row;
 }
+.if-layout__rail   { flex: 0 0 280px; }
+.if-layout__center { flex: 1 1 auto; min-width: 0; }   /* allow shrink past min-content */
+.if-panel-slot     { flex: 0 0 320px; }                /* sized when mounted; absent when None */
 ```
 
-Banner row uses `auto` height so it collapses to 0 when no state applies. The `Banner` component renders an empty fragment in `Hidden` state; the row genuinely takes 0px.
+Banner uses `flex: 0 0 auto` so it is content-sized — when the `Banner` component renders an empty fragment in `Hidden` state, no flex item content exists and the row genuinely takes 0px without layout reservation. The panel slot is structurally absent when `panel_slot == None`, so `__center` reclaims the space without an `auto` column track to drain.
 
 ### Empty state (`frame/layout/empty_state.rs`)
 
-F7 ships a placeholder; F13 replaces with the real F5-spec workspace empty state. F7 stub renders Display-typography "No profile loaded" — enough to validate the conditional branch + grid math.
+F7 ships a placeholder; F13 replaces with the real F5-spec workspace empty state. F7 stub renders Display-typography "No profile loaded" — enough to validate the no-profile branch.
 
 ```rust
 #[component]
@@ -485,12 +496,16 @@ Right-click + Shift+F10 open `context_menu.rs` (F2 `Menu` primitive consumer):
 |---|---|---|
 | Activate | dispatch `EngineCommand::ForceMode { mode: tab.name }` | `mode_force.as_ref().is_some_and(|f| f.mode == tab.name)` |
 | Rename | swap tab to inline rename input | profile not loaded |
-| Delete | F4 destructive dialog (affected-mappings count read once from `ctx.state.read().active_profile.mappings().iter().filter(|m| m.mode == tab.name).count()` at dialog open) → on confirm, dispatch `EngineCommand::DeleteMode` | tab is `startup_mode`, or tab has children |
+| Delete | F4 destructive dialog enumerates `(modes_count, mappings_count)` for the subtree (read once at dialog open by walking `ctx.state.read().active_profile`) → on confirm, dispatch `EngineCommand::DeleteMode` | subtree contains `startup_mode`, or tab is the root mode |
 | Set as default | dispatch `EngineCommand::SetDefaultMode { name: tab.name }` | tab is already `startup_mode` |
 
-`add_inline.rs` — clicking `+` toggles a local `adding: Signal<bool>`. While true, the `+` is replaced by an F2 `TextInput` with `placeholder: "New mode name"`. Submit (Enter) calls `validate_mode_name`. Valid → dispatch `AddMode { name, parent: None }`, optimistically update `editing_mode`, clear local state, focus the new tab on next render. Invalid → display inline error message under the input (red border via F2's `invalid` prop). Esc → clear local state, focus the `+` tab. Blur with valid → commit; blur with invalid → revert.
+`add_inline.rs` — clicking `+` toggles a local `adding: Signal<bool>`. While true, the `+` is replaced by an F2 `TextInput` with `placeholder: "New mode name"`. The input autofocuses on mount (via `onmounted` + `set_focus(true)`). Submit (Enter) calls `validate_mode_name`:
+- **Valid** → dispatch `AddMode { name, parent: None }`, optimistically set `editing_mode = name`, clear local state, close the editor. A parent-side `use_effect` watches `meta.modes` and focuses the new tab once it appears in the snapshot.
+- **Empty / Duplicate** → set `error_msg`, render an inline `<span role="alert" aria-live="assertive" id="mode-name-error-add">` under the input, set `aria-invalid="true"` on the input via `aria-describedby="mode-name-error-add"`, **leave focus in the input**.
 
-`rename_inline.rs` — same shape. One local `renaming: Signal<Option<String>>` keyed on the mode being renamed. Validation is `validate_mode_name(raw, modes, Some(old_name))` — exempting self from duplicate check. Commit dispatches `RenameMode { from, to }`.
+**Esc** → revert local state, close the editor, restore focus to the `+` button. **Blur** (`onfocusout`) with valid value → commit (Enter path); with empty/invalid → revert (Esc path).
+
+`rename_inline.rs` — same shape. The parent owns `renaming: Signal<Option<String>>`, set to `Some(name)` when the user picks Rename from the context menu. The component reads `from` as a prop and `state` as the parent's signal, closes by setting `state.set(None)`. Validation is `validate_mode_name(raw, modes, Some(from))` — exempting self from duplicate check. Commit dispatches `RenameMode { from, to }` (no-op when `to == from`). On open, the input autofocuses **and selects all** so typing replaces. **Esc** → revert and close, restoring focus to the originating tab. **Blur** with valid → commit; with invalid → revert.
 
 #### Tools cluster (`top_bar/tools_cluster/`)
 
@@ -555,6 +570,8 @@ ARIA: `aria-label="Side panels"` on the wrapping `<nav>`. Each button uses `aria
 pub(crate) enum BannerState {
     Hidden,
     Diverged          { editing: String, current: String },
+    /// Forced and aligned: editing == current == forced. The override is active
+    /// and the user is editing the mode the engine is currently running.
     Forced            { forced: String },
     ForcedAndDiverged { editing: String, forced: String },
 }
@@ -770,9 +787,10 @@ pub enum EngineCommand {
     /// `mode` field and `ProfileSettings::startup_mode` if it referenced the old name.
     RenameMode { from: String, to: String },
 
-    /// Delete a mode from the active profile. Cascades: drops all mappings scoped
-    /// to this mode. Errors if the mode is the profile's startup_mode (must
-    /// `SetDefaultMode` to a different mode first), or has children.
+    /// Delete a mode (and its descendants) from the active profile. Recursive
+    /// cascade: drops all mappings scoped to any deleted mode. Errors if the
+    /// mode is the root, or if the subtree contains the profile's
+    /// `startup_mode` (must `SetDefaultMode` to a different mode first).
     DeleteMode { name: String },
 
     /// Set the profile's `ProfileSettings::startup_mode`. Errors if the named
@@ -781,9 +799,57 @@ pub enum EngineCommand {
 }
 ```
 
+All four variants carry only `String` / `Option<String>` payloads — preserving the existing `Debug + PartialEq` derive on `EngineCommand` (no new bounds required).
+
+**`MoveMode` is deferred** to a later F-task. F7's GUI surface (a flat tablist with no drag-to-reparent affordance) does not expose subtree-reparenting; adding a fifth variant + `ModeTree::with_moved` helper would be unused weight. F11 (modes panel) is the natural home for `MoveMode` if/when the modes-management tree-view UI lands and needs subtree drag-and-drop.
+
+### `Profile` and `ProfileSettings` API additions
+
+The four new handlers depend on bulk-mutation methods that don't exist on `Profile` / `ProfileSettings` today. Add these alongside the existing `set_name` / `set_mapping` / `set_calibrations` pattern:
+
+```rust
+// crates/inputforge-core/src/profile/mod.rs
+impl Profile {
+    /// Replace the mode tree wholesale. Caller is responsible for ensuring the
+    /// new tree is consistent with `settings().startup_mode()` and any mode
+    /// names referenced by mappings/actions; engine handlers do this validation
+    /// before calling.
+    pub fn set_modes(&mut self, modes: ModeTree) { … }
+
+    /// Drop every mapping whose `mode` field equals `mode`. Returns the count
+    /// of mappings removed (used by `tracing` events and the F4 destructive
+    /// dialog's affected-mappings count).
+    pub fn remove_mappings_for_mode(&mut self, mode: &str) -> usize { … }
+
+    /// Cascade-rewrite mode references across the action graph: `Mapping.mode`
+    /// and every `ModeChangeStrategy::{SwitchTo, Temporary, Cycle}` mode-name
+    /// field. Returns the count of mappings whose action graph was touched.
+    /// Caller pre-validates that no resulting `CycleModes` would contain a
+    /// duplicate (`CycleModes::validated` enforces uniqueness — the rename
+    /// handler is the one place that can break that invariant).
+    pub fn rename_mode_refs(&mut self, from: &str, to: &str) -> usize { … }
+}
+```
+
+```rust
+// crates/inputforge-core/src/profile/types.rs
+impl ProfileSettings {
+    /// Set the startup mode. Caller validates the named mode exists in the
+    /// profile's ModeTree.
+    ///
+    /// This is `ProfileSettings`'s first `&mut self` method — it deliberately
+    /// breaks the current "immutable after construction" posture rather than
+    /// promoting `startup_mode` to a `pub` field. Field-locality + a single
+    /// new method is the smaller leak of the two.
+    pub fn set_startup_mode(&mut self, mode: String) { … }
+}
+```
+
+`set_modes` and `remove_mappings_for_mode` are bulk replacements over `Profile`'s private fields. `rename_mode_refs` walks every `Mapping` once, rewriting `Mapping.mode` and any contained `ModeChangeStrategy` mode-name fields in place.
+
 ### `ModeTree` mutators (`mode/mod.rs`)
 
-`ModeTree` doesn't currently have functional mutators. F7 adds three pure-by-clone mutators:
+`ModeTree` doesn't currently have functional mutators. F7 adds four pure-by-clone helpers:
 
 ```rust
 impl ModeTree {
@@ -795,9 +861,14 @@ impl ModeTree {
     /// Errors if `to` already exists, or `from` doesn't.
     pub fn with_renamed(&self, from: &str, to: &str) -> Result<Self> { … }
 
-    /// Return a new tree with `name` removed. Errors if `name` doesn't exist or
-    /// has children (caller must delete children first under F7's IA).
-    pub fn with_deleted(&self, name: &str) -> Result<Self> { … }
+    /// Recursive: returns a new tree with `name` and all descendants removed.
+    /// Errors if `name` doesn't exist or is the root mode.
+    pub fn with_subtree_removed(&self, name: &str) -> Result<Self> { … }
+
+    /// Helper: returns names of all proper descendants of `name`, DFS pre-order.
+    /// Errors if `name` doesn't exist. Used by `DeleteMode` to enumerate the
+    /// cascade footprint before mutation.
+    pub fn descendants_of(&self, name: &str) -> Result<Vec<String>> { … }
 }
 ```
 
@@ -834,20 +905,57 @@ fn handle_add_mode(state: &mut AppState, name: String, parent: Option<String>) -
 | Variant | Engine rejects when |
 |---|---|
 | `AddMode` | name exists; parent doesn't exist; name is empty |
-| `RenameMode` | `to` exists (and is not `from`); `from` doesn't exist; `to` is empty |
-| `DeleteMode` | name doesn't exist; name is the active profile's `startup_mode`; name has children |
+| `RenameMode` | `to` exists (and is not `from`); `from` doesn't exist; `to` is empty; rename would produce a `CycleModes` duplicate in any mapping's action graph |
+| `DeleteMode` | name doesn't exist; name is the root mode; subtree contains `ProfileSettings::startup_mode` |
 | `SetDefaultMode` | name doesn't exist |
 
 GUI-side validation in `mode_tabs/logic.rs::validate_mode_name` exists for live UX feedback (red border on duplicate-as-you-type). Engine is the source of truth — if the GUI accepts and the engine rejects, the GUI surfaces a toast.
 
-### Cascade semantics (`DeleteMode` only)
+### Cascade semantics
 
-1. Drop every `Mapping` whose `mode` field equals the deleted name.
-2. If `state.current_mode == deleted_name`, set `current_mode = startup_mode`.
-3. If `state.mode_force.as_ref().is_some_and(|f| f.mode == deleted_name)`, clear `mode_force` to `None`.
-4. Persist profile + emit `tracing` events.
+Both `RenameMode` and `DeleteMode` reach into multiple mode-name storage sites. Each handler runs atomically under the engine's write lock; mid-cascade, the polling task can't see partial state.
 
-Atomic under the engine's write lock; mid-cascade, the polling task can't see partial state.
+#### `RenameMode` cascade
+
+Walks all 9 mode-name storage sites the codebase exposes:
+
+**Profile-side (persisted):**
+1. `Mapping.mode == from → to` (every matching mapping).
+2. `ProfileSettings::startup_mode == from → to`.
+3. `ModeChangeStrategy::SwitchTo { mode }` and `::Temporary { mode }`: rewrite `mode` field where `mode == from`.
+4. `ModeChangeStrategy::Cycle { modes: CycleModes }`: rewrite every `modes[i] == from → to`, preserving order.
+
+**Engine-side (runtime):**
+5. `AppState::current_mode == from → to`.
+6. `AppState::mode_force.as_mut().filter(|f| f.mode == from)` — rewrite `f.mode = to`.
+7. `ModeState::current == from → to`.
+8. `ModeState::stack`: rewrite every entry `== from → to` in place, preserving order.
+
+**Pre-validation:** before any mutation, simulate steps 3–4 against every mapping's action graph. Reject the rename if applying it would produce a `CycleModes` duplicate (`CycleModes::validated` enforces uniqueness — the rename is the one operation that can break that invariant). Engine surfaces the conflicting mapping ID in the error.
+
+**Persistence + tracing:** persist via `Profile::save`; emit `tracing::info!(from, to, mappings_touched, "renamed mode")`.
+
+#### `DeleteMode` cascade
+
+**Recursive** — deleting a mode removes its entire subtree and every mapping scoped to any deleted mode.
+
+**Validation (rejected before any mutation):**
+- Name doesn't exist → reject.
+- Name is the root mode → reject ("cannot delete root mode").
+- Subtree rooted at `name` contains `ProfileSettings::startup_mode` → reject ("change startup mode before deleting"). Caller (the F7 right-click menu) is expected to dispatch `SetDefaultMode` first or steer the user there.
+
+**Cascade (after validation passes):**
+1. `deleted: Vec<String>` ← `ModeTree::descendants_of(name)` plus `name` itself.
+2. New `ModeTree` ← `with_subtree_removed(name)` — installs via `Profile::set_modes`.
+3. For each `m ∈ deleted`: `Profile::remove_mappings_for_mode(&m)`. Sum the counts for telemetry.
+4. If `state.current_mode ∈ deleted`: set `current_mode = settings().startup_mode().to_owned()`.
+5. If `state.mode_force.as_ref().is_some_and(|f| deleted.contains(&f.mode))`: clear `mode_force` to `None`.
+6. If `engine.mode_state.current() ∈ deleted`: reset to `startup_mode`.
+7. `engine.mode_state.stack.retain(|m| !deleted.contains(m))`.
+
+**Persistence + tracing:** persist; emit `tracing::info!(modes_deleted = ?deleted, mappings_dropped, "deleted mode subtree")`.
+
+**Why cascade-recursive?** Children cascade because mode hierarchies are organizational, not semantic — a user deleting a parent has implicitly chosen to drop the subtree's organization. Mappings cascade because they're scoped to a deleted mode and would otherwise be unreachable. The hard rejections (root, startup-mode-in-subtree) prevent the two unrecoverable foot-guns: orphaning the entire profile, or breaking the load-time mode resolution. The F4 destructive dialog enumerates `(modes_count, mappings_count)` so the user sees the full footprint before confirming.
 
 ### Engine command surface used by F7 (full list, post-additions)
 
@@ -862,6 +970,8 @@ Atomic under the engine's write lock; mid-cascade, the polling task can't see pa
 | `SetDefaultMode { name }` | Mode-tab right-click → Set as default |
 
 F7 does **not** dispatch `LoadProfile`, `SetCalibration`, `SetMapping`, snapshot ops, or `ReloadSettings`. Those belong to F13/F12/F9/F15.
+
+Dispatch is via `ctx.commands.send(...)` (`std::sync::mpsc::Sender<EngineCommand>` per F1's bridge). F3's tray channel uses tokio `mpsc::Sender::try_send` — these are distinct call sites with different APIs, and F7 components copy the F1/F4 pattern, not the F3 tray pattern.
 
 ---
 
@@ -894,7 +1004,7 @@ The contract committed in brainstorming Q10:
 
 3. **Runtime-marker computation centralized** at the tablist level. `mode_tabs/mod.rs` calls `runtime_marker(...)` once and passes a per-tab boolean (or marker color) into each tab. Avoids each `Tab` independently subscribing to `current_mode` + `mode_force`.
 
-4. **Banner renders the empty fragment** (`rsx! {}`) for `BannerState::Hidden` rather than wrapping in a wrapper that conditionally hides itself — keeps the layout grid row at 0px without CSS gymnastics.
+4. **Banner renders the empty fragment** (`rsx! {}`) for `BannerState::Hidden` rather than wrapping in a wrapper that conditionally hides itself — under the outer flex column, an empty fragment produces no flex content and the slot collapses to 0 naturally, no CSS gymnastics.
 
 5. **Steady-state idle target.** With engine running, no input, no user gesture, no warnings: zero F7 re-renders per polling tick. The `MetaSnapshot::from_state` produces an identical struct each tick → `PartialEq` gate → `Signal::set` no-op → no subscribers fire.
 
@@ -938,7 +1048,7 @@ crates/inputforge-gui-dx/assets/frame/panel_slot.css
 ```
 crates/inputforge-gui-dx/src/lib.rs                 # mod frame; replaces mod shell;
 crates/inputforge-gui-dx/src/app.rs                  # provide ViewState; render frame::Layout
-crates/inputforge-gui-dx/src/context.rs              # MetaSnapshot gains 3 fields + extended projection
+crates/inputforge-gui-dx/src/context.rs              # MetaSnapshot gains 3 fields + extended projection; existing `meta_snapshot_default_is_empty` test extends with the 3 new defaults
 ```
 
 **Deleted (GUI):**
@@ -953,7 +1063,9 @@ crates/inputforge-gui-dx/assets/shell/               # placeholder-shell.css
 ```
 crates/inputforge-core/src/engine/command.rs         # 4 new EngineCommand variants
 crates/inputforge-core/src/engine/<handlers module>  # 4 new handlers + cascade logic
-crates/inputforge-core/src/mode/mod.rs                # ModeTree::with_added_child / with_renamed / with_deleted
+crates/inputforge-core/src/mode/mod.rs                # ModeTree::with_added_child / with_renamed / with_subtree_removed / descendants_of
+crates/inputforge-core/src/profile/mod.rs             # Profile::set_modes / remove_mappings_for_mode / rename_mode_refs
+crates/inputforge-core/src/profile/types.rs           # ProfileSettings::set_startup_mode
 ```
 
 **Reused unchanged:** F2 components (Button, TextInput, Menu, Badge, Tabs primitive — possibly extended for per-tab decoration), F3 `components::StatusBar` primitive, F4 Dialog primitive (for `DeleteMode` confirm), F1 `bridge.rs` polling task, F1 `AppContext`, F3 tray bridge, F3 lifecycle, F4 `ToastQueue`.
@@ -963,10 +1075,10 @@ crates/inputforge-core/src/mode/mod.rs                # ModeTree::with_added_chi
 ## Acceptance criteria
 
 - [ ] `cargo build` (default, egui) and `cargo build --no-default-features --features gui-dioxus` both pass with no new warnings vs. F6 baseline.
-- [ ] `cargo run --no-default-features --features gui-dioxus` opens a window rendering the F7 frame — top bar with engine pill, profile name slot, "Default" mode tab, tools cluster; thin status bar with device count and warning count; no banner when aligned and unforced.
+- [ ] `cargo run --no-default-features --features gui-dioxus` opens a window rendering the F7 frame. With **no profile loaded**: top bar shows engine pill (disabled), italic-muted "no profile loaded" name slot, no mode tabs, tools cluster (Devices/Calibration disabled, Profiles enabled); the rail+center collapse into the `EmptyState` placeholder; status bar shows `0/0 devices` and `—`. With a **profile loaded**: mode tabs render flat-list per `meta.modes` (root mode named per the profile's `ModeTree::root().name()` — typically "Default"); no banner when `editing_mode == current_mode` and `mode_force.is_none()`.
 - [ ] **Engine pill** click dispatches `Activate` (when Stopped/Paused) / `Deactivate` (when Running). Visual state and label match the `engine_pill_state` table. Disabled when no profile loaded. ARIA: `role=status` + `aria-live=polite` + `<button>` semantics; Running ↔ Paused transitions announced by AT.
 - [ ] **Profile name** displays the active profile name when loaded; renders italic-muted "no profile loaded" when none. Click while loaded sets `panel_slot = Profiles`.
-- [ ] **Mode tabs** render the profile's modes flat-list. Active editing tab gets focus-cyan underline. Runtime marker dot sits on the tab whose name equals `current_mode`; color is green when `mode_force.is_none()`, amber when `is_some()`. Arrow-key focus roving works. Shift+F10 opens the context menu equivalently to right-click.
+- [ ] **Mode tabs** render the profile's modes flat-list. Active editing tab gets focus-cyan underline; no tab is underlined when `editing_mode ∉ modes` (the brief first-frame-after-profile-load state). Runtime marker dot sits on the tab whose name equals `current_mode`; color is green when `mode_force.is_none()`, amber when `is_some()`. Arrow-key focus roving works. Shift+F10 opens the context menu equivalently to right-click.
 - [ ] **Mode-tab `+` inline add** flow: click `+` → text input replaces the `+`; type a name; Enter dispatches `AddMode`; the new tab becomes active editing mode; Esc cancels. Empty/duplicate names show inline error; blur-with-invalid reverts.
 - [ ] **Mode-tab right-click menu** items behave per the table: Activate dispatches `ForceMode`; Rename swaps to inline rename; Delete opens F4 destructive dialog with affected-mappings count, on confirm dispatches `DeleteMode`; Set as default dispatches `SetDefaultMode`. Item disabled-states match.
 - [ ] **Tools cluster** Devices / Calibration / Profiles toggle `panel_slot` per Replace discipline. Calibration sets `via_calibration = true`. Active styling matches `tool_active`. Devices + Calibration disabled when no profile loaded; Profiles always enabled.
@@ -975,8 +1087,12 @@ crates/inputforge-core/src/mode/mod.rs                # ModeTree::with_added_chi
 - [ ] **Panel slot** mounts F12 placeholder when `Devices`, F13 placeholder when `Profiles`, nothing when `None`. Slides in from the right; doesn't dim or trap focus.
 - [ ] **Layout no-profile branch**: when `meta.profile_name.is_none()`, the rail+center collapse into the F7 stub empty state; the banner remains conditional.
 - [ ] **MetaSnapshot extension**: `mode_force`, `modes`, `startup_mode` populated correctly from `AppState` in `from_state` tests. `PartialEq` gate suppresses re-renders on identical ticks.
-- [ ] **Engine command additions** — `cargo test -p inputforge-core` passes with new tests covering: AddMode happy + duplicate-name + bad-parent + persistence; RenameMode happy + collision + missing-from + cascade-update of mappings + cascade-update of `startup_mode`; DeleteMode happy with cascade + reject-on-startup-mode + reject-with-children + cascade reset of `current_mode` and `mode_force`; SetDefaultMode happy + missing-name.
-- [ ] **`logic.rs` unit tests** cover `engine_pill_state`, `runtime_marker`, `validate_mode_name`, `derive_banner_state`, `device_count_label`, `warning_count_label`, `truncate_path`, `tool_active`. All pure — no Dioxus runtime.
+- [ ] **Engine command additions** — `cargo test -p inputforge-core` passes with new tests covering:
+  - **AddMode:** happy + duplicate-name + bad-parent + persistence.
+  - **RenameMode:** happy + collision + missing-from + reject-on-cycle-duplicate + cascade-update of mappings (`Mapping.mode`) + cascade-update of `ProfileSettings::startup_mode` + cascade-update of action `ModeChangeStrategy` (SwitchTo, Temporary, Cycle) + cascade-update of runtime state (`AppState::current_mode`, `AppState::mode_force`, `ModeState::current`, `ModeState::stack`).
+  - **DeleteMode:** happy leaf + happy subtree (recursive) + reject-on-root + reject-when-subtree-contains-startup-mode + cascade reset of `current_mode` + cascade clear of `mode_force` + cascade clear of `ModeState::{current, stack}` references.
+  - **SetDefaultMode:** happy + missing-name.
+- [ ] **`logic.rs` unit tests** cover `engine_pill_state`, `runtime_marker` (including the no-underline case where `editing_mode ∉ modes`), `validate_mode_name`, `derive_banner_state`, `device_count_label`, `warning_count_label`, `truncate_path` (algorithm-agnostic invariants: respects `max_chars`, preserves filename, uses U+2026 ellipsis — exact algorithm pinned by `impeccable:clarify`), `tool_active`. All pure — no Dioxus runtime.
 - [ ] **Steady-state idle render budget**: with engine Running, no devices producing input, no user gesture: zero F7 re-renders per polling tick (verify via Dioxus DevTools subscribe-counter or instrumentation).
 - [ ] **F3 cleanup**: `crates/inputforge-gui-dx/src/shell/` directory deleted. `assets/shell/` directory deleted. `app.rs` no longer references `PlaceholderShell`. F3 `StatusBarView` deleted.
 
@@ -993,7 +1109,7 @@ crates/inputforge-core/src/mode/mod.rs                # ModeTree::with_added_chi
   - Banner: load a profile, click a non-active mode tab, verify Diverged banner; click Activate; verify Forced banner; click Release; click another mode while forced; verify Forced+Diverged.
   - Tools cluster: open Devices, open Profiles (replaces Devices), open Calibration (Devices opens with via_calibration = true).
   - Status bar: warning count updates as engine pushes warnings; device count updates on connect/disconnect.
-  - Layout: launch with no profile loaded → empty state branch renders; load profile → grid renders.
+  - Layout: launch with no profile loaded → empty state branch renders; load profile → main row renders.
 - **Rendering automation deferred** per parent-plan open question.
 
 ---
@@ -1015,13 +1131,13 @@ crates/inputforge-core/src/mode/mod.rs                # ModeTree::with_added_chi
 
 Per F5's pattern; implementation may skip ones that don't apply.
 
-- `impeccable:shape` — at planning time: layout grid (top-bar / banner / rail / center / right slot / status-bar rhythm), top-bar internal spacing, banner geometry. Single invocation covers the frame as a coherent unit.
+- `impeccable:shape` — at planning time: layout rhythm (top-bar / banner / rail / center / right slot / status-bar), top-bar internal spacing, banner geometry. Single invocation covers the frame as a coherent unit.
 - `impeccable:frontend-design` — primary visual treatment of the frame. Engine pill aesthetic, mode-tab focus underline weight, runtime marker dot size and glow, banner backplate treatment, tools-cluster active-state styling. This is the surface the user sees on every launch.
 - `impeccable:layout` — top-bar rhythm (engine pill height vs mode tab cap height, gap between zones, divider treatment), banner placement, status-bar slot spacing.
 - `impeccable:typeset` — top-bar typography hierarchy, mono-vs-sans for engine status label, tabular figures for device-count and warning-count.
 - `impeccable:clarify` — banner copy variants, Activate/Release labels, engine pill hover hint, mode-tab right-click menu items, tools-cluster button labels, profile-path truncation strategy. Tone: terse, functional, no marketing register.
 - `impeccable:animate` — engine-pill state transitions (Running ⇌ Paused ⇌ Stopped color shift), banner enter/exit, runtime-marker dot color transition (Natural ⇌ Forced — green ⇌ amber). Honor `prefers-reduced-motion`. No bounce, no overshoot — DESIGN.md cockpit-brisk timing.
-- `impeccable:harden` — engine command channel disconnected, profile load failure mid-CRUD-dispatch, mode delete-with-children rejection toast, malformed profile, Shift+F10 firing while inline rename is open, focus loss during inline edit when window goes background.
+- `impeccable:harden` — engine command channel disconnected, profile load failure mid-CRUD-dispatch, mode-delete root/startup-mode rejection toast, RenameMode CycleModes-collision rejection toast, malformed profile, Shift+F10 firing while inline rename is open, focus loss during inline edit when window goes background.
 - `impeccable:audit` — keyboard reachability for every interactive element, tab order coherent left-to-right top-to-bottom, focus rings visible against dark backplate, ARIA contracts (engine pill `role=status`+button, banner `role=status`, tools `aria-pressed`, mode tabs `role=tab`/`role=tablist`, panel slot `aria-label`). Color-blind safety on runtime-marker (green ↔ amber pair — verify pattern/glow distinguishability).
 - `impeccable:polish` — final pass.
 
@@ -1036,6 +1152,7 @@ Per F5's pattern; implementation may skip ones that don't apply.
 - **Mode tab `+` placement** (always-trailing vs scroll-into-view when many modes exist). F5's wireframe shows trailing; F7 ships trailing; revisit only if a profile with many modes overflows the cluster.
 - **Profile-path truncation strategy.** `truncate_path(path, 64)` is sketched; exact algorithm is `impeccable:clarify` territory.
 - **Shift+F10 on the `+` tab.** F7 default: `+` doesn't open a context menu (it has no operations).
+- **F13 reuse of `frame::layout::empty_state`.** F7 ships the placeholder; F13 should replace the contents in place rather than relocating the module. If F13 needs the module path elsewhere, F7's "files deleted" list grows accordingly.
 - **Sticky editing-mode persistence in `Preferences`.** Promoted to F15 if anyone asks.
 - **Push-based engine→GUI updates.** Post-F17 dedicated feature. Cost analysis: ~2-3 days work using a snapshot-on-notify pattern (engine adds a tiny `state_change_notify: mpsc::Sender<()>` and wakes the GUI listener on every meta/config-touching handler; GUI listener drains and projects from `AppState` as today; live values stay polled at 60Hz). No breaking changes to F7's render contract; coherency preserved by the snapshot-under-read-lock pattern.
 - **Testing story for the Dioxus GUI.** Inherited from parent plan.
@@ -1046,7 +1163,7 @@ Per F5's pattern; implementation may skip ones that don't apply.
 
 1. Commit this spec to git.
 2. Invoke `superpowers:writing-plans` to produce a step-by-step implementation plan with TDD-friendly checkpoints. The plan should sequence:
-   - **Engine-side first:** `ModeTree::with_added_child` / `with_renamed` / `with_deleted` + tests (pure functions, isolated). Then `EngineCommand` variants + handlers + cascade tests.
+   - **Engine-side first:** `ModeTree::with_added_child` / `with_renamed` / `with_subtree_removed` / `descendants_of` + tests (pure functions, isolated). Then `Profile::set_modes` / `remove_mappings_for_mode` / `rename_mode_refs` and `ProfileSettings::set_startup_mode`. Then `EngineCommand` variants + handlers + cascade tests.
    - **GUI-side audits:** F2 `Tabs` decoration audit (extend vs rebuild decision). `MetaSnapshot` extension + projection.
    - **GUI-side scaffolding:** `ViewState` + provider; `frame::Layout` skeleton + `EmptyState` stub; `app_root` modification.
    - **Per-region build, in dependency order** (simplest signal-bound first):
