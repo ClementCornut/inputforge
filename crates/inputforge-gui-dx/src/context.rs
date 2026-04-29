@@ -8,7 +8,7 @@ use parking_lot::RwLock;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::pipeline::InputCache;
 use inputforge_core::settings::AppSettings;
-use inputforge_core::state::{AppState, DeviceState, EngineStatus};
+use inputforge_core::state::{AppState, DeviceState, EngineStatus, ForcedMode};
 use inputforge_core::types::{
     AxisPolarity, HatDirection, InputAddress, InputId, VJoyAxis, VirtualDeviceConfig,
 };
@@ -45,6 +45,16 @@ pub(crate) struct MetaSnapshot {
     pub profile_name: Option<String>,
     pub profile_path: Option<PathBuf>,
     pub warnings: Vec<String>,
+    pub mode_force: Option<ForcedMode>,
+    /// DFS pre-order names. Hierarchy queries (parent, descendants) are
+    /// not surfaced through this field — components requiring tree shape
+    /// read `ctx.state.active_profile.modes()` directly. The split is
+    /// deliberate: this snapshot is cheap to clone-on-tick, and the
+    /// only F7 consumer that needs hierarchy (delete-confirm preview)
+    /// reads from raw state at dialog-open time, which is rare enough
+    /// not to warrant projecting an `Arc<ModeTree>` here.
+    pub modes: Vec<String>,
+    pub startup_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -83,6 +93,22 @@ impl MetaSnapshot {
             profile_name: s.active_profile.as_ref().map(|p| p.name().to_owned()),
             profile_path: s.profile_path.clone(),
             warnings: s.warnings.clone(),
+            mode_force: s.mode_force.clone(),
+            modes: s
+                .active_profile
+                .as_ref()
+                .map(|p| {
+                    p.modes()
+                        .all_modes()
+                        .into_iter()
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            startup_mode: s
+                .active_profile
+                .as_ref()
+                .map(|p| p.settings().startup_mode().to_owned()),
         }
     }
 }
@@ -192,6 +218,9 @@ mod tests {
         assert!(m.profile_name.is_none());
         assert!(m.profile_path.is_none());
         assert!(m.warnings.is_empty());
+        assert!(m.mode_force.is_none());
+        assert!(m.modes.is_empty());
+        assert!(m.startup_mode.is_none());
     }
 
     #[test]
@@ -459,5 +488,54 @@ mod tests {
         assert_eq!(cfg.devices.len(), 1);
         assert_eq!(cfg.virtual_devices.len(), 1);
         assert_eq!(meta.warnings.len(), 1);
+    }
+
+    #[test]
+    fn meta_from_state_projects_mode_force() {
+        use inputforge_core::state::ForcedMode;
+
+        let mut state = AppState::new();
+        state.mode_force = Some(ForcedMode {
+            mode: "Combat".to_owned(),
+        });
+        let meta = MetaSnapshot::from_state(&state);
+        assert_eq!(
+            meta.mode_force.as_ref().map(|f| f.mode.as_str()),
+            Some("Combat")
+        );
+    }
+
+    #[test]
+    fn meta_from_state_projects_modes_and_startup_mode() {
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+
+        let mut map = HashMap::new();
+        map.insert(
+            "Default".to_owned(),
+            vec!["Combat".to_owned(), "Landing".to_owned()],
+        );
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let profile = Profile::new(
+            "Modal".to_owned(),
+            vec![],
+            modes,
+            vec![],
+            vec![],
+            "Combat".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+        let meta = MetaSnapshot::from_state(&state);
+        assert_eq!(meta.modes.len(), 3);
+        assert_eq!(meta.modes[0], "Default", "DFS pre-order: root first");
+        assert_eq!(meta.startup_mode, Some("Combat".to_owned()));
+    }
+
+    #[test]
+    fn meta_from_state_with_no_profile_has_empty_modes_and_no_startup() {
+        let state = AppState::new();
+        let meta = MetaSnapshot::from_state(&state);
+        assert!(meta.modes.is_empty());
+        assert!(meta.startup_mode.is_none());
     }
 }

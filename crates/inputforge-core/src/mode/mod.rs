@@ -176,7 +176,12 @@ impl ModeTree {
         find_node(&self.root, name).is_some()
     }
 
-    /// Return a flat list of all mode names in the tree.
+    /// Return the names of every node in this tree as a flat list, in
+    /// DFS pre-order (root first, then each child subtree depth-first
+    /// before the next sibling). The ordering is contractual: GUI
+    /// consumers project this list into `MetaSnapshot.modes` and rely
+    /// on `modes[0]` being the root, and on the order matching what a
+    /// user sees in the mode-tabs UI.
     #[must_use]
     pub fn all_modes(&self) -> Vec<&str> {
         let mut names = Vec::new();
