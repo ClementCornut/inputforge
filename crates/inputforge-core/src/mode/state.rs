@@ -90,6 +90,19 @@ impl ModeState {
         self.pop_temporary();
     }
 
+    /// Rewrite every entry equal to `from` to `to`, both `current` and the
+    /// temporary stack. Used by [`EngineCommand::RenameMode`] cascade.
+    pub fn rename_in_place(&mut self, from: &str, to: &str) {
+        if self.current == from {
+            to.clone_into(&mut self.current);
+        }
+        for entry in &mut self.stack {
+            if entry == from {
+                to.clone_into(entry);
+            }
+        }
+    }
+
     /// Cycle to the next mode in the list, clearing the temporary stack.
     ///
     /// If the current mode is in the list, advances to the next mode
@@ -245,6 +258,28 @@ mod tests {
         state.push_temporary("Combat", &tree).unwrap();
         state.go_previous();
         assert_eq!(state.current(), "Default");
+    }
+
+    // --- rename_in_place ---
+
+    #[test]
+    fn rename_in_place_rewrites_current_and_stack() {
+        let tree = test_tree();
+        let mut state = ModeState::new("Default".to_owned());
+        state.push_temporary("Combat", &tree).unwrap();
+        state.rename_in_place("Combat", "Fighter");
+        assert_eq!(state.current(), "Fighter");
+        state.pop_temporary();
+        assert_eq!(state.current(), "Default");
+    }
+
+    #[test]
+    fn rename_in_place_no_match_is_no_op() {
+        let tree = test_tree();
+        let mut state = ModeState::new("Default".to_owned());
+        state.push_temporary("Combat", &tree).unwrap();
+        state.rename_in_place("Nope", "Whatever");
+        assert_eq!(state.current(), "Combat");
     }
 
     // --- cycle ---

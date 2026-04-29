@@ -48,7 +48,7 @@ pub struct Engine {
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Receiver<EngineCommand>,
     callbacks: CallbackRegistry,
-    mode_state: ModeState,
+    pub(crate) mode_state: ModeState,
     /// Reused across frames to avoid per-frame allocation.
     event_buffer: Vec<InputEvent>,
     /// Reused across frames to batch output cache writes.

@@ -2244,3 +2244,456 @@ fn add_mode_returns_err_when_persist_fails() {
             .contains("Approach")
     );
 }
+
+// ---------------------------------------------------------------------------
+// F7 mode CRUD: RenameMode
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rename_mode_renames_tree_and_persists() {
+    let (mut engine, state, tx, _dir, path) = make_engine_with_disk_profile();
+    tx.send(EngineCommand::RenameMode {
+        from: "Combat".to_owned(),
+        to: "Fighter".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    let modes = s.active_profile.as_ref().unwrap().modes();
+    assert!(modes.contains("Fighter"));
+    assert!(!modes.contains("Combat"));
+    drop(s);
+
+    let reloaded = Profile::load(&path).unwrap();
+    assert!(reloaded.modes().contains("Fighter"));
+}
+
+#[test]
+fn rename_mode_cascades_into_mappings() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.toml");
+    let mappings = vec![Mapping {
+        input: axis_addr(0),
+        mode: "Combat".to_owned(),
+        name: None,
+        actions: vec![Action::Invert],
+    }];
+    let profile = make_profile(three_mode_tree(), mappings);
+    profile.save(&path).unwrap();
+
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    {
+        let mut s = state.write();
+        s.profile_path = Some(path.clone());
+        s.engine_status = EngineStatus::Running;
+    }
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+        PathBuf::new(),
+    );
+    tx.send(EngineCommand::RenameMode {
+        from: "Combat".to_owned(),
+        to: "Fighter".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    assert_eq!(
+        s.active_profile.as_ref().unwrap().mappings()[0].mode,
+        "Fighter"
+    );
+}
+
+#[test]
+fn rename_mode_cascades_into_startup_mode() {
+    let (mut engine, state, tx, _dir, _path) = make_engine_with_disk_profile();
+    tx.send(EngineCommand::RenameMode {
+        from: "Default".to_owned(),
+        to: "Root".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    assert_eq!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .settings()
+            .startup_mode(),
+        "Root"
+    );
+}
+
+#[test]
+fn rename_mode_cascades_into_runtime_state() {
+    let (mut engine, state, tx, _dir, _path) = make_engine_with_disk_profile();
+    // Force into Combat first; this populates current_mode + mode_force.
+    tx.send(EngineCommand::ForceMode {
+        mode: "Combat".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    tx.send(EngineCommand::RenameMode {
+        from: "Combat".to_owned(),
+        to: "Fighter".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    assert_eq!(
+        s.current_mode, "Fighter",
+        "current_mode should track rename"
+    );
+    assert_eq!(
+        s.mode_force.as_ref().map(|f| f.mode.as_str()),
+        Some("Fighter"),
+        "mode_force should track rename"
+    );
+}
+
+#[test]
+fn rename_mode_rejects_collision() {
+    let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine.handle_command(EngineCommand::RenameMode {
+        from: "Combat".to_owned(),
+        to: "Landing".to_owned(),
+    });
+    assert!(err.is_err());
+    // Profile unchanged.
+    let s = state.read();
+    assert!(
+        s.active_profile
+            .as_ref()
+            .unwrap()
+            .modes()
+            .contains("Combat")
+    );
+    assert!(
+        s.active_profile
+            .as_ref()
+            .unwrap()
+            .modes()
+            .contains("Landing")
+    );
+}
+
+#[test]
+fn rename_mode_rejects_unknown_from() {
+    let (mut engine, _state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine.handle_command(EngineCommand::RenameMode {
+        from: "Nope".to_owned(),
+        to: "Whatever".to_owned(),
+    });
+    assert!(err.is_err());
+}
+
+#[test]
+fn rename_mode_rejects_empty_to() {
+    let (mut engine, _state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine.handle_command(EngineCommand::RenameMode {
+        from: "Combat".to_owned(),
+        to: "".to_owned(),
+    });
+    assert!(err.is_err());
+}
+
+#[test]
+fn rename_mode_rejects_when_cycle_would_collapse() {
+    use crate::action::{CycleModes, Mapping, ModeChangeStrategy};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.toml");
+    let mappings = vec![Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::ChangeMode {
+            strategy: ModeChangeStrategy::Cycle {
+                modes: CycleModes::new(vec!["Combat".to_owned(), "Landing".to_owned()]).unwrap(),
+            },
+        }],
+    }];
+    let profile = make_profile(three_mode_tree(), mappings);
+    profile.save(&path).unwrap();
+
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    {
+        let mut s = state.write();
+        s.profile_path = Some(path.clone());
+        s.engine_status = EngineStatus::Running;
+    }
+    let (_tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+        PathBuf::new(),
+    );
+
+    let err = engine.handle_command(EngineCommand::RenameMode {
+        from: "Combat".to_owned(),
+        to: "Landing".to_owned(),
+    });
+    assert!(err.is_err(), "rename collapsing the cycle must be rejected");
+
+    // Profile unchanged.
+    let s = state.read();
+    assert!(
+        s.active_profile
+            .as_ref()
+            .unwrap()
+            .modes()
+            .contains("Combat")
+    );
+    assert!(
+        s.active_profile
+            .as_ref()
+            .unwrap()
+            .modes()
+            .contains("Landing")
+    );
+    let _ = _tx;
+}
+
+#[test]
+fn rename_mode_rewrites_switch_to_action() {
+    use crate::action::{Mapping, ModeChangeStrategy};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.toml");
+    let mappings = vec![Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::ChangeMode {
+            strategy: ModeChangeStrategy::SwitchTo {
+                mode: "Combat".to_owned(),
+            },
+        }],
+    }];
+    let profile = make_profile(three_mode_tree(), mappings);
+    profile.save(&path).unwrap();
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    {
+        let mut s = state.write();
+        s.profile_path = Some(path.clone());
+        s.engine_status = EngineStatus::Running;
+    }
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+        PathBuf::new(),
+    );
+
+    tx.send(EngineCommand::RenameMode {
+        from: "Combat".to_owned(),
+        to: "Fighter".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    let action = &s.active_profile.as_ref().unwrap().mappings()[0].actions[0];
+    match action {
+        Action::ChangeMode {
+            strategy: ModeChangeStrategy::SwitchTo { mode },
+        } => assert_eq!(mode, "Fighter"),
+        other => panic!("expected SwitchTo with renamed target, got {other:?}"),
+    }
+}
+
+#[test]
+fn rename_mode_rewrites_temporary_action() {
+    use crate::action::{Mapping, ModeChangeStrategy};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.toml");
+    let mappings = vec![Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::ChangeMode {
+            strategy: ModeChangeStrategy::Temporary {
+                mode: "Combat".to_owned(),
+            },
+        }],
+    }];
+    let profile = make_profile(three_mode_tree(), mappings);
+    profile.save(&path).unwrap();
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    {
+        let mut s = state.write();
+        s.profile_path = Some(path.clone());
+        s.engine_status = EngineStatus::Running;
+    }
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+        PathBuf::new(),
+    );
+
+    tx.send(EngineCommand::RenameMode {
+        from: "Combat".to_owned(),
+        to: "Fighter".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    let action = &s.active_profile.as_ref().unwrap().mappings()[0].actions[0];
+    match action {
+        Action::ChangeMode {
+            strategy: ModeChangeStrategy::Temporary { mode },
+        } => assert_eq!(mode, "Fighter"),
+        other => panic!("expected Temporary with renamed target, got {other:?}"),
+    }
+}
+
+#[test]
+fn rename_mode_rewrites_cycle_action() {
+    use crate::action::{CycleModes, Mapping, ModeChangeStrategy};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.toml");
+    let mappings = vec![Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::ChangeMode {
+            strategy: ModeChangeStrategy::Cycle {
+                modes: CycleModes::new(vec!["Combat".to_owned(), "Landing".to_owned()]).unwrap(),
+            },
+        }],
+    }];
+    let profile = make_profile(three_mode_tree(), mappings);
+    profile.save(&path).unwrap();
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    {
+        let mut s = state.write();
+        s.profile_path = Some(path.clone());
+        s.engine_status = EngineStatus::Running;
+    }
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+        PathBuf::new(),
+    );
+
+    tx.send(EngineCommand::RenameMode {
+        from: "Combat".to_owned(),
+        to: "Fighter".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let s = state.read();
+    let action = &s.active_profile.as_ref().unwrap().mappings()[0].actions[0];
+    match action {
+        Action::ChangeMode {
+            strategy: ModeChangeStrategy::Cycle { modes },
+        } => assert_eq!(modes.modes(), &["Fighter".to_owned(), "Landing".to_owned()]),
+        other => panic!("expected Cycle with renamed target, got {other:?}"),
+    }
+}
+
+#[test]
+fn rename_mode_rewrites_multi_entry_stack() {
+    // Spec 917: rename_in_place must rewrite every occurrence of `from` in
+    // both `current` and the stack, preserving order. We verify both:
+    //   (a) a stack entry (not current) is rewritten, and
+    //   (b) current is rewritten.
+    //
+    // Sequence (avoiding cycle-detection rejection):
+    //   switch_to "Combat" → push_temporary "Landing"
+    //   Now: stack = ["Combat"], current = "Landing"
+    //   rename "Combat" → "Fighter"
+    //   Expect: current stays "Landing", pop → "Fighter"
+    //
+    //   Then separately: push_temporary "Combat" from "Default" baseline,
+    //   rename, verify current rewritten.
+    let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
+
+    let tree = state
+        .read()
+        .active_profile
+        .as_ref()
+        .unwrap()
+        .modes()
+        .clone();
+
+    // Part A: stack entry is rewritten.
+    // switch_to resets the stack, sets current = "Combat".
+    engine.mode_state.switch_to("Combat", &tree).unwrap();
+    // push_temporary saves "Combat" on the stack, sets current = "Landing".
+    engine.mode_state.push_temporary("Landing", &tree).unwrap();
+    assert_eq!(engine.mode_state.current(), "Landing");
+
+    engine
+        .handle_command(EngineCommand::RenameMode {
+            from: "Combat".to_owned(),
+            to: "Fighter".to_owned(),
+        })
+        .unwrap();
+
+    // current is "Landing" — unaffected.
+    assert_eq!(engine.mode_state.current(), "Landing");
+    // Pop: the stacked "Combat" entry was rewritten to "Fighter".
+    engine.mode_state.pop_temporary();
+    assert_eq!(engine.mode_state.current(), "Fighter");
+
+    // Part B: current itself is rewritten.
+    // After the pop, current = "Fighter". Switch back to a known name.
+    // Re-acquire tree reflecting the rename already applied.
+    let tree2 = state
+        .read()
+        .active_profile
+        .as_ref()
+        .unwrap()
+        .modes()
+        .clone();
+    engine.mode_state.switch_to("Fighter", &tree2).unwrap();
+    assert_eq!(engine.mode_state.current(), "Fighter");
+
+    engine
+        .handle_command(EngineCommand::RenameMode {
+            from: "Fighter".to_owned(),
+            to: "Ace".to_owned(),
+        })
+        .unwrap();
+
+    assert_eq!(engine.mode_state.current(), "Ace");
+}

@@ -444,8 +444,66 @@ impl Engine {
                 }
                 tracing::info!(target: "engine", mode = %name, parent = %parent_name, "AddMode applied");
             }
-            EngineCommand::RenameMode { .. } => {
-                // Implemented in Task 11.
+            EngineCommand::RenameMode { from, to } => {
+                if to.trim().is_empty() {
+                    return Err(crate::error::EngineError::InvalidConfig {
+                        reason: "mode name cannot be empty".to_owned(),
+                    });
+                }
+                if from == to {
+                    return Ok(());
+                }
+                let path = { self.state.read().profile_path.clone() };
+                let mut state = self.state.write();
+                let Some(profile) = state.active_profile.as_mut() else {
+                    tracing::warn!(target: "engine", "RenameMode dispatched with no profile; ignoring");
+                    return Ok(());
+                };
+
+                // Step 1: tree rewrite (errors on missing-from / collision).
+                let new_tree = profile.modes().with_renamed(&from, &to)?;
+                // Step 2: pre-validate + cascade across mappings + startup.
+                let touched = profile.rename_mode_refs(&from, &to)?;
+                profile.set_modes(new_tree);
+
+                // Step 3: runtime-state cascade.
+                if state.current_mode == from {
+                    to.clone_into(&mut state.current_mode);
+                }
+                if let Some(force) = state.mode_force.as_mut() {
+                    if force.mode == from {
+                        to.clone_into(&mut force.mode);
+                    }
+                }
+                drop(state);
+
+                self.mode_state.rename_in_place(&from, &to);
+
+                if let Some(path) = path.as_ref() {
+                    self.state
+                        .read()
+                        .active_profile
+                        .as_ref()
+                        .unwrap()
+                        .save(path)
+                        .map_err(|e| {
+                            tracing::error!(
+                                target: "engine",
+                                path = %path.display(),
+                                error = %e,
+                                "failed to persist RenameMode"
+                            );
+                            e
+                        })?;
+                }
+
+                tracing::info!(
+                    target: "engine",
+                    from = %from,
+                    to = %to,
+                    mappings_touched = touched,
+                    "RenameMode applied"
+                );
             }
             EngineCommand::DeleteMode { .. } => {
                 // Implemented in Task 12.
