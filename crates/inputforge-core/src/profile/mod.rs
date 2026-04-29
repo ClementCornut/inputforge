@@ -228,6 +228,30 @@ impl Profile {
         self.calibrations = entries;
     }
 
+    /// Replace the mode tree wholesale.
+    ///
+    /// Caller is responsible for ensuring the new tree is consistent with
+    /// `settings().startup_mode()` and any mode names referenced by mappings
+    /// or action graphs. Engine handlers do this validation before calling.
+    pub fn set_modes(&mut self, modes: ModeTree) {
+        self.modes = modes;
+    }
+
+    /// Drop every mapping whose `mode` field equals `mode`.
+    ///
+    /// Returns the count of mappings removed; used by tracing events and the
+    /// destructive-confirm dialog's affected-mappings count.
+    ///
+    /// Infallible by contract — `DeleteMode` invokes this in a loop after the
+    /// tree mutation has already been applied, and a partial cascade would
+    /// leave the profile in an inconsistent state. The signature must remain
+    /// `usize`, never `Result<usize, _>`.
+    pub fn remove_mappings_for_mode(&mut self, mode: &str) -> usize {
+        let before = self.mappings.len();
+        self.mappings.retain(|m| m.mode != mode);
+        before - self.mappings.len()
+    }
+
     /// Update the profile display name.
     pub fn set_name(&mut self, name: String) {
         self.name = name;
@@ -845,5 +869,65 @@ enabled = true
 
         assert_eq!(profile.mappings().len(), 0);
         assert!(profile.find_mapping(&test_input(), "Default").is_none());
+    }
+
+    // --- set_modes / remove_mappings_for_mode ---
+
+    #[test]
+    fn set_modes_replaces_tree() {
+        let mut profile = minimal_profile();
+        let new_modes = test_modes();
+        profile.set_modes(new_modes.clone());
+        assert_eq!(profile.modes(), &new_modes);
+    }
+
+    #[test]
+    fn remove_mappings_for_mode_drops_matching_and_returns_count() {
+        use crate::action::Mapping;
+
+        let modes = test_modes();
+        let mut profile = Profile::new(
+            "Counted".to_owned(),
+            vec![],
+            modes,
+            vec![
+                Mapping {
+                    input: test_input(),
+                    mode: "Combat".to_owned(),
+                    name: None,
+                    actions: vec![Action::Invert],
+                },
+                Mapping {
+                    input: InputAddress {
+                        device: DeviceId("dev-1".to_owned()),
+                        input: InputId::Button { index: 0 },
+                    },
+                    mode: "Combat".to_owned(),
+                    name: None,
+                    actions: vec![Action::Invert],
+                },
+                Mapping {
+                    input: test_input(),
+                    mode: "Default".to_owned(),
+                    name: None,
+                    actions: vec![Action::Invert],
+                },
+            ],
+            vec![],
+            "Default".to_owned(),
+        );
+
+        let removed = profile.remove_mappings_for_mode("Combat");
+        assert_eq!(removed, 2);
+        assert_eq!(profile.mappings().len(), 1);
+        assert_eq!(profile.mappings()[0].mode, "Default");
+    }
+
+    #[test]
+    fn remove_mappings_for_mode_returns_zero_for_unmapped_mode() {
+        let mut profile = minimal_profile();
+        let removed = profile.remove_mappings_for_mode("Combat");
+        assert_eq!(removed, 0);
+        assert_eq!(profile.mappings().len(), 1);
     }
 }
