@@ -139,9 +139,25 @@ mod tests {
         }
     }
 
-    /// Contract: after Task 18, the rendered HTML must contain the `if-layout`
-    /// class (`Frame::Layout` is mounted) and must NOT contain
-    /// `if-placeholder-shell` (`PlaceholderShell` is gone).
+    /// Verifies that when `frame::Layout` is mounted with a fully-stubbed
+    /// context, the rendered HTML carries the `if-layout` class and does NOT
+    /// carry `if-placeholder-shell`.
+    ///
+    /// # Scope — what this test does NOT cover
+    ///
+    /// This test renders `frame_layout_harness`, **not** `app_root`.
+    /// `app_root` calls `use_context::<RawHandles>()` and
+    /// `use_context::<LaunchParams>()`, which panic in SSR; the harness works
+    /// around this by providing those contexts itself.
+    ///
+    /// As a result:
+    /// * A regression where `app_root` reverts to mounting `PlaceholderShell`
+    ///   instead of `frame::Layout` would **not** be caught by this test.
+    /// * The correctness of the mounting decision in `app_root` (line 76:
+    ///   `frame::Layout {}`) is verified by code review only.
+    ///
+    /// A future integration test that exercises `app_root` directly (requiring
+    /// a headless desktop runtime) would close this gap.
     #[test]
     fn app_root_mounts_frame_layout_not_placeholder_shell() {
         let mut vdom = VirtualDom::new(frame_layout_harness);
