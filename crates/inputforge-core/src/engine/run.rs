@@ -594,8 +594,35 @@ impl Engine {
                     "DeleteMode applied"
                 );
             }
-            EngineCommand::SetDefaultMode { .. } => {
-                // Implemented in Task 13.
+            EngineCommand::SetDefaultMode { name } => {
+                if name.trim().is_empty() {
+                    return Err(crate::error::EngineError::InvalidConfig {
+                        reason: "startup mode name cannot be empty".to_owned(),
+                    });
+                }
+                let path = { self.state.read().profile_path.clone() };
+                let mut state = self.state.write();
+                let Some(profile) = state.active_profile.as_mut() else {
+                    tracing::warn!(target: "engine", "SetDefaultMode dispatched with no profile; ignoring");
+                    return Ok(());
+                };
+                if !profile.modes().contains(&name) {
+                    return Err(crate::error::EngineError::ModeNotFound { name: name.clone() });
+                }
+                profile.set_startup_mode(name.clone());
+
+                if let Some(path) = path.as_ref() {
+                    profile.save(path).map_err(|e| {
+                        tracing::error!(
+                            target: "engine",
+                            path = %path.display(),
+                            error = %e,
+                            "failed to persist SetDefaultMode"
+                        );
+                        e
+                    })?;
+                }
+                tracing::info!(target: "engine", mode = %name, "SetDefaultMode applied");
             }
             EngineCommand::RestoreSnapshot { id } => {
                 let path = self.state.read().profile_path.clone();

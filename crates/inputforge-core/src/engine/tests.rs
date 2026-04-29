@@ -2985,3 +2985,73 @@ fn delete_mode_resets_when_active_is_descendant() {
         "stack must be purged of removed names"
     );
 }
+
+// ---------------------------------------------------------------------------
+// F7 mode CRUD: SetDefaultMode
+// ---------------------------------------------------------------------------
+
+#[test]
+fn set_default_mode_updates_startup_mode_and_persists() {
+    let (mut engine, state, tx, _dir, path) = make_engine_with_disk_profile();
+    tx.send(EngineCommand::SetDefaultMode {
+        name: "Combat".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    assert_eq!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .settings()
+            .startup_mode(),
+        "Combat"
+    );
+    let reloaded = Profile::load(&path).unwrap();
+    assert_eq!(reloaded.settings().startup_mode(), "Combat");
+}
+
+#[test]
+fn set_default_mode_rejects_unknown_name() {
+    let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine.handle_command(EngineCommand::SetDefaultMode {
+        name: "Nope".to_owned(),
+    });
+    assert!(err.is_err());
+    assert_eq!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .settings()
+            .startup_mode(),
+        "Default"
+    );
+}
+
+#[test]
+fn set_default_mode_rejects_empty_name() {
+    let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine.handle_command(EngineCommand::SetDefaultMode {
+        name: "".to_owned(),
+    });
+    assert!(err.is_err());
+    // Whitespace-only also rejected.
+    let err = engine.handle_command(EngineCommand::SetDefaultMode {
+        name: "   ".to_owned(),
+    });
+    assert!(err.is_err());
+    assert_eq!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .settings()
+            .startup_mode(),
+        "Default"
+    );
+}

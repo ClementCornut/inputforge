@@ -237,6 +237,13 @@ impl Profile {
         self.modes = modes;
     }
 
+    /// Set the profile's startup mode.
+    ///
+    /// Caller must validate that `mode` exists in the profile's mode tree.
+    pub fn set_startup_mode(&mut self, mode: String) {
+        self.settings.set_startup_mode(mode);
+    }
+
     /// Drop every mapping whose `mode` field equals `mode`.
     ///
     /// Returns the count of mappings removed; used by tracing events and the
