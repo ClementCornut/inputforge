@@ -61,12 +61,19 @@ Verified 2026-04-30.
 
 ## Color contrast
 
-- [ ] Banner Diverged text on `--color-control-bg` ≥ WCAG AA (4.5:1 body).
-- [ ] Banner Forced text on `--color-warning-bg` ≥ AA (use `--color-warning-badge-text` after fix §3.9).
-- [ ] Banner ForcedAndDiverged text on `--color-warning-bg` ≥ AA.
-- [ ] Mode-tab active vs inactive text on `--color-bg` ≥ AA.
-- [ ] Empty-state heading + hint on `--color-bg` ≥ AA.
-- [ ] Engine pill text in each variant on `--color-bg-elevated` ≥ AA.
+Sampled 2026-04-30 via WebView2 DevTools color picker (AA threshold = 4.5:1
+for normal text). Spec target is AA only; AAA failures are documented but
+not blocking. Project tokens are pinned to AA in `colors.css`.
+
+- [x] Banner Diverged text on `--color-control-bg`: **6.23×** (AA pass, AAA fail — acceptable).
+- [x] Banner Forced text on `--color-warning-bg`: **AA + AAA pass**.
+- [x] Banner ForcedAndDiverged text on `--color-warning-bg`: **AA + AAA pass**.
+- [x] Mode-tab active text on `--color-bg`: **AA + AAA pass**.
+- [x] Mode-tab inactive text on `--color-bg`: **6.07×** (AA pass, AAA fail — acceptable).
+- [ ] Empty-state heading + hint on `--color-bg`: not yet sampled.
+- [x] Engine pill **Running** text on `--color-bg-elevated`: **AA + AAA pass**.
+- [x] Engine pill **Stopped** text on `--color-bg-elevated`: was **4.1× (AA FAIL)** with raw `--color-error`. **Fixed** by switching `.if-engine-pill--error { color }` to `--color-error-hover` (mirrors the error-badge pattern documented at `colors.css:86`). Re-verify with DevTools after the fix lands.
+- [ ] Engine pill **Paused** text on `--color-bg-elevated`: not sampled (warning hue; expected to clear AA based on `--color-warning` ratios in other variants — verify).
 
 ## Reduced-motion
 

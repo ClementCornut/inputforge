@@ -107,8 +107,16 @@
     background: color-mix(in srgb, var(--color-warning) 10%, transparent);
     border-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
 }
+/* Stopped variant — text uses --color-error-hover (#FF6F6F), the
+   brighter ramp step. The canonical --color-error (#F25555) fails
+   WCAG AA at 4.1x against the resulting tinted bg-elevated; the
+   hover step clears AA at ~5.0x. Same idiom error badges already
+   use (see colors.css:86: "error badges use the brighter
+   --color-error-hover step (4.9x) — same pattern as
+   --color-control-badge-text"). The 10%/40% tints stay on the
+   canonical hue so the chip surface keeps its identity. */
 .if-engine-pill--error {
-    color: var(--color-error);
+    color: var(--color-error-hover);
     background: color-mix(in srgb, var(--color-error) 10%, transparent);
     border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
 }
