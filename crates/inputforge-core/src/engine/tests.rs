@@ -2177,6 +2177,25 @@ fn add_mode_rejects_empty_name() {
     assert_eq!(modes.len(), 3);
 }
 
+/// 64-grapheme cap, mirrored from the GUI's inline editor. One test
+/// locks the contract for `AddMode`; `RenameMode` and `SetDefaultMode`
+/// route the same `name` argument through the same shared validator
+/// (`validate_mode_name_for_engine`) so this single assertion covers
+/// all three command paths.
+#[test]
+fn add_mode_rejects_overlong_name() {
+    let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let overlong = "x".repeat(65);
+    let err = engine.handle_command(EngineCommand::AddMode {
+        name: overlong,
+        parent: None,
+    });
+    assert!(err.is_err(), "expected error on 65-grapheme name");
+    let s = state.read();
+    let modes = s.active_profile.as_ref().unwrap().modes().all_modes();
+    assert_eq!(modes.len(), 3, "profile must remain unchanged on rejection");
+}
+
 #[test]
 fn add_mode_rejects_duplicate_name() {
     let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();

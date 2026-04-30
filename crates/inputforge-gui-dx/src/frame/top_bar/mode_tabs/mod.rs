@@ -291,6 +291,7 @@ pub(crate) fn ModeTabs() -> Element {
                                 r#type: "button",
                                 class: if is_active { "if-mode-tab if-mode-tab--active" } else { "if-mode-tab" },
                                 role: "tab",
+                                title: "{name}",
                                 "aria-selected": "{is_active}",
                                 "aria-haspopup": "menu",
                                 "aria-expanded": "{menu_open}",

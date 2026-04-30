@@ -232,6 +232,7 @@
 }
 
 .if-mode-tab {
+    position: relative;
     background: transparent;
     border: 0;
     color: var(--color-text-muted);
@@ -241,14 +242,26 @@
     letter-spacing: 0.01em;
     height: 100%;
     cursor: pointer;
-    /* 3px underline matches the canonical .if-tabs indicator weight;
-       margin-bottom: -1px overlaps the top-bar's --color-border-strong
-       seam so the active strip reads as a panel-edge indicator. */
-    border-bottom: 3px solid transparent;
+    /* 2px transparent bottom border reserves the indicator strip's
+       geometry so swapping the ::after on/off doesn't reflow the bar.
+       The active accent itself moved to a `::after` pseudo-element
+       (see `.if-mode-tab--active::after` below) so the indicator is
+       layout-immune to the ellipsis-truncation flex shrinking. */
+    border-bottom: 2px solid transparent;
     margin-bottom: -1px;
     display: flex;
     align-items: center;
     gap: 0.375rem;
+    /* Long mode names truncate with an ellipsis at 14rem rather than
+       elastically resizing the tab. `min-width: 0` is required so the
+       flex parent permits the tab to shrink below its intrinsic
+       content width on narrow viewports. The native `title` attribute
+       on the per-tab button surfaces the full name on hover. */
+    max-width: 14rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
     transition:
         color var(--duration-base) var(--easing-fast),
         border-color var(--duration-base) var(--easing-fast);
@@ -260,10 +273,26 @@
 
 /* Active tab uses --color-primary (the One Action Color) for the
    underline, not --color-border-focus — focus-cyan is reserved for
-   focus rings per the token's name and DESIGN.md section 7. */
+   focus rings per the token's name and DESIGN.md section 7.
+   The accent strip is rendered as a `::after` pseudo-element rather
+   than a `border-bottom-color` swap so the indicator is independent
+   of the tab's box-model: the ellipsis-truncated label can shrink
+   below its content width without dragging the underline with it. */
 .if-mode-tab--active {
     color: var(--color-text);
-    border-bottom-color: var(--color-primary);
+}
+
+.if-mode-tab--active::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    /* Anchored at -1px so the strip overlays the top-bar's
+       --color-border-strong bottom seam, mirroring the previous
+       `margin-bottom: -1px` overlap. */
+    bottom: -1px;
+    height: 3px;
+    background: var(--color-primary);
 }
 
 /* Roving tabindex hands focus to the active tab on arrow nav. Without a
@@ -415,6 +444,7 @@
    against the bar height. */
 .if-mode-tab--add-inline,
 .if-mode-tab--rename-inline {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -428,8 +458,23 @@
    family so it reads as a structured readout, not a stray prose
    string. Stays in --font-sans (not mono) because the message is
    prose with apostrophes and quotes ("'Foo' already exists") that
-   the mono face would render with off-balance spacing. */
+   the mono face would render with off-balance spacing.
+   Absolute-positioned beneath the input (top: 100%) so the message
+   overlays the bar bottom seam without forcing the inline editor
+   slot to grow horizontally — long error strings would previously
+   stretch the tablist and reflow the layout. `pointer-events: none`
+   keeps the caption out of the click target since it's a readout,
+   not an interaction surface. */
 .if-mode-tab__error {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: var(--space-1);
+    max-width: 24rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
     font-size: var(--text-sm);
     font-weight: var(--weight-medium);
     letter-spacing: 0.01em;

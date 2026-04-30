@@ -1,6 +1,20 @@
 //! Pure logic for mode-tabs runtime-marker derivation and name validation.
 
 use inputforge_core::state::ForcedMode;
+use unicode_segmentation::UnicodeSegmentation;
+
+/// Maximum mode-name length, measured in extended grapheme clusters.
+///
+/// Mirrors the engine-side cap in `engine/run.rs` so the GUI rejects
+/// over-length names inline before dispatching the command and the
+/// engine still rejects any out-of-band caller (scripted commands,
+/// migrated profiles) by the same yardstick. Keep these two
+/// constants in sync if the policy changes.
+#[allow(
+    dead_code,
+    reason = "consumed by inline editors via NameValidation::TooLong"
+)]
+pub(crate) const MAX_MODE_NAME_GRAPHEMES: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MarkerColor {
@@ -42,6 +56,7 @@ pub(crate) enum NameValidation {
     Valid(String),
     Empty,
     Duplicate { name: String },
+    TooLong { len: usize, max: usize },
 }
 
 /// Validate a candidate mode name for inline add or rename.
@@ -65,6 +80,19 @@ pub(crate) fn validate_mode_name(
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return NameValidation::Empty;
+    }
+    // Grapheme-aware length check sits between empty and duplicate so
+    // an over-length name surfaces a length error rather than a
+    // duplicate-with-truncation false positive. `graphemes(_, true)`
+    // requests extended grapheme clusters (UAX #29 extended), which
+    // matches the user-visible "character" count for emoji + ZWJ
+    // sequences and combining marks.
+    let grapheme_count = UnicodeSegmentation::graphemes(trimmed, true).count();
+    if grapheme_count > MAX_MODE_NAME_GRAPHEMES {
+        return NameValidation::TooLong {
+            len: grapheme_count,
+            max: MAX_MODE_NAME_GRAPHEMES,
+        };
     }
     let is_duplicate = existing
         .iter()
@@ -174,6 +202,52 @@ mod tests {
             NameValidation::Duplicate {
                 name: "Landing".to_owned(),
             }
+        );
+    }
+
+    #[test]
+    fn validate_too_long() {
+        // 65 ASCII chars = 65 graphemes, one past the cap.
+        let raw = "x".repeat(65);
+        assert_eq!(
+            validate_mode_name(&raw, &modes(), None),
+            NameValidation::TooLong {
+                len: 65,
+                max: MAX_MODE_NAME_GRAPHEMES,
+            }
+        );
+    }
+
+    #[test]
+    fn validate_at_cap_is_valid() {
+        // Exactly 64 graphemes is on the boundary and must validate.
+        let raw = "x".repeat(MAX_MODE_NAME_GRAPHEMES);
+        assert_eq!(
+            validate_mode_name(&raw, &modes(), None),
+            NameValidation::Valid(raw.clone())
+        );
+    }
+
+    #[test]
+    fn validate_grapheme_aware_emoji() {
+        // "👨‍👩‍👧‍👦" is one extended grapheme cluster (family ZWJ
+        // sequence, 7 codepoints, 25 bytes) and "🇫🇷" is one (regional-
+        // indicator pair, 2 codepoints, 8 bytes). Together with three
+        // ASCII chars the input has 5 user-visible graphemes — well
+        // under the cap, so a grapheme-aware checker accepts it. A
+        // naive `chars().count()` would yield 12 (still under the cap
+        // but over-counting), and a byte-count comparison would yield
+        // 38 (still under for this string but the wrong yardstick).
+        // The test pins the contract: graphemes are what we count.
+        let raw = "ab👨\u{200D}👩\u{200D}👧\u{200D}👦c🇫🇷";
+        let grapheme_count = UnicodeSegmentation::graphemes(raw, true).count();
+        assert_eq!(grapheme_count, 5);
+        // chars() over-counts (12 codepoints vs 5 graphemes) — proves
+        // the input is non-trivially multi-codepoint.
+        assert!(raw.chars().count() > grapheme_count);
+        assert_eq!(
+            validate_mode_name(raw, &modes(), None),
+            NameValidation::Valid(raw.to_owned())
         );
     }
 }

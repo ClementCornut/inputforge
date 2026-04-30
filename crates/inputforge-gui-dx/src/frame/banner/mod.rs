@@ -54,7 +54,13 @@ pub(crate) fn Banner() -> Element {
                             onclick: move |_| {
                                 let _ = cmd.send(EngineCommand::ForceMode { mode: edit_for_btn.clone() });
                             },
-                            "Activate {editing}"
+                            // Label is plain "Activate" — the editing
+                            // mode name is already <strong>-emphasized
+                            // two phrases upstream in the banner copy,
+                            // so echoing it on the button reads as
+                            // redundant and doubles the line length on
+                            // long mode names.
+                            "Activate"
                         }
                     }
                 }
@@ -106,7 +112,10 @@ pub(crate) fn Banner() -> Element {
                             onclick: move |_| {
                                 let _ = cmd_a.send(EngineCommand::ForceMode { mode: edit_for_btn.clone() });
                             },
-                            "Activate {editing}"
+                            // See Diverged arm above: plain "Activate"
+                            // because the editing mode name is already
+                            // <strong>-emphasized in the banner copy.
+                            "Activate"
                         }
                         Button {
                             variant: ButtonVariant::Ghost,

@@ -51,6 +51,9 @@ fn run_commit(
         NameValidation::Duplicate { name } => {
             error_msg.set(Some(format!("'{name}' already exists")));
         }
+        NameValidation::TooLong { len, max } => {
+            error_msg.set(Some(format!("Name is too long ({len}/{max} characters)")));
+        }
     }
 }
 

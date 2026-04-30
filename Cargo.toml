@@ -38,6 +38,9 @@ clap = { version = "4.5", features = ["derive"] }
 uuid = { version = "1.21", features = ["v4"] }
 ulid = { version = "1.2.1", features = ["serde"] }
 
+# Unicode text processing
+unicode-segmentation = "1.13"
+
 # Snapshot subsystem
 blake3 = "1.8.5"
 chrono = { version = "0.4.44", features = ["serde"] }

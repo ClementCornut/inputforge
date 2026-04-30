@@ -33,6 +33,39 @@ use super::output_handler::{
 /// excessive CPU usage. The OS scheduler may add jitter.
 const POLL_INTERVAL: Duration = Duration::from_millis(1);
 
+/// Maximum mode-name length, measured in extended grapheme clusters
+/// (UAX #29 extended). Mirrors the GUI-side cap in
+/// `inputforge-gui-dx::frame::top_bar::mode_tabs::logic` so the
+/// engine still rejects out-of-band callers (scripted commands,
+/// migrated profiles) by the same yardstick the inline editors use.
+/// Keep these two constants in sync if the policy changes.
+const MAX_MODE_NAME_GRAPHEMES: usize = 64;
+
+/// Returns `Err(InvalidConfig)` if `name` is empty or exceeds the
+/// grapheme-cluster cap. Shared by `AddMode`, `RenameMode`, and
+/// `SetDefaultMode` so the three handlers enforce identical policy.
+fn validate_mode_name_for_engine(
+    name: &str,
+    empty_reason: &str,
+) -> std::result::Result<(), crate::error::EngineError> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(crate::error::EngineError::InvalidConfig {
+            reason: empty_reason.to_owned(),
+        });
+    }
+    let grapheme_count =
+        unicode_segmentation::UnicodeSegmentation::graphemes(trimmed, true).count();
+    if grapheme_count > MAX_MODE_NAME_GRAPHEMES {
+        return Err(crate::error::EngineError::InvalidConfig {
+            reason: format!(
+                "mode name too long ({grapheme_count} graphemes, max {MAX_MODE_NAME_GRAPHEMES})"
+            ),
+        });
+    }
+    Ok(())
+}
+
 impl Engine {
     /// Run the main engine loop until shutdown.
     ///
@@ -407,11 +440,7 @@ impl Engine {
                 }
             }
             EngineCommand::AddMode { name, parent } => {
-                if name.trim().is_empty() {
-                    return Err(crate::error::EngineError::InvalidConfig {
-                        reason: "mode name cannot be empty".to_owned(),
-                    });
-                }
+                validate_mode_name_for_engine(&name, "mode name cannot be empty")?;
                 // Bind the read-guarded snapshot in its own scope before
                 // acquiring the write lock to avoid a non-reentrant deadlock
                 // if the rvalue temporary's drop point ever shifts.
@@ -440,11 +469,7 @@ impl Engine {
                 tracing::info!(target: "engine", mode = %name, parent = %parent_name, "AddMode applied");
             }
             EngineCommand::RenameMode { from, to } => {
-                if to.trim().is_empty() {
-                    return Err(crate::error::EngineError::InvalidConfig {
-                        reason: "mode name cannot be empty".to_owned(),
-                    });
-                }
+                validate_mode_name_for_engine(&to, "mode name cannot be empty")?;
                 if from == to {
                     return Ok(());
                 }
@@ -595,11 +620,7 @@ impl Engine {
                 );
             }
             EngineCommand::SetDefaultMode { name } => {
-                if name.trim().is_empty() {
-                    return Err(crate::error::EngineError::InvalidConfig {
-                        reason: "startup mode name cannot be empty".to_owned(),
-                    });
-                }
+                validate_mode_name_for_engine(&name, "startup mode name cannot be empty")?;
                 let path = { self.state.read().profile_path.clone() };
                 let mut state = self.state.write();
                 let Some(profile) = state.active_profile.as_mut() else {
