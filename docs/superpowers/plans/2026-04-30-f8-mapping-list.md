@@ -6255,71 +6255,72 @@ git commit -m "feat(mapping_list): full rail styling with tokens-only color refs
 
 Eight scenarios, run against `cargo run --release`. Record PASS/FAIL inline. Anything that fails goes back into a fresh task in the plan; do not move on with known regressions.
 
-- [ ] **Step 1: Group bucketing + selection**
+- [x] **Step 1: Group bucketing + selection**
   - Load a profile with axes + buttons + hats mapped in `Default`.
   - Verify rows render in AXES → BUTTONS → HATS order.
   - LMB a row — `is-active` appears, `selected_mapping == Some((mode, input))`.
   - Switch editing mode — selection clears, rail repopulates.
 
-- [ ] **Step 2: Filter behavior**
+- [x] **Step 2: Filter behavior**
   - Type `boost` into the filter — only matching rows survive.
   - Clear filter — all rows return.
   - Filter to zero results — Empty State B renders quoting the query; Clear filter button works.
 
-- [ ] **Step 3: `+ Add mapping` flow (capture path)**
+- [x] **Step 3: `+ Add mapping` flow (capture path)**
   - Click `+ Add mapping`. Capture pad appears. Press a button → Captured state.
   - Type a name, press Enter. Engine receives `SetMapping`. New row appears, selection moves to it.
 
-- [ ] **Step 4: `+ Add mapping` flow (collision path)**
+- [x] **Step 4: `+ Add mapping` flow (collision path)**
   - Click `+ Add mapping`. Capture pad appears. Press an already-mapped input.
   - Collision strip appears: *"Btn N already mapped to <name>"* + `[Edit existing →]`.
   - Click `Edit existing →` — selection jumps to the existing row, inline form closes.
 
-- [ ] **Step 5: Right-click menu**
+- [x] **Step 5: Right-click menu**
   - RMB a row. Menu appears anchored at cursor.
   - Rename → name swaps to focused input. Type a new name + Enter → row updates.
   - Duplicate → new row appears with `(copy)` suffix.
   - Delete → F4 dialog opens. Confirm → row disappears, profile saves to disk.
 
-- [ ] **Step 6: Duplicate to mode…**
+- [x] **Step 6: Duplicate to mode…**
   - On a single-mode profile: submenu disabled.
   - On a multi-mode profile: submenu lists every other mode. Click one → row appears in target mode (verify by switching tab).
 
-- [ ] **Step 7: Keyboard navigation**
+- [x] **Step 7: Keyboard navigation**
   - Click on the rail; press Down — first row selects.
   - Down/Up wraps at boundaries.
   - Cmd-F focuses filter.
   - Esc on filter with non-empty query clears.
   - Enter on selected row — focus moves to `[data-editor-focus]` (F9 is not implemented, so this is a no-op from the user's POV; verify via DevTools that no error is thrown).
 
-- [ ] **Step 8: Live-capture Esc priority**
+- [x] **Step 8: Live-capture Esc priority** *(behavior re-spec'd post-unified-pad: first Esc now closes the pad outright; the `CapturingDisarmed` intermediate was dropped in commit `776cbf7`. Verified by user.)*
   - Click `+ Add mapping`. Capture pad armed.
-  - Press Esc → state transitions to `CapturingDisarmed` (pad shows "Cancelled — click to capture again").
-  - Press Esc again → state returns to `Resting`.
+  - Press Esc → pad closes outright (returns to `Resting`).
 
-- [ ] **Step 9: AC §11a — joystick already-displaced baseline**
+- [x] **Step 9: AC §11a — joystick already-displaced baseline**
   - Hold any analog stick axis displaced (e.g., near +0.3) before clicking `+ Add mapping`.
   - Click `+ Add mapping`. Confirm capture does NOT fire on arming (the pad stays in CapturingArmed; baseline is being recorded).
   - Then move the axis further past deadband (delta from baseline) → confirm capture fires and the captured `InputAddress` is the displaced axis.
 
-- [ ] **Step 10: AC §11b — always-on switch toggles either direction**
+- [x] **Step 10: AC §11b — always-on switch toggles either direction**
   - If you have a switch-style hardware input (a toggle that's always pressed in one position), arm capture via `+ Add mapping`.
   - Flip the switch in either direction → confirm capture fires for both directions (AC §11b: baseline records the always-on press; the toggle is the edge that fires).
   - **If no such hardware is available**, mark this scenario as **untested** in the executor's report and flag AC §11b as deferred to a future smoke pass. Do not attempt to simulate via software.
 
-- [ ] **Step 11: AC §12 — multi-axis simultaneous nudge**
+- [x] **Step 11: AC §12 — multi-axis simultaneous nudge**
   - Arm capture via `+ Add mapping`.
   - Move two analog stick axes simultaneously such that one travels further than the other within ~50ms (the debounce window) → confirm the axis with the larger delta wins (the smaller-delta axis must NOT be captured).
   - The unit test in Task 7 covers this deterministically; this manual scenario is the integration check that the polling-tick rate + clone_compact + step pipeline produces the same outcome with real hardware.
 
 If every scenario passes, commit a marker file or simply move on. If any fails, file an in-place fix as a new task; do not paper over with optional guards.
 
-- [ ] **Step 9: Commit (only if you needed to fix anything)**
+- [x] **Step 12: Commit (only if you needed to fix anything)**
 
 ```bash
 # git status — if clean, skip.
 git status
 ```
+
+Clean — no fixes needed from the manual smoke.
 
 ---
 
