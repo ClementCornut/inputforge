@@ -338,9 +338,8 @@ pub(crate) fn AddInline(
                         },
                         "Edit existing"
                     }
-                    button {
-                        r#type: "button",
-                        class: "if-add-inline__close",
+                    Button {
+                        variant: ButtonVariant::Ghost,
                         onclick: move |_| {
                             state.set(AddState::Resting);
                             name.set(String::new());
