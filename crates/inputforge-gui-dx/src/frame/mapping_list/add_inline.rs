@@ -38,11 +38,12 @@ use std::sync::mpsc::Sender;
 
 use dioxus::prelude::*;
 
+use inputforge_core::action::Action;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{InputAddress, InputId};
 
 use crate::components::{Button, ButtonSize, ButtonVariant, IconButton, InputSize, TextInput};
-use crate::context::AppContext;
+use crate::context::{AppContext, MappingSummary};
 use crate::frame::mapping_list::source_label;
 use crate::frame::view_state::ViewState;
 use crate::icons::Icon as IconKind;
@@ -82,9 +83,15 @@ enum PadPhase {
 /// Free-function commit path. Keeps the per-arm closures `Fn` (no
 /// `FnMut` move-out errors when the same dispatch logic is referenced
 /// from both the Captured/Enter handler and the Captured/Add button).
+///
+/// `actions` is the full action vec to commit. For a fresh `+ Add
+/// mapping` flow it's `vec![]` (placeholder until F9's action editor
+/// lands). For a Duplicate flow it's the source mapping's cloned
+/// actions, looked up from `active_profile` at dispatch time.
 fn dispatch_add_helper(
     addr: InputAddress,
     name_value: &str,
+    actions: Vec<Action>,
     view: ViewState,
     commands: &Sender<EngineCommand>,
 ) {
@@ -98,7 +105,7 @@ fn dispatch_add_helper(
         } else {
             Some(trimmed.to_owned())
         },
-        actions: vec![],
+        actions,
     });
     let mut sel = view.selected_mapping;
     sel.set(Some((mode_now, addr)));
@@ -109,6 +116,26 @@ fn dispatch_add_helper(
     );
 }
 
+/// Resolve the actions vec to commit. `Some(source)` means we're in a
+/// Duplicate flow — clone the source mapping's actions from the active
+/// profile (or fall back to an empty vec if the source disappeared
+/// mid-flow). `None` means a fresh add — empty actions placeholder.
+fn resolve_actions(source: Option<&MappingSummary>, ctx: &AppContext) -> Vec<Action> {
+    match source {
+        None => Vec::new(),
+        Some(src) => ctx
+            .state
+            .read()
+            .active_profile
+            .as_ref()
+            .and_then(|p| {
+                p.find_mapping(&src.input, &src.mode)
+                    .map(|m| m.actions.clone())
+            })
+            .unwrap_or_default(),
+    }
+}
+
 #[component]
 #[allow(
     unused_qualifications,
@@ -116,11 +143,20 @@ fn dispatch_add_helper(
               on per-element event listeners with bound closures."
 )]
 pub(crate) fn AddInline(
-    /// When set to `true` from outside, expand directly into `CapturingArmed`,
-    /// skipping the Resting -> click step. The component clears this prop
-    /// back to `false` once the rising edge has been observed, so the
-    /// parent only needs to set it once per open request.
+    /// When set to `true` from outside, expand directly into
+    /// `Pad { Capturing }`, skipping the Resting -> click step. The
+    /// component clears this prop back to `false` once the rising edge
+    /// has been observed, so the parent only needs to set it once per
+    /// open request.
     force_expanded: Signal<bool>,
+    /// When set to `Some(source)` from outside (right-click "Duplicate"
+    /// in the context menu), open the pad in `Pad { Capturing }` with
+    /// the name pre-filled to `<source.name> (copy)` and stash the
+    /// source for the commit path so the dispatched `SetMapping`
+    /// carries the source's cloned actions instead of an empty vec.
+    /// The component clears this prop back to `None` once the rising
+    /// edge has been observed (one-shot, like `force_expanded`).
+    pending_duplicate: Signal<Option<MappingSummary>>,
 ) -> Element {
     tracing::trace!(target: "frame::render", region = "mapping_list::add_inline");
     let ctx = use_context::<AppContext>();
@@ -129,6 +165,10 @@ pub(crate) fn AddInline(
 
     let mut state: Signal<AddState> = use_signal(|| AddState::Resting);
     let mut name: Signal<String> = use_signal(String::new);
+    // Local stash of the duplicate source. Held throughout a single
+    // duplicate flow so Refresh-icon recapture and Add-commit can both
+    // see it. Cleared on Cancel / Esc / commit / Resting transitions.
+    let mut local_source: Signal<Option<MappingSummary>> = use_signal(|| None);
 
     // Honor `force_expanded` from the parent — used by EmptyZeroMappings'
     // primary button to skip the dashed-row click. The component clears
@@ -160,6 +200,44 @@ pub(crate) fn AddInline(
             });
             cap.start.call(CaptureFilter::Any);
             force_for_effect.set(false);
+        }
+    });
+
+    // Honor `pending_duplicate` from the parent — set by the right-click
+    // menu's Duplicate item. Pre-fill name with `<source.name> (copy)`,
+    // stash the source for the commit path, arm capture, and clear the
+    // parent's signal (one-shot rising edge, same pattern as
+    // `force_expanded`).
+    use_hook(|| {
+        let mut pending = pending_duplicate;
+        // Snapshot then drop the borrow before mutating `pending`.
+        let snapshot = pending.peek().clone();
+        if let Some(source) = snapshot {
+            let prefilled = format!("{} (copy)", source.name.as_deref().unwrap_or("(unnamed)"),);
+            let mut name = name;
+            name.set(prefilled);
+            let mut local = local_source;
+            local.set(Some(source));
+            let mut state = state;
+            state.set(AddState::Pad {
+                phase: PadPhase::Capturing,
+            });
+            cap.start.call(CaptureFilter::Any);
+            pending.set(None);
+        }
+    });
+    let mut pending_for_effect = pending_duplicate;
+    use_effect(move || {
+        let snapshot = pending_for_effect.read().clone();
+        if let Some(source) = snapshot {
+            let prefilled = format!("{} (copy)", source.name.as_deref().unwrap_or("(unnamed)"),);
+            name.set(prefilled);
+            local_source.set(Some(source));
+            state.set(AddState::Pad {
+                phase: PadPhase::Capturing,
+            });
+            cap.start.call(CaptureFilter::Any);
+            pending_for_effect.set(None);
         }
     });
 
@@ -229,6 +307,7 @@ pub(crate) fn AddInline(
         }
         state.set(AddState::Resting);
         name.set(String::new());
+        local_source.set(None);
     });
 
     // Collision drift: re-validate once per polling tick. If `existing` is
@@ -306,6 +385,7 @@ pub(crate) fn AddInline(
                         }
                         state.set(AddState::Resting);
                         name.set(String::new());
+                        local_source.set(None);
                     }
                     _ => break,
                 }
@@ -367,6 +447,11 @@ pub(crate) fn AddInline(
             let view_for_btn = view;
             let cmd_for_enter = ctx.commands.clone();
             let cmd_for_btn = ctx.commands.clone();
+            // For the commit path: clone the AppContext so closures can
+            // call `resolve_actions` to look up the duplicate source's
+            // actions in the active profile (or use vec![] for fresh add).
+            let ctx_for_enter = ctx.clone();
+            let ctx_for_btn = ctx.clone();
 
             rsx! {
                 div {
@@ -379,14 +464,18 @@ pub(crate) fn AddInline(
                         {
                             evt.prevent_default();
                             let n = name.read().clone();
+                            let source_snap = local_source.peek().clone();
+                            let actions = resolve_actions(source_snap.as_ref(), &ctx_for_enter);
                             dispatch_add_helper(
                                 addr.clone(),
                                 &n,
+                                actions,
                                 view_for_enter,
                                 &cmd_for_enter,
                             );
                             state.set(AddState::Resting);
                             name.set(String::new());
+                            local_source.set(None);
                         }
                     },
                     div { class: "if-add-inline__readout",
@@ -432,6 +521,7 @@ pub(crate) fn AddInline(
                             onclick: move |_| {
                                 state.set(AddState::Resting);
                                 name.set(String::new());
+                                local_source.set(None);
                             },
                             "Cancel"
                         }
@@ -442,14 +532,18 @@ pub(crate) fn AddInline(
                             onclick: move |_| {
                                 if let Some(addr) = &addr_for_btn {
                                     let n = name.read().clone();
+                                    let source_snap = local_source.peek().clone();
+                                    let actions = resolve_actions(source_snap.as_ref(), &ctx_for_btn);
                                     dispatch_add_helper(
                                         addr.clone(),
                                         &n,
+                                        actions,
                                         view_for_btn,
                                         &cmd_for_btn,
                                     );
                                     state.set(AddState::Resting);
                                     name.set(String::new());
+                                    local_source.set(None);
                                 }
                             },
                             "Add"
@@ -481,6 +575,7 @@ pub(crate) fn AddInline(
                             sel.set(Some((mode_now, existing_for_btn.clone())));
                             state.set(AddState::Resting);
                             name.set(String::new());
+                            local_source.set(None);
                         },
                         "Edit existing"
                     }
@@ -489,6 +584,7 @@ pub(crate) fn AddInline(
                         onclick: move |_| {
                             state.set(AddState::Resting);
                             name.set(String::new());
+                            local_source.set(None);
                         },
                         "Cancel"
                     }

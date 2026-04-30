@@ -223,7 +223,10 @@ pub(crate) fn MappingList() -> Element {
                         force.set(true);
                     }
                 }
-                AddInline { force_expanded: force_expand_add }
+                AddInline {
+                    force_expanded: force_expand_add,
+                    pending_duplicate: pending_duplicate,
+                }
             }
         };
     }
@@ -240,7 +243,10 @@ pub(crate) fn MappingList() -> Element {
                         q.set(String::new());
                     }
                 }
-                AddInline { force_expanded: force_expand_add }
+                AddInline {
+                    force_expanded: force_expand_add,
+                    pending_duplicate: pending_duplicate,
+                }
             }
         };
     }
@@ -287,7 +293,10 @@ pub(crate) fn MappingList() -> Element {
         div { class: "if-rail",
             FilterInput { value: filter_query, focused: filter_focused }
             { group_iter }
-            AddInline { force_expanded: force_expand_add }
+            AddInline {
+                force_expanded: force_expand_add,
+                pending_duplicate: pending_duplicate,
+            }
             ContextMenuMount {
                 menu_open: menu_open,
                 renaming: renaming,
@@ -295,7 +304,6 @@ pub(crate) fn MappingList() -> Element {
                 pending_duplicate: pending_duplicate,
             }
             DeleteDialogMount { delete_target: delete_target }
-            DuplicateWatcher { pending_duplicate: pending_duplicate }
         }
     }
 }
@@ -339,7 +347,6 @@ fn ContextMenuMount(
 ) -> Element {
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
-    let cap = use_context::<LiveCapture>();
 
     let Some((target_input, anchor_x, anchor_y)) = menu_open.read().clone() else {
         return rsx! {};
@@ -398,9 +405,12 @@ fn ContextMenuMount(
                 role: "menuitem",
                 class: "if-row-menu__item",
                 onclick: move |_| {
+                    // Just set pending_duplicate; AddInline observes the
+                    // rising edge, pre-fills the name with `<source.name>
+                    // (copy)`, stashes the source for actions-resolution
+                    // at commit, and arms LiveCapture itself.
                     let mut pd = pending_duplicate;
                     pd.set(Some(target_for_dup.clone()));
-                    cap.start.call(crate::patterns::live_capture::CaptureFilter::Any);
                     tracing::info!(
                         target: "f8::mapping_list",
                         action = "duplicate_arm",
@@ -580,83 +590,10 @@ pub(crate) fn DeleteDialogMount(delete_target: Signal<Option<MappingSummary>>) -
     }
 }
 
-#[component]
-#[allow(
-    unused_qualifications,
-    reason = "Dioxus 0.7 RSX macro emits redundant qualifications on event listeners."
-)]
-fn DuplicateWatcher(pending_duplicate: Signal<Option<MappingSummary>>) -> Element {
-    let ctx = use_context::<AppContext>();
-    let view = use_context::<ViewState>();
-    let cap = use_context::<LiveCapture>();
-
-    let editing = view.editing_mode;
-    let ctx_for_cap = ctx.clone();
-    use_effect(move || {
-        let captured_now = cap.captured.read().clone();
-        let Some(source) = pending_duplicate.read().clone() else {
-            return;
-        };
-        let Some(captured_addr) = captured_now else {
-            return;
-        };
-        let mode_now = editing.read().clone();
-        let cfg = ctx_for_cap.config.read();
-        let collision = cfg
-            .mappings
-            .iter()
-            .any(|m| m.input == captured_addr && m.mode == mode_now);
-        drop(cfg);
-
-        if collision {
-            let mut sel = view.selected_mapping;
-            sel.set(Some((mode_now.clone(), captured_addr.clone())));
-        } else {
-            let actions = ctx_for_cap
-                .state
-                .read()
-                .active_profile
-                .as_ref()
-                .and_then(|p| {
-                    p.find_mapping(&source.input, &source.mode)
-                        .map(|m| m.actions.clone())
-                })
-                .unwrap_or_default();
-            let new_name = format!("{} (copy)", source.name.as_deref().unwrap_or("(unnamed)"),);
-            let _ = ctx_for_cap.commands.send(EngineCommand::SetMapping {
-                input: captured_addr.clone(),
-                mode: mode_now.clone(),
-                name: Some(new_name),
-                actions,
-            });
-            let mut sel = view.selected_mapping;
-            sel.set(Some((mode_now, captured_addr)));
-            tracing::info!(
-                target: "f8::mapping_list",
-                action = "duplicate_capture_success",
-                "dispatch SetMapping (duplicate-with-fresh-capture)",
-            );
-        }
-        cap.cancel.call(());
-        let mut pd = pending_duplicate;
-        pd.set(None);
-    });
-
-    let pending = pending_duplicate.read().clone();
-    if pending.is_none() || !*cap.active.read() {
-        return rsx! {};
-    }
-    let source_name = pending
-        .as_ref()
-        .and_then(|s| s.name.clone())
-        .unwrap_or_else(|| "(unnamed)".to_owned());
-    rsx! {
-        div { class: "if-add-inline if-add-inline--armed if-add-inline--duplicate",
-            div { class: "if-add-inline__pad",
-                "Press an input to bind the copy of "
-                strong { "{source_name}" }
-                "..."
-            }
-        }
-    }
-}
+// `DuplicateWatcher` was removed: the Duplicate flow now reuses the
+// AddInline pad shell via the `pending_duplicate` prop. AddInline
+// observes the rising edge, pre-fills the name with `<source.name>
+// (copy)`, stashes the source for actions-resolution at commit, and
+// goes through the normal Pad{Capturing} -> Pad{Captured} -> Add
+// dispatch flow. The user can edit the name and press the refresh
+// icon to recapture, exactly like a fresh add.

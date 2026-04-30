@@ -348,12 +348,19 @@ fn empty_zero_filter_results_quotes_query() {
 
 #[test]
 fn add_inline_resting_renders_dashed_row() {
+    use crate::context::MappingSummary;
     use crate::frame::mapping_list::add_inline::AddInline;
 
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         let force_expanded: Signal<bool> = use_signal(|| false);
-        rsx! { AddInline { force_expanded: force_expanded } }
+        let pending_duplicate: Signal<Option<MappingSummary>> = use_signal(|| None);
+        rsx! {
+            AddInline {
+                force_expanded: force_expanded,
+                pending_duplicate: pending_duplicate,
+            }
+        }
     }
     let mut vdom = VirtualDom::new(TestComponent);
     vdom.rebuild_in_place();
@@ -370,12 +377,19 @@ fn add_inline_resting_renders_dashed_row() {
 
 #[test]
 fn add_inline_force_expanded_arms_capture() {
+    use crate::context::MappingSummary;
     use crate::frame::mapping_list::add_inline::AddInline;
 
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         let force_expanded: Signal<bool> = use_signal(|| true);
-        rsx! { AddInline { force_expanded: force_expanded } }
+        let pending_duplicate: Signal<Option<MappingSummary>> = use_signal(|| None);
+        rsx! {
+            AddInline {
+                force_expanded: force_expanded,
+                pending_duplicate: pending_duplicate,
+            }
+        }
     }
     let mut vdom = VirtualDom::new(TestComponent);
     vdom.rebuild_in_place();
