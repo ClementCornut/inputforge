@@ -1864,6 +1864,113 @@ fn restore_snapshot_clears_mode_force() {
 }
 
 // ---------------------------------------------------------------------------
+// F8 RemoveMapping handler tests (Task 3)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn remove_mapping_round_trip_persists_removal_to_disk() {
+    use crate::profile::Profile;
+
+    let mapping = Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: Some("Throttle".to_owned()),
+        actions: vec![Action::MapToVJoy {
+            output: vjoy_axis_output(1, VJoyAxis::X),
+        }],
+    };
+    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+
+    let dir = std::env::temp_dir().join("inputforge_remove_mapping_test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("remove_mapping_round_trip.toml");
+    std::fs::write(&path, profile.to_toml().unwrap()).unwrap();
+
+    let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
+    state.write().profile_path = Some(path.clone());
+
+    assert!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .find_mapping(&axis_addr(0), "Default")
+            .is_some(),
+        "fixture should have one mapping in-memory before remove"
+    );
+
+    tx.send(EngineCommand::RemoveMapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    assert!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .find_mapping(&axis_addr(0), "Default")
+            .is_none(),
+        "RemoveMapping should drop the mapping from active_profile"
+    );
+
+    let reloaded = Profile::load(&path).unwrap();
+    assert!(
+        reloaded.find_mapping(&axis_addr(0), "Default").is_none(),
+        "RemoveMapping should persist removal to disk"
+    );
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir(&dir);
+}
+
+#[test]
+fn remove_mapping_no_op_for_unknown_input_does_not_panic() {
+    let mapping = Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::MapToVJoy {
+            output: vjoy_axis_output(1, VJoyAxis::X),
+        }],
+    };
+    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+
+    let dir = std::env::temp_dir().join("inputforge_remove_mapping_noop_test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("noop.toml");
+    std::fs::write(&path, profile.to_toml().unwrap()).unwrap();
+
+    let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
+    state.write().profile_path = Some(path.clone());
+
+    tx.send(EngineCommand::RemoveMapping {
+        input: button_addr(99),
+        mode: "Default".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    assert!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .find_mapping(&axis_addr(0), "Default")
+            .is_some(),
+        "no-op RemoveMapping must leave existing mappings intact"
+    );
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir(&dir);
+}
+
+// ---------------------------------------------------------------------------
 // F6 Task 24: mode-pause gate tests
 // ---------------------------------------------------------------------------
 

@@ -719,8 +719,10 @@ impl Engine {
                 );
             }
 
-            // Task 3 wires the real handler logic for RemoveMapping.
-            EngineCommand::RemoveMapping { .. } => {}
+            EngineCommand::RemoveMapping { input, mode } => {
+                self.remove_mapping(&input, &mode);
+                self.pending_output_refresh = true;
+            }
         }
         Ok(())
     }
@@ -798,6 +800,37 @@ impl Engine {
                 path = %path.display(),
                 error = %e,
                 "failed to save mapping to profile"
+            );
+        }
+    }
+
+    /// Remove a mapping from the active profile and persist to disk if
+    /// the underlying `Profile::remove_mapping` reported a change.
+    fn remove_mapping(&self, input: &InputAddress, mode: &str) {
+        let mut state = self.state.write();
+
+        if state.active_profile.is_none() {
+            tracing::warn!(target: "f8::mapping_list", "cannot remove mapping: no profile loaded");
+            return;
+        }
+
+        let Some(path) = state.profile_path.clone() else {
+            tracing::warn!(target: "f8::mapping_list", "cannot remove mapping: no profile path");
+            return;
+        };
+
+        let profile = state.active_profile.as_mut().expect("checked above");
+        if !profile.remove_mapping(input, mode) {
+            // No-op fast path: nothing to persist.
+            return;
+        }
+
+        if let Err(e) = profile.save(&path) {
+            tracing::warn!(
+                target: "f8::mapping_list",
+                path = %path.display(),
+                error = %e,
+                "failed to save profile after RemoveMapping",
             );
         }
     }
