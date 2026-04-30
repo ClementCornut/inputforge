@@ -34,12 +34,14 @@ use super::output_handler::{
 const POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 /// Maximum mode-name length, measured in extended grapheme clusters
-/// (UAX #29 extended). Mirrors the GUI-side cap in
-/// `inputforge-gui-dx::frame::top_bar::mode_tabs::logic` so the
-/// engine still rejects out-of-band callers (scripted commands,
-/// migrated profiles) by the same yardstick the inline editors use.
-/// Keep these two constants in sync if the policy changes.
-const MAX_MODE_NAME_GRAPHEMES: usize = 64;
+/// (UAX #29 extended).
+///
+/// Re-exported from `crate::engine` and consumed by the GUI inline
+/// editors so a single source of truth governs both the engine's
+/// out-of-band-caller rejection and the inline UX feedback. Drift is
+/// impossible because the GUI imports this constant directly rather
+/// than mirroring it.
+pub const MAX_MODE_NAME_GRAPHEMES: usize = 64;
 
 /// Returns `Err(InvalidConfig)` if `name` is empty or exceeds the
 /// grapheme-cluster cap. Shared by `AddMode`, `RenameMode`, and
@@ -525,21 +527,22 @@ impl Engine {
                 self.mode_state.rename_in_place(&from, &to);
 
                 if let Some(path) = path.as_ref() {
-                    self.state
-                        .read()
-                        .active_profile
-                        .as_ref()
-                        .unwrap()
-                        .save(path)
-                        .map_err(|e| {
-                            tracing::error!(
-                                target: "engine",
-                                path = %path.display(),
-                                error = %e,
-                                "failed to persist RenameMode"
-                            );
-                            e
-                        })?;
+                    let state_read = self.state.read();
+                    let Some(profile) = state_read.active_profile.as_ref() else {
+                        // Profile has been unloaded between the write
+                        // lock release above and this read. The mutation
+                        // we just made is gone with it; nothing to save.
+                        return Ok(());
+                    };
+                    profile.save(path).map_err(|e| {
+                        tracing::error!(
+                            target: "engine",
+                            path = %path.display(),
+                            error = %e,
+                            "failed to persist RenameMode"
+                        );
+                        e
+                    })?;
                 }
 
                 tracing::info!(
@@ -625,21 +628,19 @@ impl Engine {
                 self.mode_state.clear_stack_entries(&deleted);
 
                 if let Some(path) = path.as_ref() {
-                    self.state
-                        .read()
-                        .active_profile
-                        .as_ref()
-                        .unwrap()
-                        .save(path)
-                        .map_err(|e| {
-                            tracing::error!(
-                                target: "engine",
-                                path = %path.display(),
-                                error = %e,
-                                "failed to persist DeleteMode"
-                            );
-                            e
-                        })?;
+                    let state_read = self.state.read();
+                    let Some(profile) = state_read.active_profile.as_ref() else {
+                        return Ok(());
+                    };
+                    profile.save(path).map_err(|e| {
+                        tracing::error!(
+                            target: "engine",
+                            path = %path.display(),
+                            error = %e,
+                            "failed to persist DeleteMode"
+                        );
+                        e
+                    })?;
                 }
 
                 tracing::info!(

@@ -15,6 +15,7 @@ mod run;
 mod tests;
 
 pub use command::EngineCommand;
+pub use run::MAX_MODE_NAME_GRAPHEMES;
 
 use std::path::PathBuf;
 use std::sync::Arc;
