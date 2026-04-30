@@ -12,7 +12,25 @@ use serde::{Deserialize, Serialize};
 use crate::action::{Action, Mapping};
 use crate::error::{EngineError, Result};
 use crate::mode::ModeTree;
-use crate::types::InputAddress;
+use crate::types::{InputAddress, InputId};
+
+/// Discriminator for `reorder_mapping_in_group` that mirrors the GUI's
+/// visual bucketing of inputs (Axes / Buttons / Hats). Engine-side
+/// reorder operates within one of these buckets at a time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InputGroup {
+    Axis,
+    Button,
+    Hat,
+}
+
+fn group_of_input(addr: &InputAddress) -> InputGroup {
+    match addr.input {
+        InputId::Axis { .. } => InputGroup::Axis,
+        InputId::Button { .. } => InputGroup::Button,
+        InputId::Hat { .. } => InputGroup::Hat,
+    }
+}
 
 /// A complete input mapping profile.
 ///
@@ -226,6 +244,83 @@ impl Profile {
         self.mappings
             .retain(|m| !(m.input == *input && m.mode == mode));
         self.mappings.len() != before
+    }
+
+    /// Move the mapping identified by `(input, mode)` to position
+    /// `target_index_in_group` within its visual group (Axes / Buttons /
+    /// Hats), preserving the relative order of every other mapping.
+    ///
+    /// The "group" is the bucket the GUI's `mapping_list::group_of`
+    /// classifies an input into: `InputId::Axis` -> Axes, `Button` ->
+    /// Buttons, `Hat` -> Hats. Reorder is *within-group only*; the
+    /// mode partition is also respected (each mode has its own slice
+    /// of mappings, and reorder never crosses modes either).
+    ///
+    /// Returns `true` if the call resulted in a reorder, `false` for any
+    /// no-op: source not found, target equals current position, or the
+    /// group has fewer than two elements. Out-of-bounds `target_index_in_group`
+    /// is clamped to `group_len - 1`. Cross-group attempts are not surfaced
+    /// here because the engine command receives only the source key,
+    /// the GUI is responsible for rejecting cross-group drops before
+    /// dispatching.
+    pub fn reorder_mapping_in_group(
+        &mut self,
+        input: &InputAddress,
+        mode: &str,
+        target_index_in_group: usize,
+    ) -> bool {
+        let Some(source_idx) = self
+            .mappings
+            .iter()
+            .position(|m| m.input == *input && m.mode == mode)
+        else {
+            return false;
+        };
+        let source_group = group_of_input(&self.mappings[source_idx].input);
+
+        // Collect flat-vec indices in (mode, source_group), preserving order.
+        let group_indices: Vec<usize> = self
+            .mappings
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.mode == mode && group_of_input(&m.input) == source_group)
+            .map(|(i, _)| i)
+            .collect();
+        let group_len = group_indices.len();
+        if group_len < 2 {
+            return false;
+        }
+        let source_subpos = group_indices
+            .iter()
+            .position(|&i| i == source_idx)
+            .expect("source must appear in its own group's index list");
+        let target_subpos = target_index_in_group.min(group_len - 1);
+        if target_subpos == source_subpos {
+            return false;
+        }
+
+        // After Vec::remove(source_idx), every flat index greater than
+        // source_idx shifts down by 1. The target's flat-vec position
+        // before the move is group_indices[target_subpos]; the
+        // post-removal flat is the same minus 1 if it was past the
+        // source. Inserting at that flat puts source at the target's
+        // position when moving up; for moving down, source needs to
+        // land one slot to the right so it follows the target instead
+        // of preceding it.
+        let source = self.mappings.remove(source_idx);
+        let target_flat_before = group_indices[target_subpos];
+        let target_flat_after_removal = if source_idx < target_flat_before {
+            target_flat_before - 1
+        } else {
+            target_flat_before
+        };
+        let insert_flat = if target_subpos > source_subpos {
+            target_flat_after_removal + 1
+        } else {
+            target_flat_after_removal
+        };
+        self.mappings.insert(insert_flat, source);
+        true
     }
 
     /// Replace the calibration entries.
