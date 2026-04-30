@@ -27,7 +27,22 @@ pub(crate) fn Row(
     tracing::trace!(target: "frame::render", region = "mapping_list::row");
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
-    let _ = renaming; // Task 15 wires the rename branch; Task 14's resting row never reads it.
+
+    // Rename branch — when this row's input matches the parent's
+    // rename selector, swap the resting row out for the inline editor.
+    // Early-return short-circuits all the resting-state setup below.
+    let is_renaming = renaming
+        .read()
+        .as_ref()
+        .is_some_and(|a| a == &summary.input);
+    if is_renaming {
+        return rsx! {
+            crate::frame::mapping_list::rename_inline::RenameInline {
+                summary: summary.clone(),
+                state: renaming,
+            }
+        };
+    }
 
     let source_text = source_label::format(&summary.input, &ctx.config.read());
 

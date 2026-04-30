@@ -176,3 +176,118 @@ fn row_glyphs_render_for_merge_and_conditional() {
         "conditional glyph class must render: {html}"
     );
 }
+
+#[test]
+fn rename_inline_renders_input_with_initial_value() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::frame::mapping_list::rename_inline::RenameInline;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let summary = MappingSummary {
+            input: InputAddress {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Boost".to_owned()),
+            glyphs: GlyphFlags::default(),
+        };
+        let renaming: Signal<Option<InputAddress>> = use_signal(|| Some(summary.input.clone()));
+        rsx! {
+            RenameInline { summary: summary, state: renaming }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-row-rename"),
+        "rename input must carry the .if-row-rename class: {html}",
+    );
+    assert!(
+        html.contains("Boost"),
+        "rename input must initialize with the existing name: {html}",
+    );
+}
+
+#[test]
+fn row_swaps_in_rename_inline_when_renaming_matches_input() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::frame::mapping_list::row::Row;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let summary = MappingSummary {
+            input: InputAddress {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Boost".to_owned()),
+            glyphs: GlyphFlags::default(),
+        };
+        let renaming: Signal<Option<InputAddress>> = use_signal(|| Some(summary.input.clone()));
+        rsx! {
+            Row {
+                summary: summary,
+                is_active: false,
+                renaming: renaming,
+                on_open_menu: move |_: (InputAddress, f64, f64)| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-row-rename"),
+        "Row must swap in RenameInline when renaming matches the row's input: {html}",
+    );
+    assert!(
+        !html.contains("if-row__name\""),
+        "Row must NOT render the resting name div while renaming: {html}",
+    );
+}
+
+#[test]
+fn row_renders_resting_when_renaming_is_none() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::frame::mapping_list::row::Row;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let summary = MappingSummary {
+            input: InputAddress {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Boost".to_owned()),
+            glyphs: GlyphFlags::default(),
+        };
+        let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
+        rsx! {
+            Row {
+                summary: summary,
+                is_active: false,
+                renaming: renaming,
+                on_open_menu: move |_: (InputAddress, f64, f64)| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-row__name"),
+        "Row must render the resting name div when not renaming: {html}",
+    );
+    assert!(
+        !html.contains("if-row-rename"),
+        "Row must NOT render the rename input when renaming is None: {html}",
+    );
+}
