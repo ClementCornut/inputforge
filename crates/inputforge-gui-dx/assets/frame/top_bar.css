@@ -15,11 +15,16 @@
     height: 100%;
 }
 
+/* Structural seam between the context zone (engine pill + profile name)
+   and the editing zone (mode tabs). Full bar height + border-strong
+   background makes it read as a cockpit-panel seam rather than a
+   floating hairline. --space-2 breathing room on each side matches
+   the bar's --space-2 gap rhythm. */
 .if-top-bar__divider {
     width: 1px;
-    height: 1.25rem;
-    background: var(--color-border);
-    margin: 0 var(--space-1);
+    height: 100%;
+    background: var(--color-border-strong);
+    margin: 0 var(--space-2);
 }
 
 .if-top-bar__spacer {
@@ -128,6 +133,27 @@
     text-transform: uppercase;
     letter-spacing: 0.18em;
     cursor: default;
+}
+
+/* Eyebrow caption — mono uppercase role label matching the empty-state
+   and F4-counts idiom (font-mono + uppercase + 0.18em tracking). Stays
+   at --color-text-subtle in both states: it is the role label, not the
+   data. --space-1 gap between the role label and the name value. */
+.if-profile-name__role {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-regular);
+    color: var(--color-text-subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    margin-right: var(--space-1);
+}
+
+/* Name value — inherits color and font from the parent .if-profile-name.
+   The --empty modifier makes the inherited color text-subtle and the
+   size text-xs via the parent rule above, so the value stays muted in
+   the empty state without an additional override here. */
+.if-profile-name__value {
 }
 
 .if-tools-cluster {
