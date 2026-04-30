@@ -1,6 +1,6 @@
 # inputforge-gui-dx
 
-Dioxus Desktop GUI for InputForge — parallel runtime, opt-in via the
+Dioxus Desktop GUI for InputForge: parallel runtime, opt-in via the
 `gui-dioxus` feature on `inputforge-app`. The egui crate (`inputforge-gui`)
 remains the default until the F16 cutover.
 
@@ -9,23 +9,23 @@ remains the default until the F16 cutover.
 - `dioxus`: `0.7.6` (workspace-pinned, `desktop` feature)
 - `dioxus-cli`: `0.7.6`
 
-## Dev workflow — primary RSX loop (recommended)
+## Dev workflow: primary RSX loop (recommended)
 
 The `bridge_demo` example seeds a mock `AppState` and calls `launch_gui`
-directly. No engine, no tray, no profile I/O — safe to hot-reload.
+directly. No engine, no tray, no profile I/O; safe to hot-reload.
 
 ```bash
 cargo install dioxus-cli --version 0.7.6
 dx serve -p inputforge-gui-dx --example bridge_demo --platform desktop
 ```
 
-Edit RSX in `src/app.rs` — the running window updates within ~1s without
+Edit RSX in `src/app.rs`; the running window updates within ~1s without
 restarting. Rust logic / state / non-RSX changes still require a full rebuild.
 
-## Dev workflow — full app integration smoke
+## Dev workflow: full app integration smoke
 
 Exercises the real engine thread, tray, profile autoload, and HidHide
-warning scan. **Not** the daily loop — each hot-reload respawns the engine
+warning scan. **Not** the daily loop; each hot-reload respawns the engine
 thread, re-registers the tray, re-runs HidHide detection.
 
 ```bash
@@ -70,7 +70,7 @@ rsx! {
 }
 ```
 
-`app_root` mounts `frame::Layout` inside `ThemeProvider` — every
+`app_root` mounts `frame::Layout` inside `ThemeProvider`; every
 screen mounted under `app_root` inherits the design system.
 
 ## Adding a new icon
@@ -78,7 +78,7 @@ screen mounted under `app_root` inherits the design system.
 1. Drop the `.svg` file under `src/icons/svg/<name>.svg` (Phosphor regular weight, `viewBox="0 0 256 256"`).
 2. Add a variant to the `Icon` enum in `src/icons/mod.rs`.
 3. Add a match arm in `Icon::svg()` mapping the variant to `include_str!("svg/<name>.svg")`.
-4. Run `cargo test -p inputforge-gui-dx --lib icons::tests` — the well-formedness test will catch corrupt files.
+4. Run `cargo test -p inputforge-gui-dx --lib icons::tests`; the well-formedness test will catch corrupt files.
 
 ## Layout primitives
 
@@ -93,12 +93,12 @@ for `gap`/`padding` so magic px values stay out of the consumer side:
 | `Inset`   | block             | `padding: --space-4`            |
 
 For asymmetric grids (e.g. a two-column key/value layout), keep an inline
-`style:` — these primitives intentionally don't model `display: grid`.
+`style:`; these primitives intentionally don't model `display: grid`.
 
 ## Status backgrounds
 
 Use the `--color-{info,success,warning,error}-bg` tokens for tinted status
-surfaces (Badge, Toast). Never embed `rgba()` literals in component CSS — the
+surfaces (Badge, Toast). Never embed `rgba()` literals in component CSS; the
 revised palette would silently drift from the foreground/border tokens.
 
 ## Reduced motion
@@ -106,21 +106,21 @@ revised palette would silently drift from the foreground/border tokens.
 `motion.css` zeroes the `--duration-*` tokens under
 `@media (prefers-reduced-motion: reduce)`. Component CSS that pipes
 animation duration through these tokens disables motion automatically;
-component CSS that hard-codes `ms` in transition shorthands does not — keep
+component CSS that hard-codes `ms` in transition shorthands does not; keep
 all timing in tokens.
 
 ## Toolchain prerequisites
 
-- `dx` (dioxus-cli) version 0.7.6 — install via `cargo install dioxus-cli --version 0.7.6`. Required for hot-reload (`dx serve`).
-- WebView2 runtime — bundled with Windows 11. On Windows 10 or earlier, install the Evergreen Standalone runtime from https://developer.microsoft.com/microsoft-edge/webview2/.
+- `dx` (dioxus-cli) version 0.7.6: install via `cargo install dioxus-cli --version 0.7.6`. Required for hot-reload (`dx serve`).
+- WebView2 runtime: bundled with Windows 11. On Windows 10 or earlier, install the Evergreen Standalone runtime from https://developer.microsoft.com/microsoft-edge/webview2/.
 
 ## SDL3.dll placement
 
 Windows builds need `SDL3.dll` next to the executable. `crates/inputforge-app/build.rs`
 copies it from `<workspace>/SDL/SDL3.dll` into both:
 
-- `target/<cargo-profile>/SDL3.dll` — alongside the `cargo` binary
-- `target/dx/inputforge-app/<dx-profile>/windows/app/SDL3.dll` — alongside the `dx` binary
+- `target/<cargo-profile>/SDL3.dll`, alongside the `cargo` binary
+- `target/dx/inputforge-app/<dx-profile>/windows/app/SDL3.dll`, alongside the `dx` binary
 
 The `<dx-profile>` segment uses cargo's `PROFILE` env var (`debug` or
 `release`), which collapses custom cargo profiles like dx-cli's `desktop-dev`
@@ -136,7 +136,7 @@ and `dx build` never copy `bundle.resources` into the dev output dir
 
 **Recovery if SDL3.dll goes missing.** The build script declares
 `cargo:rerun-if-changed=` on the source DLL and both destinations, but cargo
-treats *missing* destination files as untracked rather than changed — so if
+treats *missing* destination files as untracked rather than changed; so if
 you `rm -rf target/dx` and the next `dx run` fails with
 `STATUS_DLL_NOT_FOUND` (`0xC0000135`), the script did not re-run because
 cargo's fingerprint of `inputforge-app` is still fresh. Force a rerun with:
@@ -148,7 +148,7 @@ dx run -p inputforge-app --no-default-features --features gui-dioxus
 
 A full `cargo clean` is unnecessary; the per-package clean is enough.
 
-## F3 — Tray bridge & hide-to-tray lifecycle
+## F3: Tray bridge & hide-to-tray lifecycle
 
 ### Tray bridge
 
@@ -156,7 +156,7 @@ Under `--features gui-dioxus`, tray menu events are observed via the
 `use_muda_event_handler` hook (`dioxus_desktop`'s public hooks API). The
 spec originally specified `Config::with_custom_event_handler` matching
 on `UserWindowEvent::MudaMenuEvent`, but `dioxus_desktop::ipc` is a
-private module in 0.7.6 — the type is unreachable from external crates.
+private module in 0.7.6; the type is unreachable from external crates.
 The hook performs the equivalent pattern-match internally and delivers
 the same `muda::MenuEvent` payload through a callback that runs on the
 event-loop thread. F3 routes the menu id to a `TrayAction` via pure
@@ -185,7 +185,7 @@ via `Drop`.
 `--start-minimized` is plumbed via the `start_minimized: bool`
 parameter on `launch_gui`. The Dioxus side calls `set_visible(false)`
 once during `app_root` mount when the flag is set; tray Show works
-identically. The egui side ignores the parameter — it already gates
+identically. The egui side ignores the parameter; it already gates
 startup launch from `cli.start_minimized` in `main.rs`.
 
 **Cost asymmetry.** The egui path skips `launch_gui_blocking` entirely
@@ -194,16 +194,16 @@ tray Show. The Dioxus path always creates the WebView2 window (plus the
 polling and listener tasks) and merely hides it. End-user UX is the same;
 startup memory/CPU is not. Dioxus 0.7's `tao::EventLoop::run` is one-shot,
 so a tray-triggered relaunch isn't viable without restructuring the whole
-event loop — defer-launch parity is left as a future investigation.
+event loop; defer-launch parity is left as a future investigation.
 
 Note the dioxus-desktop 0.7.6 API spelling asymmetry:
-- `Config::with_close_behaviour` — UK (builder method)
-- `WindowCloseBehaviour` — UK (enum)
-- `DesktopService::set_close_behavior` — US (per-window setter)
+- `Config::with_close_behaviour`: UK (builder method)
+- `WindowCloseBehaviour`: UK (enum)
+- `DesktopService::set_close_behavior`: US (per-window setter)
 
 ### New primitives (F3)
 
-- `Tabs` — full WAI-ARIA Tabs pattern (`role="tablist"`/`tab`,
+- `Tabs`: full WAI-ARIA Tabs pattern (`role="tablist"`/`tab`,
   focus-roving with `tabindex` 0|-1, arrow keys + Home/End for cycle
   and activate). Each tab button gets `id="tab-{id}"`; set
   `TabItem::controls` to wire `aria-controls` at the consumer's
@@ -213,8 +213,8 @@ Note the dioxus-desktop 0.7.6 API spelling asymmetry:
   keyboard activation so the focus ring follows selection. Stateless:
   caller owns `value`. Reused by F11 (Modes); see `examples/component_gallery.rs`
   for the canonical full-pattern wiring.
-- `StatusBar` — three-slot horizontal bar (start / middle / end). Fixed
-  28px height. ARIA-neutral wrapper — consumers add `role="status"` /
+- `StatusBar`: three-slot horizontal bar (start / middle / end). Fixed
+  28px height. ARIA-neutral wrapper; consumers add `role="status"` /
   `aria-live` only on the specific elements they want announced (e.g.,
   the engine-status badge in `frame::status_bar::StatusBar`).
 
@@ -233,7 +233,7 @@ Mount happens in `app_root_view()` (not `app_root` directly), so the
 SSR mount-regression test in `app::tests` can render the same rsx
 tree with stub contexts.
 
-## F4 — Toast & Dialog Infrastructure
+## F4: Toast & Dialog Infrastructure
 
 ### `ToastQueue`
 
@@ -281,16 +281,16 @@ rsx! {
 }
 ```
 
-- **`dismissible: bool` (default `true`)** — when `false`, ESC is suppressed.
+- **`dismissible: bool` (default `true`)**: when `false`, ESC is suppressed.
   Read once at mount; flipping after mount has no effect.
-- **`close_on_backdrop_click: bool` (default `false`)** — backdrop click
+- **`close_on_backdrop_click: bool` (default `false`)**: backdrop click
   resolves the dialog when `true`.
 - Native `<dialog>` provides focus trap, inert background, `aria-modal`, and
   focus restore on close.
 - **`onclose` semantics:** Dioxus 0.7 has no `onclose` event for `<dialog>`;
   the prop fires on ESC dismissal (when `dismissible: true`) and on backdrop
   click (when `close_on_backdrop_click: true`). Programmatic `open.set(false)`
-  closes the dialog but does NOT fire `onclose` — consumer-driven flows should
+  closes the dialog but does NOT fire `onclose`; consumer-driven flows should
   call their own callbacks alongside `open.set(false)`.
 
 ### `DirtyConfirmDialog`
@@ -307,7 +307,7 @@ let mut open = use_signal(|| false);
 rsx! {
     DirtyConfirmDialog {
         open: open,
-        oncancel:  move |()| { /* abort the action — distinct from discard */ },
+        oncancel:  move |()| { /* abort the action; distinct from discard */ },
         ondiscard: move |()| { /* drop unsaved changes, proceed */ },
         onsave:    move |()| { /* persist, then proceed */ },
     }
@@ -321,4 +321,4 @@ Override `title`, `message`, and `save_label` for context-specific phrasing
 
 `MetaSnapshot.warnings` (populated by the engine via the F1 polling task)
 flows into the toast queue as Warning-level toasts. Producers do not need to
-opt in — append to `AppState.warnings` and the bridge handles delivery.
+opt in; append to `AppState.warnings` and the bridge handles delivery.

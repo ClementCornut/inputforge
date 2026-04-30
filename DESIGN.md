@@ -179,14 +179,14 @@ The system explicitly rejects the four registers named in PRODUCT.md's anti-refe
 **Key Characteristics:**
 
 - **Layering by luminance, not by shadow.** Sunken / surface / elevated / overlay are all flat at rest. Lift comes from background luminance shift plus a 1px hairline.
-- **Information dense.** Tightened leading (1.15 for headers, 1.45 for body and labels), 4px default radius, 11–14px primary text. The grid feels packed because it is.
+- **Information dense.** Tightened leading (1.15 for headers, 1.45 for body and labels), 4px default radius, 11-14px primary text. The grid feels packed because it is.
 - **Color used as signal.** Status hues carry full saturation. Taxonomy hues sit ~30% lower chroma so they read as classification, not alert.
 - **Inter with deliberate OpenType.** Tabular figures (`tnum`), single-story 'a' (`cv11`), slashed zero (`ss03`) at the body level. The system reads as Inter wearing engineering glasses, not default-Inter SaaS.
 - **Cockpit-brisk motion.** 100 / 180 / 240ms with custom easings. No bounce, no elastic, no overshoot. Motion confirms causality, never performs.
 
 ## 2. Colors
 
-The palette is the "Evolved Glass Cockpit (Dark)" palette: deep navy surfaces tuned cooler than the egui prototype, HUD cyan-blue as the single action color, CRT phosphor green as the single live-signal color, three muted taxonomy hues for category chips, and amber / desaturated red for warning / error. WCAG 2.2 AA holds for all status text on `bg` and `bg-elevated` (verified — `live` 9.1–10.4×, `warning` 8.8–9.9×, `error` 4.6–5.2×, `primary` 6.2–7.1×). Button-fill pairs (foreground on coloured surface) clear AA in every documented state: `primary-fg` on `primary` 7.6×, on `primary-hover` 9.2×, on `primary-active` 4.7×; `text-inverse` on `error` 5.6×, on `error-hover` 7.0×, on `error-active` 4.6×.
+The palette is the "Evolved Glass Cockpit (Dark)" palette: deep navy surfaces tuned cooler than the egui prototype, HUD cyan-blue as the single action color, CRT phosphor green as the single live-signal color, three muted taxonomy hues for category chips, and amber / desaturated red for warning / error. WCAG 2.2 AA holds for all status text on `bg` and `bg-elevated` (verified: `live` 9.1-10.4×, `warning` 8.8-9.9×, `error` 4.6-5.2×, `primary` 6.2-7.1×). Button-fill pairs (foreground on coloured surface) clear AA in every documented state: `primary-fg` on `primary` 7.6×, on `primary-hover` 9.2×, on `primary-active` 4.7×; `text-inverse` on `error` 5.6×, on `error-hover` 7.0×, on `error-active` 4.6×.
 
 ### Primary
 
@@ -202,9 +202,9 @@ The palette is the "Evolved Glass Cockpit (Dark)" palette: deep navy surfaces tu
 
 These are taxonomy markers, not alerts. They get ~30% less chroma than the action / status palette so a row of category chips never visually overpowers a live-status indicator on the same screen.
 
-- **Processing Teal-Cyan** (`#3FB8B0`): pipeline-stage processing nodes (curves, conditionals, transforms). Background tint `rgba(63, 184, 176, 0.14)` mixed into `bg-elevated`; the canonical hue itself reads as text (5.06× contrast — clears AA).
-- **Output Burnished Gold** (`#C99846`): vJoy output nodes and emit stages. Background tint `rgba(201, 152, 70, 0.14)` mixed into `bg-elevated`; the canonical hue itself reads as text (4.76× contrast — clears AA).
-- **Control Muted Violet** (`#9A78D6` canonical, `#B89BEA` for badge text). The canonical hue serves borders, fills, and chip surfaces; the brighter ramp step (`control-badge-text`) is the legibility-tuned text color used inside category badges, where the canonical hue cannot clear AA against its own 14% tint. Background tint `rgba(154, 120, 214, 0.14)` mixed into `bg-elevated`; badge text uses `#B89BEA` (5.48× contrast — clears AA).
+- **Processing Teal-Cyan** (`#3FB8B0`): pipeline-stage processing nodes (curves, conditionals, transforms). Background tint `rgba(63, 184, 176, 0.14)` mixed into `bg-elevated`; the canonical hue itself reads as text (5.06× contrast, clears AA).
+- **Output Burnished Gold** (`#C99846`): vJoy output nodes and emit stages. Background tint `rgba(201, 152, 70, 0.14)` mixed into `bg-elevated`; the canonical hue itself reads as text (4.76× contrast, clears AA).
+- **Control Muted Violet** (`#9A78D6` canonical, `#B89BEA` for badge text). The canonical hue serves borders, fills, and chip surfaces; the brighter ramp step (`control-badge-text`) is the legibility-tuned text color used inside category badges, where the canonical hue cannot clear AA against its own 14% tint. Background tint `rgba(154, 120, 214, 0.14)` mixed into `bg-elevated`; badge text uses `#B89BEA` (5.48× contrast, clears AA).
 
 ### Neutral
 
@@ -235,13 +235,13 @@ These are taxonomy markers, not alerts. They get ~30% less chroma than the actio
 
 ### Hierarchy
 
-Seven sizes, hand-tuned for the dense instrument-cluster range (11–16px) and a modular ratio above (16–32px). In the dense range the steps are weight-distinguished, not size-distinguished — the 1px gap between caption (11) and label (12) is sub-pixel on a standard-resolution display, so weight contrast (regular 400 vs. medium 500) is what actually carries the hierarchy. Above 16px the scale lands at ~1.25 (16 → 20 → 24 → 32) for clean visual hierarchy at heading level.
+Seven sizes, hand-tuned for the dense instrument-cluster range (11-16px) and a modular ratio above (16-32px). In the dense range the steps are weight-distinguished, not size-distinguished: the 1px gap between caption (11) and label (12) is sub-pixel on a standard-resolution display, so weight contrast (regular 400 vs. medium 500) is what actually carries the hierarchy. Above 16px the scale lands at ~1.25 (16 → 20 → 24 → 32) for clean visual hierarchy at heading level.
 
 - **Display** (semibold 600, 32px, leading 1.15, letter-spacing -0.01em): empty states, wizard intros, hero numerics. Rare.
 - **Headline** (semibold 600, 24px, leading 1.15): screen headings inside the shell.
 - **Title** (semibold 600, 20px, leading 1.45): section headings, panel titles, dialog title.
 - **Emphasized Body** (semibold 600, 16px, leading 1.45): button labels, card titles, dialog description.
-- **Body** (regular 400, 14px, leading 1.45): default inputs, default labels, default prose. Cap line length at 65–75ch where prose runs.
+- **Body** (regular 400, 14px, leading 1.45): default inputs, default labels, default prose. Cap line length at 65-75ch where prose runs.
 - **Label** (medium 500, 12px, leading 1.45): helper text, badges, dense cells, status-bar text. Adjacent to a `caption` at 11/400, the +500 weight delta carries the hierarchy.
 - **Caption** (regular 400, 11px, leading 1.45): tabular captions, tick labels, kbd chips. The smallest legitimate text in the system. Adjacent to a `label` at 12/500, the −500 weight delta is the perceptual difference, not the 1px size delta.
 
@@ -251,7 +251,7 @@ Seven sizes, hand-tuned for the dense instrument-cluster range (11–16px) and a
 
 **The Mono For Live Numerics Rule.** JetBrainsMono is reserved for inputs and readouts whose value the engine actually owns: the number-input field, axis percentage readouts, calibration thresholds, count badges on coalesced toasts. UI labels and prose stay Inter. Mono is not a stylistic choice; it is a precision affordance.
 
-**The 65ch Rule.** Any prose longer than two lines is capped at 65–75ch. Dialogs hit this limit; help-style text hits this limit; tooltips do not (tooltips stay one line).
+**The 65ch Rule.** Any prose longer than two lines is capped at 65-75ch. Dialogs hit this limit; help-style text hits this limit; tooltips do not (tooltips stay one line).
 
 ## 4. Elevation
 
@@ -302,13 +302,13 @@ Universal rule, applied at the system root rather than per component:
 - Durations collapse to ≤100ms.
 - Easing collapses to `linear`.
 - Transforms involving spatial motion (slide, scale, translate) drop to opacity-only or no transition at all.
-- Colour and luminance changes pass through unchanged — they are never the spatial-motion problem this media query addresses.
+- Colour and luminance changes pass through unchanged; they are never the spatial-motion problem this media query addresses.
 
 Components that document additional reduced-motion behaviour reference this rule plus their per-component note.
 
 ## 6. Surfaces
 
-Surfaces are the structural defence against the JoystickGremlin Tk anti-reference (PRODUCT.md L42). The cure for "click through nested windows to change one number" is not better-looking dialogs — it is editing surfaces that don't open dialogs in the first place. The system specifies four kinds of surface, with strict assignment rules.
+Surfaces are the structural defence against the JoystickGremlin Tk anti-reference (PRODUCT.md L42). The cure for "click through nested windows to change one number" is not better-looking dialogs; it is editing surfaces that don't open dialogs in the first place. The system specifies four kinds of surface, with strict assignment rules.
 
 ### Inline-edit primitive (default)
 
@@ -320,7 +320,7 @@ Tabular data (the input list, the action list, the binding list) can expand a si
 
 ### Side panel (secondary)
 
-For multi-field edits that warrant their own scrollable surface — a complex action's full pipeline, a profile's mode tree — a side panel slides in from the right edge of the workspace. The panel does *not* dim the underlying canvas, does *not* trap focus from the underlying list, and does *not* block keyboard navigation outside its boundary. It is a second region, not a modal layer.
+For multi-field edits that warrant their own scrollable surface (a complex action's full pipeline, a profile's mode tree), a side panel slides in from the right edge of the workspace. The panel does *not* dim the underlying canvas, does *not* trap focus from the underlying list, and does *not* block keyboard navigation outside its boundary. It is a second region, not a modal layer.
 
 ### Dialog (rare)
 
@@ -336,13 +336,13 @@ Forbidden uses (each is a slide back toward the Tk anti-reference):
 - Property inspector for an item that could be edited inline.
 - Profile management as its own dialog instead of an in-shell surface.
 - Confirmation chains (a second dialog opening from the first).
-- "Add new" flows that take more than two fields — those go to a side panel.
+- "Add new" flows that take more than two fields: those go to a side panel.
 
 ### Named Rules
 
 **The Inline-First Rule.** If a property has a single editable value, it is edited where it is displayed. The dialog opening on click is the canonical Tk failure; the system rejects it as a default. A dialog is justified only when this rule has been actively considered and rejected for a stated reason.
 
-**The No Modal-On-Modal Rule.** A Dialog never opens another Dialog. If a confirmation is needed inside a flow already inside a Dialog, the flow itself is too deep — flatten it to an in-shell surface.
+**The No Modal-On-Modal Rule.** A Dialog never opens another Dialog. If a confirmation is needed inside a flow already inside a Dialog, the flow itself is too deep; flatten it to an in-shell surface.
 
 ## 7. Components
 
@@ -357,7 +357,7 @@ Five variants in three sizes. Button shape and motion is consistent across varia
 - **Secondary:** elevated-navy background, regular text, **strong** border. Hover raises border to focus-cyan only; the surface stays.
 - **Ghost:** transparent background, no border. Hover fills with elevated-navy and shows a hairline border (so a ghost button on a card surface still reads on hover, since the card is already elevated-navy).
 - **Danger:** error red surface, inverse text. Reserved for irrevocable actions. Hover brightens, active deepens.
-- **Active state across all variants:** `transform: translateY(1px)`. The button mechanically depresses by one pixel. No bounce. On standard-resolution displays (`@media (resolution < 2dppx)`) the press becomes `translateY(2px)` so the displacement remains perceptible — a 1px translate at 1× DPR can render as sub-pixel and disappear.
+- **Active state across all variants:** `transform: translateY(1px)`. The button mechanically depresses by one pixel. No bounce. On standard-resolution displays (`@media (resolution < 2dppx)`) the press becomes `translateY(2px)` so the displacement remains perceptible; a 1px translate at 1× DPR can render as sub-pixel and disappear.
 - **Focus:** 2px focus-cyan outline at 2px offset. Visible against every background in the system.
 - **Disabled:** opacity 0.5, cursor not-allowed. No surface tinting, no removed border, no decorative crossed-out style.
 
@@ -436,7 +436,7 @@ A pill with five color modes. Each mode uses a composited background tint (~14% 
 - **Surface:** sunken navy with a 1px **strong** border on top, 28px tall, padding 0 / 12.
 - **Type:** label size (12px), muted-text color. The status bar is for *glancing*, not acting; consumers raise specific badges or pills to bright text via their own component, never through the status-bar text color.
 - **Layout:** three slots (start / middle / end). Middle claims `flex: 1` so the end slot anchors to the right.
-- **Overflow:** the middle slot's text truncates with ellipsis when the window is too narrow for start + middle + end to coexist. No marquee, no horizontal scroll, no wrap to a second line — the bar's height is fixed at 28px.
+- **Overflow:** the middle slot's text truncates with ellipsis when the window is too narrow for start + middle + end to coexist. No marquee, no horizontal scroll, no wrap to a second line; the bar's height is fixed at 28px.
 
 ### Dialog
 
@@ -446,18 +446,18 @@ A pill with five color modes. Each mode uses a composited background tint (~14% 
 - **Description:** body typography in `text-muted`.
 - **Footer:** flex-end aligned action row with a 1px hairline divider above. Padding extends through the panel padding via negative-margin trick so the divider runs the full panel width.
 - **Backdrop:** overlay-indigo. Fades in alongside the panel (180ms with `easing-standard`).
-- **Open motion:** scale 0.96 → 1.0 plus opacity 0 → 1 via `@starting-style`, 240ms with `easing-standard`. Discrete display switch is timeline-aware. Reduced motion follows the global rule — the scale transform drops, the opacity fade remains.
+- **Open motion:** scale 0.96 → 1.0 plus opacity 0 → 1 via `@starting-style`, 240ms with `easing-standard`. Discrete display switch is timeline-aware. Reduced motion follows the global rule: the scale transform drops, the opacity fade remains.
 
 ### Toast (Annunciator)
 
-The signature component. Each toast is a backlit cockpit annunciator: chamfer-aligned 3px left accent in `currentColor` (the level color), a soft glow in the same color, a 6–8% wash of the level hue mixed into the elevated-navy surface via `color-mix`. Right-anchored stack at the top-right of the viewport, pointer-events transparent except on the toast itself.
+The signature component. Each toast is a backlit cockpit annunciator: chamfer-aligned 3px left accent in `currentColor` (the level color), a soft glow in the same color, a 6-8% wash of the level hue mixed into the elevated-navy surface via `color-mix`. Right-anchored stack at the top-right of the viewport, pointer-events transparent except on the toast itself.
 
-- **Surface:** elevated-navy mixed with the level color at 6–8%. 1px border. Radius-md. Chamfer highlight + `shadow-3`.
+- **Surface:** elevated-navy mixed with the level color at 6-8%. 1px border. Radius-md. Chamfer highlight + `shadow-3`.
 - **Level coloring:** info / success / warning / error. The accent stripe and icon use `currentColor`; the surface tint and border are derived from the same level hue.
-- **Motion:** 240ms opacity with `easing-standard`, 180ms slide transform on entry. Slide in from +12px right plus fade. Hover nudges left 2px and brightens the border (100ms with `easing-fast`). Reduced motion follows the global rule — the slide drops, the opacity fade remains.
+- **Motion:** 240ms opacity with `easing-standard`, 180ms slide transform on entry. Slide in from +12px right plus fade. Hover nudges left 2px and brightens the border (100ms with `easing-fast`). Reduced motion follows the global rule: the slide drops, the opacity fade remains.
 - **Coalesce badge:** when the same message repeats, a count chip appears between the message and the close button. Mono numerals, currentColor border at 28%, currentColor background at 14%. The chip never shifts the close button; the layout is fixed-tail.
 
-The 3px left accent is the system's one documented exception to the "no side-stripe borders" rule (see Don'ts). The exception is functional, not stylistic: a Toast surfaces in the top-right of the viewport while the user's eyes are on the game window in another window. The stripe is the *peripheral-vision* level channel — recognizable as a colour cue at 30°+ off-axis, before the icon or the surface tint resolves. The icon, count chip, and surface tint are the foveal channel for when the user actually turns to look at the toast. Other surfaces (cards, list items, callouts, alerts) sit in the foveal field and have no peripheral-channel argument; the rule does not extend to them. The stripe sits inside the chamfer highlight rather than glued onto the panel edge.
+The 3px left accent is the system's one documented exception to the "no side-stripe borders" rule (see Don'ts). The exception is functional, not stylistic: a Toast surfaces in the top-right of the viewport while the user's eyes are on the game window in another window. The stripe is the *peripheral-vision* level channel: recognizable as a colour cue at 30°+ off-axis, before the icon or the surface tint resolves. The icon, count chip, and surface tint are the foveal channel for when the user actually turns to look at the toast. Other surfaces (cards, list items, callouts, alerts) sit in the foveal field and have no peripheral-channel argument; the rule does not extend to them. The stripe sits inside the chamfer highlight rather than glued onto the panel edge.
 
 ## 8. Do's and Don'ts
 
@@ -477,14 +477,14 @@ These rules are forceful by design. The voice of a design director, not a styleb
 ### Don't:
 
 - **Don't** use `#000` or `#fff` anywhere. All neutrals tint toward the navy hue.
-- **Don't** add side-stripe borders (`border-left` or `border-right` greater than 1px as a colored accent) to cards, list items, callouts, or panels. The Toast accent stripe is the one documented exception (see Components / Toast); do not extend the pattern. The exception requires the surface to be peripheral-channel-eligible — sitting outside the user's foveal field at the moment of recognition. Cards, list items, callouts, and alerts all sit inside the foveal field and have no such argument. Use full borders, surface tints, leading icons, or nothing.
+- **Don't** add side-stripe borders (`border-left` or `border-right` greater than 1px as a colored accent) to cards, list items, callouts, or panels. The Toast accent stripe is the one documented exception (see Components / Toast); do not extend the pattern. The exception requires the surface to be peripheral-channel-eligible: sitting outside the user's foveal field at the moment of recognition. Cards, list items, callouts, and alerts all sit inside the foveal field and have no such argument. Use full borders, surface tints, leading icons, or nothing.
 - **Don't** apply gradient text (`background-clip: text` plus a gradient). Decorative, never meaningful. Use a single solid color and adjust weight or size for emphasis.
 - **Don't** use `backdrop-filter` outside of Tooltip. The Apple-glassmorphism look is a named anti-reference.
 - **Don't** float Cards with soft drop shadows. A Card is flat or stamped (`shadow-2`), never hovering.
 - **Don't** let category hues compete with status hues. Processing teal, output gold, and control violet are subordinated by chroma so they read as taxonomy. Do not raise their saturation.
-- **Don't** add bounce, elastic, or overshoot to motion. Cockpit-brisk only. `easing-fast` for ≤180ms transitions, `easing-standard` for ≥240ms container enter / exit — see section 5 Motion.
+- **Don't** add bounce, elastic, or overshoot to motion. Cockpit-brisk only. `easing-fast` for ≤180ms transitions, `easing-standard` for ≥240ms container enter / exit; see section 5 Motion.
 - **Don't** render a `caption` (11/400) and a `label` (12/500) at the same weight when they sit adjacent. The 1px size delta is sub-pixel; weight contrast is what carries the hierarchy in the dense range. If two adjacent dense-range chips need to read as the same level, give them the same token.
-- **Don't** use big number cards, soft pastel shadows, friendly empty-state illustrations, marketing-style stat tiles, or "Welcome back" greetings. The generic-SaaS-dashboard look is a named anti-reference. Empty states use Display-typography numerics (`0 profiles`, `No devices connected`) or instrument-style "no signal" framings — never SVG illustrations of people, devices, or data, and never "Get started!" copy.
+- **Don't** use big number cards, soft pastel shadows, friendly empty-state illustrations, marketing-style stat tiles, or "Welcome back" greetings. The generic-SaaS-dashboard look is a named anti-reference. Empty states use Display-typography numerics (`0 profiles`, `No devices connected`) or instrument-style "no signal" framings; never SVG illustrations of people, devices, or data, and never "Get started!" copy.
 - **Don't** use cyan glows, RGB edge lighting, gradient angles, or "esports" type. The gaming-RGB look is a named anti-reference.
 - **Don't** use grey system-default forms, modal-after-modal flows, dialog-soup confirmation chains, or Tk-era widget chrome. The JoystickGremlin look is the whole reason for the rewrite.
 - **Don't** wrap every region in a Card. Most surfaces in InputForge are panel regions, not contained cards. Use spacing and hairline dividers instead.
