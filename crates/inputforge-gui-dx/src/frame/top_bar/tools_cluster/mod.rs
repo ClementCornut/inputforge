@@ -39,6 +39,7 @@ pub(crate) fn ToolsCluster() -> Element {
                 label: "Devices",
                 active: devices_active,
                 disabled: !p,
+                disabled_reason: "Load a profile to inspect connected devices.",
                 onclick: move |_| {
                     if devices_active {
                         // Toggle off: close the panel. via_calibration
@@ -55,6 +56,7 @@ pub(crate) fn ToolsCluster() -> Element {
                 label: "Calibration",
                 active: calibration_active,
                 disabled: !p,
+                disabled_reason: "Load a profile to calibrate axes.",
                 onclick: move |_| {
                     if calibration_active {
                         // Toggle off. Leave via_calibration true so the
@@ -70,6 +72,9 @@ pub(crate) fn ToolsCluster() -> Element {
                 label: "Profiles",
                 active: profiles_active,
                 disabled: false,
+                // Profiles is never disabled — the panel itself is the
+                // discovery surface, so it must remain reachable.
+                disabled_reason: "",
                 onclick: move |_| {
                     if profiles_active {
                         panel.set(PanelSlot::None);
@@ -88,14 +93,21 @@ fn ToolButton(
     label: String,
     active: bool,
     disabled: bool,
+    // Surfaced as `title` (sighted hover) and read by AT as the button's
+    // accessible description. Empty string ⇒ no description rendered.
+    // Only meaningful while `disabled` is true; resting buttons have no
+    // precondition to explain.
+    disabled_reason: String,
     onclick: EventHandler<MouseEvent>,
 ) -> Element {
+    let show_reason = disabled && !disabled_reason.is_empty();
     rsx! {
         button {
             r#type: "button",
             class: "if-tools-cluster__button",
             disabled,
             "aria-pressed": "{active}",
+            title: if show_reason { disabled_reason.clone() } else { String::new() },
             onclick,
             "{label}"
         }
