@@ -39,7 +39,9 @@ pub(crate) fn Layout() -> Element {
             Banner {}
             if p {
                 div { class: "if-layout__main",
-                    div { class: "if-layout__rail", "Mapping list — F8 owns content" }
+                    div { class: "if-layout__rail",
+                        crate::frame::MappingList {}
+                    }
                     div { class: "if-layout__center", "Mapping editor — F9 owns content" }
                     PanelSlotComponent {}
                 }
