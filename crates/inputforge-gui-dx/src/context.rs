@@ -63,6 +63,39 @@ pub(crate) struct ConfigSnapshot {
     pub virtual_devices: Vec<VirtualDeviceConfig>,
     pub mapped_inputs: HashSet<InputAddress>,
     pub mapping_names: HashMap<InputAddress, String>,
+    pub mappings: Vec<MappingSummary>,
+}
+
+/// One row's worth of state for the F8 mapping list. Populated by
+/// `ConfigSnapshot::from_state` once per polling tick from the active
+/// profile's `Mapping` entries; consumers in `frame::mapping_list` read
+/// these as constant-time field accesses without re-walking the action
+/// tree.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct MappingSummary {
+    pub input: InputAddress,
+    pub mode: String,
+    pub name: Option<String>,
+    pub glyphs: GlyphFlags,
+}
+
+/// Pre-computed glyph state for a `MappingSummary`. The walker stops on
+/// the first match per glyph, so both fields hold the *first*
+/// occurrence found by depth-first traversal of the action tree.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct GlyphFlags {
+    /// `Some(addr)` if the action tree contains an `Action::MergeAxis`
+    /// whose `second_input` is `addr` — the secondary input shown after
+    /// the gold `+` glyph.
+    pub merge_secondary: Option<InputAddress>,
+    /// `Some(addr)` if the action tree contains an `Action::Conditional`
+    /// whose `condition` references at least one `InputAddress` (via
+    /// `ButtonPressed | ButtonReleased | AxisInRange | HatDirection`,
+    /// possibly nested under `All | Any | Not`). The violet `+` glyph
+    /// hover-tooltip in `row.rs` runs this address through
+    /// `source_label::format` to produce the human-readable predicate
+    /// label (identical path to `merge_secondary`).
+    pub first_input_predicate: Option<InputAddress>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -185,16 +218,82 @@ impl LiveSnapshot {
     }
 }
 
+/// Walk an action tree in depth-first order, recording the first
+/// `MergeAxis::second_input` and the first input-bearing `Conditional`
+/// predicate. Returns early once both glyphs are populated, or after a
+/// full traversal (whichever comes first).
+fn derive_glyphs(actions: &[inputforge_core::action::Action]) -> GlyphFlags {
+    let mut out = GlyphFlags::default();
+    walk_actions(actions, &mut out);
+    out
+}
+
+fn walk_actions(actions: &[inputforge_core::action::Action], out: &mut GlyphFlags) {
+    use inputforge_core::action::Action;
+    for action in actions {
+        if out.merge_secondary.is_some() && out.first_input_predicate.is_some() {
+            return;
+        }
+        match action {
+            Action::MergeAxis { second_input, .. } => {
+                if out.merge_secondary.is_none() {
+                    out.merge_secondary = Some(second_input.clone());
+                }
+            }
+            Action::Conditional {
+                condition,
+                if_true,
+                if_false,
+            } => {
+                if out.first_input_predicate.is_none() {
+                    if let Some(addr) = first_input_predicate(condition) {
+                        out.first_input_predicate = Some(addr);
+                    }
+                }
+                walk_actions(if_true, out);
+                if let Some(branch) = if_false.as_deref() {
+                    walk_actions(branch, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Recurse through `All | Any | Not` composites until an input-bearing
+/// leaf (`ButtonPressed | ButtonReleased | AxisInRange | HatDirection`)
+/// is found.
+fn first_input_predicate(condition: &inputforge_core::action::Condition) -> Option<InputAddress> {
+    use inputforge_core::action::Condition;
+    match condition {
+        Condition::ButtonPressed { input }
+        | Condition::ButtonReleased { input }
+        | Condition::AxisInRange { input, .. }
+        | Condition::HatDirection { input, .. } => Some(input.clone()),
+        Condition::All { conditions } | Condition::Any { conditions } => {
+            conditions.iter().find_map(first_input_predicate)
+        }
+        Condition::Not { condition } => first_input_predicate(condition),
+    }
+}
+
 impl ConfigSnapshot {
     pub(crate) fn from_state(s: &AppState) -> Self {
         let mut mapped_inputs = HashSet::new();
         let mut mapping_names = HashMap::new();
+        let mut mappings = Vec::new();
         if let Some(profile) = &s.active_profile {
             for mapping in profile.mappings() {
                 mapped_inputs.insert(mapping.input.clone());
                 if let Some(name) = &mapping.name {
                     mapping_names.insert(mapping.input.clone(), name.clone());
                 }
+                mappings.push(MappingSummary {
+                    input: mapping.input.clone(),
+                    mode: mapping.mode.clone(),
+                    name: mapping.name.clone(),
+                    glyphs: derive_glyphs(&mapping.actions),
+                });
             }
         }
         Self {
@@ -202,6 +301,7 @@ impl ConfigSnapshot {
             virtual_devices: s.virtual_devices.clone(),
             mapped_inputs,
             mapping_names,
+            mappings,
         }
     }
 }
@@ -230,6 +330,7 @@ mod tests {
         assert!(c.virtual_devices.is_empty());
         assert!(c.mapped_inputs.is_empty());
         assert!(c.mapping_names.is_empty());
+        assert!(c.mappings.is_empty());
     }
 
     #[test]
@@ -537,5 +638,316 @@ mod tests {
         let meta = MetaSnapshot::from_state(&state);
         assert!(meta.modes.is_empty());
         assert!(meta.startup_mode.is_none());
+    }
+
+    #[test]
+    fn config_snapshot_populates_mappings_with_no_glyphs() {
+        use inputforge_core::action::Mapping;
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::types::{DeviceId, InputId};
+
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let addr = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        };
+        let mappings = vec![Mapping {
+            input: addr.clone(),
+            mode: "Default".to_owned(),
+            name: Some("Fire".to_owned()),
+            actions: vec![],
+        }];
+
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+        let cfg = ConfigSnapshot::from_state(&state);
+
+        assert_eq!(cfg.mappings.len(), 1);
+        let s = &cfg.mappings[0];
+        assert_eq!(s.input, addr);
+        assert_eq!(s.mode, "Default");
+        assert_eq!(s.name.as_deref(), Some("Fire"));
+        assert!(s.glyphs.merge_secondary.is_none());
+        assert!(s.glyphs.first_input_predicate.is_none());
+    }
+
+    #[test]
+    fn config_snapshot_glyph_walker_finds_merge_axis() {
+        use inputforge_core::action::{Action, Mapping};
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::types::{DeviceId, InputId, MergeOp};
+
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let primary = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        let secondary = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 1 },
+        };
+
+        let mappings = vec![Mapping {
+            input: primary.clone(),
+            mode: "Default".to_owned(),
+            name: None,
+            actions: vec![Action::MergeAxis {
+                second_input: secondary.clone(),
+                operation: MergeOp::Average,
+            }],
+        }];
+
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+        let cfg = ConfigSnapshot::from_state(&state);
+
+        let s = &cfg.mappings[0];
+        assert_eq!(s.glyphs.merge_secondary.as_ref(), Some(&secondary));
+        assert!(s.glyphs.first_input_predicate.is_none());
+    }
+
+    #[test]
+    fn config_snapshot_glyph_walker_finds_input_conditional() {
+        use inputforge_core::action::{Action, Condition, Mapping};
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::types::{DeviceId, InputId};
+
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let trigger = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        };
+        let predicate = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 1 },
+        };
+
+        let mappings = vec![Mapping {
+            input: trigger.clone(),
+            mode: "Default".to_owned(),
+            name: None,
+            actions: vec![Action::Conditional {
+                condition: Condition::ButtonPressed {
+                    input: predicate.clone(),
+                },
+                if_true: vec![],
+                if_false: None,
+            }],
+        }];
+
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+        let cfg = ConfigSnapshot::from_state(&state);
+
+        let s = &cfg.mappings[0];
+        assert!(s.glyphs.merge_secondary.is_none());
+        assert!(
+            s.glyphs.first_input_predicate.is_some(),
+            "input-bearing Conditional must populate first_input_predicate"
+        );
+    }
+
+    #[test]
+    fn config_snapshot_glyph_walker_finds_both_glyphs() {
+        use inputforge_core::action::{Action, Condition, Mapping};
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::types::{DeviceId, InputId, MergeOp};
+
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let primary = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        let secondary = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 1 },
+        };
+        let predicate = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        };
+
+        let mappings = vec![Mapping {
+            input: primary.clone(),
+            mode: "Default".to_owned(),
+            name: None,
+            actions: vec![
+                Action::MergeAxis {
+                    second_input: secondary.clone(),
+                    operation: MergeOp::Average,
+                },
+                Action::Conditional {
+                    condition: Condition::ButtonPressed {
+                        input: predicate.clone(),
+                    },
+                    if_true: vec![],
+                    if_false: None,
+                },
+            ],
+        }];
+
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+        let cfg = ConfigSnapshot::from_state(&state);
+
+        let s = &cfg.mappings[0];
+        assert_eq!(s.glyphs.merge_secondary.as_ref(), Some(&secondary));
+        assert!(s.glyphs.first_input_predicate.is_some());
+    }
+
+    #[test]
+    fn config_snapshot_glyph_walker_recurses_through_composite_conditions() {
+        use inputforge_core::action::{Action, Condition, Mapping};
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::types::{DeviceId, InputId};
+
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let trigger = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        };
+        let nested_predicate = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 5 },
+        };
+
+        let nested_condition = Condition::Not {
+            condition: Box::new(Condition::Any {
+                conditions: vec![Condition::All {
+                    conditions: vec![Condition::ButtonReleased {
+                        input: nested_predicate.clone(),
+                    }],
+                }],
+            }),
+        };
+
+        let mappings = vec![Mapping {
+            input: trigger.clone(),
+            mode: "Default".to_owned(),
+            name: None,
+            actions: vec![Action::Conditional {
+                condition: nested_condition,
+                if_true: vec![],
+                if_false: None,
+            }],
+        }];
+
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+        let cfg = ConfigSnapshot::from_state(&state);
+
+        let s = &cfg.mappings[0];
+        assert!(
+            s.glyphs.first_input_predicate.is_some(),
+            "walker must recurse through Not -> Any -> All -> ButtonReleased"
+        );
+    }
+
+    #[test]
+    fn config_snapshot_glyph_walker_descends_into_nested_actions() {
+        use inputforge_core::action::{Action, Condition, Mapping};
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::types::{DeviceId, InputId, MergeOp};
+
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let primary = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        let secondary = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 1 },
+        };
+        let predicate = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        };
+
+        let mappings = vec![Mapping {
+            input: primary.clone(),
+            mode: "Default".to_owned(),
+            name: None,
+            actions: vec![Action::Conditional {
+                condition: Condition::ButtonPressed {
+                    input: predicate.clone(),
+                },
+                if_true: vec![Action::MergeAxis {
+                    second_input: secondary.clone(),
+                    operation: MergeOp::Average,
+                }],
+                if_false: None,
+            }],
+        }];
+
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+        let cfg = ConfigSnapshot::from_state(&state);
+
+        let s = &cfg.mappings[0];
+        assert_eq!(
+            s.glyphs.merge_secondary.as_ref(),
+            Some(&secondary),
+            "walker must descend into Conditional.if_true to find MergeAxis"
+        );
     }
 }
