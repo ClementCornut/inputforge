@@ -94,14 +94,16 @@ Verified 2026-04-30 via DevTools Rendering panel (Ctrl+Shift+P → Show Renderin
 
 ## Edge cases
 
-- [ ] Rename to existing name (not self) → inline error with `role="alert"`; focus stays in input.
-- [ ] Delete active editing tab → focus follows to neighbor; if list empty, focus moves to `+`.
-- [ ] Right-click during inline rename → document observed event order (rename `onfocusout` vs new tab `oncontextmenu`); add deferral if reversed.
-- [ ] Shift+F10 with no tab focused → no-op.
-- [ ] Rapid mode swaps (5+ ForceMode in <1s) → no flicker; PartialEq gate suppresses spurious re-renders.
-- [ ] Profile load resets `editing_mode` to new startup.
-- [ ] **Mode name `'); alert(1); //` does not execute JS (id sanitized to integer) — fix §1.1.**
-- [ ] **Oversized name (65+ graphemes) returns `InvalidConfig`, not `ModeNotFound` — fix §2.6.**
+Verified 2026-04-30.
+
+- [x] Rename to existing name (not self) → inline error with `role="alert"`; focus stays in input.
+- [x] Delete active editing tab → focus follows to neighbor; if list empty, focus moves to `+`.
+- [x] Right-click during inline rename → document observed event order (rename `onfocusout` vs new tab `oncontextmenu`); add deferral if reversed.
+- [x] Shift+F10 with no tab focused → no-op.
+- [x] Rapid mode swaps (5+ ForceMode in <1s) → no flicker; PartialEq gate suppresses spurious re-renders.
+- [x] Profile load resets `editing_mode` to new startup.
+- [x] **Mode name `'); alert(1); //` does not execute JS (id sanitized to integer) — fix §1.1.**
+- [x] **Oversized name (65+ graphemes) returns `InvalidConfig`, not `ModeNotFound` — fix §2.6.**
 
 ## Render budget (REQUIRED, per spec 1081)
 
