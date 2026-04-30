@@ -70,6 +70,17 @@ pub(crate) fn app_root() -> Element {
     // --start-minimized — applied once on first mount.
     use_hook(|| lifecycle::apply_start_minimized(params.start_minimized));
 
+    app_root_view()
+}
+
+/// Pure render fn: assumes `AppContext`, `ViewState`, and `ToastQueue` are
+/// already in context (provided by `app_root` at runtime, by the test
+/// harness in unit tests). Holds the *single* source of truth for what
+/// the application root mounts — both `app_root` and the mount-regression
+/// test in `tests` below render through this function, so a regression
+/// that swaps `frame::Layout` for any other component lives here and gets
+/// caught by `app_root_mounts_frame_layout_not_placeholder_shell`.
+fn app_root_view() -> Element {
     rsx! {
         ThemeProvider {
             ToastViewport {}
@@ -89,16 +100,26 @@ mod tests {
     use inputforge_core::settings::AppSettings;
     use inputforge_core::state::AppState;
 
+    use crate::LaunchParams;
     use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
     use crate::frame;
+    use crate::toast::{ToastQueue, ToastState};
     use crate::tray::action::TrayMenuIds;
-    use crate::{LaunchParams, theme::ThemeProvider};
 
-    /// Minimal test harness: provides `RawHandles`, `LaunchParams`,
-    /// `AppContext`, and `ViewState` in scope, then renders `frame::Layout`.
-    /// Mirrors what `app_root` does at runtime, without the tray/polling
-    /// hooks that require a live Dioxus desktop runtime.
-    fn frame_layout_harness() -> Element {
+    /// Test harness: provides every context that `app_root_view` reads
+    /// (`AppContext`, `ViewState`, `ToastQueue`, plus the upstream
+    /// `RawHandles` and `LaunchParams` for symmetry with the runtime
+    /// path), then renders the **same** `app_root_view()` that `app_root`
+    /// renders at runtime. This makes the rsx tree at the application
+    /// root single-source-of-truth: a regression that changes
+    /// `frame::Layout {}` to anything else lives in `app_root_view` and
+    /// fails the assertions below.
+    ///
+    /// Side-effect hooks (`warnings_bridge`, polling task, tray bridge,
+    /// `start-minimized`) are intentionally not wired here — they require
+    /// a live Dioxus desktop runtime and are exercised by integration
+    /// tests / the smoke run, not by this SSR mount test.
+    fn app_root_view_with_stub_contexts() -> Element {
         // --- minimal stubs for context providers ---
         let (cmd_tx, _cmd_rx) = mpsc::channel();
         let raw = RawHandles {
@@ -132,35 +153,22 @@ mod tests {
         let view = frame::use_view_state_provider(ctx.meta);
         use_context_provider(|| view);
 
-        rsx! {
-            ThemeProvider {
-                frame::Layout {}
-            }
-        }
+        // ToastViewport (rendered by app_root_view) reads ToastQueue;
+        // provide it with an empty toast state.
+        let toast_state = use_signal(ToastState::default);
+        use_context_provider(|| ToastQueue { state: toast_state });
+
+        super::app_root_view()
     }
 
-    /// Verifies that when `frame::Layout` is mounted with a fully-stubbed
-    /// context, the rendered HTML carries the `if-layout` class and does NOT
-    /// carry `if-placeholder-shell`.
-    ///
-    /// # Scope — what this test does NOT cover
-    ///
-    /// This test renders `frame_layout_harness`, **not** `app_root`.
-    /// `app_root` calls `use_context::<RawHandles>()` and
-    /// `use_context::<LaunchParams>()`, which panic in SSR; the harness works
-    /// around this by providing those contexts itself.
-    ///
-    /// As a result:
-    /// * A regression where `app_root` reverts to mounting `PlaceholderShell`
-    ///   instead of `frame::Layout` would **not** be caught by this test.
-    /// * The correctness of the mounting decision in `app_root` (line 76:
-    ///   `frame::Layout {}`) is verified by code review only.
-    ///
-    /// A future integration test that exercises `app_root` directly (requiring
-    /// a headless desktop runtime) would close this gap.
+    /// Verifies that the same `app_root_view()` used by `app_root` mounts
+    /// `frame::Layout` and does NOT mount `PlaceholderShell`. Because
+    /// `app_root_view` is the single source of truth for what the
+    /// application root renders, a regression that swaps `frame::Layout`
+    /// for any other component is caught here.
     #[test]
     fn app_root_mounts_frame_layout_not_placeholder_shell() {
-        let mut vdom = VirtualDom::new(frame_layout_harness);
+        let mut vdom = VirtualDom::new(app_root_view_with_stub_contexts);
         vdom.rebuild_in_place();
         let html = render(&vdom);
         assert!(

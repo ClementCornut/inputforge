@@ -101,7 +101,6 @@ pub(crate) fn RenameInline(from: String, state: Signal<Option<String>>) -> Eleme
     let from_for_revert_blur = from.clone();
 
     let error_id = format!("mode-name-error-{from}");
-    let error_id_for_input = error_id.clone();
 
     rsx! {
         div {
@@ -149,7 +148,10 @@ pub(crate) fn RenameInline(from: String, state: Signal<Option<String>>) -> Eleme
                 value: ReadSignal::from(value),
                 size: InputSize::Sm,
                 invalid: error_msg.read().is_some(),
-                aria_describedby: error_id_for_input,
+                // Only point at the error span when it's actually mounted —
+                // otherwise the IDREF dangles. Tracks the same gate as the
+                // <span id="{error_id}"> branch below.
+                aria_describedby: error_msg.read().as_ref().map(|_| error_id.clone()),
                 onmounted: move |evt: MountedEvent| {
                     spawn(async move {
                         let _ = evt.data().set_focus(true).await;

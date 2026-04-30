@@ -21,6 +21,24 @@ pub(crate) struct AnchorRect {
     pub bottom: f64,
 }
 
+/// Why the context menu closed. Lets the parent decide whether to
+/// re-focus the originating tab: `Escape` and `ClickOutside` should
+/// restore focus (the user dismissed without picking anything, so the
+/// tab is the natural focus target); `Tab` must NOT re-focus because
+/// the browser's own Tab traversal is moving focus to the next
+/// focusable element and re-focusing the tab fights that intent;
+/// `ItemActivated` re-focuses the tab as a default landing spot — for
+/// Rename / Delete the inline editor or dialog grabs focus immediately
+/// after via its own `onmounted`, so the tab focus is at most a one-
+/// tick stopover.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CloseReason {
+    Escape,
+    ClickOutside,
+    Tab,
+    ItemActivated,
+}
+
 /// Disabled-state inputs (computed by the parent from meta + tab name +
 /// `has_profile` + `startup_mode` + subtree).
 ///
@@ -60,9 +78,9 @@ pub(crate) fn ModeTabContextMenu(
     /// coordinates so the menu can position itself.
     open: Signal<Option<(String, AnchorRect)>>,
     flags: ContextMenuFlags,
-    /// Called on close (any path) — gives the parent the originating tab
-    /// name so it can restore focus.
-    on_close: EventHandler<String>,
+    /// Called on close. The parent uses the `CloseReason` to decide
+    /// whether to re-focus the originating tab — see [`CloseReason`].
+    on_close: EventHandler<(String, CloseReason)>,
     /// Called when the user picks Rename — the parent enters inline-rename mode.
     on_rename: EventHandler<String>,
     /// Called when the user picks Delete — the parent opens the F4 destructive
@@ -106,7 +124,7 @@ pub(crate) fn ModeTabContextMenu(
         let on_close = on_close;
         move |_| {
             open.set(None);
-            on_close.call(close_name_for_backdrop.clone());
+            on_close.call((close_name_for_backdrop.clone(), CloseReason::ClickOutside));
         }
     };
 
@@ -117,7 +135,7 @@ pub(crate) fn ModeTabContextMenu(
             Key::Escape => {
                 evt.prevent_default();
                 open.set(None);
-                on_close.call(close_name_for_kb.clone());
+                on_close.call((close_name_for_kb.clone(), CloseReason::Escape));
             }
             Key::ArrowDown => {
                 evt.prevent_default();
@@ -137,9 +155,13 @@ pub(crate) fn ModeTabContextMenu(
             }
             Key::Tab => {
                 // Let focus leave the tablist entirely; close first so
-                // focus restoration target is not the menu.
+                // focus restoration target is not the menu. Do NOT
+                // prevent_default — the browser's natural Tab traversal
+                // moves focus to the next focusable element, and the
+                // parent's on_close handler skips re-focusing the tab
+                // for this reason (CloseReason::Tab).
                 open.set(None);
-                on_close.call(close_name_tab_kb.clone());
+                on_close.call((close_name_tab_kb.clone(), CloseReason::Tab));
             }
             _ => {}
         }
@@ -161,7 +183,7 @@ pub(crate) fn ModeTabContextMenu(
                 mode: activate_name.clone(),
             });
             open.set(None);
-            on_close.call(close_name_for_activate.clone());
+            on_close.call((close_name_for_activate.clone(), CloseReason::ItemActivated));
         }
     };
 
@@ -175,7 +197,7 @@ pub(crate) fn ModeTabContextMenu(
             }
             on_rename.call(rename_name.clone());
             open.set(None);
-            on_close.call(close_name_for_rename.clone());
+            on_close.call((close_name_for_rename.clone(), CloseReason::ItemActivated));
         }
     };
 
@@ -189,7 +211,7 @@ pub(crate) fn ModeTabContextMenu(
             }
             on_delete.call(delete_name.clone());
             open.set(None);
-            on_close.call(close_name_for_delete.clone());
+            on_close.call((close_name_for_delete.clone(), CloseReason::ItemActivated));
         }
     };
 
@@ -204,7 +226,7 @@ pub(crate) fn ModeTabContextMenu(
                 name: default_name.clone(),
             });
             open.set(None);
-            on_close.call(close_name_for_default.clone());
+            on_close.call((close_name_for_default.clone(), CloseReason::ItemActivated));
         }
     };
 

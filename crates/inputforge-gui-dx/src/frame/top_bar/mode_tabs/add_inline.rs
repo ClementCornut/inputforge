@@ -150,7 +150,10 @@ pub(crate) fn AddInline(open: Signal<bool>) -> Element {
                 size: InputSize::Sm,
                 placeholder: "New mode name".to_owned(),
                 invalid: error_msg.read().is_some(),
-                aria_describedby: error_id.to_owned(),
+                // Only point at the error span when it's actually mounted —
+                // otherwise the IDREF dangles. Tracks the same gate as the
+                // <span id="{error_id}"> branch below.
+                aria_describedby: error_msg.read().as_ref().map(|_| error_id.to_owned()),
                 onmounted: move |evt: MountedEvent| {
                     spawn(async move {
                         let _ = evt.data().set_focus(true).await;

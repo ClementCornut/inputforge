@@ -431,7 +431,17 @@ pub(crate) fn ModeTabs() -> Element {
                             tab_idx: open_tab_idx,
                             open: open_for_tab,
                             flags,
-                            on_close: move |n: String| {
+                            on_close: move |(n, reason): (String, context_menu::CloseReason)| {
+                                // Tab key: the browser's natural traversal
+                                // is moving focus to the next focusable
+                                // element; re-focusing the tab here would
+                                // fight that intent. For every other
+                                // close path (Escape / click-outside /
+                                // ItemActivated) the tab is the natural
+                                // landing focus.
+                                if matches!(reason, context_menu::CloseReason::Tab) {
+                                    return;
+                                }
                                 if let Some(idx) = modes_for_close.iter().position(|m| m == &n) {
                                     if let Some(node) =
                                         tab_refs.read().get(idx).and_then(Clone::clone)
