@@ -70,8 +70,8 @@ rsx! {
 }
 ```
 
-`app_root` already wraps `PlaceholderShell` in `ThemeProvider` — every
-screen mounted under `app_root` inherits it.
+`app_root` mounts `frame::Layout` inside `ThemeProvider` — every
+screen mounted under `app_root` inherits the design system.
 
 ## Adding a new icon
 
@@ -216,16 +216,22 @@ Note the dioxus-desktop 0.7.6 API spelling asymmetry:
 - `StatusBar` — three-slot horizontal bar (start / middle / end). Fixed
   28px height. ARIA-neutral wrapper — consumers add `role="status"` /
   `aria-live` only on the specific elements they want announced (e.g.,
-  the engine-status badge in `StatusBarView`).
+  the engine-status badge in `frame::status_bar::StatusBar`).
 
-### Placeholder shell
+### F7 frame layout
 
-`shell/placeholder.rs` and `assets/shell/placeholder-shell.css` are
-**explicitly disposable at F5**. Treat them as scratch — F5 may replace
-the entire grid template, not just slot contents. The shell exists so
-F3's tray-bridge lifecycle can be observed against a coherent layout
-(open the window, watch the status bar reflect engine state, click
-tray Toggle, watch the badge flip).
+The application chrome lives under `frame/`: top bar (engine pill,
+profile name, mode tabs, tools cluster), conditional banner
+(Diverged / Forced / ForcedAndDiverged), main row (mapping list rail
++ editor center + right panel slot), and the three-slot status bar.
+Each region is a Dioxus `#[component]` with paired pure-logic in
+`frame/<region>/logic.rs` so render-free unit tests cover state
+derivation. The shared chrome state (`editing_mode`, `panel_slot`,
+`via_calibration`) is provided by `ViewState` from
+`frame::use_view_state_provider` and read via `use_context::<ViewState>`.
+Mount happens in `app_root_view()` (not `app_root` directly), so the
+SSR mount-regression test in `app::tests` can render the same rsx
+tree with stub contexts.
 
 ## F4 — Toast & Dialog Infrastructure
 
