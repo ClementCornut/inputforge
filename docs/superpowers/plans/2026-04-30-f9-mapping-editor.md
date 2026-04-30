@@ -8,7 +8,7 @@
 
 **Architecture:** Engine-side first, one new pure helper `inputforge_core::pipeline::evaluate_actions_through(actions: &[Action], state: &AppState, addr: &InputAddress, stop_at: usize) -> InputValue` that re-runs a partial pipeline without crossing the engine command channel (the `addr` argument is the mapping's primary `InputAddress`, used to seed the pipeline's input read from `state.input_cache` via the `InputCache` trait's typed accessors). State plumbing follows: a `MappingKey = (String, InputAddress)` type alias on `view_state.rs` reused everywhere; `ConfigSnapshot` extended with `selected_mapping_actions` and `selected_mapping_key`; the polling task feeds `view.selected_mapping.peek()` into `ConfigSnapshot::from_state`. Design-system tokens land next, three `--color-stage-tint-*` tokens mixed from the existing category colors. Then the `EditorState` provider with `UndoLog` data shapes (`UndoEntry`, `UndoKind`, `MappingHistory`) plus `push_edit` / `undo` / `redo` covered by pure unit tests before any rendering. Editor renders inside-out: empty state and engine-offline banner first (smallest surface, immediate visual signal), then frame sections (header, name field, input field, live readout, inactive hint, undo recap footer), then the pipeline component shell, then stage skeleton (header + chevron + body container), then the variant-body dispatcher with five F9-owned bodies (Invert, MapToVJoy, MapToKeyboard, MergeAxis, Conditional) plus three placeholder bodies (ResponseCurve, Deadzone, ChangeMode). Pipeline interactions land last: add palette, right-click action menu, drag-and-drop reorder, malformed-stage treatment, keyboard shortcuts (Ctrl+Z / Shift+Z / Y with focus filtering, Alt+Up/Down stage move). External-edit reconciliation and SSR component tests close the plan.
 
-**Tech Stack:** Rust 2024 edition · `inputforge-core` (engine, action, pipeline, profile, state) · `inputforge-gui-dx` (Dioxus 0.7, dioxus-desktop, F2 component primitives `IconButton` / `Tooltip` / `MenuRoot`, F4 `DirtyConfirmDialog` for profile-flip undo log clear, F8 `LiveCapture` primitive) · `parking_lot::RwLock` over `AppState` · `std::sync::mpsc` for `EngineCommand` dispatch · native HTML5 drag-and-drop (no third-party DnD lib) · `tracing` for engine + GUI events.
+**Tech Stack:** Rust 2024 edition · `inputforge-core` (engine, action, pipeline, profile, state) · `inputforge-gui-dx` (Dioxus 0.7, dioxus-desktop, F2 component primitives `IconButton` / `Tooltip` / `MenuRoot`, F4 `DirtyConfirmDialog` for profile-flip undo log clear, F8 `LiveCapture` primitive, F8 `components/sortable` primitive — generic-G upgrade lands in Task 30a) · `parking_lot::RwLock` over `AppState` · `std::sync::mpsc` for `EngineCommand` dispatch · `tracing` for engine + GUI events.
 
 **Spec:** [`docs/superpowers/specs/2026-04-30-f9-mapping-editor-design.md`](../specs/2026-04-30-f9-mapping-editor-design.md).
 
@@ -22,9 +22,9 @@ Engine-side first: `evaluate_actions_through` is a pure function over `&[Action]
 
 Editor render code ships inside-out, smallest surface first, so each task lands a visible piece of UI while leaving the next task's hooks in place. Empty state (`Select a mapping`) is the smallest surface, lands first to verify the editor mounts in `if-layout__center` at all. Engine-offline banner follows, same skeleton (sticky-positioned wrapper, no pipeline yet). Then the editor frame sections render in the order the user reads them, header → name field → input field → live readout → inactive hint → undo recap. Each section is independent and testable in SSR with a seeded `ConfigSnapshot`. The pipeline component lands as a flat ordered list of stages (no Conditional yet) so the layout commits before recursion. Stage skeleton lands next (header + chevron + body container, no body rendering). Variant bodies land in order of complexity: Invert (no body) → MapToVJoy (two pickers) → MapToKeyboard (KeyCombo editor) → MergeAxis (op picker + secondary input picker arming `LiveCapture::AxesOnly`) → Conditional (predicate editor + recursive sub-pipelines). Placeholder bodies for ResponseCurve, Deadzone, ChangeMode land in a single task because they share the same caption-only layout.
 
-Pipeline interactions land last because each one piggybacks on rendering already in place: add palette opens an F2 `MenuRoot` anchored to the `+` button; right-click menu uses the same primitive inside an absolute-positioned wrapper at the cursor coordinates (F2 `MenuRoot` does not expose anchor coordinates so positioning is owned by the wrapper); drag-and-drop attaches `ondragstart`/`ondragover`/`ondrop` props to existing stage cards via the document-level JS pattern from `frame/mapping_list/dnd.rs` (Dioxus 0.7's `DragEvent` does not surface `dataTransfer`); the `Ctrl+Z` handler is a new editor-scoped window-level keyboard listener (architecturally modelled on F8's pure `handle_key()` fn in `frame/mapping_list/keyboard.rs:73-141`, NOT F8's actual handler which routes navigation keys, not undo) that consults the `EditorState.undo_log` already wired to `SetMapping` dispatch. Malformed-stage treatment is the last visual concern because every body must compute and write to `EditorState.malformed_hints` first. External-edit reconciliation closes the plan, the polling task already projects `selected_mapping_actions`; this task just adds the focus-aware reset logic.
+Pipeline interactions land last because each one piggybacks on rendering already in place: add palette opens an F2 `MenuRoot` anchored to the `+` button; right-click menu uses the same primitive inside an absolute-positioned wrapper at the cursor coordinates (F2 `MenuRoot` does not expose anchor coordinates so positioning is owned by the wrapper); drag-and-drop reuses the F8 `components/sortable` primitive (Task 30a generalizes its group discriminator to `G: 'static + Clone + PartialEq` so F9 can use `G = StageId` for cross-pipeline DnD into Conditional branches; F8 keeps `G = u32` with no behavior change); the `Ctrl+Z` handler is a new editor-scoped window-level keyboard listener (architecturally modelled on F8's pure `handle_key()` fn in `frame/mapping_list/keyboard.rs:73-141`, NOT F8's actual handler which routes navigation keys, not undo) that consults the `EditorState.undo_log` already wired to `SetMapping` dispatch. Malformed-stage treatment is the last visual concern because every body must compute and write to `EditorState.malformed_hints` first. External-edit reconciliation closes the plan, the polling task already projects `selected_mapping_actions`; this task just adds the focus-aware reset logic.
 
-Tasks 1-8 and 10-11 are pure-logic / unit-testable / engine-or-state-only. Task 9 is the Signal-wiring adapter for `EditorState`, mounting the data shapes from Tasks 6-8 into Dioxus context (a thin adapter, not pure logic). Tasks 12-42 are GUI render code (42 tasks total because Task 26 splits into 26a Conditional shell + 26b predicate editor); manual interaction passes happen in the final phase. Tasks 1-3, 5-8, 10-11 follow the standard failing-first TDD pattern. Tasks 12, 13 are SSR check-only tasks where test and implementation ship together because the implementation is a one-component render with no internal logic.
+Tasks 1-8 and 10-11 are pure-logic / unit-testable / engine-or-state-only. Task 9 is the Signal-wiring adapter for `EditorState`, mounting the data shapes from Tasks 6-8 into Dioxus context (a thin adapter, not pure logic). Tasks 12-44 are GUI render code (44 task headings total: 41 originals, Task 26 splits into 26a Conditional shell + 26b predicate editor, Task 30 retains its overview heading plus 30a sortable generic-G upgrade + 30b F9 wiring); manual interaction passes happen in the final phase. Tasks 1-3, 5-8, 10-11 follow the standard failing-first TDD pattern. Tasks 12, 13 are SSR check-only tasks where test and implementation ship together because the implementation is a one-component render with no internal logic.
 
 ---
 
@@ -78,6 +78,12 @@ crates/inputforge-gui-dx/assets/frame/mapping_editor.css
 - `crates/inputforge-gui-dx/src/app.rs`, install `EditorState` via `use_context_provider` (sibling of `LiveCapture`)
 - `crates/inputforge-gui-dx/src/bridge.rs`, polling task reads `view.selected_mapping.peek()` and threads it into `ConfigSnapshot::from_state`
 - `crates/inputforge-gui-dx/assets/tokens/colors.css`, adds `--color-stage-tint-{processing,output,control}` tokens
+- `crates/inputforge-gui-dx/src/components/sortable/state.rs`, generic-G upgrade — `SortableState<G>`, `DropTarget<G>`, `use_sortable_state<G>()` (Task 30a)
+- `crates/inputforge-gui-dx/src/components/sortable/handle.rs`, `SortableHandle<G>` (Task 30a)
+- `crates/inputforge-gui-dx/src/components/sortable/item.rs`, `SortableItemConfig<G, F>`, `validate_drop: Option<fn(&G, &G) -> bool>`, `use_sortable_item<G, F>` (Task 30a)
+- `crates/inputforge-gui-dx/src/components/sortable/live_region.rs`, `SortableLiveRegion<G>` if needed (Task 30a)
+- `crates/inputforge-gui-dx/src/frame/mapping_list/mod.rs`, F8 migration: `use_sortable_state::<u32>()` turbofish (Task 30a)
+- `crates/inputforge-gui-dx/src/frame/mapping_list/row.rs`, F8 migration: validator `Some(|src: &u32, tgt: &u32| src == tgt)` (Task 30a)
 
 **Modified (specs):**
 
@@ -6629,25 +6635,207 @@ git commit -m "feat(pipeline): right-click stage actions menu"
 
 ---
 
-### Task 30: Drag-and-drop reorder
+### Task 30: Drag-and-drop reorder (via `components/sortable`, generic-G upgrade)
 
-Native HTML5 DnD via Dioxus event props. Drop indicator: 2 px accent bar in `--color-border-focus`. Cycle prevention rejects drops of a Conditional into its own descendant branches with a 200 ms `--color-error` indicator and no state change.
+F9 reuses the existing F8 `components/sortable` primitive (`crates/inputforge-gui-dx/src/components/sortable/`) instead of rolling its own DnD. The sortable already provides cursor-Y midpoint hit-detection, drop indicators (`Before`/`After`), an AT live-region, the `event.data_transfer().set_data("text/html", "")` Firefox/WebView2 incantation, and the `resolve_drop_index` helper — all in pure Rust, with zero document-level JS.
 
-**Amendments:**
-1. **Drop unused `_actions` parameter** from `is_descendant` — the function is a pure path-prefix check that does not consult the action tree:
+**One blocker for cross-pipeline DnD (AC #28):** the sortable's group discriminator is `u32` (flat). F9 needs to identify which `Pipeline` instance a row lives in by its parent `StageId` path (root `[]`, branch `[Index(2), IfTrue]`, etc.) so that a drop into a Conditional branch addresses the correct nested pipeline. **Solution:** generalize the sortable to a generic `G: 'static + Clone + PartialEq` group type. F8 keeps its current behavior by specifying `G = u32`; F9 uses `G = StageId` (or a thin `PipelinePath` newtype).
+
+This task therefore has TWO sub-tasks:
+
+- **Task 30a:** Generic-G upgrade to `components/sortable` + F8 migration (small; backward-compatible behavior).
+- **Task 30b:** F9 wiring — mount one shared `SortableState<StageId>` in the editor, attach `use_sortable_item` per stage, dispatch reorder via `remove_at_path` + `insert_at_path` on `root_actions`.
+
+**Why the upgrade is safe for F8:**
+- F8's `frame/mapping_list/mod.rs:103` calls `use_sortable_state()` once → becomes `use_sortable_state::<u32>()` (turbofish) or `use_sortable_state::<GroupKind>()` (cleaner; drops `group_to_u32`).
+- F8's `frame/mapping_list/row.rs:191` validator `Some(|src, tgt| src == tgt)` → becomes `Some(|src: &u32, tgt: &u32| src == tgt)` (only `&` references added because for non-`Copy` `G` the validator must take refs; for `u32` this is identical behavior).
+- No CSS changes, no event-handler timing changes, no AT-region changes.
+
+---
+
+### Task 30a: Sortable primitive — generic-G upgrade + F8 migration
+
+**Files:**
+- Modify: `crates/inputforge-gui-dx/src/components/sortable/state.rs`
+- Modify: `crates/inputforge-gui-dx/src/components/sortable/handle.rs`
+- Modify: `crates/inputforge-gui-dx/src/components/sortable/item.rs`
+- Modify: `crates/inputforge-gui-dx/src/components/sortable/live_region.rs` (only if its API touches `G`; live_region is group-agnostic, may need only `state: SortableState<G>`)
+- Modify: `crates/inputforge-gui-dx/src/frame/mapping_list/mod.rs` (turbofish at the `use_sortable_state` call site)
+- Modify: `crates/inputforge-gui-dx/src/frame/mapping_list/row.rs` (validator signature: `&u32` refs)
+
+**Bound rationale.** `G: 'static + Clone + PartialEq`:
+- `'static` because Dioxus `Signal<T>` requires it.
+- `Clone` because the `on_drop` closure needs to read the source group from `state.drag_group` and the target group from its captured config (validator gates the comparison).
+- `PartialEq` because `DropTarget` derives it and `ondragleave` filters on `(index, group) == (this_row.index, this_row.group)`.
+
+For `validate_drop`, switch from by-value `fn(u32, u32) -> bool` to by-reference `fn(&G, &G) -> bool`. By-ref keeps `G: !Copy` types working (notably `StageId = Vec<StageIdSegment>`, which is not `Copy`). For `Copy` types like `u32`, the closure body is unchanged after adding `&` to the params.
+
+- [ ] **Step 1: Generalize `state.rs`**
 
 ```rust
-pub(crate) fn is_descendant(ancestor: &StageId, candidate: &StageId) -> bool {
-    if candidate.0.len() <= ancestor.0.len() {
-        return false;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DropTarget<G: 'static + Clone + PartialEq> {
+    pub index: usize,
+    pub group: G,
+    pub side: SortableSide,
+    pub invalid: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct SortableState<G: 'static + Clone + PartialEq> {
+    pub drag_from: Signal<Option<usize>>,
+    pub drag_group: Signal<Option<G>>,
+    pub drop_target: Signal<Option<DropTarget<G>>>,
+    pub live_announcement: Signal<String>,
+}
+
+pub fn use_sortable_state<G: 'static + Clone + PartialEq>() -> SortableState<G> {
+    SortableState {
+        drag_from: use_signal(|| None),
+        drag_group: use_signal(|| None),
+        drop_target: use_signal(|| None),
+        live_announcement: use_signal(String::new),
     }
-    candidate.0[..ancestor.0.len()] == ancestor.0[..]
 }
 ```
 
-(Update the test signatures to match.)
+`resolve_drop_index` is `G`-free, no change.
 
-2. **Cross-pipeline DnD into Conditional branches works for free** because every StageId is root-relative. The drop handler builds a target path that may include `IfTrue`/`IfFalse` segments; `remove_at_path` + `insert_at_path` on `root_actions` does the rest. Add a test:
+- [ ] **Step 2: Generalize `item.rs`**
+
+```rust
+pub struct SortableItemConfig<G, F>
+where
+    G: 'static + Clone + PartialEq,
+    F: FnMut(usize, SortableSide) + 'static,
+{
+    pub state: SortableState<G>,
+    pub index: usize,
+    pub group: G,
+    pub group_len: usize,
+    pub item_ref: Signal<Option<Rc<MountedData>>>,
+    pub validate_drop: Option<fn(&G, &G) -> bool>,
+    pub on_drop: F,
+}
+
+pub fn use_sortable_item<G, F>(config: SortableItemConfig<G, F>) -> SortableItemHandlers
+where
+    G: 'static + Clone + PartialEq,
+    F: FnMut(usize, SortableSide) + 'static,
+{ /* ... existing body, with `G` replacing `u32` and `&G` replacing `u32` in validator calls ... */ }
+```
+
+The handler bodies change in two places:
+- `let invalid = validate_drop.is_some_and(|f| !f(src_group, group));` → `is_some_and(|f| !f(&src_group, &group));` (and `src_group` becomes a `G` clone via `*drag_group.peek()` … actually `drag_group.peek()` returns a guard; clone its inner `Option<G>` and unwrap).
+- `(*drag_group.peek())` calls become `drag_group.peek().clone()` (or destructure-via-`as_ref`) because `G` may be `!Copy`.
+
+Watch: `*drag_from.peek()` is a `Copy` `Option<usize>` and stays as-is. Only `drag_group` reads need adjusting.
+
+- [ ] **Step 3: Generalize `handle.rs`**
+
+```rust
+#[component]
+pub fn SortableHandle<G: 'static + Clone + PartialEq>(
+    state: SortableState<G>,
+    index: usize,
+    group: G,
+    group_len: usize,
+    #[props(default = true)] draggable: bool,
+) -> Element { /* ... */ }
+```
+
+Inside, `drag_group.set(Some(group))` clones implicitly via `Some(group)` move; if Dioxus's `#[component]` macro requires `G: PartialEq` for prop diffing (it does), the bound is already satisfied.
+
+- [ ] **Step 4: Update `live_region.rs` if needed**
+
+`SortableLiveRegion` only reads `state.live_announcement`. Either parameterize as `SortableLiveRegion<G>`, or — since `G` doesn't affect this component — leave it with `state: SortableState<G>` propagated as a generic param. Trivial change.
+
+- [ ] **Step 5: Migrate F8 callers**
+
+`frame/mapping_list/mod.rs:103`:
+
+```rust
+// Before
+let sortable = use_sortable_state();
+// After (option A: turbofish u32)
+let sortable = use_sortable_state::<u32>();
+// After (option B: cleaner, drops group_to_u32 entirely)
+let sortable = use_sortable_state::<crate::frame::mapping_list::group::GroupKind>();
+```
+
+Recommend option B as a follow-up; option A is the minimal-change migration. (For F9's stand-up of Task 30a, ship option A. F8 cleanup to option B in a separate commit.)
+
+`frame/mapping_list/row.rs:191`:
+
+```rust
+// Before
+validate_drop: Some(|src, tgt| src == tgt),
+// After
+validate_drop: Some(|src: &u32, tgt: &u32| src == tgt),
+```
+
+The `group_to_u32(group_kind)` call already produces a `u32`, no other changes there.
+
+- [ ] **Step 6: Run F8 tests to verify zero behavior change**
+
+```bash
+cargo test -p inputforge-gui-dx --lib frame::mapping_list
+cargo test -p inputforge-gui-dx --lib components::sortable
+```
+
+Expected: PASS — F8's existing behavior is preserved.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add crates/inputforge-gui-dx/src/components/sortable crates/inputforge-gui-dx/src/frame/mapping_list
+git commit -m "refactor(sortable): make group discriminator generic over G: Clone + PartialEq"
+```
+
+---
+
+### Task 30b: F9 wiring — pipeline DnD via the generic sortable
+
+**Files:**
+- Create: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/dnd.rs` (only `is_descendant` lives here now; the sortable owns drag/drop event handling)
+- Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/mod.rs` (mount `SortableState<StageId>` in context)
+- Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/mod.rs` (Pipeline knows its own `path_prefix` — that becomes the sortable's `group`)
+- Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage.rs` (`use_sortable_item`, `SortableHandle`)
+- Modify: `crates/inputforge-gui-dx/assets/frame/mapping_editor.css` (drag-handle hover styling matches F8's `.if-sortable-handle`; drop indicator class names align with sortable's `.if-sortable--drop-before` / `--drop-after` / `--drop-invalid`)
+
+- [ ] **Step 1: Write the failing tests**
+
+`is_descendant` (pure):
+
+```rust
+#[test]
+fn dnd_descendant_detection_rejects_self_descent() {
+    let ancestor = StageId(vec![StageIdSegment::Index(0)]);
+    let candidate = StageId(vec![
+        StageIdSegment::Index(0),
+        StageIdSegment::IfTrue,
+        StageIdSegment::Index(0),
+    ]);
+    assert!(is_descendant(&ancestor, &candidate));
+}
+
+#[test]
+fn dnd_descendant_detection_allows_unrelated_path() {
+    let ancestor = StageId(vec![StageIdSegment::Index(0)]);
+    let candidate = StageId(vec![StageIdSegment::Index(1)]);
+    assert!(!is_descendant(&ancestor, &candidate));
+}
+
+#[test]
+fn dnd_descendant_detection_allows_self_drop_to_outer_pipeline() {
+    // Dragging a Conditional onto a sibling at the same depth must succeed.
+    let ancestor = StageId(vec![StageIdSegment::Index(2)]);
+    let candidate = StageId(vec![StageIdSegment::Index(5)]);
+    assert!(!is_descendant(&ancestor, &candidate));
+}
+```
+
+Cross-pipeline integration test (uses `at_path` / `remove_at_path` / `insert_at_path` from Tasks 10-11):
 
 ```rust
 #[test]
@@ -6661,10 +6849,14 @@ fn dnd_can_move_stage_from_outer_into_conditional_if_true() {
         Action::Invert,
     ];
     let drag_id = StageId(vec![StageIdSegment::Index(1)]);
-    let drop_id = StageId(vec![StageIdSegment::Index(0), StageIdSegment::IfTrue, StageIdSegment::Index(0)]);
-    let removed = remove_at_path(&actions, &drag_id).expect("valid drag id");
-    let dragged_action = at_path(&actions, &drag_id).cloned().expect("valid drag id");
-    let result = insert_at_path(&removed, &drop_id, dragged_action).expect("valid drop id");
+    let drop_id = StageId(vec![
+        StageIdSegment::Index(0),
+        StageIdSegment::IfTrue,
+        StageIdSegment::Index(0),
+    ]);
+    let dragged = at_path(&actions, &drag_id).cloned().expect("valid drag");
+    let removed = remove_at_path(&actions, &drag_id).expect("valid drag");
+    let result = insert_at_path(&removed, &drop_id, dragged).expect("valid drop");
     match &result[0] {
         Action::Conditional { if_true, .. } => assert_eq!(if_true.len(), 1),
         _ => panic!("expected Conditional"),
@@ -6673,87 +6865,180 @@ fn dnd_can_move_stage_from_outer_into_conditional_if_true() {
 }
 ```
 
-3. **Mouse DnD only.** Keyboard reorder (Alt+Up/Down) lives in Task 31 — DO NOT duplicate keyboard-handling logic here.
-4. **Reference**: F8's pattern at `frame/mapping_list/dnd.rs` uses document-level JS for `dragstart`/`dragover` because Dioxus 0.7's `DragEvent` does not surface `dataTransfer`. Mirror that pattern: a Rust-side Signal `drag_source: Signal<Option<StageId>>` drives state; document-level JS handles browser semantics (prevent default on dragover for `.if-stage` targets).
-
-**Files:**
-- Create: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/dnd.rs`
-- Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage.rs`
-- Modify: `crates/inputforge-gui-dx/assets/frame/mapping_editor.css`
-
-- [ ] **Step 1: Write the failing test for cycle detection**
-
-Pure function `is_descendant(actions, ancestor_path, candidate_path) -> bool`:
+- [ ] **Step 2: Implement `is_descendant`**
 
 ```rust
-#[test]
-fn dnd_descendant_detection_rejects_self_descent() {
-    let actions = vec![Action::Conditional {
-        condition: Condition::ButtonPressed { input: synth_addr() },
-        if_true: vec![Action::Invert],
-        if_false: None,
-    }];
-    let ancestor = StageId(vec![StageIdSegment::Index(0)]);
-    let candidate = StageId(vec![
-        StageIdSegment::Index(0),
-        StageIdSegment::IfTrue,
-        StageIdSegment::Index(0),
-    ]);
-    assert!(is_descendant(&actions, &ancestor, &candidate));
-}
+//! F9 pipeline drag-and-drop helpers.
+//!
+//! Drag/drop event handling itself is delegated to `components/sortable`
+//! (with `G = StageId`). This file only carries pure helpers + the
+//! validator wired into `SortableItemConfig.validate_drop`.
 
-#[test]
-fn dnd_descendant_detection_allows_unrelated_path() {
-    let actions = vec![
-        Action::Invert,
-        Action::Invert,
-    ];
-    let ancestor = StageId(vec![StageIdSegment::Index(0)]);
-    let candidate = StageId(vec![StageIdSegment::Index(1)]);
-    assert!(!is_descendant(&actions, &ancestor, &candidate));
-}
-```
+use crate::frame::mapping_editor::undo_log::StageId;
 
-- [ ] **Step 2: Implement helpers + DnD listeners**
-
-`is_descendant` is a prefix check on the path segments (ancestor path is a strict prefix of candidate path). Implementation in `dnd.rs`:
-
-```rust
-pub(crate) fn is_descendant(_actions: &[Action], ancestor: &StageId, candidate: &StageId) -> bool {
+/// Strict path-prefix check. A drop is rejected if the source `ancestor`
+/// path is a strict prefix of the target `candidate` path — moving a
+/// Conditional into one of its own descendant branches would create a
+/// cycle in the action tree. Pure; no allocation.
+#[must_use]
+pub(crate) fn is_descendant(ancestor: &StageId, candidate: &StageId) -> bool {
     if candidate.0.len() <= ancestor.0.len() {
         return false;
     }
     candidate.0[..ancestor.0.len()] == ancestor.0[..]
 }
+
+/// Validator pointer for `SortableItemConfig.validate_drop`. Returns
+/// `true` (drop allowed) UNLESS the source is an ancestor of the target.
+pub(crate) fn validate_pipeline_drop(src: &StageId, tgt: &StageId) -> bool {
+    !is_descendant(src, tgt)
+}
 ```
 
-DnD listeners on `Stage`:
-- `ondragstart`: store the dragged `StageId` in a top-level `Signal<Option<StageId>>` provided by `MappingEditor`
-- `ondragover`: compute the drop position; render the drop indicator
-- `ondrop`: validate via `is_descendant`, dispatch `SetMapping` with `remove_at_path` then `insert_at_path` (or display a 200 ms error indicator if cycle detected)
+- [ ] **Step 3: Mount one shared `SortableState<StageId>` in the editor**
 
-CSS:
+In `MappingEditor`:
 
-```css
-.if-stage__drop-indicator {
-    height: 2px; background: var(--color-border-focus);
-    margin: 4px 0;
-}
-.if-stage__drop-indicator--invalid { background: var(--color-error); }
-.if-stage__drag-handle {
-    opacity: 0; transition: opacity 100ms;
-    cursor: grab;
-}
-.if-stage:hover .if-stage__drag-handle { opacity: 1; }
+```rust
+let sortable: SortableState<StageId> = use_sortable_state::<StageId>();
+use_context_provider(|| sortable);
+
+// Render the AT live-region once near the editor root.
+SortableLiveRegion { state: sortable }
 ```
 
-- [ ] **Step 3: Run tests** — Expected: PASS for the descendant tests.
+The `Pipeline` and `Stage` components consume the state via `use_context::<SortableState<StageId>>()`.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Wire `use_sortable_item` into `Stage`**
+
+The sortable's "group" is the parent pipeline's path: outer pipeline = `StageId(vec![])`; sub-pipeline at `[Index(2), IfTrue]` = `StageId(vec![Index(2), IfTrue])`.
+
+```rust
+// In Stage props, add `parent_pipeline_path: StageId` (Pipeline computes
+// this and passes it: outer = StageId(vec![]), branch =
+// stage_id_of_conditional + IfTrue/IfFalse segment).
+
+let sortable = use_context::<SortableState<StageId>>();
+let mut item_ref: Signal<Option<Rc<MountedData>>> = use_signal(|| None);
+
+// Local index within parent pipeline = the trailing Index segment of
+// stage_id (always present per StageId construction in Task 6).
+let local_index = match stage_id.0.last() {
+    Some(StageIdSegment::Index(i)) => *i,
+    _ => 0, // unreachable in well-formed StageIds
+};
+
+// Read the parent pipeline's current length from root_actions.
+// This is needed by the sortable's group_len bookkeeping; F9 derives
+// it lazily by walking root_actions to the parent path.
+let group_len = parent_pipeline_len(&root_actions, &parent_pipeline_path);
+
+let cmd_tx = ctx.commands.clone();
+let editor = use_context::<EditorState>();
+let mapping_key_for_drop = mapping_key.clone();
+let stage_id_for_drop = stage_id.clone();
+let parent_path_for_drop = parent_pipeline_path.clone();
+let root_for_drop = root_actions.clone();
+
+let handlers = use_sortable_item(SortableItemConfig {
+    state: sortable,
+    index: local_index,
+    group: parent_pipeline_path.clone(),
+    group_len,
+    item_ref,
+    validate_drop: Some(crate::frame::mapping_editor::pipeline::dnd::validate_pipeline_drop),
+    on_drop: move |to: usize, _side: SortableSide| {
+        // Source: read from sortable.drag_from + sortable.drag_group; both
+        // still populated when this callback runs.
+        let Some(src_local_index) = *sortable.drag_from.peek() else { return };
+        let Some(src_parent_path) = sortable.drag_group.peek().clone() else { return };
+
+        // Reconstruct source full StageId from src_parent_path + Index(src_local_index).
+        let mut src_path = src_parent_path.0.clone();
+        src_path.push(StageIdSegment::Index(src_local_index));
+        let src_id = StageId(src_path);
+
+        // Target full StageId from this row's parent_pipeline_path + Index(to).
+        let mut tgt_path = parent_path_for_drop.0.clone();
+        tgt_path.push(StageIdSegment::Index(to));
+        let tgt_id = StageId(tgt_path);
+
+        // Read the dragged action, then remove + insert.
+        let Some(dragged) = at_path(&root_for_drop, &src_id).cloned() else { return };
+        let Some(removed) = remove_at_path(&root_for_drop, &src_id) else { return };
+        let Some(new_actions) = insert_at_path(&removed, &tgt_id, dragged) else { return };
+
+        // name source-of-truth (same fix as Tasks 23-25).
+        let cfg = ctx.config.read();
+        let name = cfg.mapping_names.get(&mapping_key_for_drop).cloned();
+        drop(cfg);
+
+        // Snapshot before for undo.
+        let before = inputforge_core::action::Mapping {
+            input: mapping_key_for_drop.1.clone(),
+            mode: mapping_key_for_drop.0.clone(),
+            name: name.clone(),
+            actions: root_for_drop.clone(),
+        };
+
+        if cmd_tx.send(EngineCommand::SetMapping {
+            input: mapping_key_for_drop.1.clone(),
+            mode: mapping_key_for_drop.0.clone(),
+            name,
+            actions: new_actions,
+        }).is_err() {
+            return;
+        }
+
+        // Structural mutation: clear expanded_stages + malformed_hints
+        // per Task 11 invariant.
+        editor.expanded_stages.write().clear();
+        editor.malformed_hints.write().clear();
+
+        editor.undo_log.write().push_edit(
+            mapping_key_for_drop.clone(),
+            before,
+            UndoKind::StageReorder,
+            format_undo_label(UndoKind::StageReorder, LabelArgs::default()),
+        );
+
+        // AT live-region announcement.
+        let mut live = sortable.live_announcement;
+        live.set(format!(
+            "Moved stage to position {} in {}",
+            to + 1,
+            if parent_path_for_drop.0.is_empty() { "outer pipeline".to_owned() } else { format!("branch {}", format_stage_id(&parent_path_for_drop)) }
+        ));
+    },
+});
+
+// Spread handlers + render SortableHandle (the 6-dot grip) inside the stage.
+```
+
+- [ ] **Step 5: Render `SortableHandle` inside each Stage**
+
+```rust
+SortableHandle::<StageId> {
+    state: sortable,
+    index: local_index,
+    group: parent_pipeline_path.clone(),
+    group_len,
+}
+```
+
+Place near the chevron / `right_slot` in the header (CSS-driven hover reveal).
+
+- [ ] **Step 6: CSS reuse**
+
+The sortable's existing CSS at `crates/inputforge-gui-dx/assets/components/sortable.css` provides `.if-sortable--drop-before`, `--drop-after`, `--drop-invalid`, `.if-sortable-handle`. Stage cards in `.if-stage` reuse those classes by composing them with the existing `if-stage` styles. Add to `mapping_editor.css` only if F9 needs to override the indicator color or position offsets for the stage layout — the default sortable visuals should suffice.
+
+- [ ] **Step 7: Run tests** — Expected: PASS for `is_descendant` tests; the cross-pipeline integration test passes via `at_path` / `remove_at_path` / `insert_at_path`. SSR coverage of the actual DnD flow is impractical (drag events have no SSR); land manual smoke-testing this path under Task 41 (AC #28).
+
+- [ ] **Step 8: Commit**
 
 ```bash
 git add crates/inputforge-gui-dx/src/frame/mapping_editor crates/inputforge-gui-dx/assets/frame/mapping_editor.css
-git commit -m "feat(pipeline): drag-and-drop reorder with cycle prevention"
+git commit -m "feat(pipeline): drag-and-drop reorder via components/sortable with cycle prevention"
 ```
 
 ---
