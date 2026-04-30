@@ -8,7 +8,7 @@
 //! skipped via the `:not(:disabled)` selector when paired with HTML `disabled`,
 //! and additionally callers can use `aria-disabled` together with the same
 //! selector by relying on `[aria-disabled="true"]` not matching `:disabled`
-//! — for those cases, the JS is unchanged from the F2 implementation; the
+//!, for those cases, the JS is unchanged from the F2 implementation; the
 //! mode-tab context menu's per-item `aria-disabled` honoring is handled by
 //! its click-handler bail-out, while traversal still rolls past every item.
 
@@ -66,7 +66,7 @@ const MENU_FOCUS_JS: &str = r#"
 ///
 /// `menu_id` is interpolated directly into a `document::eval` JS string
 /// (see the format! call below), which means it MUST be JS-string-safe.
-/// Callers should derive it from a trusted integer or a static slug —
+/// Callers should derive it from a trusted integer or a static slug -
 /// **never from user input** (mode names, profile names, etc). The F7
 /// `mode_tabs/context_menu.rs` constructs `menu_id = "mode-tab-menu-{idx}"`
 /// from the tab's positional index for exactly this reason.

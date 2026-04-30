@@ -7,14 +7,14 @@
    - Category hues (processing/output/control) are intentionally chroma-reduced
      so they read as taxonomy markers, not competing alerts. */
 :root {
-    /* Surface — slightly cooler & deeper than the egui base, with a
+    /* Surface, slightly cooler & deeper than the egui base, with a
        clearer gap between sunken and elevated for crisper layering. */
     --color-bg:           #14172A;
     --color-bg-elevated:  #1E223A;
     --color-bg-sunken:    #0E1020;
     --color-bg-overlay:   rgba(8, 10, 22, 0.78);
 
-    /* Text — pulled slightly cooler to harmonize with the navy base.
+    /* Text, pulled slightly cooler to harmonize with the navy base.
        text-subtle was lifted from #686C88 (which failed WCAG 2.2 AA at
        3.0x against bg-elevated) to #8589A7 (5.2x on bg, 4.6x on
        bg-elevated). Placeholder and tertiary text are real text per
@@ -24,20 +24,20 @@
     --color-text-subtle:  #8589A7;
     --color-text-inverse: #0E1020;
 
-    /* Border — hairline + strong. Strong is what most cockpit panel
+    /* Border, hairline + strong. Strong is what most cockpit panel
        seams use; the regular border is for sub-divisions. */
     --color-border:        #2A2E48;
     --color-border-strong: #424766;
     --color-border-focus:  #5AB0FF;
 
-    /* Action — primary lifted slightly toward HUD-cyan-blue for that
+    /* Action, primary lifted slightly toward HUD-cyan-blue for that
        avionics readout feel. Hover brightens, active deepens. */
     --color-primary:        #4FA8FF;
     --color-primary-hover:  #6FBAFF;
     --color-primary-active: #2D7FD9;
     --color-primary-fg:     #06101F;
 
-    /* Status — live shifted from mint to a slightly cooler phosphor
+    /* Status, live shifted from mint to a slightly cooler phosphor
        green that reads CRT-instrument rather than fintech.
        Warning kept amber. Error desaturated a touch so it doesn't clip.
        Info aliased to primary. */
@@ -45,7 +45,7 @@
     --color-warning:       #FFB347;
     --color-error:         #F25555;
     --color-error-hover:   #FF6F6F;
-    /* error-active was #D43F3F. text-inverse on it cleared only 4.1x —
+    /* error-active was #D43F3F. text-inverse on it cleared only 4.1x -
        below the 4.5x AA floor for normal text on a button surface.
        Lifted by ~0.025 L (oklch) to #DD4846, which clears 4.6x. The
        active state still sits 0.05 L below the resting #F25555 so the
@@ -53,7 +53,7 @@
     --color-error-active:  #DD4846;
     --color-info:          #4FA8FF;
 
-    /* Categories — three INDEPENDENT accent hues, NOT aliased to
+    /* Categories, three INDEPENDENT accent hues, NOT aliased to
        action/status. Each ~30% lower chroma than the alert palette
        so they read as classification chips, not competing alerts.
        Category badges follow the status-badge pattern: the canonical
@@ -69,17 +69,17 @@
     --color-output:             #C99846;                       /* burnished gold, 4.8x on 14% tint */
     --color-output-bg:          rgba(201, 152, 70, 0.14);
 
-    --color-control:            #9A78D6;                       /* muted violet — borders and surfaces */
+    --color-control:            #9A78D6;                       /* muted violet, borders and surfaces */
     --color-control-bg:         rgba(154, 120, 214, 0.14);
-    --color-control-badge-text: #B89BEA;                       /* AA-tuned badge text only — 5.5x on 14% control tint */
+    --color-control-badge-text: #B89BEA;                       /* AA-tuned badge text only, 5.5x on 14% control tint */
 
-    /* Status backgrounds — composited tints of the matching foreground hue.
+    /* Status backgrounds, composited tints of the matching foreground hue.
        Use these on Badge/Toast surfaces; never a raw rgba() literal in
        component CSS. The matching hue reads as the text on the composited
        tint. Verified ratios are hue-as-text against the composited tint
        mixed into bg-elevated. The error pair fails AA (3.9x) with the
        canonical hue, so error badges use the brighter --color-error-hover
-       step (4.9x) — same pattern as control-badge-text. */
+       step (4.9x), same pattern as control-badge-text. */
     --color-info-bg:       rgba(79, 168, 255, 0.14);       /* primary text 4.9x on tint */
     --color-success-bg:    rgba(46, 224, 160, 0.14);       /* live    text 6.7x on tint */
     --color-warning-bg:    rgba(255, 179, 71, 0.14);       /* warning text 6.6x on tint */

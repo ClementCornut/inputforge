@@ -50,7 +50,7 @@ pub(super) fn handle_plot_interaction(
 
     let response = &plot_response.response;
 
-    // Drag start — find the nearest control point within the hit radius.
+    // Drag start, find the nearest control point within the hit radius.
     if response.drag_started() {
         let clicked_at = response
             .hover_pos()
@@ -66,7 +66,7 @@ pub(super) fn handle_plot_interaction(
         }
     }
 
-    // Drag in progress — update the dragged point's position.
+    // Drag in progress, update the dragged point's position.
     if response.dragged() {
         if let Some(drag_idx) = state.dragging_point {
             if let Some(screen_pos) = response.hover_pos() {
@@ -80,7 +80,7 @@ pub(super) fn handle_plot_interaction(
         }
     }
 
-    // Drag ended — validate curve; revert to pre-drag snapshot on failure.
+    // Drag ended, validate curve; revert to pre-drag snapshot on failure.
     if response.drag_stopped() && state.dragging_point.is_some() {
         if let Some(valid) = mutation::reconstruct_curve(curve) {
             *curve = valid;
@@ -93,7 +93,7 @@ pub(super) fn handle_plot_interaction(
         state.dragging_point = None;
     }
 
-    // Double-click — add a new control point at the clicked position.
+    // Double-click, add a new control point at the clicked position.
     if response.double_clicked() {
         if let Some(screen_pos) = response.hover_pos() {
             let visual_pos = plot_response.transform.value_from_position(screen_pos);
@@ -105,7 +105,7 @@ pub(super) fn handle_plot_interaction(
         }
     }
 
-    // Right-click — remove the hovered control point.
+    // Right-click, remove the hovered control point.
     if response.secondary_clicked() {
         if let Some(hovered_idx) = state.hovered_point {
             if mutation::remove_control_point(curve, hovered_idx) {

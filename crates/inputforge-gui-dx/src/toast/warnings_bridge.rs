@@ -38,7 +38,7 @@ pub(crate) fn install_warnings_bridge(
             }
             seen.set(len);
         } else if len < last {
-            // Engine cleared/reset warnings — re-baseline.
+            // Engine cleared/reset warnings, re-baseline.
             seen.set(len);
         }
     }

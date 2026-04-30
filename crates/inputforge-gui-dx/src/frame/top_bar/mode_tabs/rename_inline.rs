@@ -69,7 +69,7 @@ fn run_revert(
 }
 
 /// Parent-driven rename inline editor. The parent owns
-/// `state: Signal<Option<String>>` — when this matches `from`, the
+/// `state: Signal<Option<String>>`, when this matches `from`, the
 /// editor is open. The component closes by calling `state.set(None)`.
 #[component]
 #[allow(
@@ -148,7 +148,7 @@ pub(crate) fn RenameInline(from: String, state: Signal<Option<String>>) -> Eleme
                 value: ReadSignal::from(value),
                 size: InputSize::Sm,
                 invalid: error_msg.read().is_some(),
-                // Only point at the error span when it's actually mounted —
+                // Only point at the error span when it's actually mounted -
                 // otherwise the IDREF dangles. Tracks the same gate as the
                 // <span id="{error_id}"> branch below.
                 aria_describedby: error_msg.read().as_ref().map(|_| error_id.clone()),

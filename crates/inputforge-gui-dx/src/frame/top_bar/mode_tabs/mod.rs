@@ -44,7 +44,7 @@ pub(crate) fn ModeTabs() -> Element {
     let marker = runtime_marker(&modes_now, &cur, force.as_ref());
 
     // Per-tab MountedData refs for keyboard focus movement.
-    // Resized via use_effect on length change — never in render.
+    // Resized via use_effect on length change, never in render.
     let mut tab_refs: Signal<Vec<Option<Rc<MountedData>>>> =
         use_signal(|| vec![None; modes_now.len()]);
     // Resize on `modes` length change. Done in a use_effect rather than
@@ -66,7 +66,7 @@ pub(crate) fn ModeTabs() -> Element {
     let mut adding: Signal<bool> = use_signal(|| false);
     // F4 delete-confirm target. Owned by `TopBar` and provided through
     // `ModeDeleteSignal` so the dialog component can render as a
-    // sibling of `.if-top-bar` (not a child) — the audit-flagged
+    // sibling of `.if-top-bar` (not a child), the audit-flagged
     // structural smell. ModeTabs writes here from the keyboard Delete
     // arm and the context-menu Delete handler; `ModeDeleteDialog`
     // reads it to drive its own `dialog_open` mirror.
@@ -143,7 +143,7 @@ pub(crate) fn ModeTabs() -> Element {
                     let kb_menu_name = name.clone();
                     let kb_tab_id = tab_id.clone();
                     // Plumbing for the Delete keybind: the closure resolves
-                    // the disabled flag at event time (cheap — runs only on
+                    // the disabled flag at event time (cheap, runs only on
                     // Delete keystroke) by reading meta + state, so render
                     // doesn't pay an O(N) descendants_of cost per tab.
                     let kb_delete_name = name.clone();
@@ -253,7 +253,7 @@ pub(crate) fn ModeTabs() -> Element {
                             _ => None,
                         };
                         let Some((mut target, step)) = raw_next else { return };
-                        // Walk past renaming indexes — bounded by `len`
+                        // Walk past renaming indexes, bounded by `len`
                         // iterations so we never infinite-loop even if
                         // every tab is renaming (impossible in practice).
                         for _ in 0..len {
@@ -267,7 +267,7 @@ pub(crate) fn ModeTabs() -> Element {
                             };
                         }
                         if is_skippable(target) {
-                            return; // Every tab is renaming — no-op.
+                            return; // Every tab is renaming, no-op.
                         }
                         evt.prevent_default();
                         if let Some(target_name) = key_modes.get(target) {
@@ -310,7 +310,7 @@ pub(crate) fn ModeTabs() -> Element {
                                 "aria-haspopup": "menu",
                                 "aria-expanded": "{menu_open}",
                                 // Only emit aria-controls while the menu is
-                                // mounted — pointing at a missing id confuses
+                                // mounted, pointing at a missing id confuses
                                 // AT.
                                 "aria-controls": menu_open.then(|| menu_id.clone()),
                                 tabindex: if is_active { "0" } else { "-1" },
@@ -374,7 +374,7 @@ pub(crate) fn ModeTabs() -> Element {
                     // Numeric index of the open tab. Used by the context
                     // menu to derive its DOM id and aria-labelledby target
                     // (which point at the integer-derived tab id, never
-                    // the raw mode name — see JS-injection note in mod.rs).
+                    // the raw mode name, see JS-injection note in mod.rs).
                     let open_tab_idx = modes_for_flags
                         .iter()
                         .position(|m| m == &open_name)
@@ -435,7 +435,7 @@ pub(crate) fn ModeTabs() -> Element {
                     rsx! {}
                 }
             }
-            // T31: tail `+` add tab — swaps to inline editor when open.
+            // T31: tail `+` add tab, swaps to inline editor when open.
             if *adding.read() {
                 add_inline::AddInline { open: adding, pending_focus }
             } else {

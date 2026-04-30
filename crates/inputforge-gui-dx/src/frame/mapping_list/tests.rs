@@ -691,7 +691,7 @@ fn empty_zero_filter_results_renders_full_anatomy() {
 #[allow(
     clippy::too_many_lines,
     reason = "seeded-snapshot SSR test inlines a 4-mapping fixture covering MapToVJoy, \
-              MergeAxis, Conditional, and resting Button — splitting it into helpers \
+              MergeAxis, Conditional, and resting Button, splitting it into helpers \
               hurts readability for a test whose value is the whole assembled fixture."
 )]
 fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {

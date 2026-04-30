@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-/// `InputForge` — remap physical joystick, pedal, and throttle inputs
+/// `InputForge`, remap physical joystick, pedal, and throttle inputs
 /// to virtual `vJoy` devices.
 #[derive(Debug, Parser)]
 #[command(name = "inputforge", version, about)]

@@ -23,7 +23,7 @@ pub(crate) fn EnginePill() -> Element {
     let (variant, label, command) = engine_pill_state(s);
     let class = format!("if-engine-pill if-engine-pill--{}", variant.class_suffix());
 
-    // `aria-pressed` exposes the pill as a toggle button — Running
+    // `aria-pressed` exposes the pill as a toggle button, Running
     // reads as the "on" state. Paused/Stopped read as "off". The
     // visible dot+label are aria-hidden so AT users hear the action
     // verb (button accessible name) followed by the live region
@@ -42,7 +42,7 @@ pub(crate) fn EnginePill() -> Element {
     };
     // sr-only live region carries the state announcement (separate
     // from the button so the button keeps its native role). Phrasing
-    // is "Engine running / paused / stopped" — full sentence so AT
+    // is "Engine running / paused / stopped", full sentence so AT
     // users get the subject, not a bare adjective.
     let live_text = format!("Engine {}", label.to_lowercase());
 
@@ -50,7 +50,7 @@ pub(crate) fn EnginePill() -> Element {
     // `Action`s and `PathBuf`s), so we discriminate by reference
     // and reconstruct the unit variant for sending. The fall-through
     // arm is a structural guard against `engine_pill_state` ever
-    // returning a third variant — we log and bail rather than
+    // returning a third variant, we log and bail rather than
     // silently rewriting to `Activate`.
     let onclick = move |_| {
         let cmd = match &command {

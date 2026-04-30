@@ -19,7 +19,7 @@ pub(crate) fn PanelSlot() -> Element {
     // Single stable <aside> across Devices ⇄ Profiles ⇄ Calibration.
     // Hoisting the element outside the match keeps Dioxus's diff at the
     // text-node level on tool swap, so the entrance keyframe only fires
-    // on the genuine None → Some open — not on every Some → Some swap
+    // on the genuine None → Some open, not on every Some → Some swap
     // (which previously read as a close-and-reopen animation). F12/F13
     // will rewrite this file end-to-end; the placeholder just gives the
     // chrome a faithful "which tool is active" readout in the meantime.

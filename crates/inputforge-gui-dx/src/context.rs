@@ -47,7 +47,7 @@ pub(crate) struct MetaSnapshot {
     pub warnings: Vec<String>,
     pub mode_force: Option<ForcedMode>,
     /// DFS pre-order names. Hierarchy queries (parent, descendants) are
-    /// not surfaced through this field — components requiring tree shape
+    /// not surfaced through this field, components requiring tree shape
     /// read `ctx.state.active_profile.modes()` directly. The split is
     /// deliberate: this snapshot is cheap to clone-on-tick, and the
     /// only F7 consumer that needs hierarchy (delete-confirm preview)
@@ -85,7 +85,7 @@ pub(crate) struct MappingSummary {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct GlyphFlags {
     /// `Some(addr)` if the action tree contains an `Action::MergeAxis`
-    /// whose `second_input` is `addr` — the secondary input shown after
+    /// whose `second_input` is `addr`, the secondary input shown after
     /// the gold `+` glyph.
     pub merge_secondary: Option<InputAddress>,
     /// `Some(addr)` if the action tree contains an `Action::Conditional`

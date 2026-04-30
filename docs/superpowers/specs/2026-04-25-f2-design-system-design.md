@@ -1,4 +1,4 @@
-# F2 — Design System & Theme: Design Spec
+# F2, Design System & Theme: Design Spec
 
 **Status:** Design approved, ready for implementation plan
 **Date:** 2026-04-25
@@ -9,15 +9,15 @@
 
 ## Context
 
-F2 establishes the visual language and primitive component library for the Dioxus rewrite of `inputforge-gui`. F1 left `crates/inputforge-gui-dx` as a state-bridge scaffold (signals, 60Hz polling, `AppContext` provider) with **zero styling infrastructure** — only one inline-style placeholder component, no CSS file, no assets, no design tokens, no reusable components.
+F2 establishes the visual language and primitive component library for the Dioxus rewrite of `inputforge-gui`. F1 left `crates/inputforge-gui-dx` as a state-bridge scaffold (signals, 60Hz polling, `AppContext` provider) with **zero styling infrastructure**, only one inline-style placeholder component, no CSS file, no assets, no design tokens, no reusable components.
 
 Every subsequent feature (F3 shell through F14 profile surface) builds on F2's tokens and primitives. F2 must therefore be:
 
 - **Theme-ready** (semantic naming so a future light theme is an override block, not a refactor)
 - **Complete** in primitives so later screens compose without revisiting F2
-- **Production-grade** in personality — first impression of the new GUI
+- **Production-grade** in personality, first impression of the new GUI
 
-**Visual direction:** "Evolved Glass Cockpit." The existing egui identity (dark navy `#1A1A2E` base, semantic accent quintet, Inter + JetBrains Mono fonts, 8/4 spacing, 6px radius, instrument-cluster aesthetic) is the baseline. `impeccable:frontend-design` is invited to challenge every aspect — colors, type scale, spacing rhythm, motion, fonts. The brief is "evolve, don't replicate."
+**Visual direction:** "Evolved Glass Cockpit." The existing egui identity (dark navy `#1A1A2E` base, semantic accent quintet, Inter + JetBrains Mono fonts, 8/4 spacing, 6px radius, instrument-cluster aesthetic) is the baseline. `impeccable:frontend-design` is invited to challenge every aspect, colors, type scale, spacing rhythm, motion, fonts. The brief is "evolve, don't replicate."
 
 **Why now:** F2 is sequential foundation per the master plan. Without it, F3 has no atomic vocabulary to build the shell from, and frontend-design has no scaffold to operate on.
 
@@ -82,9 +82,9 @@ examples/
 
 **ThemeProvider** is mounted at the root of `app_root` (in `app.rs`, replacing the inline-styled `F1Readout`). It uses Dioxus's `document::Stylesheet` component to load each token CSS file, then `global.css`, then each component CSS file. Load order matters: colors → typography → spacing → radii → elevation → motion → **global** → components.
 
-**Asset registration (Dioxus 0.7 / `manganis`).** Each CSS file, font, and any runtime-fetched asset is registered with the `asset!("/...")` proc macro at its use site. There is **no** `Cargo.toml` `assets = [...]` field in Dioxus 0.7 — that's not how the asset pipeline works. Stylesheets mount via `document::Stylesheet`; fonts referenced by `@font-face` use `asset!()` in their `src: url(...)` value. Asset paths are absolute from the crate root and start with `/`.
+**Asset registration (Dioxus 0.7 / `manganis`).** Each CSS file, font, and any runtime-fetched asset is registered with the `asset!("/...")` proc macro at its use site. There is **no** `Cargo.toml` `assets = [...]` field in Dioxus 0.7, that's not how the asset pipeline works. Stylesheets mount via `document::Stylesheet`; fonts referenced by `@font-face` use `asset!()` in their `src: url(...)` value. Asset paths are absolute from the crate root and start with `/`.
 
-Sketch (illustrative — final API per `dioxus-document::Stylesheet` and `manganis::asset!`):
+Sketch (illustrative, final API per `dioxus-document::Stylesheet` and `manganis::asset!`):
 
 ```rust
 // theme/mod.rs
@@ -136,12 +136,12 @@ All tokens defined in `:root` selectors. Naming is semantic (intent), never raw 
 | Border | `--color-border`, `--color-border-strong`, `--color-border-focus` |
 | Action | `--color-primary`, `--color-primary-hover`, `--color-primary-active`, `--color-primary-fg` |
 | Status | `--color-live`, `--color-warning`, `--color-error`, `--color-info` |
-| Categories | `--color-processing`, `--color-output`, `--color-control` — **three distinct accent hues** (not aliases of action/status) |
+| Categories | `--color-processing`, `--color-output`, `--color-control`, **three distinct accent hues** (not aliases of action/status) |
 | Each accent | `-bg` (subtle tint for backgrounds), `-fg` (text on solid accent) variants |
 
 Placeholder values for action/status tokens seeded from existing egui DARK palette (`#1A1A2E`, `#4A9EFF`, `#00E5A0`, `#FFB347`, `#FF6B6B`, `#B07FFF`).
 
-**On the category tokens:** the egui implementation aliases them (`processing → primary`, `output → live`, `control → special` — see `crates/inputforge-gui/src/theme.rs:64-76`). F2 explicitly **does not** carry that aliasing: `--color-processing`, `--color-output`, `--color-control` are reserved as three independent accent hues. Placeholders match the egui aliases for parity, but `impeccable:frontend-design` is **explicitly authorized** to pick three hues that complement (and don't overlap) the action/status palettes. Components reference categories by name (`--color-processing` etc.), never by indirection.
+**On the category tokens:** the egui implementation aliases them (`processing → primary`, `output → live`, `control → special`, see `crates/inputforge-gui/src/theme.rs:64-76`). F2 explicitly **does not** carry that aliasing: `--color-processing`, `--color-output`, `--color-control` are reserved as three independent accent hues. Placeholders match the egui aliases for parity, but `impeccable:frontend-design` is **explicitly authorized** to pick three hues that complement (and don't overlap) the action/status palettes. Components reference categories by name (`--color-processing` etc.), never by indirection.
 
 ### typography.css
 
@@ -161,7 +161,7 @@ Placeholder values for action/status tokens seeded from existing egui DARK palet
 --leading-relaxed:  1.7;
 ```
 
-`@font-face` declarations reference `assets/fonts/*.ttf` via `manganis::asset!()` (see asset registration sketch above). Each declaration includes `font-display: swap` — desktop wry loads TTFs synchronously from disk so flash-of-unstyled-text is rare in practice, but the explicit hint keeps behavior predictable. TTFs were chosen over WOFF2 to reuse the existing `crates/inputforge-gui/assets/fonts/` files unchanged; payload size is not a concern on desktop.
+`@font-face` declarations reference `assets/fonts/*.ttf` via `manganis::asset!()` (see asset registration sketch above). Each declaration includes `font-display: swap`, desktop wry loads TTFs synchronously from disk so flash-of-unstyled-text is rare in practice, but the explicit hint keeps behavior predictable. TTFs were chosen over WOFF2 to reuse the existing `crates/inputforge-gui/assets/fonts/` files unchanged; payload size is not a concern on desktop.
 
 ### spacing.css
 
@@ -173,7 +173,7 @@ Placeholder values for action/status tokens seeded from existing egui DARK palet
 
 ### elevation.css
 
-`--shadow-0` (none) · `--shadow-1` (subtle, 1-2px) · `--shadow-2` (cards) · `--shadow-3` (overlays). Used sparingly — cockpit aesthetic favors borders over shadows. Frontend-design may flatten further.
+`--shadow-0` (none) · `--shadow-1` (subtle, 1-2px) · `--shadow-2` (cards) · `--shadow-3` (overlays). Used sparingly, cockpit aesthetic favors borders over shadows. Frontend-design may flatten further.
 
 ### motion.css
 
@@ -198,14 +198,14 @@ body {
 
 h1, h2, h3, h4, h5, h6, p { margin: 0; }      /* component CSS opts in to spacing via tokens */
 
-/* Custom scrollbar — Webkit + Firefox */
+/* Custom scrollbar, Webkit + Firefox */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--color-bg-elevated); }
 ::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: var(--radius-sm); }
 * { scrollbar-color: var(--color-border-strong) var(--color-bg-elevated); scrollbar-width: thin; }
 ```
 
-No reset beyond this — components own their own margins and paddings via spacing tokens.
+No reset beyond this, components own their own margins and paddings via spacing tokens.
 
 ---
 
@@ -233,14 +233,14 @@ Each lives in `src/components/<name>.rs` with sibling `assets/components/<name>.
 | `Label` | `for_id`, children | Bare typography-consistent label |
 | `Spinner` | `size` | Pure-CSS rotation; `aria-busy` |
 
-**State coverage required for every interactive primitive:** default, hover, focus-visible, active, disabled, invalid (where applicable). All focus rings use `--color-border-focus`. Force-state CSS hooks (e.g., `data-force-state="hover"`) for static-state documentation in the gallery are **deferred to F15 polish** — F2 verification relies on manual interaction in the gallery.
+**State coverage required for every interactive primitive:** default, hover, focus-visible, active, disabled, invalid (where applicable). All focus rings use `--color-border-focus`. Force-state CSS hooks (e.g., `data-force-state="hover"`) for static-state documentation in the gallery are **deferred to F15 polish**, F2 verification relies on manual interaction in the gallery.
 
 ---
 
 ## Icon Strategy
 
 - **Source:** Phosphor Icons (MIT). Regular weight default; fill weight where active states benefit.
-- **Storage:** raw `.svg` files in `src/icons/svg/`. Loaded via `include_str!()`. No string-escaping ceremony when adding new icons — drop the `.svg` file in.
+- **Storage:** raw `.svg` files in `src/icons/svg/`. Loaded via `include_str!()`. No string-escaping ceremony when adding new icons, drop the `.svg` file in.
 - **Registry:** `src/icons/mod.rs` exposes:
   ```rust
   pub enum Icon { Joystick, Device, Axis, Button, /* … */ }
@@ -270,13 +270,13 @@ Each lives in `src/components/<name>.rs` with sibling `assets/components/<name>.
 
 ## Test Harness
 
-`examples/component_gallery.rs` — sibling to existing `bridge_demo.rs`.
+`examples/component_gallery.rs`, sibling to existing `bridge_demo.rs`.
 
 - Single scrollable page, sectioned per primitive.
 - Each section shows every variant × every interaction state (default/hover/focus/disabled/invalid where relevant).
 - Mounts `ThemeProvider`. No engine state required.
 - Run: `dx serve --example component_gallery --platform desktop`.
-- Hot-reload friendly — editing CSS or RSX updates instantly.
+- Hot-reload friendly, editing CSS or RSX updates instantly.
 
 The gallery doubles as visual regression reference for F15 polish work.
 
@@ -290,14 +290,14 @@ The gallery doubles as visual regression reference for F15 polish work.
 - This design doc.
 - Screenshots of the existing egui GUI (run `cargo run --features gui-egui` and capture).
 - The product persona summary (serious sim/HOTAS configuration tool, expert users, instrument-cluster heritage).
-- Existing semantic structure to preserve at the **token name** level (categories `processing/output/control`, status quintet) — but not necessarily their values.
+- Existing semantic structure to preserve at the **token name** level (categories `processing/output/control`, status quintet), but not necessarily their values.
 - Explicit permission to challenge: color values, accent saturation, type scale, spacing rhythm, motion language, font choice, elevation philosophy.
 
 **Specific questions for frontend-design to answer:**
-- The placeholder type scale (12/13/14/15/18/22/28) clusters four sizes within 6px — please rationalize. We expect 5–6 sizes max, with clearer hierarchy steps.
+- The placeholder type scale (12/13/14/15/18/22/28) clusters four sizes within 6px, please rationalize. We expect 5-6 sizes max, with clearer hierarchy steps.
 - We've reserved `--color-processing` / `--color-output` / `--color-control` as **three distinct accent hues** (not aliases of action/status). Please pick three that complement the action and status palettes without overlap.
 - Is `--radius-md: 6px` right for the "evolved glass cockpit" aesthetic, or should the radii family shift up or down?
-- Confirm or revise the elevation philosophy ("borders over shadows" — egui heritage). Cockpit aesthetic suggests minimal shadows; verify.
+- Confirm or revise the elevation philosophy ("borders over shadows", egui heritage). Cockpit aesthetic suggests minimal shadows; verify.
 - Motion: are the durations (120/180/260ms) and easings appropriate for an instrument-cluster aesthetic, or do they read too consumer-app?
 
 **Output of frontend-design:** finalized values for `colors.css`, `typography.css`, `spacing.css`, `radii.css`, `elevation.css`, `motion.css` and a written rationale answering each question above.
@@ -310,17 +310,17 @@ The gallery doubles as visual regression reference for F15 polish work.
 
 - **New:** all files under `crates/inputforge-gui-dx/assets/` (tokens, `global.css`, components, fonts).
 - **New:** all files under `crates/inputforge-gui-dx/src/components/` and `src/icons/`.
-- **New:** `crates/inputforge-gui-dx/src/theme/mod.rs` — defines the `pub` `ThemeProvider` component; re-exported from `lib.rs` so the gallery example (which constructs its own root) can mount it.
+- **New:** `crates/inputforge-gui-dx/src/theme/mod.rs`, defines the `pub` `ThemeProvider` component; re-exported from `lib.rs` so the gallery example (which constructs its own root) can mount it.
 - **New:** `crates/inputforge-gui-dx/examples/component_gallery.rs`.
-- **New:** `crates/inputforge-gui-dx/THIRD_PARTY_LICENSES.md` — Phosphor MIT + Inter OFL-1.1 + JetBrains Mono OFL-1.1 attributions.
-- **Modify:** `crates/inputforge-gui-dx/src/app.rs` — replace inline-styled `F1Readout` with `ThemeProvider` wrapping the existing children; F1Readout itself rewritten using new primitives (Card, Badge, etc.) so the smoke-test screen demonstrates the design system.
-- **Modify:** `crates/inputforge-gui-dx/src/lib.rs` — add `pub mod theme;` and `pub mod components;` (and the corresponding `pub use` re-exports) so both `app::app_root` *and* the standalone `examples/component_gallery.rs` binary can import `ThemeProvider` and primitives. **`launch_gui` itself is unchanged** — only the public surface grows.
-- **Modify:** `crates/inputforge-gui-dx/Cargo.toml` — no `assets = [...]` field needed (assets are registered via `manganis::asset!()` at use sites). Add `manganis` as a direct dep only if it isn't already a transitive of `dioxus`; otherwise no Cargo.toml change at all.
-- **Modify:** `crates/inputforge-gui-dx/README.md` — document the gallery example, theme provider usage, how to add a new icon, and the `dx serve` / WebView2 prerequisites (see Risks).
+- **New:** `crates/inputforge-gui-dx/THIRD_PARTY_LICENSES.md`, Phosphor MIT + Inter OFL-1.1 + JetBrains Mono OFL-1.1 attributions.
+- **Modify:** `crates/inputforge-gui-dx/src/app.rs`, replace inline-styled `F1Readout` with `ThemeProvider` wrapping the existing children; F1Readout itself rewritten using new primitives (Card, Badge, etc.) so the smoke-test screen demonstrates the design system.
+- **Modify:** `crates/inputforge-gui-dx/src/lib.rs`, add `pub mod theme;` and `pub mod components;` (and the corresponding `pub use` re-exports) so both `app::app_root` *and* the standalone `examples/component_gallery.rs` binary can import `ThemeProvider` and primitives. **`launch_gui` itself is unchanged**, only the public surface grows.
+- **Modify:** `crates/inputforge-gui-dx/Cargo.toml`, no `assets = [...]` field needed (assets are registered via `manganis::asset!()` at use sites). Add `manganis` as a direct dep only if it isn't already a transitive of `dioxus`; otherwise no Cargo.toml change at all.
+- **Modify:** `crates/inputforge-gui-dx/README.md`, document the gallery example, theme provider usage, how to add a new icon, and the `dx serve` / WebView2 prerequisites (see Risks).
 
 **Reused (do not modify) from F1:**
-- `crates/inputforge-gui-dx/src/context.rs` — `AppContext`, snapshots
-- `crates/inputforge-gui-dx/src/bridge.rs` — polling task
+- `crates/inputforge-gui-dx/src/context.rs`, `AppContext`, snapshots
+- `crates/inputforge-gui-dx/src/bridge.rs`, polling task
 
 ---
 
@@ -328,11 +328,11 @@ The gallery doubles as visual regression reference for F15 polish work.
 
 End-to-end checks before declaring F2 complete:
 
-1. `cargo build -p inputforge-gui-dx` — builds with **no new warnings** vs. the F1 baseline. Use `cargo build -p inputforge-gui-dx 2>&1 | grep -c '^warning:'` and compare against the F1 count rather than asserting zero (proc-macro and transitive warnings are out of scope).
-2. `cargo build -p inputforge-app --no-default-features --features gui-dioxus` — app builds with Dioxus GUI.
-3. `cargo build -p inputforge-app` — egui GUI still default and unchanged (no regression).
-4. `cargo test -p inputforge-gui-dx` — F1 context tests still pass.
-5. `dx serve --example component_gallery --platform desktop` — gallery window opens, all 17 primitives render in their sections, all variants visible, all states demonstrable by interaction.
+1. `cargo build -p inputforge-gui-dx`, builds with **no new warnings** vs. the F1 baseline. Use `cargo build -p inputforge-gui-dx 2>&1 | grep -c '^warning:'` and compare against the F1 count rather than asserting zero (proc-macro and transitive warnings are out of scope).
+2. `cargo build -p inputforge-app --no-default-features --features gui-dioxus`, app builds with Dioxus GUI.
+3. `cargo build -p inputforge-app`, egui GUI still default and unchanged (no regression).
+4. `cargo test -p inputforge-gui-dx`, F1 context tests still pass.
+5. `dx serve --example component_gallery --platform desktop`, gallery window opens, all 17 primitives render in their sections, all variants visible, all states demonstrable by interaction.
 6. **Manual interaction pass on gallery:** every interactive primitive responds to hover/focus/click/keyboard appropriately; tab key navigates focus through all primitives in document order; focus ring is visible on all and uses `--color-border-focus`; disabled state visually distinct from enabled.
 7. **F1Readout regression pass:** under `gui-dioxus`, F1Readout still renders the same six fields (engine status, current mode, active profile, connected devices, virtual devices, warnings count) bound to the same `MetaSnapshot` / `ConfigSnapshot` data as F1. Visual styling changes (now uses `Card` / `Badge` primitives instead of inline styles) are expected; **data binding must be byte-identical** for the same seeded state.
 8. **Visual direction signed off:** the frontend-design output (revised token values) has been reviewed and committed.
@@ -344,15 +344,15 @@ End-to-end checks before declaring F2 complete:
 
 ## Out of Scope (Deferred)
 
-- **Light theme values** — semantic structure ready; values not shipped in F2.
-- **Tabs / Radio / RadioGroup** — defer to first consumer (Tabs likely F3, Radio likely F8).
-- **Toast / Dialog** — F4's responsibility.
-- **Toolbar / SplitPane / StatusBar** composites — F3 shell composes these from F2 primitives.
-- **Custom listbox** — native `<select>` until UX demands more.
-- **Rich motion / animation** — F2 has minimal CSS transitions only; F15 polish.
-- **Comprehensive a11y audit** — F2 ships semantic HTML and focus rings; full audit at F15.
-- **Per-component visual regression tests** — testing story is an open question for the rewrite (see master plan); F2 ships the gallery as a manual-review artifact, not an automated harness.
-- **Force-state CSS hooks** — `data-force-state="hover"` / `="focus-visible"` / `="active"` selectors that mirror live state CSS, enabling static documentation of all states side-by-side. Useful for visual-regression tooling but not required for F2 verification. **F15 polish.**
+- **Light theme values**, semantic structure ready; values not shipped in F2.
+- **Tabs / Radio / RadioGroup**, defer to first consumer (Tabs likely F3, Radio likely F8).
+- **Toast / Dialog**, F4's responsibility.
+- **Toolbar / SplitPane / StatusBar** composites, F3 shell composes these from F2 primitives.
+- **Custom listbox**, native `<select>` until UX demands more.
+- **Rich motion / animation**, F2 has minimal CSS transitions only; F15 polish.
+- **Comprehensive a11y audit**, F2 ships semantic HTML and focus rings; full audit at F15.
+- **Per-component visual regression tests**, testing story is an open question for the rewrite (see master plan); F2 ships the gallery as a manual-review artifact, not an automated harness.
+- **Force-state CSS hooks**, `data-force-state="hover"` / `="focus-visible"` / `="active"` selectors that mirror live state CSS, enabling static documentation of all states side-by-side. Useful for visual-regression tooling but not required for F2 verification. **F15 polish.**
 
 ---
 

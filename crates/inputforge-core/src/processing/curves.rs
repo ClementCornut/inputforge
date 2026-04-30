@@ -85,7 +85,7 @@ pub struct BezierSegment {
 ///
 /// Requires >= 2 points and strictly increasing x values.
 /// The `symmetric` flag is stored as an edit constraint for the GUI;
-/// it does not affect validation — symmetric curves store all points
+/// it does not affect validation, symmetric curves store all points
 /// on both sides of the origin.
 fn validate_points(points: &[(f64, f64)], kind: &str) -> Result<()> {
     if points.len() < 2 {

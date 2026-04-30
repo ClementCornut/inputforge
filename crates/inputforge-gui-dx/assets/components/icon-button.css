@@ -30,7 +30,7 @@
   border-color: transparent;
 }
 /* --color-border (not --color-bg-elevated) so the hover surface stays
-   visible when this button sits inside a Card — Card already paints
+   visible when this button sits inside a Card, Card already paints
    --color-bg-elevated, which would make a same-color hover invisible.
    Matches the menu-item hover fix in commit 1861051. */
 .if-icon-button--ghost:hover:not(:disabled) {

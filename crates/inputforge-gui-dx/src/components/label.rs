@@ -9,7 +9,7 @@ pub fn Label(
     children: Element,
 ) -> Element {
     let combined = merge_class("if-label", "", class.as_deref());
-    // HTML5 forbids for="" — so render the attribute only when Some.
+    // HTML5 forbids for="", so render the attribute only when Some.
     rsx! {
         if let Some(ref for_val) = for_id {
             label {

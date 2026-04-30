@@ -11,7 +11,7 @@ pub(crate) enum Tool {
 
 /// Whether a given tool button should render as active.
 ///
-/// Exclusive — at most one of (Devices, Calibration, Profiles) may be active
+/// Exclusive, at most one of (Devices, Calibration, Profiles) may be active
 /// at any time. Calibration is "Devices opened with the calibration drill".
 pub(crate) fn tool_active(slot: PanelSlot, via_calibration: bool, tool: Tool) -> bool {
     matches!(

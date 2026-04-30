@@ -72,7 +72,7 @@ pub(crate) fn ToolsCluster() -> Element {
                 label: "Profiles",
                 active: profiles_active,
                 disabled: false,
-                // Profiles is never disabled — the panel itself is the
+                // Profiles is never disabled, the panel itself is the
                 // discovery surface, so it must remain reachable.
                 disabled_reason: "",
                 onclick: move |_| {

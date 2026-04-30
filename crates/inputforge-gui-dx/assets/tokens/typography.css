@@ -1,4 +1,4 @@
-/* @font-face rules live in `src/theme/mod.rs` — they need manganis-resolved
+/* @font-face rules live in `src/theme/mod.rs`, they need manganis-resolved
    asset URLs interpolated at runtime, which a static CSS file can't do. */
 
 :root {
@@ -8,7 +8,7 @@
     /* Seven sizes, hand-tuned for the dense instrument-cluster range
        (11-16px) and a modular ratio above (16-32px, ~1.25 between
        steps). In the dense range adjacent steps are weight-distinguished,
-       not size-distinguished — caption (xs/400) and label (sm/500)
+       not size-distinguished, caption (xs/400) and label (sm/500)
        sit at 1px apart; the 100-weight delta is what carries the
        hierarchy, not the sub-pixel size delta. See DESIGN.md section 3. */
     --text-xs:   11px;   /* caption: tabular captions, tick labels, kbd chips. Always weight 400. */
@@ -24,9 +24,9 @@
     --weight-semibold: 600;
     --weight-bold:     700;
 
-    /* Tightened from 1.2 / 1.5 — instrument-cluster reads denser.
+    /* Tightened from 1.2 / 1.5, instrument-cluster reads denser.
        1.15 for headers (display, headline, title), 1.45 for body and
-       labels. No 1.6 step — the prior --leading-relaxed went unused
+       labels. No 1.6 step, the prior --leading-relaxed went unused
        and was dropped per DESIGN.md M1. */
     --leading-tight:   1.15;
     --leading-base:    1.45;

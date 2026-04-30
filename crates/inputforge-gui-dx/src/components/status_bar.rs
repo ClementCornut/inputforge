@@ -8,7 +8,7 @@ use super::merge_class;
 /// Fixed 28px height (matches today's egui status bar; reviewable by
 /// frontend-design).
 ///
-/// **ARIA shape.** The wrapper is intentionally neutral — no `role`, no
+/// **ARIA shape.** The wrapper is intentionally neutral, no `role`, no
 /// `aria-label`. `role="status"` is a live region; applying it at the
 /// primitive level would make every badge change announce. Consumers add
 /// `role="status"` (or `aria-live`) on the *specific* element they want

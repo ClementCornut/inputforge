@@ -523,14 +523,14 @@ pub(super) fn remove_control_point(curve: &mut ResponseCurve, index: usize) -> b
             } else {
                 // local == 0
                 if seg_idx == 0 {
-                    return false; // First start point — edge.
+                    return false; // First start point, edge.
                 }
                 (seg_idx - 1, seg_idx)
             };
 
             let seg_count = segments.len();
             if right_idx >= seg_count {
-                return false; // Last end point — edge.
+                return false; // Last end point, edge.
             }
             // Need at least 1 segment after merge.
             if seg_count < 2 {

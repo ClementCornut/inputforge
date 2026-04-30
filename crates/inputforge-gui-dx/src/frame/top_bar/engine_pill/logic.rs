@@ -27,7 +27,7 @@ impl Variant {
 /// The caller is responsible for rendering `disabled: !has_profile` on
 /// the button, which makes the returned command unreachable in the
 /// no-profile case. The dispatch table is therefore a pure function of
-/// `status` only — no advisory profile flag needed.
+/// `status` only, no advisory profile flag needed.
 pub(crate) fn engine_pill_state(status: EngineStatus) -> (Variant, &'static str, EngineCommand) {
     match status {
         EngineStatus::Running => (Variant::Live, "Running", EngineCommand::Deactivate),

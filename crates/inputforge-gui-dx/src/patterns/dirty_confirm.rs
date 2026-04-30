@@ -1,9 +1,9 @@
 //! Presentational dirty-state confirmation dialog. Cancel/Discard/Save in
 //! fixed document order so `showModal()`'s default-focus rule lands on
-//! Cancel (the safe default — destructive-confirmation a11y guidance).
+//! Cancel (the safe default, destructive-confirmation a11y guidance).
 //!
 //! ESC routes to `oncancel` (matches Cancel button). `close_on_backdrop_click`
-//! is hard-coded to `false` — destructive dialogs should not close on a stray
+//! is hard-coded to `false`, destructive dialogs should not close on a stray
 //! click outside the panel.
 
 use dioxus::prelude::*;
@@ -29,14 +29,14 @@ pub struct DirtyConfirmDialogProps {
     /// resolution path (Cancel/Discard/Save) and fires the matching callback.
     pub open: Signal<bool>,
 
-    /// Title — defaults to "Unsaved Changes".
+    /// Title, defaults to "Unsaved Changes".
     #[props(default)]
     pub title: Option<String>,
-    /// Description — defaults to
+    /// Description, defaults to
     /// "You have unsaved changes. What would you like to do?".
     #[props(default)]
     pub message: Option<String>,
-    /// Save button label — defaults to "Save". Future consumers may pass
+    /// Save button label, defaults to "Save". Future consumers may pass
     /// "Save & Switch", "Save & Close", etc.
     #[props(default)]
     pub save_label: Option<String>,
@@ -83,7 +83,7 @@ pub fn DirtyConfirmDialog(props: DirtyConfirmDialogProps) -> Element {
     rsx! {
         DialogRoot {
             open: open,
-            // ESC routes to Cancel — matches default-focus and safe-default
+            // ESC routes to Cancel, matches default-focus and safe-default
             // semantics. The dialog's own onclose handler fires after the
             // browser closes the <dialog>.
             onclose: onclose,
@@ -93,7 +93,7 @@ pub fn DirtyConfirmDialog(props: DirtyConfirmDialogProps) -> Element {
 
             DialogTitle { "{title}" }
             DialogDescription { "{message}" }
-            DialogBody {} // empty — Description carries the body content
+            DialogBody {} // empty, Description carries the body content
             DialogFooter {
                 // Cancel first → receives showModal()'s default focus.
                 Button {

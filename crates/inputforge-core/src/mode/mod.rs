@@ -231,7 +231,7 @@ impl ModeTree {
         let attached = attach_child(&mut root, parent, name);
         debug_assert!(
             attached,
-            "attach_child failed despite contains({parent}) — invariant violated"
+            "attach_child failed despite contains({parent}), invariant violated"
         );
         Ok(Self { root })
     }
@@ -265,7 +265,7 @@ impl ModeTree {
         let renamed = rename_node(&mut root, from, to);
         debug_assert!(
             renamed,
-            "rename_node failed despite contains({from}) — invariant violated"
+            "rename_node failed despite contains({from}), invariant violated"
         );
         Ok(Self { root })
     }
@@ -274,7 +274,7 @@ impl ModeTree {
     ///
     /// **Caller invariant:** the caller is responsible for pre-validating
     /// that `ProfileSettings::startup_mode` is **not** in the subtree being
-    /// removed. This method does not check — `DeleteMode` runs that check
+    /// removed. This method does not check, `DeleteMode` runs that check
     /// before invoking. Removing a subtree containing the startup mode
     /// would leave the profile in an inconsistent state on next load.
     ///
@@ -297,7 +297,7 @@ impl ModeTree {
         let removed = remove_subtree(&mut root, name);
         debug_assert!(
             removed,
-            "remove_subtree failed despite contains({name}) — invariant violated"
+            "remove_subtree failed despite contains({name}), invariant violated"
         );
         Ok(Self { root })
     }
@@ -630,7 +630,7 @@ mod tests {
     #[test]
     fn descendants_of_root_returns_all_others_dfs_preorder() {
         // test_tree() is `Default → [Combat → [Missiles, Guns], Landing]`.
-        // The doc-comment promises DFS pre-order — assert the actual order
+        // The doc-comment promises DFS pre-order, assert the actual order
         // (no sort) so a future implementation that returns BFS or sorted
         // output fails this test loudly.
         let tree = test_tree();
@@ -662,7 +662,7 @@ mod tests {
     #[test]
     fn descendants_of_depth_three_dfs_preorder() {
         // Synthetic depth-3 tree where order distinguishes DFS pre-order from
-        // BFS or any sort — Combat → Bombs → [Conventional, Smart],
+        // BFS or any sort, Combat → Bombs → [Conventional, Smart],
         // Combat → Guns. test_tree() doesn't go this deep.
         use std::collections::HashMap;
         let map = HashMap::from([

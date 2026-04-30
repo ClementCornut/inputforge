@@ -1,14 +1,14 @@
-/* Tabs — instrument-panel selector with underline indicator.
+/* Tabs, instrument-panel selector with underline indicator.
    The active underline reads as an indicator-light strip below the
    tab label: 3px tall, primary-blue, sitting on top of the tablist
    border so the indicator visually anchors to the panel edge. Hover
-   raises the muted label to bright text only — no background fill,
+   raises the muted label to bright text only, no background fill,
    keeping the strip flat against the panel surface like an etched
    selector. Focus-visible places its outline inside the tab so it
    never collides with the underline indicator. Disabled fades the
    label and resolves the active indicator to a muted swatch via
    color-mix so the strip no longer reads as live. Transitions use
-   --duration-base (180ms) + --easing-fast — sub-200ms is the
+   --duration-base (180ms) + --easing-fast, sub-200ms is the
    easing-fast lane per DESIGN.md section 5; the dwell of
    easing-standard reads as latency at this duration. */
 
@@ -32,7 +32,7 @@
     letter-spacing: 0.01em;
     padding: var(--space-2) var(--space-3);
     /* Overlap the tablist border so the indicator visually sits
-       on top of it — keeps the active underline reading as part of
+       on top of it, keeps the active underline reading as part of
        the panel edge rather than floating above it. */
     margin-bottom: -1px;
     cursor: pointer;

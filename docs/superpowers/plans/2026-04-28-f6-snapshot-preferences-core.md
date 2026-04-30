@@ -1,4 +1,4 @@
-# F6 — Snapshot Module + Settings Extension + Forced-Mode Plumbing — Implementation Plan
+# F6, Snapshot Module + Settings Extension + Forced-Mode Plumbing, Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -19,7 +19,7 @@ Mode-change rules pause when `mode_force.is_some()` via two gates: the `Action::
 
 ## Context
 
-F5 finalized the Dioxus rewrite IA but shipped no code. F6 is its first post-F5 implementation feature. The spec captures the full design (decisions D1–D17). This plan focuses on **execution sequence**.
+F5 finalized the Dioxus rewrite IA but shipped no code. F6 is its first post-F5 implementation feature. The spec captures the full design (decisions D1-D17). This plan focuses on **execution sequence**.
 
 Key facts the implementer must internalize before starting:
 
@@ -38,35 +38,35 @@ When in doubt, defer to the spec. The plan includes concrete code only where dec
 ## Critical files to modify
 
 **Created (new files in `crates/inputforge-core/src/snapshot/`):**
-- `mod.rs` — public API: `create / list / delete / pin / rename / restore / prune`
-- `types.rs` — `SnapshotId`, `SnapshotKind`, `Snapshot`
-- `config.rs` — `SnapshotConfig` (`max_count = 10`, `skip_if_unchanged = true`)
-- `hash.rs` — BLAKE3 wrapper over canonical-round-tripped TOML
-- `fs.rs` — `snapshots_dir_for(profile_path)` + atomic write helpers
-- `index.rs` — `index.toml` read / write / rebuild
+- `mod.rs`, public API: `create / list / delete / pin / rename / restore / prune`
+- `types.rs`, `SnapshotId`, `SnapshotKind`, `Snapshot`
+- `config.rs`, `SnapshotConfig` (`max_count = 10`, `skip_if_unchanged = true`)
+- `hash.rs`, BLAKE3 wrapper over canonical-round-tripped TOML
+- `fs.rs`, `snapshots_dir_for(profile_path)` + atomic write helpers
+- `index.rs`, `index.toml` read / write / rebuild
 
 **Modified:**
-- `Cargo.toml` (root) — add `chrono`, `ulid`, `blake3` to `[workspace.dependencies]`; verify `tempfile` already there
-- `crates/inputforge-core/Cargo.toml` — promote `tempfile` from `dev-dependencies` to `dependencies`; add `chrono`, `ulid`, `blake3` references
-- `crates/inputforge-core/src/lib.rs` — `pub mod snapshot;`
-- `crates/inputforge-core/src/error.rs` — six new variants per spec § Errors
-- `crates/inputforge-core/src/settings.rs` — `pub snapshot: SnapshotConfig` field on `AppSettings`
-- `crates/inputforge-core/src/state/mod.rs` — `ForcedMode` struct; `pub mode_force: Option<ForcedMode>` on `AppState`; init in both constructors
-- `crates/inputforge-core/src/engine/command.rs` — 8 new `EngineCommand` variants
-- `crates/inputforge-core/src/engine/mod.rs` — `Engine` struct gains `settings: AppSettings`; `Engine::new` gains parameter
-- `crates/inputforge-core/src/engine/run.rs` — extract `reload_profile_from_disk`; new command arms; mode-pause gate folded into per-tick read block; `LoadProfile` triggers `AutoSessionStart` and clears `mode_force`
-- `crates/inputforge-core/src/engine/output_handler.rs` — `process_pipeline_outputs` gains `mode_forced: bool` parameter; `ChangeMode` arm skips when set
-- `crates/inputforge-core/src/engine/tests.rs` — three `Engine::new` call sites at lines 132, 690, 1274 pass test-injected `AppSettings`; new test cases for forced mode, `ReloadSettings`, snapshot integration
-- `crates/inputforge-app/src/main.rs:226` — pass `AppSettings::load()` to `Engine::new`
+- `Cargo.toml` (root), add `chrono`, `ulid`, `blake3` to `[workspace.dependencies]`; verify `tempfile` already there
+- `crates/inputforge-core/Cargo.toml`, promote `tempfile` from `dev-dependencies` to `dependencies`; add `chrono`, `ulid`, `blake3` references
+- `crates/inputforge-core/src/lib.rs`, `pub mod snapshot;`
+- `crates/inputforge-core/src/error.rs`, six new variants per spec § Errors
+- `crates/inputforge-core/src/settings.rs`, `pub snapshot: SnapshotConfig` field on `AppSettings`
+- `crates/inputforge-core/src/state/mod.rs`, `ForcedMode` struct; `pub mode_force: Option<ForcedMode>` on `AppState`; init in both constructors
+- `crates/inputforge-core/src/engine/command.rs`, 8 new `EngineCommand` variants
+- `crates/inputforge-core/src/engine/mod.rs`, `Engine` struct gains `settings: AppSettings`; `Engine::new` gains parameter
+- `crates/inputforge-core/src/engine/run.rs`, extract `reload_profile_from_disk`; new command arms; mode-pause gate folded into per-tick read block; `LoadProfile` triggers `AutoSessionStart` and clears `mode_force`
+- `crates/inputforge-core/src/engine/output_handler.rs`, `process_pipeline_outputs` gains `mode_forced: bool` parameter; `ChangeMode` arm skips when set
+- `crates/inputforge-core/src/engine/tests.rs`, three `Engine::new` call sites at lines 132, 690, 1274 pass test-injected `AppSettings`; new test cases for forced mode, `ReloadSettings`, snapshot integration
+- `crates/inputforge-app/src/main.rs:226`, pass `AppSettings::load()` to `Engine::new`
 
 **Existing utilities to reuse:**
-- `AppSettings::load()` (`settings.rs:56`) — production caller for `Engine::new` parameter; already returns `Default` on missing/corrupt file with a `tracing::warn`.
-- `AppSettings::save_to(&path)` / `load_from(&path)` (`settings.rs:65, :103`) — round-trip tests for the new `[snapshot]` sub-table.
-- `Profile::load(&path)` / `from_toml(&str)` (`profile/mod.rs:122, :100`) — accepts unknown top-level keys (no `deny_unknown_fields`); the snapshot module always strips `[snapshot_meta]` before writing back, but this lenient parser matters for index rebuild edge cases.
-- `Profile::save(&path)` (`profile/mod.rs:138`) — out-of-scope for atomic writes; snapshot writes are atomic, profile writes stay non-atomic per decision D12.
-- `tempfile::NamedTempFile::persist` — atomic-rename pattern. Temp file MUST live on the same volume as the destination; we enforce this by creating the temp file inside `<stem>.snapshots/` itself.
-- Engine `process_commands` loop (`engine/run.rs:242-254`) — single-threaded serial dispatch; relied on by the sequential snapshot test (acceptance criterion).
-- `tracing::info!` / `warn!` / `error!` — use these for snapshot ops, never `println!`.
+- `AppSettings::load()` (`settings.rs:56`), production caller for `Engine::new` parameter; already returns `Default` on missing/corrupt file with a `tracing::warn`.
+- `AppSettings::save_to(&path)` / `load_from(&path)` (`settings.rs:65, :103`), round-trip tests for the new `[snapshot]` sub-table.
+- `Profile::load(&path)` / `from_toml(&str)` (`profile/mod.rs:122, :100`), accepts unknown top-level keys (no `deny_unknown_fields`); the snapshot module always strips `[snapshot_meta]` before writing back, but this lenient parser matters for index rebuild edge cases.
+- `Profile::save(&path)` (`profile/mod.rs:138`), out-of-scope for atomic writes; snapshot writes are atomic, profile writes stay non-atomic per decision D12.
+- `tempfile::NamedTempFile::persist`, atomic-rename pattern. Temp file MUST live on the same volume as the destination; we enforce this by creating the temp file inside `<stem>.snapshots/` itself.
+- Engine `process_commands` loop (`engine/run.rs:242-254`), single-threaded serial dispatch; relied on by the sequential snapshot test (acceptance criterion).
+- `tracing::info!` / `warn!` / `error!`, use these for snapshot ops, never `println!`.
 
 ---
 
@@ -74,18 +74,18 @@ When in doubt, defer to the spec. The plan includes concrete code only where dec
 
 The `snapshot` module is split into six files because each has a single responsibility:
 
-- `types.rs` — pure data (no I/O, no logic beyond `Default`).
-- `config.rs` — pure data (`SnapshotConfig`).
-- `hash.rs` — one function (`hash_canonical_toml(&str) -> [u8; 32]`).
-- `fs.rs` — path math (`snapshots_dir_for`) + the one atomic-write helper.
-- `index.rs` — `IndexFile` struct and read / write / rebuild logic.
-- `mod.rs` — the seven public functions; orchestrates the others.
+- `types.rs`, pure data (no I/O, no logic beyond `Default`).
+- `config.rs`, pure data (`SnapshotConfig`).
+- `hash.rs`, one function (`hash_canonical_toml(&str) -> [u8; 32]`).
+- `fs.rs`, path math (`snapshots_dir_for`) + the one atomic-write helper.
+- `index.rs`, `IndexFile` struct and read / write / rebuild logic.
+- `mod.rs`, the seven public functions; orchestrates the others.
 
 These files are <200 lines each. Each public function in `mod.rs` is a thin orchestrator that calls into the helper modules. This keeps each unit reviewable in one screen.
 
 ---
 
-# Phase 1 — Foundation: Dependencies, Errors, Types
+# Phase 1, Foundation: Dependencies, Errors, Types
 
 ## Task 1: Add workspace dependencies and promote `tempfile`
 
@@ -187,7 +187,7 @@ fn engine_error_display_profile_path_has_no_parent() {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test -p inputforge-core error::tests::engine_error_display_snapshot_not_found`
-Expected: compile error — variants do not exist.
+Expected: compile error, variants do not exist.
 
 - [ ] **Step 3: Add the six variants**
 
@@ -269,7 +269,7 @@ pub(crate) mod types;
 Create empty stubs `config.rs`, `fs.rs`, `hash.rs`, `index.rs`, `types.rs` in `crates/inputforge-core/src/snapshot/` with just a single line each:
 
 ```rust
-//! Module stub — populated in subsequent tasks.
+//! Module stub, populated in subsequent tasks.
 ```
 
 This lets the module compile while later tasks fill in each file.
@@ -284,7 +284,7 @@ pub mod snapshot;
 
 - [ ] **Step 3: Write failing tests for `types`**
 
-Create `crates/inputforge-core/src/snapshot/types.rs` with this test block at the bottom — but no implementation yet:
+Create `crates/inputforge-core/src/snapshot/types.rs` with this test block at the bottom, but no implementation yet:
 
 ```rust
 #[cfg(test)]
@@ -325,7 +325,7 @@ mod tests {
 - [ ] **Step 4: Run tests to verify they fail**
 
 Run: `cargo test -p inputforge-core snapshot::types::tests`
-Expected: compile error — types not yet defined.
+Expected: compile error, types not yet defined.
 
 - [ ] **Step 5: Implement the types**
 
@@ -341,7 +341,7 @@ use ulid::Ulid;
 /// A unique, sortable snapshot identifier (ULID-based).
 ///
 /// ULIDs are lexicographically sortable by creation time, but `list()`
-/// orders by `taken_at` (descending) for user-visible ordering — the
+/// orders by `taken_at` (descending) for user-visible ordering, the
 /// ULID sort is a secondary tiebreaker only when `taken_at` collides
 /// at millisecond precision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -382,7 +382,7 @@ pub struct Snapshot {
     pub kind:         SnapshotKind,
     pub label:        Option<String>,
     pub taken_at:     DateTime<Utc>,
-    /// BLAKE3 of canonical TOML — see module-level docs.
+    /// BLAKE3 of canonical TOML, see module-level docs.
     #[serde(with = "hex_array_32")]
     pub content_hash: [u8; 32],
     pub pinned:       bool,
@@ -670,7 +670,7 @@ mod tests {
 - [ ] **Step 2: Verify failure**
 
 Run: `cargo test -p inputforge-core snapshot::fs`
-Expected: compile errors — functions don't exist.
+Expected: compile errors, functions don't exist.
 
 - [ ] **Step 3: Implement the helpers**
 
@@ -814,13 +814,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("index.toml");
         std::fs::write(&path, "{{{{ not toml").unwrap();
-        // Should NOT propagate the parse error — caller handles rebuild.
+        // Should NOT propagate the parse error, caller handles rebuild.
         assert!(read_index(&path).unwrap().is_empty());
     }
 }
 ```
 
-Note: `read_index` returns `Result<Vec<Snapshot>>`. On missing or corrupt file it returns `Ok(vec![])` and logs a warn — the caller (`mod.rs::list`) treats either signal as "rebuild needed".
+Note: `read_index` returns `Result<Vec<Snapshot>>`. On missing or corrupt file it returns `Ok(vec![])` and logs a warn, the caller (`mod.rs::list`) treats either signal as "rebuild needed".
 
 - [ ] **Step 2: Verify failure**
 
@@ -848,7 +848,7 @@ struct IndexFile {
 }
 
 /// Read the index file at `path`. Returns an empty vec if the file is
-/// missing, unparseable, or truncated — these conditions are recoverable
+/// missing, unparseable, or truncated, these conditions are recoverable
 /// by a rebuild from snapshot file headers, performed by the caller.
 pub(crate) fn read_index(path: &Path) -> Result<Vec<Snapshot>> {
     match std::fs::read_to_string(path) {
@@ -906,7 +906,7 @@ Suggested message: `feat(snapshot): index.toml read/write helpers`.
 
 ---
 
-# Phase 2 — Snapshot Public API
+# Phase 2, Snapshot Public API
 
 The seven public functions live in `mod.rs` and orchestrate the helper modules. Each is implemented in its own task with TDD. Common test fixture helpers go in a `#[cfg(test)] mod tests` block at the bottom of `mod.rs`.
 
@@ -917,7 +917,7 @@ The seven public functions live in `mod.rs` and orchestrate the helper modules. 
 
 - [ ] **Step 1: Add public function signature + test fixtures + first failing test**
 
-Append to `crates/inputforge-core/src/snapshot/mod.rs` (above the `pub use` lines if you prefer top-down, or below — order is taste):
+Append to `crates/inputforge-core/src/snapshot/mod.rs` (above the `pub use` lines if you prefer top-down, or below, order is taste):
 
 ```rust
 use std::path::Path;
@@ -937,7 +937,7 @@ use crate::error::{EngineError, Result};
 /// is true, and the latest existing snapshot has the same `content_hash`.
 /// `AutoBeforeRestore` and `Manual` always create.
 ///
-/// Does not call [`prune`] — caller is responsible.
+/// Does not call [`prune`], caller is responsible.
 ///
 /// # Errors
 ///
@@ -952,7 +952,7 @@ pub fn create(
     let body = std::fs::read_to_string(profile_path)?;
     // 2. Compute canonical content hash (D14).
     let content_hash = hash::hash_canonical_toml(&body)?;
-    // 3. Read prior entries ONCE — before any disk write. We must not call
+    // 3. Read prior entries ONCE, before any disk write. We must not call
     //    list() after writing the snapshot file: the orphan-recovery path
     //    in list() would pick up the just-written file and return a Vec
     //    that already contains our snapshot, causing a duplicate when we
@@ -1088,14 +1088,14 @@ mod tests {
 - [ ] **Step 2: Verify the tests compile but fail (because `list` is not yet defined)**
 
 Run: `cargo build -p inputforge-core`
-Expected: compile error — `list` is undefined.
+Expected: compile error, `list` is undefined.
 
 - [ ] **Step 3: Add a stub `list` function so `create` compiles**
 
 Append to `mod.rs`, above `create`:
 
 ```rust
-/// (Stub — full implementation in Task 9.)
+/// (Stub, full implementation in Task 9.)
 pub fn list(_profile_path: &Path) -> Result<Vec<Snapshot>> {
     // TODO Task 9: real implementation reads index.toml + rebuilds on miss.
     Ok(Vec::new())
@@ -1107,10 +1107,10 @@ pub fn list(_profile_path: &Path) -> Result<Vec<Snapshot>> {
 Run: `cargo test -p inputforge-core snapshot::tests`
 Expected: all five `create_*` tests pass. (They use the stub `list` returning empty; dedup tests still work because the stub returns no prior entry on the first call but the second call's `list` would need to see the first entry. **This means the dedup test will fail with the stub.**)
 
-If the dedup test (`create_auto_session_start_dedupes_unchanged_content`) fails with the stub, this is expected — you'll wire `list()` in Task 9 and re-run. To unblock Task 8 commit-wise:
+If the dedup test (`create_auto_session_start_dedupes_unchanged_content`) fails with the stub, this is expected, you'll wire `list()` in Task 9 and re-run. To unblock Task 8 commit-wise:
 
 - Comment out the dedup tests temporarily, OR
-- Mark them `#[ignore = "dedup needs list() — Task 9"]`
+- Mark them `#[ignore = "dedup needs list(), Task 9"]`
 
 If you mark with `#[ignore]`, remove the markers in Task 9's commit.
 
@@ -1324,7 +1324,7 @@ pub fn list(profile_path: &Path) -> Result<Vec<Snapshot>> {
 
     let mut entries = if needs_rebuild {
         let rebuilt = index::rebuild_from_dir(&snap_dir)?;
-        // Persist the rebuilt index, but don't propagate write errors —
+        // Persist the rebuilt index, but don't propagate write errors -
         // a failed write is recoverable on the next `list()`.
         if !rebuilt.is_empty() || cached != rebuilt {
             if let Err(e) = index::write_index(&index_path, &rebuilt) {
@@ -1876,7 +1876,7 @@ Suggested message: `feat(snapshot): prune() FIFO eviction skipping pinned`.
 
 ---
 
-# Phase 3 — Settings Extension
+# Phase 3, Settings Extension
 
 ## Task 14: Extend `AppSettings` with `snapshot: SnapshotConfig`
 
@@ -1931,7 +1931,7 @@ fn settings_round_trips_with_custom_snapshot_table() {
 - [ ] **Step 2: Verify failure**
 
 Run: `cargo test -p inputforge-core settings::tests`
-Expected: compile error — `snapshot` field doesn't exist; existing struct literal tests may fail to compile until updated.
+Expected: compile error, `snapshot` field doesn't exist; existing struct literal tests may fail to compile until updated.
 
 - [ ] **Step 3: Add the field**
 
@@ -1973,7 +1973,7 @@ Suggested message: `feat(settings): add snapshot sub-table to AppSettings`.
 
 ---
 
-# Phase 4 — `AppState::mode_force` Field
+# Phase 4, `AppState::mode_force` Field
 
 ## Task 15: Add `ForcedMode` and `AppState::mode_force`
 
@@ -2067,7 +2067,7 @@ Suggested message: `feat(state): add ForcedMode and AppState::mode_force`.
 
 ---
 
-# Phase 5 — Engine Wiring
+# Phase 5, Engine Wiring
 
 ## Task 16: Add 8 new `EngineCommand` variants
 
@@ -2076,7 +2076,7 @@ Suggested message: `feat(state): add ForcedMode and AppState::mode_force`.
 
 - [ ] **Step 1: Write a failing test asserting variant existence + Debug formatting**
 
-Append to `command.rs` (or to a `#[cfg(test)] mod tests` block at the bottom — add one if it doesn't exist):
+Append to `command.rs` (or to a `#[cfg(test)] mod tests` block at the bottom, add one if it doesn't exist):
 
 ```rust
 #[cfg(test)]
@@ -2110,7 +2110,7 @@ mod tests {
 - [ ] **Step 2: Verify failure**
 
 Run: `cargo test -p inputforge-core engine::command`
-Expected: compile error — variants don't exist.
+Expected: compile error, variants don't exist.
 
 - [ ] **Step 3: Add the variants**
 
@@ -2290,7 +2290,7 @@ The `LoadProfile` arm at `engine/run.rs:259-290` mutates `mode_state`, `callback
 
 - [ ] **Step 1: Write a failing test asserting the extraction is observable from RestoreSnapshot semantics**
 
-Skip this step — there's no behavior change yet. The extraction is a mechanical refactor verified by the existing engine tests still passing. Move on to Step 2.
+Skip this step, there's no behavior change yet. The extraction is a mechanical refactor verified by the existing engine tests still passing. Move on to Step 2.
 
 - [ ] **Step 2: Extract the helper**
 
@@ -2301,7 +2301,7 @@ In `engine/run.rs`, just after `handle_command` (or near the helper section), ad
 /// state (calibrations, active mode, etc.).
 ///
 /// Shared between `LoadProfile` and `RestoreSnapshot`. **Does not** touch
-/// `state.mode_force` — caller is responsible for that policy decision.
+/// `state.mode_force`, caller is responsible for that policy decision.
 fn reload_profile_from_disk(&mut self, path: &Path) -> Result<()> {
     let profile = Profile::load(path)?;
     let startup_mode = profile.settings().startup_mode().to_owned();
@@ -2462,12 +2462,12 @@ fn force_mode_rotates_on_different_mode() {
 }
 ```
 
-`handle_command` must be visible from `tests.rs` for the third test — it currently is (`fn handle_command` in `impl Engine`). If it's private, mark `pub(super) fn handle_command` or call via a public helper. Verify with the existing test file structure first; if private, expose it `pub(crate)`.
+`handle_command` must be visible from `tests.rs` for the third test, it currently is (`fn handle_command` in `impl Engine`). If it's private, mark `pub(super) fn handle_command` or call via a public helper. Verify with the existing test file structure first; if private, expose it `pub(crate)`.
 
 - [ ] **Step 2: Verify failure**
 
 Run: `cargo test -p inputforge-core engine::tests::force_mode`
-Expected: compile error — handlers not implemented.
+Expected: compile error, handlers not implemented.
 
 - [ ] **Step 3: Add the handlers**
 
@@ -2485,7 +2485,7 @@ EngineCommand::ForceMode { mode } => {
     if already_same {
         return Ok(());
     }
-    // Read mode tree from active_profile (may be absent — return early).
+    // Read mode tree from active_profile (may be absent, return early).
     let tree = match self.state.read().active_profile.as_ref() {
         Some(p) => p.modes().clone(),
         None => {
@@ -2544,7 +2544,7 @@ fn reload_settings_picks_up_disk_edits() {
     use crate::snapshot::SnapshotConfig;
 
     // Build an engine with default settings and a *known* settings file
-    // location. The handler reads from `AppSettings::settings_path()` —
+    // location. The handler reads from `AppSettings::settings_path()` -
     // we can't redirect that without env var manipulation, so we test
     // the in-memory replacement step instead by manually mutating the
     // engine settings then sending ReloadSettings to a saved file at
@@ -2556,7 +2556,7 @@ fn reload_settings_picks_up_disk_edits() {
     // re-loaded *something* (we cannot easily verify "identical to disk"
     // without sandboxing the OS config dir). Sentinel: after dispatch,
     // self.settings is whatever AppSettings::load() returns from the
-    // current OS config dir — the contract is "the field is replaced".
+    // current OS config dir, the contract is "the field is replaced".
 
     // Simpler: rely on the in-handler trace. Instead of full
     // integration, run a unit-level check that the handler matches the
@@ -2575,12 +2575,12 @@ fn reload_settings_picks_up_disk_edits() {
 }
 ```
 
-This test is a sentinel — it asserts that the handler *replaces* `self.settings`. It does not assert what the new value is, because that depends on the OS config dir state.
+This test is a sentinel, it asserts that the handler *replaces* `self.settings`. It does not assert what the new value is, because that depends on the OS config dir state.
 
 - [ ] **Step 2: Verify failure**
 
 Run: `cargo test -p inputforge-core engine::tests::reload_settings_picks_up`
-Expected: compile error — `ReloadSettings` arm doesn't exist; `engine.settings` may not be visible (`pub(crate)` should make it visible from the same crate's tests).
+Expected: compile error, `ReloadSettings` arm doesn't exist; `engine.settings` may not be visible (`pub(crate)` should make it visible from the same crate's tests).
 
 - [ ] **Step 3: Add the handler**
 
@@ -2922,7 +2922,7 @@ EngineCommand::RestoreSnapshot { id } => {
         return Ok(());
     };
 
-    // Step 1 — capture AutoBeforeRestore (always fires; never deduped).
+    // Step 1, capture AutoBeforeRestore (always fires; never deduped).
     let auto = crate::snapshot::create(
         &path,
         crate::snapshot::SnapshotKind::AutoBeforeRestore,
@@ -2931,10 +2931,10 @@ EngineCommand::RestoreSnapshot { id } => {
     )?;
     let _ = crate::snapshot::prune(&path, &self.settings.snapshot)?;
 
-    // Step 2 — strip meta + atomically write target body to live path.
+    // Step 2, strip meta + atomically write target body to live path.
     crate::snapshot::restore(&path, &id)?;
 
-    // Step 3 — reload from disk; auto-rollback on failure.
+    // Step 3, reload from disk; auto-rollback on failure.
     if let Err(reload_err) = self.reload_profile_from_disk(&path) {
         tracing::error!(
             target: "snapshot",
@@ -3070,7 +3070,7 @@ EngineCommand::LoadProfile(path) => {
 - [ ] **Step 4: Verify success**
 
 Run: `cargo test -p inputforge-core engine::tests::load_profile`
-Expected: both new tests pass; existing `LoadProfile` tests in `tests.rs` still pass (the auto-snapshot is silent — they don't observe it).
+Expected: both new tests pass; existing `LoadProfile` tests in `tests.rs` still pass (the auto-snapshot is silent, they don't observe it).
 
 - [ ] **Step 5: Commit**
 
@@ -3128,7 +3128,7 @@ fn forced_mode_blocks_change_mode_pipeline_output() {
 }
 ```
 
-(The exact constructor for `Mapping` and `Action::ChangeMode` may differ — read `crates/inputforge-core/src/action.rs` for the actual shapes and adjust. Existing engine tests use these types directly; pattern-match an existing test like `process_outputs_change_mode_*` in `tests.rs` for the right form.)
+(The exact constructor for `Mapping` and `Action::ChangeMode` may differ, read `crates/inputforge-core/src/action.rs` for the actual shapes and adjust. Existing engine tests use these types directly; pattern-match an existing test like `process_outputs_change_mode_*` in `tests.rs` for the right form.)
 
 - [ ] **Step 2: Verify failure**
 
@@ -3157,7 +3157,7 @@ Inside the loop, the `ChangeMode { strategy }` arm becomes:
 ```rust
 PipelineOutput::ChangeMode { strategy } => {
     if mode_forced {
-        // Forced override active — pipeline mode changes are paused.
+        // Forced override active, pipeline mode changes are paused.
         continue;
     }
     let old_mode = mode_state.current().to_owned();
@@ -3212,7 +3212,7 @@ ReleaseCallback::PopTemporaryMode => {
 - [ ] **Step 5: Update all existing call sites of `process_pipeline_outputs`**
 
 Run: `cargo build -p inputforge-core 2>&1 | head -50`
-Expected: compile errors at every call site of `process_pipeline_outputs` in `tests.rs` (T1–T22 unit tests). Update each to pass `false` as the new `mode_forced` argument. There are roughly 7 unit tests calling it directly; pattern-match and append `false` to each invocation.
+Expected: compile errors at every call site of `process_pipeline_outputs` in `tests.rs` (T1-T22 unit tests). Update each to pass `false` as the new `mode_forced` argument. There are roughly 7 unit tests calling it directly; pattern-match and append `false` to each invocation.
 
 - [ ] **Step 6: Verify success**
 
@@ -3230,7 +3230,7 @@ Suggested message: `feat(engine): mode-pause gate for ChangeMode + PopTemporaryM
 
 ---
 
-# Phase 6 — Acceptance tests + final verification
+# Phase 6, Acceptance tests + final verification
 
 ## Task 25: Sequential serial CreateSnapshot test (acceptance criterion)
 
@@ -3351,7 +3351,7 @@ fn atomic_write_leaves_no_temp_file_after_success() {
 
 #[test]
 fn dropped_temp_does_not_create_destination() {
-    // Sanity: tempfile semantics — dropping without persist leaves nothing.
+    // Sanity: tempfile semantics, dropping without persist leaves nothing.
     let dir = tempfile::tempdir().unwrap();
     {
         let _tmp = tempfile::NamedTempFile::new_in(dir.path()).unwrap();
@@ -3403,7 +3403,7 @@ fn restore_corrupt_target_fires_auto_before_restore_then_errors() {
     let snap_dir = crate::snapshot::__test_snap_dir(&path).unwrap();
     let snap_file = snap_dir.join(format!("{}.toml", snap.id));
     // Replace the file with garbage that fails [snapshot_meta] parsing
-    // but is still a valid TOML *file* — pick a TOML that lacks the meta table.
+    // but is still a valid TOML *file*, pick a TOML that lacks the meta table.
     std::fs::write(&snap_file, "[not_meta]\nid = \"garbage\"\n").unwrap();
 
     let pre_live = std::fs::read_to_string(&path).unwrap();
@@ -3425,7 +3425,7 @@ fn restore_corrupt_target_fires_auto_before_restore_then_errors() {
 - [ ] **Step 2: Run**
 
 Run: `cargo test -p inputforge-core engine::tests::restore_corrupt_target`
-Expected: passes — `snapshot::restore` returns `SnapshotCorrupt` because the stripped table is empty (actually the strip is permissive; the failure here happens because `meta_table.try_into::<Snapshot>()` fails when the wrapper key is missing — but `snapshot::restore` itself doesn't deserialize the meta into a `Snapshot`; it just removes the `snapshot_meta` table and writes the rest. With the test file (`[not_meta]` only, no `[snapshot_meta]`), `restore` will *succeed* in stripping (no-op) and write a profile body that lacks `[profile]`. The reload will then fail. The test still passes via the auto-rollback path. **Verify the assertion structure matches reality**; if `restore` succeeds and reload fails, the rollback re-applies AutoBeforeRestore. The live profile is unchanged after rollback. The error returned is the original reload error (a `ProfileParse` or `InvalidConfig`), not `SnapshotCorrupt`. Adjust the assertion to "result.is_err()" without naming the variant, which is what the test already does.)
+Expected: passes, `snapshot::restore` returns `SnapshotCorrupt` because the stripped table is empty (actually the strip is permissive; the failure here happens because `meta_table.try_into::<Snapshot>()` fails when the wrapper key is missing, but `snapshot::restore` itself doesn't deserialize the meta into a `Snapshot`; it just removes the `snapshot_meta` table and writes the rest. With the test file (`[not_meta]` only, no `[snapshot_meta]`), `restore` will *succeed* in stripping (no-op) and write a profile body that lacks `[profile]`. The reload will then fail. The test still passes via the auto-rollback path. **Verify the assertion structure matches reality**; if `restore` succeeds and reload fails, the rollback re-applies AutoBeforeRestore. The live profile is unchanged after rollback. The error returned is the original reload error (a `ProfileParse` or `InvalidConfig`), not `SnapshotCorrupt`. Adjust the assertion to "result.is_err()" without naming the variant, which is what the test already does.)
 
 - [ ] **Step 3: Commit**
 
@@ -3438,7 +3438,7 @@ Suggested message: `test(engine): restore corrupt target rolls back via AutoBefo
 
 ---
 
-## Task 28: Final verification — workspace build + clippy + GUI features
+## Task 28: Final verification, workspace build + clippy + GUI features
 
 Spec § Verification: `cargo build --workspace`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, plus `cargo build --features gui-egui` and `cargo build --features gui-dioxus`.
 
@@ -3459,7 +3459,7 @@ Expected: all tests pass.
 - [ ] **Step 3: Clippy (deny warnings)**
 
 Run: `cargo clippy --workspace --all-targets -- -D warnings`
-Expected: clean. Address every warning before proceeding — common issues likely to surface:
+Expected: clean. Address every warning before proceeding, common issues likely to surface:
 - Unused imports in test code (remove)
 - `#[must_use]` on new public functions (add where the workspace lints expect it)
 - Doc comments on the new `EngineError` variants (already added in Task 2)
@@ -3472,7 +3472,7 @@ Expected: clean.
 Run: `cargo build -p inputforge-app --no-default-features --features gui-dioxus`
 Expected: clean.
 
-If either fails, the change is GUI-bridge incompatible — investigate. F6 is supposed to ship core-only with no GUI surface.
+If either fails, the change is GUI-bridge incompatible, investigate. F6 is supposed to ship core-only with no GUI surface.
 
 - [ ] **Step 5: Targeted snapshot integration**
 
@@ -3490,7 +3490,7 @@ These are described in the spec's § Verification. Run them manually if any prio
 
 1. Edit `~/AppData/Roaming/inputforge/settings.toml` by hand to set `[snapshot] max_count = 3`.
 2. Trigger `ReloadSettings` via a test or CLI hook.
-3. Issue 4 distinct `LoadProfile` commands — verify only the 3 newest auto snapshots remain.
+3. Issue 4 distinct `LoadProfile` commands, verify only the 3 newest auto snapshots remain.
 4. Create a manual snapshot, set `max_count = 1`, verify the manual snapshot survives a prune.
 
 This is implementer-discretion verification. If unit and integration tests already cover these paths (Task 13 and 25 do), skip.
@@ -3512,8 +3512,8 @@ Use `conventional-commits` skill. Suggested message if cleanup was needed: `chor
 Re-read this list before requesting review. All boxes must be ticked.
 
 - [ ] Six new `EngineError` variants exist and have unit tests (Task 2).
-- [ ] `snapshot::types`, `config`, `hash`, `fs`, `index` modules each have a `mod tests` and pass in isolation (Tasks 3–7).
-- [ ] `snapshot::create / list / delete / pin / rename / restore / prune` all have public docs and unit tests (Tasks 8–13).
+- [ ] `snapshot::types`, `config`, `hash`, `fs`, `index` modules each have a `mod tests` and pass in isolation (Tasks 3-7).
+- [ ] `snapshot::create / list / delete / pin / rename / restore / prune` all have public docs and unit tests (Tasks 8-13).
 - [ ] `AppSettings` extended with `snapshot: SnapshotConfig` field; missing `[snapshot]` table loads with defaults (Task 14).
 - [ ] `AppState.mode_force` field exists, initialized `None` in both constructors (Task 15).
 - [ ] 8 new `EngineCommand` variants (Task 16).

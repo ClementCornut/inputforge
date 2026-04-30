@@ -68,7 +68,7 @@ fn main() {
         return;
     };
 
-    // Copy 1: cargo target dir. Defensive — the sdl3 Rust crate may already place
+    // Copy 1: cargo target dir. Defensive, the sdl3 Rust crate may already place
     // it here, but we guarantee it. `fs::copy` overwrites the destination, so no
     // existence check is needed.
     let cargo_dst = cargo_target_profile.join("SDL3.dll");
@@ -90,7 +90,7 @@ fn main() {
     // dx names its output dirs `debug` and `release` regardless of the
     // underlying cargo profile name. dx run with the default `desktop-dev`
     // cargo profile (which inherits from `dev`) still produces a bundle at
-    // .../debug/windows/app/ — NOT .../desktop-dev/windows/app/. Use cargo's
+    // .../debug/windows/app/, NOT .../desktop-dev/windows/app/. Use cargo's
     // `PROFILE` env var, which collapses custom profiles to "debug" or
     // "release" based on inheritance, instead of the cargo profile name.
     //
@@ -120,7 +120,7 @@ fn main() {
     }
 
     let dx_dst = dx_app_dir.join("SDL3.dll");
-    // Re-run if the dx-side copy is missing — same rationale as the cargo-side
+    // Re-run if the dx-side copy is missing, same rationale as the cargo-side
     // rerun above. Especially relevant if `target/dx/` is wiped independently of
     // `target/<profile>/` (e.g., a future dx-cli upgrade reorganizes its output).
     println!("cargo:rerun-if-changed={}", dx_dst.display());

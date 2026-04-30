@@ -8,8 +8,8 @@
 //! built-in value animation.
 //!
 //! Two entry points are provided:
-//! - [`tab_bar`] — low-level, index-based API for maximum flexibility.
-//! - [`tab_bar_enum`] — convenience wrapper for enums implementing [`TabItem`].
+//! - [`tab_bar`], low-level, index-based API for maximum flexibility.
+//! - [`tab_bar_enum`], convenience wrapper for enums implementing [`TabItem`].
 
 use egui::FontFamily;
 
@@ -35,7 +35,7 @@ pub(crate) trait TabItem: Copy + PartialEq {
 
 /// Render a horizontal tab bar and return the index of a newly clicked tab.
 ///
-/// All tabs share an identical frameless shape — only text color and the
+/// All tabs share an identical frameless shape, only text color and the
 /// sliding underline distinguish the active tab from inactive ones.
 ///
 /// `id_salt` must be unique per tab bar instance to keep animation state

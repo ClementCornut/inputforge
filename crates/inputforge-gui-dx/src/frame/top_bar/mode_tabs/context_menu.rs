@@ -27,7 +27,7 @@ pub(crate) struct AnchorRect {
 /// tab is the natural focus target); `Tab` must NOT re-focus because
 /// the browser's own Tab traversal is moving focus to the next
 /// focusable element and re-focusing the tab fights that intent;
-/// `ItemActivated` re-focuses the tab as a default landing spot — for
+/// `ItemActivated` re-focuses the tab as a default landing spot, for
 /// Rename / Delete the inline editor or dialog grabs focus immediately
 /// after via its own `onmounted`, so the tab focus is at most a one-
 /// tick stopover.
@@ -48,7 +48,7 @@ pub(crate) enum CloseReason {
 /// list, so we override `clippy::struct_excessive_bools`.
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "Each bool maps 1:1 to a menu item — parallel structure is the point."
+    reason = "Each bool maps 1:1 to a menu item, parallel structure is the point."
 )]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ContextMenuFlags {
@@ -79,11 +79,11 @@ pub(crate) fn ModeTabContextMenu(
     open: Signal<Option<(String, AnchorRect)>>,
     flags: ContextMenuFlags,
     /// Called on close. The parent uses the `CloseReason` to decide
-    /// whether to re-focus the originating tab — see [`CloseReason`].
+    /// whether to re-focus the originating tab, see [`CloseReason`].
     on_close: EventHandler<(String, CloseReason)>,
-    /// Called when the user picks Rename — the parent enters inline-rename mode.
+    /// Called when the user picks Rename, the parent enters inline-rename mode.
     on_rename: EventHandler<String>,
-    /// Called when the user picks Delete — the parent opens the F4 destructive
+    /// Called when the user picks Delete, the parent opens the F4 destructive
     /// dialog with the affected count.
     on_delete: EventHandler<String>,
 ) -> Element {
@@ -156,7 +156,7 @@ pub(crate) fn ModeTabContextMenu(
             Key::Tab => {
                 // Let focus leave the tablist entirely; close first so
                 // focus restoration target is not the menu. Do NOT
-                // prevent_default — the browser's natural Tab traversal
+                // prevent_default, the browser's natural Tab traversal
                 // moves focus to the next focusable element, and the
                 // parent's on_close handler skips re-focusing the tab
                 // for this reason (CloseReason::Tab).

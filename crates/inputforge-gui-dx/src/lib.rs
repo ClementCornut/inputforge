@@ -37,7 +37,7 @@ use crate::tray::action::TrayMenuIds;
 /// `tray_menu_ids` flows through here (rather than through a separate context
 /// type) because it's only consumed by `app_root` once, during initial mount,
 /// to install the muda event handler. The tokio mpsc channel that the handler
-/// pushes onto is created INSIDE `app_root` (not here) — the original spec
+/// pushes onto is created INSIDE `app_root` (not here), the original spec
 /// design carried `Arc<Mutex<Option<Receiver<TrayAction>>>>` through here, but
 /// the deviation in Tasks 10/11 (using `use_muda_event_handler` instead of
 /// `Config::with_custom_event_handler`) means both channel halves can live
@@ -49,7 +49,7 @@ pub(crate) struct LaunchParams {
 }
 
 /// Launch the Dioxus Desktop GUI. Blocks the calling thread on the OS event
-/// loop (wry/tao underneath) — matches the egui crate's `eframe::run_native`
+/// loop (wry/tao underneath), matches the egui crate's `eframe::run_native`
 /// blocking semantics.
 ///
 /// `tray_menu_ids` flow through `LaunchParams::tray_menu_ids` into
@@ -67,7 +67,7 @@ pub(crate) struct LaunchParams {
 /// runtime initialization failures via this `Result`.
 #[allow(
     clippy::needless_pass_by_value,
-    reason = "signature parity with inputforge_gui::launch_gui — main.rs dispatches \
+    reason = "signature parity with inputforge_gui::launch_gui, main.rs dispatches \
               both crates via a cfg-gated `use` line; changing to `&` here would \
               break the call site when the egui crate is swapped in. `#[allow]` \
               rather than `#[expect]` because the current body moves every arg, \
@@ -103,13 +103,13 @@ pub fn launch_gui(
         .with_window(window)
         .with_close_behaviour(WindowCloseBehaviour::WindowHides);
     // exit_on_last_window_close left at its default (true).
-    // Custom event handler NOT installed here — Task 10/11 deviation: the
+    // Custom event handler NOT installed here, Task 10/11 deviation: the
     // handler is installed via `tray::install_event_handler` (a hook
     // wrapping `use_muda_event_handler`) from inside `app_root`'s `use_hook`,
     // because `dioxus_desktop::ipc::UserWindowEvent` is private in 0.7.6.
 
     // CDP for chrome-devtools-mcp: debug+Windows only. WRY_DEFAULTS must be
-    // re-included verbatim — Wry replaces (not appends) browser args, and
+    // re-included verbatim, Wry replaces (not appends) browser args, and
     // dropping these re-enables SmartScreen prompts (tauri-apps/wry#705).
     #[cfg(all(debug_assertions, target_os = "windows"))]
     let cfg = {

@@ -9,7 +9,7 @@
 
 .if-number-input:focus-within { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
 
-/* Dense-row variant (DESIGN.md I6) — number-input rows in calibration
+/* Dense-row variant (DESIGN.md I6), number-input rows in calibration
    and axis-readout columns sit at 4px gaps. The default +2px offset
    clips into neighbours; the inset variant tucks the ring inside. */
 .if-number-input.if-number-input--inset:focus-within {

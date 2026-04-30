@@ -33,7 +33,7 @@
 }
 
 /* Per DESIGN.md M3: on standard-resolution displays, a 1px translate
-   risks rendering as sub-pixel and disappearing — bump to 2px so the
+   risks rendering as sub-pixel and disappearing, bump to 2px so the
    press feedback stays perceptible. High-DPR keeps the 1px press. */
 @media (resolution < 2dppx) {
   .if-button:active:not(:disabled) {

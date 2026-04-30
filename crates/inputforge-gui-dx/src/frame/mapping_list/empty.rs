@@ -1,10 +1,10 @@
 //! Empty-state renderers for the F8 mapping list rail.
 //!
-//! State A — zero mappings overall (profile loaded, mode has none):
+//! State A, zero mappings overall (profile loaded, mode has none):
 //!   title + helper + primary `+ Add mapping` button that expands directly
 //!   into `CapturingArmed` (skips Resting -> click).
 //!
-//! State B — zero filter results: title quoting `<query>` + helper +
+//! State B, zero filter results: title quoting `<query>` + helper +
 //!   ghost-link `Clear filter` button.
 
 use dioxus::prelude::*;

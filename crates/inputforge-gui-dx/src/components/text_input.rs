@@ -62,7 +62,7 @@ pub fn TextInput(
         }
     };
     // Pass `Option<String>` directly so Dioxus omits the attribute when
-    // `None` (vs `""`). Same pattern as `id` below — both attributes have
+    // `None` (vs `""`). Same pattern as `id` below, both attributes have
     // HTML5 IDREF/empty-string constraints that an unconditional template
     // string would violate.
     let described_by = aria_describedby.clone();
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn text_input_omits_aria_describedby_when_none() {
         // HTML5 forbids dangling/empty IDREFs. When the caller doesn't
-        // provide `aria_describedby`, the attribute must be absent —
+        // provide `aria_describedby`, the attribute must be absent -
         // not rendered as `aria-describedby=""`.
         fn harness() -> Element {
             let v: Signal<String> = use_signal(String::new);

@@ -1,5 +1,5 @@
 /* The banner is a sibling of the top-bar and the working row in the
-   layout's flex column — when visible, it reads as another cockpit
+   layout's flex column, when visible, it reads as another cockpit
    panel slotted between them. The vocabulary established in 32a/32b is:
    structural seams use --color-border-strong (uniform across panel
    edges); variant chromatic signal lives on a separate accent (here,
@@ -13,7 +13,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    /* Vertical padding bump from --space-1 to --space-2 — the F2 Button
+    /* Vertical padding bump from --space-1 to --space-2, the F2 Button
        primitives carry their own --space-2 vertical padding, and the
        previous 4px row crowded the buttons against the structural seams.
        Horizontal --space-4 matches the layout center's outer padding so
@@ -21,13 +21,13 @@
     padding: var(--space-2) var(--space-4);
     font-size: var(--text-sm);
 
-    /* Structural seam — banner is a panel sibling, not a tinted divider.
+    /* Structural seam, banner is a panel sibling, not a tinted divider.
        --color-border-strong is the cockpit-panel-seam vocabulary; the
        variant hue belongs on the left-edge accent below, not on the
        seam (which would tint the panel edge differently per state, an
        inconsistency the 32a/32b polish explicitly removed elsewhere).
        --shadow-1 inset top highlight matches the chamfer light on the
-       top-bar / rail / panel-slot — the banner reads as the same panel
+       top-bar / rail / panel-slot, the banner reads as the same panel
        family. */
     border-bottom: 1px solid var(--color-border-strong);
     box-shadow: var(--shadow-1);
@@ -41,7 +41,7 @@
     /* Subtle entrance affordance. The banner is mounted/unmounted as a
        whole when state transitions Hidden -> visible (or between visible
        states with different match arms), so a CSS transition wouldn't
-       fire on entry — a keyframed animation does, and inherits reduced-
+       fire on entry, a keyframed animation does, and inherits reduced-
        motion correctness because durations collapse to 0ms under the
        motion.css token override. Opacity + translateY only: transform is
        paint-time so it does not reflow against the flex: 0 0 auto track,
@@ -61,7 +61,7 @@
     }
 }
 
-/* Reduced-motion gate per motion.css section 5 — keyframes that animate
+/* Reduced-motion gate per motion.css section 5, keyframes that animate
    transform on entry MUST be disabled under prefers-reduced-motion (the
    duration-token collapse alone leaves a brief from-state transform
    visible because `animation-fill-mode: both` paints the initial frame
@@ -77,7 +77,7 @@
     flex: 1 1 auto;
 }
 
-/* Mode names inside the copy are identifiers, not prose emphasis — the
+/* Mode names inside the copy are identifiers, not prose emphasis, the
    filesystem-readout idiom from 32b (profile name) and the engine-pill
    label fits them exactly. Mono + tabular figures + --weight-medium
    reads as a structured system-status token rather than the default
@@ -91,7 +91,7 @@
 }
 
 .if-banner--diverged {
-    /* Canonical control tint (14% control-violet on bg-elevated) — AA-tuned;
+    /* Canonical control tint (14% control-violet on bg-elevated), AA-tuned;
        earlier 0.08 alpha was sub-AA for the muted text variant. */
     background: var(--color-control-bg);
     border-left-color: var(--color-control);
@@ -117,7 +117,7 @@
    warning hue (which is already AA-tuned against the warning tint;
    error hue would re-introduce the AA contrast issue control-bg had).
    Selecting on the existing aria attribute means no new modifier class
-   is required — the Rust class-name contract stays intact and the CSS
+   is required, the Rust class-name contract stays intact and the CSS
    tracks the semantic state machine directly. */
 .if-banner--forced[role="alert"] {
     border-left-width: 4px;

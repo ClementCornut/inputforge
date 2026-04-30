@@ -13,7 +13,7 @@ use crate::types::{DeviceId, HatDirection, InputAddress, InputValue};
 ///
 /// **Iteration order guarantee**: the internal store is an [`IndexMap`],
 /// which preserves insertion order. This makes [`InputCacheStore::clone_compact`]
-/// stable and deterministic across calls — a requirement for the
+/// stable and deterministic across calls, a requirement for the
 /// live-capture tied-axis tiebreak logic in `patterns::live_capture`.
 #[derive(Debug, Default)]
 pub struct InputCacheStore {

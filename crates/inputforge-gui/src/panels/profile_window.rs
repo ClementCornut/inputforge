@@ -321,7 +321,7 @@ fn show_rename_row(
         return None;
     }
 
-    // Commit on Enter or loss of focus (but not Escape — handled above).
+    // Commit on Enter or loss of focus (but not Escape, handled above).
     let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
     if enter_pressed || (response.lost_focus() && !ui.input(|i| i.key_pressed(egui::Key::Escape))) {
         let new_name = rename_text.trim().to_owned();

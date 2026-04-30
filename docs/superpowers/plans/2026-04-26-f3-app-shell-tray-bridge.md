@@ -1,4 +1,4 @@
-# F3 — Application Shell + Tray Bridge — Implementation Plan
+# F3, Application Shell + Tray Bridge, Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -16,10 +16,10 @@
 
 F1 shipped a state-bridge scaffold for `crates/inputforge-gui-dx` and punted on tray and lifecycle: today the egui crate still polls `MenuEvent::receiver().try_recv()` per frame, and under `--features gui-dioxus` the X-click closes the window for good (no hide-to-tray, no second `launch_gui` because `tao::EventLoop::run` is one-shot).
 
-F2 shipped the design-system foundation: tokens, `ThemeProvider`, 17 primitives, gallery harness. F3 builds on F2 — Tabs and StatusBar are added as F2-style primitives, the placeholder shell composes them, and the gallery grows two more sections.
+F2 shipped the design-system foundation: tokens, `ThemeProvider`, 17 primitives, gallery harness. F3 builds on F2, Tabs and StatusBar are added as F2-style primitives, the placeholder shell composes them, and the gallery grows two more sections.
 
 **Why this is worth a plan rather than just "hack it in":**
-- **The tray bridge is structural.** Dioxus 0.7.6 unconditionally registers `muda::MenuEvent::set_event_handler` itself and forwards every event as `UserWindowEvent::MudaMenuEvent`. F3 must observe via `Config::with_custom_event_handler` (not `set_event_handler` — Dioxus would clobber it on next launch tick).
+- **The tray bridge is structural.** Dioxus 0.7.6 unconditionally registers `muda::MenuEvent::set_event_handler` itself and forwards every event as `UserWindowEvent::MudaMenuEvent`. F3 must observe via `Config::with_custom_event_handler` (not `set_event_handler`, Dioxus would clobber it on next launch tick).
 - **Lifecycle is delicate.** Close-requested handling is owned by Dioxus; F3 cannot pre-cancel it. The Quit pathway therefore inverts the question: flip per-window `WindowCloseBehaviour::WindowCloses` then call `close()`. Get this wrong and the process never exits, or `HidHide` unhide / `vJoy` release never fires.
 - **The placeholder shell sets F5's mutability budget.** No `AppShell` abstraction. The grid and its CSS file (`assets/shell/placeholder-shell.css`) are explicitly disposable at F5. F3 commits to NOT building a layout primitive that F5 will then need to undo.
 
@@ -33,41 +33,41 @@ All paths relative to `E:\Git\Perso\inputforge\` unless otherwise noted.
 
 **Created (in `crates/inputforge-gui-dx/`):**
 
-- `src/tray/mod.rs` — `make_event_handler`, `spawn_listener_task`, `dispatch_toggle`, `CHANNEL_CAPACITY`
-- `src/tray/action.rs` — `TrayAction`, `TrayMenuIds`, `from_id`, `from_event`, unit tests
-- `src/lifecycle/mod.rs` — `show_window`, `request_quit`, `apply_start_minimized` (no unit tests; behavior covered by lifecycle scenarios)
-- `src/shell/mod.rs` — `pub(crate) PlaceholderShell` re-export
-- `src/shell/placeholder.rs` — `PlaceholderShell` (the four-region grid; explicitly disposable at F5)
-- `src/shell/status_bar_view.rs` — `StatusBarView` (the only F3 surface bound to AppContext signals)
-- `src/components/tabs.rs` — Tabs F2-style primitive (full ARIA, keyboard nav)
-- `src/components/status_bar.rs` — StatusBar F2-style primitive (presentation only; ARIA-neutral wrapper)
-- `assets/components/tabs.css` — Tabs CSS
-- `assets/components/status-bar.css` — StatusBar CSS
-- `assets/shell/placeholder-shell.css` — disposable shell-scoped grid CSS
+- `src/tray/mod.rs`, `make_event_handler`, `spawn_listener_task`, `dispatch_toggle`, `CHANNEL_CAPACITY`
+- `src/tray/action.rs`, `TrayAction`, `TrayMenuIds`, `from_id`, `from_event`, unit tests
+- `src/lifecycle/mod.rs`, `show_window`, `request_quit`, `apply_start_minimized` (no unit tests; behavior covered by lifecycle scenarios)
+- `src/shell/mod.rs`, `pub(crate) PlaceholderShell` re-export
+- `src/shell/placeholder.rs`, `PlaceholderShell` (the four-region grid; explicitly disposable at F5)
+- `src/shell/status_bar_view.rs`, `StatusBarView` (the only F3 surface bound to AppContext signals)
+- `src/components/tabs.rs`, Tabs F2-style primitive (full ARIA, keyboard nav)
+- `src/components/status_bar.rs`, StatusBar F2-style primitive (presentation only; ARIA-neutral wrapper)
+- `assets/components/tabs.css`, Tabs CSS
+- `assets/components/status-bar.css`, StatusBar CSS
+- `assets/shell/placeholder-shell.css`, disposable shell-scoped grid CSS
 
 **Modified (in `crates/inputforge-gui-dx/`):**
 
-- `src/lib.rs` — extend `launch_gui` signature with `start_minimized: bool`; thread `tokio::sync::mpsc::channel` through `Config::with_custom_event_handler` + `LaunchParams::listener_rx`; add `mod tray;`, `mod lifecycle;`, `mod shell;`; set `with_close_behaviour(WindowHides)`
-- `src/app.rs` — `app_root` consumes `LaunchParams` via `use_context`; spawns listener task with take-once Mutex; calls `apply_start_minimized`; renders `ThemeProvider { PlaceholderShell {} }`
-- `src/context.rs` — remove the F1 `#[expect(dead_code, reason = "used in later tasks (engine command dispatch)")]` attribute on `AppContext.commands` (and the sibling `#[expect(dead_code)]` on `settings` if it becomes false too)
-- `src/components/mod.rs` — add `pub mod tabs;` + `pub mod status_bar;` modules and re-exports
-- `src/theme/mod.rs` — add two `Stylesheet` mounts for `tabs.css` and `status-bar.css`
-- `examples/bridge_demo.rs` — adapt to new `launch_gui` signature (add `start_minimized: false`); the spec also asks the dev loop to render the real shell, but `bridge_demo.rs` already calls `launch_gui` directly (which now mounts `PlaceholderShell`), so this is automatic — no `PlaceholderShell` wrap is needed in `bridge_demo.rs`
-- `examples/component_gallery.rs` — add Tabs section (variants, states, keyboard demo) and StatusBar section (slots demo + empty-slots demo)
-- `README.md` — document `with_custom_event_handler` tray bridge, hide-to-tray lifecycle, new primitives
+- `src/lib.rs`, extend `launch_gui` signature with `start_minimized: bool`; thread `tokio::sync::mpsc::channel` through `Config::with_custom_event_handler` + `LaunchParams::listener_rx`; add `mod tray;`, `mod lifecycle;`, `mod shell;`; set `with_close_behaviour(WindowHides)`
+- `src/app.rs`, `app_root` consumes `LaunchParams` via `use_context`; spawns listener task with take-once Mutex; calls `apply_start_minimized`; renders `ThemeProvider { PlaceholderShell {} }`
+- `src/context.rs`, remove the F1 `#[expect(dead_code, reason = "used in later tasks (engine command dispatch)")]` attribute on `AppContext.commands` (and the sibling `#[expect(dead_code)]` on `settings` if it becomes false too)
+- `src/components/mod.rs`, add `pub mod tabs;` + `pub mod status_bar;` modules and re-exports
+- `src/theme/mod.rs`, add two `Stylesheet` mounts for `tabs.css` and `status-bar.css`
+- `examples/bridge_demo.rs`, adapt to new `launch_gui` signature (add `start_minimized: false`); the spec also asks the dev loop to render the real shell, but `bridge_demo.rs` already calls `launch_gui` directly (which now mounts `PlaceholderShell`), so this is automatic, no `PlaceholderShell` wrap is needed in `bridge_demo.rs`
+- `examples/component_gallery.rs`, add Tabs section (variants, states, keyboard demo) and StatusBar section (slots demo + empty-slots demo)
+- `README.md`, document `with_custom_event_handler` tray bridge, hide-to-tray lifecycle, new primitives
 
 **Modified (in `crates/inputforge-gui/`):**
 
-- `src/lib.rs` — add `start_minimized: bool` parameter to `launch_gui` (ignored — parity-only, deletes at F16). Extend the existing `#[expect(clippy::needless_pass_by_value, reason = "...")]` annotation if a fresh lint hits.
+- `src/lib.rs`, add `start_minimized: bool` parameter to `launch_gui` (ignored, parity-only, deletes at F16). Extend the existing `#[expect(clippy::needless_pass_by_value, reason = "...")]` annotation if a fresh lint hits.
 
 **Modified (in `crates/inputforge-app/`):**
 
-- `src/main.rs` — delete `IS_GUI_DIOXUS` const + the two F1 cfg-guards in `main()` and `run_tray_loop`; cfg-split startup branch into Shape A; add `#[cfg(feature = "gui-egui")]` on `launch_gui_blocking`, `run_tray_loop`, `drain_stale_gui_events`; pass `cli.start_minimized` to the `launch_gui` call site under both feature flags
+- `src/main.rs`, delete `IS_GUI_DIOXUS` const + the two F1 cfg-guards in `main()` and `run_tray_loop`; cfg-split startup branch into Shape A; add `#[cfg(feature = "gui-egui")]` on `launch_gui_blocking`, `run_tray_loop`, `drain_stale_gui_events`; pass `cli.start_minimized` to the `launch_gui` call site under both feature flags
 
 **Reused (do not modify):**
 
-- `src/context.rs` types — `RawHandles`, `AppContext`, `MetaSnapshot`, `ConfigSnapshot`, `LiveSnapshot` shapes (only the `#[expect]` attrs are touched)
-- `src/bridge.rs` — `spawn_polling_task` (unchanged)
+- `src/context.rs` types, `RawHandles`, `AppContext`, `MetaSnapshot`, `ConfigSnapshot`, `LiveSnapshot` shapes (only the `#[expect]` attrs are touched)
+- `src/bridge.rs`, `spawn_polling_task` (unchanged)
 - F2 components: `Badge`, `Separator` (consumed by `StatusBarView`), all gallery-section helpers
 - F2 tokens: `--space-3`, `--color-border`, etc. (Task 1 verifies)
 
@@ -75,13 +75,13 @@ All paths relative to `E:\Git\Perso\inputforge\` unless otherwise noted.
 
 ## Existing utilities to reuse
 
-- **F2's `merge_class(base, variant, caller)`** in `src/components/mod.rs:45-58` — every new primitive uses this for the `class: Option<String>` caller-composition prop. (Confirmed via `Read crates/inputforge-gui-dx/src/components/mod.rs`.)
-- **F2's component pattern** — sibling `.rs` + `.css` per primitive, `asset!()` mounted from `theme/mod.rs`, `.if-<name>` BEM-ish class prefix. Cross-reference `src/components/badge.rs` + `assets/components/badge.css` as the canonical small-primitive template.
-- **F2's `BadgeVariant` enum** — `Neutral`, `Info`, `Success`, `Warning`, `Error`. `StatusBarView` consumes via `status_to_variant(EngineStatus) -> BadgeVariant`.
-- **F2's `SeparatorOrientation::Vertical`** — `StatusBarView` uses for the badge separator.
+- **F2's `merge_class(base, variant, caller)`** in `src/components/mod.rs:45-58`, every new primitive uses this for the `class: Option<String>` caller-composition prop. (Confirmed via `Read crates/inputforge-gui-dx/src/components/mod.rs`.)
+- **F2's component pattern**, sibling `.rs` + `.css` per primitive, `asset!()` mounted from `theme/mod.rs`, `.if-<name>` BEM-ish class prefix. Cross-reference `src/components/badge.rs` + `assets/components/badge.css` as the canonical small-primitive template.
+- **F2's `BadgeVariant` enum**, `Neutral`, `Info`, `Success`, `Warning`, `Error`. `StatusBarView` consumes via `status_to_variant(EngineStatus) -> BadgeVariant`.
+- **F2's `SeparatorOrientation::Vertical`**, `StatusBarView` uses for the badge separator.
 - **F1's `MetaSnapshot::engine_status` / `current_mode` / `profile_name`** and `ConfigSnapshot::devices` for `StatusBarView`'s memo subscriptions.
 - **F1's `bridge_demo.rs` shape** for any new desktop example (no engine, no I/O, hot-reload safe).
-- **Tray-icon menu id triple from `inputforge-app/src/tray.rs::AppTray::menu_item_ids()`** — already returns `(MenuId, MenuId, MenuId)` from `tray_icon::menu`, which re-exports `muda::MenuId`. Type-identical to what F3 needs in `TrayMenuIds`.
+- **Tray-icon menu id triple from `inputforge-app/src/tray.rs::AppTray::menu_item_ids()`**, already returns `(MenuId, MenuId, MenuId)` from `tray_icon::menu`, which re-exports `muda::MenuId`. Type-identical to what F3 needs in `TrayMenuIds`.
 
 ---
 
@@ -89,34 +89,34 @@ All paths relative to `E:\Git\Perso\inputforge\` unless otherwise noted.
 
 Surface these in the implementer's mind before they hit them:
 
-- **`AppContext.commands` is `std::sync::mpsc::Sender<EngineCommand>`** (existing F1 type; see `src/context.rs:34`). The spec snippet `ctx.commands.try_send(cmd)` would only compile against `tokio::sync::mpsc::Sender`. Use `let _ = ctx.commands.send(cmd);` instead — std mpsc unbounded `send` returns immediately unless the receiver is dropped. The plan code blocks below reflect this correction.
-- **`tokio::sync::mpsc::Sender::try_send` is correct for the tray channel** (Task 9's `make_event_handler`) because that channel uses `tokio::sync::mpsc::channel(CHANNEL_CAPACITY)` — bounded, with a real `try_send`.
-- **`dioxus-desktop` re-export paths.** F1 used `dioxus::desktop::{Config, LogicalSize, WindowBuilder}`. Dioxus 0.7 also re-exports the lower layers — verify `dioxus::desktop::tao::event::Event`, `dioxus::desktop::tao::event_loop::EventLoopWindowTarget`, `dioxus::desktop::ipc::UserWindowEvent`, `dioxus::desktop::WindowCloseBehaviour`, `dioxus::desktop::window` work via `cargo check`. If any path doesn't resolve, fall back to `dioxus_desktop::tao::...` etc. (and add `dioxus-desktop = { workspace = true }` to `Cargo.toml`'s `[dependencies]` only if necessary). Prefer `dioxus::desktop::*` to avoid an extra direct dep.
-- **`window()` panics outside a Dioxus scope.** `dioxus_desktop::window()` consumes context via `dioxus_core::consume_context()`. The listener task is spawned via `dioxus::prelude::spawn` from inside `app_root`'s `use_hook`, inheriting `ScopeId::ROOT`'s context — every `window()` call from `show_window` / `request_quit` / `apply_start_minimized` resolves correctly because it runs while the runtime is alive.
+- **`AppContext.commands` is `std::sync::mpsc::Sender<EngineCommand>`** (existing F1 type; see `src/context.rs:34`). The spec snippet `ctx.commands.try_send(cmd)` would only compile against `tokio::sync::mpsc::Sender`. Use `let _ = ctx.commands.send(cmd);` instead, std mpsc unbounded `send` returns immediately unless the receiver is dropped. The plan code blocks below reflect this correction.
+- **`tokio::sync::mpsc::Sender::try_send` is correct for the tray channel** (Task 9's `make_event_handler`) because that channel uses `tokio::sync::mpsc::channel(CHANNEL_CAPACITY)`, bounded, with a real `try_send`.
+- **`dioxus-desktop` re-export paths.** F1 used `dioxus::desktop::{Config, LogicalSize, WindowBuilder}`. Dioxus 0.7 also re-exports the lower layers, verify `dioxus::desktop::tao::event::Event`, `dioxus::desktop::tao::event_loop::EventLoopWindowTarget`, `dioxus::desktop::ipc::UserWindowEvent`, `dioxus::desktop::WindowCloseBehaviour`, `dioxus::desktop::window` work via `cargo check`. If any path doesn't resolve, fall back to `dioxus_desktop::tao::...` etc. (and add `dioxus-desktop = { workspace = true }` to `Cargo.toml`'s `[dependencies]` only if necessary). Prefer `dioxus::desktop::*` to avoid an extra direct dep.
+- **`window()` panics outside a Dioxus scope.** `dioxus_desktop::window()` consumes context via `dioxus_core::consume_context()`. The listener task is spawned via `dioxus::prelude::spawn` from inside `app_root`'s `use_hook`, inheriting `ScopeId::ROOT`'s context, every `window()` call from `show_window` / `request_quit` / `apply_start_minimized` resolves correctly because it runs while the runtime is alive.
 - **`muda::MenuEvent` field constructor.** In muda 0.17, `MenuEvent` is `pub struct MenuEvent { pub id: MenuId }`, so `MenuEvent { id: MenuId::new("show") }` should compile in `#[cfg(test)] mod tests`. If a future muda revision makes the field private, the unit test should call `TrayAction::from_id(&menu_id, &ids)` directly (`from_event` is a one-line wrapper around `from_id`). The plan structures the routing this way for testability.
-- **`Config::with_custom_event_handler` runs AFTER Dioxus's own app-level event handling.** The closure is observe-only — never mutate `ControlFlow`. Cannot pre-cancel close-requested. (See `dioxus-desktop-0.7.6/src/app.rs:201-205` and `:449`.)
-- **`WindowCloseBehaviour::WindowHides` is set at launch and consumed by Dioxus's own close-handling.** F3 has no close-handler code path for the X-click case — Dioxus calls `set_visible(false)` natively.
+- **`Config::with_custom_event_handler` runs AFTER Dioxus's own app-level event handling.** The closure is observe-only, never mutate `ControlFlow`. Cannot pre-cancel close-requested. (See `dioxus-desktop-0.7.6/src/app.rs:201-205` and `:449`.)
+- **`WindowCloseBehaviour::WindowHides` is set at launch and consumed by Dioxus's own close-handling.** F3 has no close-handler code path for the X-click case, Dioxus calls `set_visible(false)` natively.
 - **`set_close_behavior` is mutable post-launch** via `DesktopService::set_close_behavior` (`desktop_context.rs:177-179`). This is the entire Quit pathway: flip to `WindowCloses`, then call `close()`.
 - **`with_context` requires `T: Any + Clone + Send + Sync + 'static`** (`dioxus-0.7.6/src/launch.rs:256`). `Rc<Cell<Option<T>>>` is `!Send + !Sync` and won't compile. Use `std::sync::Arc<std::sync::Mutex<Option<T>>>` for `LaunchParams::listener_rx`.
 - **`tokio::sync::mpsc::Receiver` is `!Sync` but `Send`.** Wrapping in `Arc<Mutex<Option<Receiver>>>` is necessary (Sync requirement) and makes the take-once shape explicit: `lock().unwrap().take()` empties the slot so subsequent mounts (e.g. `dx serve` hot-reload of `app_root`) become no-ops rather than double-spawning the listener.
-- **`tray_icon::menu::MenuId` IS `muda::MenuId`** — re-exported. So `tray.menu_item_ids()` returns IDs that compare-equal to those carried by `muda::MenuEvent`. F3 needs no conversion.
+- **`tray_icon::menu::MenuId` IS `muda::MenuId`**, re-exported. So `tray.menu_item_ids()` returns IDs that compare-equal to those carried by `muda::MenuEvent`. F3 needs no conversion.
 - **`asset!()` paths must start with `/`** and resolve relative to crate root. `/assets/components/tabs.css` and `/assets/shell/placeholder-shell.css`.
-- **`document::Stylesheet` mounts in render order** — Tabs CSS and StatusBar CSS go alongside other component CSS, AFTER tokens and global, BEFORE `placeholder-shell.css` (which is shell-scoped and may override component layout in the shell context). The plan locks the order in Task 5.
-- **Egui crate uses `std::sync::mpsc`** for `EngineCommand` — and so does `RawHandles.commands`. Don't conflate with `tokio::sync::mpsc`.
+- **`document::Stylesheet` mounts in render order**, Tabs CSS and StatusBar CSS go alongside other component CSS, AFTER tokens and global, BEFORE `placeholder-shell.css` (which is shell-scoped and may override component layout in the shell context). The plan locks the order in Task 5.
+- **Egui crate uses `std::sync::mpsc`** for `EngineCommand`, and so does `RawHandles.commands`. Don't conflate with `tokio::sync::mpsc`.
 
 ---
 
 ## Phase Overview
 
-- **Phase 0** (Task 1) — F2 token name verification.
-- **Phase 1** (Tasks 2–6) — Tabs + StatusBar primitives (Rust + minimal CSS) + gallery + ThemeProvider mount. Lets frontend-design see them rendered.
-- **Phase 2** (Tasks 7–8) — Capture screenshots and invoke `impeccable:frontend-design` with a single brief covering tab-bar / status-bar / shell-level visual treatment. Apply revised CSS for the two primitives + draft `placeholder-shell.css`.
-- **Phase 3** (Tasks 9–11) — Tray bridge: `tray/action.rs` (TDD), `tray/mod.rs`, `lifecycle/mod.rs`.
-- **Phase 4** (Tasks 12–13) — `launch_gui` signature changes: parity update on egui side, Dioxus side wires channel + Config builder + `LaunchParams`.
-- **Phase 5** (Tasks 14–17) — Shell: `placeholder.rs`, `status_bar_view.rs`, `placeholder-shell.css` finalization, module declarations.
-- **Phase 6** (Tasks 18–19) — `app_root` rewrite for `LaunchParams` consumption + `bridge_demo.rs` adaptation.
-- **Phase 7** (Task 20) — `main.rs` Shape A divergence + F1 cleanup.
-- **Phase 8** (Tasks 21–22) — README updates + manual lifecycle pass S1–S10.
+- **Phase 0** (Task 1), F2 token name verification.
+- **Phase 1** (Tasks 2-6), Tabs + StatusBar primitives (Rust + minimal CSS) + gallery + ThemeProvider mount. Lets frontend-design see them rendered.
+- **Phase 2** (Tasks 7-8), Capture screenshots and invoke `impeccable:frontend-design` with a single brief covering tab-bar / status-bar / shell-level visual treatment. Apply revised CSS for the two primitives + draft `placeholder-shell.css`.
+- **Phase 3** (Tasks 9-11), Tray bridge: `tray/action.rs` (TDD), `tray/mod.rs`, `lifecycle/mod.rs`.
+- **Phase 4** (Tasks 12-13), `launch_gui` signature changes: parity update on egui side, Dioxus side wires channel + Config builder + `LaunchParams`.
+- **Phase 5** (Tasks 14-17), Shell: `placeholder.rs`, `status_bar_view.rs`, `placeholder-shell.css` finalization, module declarations.
+- **Phase 6** (Tasks 18-19), `app_root` rewrite for `LaunchParams` consumption + `bridge_demo.rs` adaptation.
+- **Phase 7** (Task 20), `main.rs` Shape A divergence + F1 cleanup.
+- **Phase 8** (Tasks 21-22), README updates + manual lifecycle pass S1-S10.
 
 ---
 
@@ -137,7 +137,7 @@ The shell and primitive CSS will reference: `--color-border`, `--space-3`, `--co
 grep -E '^\s*--(color-border|space-3|color-bg|font-sans)\b' crates/inputforge-gui-dx/assets/tokens/*.css
 ```
 
-Expected: at least one declaration line for each name. If F2 used different names (e.g., `--space-md` instead of `--space-3`), record the actual names and update every CSS code block in this plan to match before proceeding. The spec calls this out under "Token compatibility" — do not skip this check.
+Expected: at least one declaration line for each name. If F2 used different names (e.g., `--space-md` instead of `--space-3`), record the actual names and update every CSS code block in this plan to match before proceeding. The spec calls this out under "Token compatibility", do not skip this check.
 
 - [ ] **Step 2: No commit**
 
@@ -145,9 +145,9 @@ Sanity check only.
 
 ---
 
-## Task 2: Tabs primitive — Rust file with ARIA and keyboard nav
+## Task 2: Tabs primitive, Rust file with ARIA and keyboard nav
 
-Pure component logic. CSS is a stub in this task (Task 5 wires it; Task 8 finalizes after frontend-design). The keyboard contract is the load-bearing part — it activates on arrow-key / Home / End and emits `onchange(id)` synchronously. F11 (Modes) reuses this primitive.
+Pure component logic. CSS is a stub in this task (Task 5 wires it; Task 8 finalizes after frontend-design). The keyboard contract is the load-bearing part, it activates on arrow-key / Home / End and emits `onchange(id)` synchronously. F11 (Modes) reuses this primitive.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/components/tabs.rs`
@@ -177,7 +177,7 @@ pub struct TabsProps {
 /// WAI-ARIA Tabs primitive with focus-roving and automatic activation.
 ///
 /// - `role="tablist"` on the wrapper, `role="tab"` per item.
-/// - Arrow Left / Right cycles focus AND activates (automatic activation —
+/// - Arrow Left / Right cycles focus AND activates (automatic activation -
 ///   panel swaps are synchronous and cheap, see spec rationale).
 /// - Home / End jumps to first / last (and activates).
 /// - `tabindex` is `0` for the active tab and `-1` for the rest (focus-roving).
@@ -185,7 +185,7 @@ pub struct TabsProps {
 ///   `.if-tabs--disabled`.
 ///
 /// The component is stateless: the caller owns `value` and renders panel
-/// content based on it. F11 (Modes) reuses this — keeping it stateless avoids
+/// content based on it. F11 (Modes) reuses this, keeping it stateless avoids
 /// over-coupling.
 #[component]
 pub fn Tabs(props: TabsProps) -> Element {
@@ -274,7 +274,7 @@ If `Key::Character(ref s)` doesn't compile against the Dioxus 0.7 `Key` enum (va
 Key::Character(ref s) if s.as_str() == " " => { evt.prevent_default(); None }
 ```
 
-or fall back to checking `evt.key().to_string()` — adjust to the actual API surface. The point is to absorb Space/Enter, not the exact match form.
+or fall back to checking `evt.key().to_string()`, adjust to the actual API surface. The point is to absorb Space/Enter, not the exact match form.
 
 - [ ] **Step 3: No commit yet**
 
@@ -282,9 +282,9 @@ The file is orphaned until Task 4 wires it. Defer the commit to bundle Tabs + St
 
 ---
 
-## Task 3: StatusBar primitive — Rust file with three slots
+## Task 3: StatusBar primitive, Rust file with three slots
 
-Presentation-only primitive. ARIA-neutral wrapper (no `role="status"` at the primitive level — `role` lives on consumer-controlled inner elements). F11+ may reuse via composition.
+Presentation-only primitive. ARIA-neutral wrapper (no `role="status"` at the primitive level, `role` lives on consumer-controlled inner elements). F11+ may reuse via composition.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/components/status_bar.rs`
@@ -304,7 +304,7 @@ use super::merge_class;
 /// Fixed 28px height (matches today's egui status bar; reviewable by
 /// frontend-design).
 ///
-/// **ARIA shape.** The wrapper is intentionally neutral — no `role`, no
+/// **ARIA shape.** The wrapper is intentionally neutral, no `role`, no
 /// `aria-label`. `role="status"` is a live region; applying it at the
 /// primitive level would make every badge change announce. Consumers add
 /// `role="status"` (or `aria-live`) on the *specific* element they want
@@ -533,7 +533,7 @@ Add a new `section { ... }` block, placed alphabetically (after `Switch`, before
                                 p {
                                     "Active tab: "
                                     code { "{tabs_demo}" }
-                                    " — use Left/Right or Home/End to cycle."
+                                    ", use Left/Right or Home/End to cycle."
                                 }
                                 Tabs {
                                     items: vec![
@@ -579,7 +579,7 @@ Add another `section { ... }` block after the Tabs section:
                                     end: rsx! { span { "Demo Profile" } },
                                 }
                             }
-                            p { "Empty slots — verifies slot independence:" }
+                            p { "Empty slots, verifies slot independence:" }
                             Card { padding: CardPadding::Md,
                                 StatusBar {
                                     start:  rsx! {},
@@ -632,7 +632,7 @@ Frontend-design needs to see what currently renders so it can evolve, not invent
 **Files:**
 - Create: `docs/superpowers/assets/f3/dioxus-gallery-tabs.png`
 - Create: `docs/superpowers/assets/f3/dioxus-gallery-status-bar.png`
-- Create: `docs/superpowers/assets/f3/egui-statusbar.png` (re-screenshot the egui status bar — F2's `egui-main.png` may already cover it, but a focused crop is more useful for the brief)
+- Create: `docs/superpowers/assets/f3/egui-statusbar.png` (re-screenshot the egui status bar, F2's `egui-main.png` may already cover it, but a focused crop is more useful for the brief)
 
 - [ ] **Step 1: Make the screenshots directory**
 
@@ -678,23 +678,23 @@ Single brief covering all three F3 visual surfaces. The output revises `tabs.css
 
 Use the `Skill` tool with `impeccable:frontend-design`. Provide this brief verbatim:
 
-> **Task: Polish F3 visual treatment for InputForge Dioxus rewrite — tab bar, status bar, placeholder shell.**
+> **Task: Polish F3 visual treatment for InputForge Dioxus rewrite, tab bar, status bar, placeholder shell.**
 >
-> **Context.** F3 is the third foundation feature in the egui→Dioxus rewrite. F2 shipped tokens and 17 primitives. F3 adds two more primitives (Tabs, StatusBar) and an *intentionally disposable* placeholder shell — F5 will redesign IA and may replace the entire grid. Visual direction is "Evolved Glass Cockpit." Serious sim/HOTAS configuration tool, instrument-cluster heritage.
+> **Context.** F3 is the third foundation feature in the egui→Dioxus rewrite. F2 shipped tokens and 17 primitives. F3 adds two more primitives (Tabs, StatusBar) and an *intentionally disposable* placeholder shell, F5 will redesign IA and may replace the entire grid. Visual direction is "Evolved Glass Cockpit." Serious sim/HOTAS configuration tool, instrument-cluster heritage.
 >
 > **Inputs.**
 > - Spec: `docs/superpowers/specs/2026-04-26-f3-app-shell-tray-bridge-design.md`
-> - Tokens (DO NOT rename — values were finalized at F2): `crates/inputforge-gui-dx/assets/tokens/{colors,typography,spacing,radii,elevation,motion}.css`
+> - Tokens (DO NOT rename, values were finalized at F2): `crates/inputforge-gui-dx/assets/tokens/{colors,typography,spacing,radii,elevation,motion}.css`
 > - Current placeholder CSS: `crates/inputforge-gui-dx/assets/components/{tabs,status-bar}.css`
 > - Screenshots: `docs/superpowers/assets/f3/{dioxus-gallery-tabs,dioxus-gallery-status-bar,egui-statusbar}.png` plus the F2 set at `docs/superpowers/assets/f2/`
 >
 > **Scope (in scope).**
 > 1. **Tab bar treatment.** Active/inactive/hover/focus-visible/disabled states; underline vs. pill vs. segmented; dimensions; spacing; transition feel.
-> 2. **Status bar treatment.** Slot rhythm (start/middle/end gutters), height (currently 28px — confirm or revise), border, divider style for the in-slot Separator, badge tightness.
-> 3. **Placeholder shell layout.** Four-region grid (top toolbar / left panel / center / status bar). Gridding, gutters, region affordances (borders, subtle elevation, scroll behavior). The shell IS DISPOSABLE — F5 may replace it entirely. Keep the visual just polished enough that a maintainer is not embarrassed by it.
+> 2. **Status bar treatment.** Slot rhythm (start/middle/end gutters), height (currently 28px, confirm or revise), border, divider style for the in-slot Separator, badge tightness.
+> 3. **Placeholder shell layout.** Four-region grid (top toolbar / left panel / center / status bar). Gridding, gutters, region affordances (borders, subtle elevation, scroll behavior). The shell IS DISPOSABLE, F5 may replace it entirely. Keep the visual just polished enough that a maintainer is not embarrassed by it.
 >
 > **Out of scope (deferred to later F's).**
-> - **IA — F5 owns this.** Do NOT redesign the top toolbar contents, propose a different left-panel structure, or invent a different center-panel hierarchy. Polish the regions as containers.
+> - **IA, F5 owns this.** Do NOT redesign the top toolbar contents, propose a different left-panel structure, or invent a different center-panel hierarchy. Polish the regions as containers.
 > - Top toolbar contents (F5), left-panel device list (F6), center mappings/modes (F7+/F11).
 > - Toast queue, modal, dirty-state confirmation (F4).
 >
@@ -709,13 +709,13 @@ Use the `Skill` tool with `impeccable:frontend-design`. Provide this brief verba
 
 - [ ] **Step 2: Apply revised `tabs.css` and `status-bar.css`**
 
-Replace the two files with frontend-design's output. Keep the class names exactly. Token references (`var(--...)`) must reference names declared in F2's token files; if frontend-design suggests a value that needs a NEW token, push back — token names are F2 frozen, and F3 must not coin new ones.
+Replace the two files with frontend-design's output. Keep the class names exactly. Token references (`var(--...)`) must reference names declared in F2's token files; if frontend-design suggests a value that needs a NEW token, push back, token names are F2 frozen, and F3 must not coin new ones.
 
 - [ ] **Step 3: Stage the draft `placeholder-shell.css`**
 
-Save the draft `placeholder-shell.css` somewhere temporary (e.g., your scratch dir) — Task 17 will write it into `crates/inputforge-gui-dx/assets/shell/placeholder-shell.css` together with shell HTML. Alternatively, write it to the repo path now (`mkdir -p crates/inputforge-gui-dx/assets/shell` first), and Task 17 will only need to reference it.
+Save the draft `placeholder-shell.css` somewhere temporary (e.g., your scratch dir), Task 17 will write it into `crates/inputforge-gui-dx/assets/shell/placeholder-shell.css` together with shell HTML. Alternatively, write it to the repo path now (`mkdir -p crates/inputforge-gui-dx/assets/shell` first), and Task 17 will only need to reference it.
 
-To keep Task 17 self-contained, **prefer the latter** — write the draft now into the repo and only stage it at Task 17's commit. Use:
+To keep Task 17 self-contained, **prefer the latter**, write the draft now into the repo and only stage it at Task 17's commit. Use:
 
 ```bash
 mkdir -p crates/inputforge-gui-dx/assets/shell
@@ -742,7 +742,7 @@ git commit -m "feat(gui-dx): apply frontend-design revisions to Tabs and StatusB
 
 ---
 
-## Task 9: `tray/action.rs` — `TrayAction`, `TrayMenuIds`, routing (TDD)
+## Task 9: `tray/action.rs`, `TrayAction`, `TrayMenuIds`, routing (TDD)
 
 Pure logic. The `from_id` function is the unit-testable core; `from_event` is a one-line wrapper.
 
@@ -754,7 +754,7 @@ Pure logic. The `from_id` function is the unit-testable core; `from_event` is a 
 Create `crates/inputforge-gui-dx/src/tray/action.rs`:
 
 ```rust
-//! Tray menu routing — pure functions, no Dioxus or tao dependencies.
+//! Tray menu routing, pure functions, no Dioxus or tao dependencies.
 
 use muda::{MenuEvent, MenuId};
 
@@ -775,7 +775,7 @@ pub(crate) struct TrayMenuIds {
 }
 
 impl TrayAction {
-    /// Pure routing function — testable without constructing a `MenuEvent`.
+    /// Pure routing function, testable without constructing a `MenuEvent`.
     pub(crate) fn from_id(id: &MenuId, ids: &TrayMenuIds) -> Option<Self> {
         if *id == ids.show {
             return Some(Self::Show);
@@ -865,7 +865,7 @@ mod tray;
 Then create a placeholder `crates/inputforge-gui-dx/src/tray/mod.rs` declaring the action submodule:
 
 ```rust
-//! Tray bridge — observes `dioxus-desktop`'s forwarded muda events via
+//! Tray bridge, observes `dioxus-desktop`'s forwarded muda events via
 //! `Config::with_custom_event_handler`, routes through a bounded
 //! `tokio::sync::mpsc`, and dispatches in a Dioxus task.
 
@@ -879,7 +879,7 @@ Task 10 fills out the rest of `tray/mod.rs`.
 Run: `cargo test -p inputforge-gui-dx --lib tray::action::tests`
 Expected: 5 tests pass.
 
-If `MenuEvent { id: ... }` doesn't compile because the field is private in the muda version actually pulled in, drop that single test (`from_event_delegates_to_from_id`) and rely on the four `from_id` tests — `from_event` is a one-line wrapper trivial to verify by inspection. Adjust the file accordingly.
+If `MenuEvent { id: ... }` doesn't compile because the field is private in the muda version actually pulled in, drop that single test (`from_event_delegates_to_from_id`) and rely on the four `from_id` tests, `from_event` is a one-line wrapper trivial to verify by inspection. Adjust the file accordingly.
 
 - [ ] **Step 4: Verify whole crate still compiles**
 
@@ -898,7 +898,7 @@ git commit -m "feat(gui-dx): add TrayAction routing with unit tests"
 
 ---
 
-## Task 10: `tray/mod.rs` — event handler factory and listener task
+## Task 10: `tray/mod.rs`, event handler factory and listener task
 
 The closure passed to `Config::with_custom_event_handler` runs on the tao event-loop thread. It must not block. The listener task runs inside the Dioxus runtime and dispatches.
 
@@ -910,7 +910,7 @@ The closure passed to `Config::with_custom_event_handler` runs on the tao event-
 Edit `crates/inputforge-gui-dx/src/tray/mod.rs`:
 
 ```rust
-//! Tray bridge — observes `dioxus-desktop`'s forwarded muda events via
+//! Tray bridge, observes `dioxus-desktop`'s forwarded muda events via
 //! `Config::with_custom_event_handler`, routes through a bounded
 //! `tokio::sync::mpsc`, and dispatches in a Dioxus task.
 
@@ -937,7 +937,7 @@ pub(crate) const CHANNEL_CAPACITY: usize = 8;
 /// Build the closure passed to `Config::with_custom_event_handler`.
 ///
 /// The closure runs on the tao event-loop thread; it must not block. We
-/// `try_send` and log any overflow rather than wait — overflow is effectively
+/// `try_send` and log any overflow rather than wait, overflow is effectively
 /// impossible at human input rates, but a dropped send must never deadlock
 /// the event loop. The handler is observe-only; we never mutate `ControlFlow`.
 pub(crate) fn make_event_handler(
@@ -973,7 +973,7 @@ pub(crate) fn spawn_listener_task(mut rx: mpsc::Receiver<TrayAction>, ctx: AppCo
 /// current engine status, then send it on the engine command channel.
 ///
 /// `AppContext.commands` is `std::sync::mpsc::Sender<EngineCommand>` (an
-/// unbounded std channel from F1) — its `send` is non-blocking for unbounded
+/// unbounded std channel from F1), its `send` is non-blocking for unbounded
 /// channels, returning `Err` only if the receiver has been dropped. We
 /// discard the error: at that point the engine is already gone and the user
 /// is about to learn so via the normal shutdown path.
@@ -987,11 +987,11 @@ fn dispatch_toggle(ctx: &AppContext) {
 }
 ```
 
-**On import paths.** If `dioxus::desktop::ipc::UserWindowEvent` / `dioxus::desktop::tao::event::Event` / `dioxus::desktop::tao::event_loop::EventLoopWindowTarget` don't resolve in the pinned 0.7.6, fall back to `dioxus_desktop::*` and add `dioxus-desktop = { workspace = true }` to `crates/inputforge-gui-dx/Cargo.toml`'s `[dependencies]`. Verify with `cargo check -p inputforge-gui-dx --no-default-features --features inputforge-app/gui-dioxus` — actually simpler: just run `cargo build -p inputforge-gui-dx` and adjust if errors.
+**On import paths.** If `dioxus::desktop::ipc::UserWindowEvent` / `dioxus::desktop::tao::event::Event` / `dioxus::desktop::tao::event_loop::EventLoopWindowTarget` don't resolve in the pinned 0.7.6, fall back to `dioxus_desktop::*` and add `dioxus-desktop = { workspace = true }` to `crates/inputforge-gui-dx/Cargo.toml`'s `[dependencies]`. Verify with `cargo check -p inputforge-gui-dx --no-default-features --features inputforge-app/gui-dioxus`, actually simpler: just run `cargo build -p inputforge-gui-dx` and adjust if errors.
 
 - [ ] **Step 2: Note: `lifecycle` module does not yet exist**
 
-The module references `crate::lifecycle::{show_window, request_quit}` — this won't compile until Task 11 lands. That's intentional. To preserve task atomicity, defer the `cargo build` check to Task 11 step 4.
+The module references `crate::lifecycle::{show_window, request_quit}`, this won't compile until Task 11 lands. That's intentional. To preserve task atomicity, defer the `cargo build` check to Task 11 step 4.
 
 - [ ] **Step 3: No commit yet**
 
@@ -999,9 +999,9 @@ Bundled with `lifecycle` in Task 11.
 
 ---
 
-## Task 11: `lifecycle/mod.rs` — visibility + quit + start-minimized
+## Task 11: `lifecycle/mod.rs`, visibility + quit + start-minimized
 
-Three pure helpers. No close-hook gate. `lifecycle/mod.rs` has no unit tests — see spec rationale; behavior is exercised by S2 / S5 manual scenarios.
+Three pure helpers. No close-hook gate. `lifecycle/mod.rs` has no unit tests, see spec rationale; behavior is exercised by S2 / S5 manual scenarios.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/lifecycle/mod.rs`
@@ -1018,27 +1018,27 @@ Create `crates/inputforge-gui-dx/src/lifecycle/mod.rs`:
 //! No close-hook gate: Dioxus owns close-requested handling. X-click hide
 //! is set up at launch via `WindowCloseBehaviour::WindowHides` in
 //! `lib.rs::launch_gui`; tray Quit flips the per-window close behavior to
-//! `WindowCloses` then triggers close — the event loop exits because
+//! `WindowCloses` then triggers close, the event loop exits because
 //! `exit_on_last_window_close` is true (the default; F3 does not override).
 
 use dioxus::desktop::{WindowCloseBehaviour, window};
 
-/// Tray Show — bring the window back to foreground.
+/// Tray Show, bring the window back to foreground.
 pub(crate) fn show_window() {
     let w = window();
     w.set_visible(true);
     w.set_focus();
 }
 
-/// Tray Quit — switch this window's close behavior to `WindowCloses`,
+/// Tray Quit, switch this window's close behavior to `WindowCloses`,
 /// then trigger close. Dioxus destroys the window, observes zero remaining
 /// webviews, and the event loop exits because `exit_on_last_window_close`
-/// is true (the default — F3 does not override). `launch_gui` returns;
+/// is true (the default, F3 does not override). `launch_gui` returns;
 /// `main.rs::shutdown()` then runs.
 ///
 /// `quit_requested` in `AppState` is **not** read on the Dioxus path
 /// (egui still uses it). The close-behavior switch is the entire Quit
-/// pathway — there is no flag to gate, no close-hook to wire.
+/// pathway, there is no flag to gate, no close-hook to wire.
 pub(crate) fn request_quit() {
     let w = window();
     w.set_close_behavior(WindowCloseBehaviour::WindowCloses);
@@ -1053,7 +1053,7 @@ pub(crate) fn apply_start_minimized(start_minimized: bool) {
 }
 ```
 
-If the `dioxus::desktop::WindowCloseBehaviour` / `dioxus::desktop::window` paths don't resolve (e.g., 0.7.x exposes them at a different path), fall back to `dioxus_desktop::WindowCloseBehaviour` / `dioxus_desktop::window` and add the `dioxus-desktop` direct dep — same fallback as Task 10.
+If the `dioxus::desktop::WindowCloseBehaviour` / `dioxus::desktop::window` paths don't resolve (e.g., 0.7.x exposes them at a different path), fall back to `dioxus_desktop::WindowCloseBehaviour` / `dioxus_desktop::window` and add the `dioxus-desktop` direct dep, same fallback as Task 10.
 
 - [ ] **Step 2: Add `mod lifecycle;` to `lib.rs`**
 
@@ -1068,7 +1068,7 @@ mod lifecycle;
 Run: `cargo build -p inputforge-gui-dx`
 Expected: builds cleanly. Both `tray/mod.rs` (Task 10) and `lifecycle/mod.rs` (this task) must resolve.
 
-If a `dioxus::desktop::set_close_behavior` doesn't exist as a method on the window handle, check `DesktopService::set_close_behavior` — it may need `let w = window(); w.set_close_behavior(...)` where `w` is a `Rc<DesktopService>`. The 0.7.6 API: `dioxus_desktop::window() -> Rc<DesktopService>` (it derefs to provide the methods). Verify the method name on the actual API surface — if it's `set_close_behaviour` (UK spelling) or `set_close_behavior_for_all_windows` or similar, adjust both occurrences in `request_quit` accordingly.
+If a `dioxus::desktop::set_close_behavior` doesn't exist as a method on the window handle, check `DesktopService::set_close_behavior`, it may need `let w = window(); w.set_close_behavior(...)` where `w` is a `Rc<DesktopService>`. The 0.7.6 API: `dioxus_desktop::window() -> Rc<DesktopService>` (it derefs to provide the methods). Verify the method name on the actual API surface, if it's `set_close_behaviour` (UK spelling) or `set_close_behavior_for_all_windows` or similar, adjust both occurrences in `request_quit` accordingly.
 
 - [ ] **Step 4: Verify tests still pass**
 
@@ -1119,7 +1119,7 @@ Append to the existing `launch_gui` doc-comment a single line under `# Errors`:
 
 ```rust
 /// `start_minimized` is accepted for signature parity with
-/// `inputforge_gui_dx::launch_gui` and is ignored here — `main.rs` already
+/// `inputforge_gui_dx::launch_gui` and is ignored here, `main.rs` already
 /// gates the egui startup launch on `cli.start_minimized`. The parameter is
 /// removed at F16 cleanup when the egui crate is deleted.
 ```
@@ -1142,7 +1142,7 @@ Bundle with the Dioxus-side signature change in Task 13.
 
 ---
 
-## Task 13: Extend `inputforge-gui-dx::launch_gui` — channel + Config builder + LaunchParams
+## Task 13: Extend `inputforge-gui-dx::launch_gui`, channel + Config builder + LaunchParams
 
 The construction sequence: build `TrayMenuIds`, create the bounded channel, install the custom-event handler in `Config`, install `LaunchParams` via `with_context` alongside `RawHandles`. `WindowCloseBehaviour::WindowHides` set at launch wires X-click hide. Existing 1280×800 window builder preserved.
 
@@ -1167,7 +1167,7 @@ use crate::tray::action::TrayAction;
 ///   subsequent re-mount of `app_root` (e.g. `dx serve` hot-reload) becomes
 ///   a no-op rather than double-spawning the listener. Production never
 ///   re-mounts; this is belt-and-braces for the dev loop.
-/// - No contention possible — single producer (this struct's constructor in
+/// - No contention possible, single producer (this struct's constructor in
 ///   `launch_gui`), single consumer (`app_root`'s `use_hook`). The `unwrap()`
 ///   on `lock()` cannot panic from poisoning: no panic path holds the lock
 ///   across `.take()`.
@@ -1186,7 +1186,7 @@ Replace the existing `launch_gui` body:
 ```rust
 #[expect(
     clippy::needless_pass_by_value,
-    reason = "signature parity with inputforge_gui::launch_gui — main.rs dispatches \
+    reason = "signature parity with inputforge_gui::launch_gui, main.rs dispatches \
               both crates via a cfg-gated `use` line; changing to `&` here would \
               break the call site when the egui crate is swapped in"
 )]
@@ -1237,7 +1237,7 @@ Notes:
 
 - The `with_close_behaviour` builder method is the API in `dioxus_desktop` 0.7 (UK spelling, matching the spec). If the actual method name is `with_close_behavior` (US), adjust here and in `lifecycle/mod.rs::request_quit`. The `WindowCloseBehaviour` enum name itself is UK in 0.7.
 - `with_custom_event_handler` takes `impl FnMut(&Event<UserWindowEvent>, &EventLoopWindowTarget<UserWindowEvent>) + 'static`. The closure returned by `make_event_handler` matches.
-- `with_context(params)` requires `LaunchParams: Any + Clone + Send + Sync + 'static` — `Arc<Mutex<Option<Receiver>>>` satisfies this.
+- `with_context(params)` requires `LaunchParams: Any + Clone + Send + Sync + 'static`, `Arc<Mutex<Option<Receiver>>>` satisfies this.
 - The pre-F3 `tracing::debug!(?tray_menu_ids, "tray wiring stubbed until F3");` line is deleted (no longer stubbed).
 
 - [ ] **Step 3: Update `tray_menu_ids` doc-comment**
@@ -1255,13 +1255,13 @@ Replace the existing F1 doc-fragment that says "is accepted for signature parity
 - [ ] **Step 4: Verify the gui-dx crate builds**
 
 Run: `cargo build -p inputforge-gui-dx`
-Expected: build fails because `app::app_root` doesn't yet read `LaunchParams` — but the crate compiles up to the `app_root` call site if `app_root` is unchanged from F2. Specifically, the F2 `app_root` doesn't `use_context::<LaunchParams>()`, so it should still build. If the build fails here, diagnose import errors in `lib.rs` first (Task 13's changes) before moving on.
+Expected: build fails because `app::app_root` doesn't yet read `LaunchParams`, but the crate compiles up to the `app_root` call site if `app_root` is unchanged from F2. Specifically, the F2 `app_root` doesn't `use_context::<LaunchParams>()`, so it should still build. If the build fails here, diagnose import errors in `lib.rs` first (Task 13's changes) before moving on.
 
 If the failure is from `dioxus::desktop::WindowCloseBehaviour` not resolving, switch to `dioxus_desktop::WindowCloseBehaviour` and add the direct dep.
 
 - [ ] **Step 5: bridge_demo will fail to compile**
 
-`bridge_demo.rs` calls `launch_gui(state, commands, menu_ids, AppSettings::default())` — only 4 args. It's now wrong. Don't fix it yet — Task 19 owns the bridge_demo update. The build of `inputforge-app` will likewise fail because `main.rs` doesn't pass `start_minimized`. Both are intentional and fixed in later tasks (19, 20).
+`bridge_demo.rs` calls `launch_gui(state, commands, menu_ids, AppSettings::default())`, only 4 args. It's now wrong. Don't fix it yet, Task 19 owns the bridge_demo update. The build of `inputforge-app` will likewise fail because `main.rs` doesn't pass `start_minimized`. Both are intentional and fixed in later tasks (19, 20).
 
 - [ ] **Step 6: Commit**
 
@@ -1275,9 +1275,9 @@ git commit -m "feat(gui-dx): wire tray bridge into launch_gui; add start_minimiz
 
 ---
 
-## Task 14: Shell scaffold — `mod.rs` and `placeholder.rs`
+## Task 14: Shell scaffold, `mod.rs` and `placeholder.rs`
 
-Disposable layout. The `pub(crate)` re-exports keep the surface narrow — F5 deletes this whole module.
+Disposable layout. The `pub(crate)` re-exports keep the surface narrow, F5 deletes this whole module.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/shell/mod.rs`
@@ -1288,7 +1288,7 @@ Disposable layout. The `pub(crate)` re-exports keep the surface narrow — F5 de
 Create `crates/inputforge-gui-dx/src/shell/mod.rs`:
 
 ```rust
-//! Placeholder shell — disposable at F5.
+//! Placeholder shell, disposable at F5.
 //!
 //! This module exists to give F3 a coherent four-region grid that the
 //! tray-bridge lifecycle can be observed against (open the window, watch
@@ -1327,7 +1327,7 @@ pub(crate) fn PlaceholderShell() -> Element {
                 "Top toolbar (F5 owns contents)"
             }
             div { class: "if-placeholder-shell__left",
-                "Left panel — devices (F6)"
+                "Left panel, devices (F6)"
             }
             div { class: "if-placeholder-shell__center",
                 Tabs {
@@ -1339,7 +1339,7 @@ pub(crate) fn PlaceholderShell() -> Element {
                     onchange: move |id: String| center_tab.set(id),
                 }
                 div { class: "if-placeholder-shell__center-body",
-                    "Center placeholder — F7+ owns content"
+                    "Center placeholder, F7+ owns content"
                 }
             }
             StatusBarView {}
@@ -1348,11 +1348,11 @@ pub(crate) fn PlaceholderShell() -> Element {
 }
 ```
 
-`document::Stylesheet` is mounted from inside the component because `placeholder-shell.css` is shell-scoped (not a design-system token), so it lives outside `assets/components/` and is NOT mounted from `theme/mod.rs`. The component carries its own asset reference — when F5 deletes the file, the asset reference goes too.
+`document::Stylesheet` is mounted from inside the component because `placeholder-shell.css` is shell-scoped (not a design-system token), so it lives outside `assets/components/` and is NOT mounted from `theme/mod.rs`. The component carries its own asset reference, when F5 deletes the file, the asset reference goes too.
 
 - [ ] **Step 3: Note: `status_bar_view` does not yet exist**
 
-The module references `crate::shell::status_bar_view::StatusBarView` — this won't compile until Task 15 lands. Defer the build check to Task 16.
+The module references `crate::shell::status_bar_view::StatusBarView`, this won't compile until Task 15 lands. Defer the build check to Task 16.
 
 - [ ] **Step 4: No commit yet**
 
@@ -1360,7 +1360,7 @@ Bundle with status_bar_view in Task 15.
 
 ---
 
-## Task 15: Shell consumer of StatusBar — `status_bar_view.rs`
+## Task 15: Shell consumer of StatusBar, `status_bar_view.rs`
 
 The only F3 surface that subscribes to AppContext signals. Reads `meta` and `config`, composes a real status bar.
 
@@ -1384,9 +1384,9 @@ use crate::context::AppContext;
 /// Subscribes to `meta.engine_status` / `meta.current_mode` /
 /// `meta.profile_name` / `config.devices` and composes the four readouts:
 /// engine-status badge (with `role="status" aria-live="polite"` on its
-/// wrapper for AT announcements), mode badge (always rendered — Neutral
+/// wrapper for AT announcements), mode badge (always rendered, Neutral
 /// when the value is "Default"), `connected/total devices` text, and
-/// profile-name span (plain `<span>`, not clickable in F3 — F14 owns
+/// profile-name span (plain `<span>`, not clickable in F3, F14 owns
 /// profile-manager wiring).
 #[component]
 pub(crate) fn StatusBarView() -> Element {
@@ -1401,7 +1401,7 @@ pub(crate) fn StatusBarView() -> Element {
         (connected, cfg.devices.len())
     });
 
-    // Capture Memo values as locals before rsx! — Memo<T> does not implement
+    // Capture Memo values as locals before rsx!, Memo<T> does not implement
     // Display directly, and rsx! does not accept top-level `let` bindings
     // between elements inside a slot. Lifting both is the idiomatic 0.7 form.
     let status_value = *status.read();
@@ -1461,10 +1461,10 @@ Bundle with the placeholder-shell.css finalization in Task 16, since none of the
 
 Brings the shell online. After this task, `cargo build -p inputforge-gui-dx` succeeds again (it has been broken since Task 13 because `app_root` still uses F2 shape; Task 18 fixes that).
 
-Wait — `app_root` still works in F2 shape because `LaunchParams` is consumed in Task 18, not here. The crate compiles after this task with shell wired in but app_root unchanged. (Task 18 will move app_root to use `LaunchParams`.) Verify by running the build after Step 4.
+Wait, `app_root` still works in F2 shape because `LaunchParams` is consumed in Task 18, not here. The crate compiles after this task with shell wired in but app_root unchanged. (Task 18 will move app_root to use `LaunchParams`.) Verify by running the build after Step 4.
 
 **Files:**
-- Modify: `crates/inputforge-gui-dx/assets/shell/placeholder-shell.css` (already drafted in Task 8 — this task ensures it's correct)
+- Modify: `crates/inputforge-gui-dx/assets/shell/placeholder-shell.css` (already drafted in Task 8, this task ensures it's correct)
 - Modify: `crates/inputforge-gui-dx/src/lib.rs`
 - Modify: `crates/inputforge-gui-dx/src/context.rs`
 
@@ -1476,7 +1476,7 @@ Expected: file exists (drafted by frontend-design in Task 8 step 3).
 If it doesn't exist (frontend-design output was scratched and forgotten), write a baseline matching the spec's CSS sketch:
 
 ```css
-/* Placeholder shell — disposable at F5. */
+/* Placeholder shell, disposable at F5. */
 
 .if-placeholder-shell {
     display: grid;
@@ -1530,7 +1530,7 @@ Run:
 grep -E 'var\(--' crates/inputforge-gui-dx/assets/shell/placeholder-shell.css
 ```
 
-Every `var(--...)` reference must match a declared token in `assets/tokens/*.css`. If frontend-design used a token name that doesn't exist (e.g. `--color-shell-divider`), either (a) substitute the closest declared token (e.g., `--color-border`), or (b) revisit Task 8 to push back — F3 must NOT coin new tokens.
+Every `var(--...)` reference must match a declared token in `assets/tokens/*.css`. If frontend-design used a token name that doesn't exist (e.g. `--color-shell-divider`), either (a) substitute the closest declared token (e.g., `--color-border`), or (b) revisit Task 8 to push back, F3 must NOT coin new tokens.
 
 - [ ] **Step 3: Add `mod shell;` to `lib.rs`**
 
@@ -1551,14 +1551,14 @@ Edit `crates/inputforge-gui-dx/src/context.rs`. Find:
     pub settings: Arc<AppSettings>,
 ```
 
-Remove the `commands` `#[expect]` attribute — Task 10's `dispatch_toggle` reads `ctx.commands`, so the dead-code claim is now false. **Keep** the `settings` `#[expect]` attribute — F3 doesn't read `settings` at runtime; F14 owns settings reads. If clippy flags `commands` as dead-code after the removal (i.e., `dispatch_toggle` is somehow not actually reachable from F3 wiring), DO NOT re-add the `#[expect]` — instead, debug why the wiring is broken.
+Remove the `commands` `#[expect]` attribute, Task 10's `dispatch_toggle` reads `ctx.commands`, so the dead-code claim is now false. **Keep** the `settings` `#[expect]` attribute, F3 doesn't read `settings` at runtime; F14 owns settings reads. If clippy flags `commands` as dead-code after the removal (i.e., `dispatch_toggle` is somehow not actually reachable from F3 wiring), DO NOT re-add the `#[expect]`, instead, debug why the wiring is broken.
 
 - [ ] **Step 5: Verify the crate compiles**
 
 Run: `cargo build -p inputforge-gui-dx`
 Expected: builds cleanly. The `shell` module is declared, all submodules resolve, AppContext attributes are correct.
 
-If `cargo build` says "function never used: dispatch_toggle" — this means Task 10's `tray::mod::spawn_listener_task` isn't being called from anywhere yet (Task 18 wires it). Add `#[allow(dead_code)]` temporarily on `dispatch_toggle` and remove it in Task 18 after wiring lands. Better: skip this concern; the dead-code is `pub(crate)` on a `tray` module function and lints permit pub(crate) dead-code by default in many configs. If the workspace lint config flags it, use `#[expect(dead_code, reason = "wired by app_root in Task 18")]` and remove in Task 18.
+If `cargo build` says "function never used: dispatch_toggle", this means Task 10's `tray::mod::spawn_listener_task` isn't being called from anywhere yet (Task 18 wires it). Add `#[allow(dead_code)]` temporarily on `dispatch_toggle` and remove it in Task 18 after wiring lands. Better: skip this concern; the dead-code is `pub(crate)` on a `tray` module function and lints permit pub(crate) dead-code by default in many configs. If the workspace lint config flags it, use `#[expect(dead_code, reason = "wired by app_root in Task 18")]` and remove in Task 18.
 
 - [ ] **Step 6: Run tests**
 
@@ -1621,7 +1621,7 @@ use crate::theme::ThemeProvider;
 use crate::tray;
 use crate::LaunchParams;
 
-/// Root Dioxus component — assembles `AppContext`, installs it for descendants,
+/// Root Dioxus component, assembles `AppContext`, installs it for descendants,
 /// spawns polling + tray-listener tasks, applies `--start-minimized`, and
 /// renders the placeholder shell.
 pub(crate) fn app_root() -> Element {
@@ -1644,21 +1644,21 @@ pub(crate) fn app_root() -> Element {
 
     use_hook(|| spawn_polling_task(ctx.clone()));
 
-    // Tray listener — take the receiver once, spawn the task. Subsequent
+    // Tray listener, take the receiver once, spawn the task. Subsequent
     // re-mounts (e.g. dx serve hot-reload of app_root) will see `None` and
     // become no-ops, preventing double-spawn.
     use_hook(|| {
         if let Some(rx) = params
             .listener_rx
             .lock()
-            .expect("listener_rx mutex poisoned — no panic path holds the lock")
+            .expect("listener_rx mutex poisoned, no panic path holds the lock")
             .take()
         {
             tray::spawn_listener_task(rx, ctx.clone());
         }
     });
 
-    // --start-minimized — applied once on first mount.
+    // --start-minimized, applied once on first mount.
     use_hook(|| lifecycle::apply_start_minimized(params.start_minimized));
 
     rsx! {
@@ -1667,7 +1667,7 @@ pub(crate) fn app_root() -> Element {
 }
 ```
 
-The F1Readout component (lines 36–95 of the old file) is deleted entirely. Its data-binding contract test in `context.rs` stays — `f1_readout_data_binding_contract` still asserts the snapshot shape, just no longer pinned to a specific consumer.
+The F1Readout component (lines 36-95 of the old file) is deleted entirely. Its data-binding contract test in `context.rs` stays, `f1_readout_data_binding_contract` still asserts the snapshot shape, just no longer pinned to a specific consumer.
 
 - [ ] **Step 2: Make `LaunchParams` accessible from `app.rs`**
 
@@ -1678,7 +1678,7 @@ Task 13 placed `LaunchParams` in `lib.rs` as `pub(crate)`. The `crate::LaunchPar
 Run: `cargo build -p inputforge-gui-dx`
 Expected: builds cleanly. If there are dead-code lints on `dispatch_toggle` (carried over from Task 16), they should now resolve because `spawn_listener_task` is reachable from `app_root` via the second `use_hook`.
 
-If `bridge_demo` build fails because of the `launch_gui` signature change (still 4 args), that's expected — Task 19 fixes it.
+If `bridge_demo` build fails because of the `launch_gui` signature change (still 4 args), that's expected, Task 19 fixes it.
 
 - [ ] **Step 4: Commit**
 
@@ -1693,7 +1693,7 @@ git commit -m "feat(gui-dx): rewrite app_root for LaunchParams + listener task +
 
 ## Task 19: Update `bridge_demo.rs` for the new `launch_gui` signature
 
-`bridge_demo` already calls `launch_gui` directly, so it inherits the new shell automatically — no `PlaceholderShell` wrap is needed at this level. The only change is to pass `start_minimized: false`.
+`bridge_demo` already calls `launch_gui` directly, so it inherits the new shell automatically, no `PlaceholderShell` wrap is needed at this level. The only change is to pass `start_minimized: false`.
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/examples/bridge_demo.rs`
@@ -1712,20 +1712,20 @@ with:
     inputforge_gui_dx::launch_gui(state, commands, menu_ids, AppSettings::default(), false)
 ```
 
-The seeded data (engine status Running, "Demo" mode, 1 device, 1 virtual device) drives the StatusBarView's badges — the smoke test proves the shell is wired.
+The seeded data (engine status Running, "Demo" mode, 1 device, 1 virtual device) drives the StatusBarView's badges, the smoke test proves the shell is wired.
 
 - [ ] **Step 2: Smoke test via dx serve**
 
 Run: `dx serve --example bridge_demo --platform desktop`
 Expected: window opens. The placeholder shell appears with:
 - "Top toolbar (F5 owns contents)" in the top region.
-- "Left panel — devices (F6)" in the left region.
-- Mappings/Modes Tabs in the center, with "Center placeholder — F7+ owns content" below.
-- Status bar at the bottom showing: green "Running" badge + vertical separator + neutral "Demo" badge in the start slot; "1/1 devices" middle; (no profile name in end — `bridge_demo`'s seeded state has no profile loaded).
+- "Left panel, devices (F6)" in the left region.
+- Mappings/Modes Tabs in the center, with "Center placeholder, F7+ owns content" below.
+- Status bar at the bottom showing: green "Running" badge + vertical separator + neutral "Demo" badge in the start slot; "1/1 devices" middle; (no profile name in end, `bridge_demo`'s seeded state has no profile loaded).
 
-Click between Mappings and Modes tabs — center-tab signal updates, no console errors. Edit the file (e.g., change "Mappings" label) — RSX hot-reload applies within ~1s. Close the window with Ctrl+C in the terminal (or by closing the window — `bridge_demo` has no tray, so X-click WILL hide the window with no way to recover; expect that and Ctrl+C the dev server).
+Click between Mappings and Modes tabs, center-tab signal updates, no console errors. Edit the file (e.g., change "Mappings" label), RSX hot-reload applies within ~1s. Close the window with Ctrl+C in the terminal (or by closing the window, `bridge_demo` has no tray, so X-click WILL hide the window with no way to recover; expect that and Ctrl+C the dev server).
 
-If RSX hot-reload doesn't apply, that's an F1 issue, not F3 — refer to F1 plan README for diagnosis.
+If RSX hot-reload doesn't apply, that's an F1 issue, not F3, refer to F1 plan README for diagnosis.
 
 - [ ] **Step 3: Commit**
 
@@ -1740,14 +1740,14 @@ git commit -m "feat(gui-dx): adapt bridge_demo to new launch_gui signature"
 
 ## Task 20: `main.rs` Shape A divergence + F1 cleanup
 
-The largest behavioral change for the egui-default flow happens here, but the egui side stays byte-identical to today — only the Dioxus side's startup is rewritten. F1's `IS_GUI_DIOXUS` sentinel + the two cfg-guards delete entirely. `launch_gui_blocking`, `run_tray_loop`, `drain_stale_gui_events` become egui-only.
+The largest behavioral change for the egui-default flow happens here, but the egui side stays byte-identical to today, only the Dioxus side's startup is rewritten. F1's `IS_GUI_DIOXUS` sentinel + the two cfg-guards delete entirely. `launch_gui_blocking`, `run_tray_loop`, `drain_stale_gui_events` become egui-only.
 
 **Files:**
 - Modify: `crates/inputforge-app/src/main.rs`
 
 - [ ] **Step 1: Delete the `IS_GUI_DIOXUS` sentinel const**
 
-Find these lines in `main.rs` (currently 44–47):
+Find these lines in `main.rs` (currently 44-47):
 
 ```rust
 #[cfg(feature = "gui-egui")]
@@ -1760,12 +1760,12 @@ Delete all four lines.
 
 - [ ] **Step 2: Restructure the GUI-launch block in `main()`**
 
-Find the block (currently lines 128–154) starting with `// Launch the GUI immediately unless --start-minimized.` through the closing of the `if !cli.start_minimized { ... }` block (the line `quit_requested = true;` followed by the brace closing the inner `if IS_GUI_DIOXUS`).
+Find the block (currently lines 128-154) starting with `// Launch the GUI immediately unless --start-minimized.` through the closing of the `if !cli.start_minimized { ... }` block (the line `quit_requested = true;` followed by the brace closing the inner `if IS_GUI_DIOXUS`).
 
-Replace from `let mut quit_requested = false;` through to the `if !quit_requested { run_tray_loop(...); }` block (currently lines 129–159) with:
+Replace from `let mut quit_requested = false;` through to the `if !quit_requested { run_tray_loop(...); }` block (currently lines 129-159) with:
 
 ```rust
-    // GUI launch — Shape A: cfg-split because the Dioxus and egui lifecycles
+    // GUI launch, Shape A: cfg-split because the Dioxus and egui lifecycles
     // diverge. The egui flow is byte-identical to today.
 
     #[cfg(feature = "gui-dioxus")]
@@ -1780,7 +1780,7 @@ Replace from `let mut quit_requested = false;` through to the `if !quit_requeste
             tracing::error!(%e, "GUI exited with error");
         }
         // launch_gui only returns on real Quit (tray Quit click). Fall
-        // through to shutdown — no run_tray_loop, no drain_stale_gui_events,
+        // through to shutdown, no run_tray_loop, no drain_stale_gui_events,
         // no quit_requested flag. The window-hides-on-X behavior is owned
         // by Dioxus via WindowCloseBehaviour::WindowHides set in launch_gui.
     }
@@ -1811,7 +1811,7 @@ Replace from `let mut quit_requested = false;` through to the `if !quit_requeste
         }
     }
 
-    // Graceful shutdown — runs on both feature flags.
+    // Graceful shutdown, runs on both feature flags.
     shutdown(cmd_tx, engine_handle);
 
     Ok(())
@@ -1822,7 +1822,7 @@ The `shutdown(...)` and final `Ok(())` lines remain at the end of `main()`; only
 
 - [ ] **Step 3: Pass `start_minimized` through `launch_gui_blocking` to the egui `launch_gui`**
 
-Edit `launch_gui_blocking` in `main.rs` (currently lines 231–259). Add the new parameter to the signature and pass it through:
+Edit `launch_gui_blocking` in `main.rs` (currently lines 231-259). Add the new parameter to the signature and pass it through:
 
 ```rust
 fn launch_gui_blocking(
@@ -1836,7 +1836,7 @@ fn launch_gui_blocking(
     let menu_ids = tray.menu_item_ids();
 
     if let Err(e) = launch_gui(gui_state, gui_tx, menu_ids, settings.clone(), false) {
-        // start_minimized: false — main.rs gates the egui startup launch
+        // start_minimized: false, main.rs gates the egui startup launch
         // from cli.start_minimized itself; once we're in launch_gui_blocking,
         // we always want the window visible. Parameter exists only for
         // signature parity with the Dioxus crate (deletes at F16).
@@ -1863,11 +1863,11 @@ fn drain_stale_gui_events(tray: &AppTray) -> Vec<TrayAction> { ... }
 fn run_tray_loop(...) { ... }
 ```
 
-The `#[expect(unsafe_code, reason = "...")]` attribute on `run_tray_loop` stays — it's a separate annotation from the new `#[cfg]`.
+The `#[expect(unsafe_code, reason = "...")]` attribute on `run_tray_loop` stays, it's a separate annotation from the new `#[cfg]`.
 
 - [ ] **Step 5: Delete the `IS_GUI_DIOXUS` reference inside `run_tray_loop`**
 
-Find inside `run_tray_loop` (currently lines 344–349):
+Find inside `run_tray_loop` (currently lines 344-349):
 
 ```rust
                     if IS_GUI_DIOXUS {
@@ -1935,7 +1935,7 @@ Document the tray bridge model, hide-to-tray lifecycle, and new primitives.
 Open the existing `README.md` and append (at the end of the file, after F1/F2 sections):
 
 ```markdown
-## F3 — Tray bridge & hide-to-tray lifecycle
+## F3, Tray bridge & hide-to-tray lifecycle
 
 ### Tray bridge
 
@@ -1965,23 +1965,23 @@ joins, `HidHide` unhide and `vJoy` release fire via `Drop`.
 `--start-minimized` is plumbed via the `start_minimized: bool` parameter
 on `launch_gui`. The Dioxus side calls `set_visible(false)` once during
 `app_root` mount when the flag is set; tray Show works identically. The
-egui side ignores the parameter — it already gates startup launch from
+egui side ignores the parameter, it already gates startup launch from
 `cli.start_minimized` in `main.rs`.
 
 ### New primitives (F3)
 
-- `Tabs` — full WAI-ARIA Tabs pattern (`role="tablist"`/`tab`,
+- `Tabs`, full WAI-ARIA Tabs pattern (`role="tablist"`/`tab`,
   focus-roving with `tabindex` 0|-1, arrow keys + Home/End for cycle and
   activate). Stateless: caller owns `value`. Reused by F11 (Modes).
-- `StatusBar` — three-slot horizontal bar (start / middle / end). Fixed
-  28px height. ARIA-neutral wrapper — consumers add `role="status"` /
+- `StatusBar`, three-slot horizontal bar (start / middle / end). Fixed
+  28px height. ARIA-neutral wrapper, consumers add `role="status"` /
   `aria-live` only on the specific elements they want announced (e.g.,
   the engine-status badge in `StatusBarView`).
 
 ### Placeholder shell
 
 `shell/placeholder.rs` and `assets/shell/placeholder-shell.css` are
-**explicitly disposable at F5**. Treat them as scratch — F5 may replace
+**explicitly disposable at F5**. Treat them as scratch, F5 may replace
 the entire grid template, not just slot contents. The shell exists so
 F3's tray-bridge lifecycle can be observed against a coherent layout
 (open the window, watch the status bar reflect engine state, click tray
@@ -2006,9 +2006,9 @@ git commit -m "docs(gui-dx): document F3 tray bridge, hide-to-tray lifecycle, an
 
 ---
 
-## Task 22: Manual lifecycle pass S1–S10 + final acceptance
+## Task 22: Manual lifecycle pass S1-S10 + final acceptance
 
-Final acceptance gate. Walk through each lifecycle scenario from the spec and tick the corresponding acceptance bullets. This task does NOT modify code — it's the gating verification.
+Final acceptance gate. Walk through each lifecycle scenario from the spec and tick the corresponding acceptance bullets. This task does NOT modify code, it's the gating verification.
 
 If any scenario fails, file the diagnosis as a new task at the end of this plan. Do NOT silently patch; F3 must close cleanly.
 
@@ -2029,7 +2029,7 @@ Verify all today-egui behavior:
 - Tray Quit exits cleanly.
 - `--start-minimized` does not show the window.
 
-If anything regressed, the egui flow has been disturbed — diagnose before continuing.
+If anything regressed, the egui flow has been disturbed, diagnose before continuing.
 
 - [ ] **Step 2: gui-dioxus build (acceptance bullet 2)**
 
@@ -2044,7 +2044,7 @@ If the workspace has clippy in CI, also run:
 cargo clippy --no-default-features --features gui-dioxus -- -D warnings
 ```
 
-- [ ] **Step 3: S1 — Dioxus normal startup (acceptance bullets 3 + 4)**
+- [ ] **Step 3: S1, Dioxus normal startup (acceptance bullets 3 + 4)**
 
 ```bash
 cargo run --no-default-features --features gui-dioxus
@@ -2053,22 +2053,22 @@ cargo run --no-default-features --features gui-dioxus
 Verify:
 - Window appears at 1280×800 with the placeholder shell.
 - Top region: "Top toolbar (F5 owns contents)".
-- Left region: "Left panel — devices (F6)".
+- Left region: "Left panel, devices (F6)".
 - Center: Mappings/Modes Tabs above center placeholder.
 - Status bar shows engine status badge, vertical separator, mode badge in the start slot; device count in middle; profile name in the end slot if a profile is loaded (default profile from `ensure_default_profile()` should appear).
 - Engine status badge color matches `EngineStatus::Stopped` (Neutral) initially, then transitions when activated.
 - Mode badge always renders (Neutral when value is "Default").
 
-- [ ] **Step 4: S2 — X-click hides window (acceptance bullet 5)**
+- [ ] **Step 4: S2, X-click hides window (acceptance bullet 5)**
 
 With the window open from Step 3, click the X close button.
 
 Verify:
 - Window vanishes. Tray icon still present.
 - No console error.
-- (Engine continues — verify by clicking tray Activate in next step.)
+- (Engine continues, verify by clicking tray Activate in next step.)
 
-- [ ] **Step 5: S3 — Tray Show re-opens window**
+- [ ] **Step 5: S3, Tray Show re-opens window**
 
 Right-click the tray icon → "Show GUI".
 
@@ -2076,19 +2076,19 @@ Verify:
 - Window reappears.
 - All state intact (no flicker, status bar shows the same readouts).
 
-- [ ] **Step 6: S4 + S7 — Tray Toggle in both visibility states (acceptance bullets 6 + 9)**
+- [ ] **Step 6: S4 + S7, Tray Toggle in both visibility states (acceptance bullets 6 + 9)**
 
 While the window is **visible**:
 - Click tray "Activate" (or "Deactivate" if engine is already running).
 - Verify status-bar badge color flips within ~16ms (Running ↔ Stopped).
-- Click again — verify it flips back.
+- Click again, verify it flips back.
 
 X-close the window again. While **hidden**:
 - Click tray "Activate" / "Deactivate".
 - Tray Show GUI to re-open.
 - Verify status-bar badge reflects the new state immediately on Show.
 
-- [ ] **Step 7: S5 — Tray Quit (acceptance bullet 7)**
+- [ ] **Step 7: S5, Tray Quit (acceptance bullet 7)**
 
 Right-click tray → "Quit".
 
@@ -2098,9 +2098,9 @@ Verify:
 - In the terminal where `cargo run` was launched, look for the log lines:
   - "engine thread exited cleanly" (or similar)
   - HidHide unhide log if HidHide was active.
-- After exit, verify no orphaned hidden devices: open Windows Device Manager → "View" → "Show Hidden Devices" — there should be no inputforge-managed entries marked as "this device is currently disconnected from the computer." (If HidHide is unavailable in the test environment, skip this check; the warning logged at startup confirms.)
+- After exit, verify no orphaned hidden devices: open Windows Device Manager → "View" → "Show Hidden Devices", there should be no inputforge-managed entries marked as "this device is currently disconnected from the computer." (If HidHide is unavailable in the test environment, skip this check; the warning logged at startup confirms.)
 
-- [ ] **Step 8: S5 — In-window tray Quit (acceptance bullet 8)**
+- [ ] **Step 8: S5, In-window tray Quit (acceptance bullet 8)**
 
 ```bash
 cargo run --no-default-features --features gui-dioxus
@@ -2109,9 +2109,9 @@ cargo run --no-default-features --features gui-dioxus
 With the window open and visible, right-click tray → "Quit".
 
 Verify:
-- Same outcome as Step 7. The listener task fires regardless of window visibility — the F1 in-window vs. out-of-window split is gone.
+- Same outcome as Step 7. The listener task fires regardless of window visibility, the F1 in-window vs. out-of-window split is gone.
 
-- [ ] **Step 9: S6 — `--start-minimized` (acceptance bullet 8)**
+- [ ] **Step 9: S6, `--start-minimized` (acceptance bullet 8)**
 
 ```bash
 cargo run --no-default-features --features gui-dioxus -- --start-minimized
@@ -2152,8 +2152,8 @@ dx serve --example bridge_demo --platform desktop
 
 Verify:
 - Placeholder shell renders with status bar reflecting seeded state ("Demo" mode, "Running" engine status, 1/1 devices).
-- Edit `bridge_demo.rs` (e.g., change the seeded `current_mode` value) — RSX hot-reload applies within ~1s.
-- Close (Ctrl+C in terminal — the example has no tray, so X-click hides the window with no recovery; this is expected).
+- Edit `bridge_demo.rs` (e.g., change the seeded `current_mode` value), RSX hot-reload applies within ~1s.
+- Close (Ctrl+C in terminal, the example has no tray, so X-click hides the window with no recovery; this is expected).
 
 ```bash
 dx serve --example component_gallery --platform desktop
@@ -2175,7 +2175,7 @@ In the Elements panel, find the Tabs demo and verify:
 
 For the StatusBar demo composed-slot variant, verify:
 - The outer wrapper is `<div class="if-status-bar">` with NO `role` attribute.
-- Internally, the composed `start` slot's badges are not wrapped in any role at the gallery level (the gallery's StatusBar demo is plain composition, no live-region semantics — `role="status"` only appears in `StatusBarView`'s start slot).
+- Internally, the composed `start` slot's badges are not wrapped in any role at the gallery level (the gallery's StatusBar demo is plain composition, no live-region semantics, `role="status"` only appears in `StatusBarView`'s start slot).
 
 Then run the actual app:
 ```bash
@@ -2183,7 +2183,7 @@ cargo run --no-default-features --features gui-dioxus
 ```
 
 Inspect the running app's status bar. Verify:
-- `<div class="if-status-bar if-placeholder-shell__status">` — no `role`.
+- `<div class="if-status-bar if-placeholder-shell__status">`, no `role`.
 - The engine-status `<span role="status" aria-live="polite">` wraps the engine-status `Badge` only.
 - The mode `Badge`, device-count `<span>`, and profile `<span>` are NOT wrapped in `role="status"`.
 
@@ -2208,12 +2208,12 @@ Verification only.
 
 ## Risks summary (deferred from spec, surfaced for the implementer)
 
-If you hit any of these mid-implementation, refer back to the spec's "Risks" section for context — they are documented decisions, not unknowns.
+If you hit any of these mid-implementation, refer back to the spec's "Risks" section for context, they are documented decisions, not unknowns.
 
 - **`set_close_behaviour` UK vs US spelling.** Both `request_quit` (Task 11) and `with_close_behaviour` (Task 13) must use the same spelling as the actual 0.7.x API. Verify with `cargo check` and adjust both call sites together.
 - **`dioxus::desktop` vs `dioxus_desktop` import paths.** If the prelude doesn't re-export everything F3 needs, fall back to `dioxus_desktop::*` and add `dioxus-desktop = { workspace = true }` to `crates/inputforge-gui-dx/Cargo.toml`.
 - **`muda::MenuEvent { id }` field constructor.** If muda's `MenuEvent` field becomes private in a future version, drop the one test that depends on the constructor and rely on the four `from_id` tests.
-- **`std::sync::mpsc::Sender::send` vs `tokio::sync::mpsc::Sender::try_send`.** The engine command channel is std (synchronous, unbounded); the tray-action channel is tokio (bounded). Keep them straight — use `.send()` for engine commands, `.try_send()` for tray actions.
+- **`std::sync::mpsc::Sender::send` vs `tokio::sync::mpsc::Sender::try_send`.** The engine command channel is std (synchronous, unbounded); the tray-action channel is tokio (bounded). Keep them straight, use `.send()` for engine commands, `.try_send()` for tray actions.
 
 ---
 
@@ -2221,7 +2221,7 @@ If you hit any of these mid-implementation, refer back to the spec's "Risks" sec
 
 The author of this plan ran this self-review on 2026-04-26. The implementer should re-run if they make significant scope changes mid-execution.
 
-- **Spec coverage.** Each of the 15 acceptance bullets in the spec is exercised by Tasks 22 (most), Tasks 6–8 (Tabs/StatusBar gallery + ARIA), Task 11 (lifecycle helpers), Task 9 (TrayAction tests), Task 20 (F1 cleanup), Task 18+19 (placeholder shell render). The "frontend-design invoked early" process check is covered by Task 8.
+- **Spec coverage.** Each of the 15 acceptance bullets in the spec is exercised by Tasks 22 (most), Tasks 6-8 (Tabs/StatusBar gallery + ARIA), Task 11 (lifecycle helpers), Task 9 (TrayAction tests), Task 20 (F1 cleanup), Task 18+19 (placeholder shell render). The "frontend-design invoked early" process check is covered by Task 8.
 - **Placeholder scan.** No "TBD", no "implement later", no "similar to Task N" without code, no unexplained "appropriate error handling." Every code step has a code block.
 - **Type consistency.** `TrayAction` (3 variants), `TrayMenuIds` (3 fields), `make_event_handler` (signature matches `with_custom_event_handler`'s expected closure type), `LaunchParams` (Send+Sync via `Arc<Mutex<Option<Receiver>>>`), `dispatch_toggle` (uses `ctx.commands.send`, not `try_send`), `apply_start_minimized` (called from a Dioxus scope so `window()` resolves), `request_quit` (no `&AppContext` argument; doesn't read `quit_requested`). All consistent across tasks.
 - **Existing F1/F2 conventions honored.** Tabs and StatusBar follow the F2 primitive pattern (`merge_class`, `class: Option<String>`, sibling CSS, `.if-<name>` BEM-ish prefix). The disposable shell is shell-scoped (lives in `assets/shell/`, not `assets/components/`) and mounts its own CSS via `document::Stylesheet` rather than going through `ThemeProvider`.
@@ -2232,7 +2232,7 @@ The author of this plan ran this self-review on 2026-04-26. The implementer shou
 
 Plan complete and saved to `docs/superpowers/plans/2026-04-26-f3-app-shell-tray-bridge.md`. Two execution options:
 
-1. **Subagent-Driven (recommended)** — Dispatch a fresh subagent per task, review between tasks, fast iteration. Use `superpowers:subagent-driven-development`.
-2. **Inline Execution** — Execute tasks in this session using `superpowers:executing-plans`, batch execution with checkpoints.
+1. **Subagent-Driven (recommended)**, Dispatch a fresh subagent per task, review between tasks, fast iteration. Use `superpowers:subagent-driven-development`.
+2. **Inline Execution**, Execute tasks in this session using `superpowers:executing-plans`, batch execution with checkpoints.
 
 Which approach?

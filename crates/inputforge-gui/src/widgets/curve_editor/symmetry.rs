@@ -13,7 +13,7 @@ use inputforge_core::processing::curves::{BezierSegment, ResponseCurve};
 /// through the origin by mirroring the positive-half points to the negative
 /// side, matching `JoystickGremlin` `_enforce_symmetry()` behavior.
 ///
-/// When **disabling** symmetry, simply clears the flag — all points (both
+/// When **disabling** symmetry, simply clears the flag, all points (both
 /// sides) are kept as-is.
 ///
 /// Returns `None` when the post-change state fails validation.

@@ -253,7 +253,7 @@ mod tests {
     fn reindex_expanded_after_swap_both_expanded() {
         let mut expanded = HashSet::from([1, 2]);
         reindex_expanded_after_swap(&mut expanded, 1, 2);
-        // Both swapped — both remain expanded at swapped positions.
+        // Both swapped, both remain expanded at swapped positions.
         assert!(expanded.contains(&1));
         assert!(expanded.contains(&2));
     }

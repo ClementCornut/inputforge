@@ -3,7 +3,7 @@
 //! Run via:
 //!     dx serve --example `component_gallery` --platform desktop
 //!
-//! Mounts `ThemeProvider` directly — no engine state required.
+//! Mounts `ThemeProvider` directly, no engine state required.
 //! Hot-reload friendly: editing CSS or RSX updates instantly.
 
 use dioxus::prelude::*;
@@ -46,7 +46,7 @@ fn gallery_root() -> Element {
     let toast_queue = ToastQueue { state: toast_state };
     use_context_provider(|| toast_queue);
 
-    // Interactive demo state for NumberInput steppers — each non-disabled
+    // Interactive demo state for NumberInput steppers, each non-disabled
     // demo wires its own signal so they're independently steppable.
     let mut number_demo = use_signal(|| 50.0_f64);
     let mut number_demo_b = use_signal(|| 50.0_f64);
@@ -68,7 +68,7 @@ fn gallery_root() -> Element {
             ToastViewport {}
             main {
                 Stack { gap: "--space-8".to_owned(), padding: "--space-6".to_owned(),
-                    h1 { "InputForge — Component Gallery (F4)" }
+                    h1 { "InputForge, Component Gallery (F4)" }
 
                     section {
                         h2 { "Toasts" }
@@ -291,7 +291,7 @@ fn gallery_root() -> Element {
                     section {
                         h2 { "TextInput" }
                         Card { padding: CardPadding::Md,
-                            // max-width belongs to the demo, not to Stack — keep on a wrapper div.
+                            // max-width belongs to the demo, not to Stack, keep on a wrapper div.
                             div { style: "max-width: 320px;",
                                 Stack { gap: "--space-3".to_owned(),
                                     TextInput { value: "hello".to_owned(), placeholder: "Type here…".to_owned() }
@@ -455,7 +455,7 @@ fn gallery_root() -> Element {
                         h2 { "Separator" }
                         Separator {}
                         // Vertical separator demo: explicit height keeps the separator
-                        // visible without a surrounding flex stretch — not a Cluster fit.
+                        // visible without a surrounding flex stretch, not a Cluster fit.
                         div { style: "display: flex; gap: var(--space-3); align-items: center; height: 30px;",
                             span { "Left" }
                             Separator { orientation: SeparatorOrientation::Vertical }
@@ -541,7 +541,7 @@ fn gallery_root() -> Element {
                                 p {
                                     "Active tab: "
                                     code { "{tabs_demo}" }
-                                    " — use Left/Right or Home/End to cycle."
+                                    ", use Left/Right or Home/End to cycle."
                                 }
                                 Tabs {
                                     items: vec![
@@ -624,7 +624,7 @@ fn gallery_root() -> Element {
                                     end: rsx! { span { "Demo Profile" } },
                                 }
                             }
-                            p { "Empty slots — verifies slot independence:" }
+                            p { "Empty slots, verifies slot independence:" }
                             Card { padding: CardPadding::Md,
                                 StatusBar {
                                     start:  rsx! {},

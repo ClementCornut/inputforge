@@ -9,7 +9,7 @@ use super::merge_class;
 
 static DIALOG_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// Test seam — bumps the counter and returns the new value. Production code
+/// Test seam, bumps the counter and returns the new value. Production code
 /// goes through `DialogRoot`'s `use_hook` and never calls this directly.
 #[cfg(test)]
 fn next_dialog_seq_for_test() -> u64 {
@@ -48,7 +48,7 @@ const DIALOG_ATTACH_CANCEL_JS: &str = r"
 
 /// Shared per-dialog context. Children read; only `DialogRoot` writes.
 /// All ids are eagerly computed by `DialogRoot`'s `use_hook` initializer
-/// (which runs during render — BEFORE children render), so children see
+/// (which runs during render, BEFORE children render), so children see
 /// fully-populated ids on their very first render and `aria-labelledby` /
 /// `aria-describedby` resolve correctly on the initial `showModal()` call.
 #[derive(Clone)]
@@ -75,7 +75,7 @@ pub fn DialogRoot(
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
-    // Eager id derivation — runs once during the parent's render, BEFORE
+    // Eager id derivation, runs once during the parent's render, BEFORE
     // children render.
     let state = use_hook(|| {
         let n = DIALOG_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -105,7 +105,7 @@ pub fn DialogRoot(
     });
 
     // Attach `cancel` listener once after first DOM commit. The `dismissible`
-    // value is interpolated into the JS at attach time — see doc-comment.
+    // value is interpolated into the JS at attach time, see doc-comment.
     let id_for_cancel = state.dialog_id.clone();
     let dismissible_now = dismissible;
     let mut attached = use_signal(|| false);

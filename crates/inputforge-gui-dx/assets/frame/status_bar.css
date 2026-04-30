@@ -1,7 +1,7 @@
 /* Frame-level overrides on top of the StatusBar primitive. The base
    `.if-status-bar` already sets a sunken backplate with a `border-strong`
-   top seam — that's the cockpit-readout vocabulary 32a established for
-   panel boundaries — so this layer only adds frame-specific typography
+   top seam, that's the cockpit-readout vocabulary 32a established for
+   panel boundaries, so this layer only adds frame-specific typography
    and slot-content treatments.
 
    The path slot reads filesystem text, so it picks up the mono family
@@ -24,7 +24,7 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* Em-dash placeholder — text-subtle pushes it visually behind the path
+/* Em-dash placeholder, text-subtle pushes it visually behind the path
    text so a "no profile" state reads as quietly absent rather than
    actively reporting nothing. The mono family keeps the slot stable in
    width across the loaded/empty transition. */

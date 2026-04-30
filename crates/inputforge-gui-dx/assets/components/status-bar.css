@@ -1,13 +1,13 @@
-/* StatusBar — telemetry strip at the bottom of the shell.
+/* StatusBar, telemetry strip at the bottom of the shell.
    Sunken background + 1px strong-border on top reads as a recessed
    instrument readout sitting beneath the main panel. Height stays
-   at 28px (matching the egui surface) — glanceable, never demanding.
+   at 28px (matching the egui surface), glanceable, never demanding.
    Slot gaps follow the F2 spacing scale: tight inside slots
    (--space-2) to pack badge groups, generous between slots
    (--space-3). Default text uses --color-text-muted because
    telemetry is for glancing, not acting on; consumers raise specific
    elements (badges, status-role wrappers) to bright text via their
-   own styles. The font scale drops to --text-sm for the same reason —
+   own styles. The font scale drops to --text-sm for the same reason -
    this strip is supporting context, not primary content. min-width:0
    on slots permits flex-shrink truncation in narrow viewports
    without collapsing the row. */
@@ -37,7 +37,7 @@
 /* Middle slot claims leftover space so end stays anchored at the right.
    Per DESIGN.md M2: when the window is too narrow to fit start + middle
    + end at full width, the middle text truncates with ellipsis. No
-   marquee, no wrap, no horizontal scroll — the bar height stays at 28px. */
+   marquee, no wrap, no horizontal scroll, the bar height stays at 28px. */
 .if-status-bar__middle {
     flex: 1;
     overflow: hidden;

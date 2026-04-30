@@ -28,7 +28,7 @@ pub(crate) fn Row(
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
 
-    // Rename branch — when this row's input matches the parent's
+    // Rename branch, when this row's input matches the parent's
     // rename selector, swap the name area for the inline editor while
     // keeping the source line and glyphs in place. The source line is
     // the user's only handle on which row they are renaming, so it must

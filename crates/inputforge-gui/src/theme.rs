@@ -100,7 +100,7 @@ impl ThemeColors {
 // Built-in palettes
 // ---------------------------------------------------------------------------
 
-/// Dark cockpit palette — navy-tinted backgrounds with bright accents.
+/// Dark cockpit palette, navy-tinted backgrounds with bright accents.
 pub(crate) const DARK: ThemeColors = ThemeColors {
     base: Color32::from_rgb(0x1A, 0x1A, 0x2E),
     mantle: Color32::from_rgb(0x16, 0x16, 0x3A),
@@ -117,7 +117,7 @@ pub(crate) const DARK: ThemeColors = ThemeColors {
     indicator_idle: Color32::from_rgb(0x55, 0x55, 0x70),
 };
 
-/// Light "Glass Cockpit Daylight" palette — blue-tinted whites with vivid,
+/// Light "Glass Cockpit Daylight" palette, blue-tinted whites with vivid,
 /// WCAG-darkened accents.
 ///
 /// Design: same instrument, different lighting. The dark theme's navy
@@ -171,7 +171,7 @@ const WIDGET_ROUNDING: u8 = 6;
 /// slots, and shared spacing tweaks.
 ///
 /// Must be called from `InputForgeApp::new()` using the
-/// `eframe::CreationContext` — fonts are unavailable in `update()`.
+/// `eframe::CreationContext`, fonts are unavailable in `update()`.
 pub(crate) fn setup(ctx: &egui::Context) {
     load_fonts(ctx);
 

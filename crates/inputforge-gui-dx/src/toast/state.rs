@@ -1,4 +1,4 @@
-//! Pure-data layer for the toast queue. No Dioxus runtime dependency —
+//! Pure-data layer for the toast queue. No Dioxus runtime dependency -
 //! every method on `ToastState` is `&mut self` and the unit tests construct
 //! `ToastState::default()` directly. The Signal wrapper lives in `queue.rs`.
 
@@ -17,7 +17,7 @@ pub struct Toast {
     pub id: u64,
     pub level: ToastLevel,
     pub message: String,
-    /// Dedupe coalesce count — starts at 1; `push` of an exact duplicate
+    /// Dedupe coalesce count, starts at 1; `push` of an exact duplicate
     /// against the *latest visible* entry (same level + message) increments
     /// this. Older same-content entries are never eligible because newer
     /// toasts of different content have rendered on top of them.
@@ -48,14 +48,14 @@ impl ToastState {
         let now = Instant::now();
         let msg = message.into();
 
-        // GC entries that are no longer visible (dismissed OR time-expired —
+        // GC entries that are no longer visible (dismissed OR time-expired -
         // `is_expired` covers both). Without this, a stale entry that's gone
         // from the screen still sits in the Vec and would be resurrected by a
         // matching push below, reappearing with ×2 at its original position
         // (above newer toasts pushed in the meantime).
         self.toasts.retain(|t| !is_expired(t, now));
 
-        // Coalesce — only with the *last* entry, and only when it matches.
+        // Coalesce, only with the *last* entry, and only when it matches.
         // Older same-content entries are never eligible: a newer toast of
         // different content has rendered on top of them, and incrementing
         // the older one would re-order the visual stack.
@@ -69,7 +69,7 @@ impl ToastState {
             }
         }
 
-        // Cap — FIFO drain when exceeded. Counts only non-dismissed entries
+        // Cap, FIFO drain when exceeded. Counts only non-dismissed entries
         // (post-GC, the only entries left are visible ones, but a prior cap
         // drain may have left a dismissed entry from the same tick).
         let visible = self.toasts.iter().filter(|t| !t.dismissed).count();
@@ -85,7 +85,7 @@ impl ToastState {
         }
 
         // Append. wrapping_add on u64 is fine: id collisions only arise after
-        // 18 quintillion pushes against this single ToastState — not realistic.
+        // 18 quintillion pushes against this single ToastState, not realistic.
         let id = self.next_id;
         self.next_id = self.next_id.wrapping_add(1);
         self.toasts.push(Toast {
@@ -190,7 +190,7 @@ mod tests {
     fn push_does_not_coalesce_with_expired_entry() {
         // After a toast has timed out and disappeared from the screen, a
         // subsequent push of the same (level, message) must produce a fresh
-        // entry — not resurrect the old one with `count = 2`.
+        // entry, not resurrect the old one with `count = 2`.
         let mut s = ToastState::default();
         s.push(ToastLevel::Info, "tick");
         let first_id = s.toasts[0].id;
@@ -211,7 +211,7 @@ mod tests {
     #[test]
     fn push_only_coalesces_with_latest_entry() {
         // Newer toast of different content sits between two same-content
-        // pushes — the third push must NOT coalesce with the first; it
+        // pushes, the third push must NOT coalesce with the first; it
         // appends a fresh entry at the end so the user sees the repeat
         // below the newest unrelated toast.
         let mut s = ToastState::default();
@@ -252,7 +252,7 @@ mod tests {
         let visible_now = s.toasts.iter().filter(|t| !t.dismissed).count();
         assert_eq!(visible_now, TOAST_MAX_VISIBLE);
 
-        // Sixth push triggers the drain — the very first toast ("msg-0")
+        // Sixth push triggers the drain, the very first toast ("msg-0")
         // is the oldest non-dismissed entry.
         s.push(ToastLevel::Info, "overflow");
 
@@ -277,7 +277,7 @@ mod tests {
         let id = s.toasts[0].id;
         s.dismiss(id);
         assert!(s.toasts[0].dismissed);
-        // Idempotent — second dismiss is a no-op.
+        // Idempotent, second dismiss is a no-op.
         s.dismiss(id);
         assert!(s.toasts[0].dismissed);
     }

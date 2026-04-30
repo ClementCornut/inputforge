@@ -254,7 +254,7 @@ impl Profile {
     /// Returns the count of mappings removed; used by tracing events and the
     /// destructive-confirm dialog's affected-mappings count.
     ///
-    /// Infallible by contract — `DeleteMode` invokes this in a loop after the
+    /// Infallible by contract, `DeleteMode` invokes this in a loop after the
     /// tree mutation has already been applied, and a partial cascade would
     /// leave the profile in an inconsistent state. The signature must remain
     /// `usize`, never `Result<usize, _>`.
@@ -269,7 +269,7 @@ impl Profile {
     ///
     /// Returns the count of mappings whose `mode` field or action graph was
     /// touched (a single mapping is counted at most once). The
-    /// `startup_mode` rewrite is **not** counted in the return value — it
+    /// `startup_mode` rewrite is **not** counted in the return value, it
     /// is a settings-level field, not a mapping. `Mapping.name` (a human
     /// label) is intentionally **not** rewritten; user-authored prose is
     /// preserved across renames.
@@ -414,7 +414,7 @@ fn check_cycle_rename(action: &Action, from: &str, to: &str) -> Result<()> {
 
 /// Walk an action graph in place, rewriting every `from` mode-name reference
 /// to `to`. Returns whether any rewrite happened. Cycle pre-validation lives
-/// in `check_cycle_rename` — callers must run that first.
+/// in `check_cycle_rename`, callers must run that first.
 fn rewrite_mode_in_action(action: &mut Action, from: &str, to: &str) -> bool {
     use crate::action::ModeChangeStrategy as M;
     match action {
@@ -438,7 +438,7 @@ fn rewrite_mode_in_action(action: &mut Action, from: &str, to: &str) -> bool {
                 .with_renamed(from, to)
                 .expect("cycle rename pre-validated");
             // Only swap the field when the rename actually touched a
-            // member — for profiles with many cycle-bearing mappings that
+            // member, for profiles with many cycle-bearing mappings that
             // don't reference `from`, this avoids an unnecessary clone
             // round-trip per mapping.
             if updated.modes() == modes.modes() {

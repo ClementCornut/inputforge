@@ -1300,7 +1300,7 @@ fn activate_refreshes_outputs_from_cached_axis_values() {
     // Engine starts Stopped so the first tick populates the input cache
     // without evaluating mappings.
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    // Default engine status is Stopped — no need to set it explicitly.
+    // Default engine status is Stopped, no need to set it explicitly.
 
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
@@ -1326,7 +1326,7 @@ fn activate_refreshes_outputs_from_cached_axis_values() {
     );
 
     // Send Activate and replace the input source with an empty one so
-    // tick 2 has no new events — the refresh must rely solely on the cache.
+    // tick 2 has no new events, the refresh must rely solely on the cache.
     tx.send(EngineCommand::Activate).unwrap();
     engine.input = Box::new(MockInputSource::default());
 
@@ -1387,7 +1387,7 @@ fn set_mapping_refreshes_outputs_from_cached_axis_values() {
     })
     .unwrap();
 
-    // Replace input with no events — the refresh must use the cached value.
+    // Replace input with no events, the refresh must use the cached value.
     engine.input = Box::new(MockInputSource::default());
     engine.tick().unwrap();
 
@@ -1415,7 +1415,7 @@ fn set_mapping_refreshes_outputs_from_cached_axis_values() {
 ///
 /// Returns `(engine, state, tx, dir, path)` where:
 /// - `dir` is the [`tempfile::TempDir`] whose lifetime keeps the temp
-///   directory alive — callers must bind it to a local variable.
+///   directory alive, callers must bind it to a local variable.
 /// - `path` is the absolute path to the profile TOML.
 fn make_engine_with_simple_disk_profile() -> (
     Engine,
@@ -2161,7 +2161,7 @@ fn restore_corrupt_target_fires_auto_before_restore_then_errors() {
     let snap_dir = crate::snapshot::__test_snap_dir(&path).unwrap();
     let snap_file = snap_dir.join(format!("{}.toml", snap.id));
     // Replace the file with garbage that fails [snapshot_meta] parsing
-    // but is still a valid TOML *file* — pick a TOML that lacks the meta table.
+    // but is still a valid TOML *file*, pick a TOML that lacks the meta table.
     std::fs::write(&snap_file, "[not_meta]\nid = \"garbage\"\n").unwrap();
 
     let pre_name = state
@@ -2857,7 +2857,7 @@ fn rename_mode_rewrites_multi_entry_stack() {
         })
         .unwrap();
 
-    // current is "Landing" — unaffected.
+    // current is "Landing", unaffected.
     assert_eq!(engine.mode_state.current(), "Landing");
     // Pop: the stacked "Combat" entry was rewritten to "Fighter".
     engine.mode_state.pop_temporary();
@@ -3145,7 +3145,7 @@ fn delete_mode_resets_when_active_is_descendant() {
         .clone();
     engine.mode_state.push_temporary("Guns", &tree).unwrap();
 
-    // Delete Combat — every descendant (Missiles, Guns) and Combat itself
+    // Delete Combat, every descendant (Missiles, Guns) and Combat itself
     // must be purged from current_mode and the stack.
     tx.send(EngineCommand::DeleteMode {
         name: "Combat".to_owned(),
@@ -3164,7 +3164,7 @@ fn delete_mode_resets_when_active_is_descendant() {
         "Default",
         "ModeState::current resets"
     );
-    // pop_temporary is a no-op on an empty stack — the post-delete current
+    // pop_temporary is a no-op on an empty stack, the post-delete current
     // stays "Default".
     engine.mode_state.pop_temporary();
     assert_eq!(

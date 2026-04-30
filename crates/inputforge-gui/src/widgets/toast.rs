@@ -37,15 +37,15 @@ const ACCENT_WIDTH: f32 = 3.0;
 /// Severity level of a toast notification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ToastLevel {
-    /// Blue accent — informational notification.
+    /// Blue accent, informational notification.
     #[allow(
         dead_code,
         reason = "variant used by profile_window which is not yet wired"
     )]
     Info,
-    /// Amber accent — non-fatal issue the user should be aware of.
+    /// Amber accent, non-fatal issue the user should be aware of.
     Warning,
-    /// Red accent — something went wrong.
+    /// Red accent, something went wrong.
     #[allow(dead_code, reason = "variant reserved for future error toasts")]
     Error,
 }

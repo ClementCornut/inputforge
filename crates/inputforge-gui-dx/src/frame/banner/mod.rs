@@ -46,7 +46,7 @@ pub(crate) fn Banner() -> Element {
                         span { class: "if-banner__copy",
                             "Editing "
                             strong { "{editing}" }
-                            " — engine is in "
+                            ", engine is in "
                             strong { "{current}" }
                             "."
                         }
@@ -55,7 +55,7 @@ pub(crate) fn Banner() -> Element {
                             onclick: move |_| {
                                 let _ = cmd.send(EngineCommand::ForceMode { mode: edit_for_btn.clone() });
                             },
-                            // Label is plain "Activate" — the editing
+                            // Label is plain "Activate", the editing
                             // mode name is already <strong>-emphasized
                             // two phrases upstream in the banner copy,
                             // so echoing it on the button reads as
@@ -66,7 +66,7 @@ pub(crate) fn Banner() -> Element {
                     }
                 }
             }
-            // Forced (alone): steady override; polite is fine — the user
+            // Forced (alone): steady override; polite is fine, the user
             // already triggered the force, so AT doesn't need to interrupt.
             BannerState::Forced { forced } => {
                 let cmd = commands_ref.clone();
@@ -90,7 +90,7 @@ pub(crate) fn Banner() -> Element {
                 }
             }
             // ForcedAndDiverged: the user is editing one mode while the
-            // engine is forced into another — escalate to role=alert +
+            // engine is forced into another, escalate to role=alert +
             // assertive so AT interrupts and announces immediately. The
             // user must understand the divergence before further edits.
             BannerState::ForcedAndDiverged { editing, forced } => {
@@ -104,7 +104,7 @@ pub(crate) fn Banner() -> Element {
                         span { class: "if-banner__copy",
                             "Editing "
                             strong { "{editing}" }
-                            " — engine is in "
+                            ", engine is in "
                             strong { "{forced}" }
                             " (forced). Mode-change rules paused."
                         }

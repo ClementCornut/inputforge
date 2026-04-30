@@ -50,7 +50,7 @@ pub(crate) fn StatusBar() -> Element {
             end: rsx! {
                 match p {
                     Some(s) => rsx! { span { class: "if-frame-status-bar__path", "{s}" } },
-                    None    => rsx! { span { class: "if-frame-status-bar__path-empty", "—" } },
+                    None    => rsx! { span { class: "if-frame-status-bar__path-empty", "-" } },
                 }
             },
         }

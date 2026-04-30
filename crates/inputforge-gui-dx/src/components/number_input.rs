@@ -55,7 +55,7 @@ pub fn NumberInput(
             h.call(next);
         }
     };
-    // HTML5 forbids id="" — so render the attribute only when Some.
+    // HTML5 forbids id="", so render the attribute only when Some.
     rsx! {
         div { class: "{combined}",
             if let Some(ref id_val) = id {

@@ -1,12 +1,12 @@
-# F8 — Mapping List (Left Rail) Implementation Plan
+# F8, Mapping List (Left Rail) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the placeholder `if-layout__rail` text with the F8 mapping-list rail (group-bucketed rows by input kind, glyphs for MergeAxis / input-Conditional, filter, keyboard nav, right-click menu, two empty states, inline `+ Add mapping` capture flow), and ship the shared `LiveCapture` primitive that F9–F12 will reuse.
+**Goal:** Replace the placeholder `if-layout__rail` text with the F8 mapping-list rail (group-bucketed rows by input kind, glyphs for MergeAxis / input-Conditional, filter, keyboard nav, right-click menu, two empty states, inline `+ Add mapping` capture flow), and ship the shared `LiveCapture` primitive that F9-F12 will reuse.
 
 **F8→F9 sequencing constraint:** Until F9 ships its action editor, a fresh `+ Add mapping` capture round-trips through `Profile::save` with `actions: vec![]`, which the engine treats as removal. The added mapping disappears at the next save. F8 ships this regression deliberately; F9's first task must be wiring the action editor before this becomes user-visible in any release build.
 
-**Architecture:** Engine-side first — a new `EngineCommand::RemoveMapping` variant + `Profile::remove_mapping` mutator + `RunningEngine::remove_mapping` handler — lands behind a round-trip test before any GUI plumbing. State infrastructure follows: `InputCacheStore::clone_compact` (pure helper for the primitive) → `ConfigSnapshot::mappings` extension with `MappingSummary` + glyph-derivation walker → `ViewState::selected_mapping` field with shadow-signal reconciliation. The `LiveCapture` primitive ships next — `LiveCaptureCore::step` is a pure state-transition fn unit-tested without a Dioxus runtime; the hook in `mod.rs` is a thin adapter that calls `step` per polling tick and mounts a window-level Esc listener while armed. Mapping-list components ship inside-out: leaf pure-logic modules (`source_label`, `group`, `filter`) with unit tests, then leaf renderers (`row`, `rename_inline`, `empty`), then the `+ Add mapping` state machine (`add_inline`), then keyboard handling (`keyboard`), and finally the `mod.rs` orchestrator that wires everything together. Layout integration and SSR/component tests close the plan.
+**Architecture:** Engine-side first, a new `EngineCommand::RemoveMapping` variant + `Profile::remove_mapping` mutator + `RunningEngine::remove_mapping` handler, lands behind a round-trip test before any GUI plumbing. State infrastructure follows: `InputCacheStore::clone_compact` (pure helper for the primitive) → `ConfigSnapshot::mappings` extension with `MappingSummary` + glyph-derivation walker → `ViewState::selected_mapping` field with shadow-signal reconciliation. The `LiveCapture` primitive ships next, `LiveCaptureCore::step` is a pure state-transition fn unit-tested without a Dioxus runtime; the hook in `mod.rs` is a thin adapter that calls `step` per polling tick and mounts a window-level Esc listener while armed. Mapping-list components ship inside-out: leaf pure-logic modules (`source_label`, `group`, `filter`) with unit tests, then leaf renderers (`row`, `rename_inline`, `empty`), then the `+ Add mapping` state machine (`add_inline`), then keyboard handling (`keyboard`), and finally the `mod.rs` orchestrator that wires everything together. Layout integration and SSR/component tests close the plan.
 
 **Tech Stack:** Rust 2024 edition · `inputforge-core` (engine, profile, action, state) · `inputforge-gui-dx` (Dioxus 0.7, dioxus-desktop, F2 component primitives, F4 dialog/toast, F7 frame) · `parking_lot::RwLock` over `AppState` · `std::sync::mpsc` for `EngineCommand` dispatch · `tracing` for engine + GUI events.
 
@@ -16,23 +16,23 @@
 
 ## Sequencing rationale
 
-Engine-side first: `RemoveMapping` round-trips through `Profile::remove_mapping` + `Profile::save` and is fully unit-testable without GUI. State infrastructure next: `MappingSummary` + glyph derivation lives in `context.rs` and depends only on `inputforge-core` types — landing it before GUI lets every renderer subscribe to a stable shape. `LiveCapture` follows: a pure `step()` function gated by enumerated tests covers all the tricky cases (baseline-and-edge, multi-axis nudge, switch-already-on, debounce window) before any Dioxus signals enter the picture. Mapping-list ships inside-out: pure-logic leaves (`source_label`, `group`, `filter::matches_filter`) → simple renderers (`row`, `rename_inline`, `empty`) → stateful renderers (`add_inline`, `keyboard`) → orchestrator (`mod.rs`). Layout integration and SSR tests land last so they never break the build mid-flight.
+Engine-side first: `RemoveMapping` round-trips through `Profile::remove_mapping` + `Profile::save` and is fully unit-testable without GUI. State infrastructure next: `MappingSummary` + glyph derivation lives in `context.rs` and depends only on `inputforge-core` types, landing it before GUI lets every renderer subscribe to a stable shape. `LiveCapture` follows: a pure `step()` function gated by enumerated tests covers all the tricky cases (baseline-and-edge, multi-axis nudge, switch-already-on, debounce window) before any Dioxus signals enter the picture. Mapping-list ships inside-out: pure-logic leaves (`source_label`, `group`, `filter::matches_filter`) → simple renderers (`row`, `rename_inline`, `empty`) → stateful renderers (`add_inline`, `keyboard`) → orchestrator (`mod.rs`). Layout integration and SSR tests land last so they never break the build mid-flight.
 
-The first 12 tasks (Phase A + B + C) are pure-logic / unit-testable / engine-only. Tasks 13–28 are GUI render code; manual interaction passes happen in the final phase. Tasks 11, 12, 13, 24, and 25 are verification tasks where test and implementation ship together because the implementation is a pure-logic one-liner or an end-to-end SSR check; they do not follow the failing-first TDD pattern.
+The first 12 tasks (Phase A + B + C) are pure-logic / unit-testable / engine-only. Tasks 13-28 are GUI render code; manual interaction passes happen in the final phase. Tasks 11, 12, 13, 24, and 25 are verification tasks where test and implementation ship together because the implementation is a pure-logic one-liner or an end-to-end SSR check; they do not follow the failing-first TDD pattern.
 
 ---
 
 ## File structure overview
 
-**Created (engine):** None — all changes are method additions to existing files.
+**Created (engine):** None, all changes are method additions to existing files.
 
 **Modified (engine):**
 
-- `crates/inputforge-core/src/profile/mod.rs` — `Profile::remove_mapping(&mut self, &InputAddress, &str) -> bool`
-- `crates/inputforge-core/src/engine/command.rs` — `EngineCommand::RemoveMapping { input, mode }` variant
-- `crates/inputforge-core/src/engine/run.rs` — `RunningEngine::remove_mapping` handler + dispatch arm in `handle_command`
-- `crates/inputforge-core/src/engine/tests.rs` — Set→Remove round-trip test (in-memory + disk reload)
-- `crates/inputforge-core/src/state/cache.rs` — `InputCacheStore::clone_compact() -> Vec<InputCacheEntry>` + `InputCacheEntry` type
+- `crates/inputforge-core/src/profile/mod.rs`, `Profile::remove_mapping(&mut self, &InputAddress, &str) -> bool`
+- `crates/inputforge-core/src/engine/command.rs`, `EngineCommand::RemoveMapping { input, mode }` variant
+- `crates/inputforge-core/src/engine/run.rs`, `RunningEngine::remove_mapping` handler + dispatch arm in `handle_command`
+- `crates/inputforge-core/src/engine/tests.rs`, Set→Remove round-trip test (in-memory + disk reload)
+- `crates/inputforge-core/src/state/cache.rs`, `InputCacheStore::clone_compact() -> Vec<InputCacheEntry>` + `InputCacheEntry` type
 
 **Created (GUI):**
 
@@ -55,18 +55,18 @@ crates/inputforge-gui-dx/assets/frame/mapping_list.css
 
 **Modified (GUI):**
 
-- `crates/inputforge-gui-dx/src/context.rs` — `ConfigSnapshot::mappings: Vec<MappingSummary>` + `MappingSummary` + `GlyphFlags` + glyph-derivation walker; `from_state` extended
-- `crates/inputforge-gui-dx/src/frame/view_state.rs` — `ViewState::selected_mapping` field + reconciliation branches in `use_view_state_provider`
-- `crates/inputforge-gui-dx/src/frame/layout/mod.rs` — wires `<MappingList />` into the `if-layout__rail` slot
-- `crates/inputforge-gui-dx/src/frame/mod.rs` — `mod mapping_list;` + re-export `MappingList`
-- `crates/inputforge-gui-dx/src/patterns/mod.rs` — `pub mod live_capture;`
-- `crates/inputforge-gui-dx/src/app.rs` — install `LiveCapture` via `use_context_provider` (sibling of `ToastQueue`)
+- `crates/inputforge-gui-dx/src/context.rs`, `ConfigSnapshot::mappings: Vec<MappingSummary>` + `MappingSummary` + `GlyphFlags` + glyph-derivation walker; `from_state` extended
+- `crates/inputforge-gui-dx/src/frame/view_state.rs`, `ViewState::selected_mapping` field + reconciliation branches in `use_view_state_provider`
+- `crates/inputforge-gui-dx/src/frame/layout/mod.rs`, wires `<MappingList />` into the `if-layout__rail` slot
+- `crates/inputforge-gui-dx/src/frame/mod.rs`, `mod mapping_list;` + re-export `MappingList`
+- `crates/inputforge-gui-dx/src/patterns/mod.rs`, `pub mod live_capture;`
+- `crates/inputforge-gui-dx/src/app.rs`, install `LiveCapture` via `use_context_provider` (sibling of `ToastQueue`)
 
 **Deleted:** None.
 
 ---
 
-## Phase A — Engine-side: `RemoveMapping` (Tasks 1–3)
+## Phase A, Engine-side: `RemoveMapping` (Tasks 1-3)
 
 ### Task 1: `Profile::remove_mapping`
 
@@ -78,7 +78,7 @@ Pure mutator on `Profile` that removes the `(input, mode)` pair from the private
 
 - [ ] **Step 1: Write the failing test**
 
-Append to the existing `#[cfg(test)] mod tests` in `crates/inputforge-core/src/profile/mod.rs` (the existing test helpers `minimal_profile()` and a working `Mapping` constructor are already in scope — see the `set_mapping_*` tests around line 960):
+Append to the existing `#[cfg(test)] mod tests` in `crates/inputforge-core/src/profile/mod.rs` (the existing test helpers `minimal_profile()` and a working `Mapping` constructor are already in scope, see the `set_mapping_*` tests around line 960):
 
 ```rust
 #[test]
@@ -132,7 +132,7 @@ If `DeviceId` / `InputId` / `InputAddress` are not yet imported in the `tests` m
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cargo test -p inputforge-core --lib profile::tests::remove_mapping`
-Expected: FAIL — `error[E0599]: no method named 'remove_mapping' found for struct 'Profile'`.
+Expected: FAIL, `error[E0599]: no method named 'remove_mapping' found for struct 'Profile'`.
 
 - [ ] **Step 3: Implement `Profile::remove_mapping`**
 
@@ -142,7 +142,7 @@ Insert into `impl Profile` in `crates/inputforge-core/src/profile/mod.rs`, immed
 /// Remove the mapping for `(input, mode)`. Returns `true` if a mapping
 /// was removed, `false` if no matching mapping existed.
 ///
-/// Distinct from `set_mapping(_, _, None, vec![])` which can also remove —
+/// Distinct from `set_mapping(_, _, None, vec![])` which can also remove -
 /// `remove_mapping` is the explicit API for the F8 delete flow and lets
 /// callers detect a no-op (race between two stale dispatches) without
 /// comparing `mappings().len()` before-and-after.
@@ -157,7 +157,7 @@ pub fn remove_mapping(&mut self, input: &InputAddress, mode: &str) -> bool {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cargo test -p inputforge-core --lib profile::tests::remove_mapping`
-Expected: PASS — three tests, all green.
+Expected: PASS, three tests, all green.
 
 - [ ] **Step 5: Commit**
 
@@ -205,7 +205,7 @@ fn remove_mapping_variant_debug_and_partialeq() {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cargo test -p inputforge-core --lib engine::command::tests::remove_mapping_variant`
-Expected: FAIL — `error[E0599]: no variant or associated item named 'RemoveMapping' found for enum 'EngineCommand'`.
+Expected: FAIL, `error[E0599]: no variant or associated item named 'RemoveMapping' found for enum 'EngineCommand'`.
 
 - [ ] **Step 3: Add the variant**
 
@@ -244,7 +244,7 @@ Adds the engine-side handler and wires it into the `handle_command` dispatch. Mi
 
 - [ ] **Step 1: Write the failing round-trip test**
 
-Append to `crates/inputforge-core/src/engine/tests.rs`. Mirror the shape of `set_mapping_refreshes_outputs_from_cached_axis_values` (around line 1344) — write profile to a temp file, build engine, dispatch `SetMapping`, tick to apply, dispatch `RemoveMapping`, tick again, assert removed in-memory AND persisted to disk:
+Append to `crates/inputforge-core/src/engine/tests.rs`. Mirror the shape of `set_mapping_refreshes_outputs_from_cached_axis_values` (around line 1344), write profile to a temp file, build engine, dispatch `SetMapping`, tick to apply, dispatch `RemoveMapping`, tick again, assert removed in-memory AND persisted to disk:
 
 ```rust
 #[test]
@@ -304,7 +304,7 @@ fn remove_mapping_round_trip_persists_removal_to_disk() {
         "RemoveMapping should drop the mapping from active_profile"
     );
 
-    // On-disk: gone — reload from the same path and re-check.
+    // On-disk: gone, reload from the same path and re-check.
     let reloaded = Profile::load(&path).unwrap();
     assert!(
         reloaded.find_mapping(&axis_addr(0), "Default").is_none(),
@@ -367,7 +367,7 @@ fn remove_mapping_no_op_for_unknown_input_does_not_panic() {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test -p inputforge-core --lib engine::tests::remove_mapping`
-Expected: FAIL — compile error on the dispatch arm (no match arm for `EngineCommand::RemoveMapping`).
+Expected: FAIL, compile error on the dispatch arm (no match arm for `EngineCommand::RemoveMapping`).
 
 - [ ] **Step 3: Implement the handler method**
 
@@ -408,7 +408,7 @@ fn remove_mapping(&self, input: &InputAddress, mode: &str) {
 
 - [ ] **Step 4: Wire the dispatch arm**
 
-In `crates/inputforge-core/src/engine/run.rs` `handle_command`, immediately after the existing `EngineCommand::SetMapping { ... }` arm (currently at line 350–358), insert:
+In `crates/inputforge-core/src/engine/run.rs` `handle_command`, immediately after the existing `EngineCommand::SetMapping { ... }` arm (currently at line 350-358), insert:
 
 ```rust
 EngineCommand::RemoveMapping { input, mode } => {
@@ -417,17 +417,17 @@ EngineCommand::RemoveMapping { input, mode } => {
 }
 ```
 
-The `pending_output_refresh = true` mirrors `SetMapping` — removing a mapping changes the active pipeline, so cached axis values must be re-evaluated through it.
+The `pending_output_refresh = true` mirrors `SetMapping`, removing a mapping changes the active pipeline, so cached axis values must be re-evaluated through it.
 
 - [ ] **Step 5: Run the round-trip + no-op tests**
 
 Run: `cargo test -p inputforge-core --lib engine::tests::remove_mapping`
-Expected: PASS — both tests green.
+Expected: PASS, both tests green.
 
 - [ ] **Step 6: Run the full engine test suite to catch regressions**
 
 Run: `cargo test -p inputforge-core --lib engine`
-Expected: PASS — no existing tests should break (the change is additive).
+Expected: PASS, no existing tests should break (the change is additive).
 
 - [ ] **Step 7: Commit**
 
@@ -438,11 +438,11 @@ git commit -m "feat(engine): handle EngineCommand::RemoveMapping with disk-persi
 
 ---
 
-## Phase B — State infrastructure (Tasks 4–6)
+## Phase B, State infrastructure (Tasks 4-6)
 
 ### Task 4: `InputCacheStore::clone_compact()`
 
-Returns a sortable, owned snapshot of every cached `(InputAddress, InputValue)` pair. The live-capture primitive consumes this on every polling tick — it needs to compare current vs baseline without holding the `RwLock` read guard. Pure logic, no Dioxus dependency.
+Returns a sortable, owned snapshot of every cached `(InputAddress, InputValue)` pair. The live-capture primitive consumes this on every polling tick, it needs to compare current vs baseline without holding the `RwLock` read guard. Pure logic, no Dioxus dependency.
 
 **Iteration-order contract:** `clone_compact` MUST iterate in a stable, deterministic order across calls. The live-capture tied-axis tiebreak (Task 7's `pick_winner`) depends on first-encountered order being well-defined. Use `IndexMap` or `Vec<InputCacheEntry>` as the underlying store; `HashMap` is forbidden. If `InputCacheStore`'s current internal storage is a `HashMap`, change it to `IndexMap` (or a `Vec`) as part of this task; if already deterministic, the change is to document the contract on the method.
 
@@ -518,7 +518,7 @@ fn clone_compact_does_not_mutate_cache() {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cargo test -p inputforge-core --lib state::cache::tests::clone_compact`
-Expected: FAIL — `error[E0599]: no method named 'clone_compact'`.
+Expected: FAIL, `error[E0599]: no method named 'clone_compact'`.
 
 - [ ] **Step 3: Add the helper type and method**
 
@@ -540,7 +540,7 @@ Insert the `clone_compact` method into `impl InputCacheStore` in the same file, 
 ```rust
 /// Snapshot every cached `(address, value)` pair into an owned Vec.
 ///
-/// Order is **stable and deterministic** across calls — backed by
+/// Order is **stable and deterministic** across calls, backed by
 /// `IndexMap` (or a `Vec`), never `HashMap`. The live-capture
 /// tied-axis tiebreak (`patterns::live_capture::machine::pick_winner`)
 /// relies on first-encountered order being well-defined: when two
@@ -564,7 +564,7 @@ pub fn clone_compact(&self) -> Vec<InputCacheEntry> {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cargo test -p inputforge-core --lib state::cache::tests::clone_compact`
-Expected: PASS — three tests green.
+Expected: PASS, three tests green.
 
 - [ ] **Step 5: Re-export `InputCacheEntry` from `state` mod**
 
@@ -574,7 +574,7 @@ Open `crates/inputforge-core/src/state/mod.rs`. The existing module already re-e
 pub use cache::{InputCacheEntry, InputCacheStore};
 ```
 
-(Mirror whatever the current `pub use cache::...` line looks like — keep types alphabetically grouped.)
+(Mirror whatever the current `pub use cache::...` line looks like, keep types alphabetically grouped.)
 
 - [ ] **Step 6: Run the full state tests**
 
@@ -592,7 +592,7 @@ git commit -m "feat(state): add InputCacheStore::clone_compact() snapshot helper
 
 ### Task 5: `ConfigSnapshot.mappings` + `MappingSummary` + glyph derivation
 
-Extends `ConfigSnapshot` with a per-mapping summary list populated once per polling tick. The glyph walker (MergeAxis present, input-Conditional present) runs at snapshot time — not at render time — so each row read is a constant-time field access. All glyph derivation is pure logic, unit-testable without Dioxus.
+Extends `ConfigSnapshot` with a per-mapping summary list populated once per polling tick. The glyph walker (MergeAxis present, input-Conditional present) runs at snapshot time, not at render time, so each row read is a constant-time field access. All glyph derivation is pure logic, unit-testable without Dioxus.
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/context.rs`
@@ -921,7 +921,7 @@ fn config_snapshot_glyph_walker_descends_into_nested_actions() {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test -p inputforge-gui-dx --lib context::tests::config_snapshot`
-Expected: FAIL — `error[E0609]: no field 'mappings' on type 'ConfigSnapshot'` and `error[E0433]: no MappingSummary in scope`.
+Expected: FAIL, `error[E0609]: no field 'mappings' on type 'ConfigSnapshot'` and `error[E0433]: no MappingSummary in scope`.
 
 - [ ] **Step 3: Add the new types**
 
@@ -947,7 +947,7 @@ pub(crate) struct MappingSummary {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct GlyphFlags {
     /// `Some(addr)` if the action tree contains an `Action::MergeAxis`
-    /// whose `second_input` is `addr` — the secondary input shown after
+    /// whose `second_input` is `addr`, the secondary input shown after
     /// the gold `+` glyph.
     pub merge_secondary: Option<InputAddress>,
     /// `Some(addr)` if the action tree contains an `Action::Conditional`
@@ -961,11 +961,11 @@ pub(crate) struct GlyphFlags {
 }
 ```
 
-`InputAddress` is already imported at the top of the file. `MappingSummary` and `GlyphFlags` are `pub(crate)` — they only need to be visible to `frame::mapping_list`. `MappingSummary` does **not** derive `Default` (would require `InputAddress: Default`, which it isn't); `ConfigSnapshot::default()` works because the `mappings: Vec<MappingSummary>` field's default is the empty vec.
+`InputAddress` is already imported at the top of the file. `MappingSummary` and `GlyphFlags` are `pub(crate)`, they only need to be visible to `frame::mapping_list`. `MappingSummary` does **not** derive `Default` (would require `InputAddress: Default`, which it isn't); `ConfigSnapshot::default()` works because the `mappings: Vec<MappingSummary>` field's default is the empty vec.
 
 - [ ] **Step 4: Add the `mappings` field to `ConfigSnapshot`**
 
-Edit the existing `ConfigSnapshot` struct in `crates/inputforge-gui-dx/src/context.rs` (around line 60–66) to add the new field:
+Edit the existing `ConfigSnapshot` struct in `crates/inputforge-gui-dx/src/context.rs` (around line 60-66) to add the new field:
 
 ```rust
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -1022,7 +1022,7 @@ fn walk_actions(actions: &[inputforge_core::action::Action], out: &mut GlyphFlag
                     walk_actions(branch, out);
                 }
             }
-            // Other variants do not contribute to F8 glyphs. F9–F12
+            // Other variants do not contribute to F8 glyphs. F9-F12
             // surface them inside the editor; they are inert here.
             _ => {}
         }
@@ -1089,7 +1089,7 @@ impl ConfigSnapshot {
 - [ ] **Step 7: Run tests to verify they pass**
 
 Run: `cargo test -p inputforge-gui-dx --lib context::tests::config_snapshot`
-Expected: PASS — six glyph + summary tests green; the existing `config_snapshot_default_is_empty` and `config_from_state_populates_mapped_inputs_and_names` tests must also still pass (the former relies on `Vec::default()` for the new `mappings` field; the latter doesn't read `cfg.mappings`).
+Expected: PASS, six glyph + summary tests green; the existing `config_snapshot_default_is_empty` and `config_from_state_populates_mapped_inputs_and_names` tests must also still pass (the former relies on `Vec::default()` for the new `mappings` field; the latter doesn't read `cfg.mappings`).
 
 If `config_snapshot_default_is_empty` fails because it asserts on `cfg.mappings`, add `assert!(c.mappings.is_empty());` to the existing test.
 
@@ -1122,7 +1122,7 @@ mod tests {
     use dioxus::prelude::*;
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
-    /// Compile-time gate — proves `selected_mapping` lives on `ViewState`
+    /// Compile-time gate, proves `selected_mapping` lives on `ViewState`
     /// with the documented type.
     #[test]
     fn selected_mapping_field_type() {
@@ -1169,7 +1169,7 @@ mod tests {
             startup_mode: Some("Default".to_owned()),
             modes: vec!["Default".to_owned(), "Combat".to_owned()],
         };
-        // prev_mode != em (em was changed externally to "Combat") — ModeFlipped.
+        // prev_mode != em (em was changed externally to "Combat"), ModeFlipped.
         let outcome = reconcile_pure("P", "Combat_prev", &meta);
         assert_eq!(outcome, ReconcileOutcome::ModeFlipped);
     }
@@ -1188,16 +1188,16 @@ mod tests {
 }
 ```
 
-Note: the tests above use a `reconcile_pure(prev_profile, prev_mode, meta) -> ReconcileOutcome` helper that is the inner pure decision (no signal mutation). The hook adapter wraps this with the actual signal writes — see Step 4. `ContextMeta` is the existing `MetaSnapshot` (or whatever struct holds `profile_name`, `startup_mode`, `modes`) — use the existing type rather than introducing a new one.
+Note: the tests above use a `reconcile_pure(prev_profile, prev_mode, meta) -> ReconcileOutcome` helper that is the inner pure decision (no signal mutation). The hook adapter wraps this with the actual signal writes, see Step 4. `ContextMeta` is the existing `MetaSnapshot` (or whatever struct holds `profile_name`, `startup_mode`, `modes`), use the existing type rather than introducing a new one.
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::view_state::tests`
-Expected: FAIL — `error[E0609]: no field 'selected_mapping' on type 'ViewState'`.
+Expected: FAIL, `error[E0609]: no field 'selected_mapping' on type 'ViewState'`.
 
 - [ ] **Step 3: Add `selected_mapping` to `ViewState`**
 
-Edit the `ViewState` struct in `crates/inputforge-gui-dx/src/frame/view_state.rs` (around line 27–33) to add the new field:
+Edit the `ViewState` struct in `crates/inputforge-gui-dx/src/frame/view_state.rs` (around line 27-33) to add the new field:
 
 ```rust
 #[derive(Debug, Clone, Copy)]
@@ -1244,7 +1244,7 @@ pub(crate) fn reconcile_pure(
         && meta.modes.iter().any(|m| m == prev_mode) == false
         && meta.modes.iter().any(|m| m == meta.startup_mode.as_deref().unwrap_or("Default"))
     {
-        // prev_mode is not in modes list — drifted.
+        // prev_mode is not in modes list, drifted.
         return ReconcileOutcome::ModesListDrifted;
     }
     if !meta.modes.iter().any(|m| m == prev_mode) {
@@ -1253,7 +1253,7 @@ pub(crate) fn reconcile_pure(
     // prev_mode is in modes; if it differs from a separately-tracked editing
     // signal, the hook adapter detects mode flip via shadow-signal compare.
     // The pure helper signals "ModeFlipped" when prev_mode disagrees with
-    // the currently-selected editing mode the hook is tracking — the hook
+    // the currently-selected editing mode the hook is tracking, the hook
     // passes its own `last_editing_mode` peek as `prev_mode`.
     ReconcileOutcome::NoChange
 }
@@ -1283,7 +1283,7 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
     use_effect(move || {
         let m = meta.read();
 
-        // Branch 1 — profile flip (existing behavior, plus selection clear).
+        // Branch 1, profile flip (existing behavior, plus selection clear).
         let profile_changed = *last_profile_name.peek() != m.profile_name;
         if profile_changed {
             last_profile_name.write().clone_from(&m.profile_name);
@@ -1300,7 +1300,7 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
             return;
         }
 
-        // Branch 2 — editing-mode flip (new).
+        // Branch 2, editing-mode flip (new).
         let editing_now = em.peek().clone();
         if *last_editing_mode.peek() != editing_now {
             *last_editing_mode.write() = editing_now;
@@ -1308,7 +1308,7 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
             return;
         }
 
-        // Branch 3 — modes-list drift fallback (existing).
+        // Branch 3, modes-list drift fallback (existing).
         if !m.modes.iter().any(|n| n == &*em.peek()) {
             let editing_now = em.peek().clone();
             let fallback = if let Some(s) = m.startup_mode.as_ref() {
@@ -1343,12 +1343,12 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::view_state::tests`
-Expected: PASS — compile-time gate and four `reconcile_pure` unit tests green.
+Expected: PASS, compile-time gate and four `reconcile_pure` unit tests green.
 
 - [ ] **Step 6: Run the full GUI test suite**
 
 Run: `cargo test -p inputforge-gui-dx --lib`
-Expected: PASS — no existing tests should break.
+Expected: PASS, no existing tests should break.
 
 - [ ] **Step 7: Commit**
 
@@ -1359,16 +1359,16 @@ git commit -m "feat(view_state): add selected_mapping with editing-mode-flip rec
 
 ---
 
-## Phase C — Live-capture primitive (Tasks 7–9)
+## Phase C, Live-capture primitive (Tasks 7-9)
 
 ### Task 7: `LiveCaptureCore::step` pure logic + enumerated tests
 
-The primitive's full behavior lives in a state-transition function `step(prev_state, snapshot, now) -> (new_state, Option<InputAddress>)`. No Dioxus dependency — unit tests feed hand-crafted snapshots and `Instant`s. Covers baseline-and-edge detection, multi-axis nudge with debounce, switch-already-on, capture-filter rejection, and cancel-mid-window reset.
+The primitive's full behavior lives in a state-transition function `step(prev_state, snapshot, now) -> (new_state, Option<InputAddress>)`. No Dioxus dependency, unit tests feed hand-crafted snapshots and `Instant`s. Covers baseline-and-edge detection, multi-axis nudge with debounce, switch-already-on, capture-filter rejection, and cancel-mid-window reset.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/patterns/live_capture/machine.rs`
 - Create: `crates/inputforge-gui-dx/src/patterns/live_capture/tests.rs`
-- Modify: `crates/inputforge-gui-dx/src/patterns/live_capture/mod.rs` (skeleton — just `mod machine; mod tests;` for now; full hook lands in Task 8)
+- Modify: `crates/inputforge-gui-dx/src/patterns/live_capture/mod.rs` (skeleton, just `mod machine; mod tests;` for now; full hook lands in Task 8)
 - Modify: `crates/inputforge-gui-dx/src/patterns/mod.rs`
 
 - [ ] **Step 1: Create the `live_capture` module skeleton**
@@ -1376,12 +1376,12 @@ The primitive's full behavior lives in a state-transition function `step(prev_st
 Create `crates/inputforge-gui-dx/src/patterns/live_capture/mod.rs` with module declarations and the public types needed by `machine.rs`:
 
 ```rust
-//! Live-capture primitive — GUI-only modal state that subscribes to
+//! Live-capture primitive, GUI-only modal state that subscribes to
 //! `AppState.input_cache` and emits the next observed input event.
 //!
 //! Single-instance pattern: provided once via context in `app_root`.
 //! Each consumer reads it via `use_context::<LiveCapture>()`. Starting
-//! a new capture cancels any in-flight one — there is exactly one
+//! a new capture cancels any in-flight one, there is exactly one
 //! capture at a time across the entire GUI.
 //!
 //! See the F8 spec for the full state-machine and Esc-priority rules.
@@ -1398,7 +1398,7 @@ pub(crate) use machine::{
     AXIS_DEADBAND, CoreState, DEBOUNCE_MS, InputKind, LiveCaptureCore,
 };
 
-/// Filter governing which input kinds the primitive accepts. F9–F12
+/// Filter governing which input kinds the primitive accepts. F9-F12
 /// will use `AxesOnly` / `ButtonsOnly` to discriminate range-record vs.
 /// button-bind flows. F8's `+ Add mapping` always uses `Any`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1483,19 +1483,19 @@ fn first_tick_records_baseline_and_does_not_fire() {
 
     let (next, fired) = LiveCaptureCore::step(prev, &snapshot, now);
 
-    assert!(fired.is_none(), "first tick must never fire — only records baseline");
+    assert!(fired.is_none(), "first tick must never fire, only records baseline");
     assert!(next.baseline.is_some(), "baseline must be populated after first step");
     assert!(next.pending.is_none());
 }
 
 #[test]
 fn joystick_already_displaced_no_false_fire() {
-    // AC #11a — baseline X = 0.3.
+    // AC #11a, baseline X = 0.3.
     let now0 = Instant::now();
     let (state_after_baseline, _) =
         LiveCaptureCore::step(fresh_state(CaptureFilter::Any), &[axis_entry(0, 0.3)], now0);
 
-    // Tick 2: tiny wiggle — well under AXIS_DEADBAND from baseline.
+    // Tick 2: tiny wiggle, well under AXIS_DEADBAND from baseline.
     let now1 = now0 + Duration::from_millis(16);
     let (state_after_wiggle, fired) = LiveCaptureCore::step(
         state_after_baseline,
@@ -1506,7 +1506,7 @@ fn joystick_already_displaced_no_false_fire() {
     assert!(fired.is_none(), "delta < deadband must not fire");
     assert!(state_after_wiggle.pending.is_none(), "no pending capture should open");
 
-    // Tick 3: large move — opens a debounce window.
+    // Tick 3: large move, opens a debounce window.
     let now2 = now1 + Duration::from_millis(16);
     let (state_after_move, fired) = LiveCaptureCore::step(
         state_after_wiggle,
@@ -1518,7 +1518,7 @@ fn joystick_already_displaced_no_false_fire() {
         state_after_move.pending.is_some(),
         "axis crossing must open a pending capture window",
     );
-    // M5: t0-equality assertion — pending's window-open Instant must
+    // M5: t0-equality assertion, pending's window-open Instant must
     // equal `now2` (the tick at which the first crossing was observed).
     let (_, t0) = state_after_move.pending.as_ref().expect("pending set");
     assert_eq!(*t0, now2, "pending t0 must equal the first-crossing tick");
@@ -1526,7 +1526,7 @@ fn joystick_already_displaced_no_false_fire() {
 
 #[test]
 fn always_on_switch_baselines_correctly() {
-    // AC #11b — baseline records BtnN already pressed, capture only fires on toggle.
+    // AC #11b, baseline records BtnN already pressed, capture only fires on toggle.
     let now0 = Instant::now();
     let (state_after_baseline, _) = LiveCaptureCore::step(
         fresh_state(CaptureFilter::Any),
@@ -1534,7 +1534,7 @@ fn always_on_switch_baselines_correctly() {
         now0,
     );
 
-    // Tick 2: still pressed — no fire.
+    // Tick 2: still pressed, no fire.
     let now1 = now0 + Duration::from_millis(16);
     let (state_unchanged, fired) = LiveCaptureCore::step(
         state_after_baseline,
@@ -1544,7 +1544,7 @@ fn always_on_switch_baselines_correctly() {
     assert!(fired.is_none(), "unchanged state must not fire");
     assert!(state_unchanged.pending.is_none());
 
-    // Tick 3: released — toggle opens the window.
+    // Tick 3: released, toggle opens the window.
     let now2 = now1 + Duration::from_millis(16);
     let (state_with_pending, fired) = LiveCaptureCore::step(
         state_unchanged,
@@ -1560,7 +1560,7 @@ fn always_on_switch_baselines_correctly() {
 
 #[test]
 fn multi_axis_nudge_largest_delta_wins() {
-    // AC #12 — within the debounce window, the larger absolute delta replaces
+    // AC #12, within the debounce window, the larger absolute delta replaces
     // the smaller one. Window expiry then fires the winner.
     let t0 = Instant::now();
     let (state, _) = LiveCaptureCore::step(
@@ -1582,7 +1582,7 @@ fn multi_axis_nudge_largest_delta_wins() {
         Some(axis_addr(0)),
     );
 
-    // Tick 2: Y crosses with delta = 0.4 — larger, replaces X (preserves t0).
+    // Tick 2: Y crosses with delta = 0.4, larger, replaces X (preserves t0).
     let t2 = t1 + Duration::from_millis(16); // 32ms < DEBOUNCE_MS = 50ms
     let (state, fired) = LiveCaptureCore::step(
         state,
@@ -1596,7 +1596,7 @@ fn multi_axis_nudge_largest_delta_wins() {
         "larger delta must replace the smaller one within the debounce window",
     );
 
-    // Tick 3: window expired (now - t1 >= 50ms) — fire Y.
+    // Tick 3: window expired (now - t1 >= 50ms), fire Y.
     let t3 = t1 + Duration::from_millis(DEBOUNCE_MS + 5);
     let (state, fired) = LiveCaptureCore::step(
         state,
@@ -1619,7 +1619,7 @@ fn axes_only_filter_rejects_button_toggle() {
         t0,
     );
 
-    // Button toggles — AxesOnly filter must reject.
+    // Button toggles, AxesOnly filter must reject.
     let t1 = t0 + Duration::from_millis(16);
     let (state, fired) = LiveCaptureCore::step(state, &[button_entry(0, true)], t1);
     assert!(fired.is_none(), "AxesOnly must not fire on button toggle");
@@ -1680,7 +1680,7 @@ fn debounce_ms_constant_matches_spec() {
 
 #[test]
 fn multi_axis_tie_first_encountered_wins() {
-    // M6 — tied absolute deltas: first axis in snapshot iteration order wins.
+    // M6, tied absolute deltas: first axis in snapshot iteration order wins.
     // `clone_compact` guarantees stable, deterministic order (Task 4 contract).
     let t0 = Instant::now();
     // Baseline at 0.0 for both axes.
@@ -1691,7 +1691,7 @@ fn multi_axis_tie_first_encountered_wins() {
     );
 
     // Tick 1: BOTH axes cross with identical delta = 0.4. axis_entry(0)
-    // is first in the snapshot — it must win.
+    // is first in the snapshot, it must win.
     let t1 = t0 + Duration::from_millis(16);
     let (state, fired) = LiveCaptureCore::step(
         state,
@@ -1710,7 +1710,7 @@ fn multi_axis_tie_first_encountered_wins() {
 - [ ] **Step 3: Run tests to verify they fail**
 
 Run: `cargo test -p inputforge-gui-dx --lib patterns::live_capture::tests`
-Expected: FAIL — every reference to `LiveCaptureCore`, `CoreState`, `AXIS_DEADBAND`, etc. is unresolved (the module body is the next step).
+Expected: FAIL, every reference to `LiveCaptureCore`, `CoreState`, `AXIS_DEADBAND`, etc. is unresolved (the module body is the next step).
 
 - [ ] **Step 4: Implement `LiveCaptureCore::step`**
 
@@ -1729,7 +1729,7 @@ use inputforge_core::types::{HatDirection, InputAddress, InputValue};
 use super::CaptureFilter;
 
 /// Axis movement threshold. A delta below this against baseline is
-/// ignored — protects against sympathetic stick movement and analog
+/// ignored, protects against sympathetic stick movement and analog
 /// noise. Tunable, but no settings UI in F8.
 pub(crate) const AXIS_DEADBAND: f64 = 0.15;
 
@@ -1761,7 +1761,7 @@ pub(crate) struct CoreState {
     pub filter: CaptureFilter,
 }
 
-/// Pure state-transition fn — see F8 spec § "Internal mechanics".
+/// Pure state-transition fn, see F8 spec § "Internal mechanics".
 ///
 /// `step` is a pure read; the slice signature `&[InputCacheEntry]`
 /// avoids per-tick allocation in F12's continuous-poll case (the hook
@@ -1779,7 +1779,7 @@ impl LiveCaptureCore {
         snapshot: &[InputCacheEntry],
         now: Instant,
     ) -> (CoreState, Option<InputAddress>) {
-        // Branch 1: first tick — record baseline, never fire.
+        // Branch 1: first tick, record baseline, never fire.
         let Some(baseline) = prev.baseline.as_ref() else {
             return (
                 CoreState {
@@ -1848,7 +1848,7 @@ impl LiveCaptureCore {
                 None,
             ),
             None => {
-                // Open a fresh window — winner is the largest-delta axis,
+                // Open a fresh window, winner is the largest-delta axis,
                 // OR the first crossing if the dominant kind is not Axis.
                 let winner = pick_winner(&crossings);
                 (
@@ -1862,7 +1862,7 @@ impl LiveCaptureCore {
             }
             Some((pending_addr, t0)) => {
                 if now.duration_since(t0) >= Duration::from_millis(DEBOUNCE_MS) {
-                    // Window expired — fire the current winner and reset.
+                    // Window expired, fire the current winner and reset.
                     return (
                         CoreState {
                             baseline: None,
@@ -1872,7 +1872,7 @@ impl LiveCaptureCore {
                         Some(pending_addr),
                     );
                 }
-                // Still inside the window — keep the larger-absolute-delta
+                // Still inside the window, keep the larger-absolute-delta
                 // candidate. Compute the pending entry's current delta to
                 // compare against new crossings.
                 let mut best_addr = pending_addr.clone();
@@ -1914,13 +1914,13 @@ fn filter_accepts(filter: CaptureFilter, kind: InputKind) -> bool {
 /// - For axis crossings: largest absolute delta wins.
 /// - **Tied absolute deltas:** the first axis encountered in
 ///   `crossings`' order wins (which is the order produced by
-///   `InputCacheStore::clone_compact` — stable + deterministic per
+///   `InputCacheStore::clone_compact`, stable + deterministic per
 ///   Task 4's iteration-order contract).
 /// - For non-axis (buttons/hats, all deltas = 1.0): first crossing wins.
 fn pick_winner(crossings: &[(InputAddress, f64, InputKind)]) -> InputAddress {
     let any_axis = crossings.iter().any(|(_, _, k)| *k == InputKind::Axis);
     if any_axis {
-        // Linear scan with strict `>` (not `>=`) — the first crossing with the
+        // Linear scan with strict `>` (not `>=`), the first crossing with the
         // maximum delta wins on ties (preserves first-encountered order).
         let mut best_idx = 0usize;
         let mut best_delta = crossings[0].1;
@@ -1940,7 +1940,7 @@ fn pick_winner(crossings: &[(InputAddress, f64, InputKind)]) -> InputAddress {
 }
 
 /// Recompute the absolute delta for a pending address against the
-/// current snapshot — used when comparing newly-crossing inputs to
+/// current snapshot, used when comparing newly-crossing inputs to
 /// decide whether to replace the pending winner.
 fn current_delta_for(
     addr: &InputAddress,
@@ -1963,7 +1963,7 @@ fn current_delta_for(
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `cargo test -p inputforge-gui-dx --lib patterns::live_capture::tests`
-Expected: PASS — all nine tests green.
+Expected: PASS, all nine tests green.
 
 - [ ] **Step 6: Commit**
 
@@ -2066,14 +2066,14 @@ mod hook_tests {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cargo test -p inputforge-gui-dx --lib patterns::live_capture::tests::hook_tests`
-Expected: FAIL — `use_live_capture_provider` and `LiveCapture` are not yet exported.
+Expected: FAIL, `use_live_capture_provider` and `LiveCapture` are not yet exported.
 
 - [ ] **Step 3: Implement the hook + handle**
 
-Rewrite `crates/inputforge-gui-dx/src/patterns/live_capture/mod.rs` (overwrite the skeleton from Task 7). Note that a *new* capture must abort any in-flight one — start clears state and sets `active = true`; cancel resets state and sets both `active = false` and `captured = None`.
+Rewrite `crates/inputforge-gui-dx/src/patterns/live_capture/mod.rs` (overwrite the skeleton from Task 7). Note that a *new* capture must abort any in-flight one, start clears state and sets `active = true`; cancel resets state and sets both `active = false` and `captured = None`.
 
 ```rust
-//! Live-capture primitive — see Task 7's mod doc-comment.
+//! Live-capture primitive, see Task 7's mod doc-comment.
 
 mod core;
 #[cfg(test)]
@@ -2113,7 +2113,7 @@ pub(crate) struct LiveCapture {
 /// Allocate the signals and callbacks, install the polling effect and the
 /// document-level Esc-priority listener, AND register the resulting
 /// `LiveCapture` with the Dioxus context system. Call exactly once from
-/// `app_root` — the provider self-installs, so callers get the handle as
+/// `app_root`, the provider self-installs, so callers get the handle as
 /// the return value but do NOT need a separate `use_context_provider(...)`
 /// line.
 pub(crate) fn use_live_capture_provider() -> LiveCapture {
@@ -2129,7 +2129,7 @@ pub(crate) fn use_live_capture_provider() -> LiveCapture {
     let armed_listener_mounted: Signal<bool> = use_signal(|| false);
     let shutdown_signal: Signal<bool> = use_signal(|| false);
 
-    // start(filter) — reset state, install fresh filter, arm.
+    // start(filter), reset state, install fresh filter, arm.
     let start = use_callback(move |filter: CaptureFilter| {
         let mut s = core_state;
         s.set(CoreState {
@@ -2144,7 +2144,7 @@ pub(crate) fn use_live_capture_provider() -> LiveCapture {
         tracing::debug!(target: "f8::live_capture", ?filter, "capture armed");
     });
 
-    // cancel() — reset state, drop captured, disarm. Setting active=false
+    // cancel(), reset state, drop captured, disarm. Setting active=false
     // also flips `shutdown_signal` so the document listener tears down
     // cleanly via removeEventListener.
     let cancel = use_callback(move |()| {
@@ -2166,7 +2166,7 @@ pub(crate) fn use_live_capture_provider() -> LiveCapture {
 
     let ctx = use_context::<AppContext>();
 
-    // Polling effect — ticks every time `ctx.live` updates (~60Hz from
+    // Polling effect, ticks every time `ctx.live` updates (~60Hz from
     // the bridge polling task). Reads the current `InputCacheStore` via
     // a non-blocking try_read, drops the guard before any signal
     // writes, and threads the snapshot through `LiveCaptureCore::step`.
@@ -2204,7 +2204,7 @@ pub(crate) fn use_live_capture_provider() -> LiveCapture {
                 let mut a = active;
                 a.set(false);
                 let mut sd = shutdown_signal;
-                sd.set(true); // tear the listener down — fired implies disarm.
+                sd.set(true); // tear the listener down, fired implies disarm.
                 tracing::debug!(
                     target: "f8::live_capture",
                     ?addr,
@@ -2214,9 +2214,9 @@ pub(crate) fn use_live_capture_provider() -> LiveCapture {
         });
     }
 
-    // Esc-priority listener — document-level (capture phase), shielded by
+    // Esc-priority listener, document-level (capture phase), shielded by
     // the `armed_listener_mounted` dedup guard. Pattern mirrors
-    // `frame::top_bar::mode_tabs::context_menu` (lines 219–240): one-shot
+    // `frame::top_bar::mode_tabs::context_menu` (lines 219-240): one-shot
     // mount + parked recv loop + explicit shutdown signal.
     let cancel_for_esc = cancel;
     use_effect(move || {
@@ -2313,10 +2313,10 @@ use crate::patterns::live_capture::use_live_capture_provider;
 Then, immediately after the existing `use_context_provider(|| toast_queue);` line (currently line 43), add a single-line invocation. The provider self-installs the context (D15), so no separate `use_context_provider(|| live_capture)` is needed:
 
 ```rust
-// F8: live-capture primitive — single instance, sibling of ToastQueue.
+// F8: live-capture primitive, single instance, sibling of ToastQueue.
 // Each consumer reads via `use_context::<LiveCapture>()`. Starting a
 // new capture cancels any in-flight one. The provider registers itself
-// via `use_context_provider` internally — caller just invokes it.
+// via `use_context_provider` internally, caller just invokes it.
 use_live_capture_provider();
 ```
 
@@ -2329,12 +2329,12 @@ use_live_capture_provider();
 - [ ] **Step 5: Run the smoke tests**
 
 Run: `cargo test -p inputforge-gui-dx --lib patterns::live_capture::tests::hook_tests`
-Expected: PASS — both smoke tests green.
+Expected: PASS, both smoke tests green.
 
 - [ ] **Step 6: Run the existing app mount-regression test**
 
 Run: `cargo test -p inputforge-gui-dx --lib app`
-Expected: PASS — `app_root_mounts_frame_layout_not_placeholder_shell` still green.
+Expected: PASS, `app_root_mounts_frame_layout_not_placeholder_shell` still green.
 
 - [ ] **Step 7: Commit**
 
@@ -2347,7 +2347,7 @@ git commit -m "feat(live_capture): hook adapter, provider, and Esc-priority list
 
 ### Task 9: Verify cargo build + clippy stays clean across all engine + state changes
 
-Sanity gate before moving to GUI rendering. The change set is now substantial — `EngineCommand`, `Profile`, `RunningEngine`, `InputCacheStore`, `ConfigSnapshot`, `ViewState`, `LiveCapture`. Confirm no dead-code warnings or clippy regressions slipped in.
+Sanity gate before moving to GUI rendering. The change set is now substantial, `EngineCommand`, `Profile`, `RunningEngine`, `InputCacheStore`, `ConfigSnapshot`, `ViewState`, `LiveCapture`. Confirm no dead-code warnings or clippy regressions slipped in.
 
 - [ ] **Step 1: `cargo check` across the workspace**
 
@@ -2377,13 +2377,13 @@ Re-run `cargo fmt --check` before continuing past this gate. The previous auto-c
 
 ---
 
-## Phase D — Mapping list pure-logic leaves (Tasks 10–13)
+## Phase D, Mapping list pure-logic leaves (Tasks 10-13)
 
 Each pure-logic module ships first so its consumers (the renderers in Phase E) can compile against a known-good API. None of these tasks touch Dioxus.
 
 ### Task 10: `mapping_list/mod.rs` skeleton + stub module files + CSS asset
 
-Sets up the module tree and the CSS asset constant so subsequent tasks can `mod source_label;` etc. without hitting "module not found" errors. The `MappingList` component itself is a stub that renders an empty `div.if-rail` — full body lands in Task 19. **Stub files for each declared sub-module are created here too** so the `mod source_label;` etc. declarations resolve without `E0583`. Tasks 11, 12, 14, 13, 17, 15, 16, and 18 will overwrite these stubs (via `Write`) with real content.
+Sets up the module tree and the CSS asset constant so subsequent tasks can `mod source_label;` etc. without hitting "module not found" errors. The `MappingList` component itself is a stub that renders an empty `div.if-rail`, full body lands in Task 19. **Stub files for each declared sub-module are created here too** so the `mod source_label;` etc. declarations resolve without `E0583`. Tasks 11, 12, 14, 13, 17, 15, 16, and 18 will overwrite these stubs (via `Write`) with real content.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/frame/mapping_list/mod.rs`
@@ -2403,17 +2403,17 @@ Sets up the module tree and the CSS asset constant so subsequent tasks can `mod 
 Create `crates/inputforge-gui-dx/assets/frame/mapping_list.css` with a placeholder header comment (full styling lands in Task 26):
 
 ```css
-/* F8 mapping list (left rail). Tokens-only — no raw color literals.
+/* F8 mapping list (left rail). Tokens-only, no raw color literals.
  * See DESIGN.md for token catalog. */
 
 .if-rail {
-    /* placeholder — Task 26 fills in full styling */
+    /* placeholder, Task 26 fills in full styling */
 }
 ```
 
 - [ ] **Step 1b: Create the 8 sub-module stub files**
 
-Each stub is a single comment line so the `mod XXX;` declarations in Step 2 resolve without `E0583`. Subsequent tasks overwrite these stubs (via `Write`) with real content. Use the `Write` tool — these are new files.
+Each stub is a single comment line so the `mod XXX;` declarations in Step 2 resolve without `E0583`. Subsequent tasks overwrite these stubs (via `Write`) with real content. Use the `Write` tool, these are new files.
 
 | File | Content (single line) | Filled in by |
 |---|---|---|
@@ -2436,15 +2436,15 @@ Create `crates/inputforge-gui-dx/src/frame/mapping_list/mod.rs`:
 //! design rationale.
 //!
 //! Composition (inside-out, in dependency order):
-//!   - `source_label::format` — InputAddress → "TFM Throttle · Z" formatter
-//!   - `group::group_of`      — bucketing by InputId kind
-//!   - `filter::matches_filter` — name + source-label substring match
-//!   - `row::Row`             — single row component
-//!   - `rename_inline::RenameInline` — inline rename
-//!   - `add_inline::AddInline` — `+ Add mapping` capture state machine
+//!   - `source_label::format`, InputAddress → "TFM Throttle · Z" formatter
+//!   - `group::group_of`     , bucketing by InputId kind
+//!   - `filter::matches_filter`, name + source-label substring match
+//!   - `row::Row`            , single row component
+//!   - `rename_inline::RenameInline`, inline rename
+//!   - `add_inline::AddInline`, `+ Add mapping` capture state machine
 //!   - `empty::EmptyZeroMappings` / `empty::EmptyZeroFilterResults`
-//!   - `keyboard::install_keyboard_handlers` — Up/Down/Enter/Cmd-F/Esc
-//!   - `MappingList` (this fn) — orchestrates everything
+//!   - `keyboard::install_keyboard_handlers`, Up/Down/Enter/Cmd-F/Esc
+//!   - `MappingList` (this fn), orchestrates everything
 
 mod source_label;
 mod group;
@@ -2472,7 +2472,7 @@ pub(crate) fn MappingList() -> Element {
     rsx! {
         Stylesheet { href: MAPPING_LIST_CSS }
         div { class: "if-rail",
-            // Stub — Task 18 wires filter / rows / empty states / inline editor.
+            // Stub, Task 18 wires filter / rows / empty states / inline editor.
         }
     }
 }
@@ -2575,7 +2575,7 @@ git commit -m "feat(mapping_list): module skeleton with 8 sub-module stubs, CSS 
 
 ---
 
-### Task 11: `source_label::format` — InputAddress → "Device · Input" formatter
+### Task 11: `source_label::format`, InputAddress → "Device · Input" formatter
 
 Pure fn that walks `cfg.devices` to find the device by `addr.device` and formats `"<device.name> · <input-label>"`. Ports the legacy `axis_label` helper from `inputforge-gui` so HID-standard axis names (X / Y / Z / Rot X / …) survive the rewrite.
 
@@ -2584,7 +2584,7 @@ Pure fn that walks `cfg.devices` to find the device by `addr.device` and formats
 
 - [ ] **Step 1 (verification task): Write tests AND implementation together.**
 
-Pure-logic tasks at this layer do not have a meaningful failing state — the test asserts behavior the implementation defines. Write both the function bodies and the `#[cfg(test)] mod tests` content in a single edit, then run the tests once to confirm they pass.
+Pure-logic tasks at this layer do not have a meaningful failing state, the test asserts behavior the implementation defines. Write both the function bodies and the `#[cfg(test)] mod tests` content in a single edit, then run the tests once to confirm they pass.
 
 Use `Write` (not `Edit`) since this overwrites the Task 10 stub. Content of `crates/inputforge-gui-dx/src/frame/mapping_list/source_label.rs` (tests live in the same file in `#[cfg(test)] mod tests`):
 
@@ -2680,7 +2680,7 @@ mod tests {
 
     #[test]
     fn format_button_one_indexed() {
-        // F8 spec: "Button index `i` → `Btn {i+1}`" — user-facing one-indexed.
+        // F8 spec: "Button index `i` → `Btn {i+1}`", user-facing one-indexed.
         let cfg = cfg_with_device("TFM Throttle", "tfm");
         let addr = InputAddress {
             device: DeviceId("tfm".to_owned()),
@@ -2714,7 +2714,7 @@ mod tests {
 - [ ] **Step 2: Run tests to verify they pass**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::mapping_list::source_label::tests`
-Expected: PASS — five tests green.
+Expected: PASS, five tests green.
 
 - [ ] **Step 3: Commit**
 
@@ -2734,7 +2734,7 @@ Pure-logic enum + dispatch. Render order is fixed AXES → BUTTONS → HATS.
 
 - [ ] **Step 1 (verification task): Write tests AND implementation together.**
 
-Pure-logic tasks at this layer do not have a meaningful failing state — the test asserts behavior the implementation defines. Use `Write` to overwrite the Task 10 stub. Content of `crates/inputforge-gui-dx/src/frame/mapping_list/group.rs`:
+Pure-logic tasks at this layer do not have a meaningful failing state, the test asserts behavior the implementation defines. Use `Write` to overwrite the Task 10 stub. Content of `crates/inputforge-gui-dx/src/frame/mapping_list/group.rs`:
 
 ```rust
 //! Bucket mappings by input kind. Render order is fixed AXES → BUTTONS → HATS.
@@ -2750,7 +2750,7 @@ pub(crate) enum GroupKind {
 
 impl GroupKind {
     /// Fixed render order. Iteration produces [`GroupKind::Axes`,
-    /// `GroupKind::Buttons`, `GroupKind::Hats`] — empty groups are
+    /// `GroupKind::Buttons`, `GroupKind::Hats`], empty groups are
     /// omitted at render time, but ordering between the surviving
     /// groups never changes.
     pub(crate) const fn ordered() -> [GroupKind; 3] {
@@ -2836,7 +2836,7 @@ git commit -m "feat(mapping_list): GroupKind enum and group_of bucketing"
 
 ---
 
-### Task 13: `filter::matches_filter` — case-insensitive substring match
+### Task 13: `filter::matches_filter`, case-insensitive substring match
 
 Pure fn that takes a query, a `MappingSummary`, and the `ConfigSnapshot` (to compute the source label) and returns `bool` for "this row survives the filter". Empty query returns `true`. Case-insensitive single-substring against `name + source_label`.
 
@@ -2845,7 +2845,7 @@ Pure fn that takes a query, a `MappingSummary`, and the `ConfigSnapshot` (to com
 
 - [ ] **Step 1 (verification task): Write tests AND implementation together.**
 
-Pure-logic tasks at this layer do not have a meaningful failing state — the test asserts behavior the implementation defines. Use `Write` to overwrite the Task 10 stub. Content of `crates/inputforge-gui-dx/src/frame/mapping_list/filter.rs`:
+Pure-logic tasks at this layer do not have a meaningful failing state, the test asserts behavior the implementation defines. Use `Write` to overwrite the Task 10 stub. Content of `crates/inputforge-gui-dx/src/frame/mapping_list/filter.rs`:
 
 ```rust
 //! Filter logic for the F8 mapping list.
@@ -2968,7 +2968,7 @@ mod tests {
             name: None,
             glyphs: GlyphFlags::default(),
         };
-        // Source label = "TFM Throttle · Z" — matches against "Z".
+        // Source label = "TFM Throttle · Z", matches against "Z".
         assert!(matches_filter(&row, "Z", &cfg));
         assert!(matches_filter(&row, "tfm", &cfg));
     }
@@ -2978,7 +2978,7 @@ mod tests {
 - [ ] **Step 2: Run tests**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::mapping_list::filter::tests`
-Expected: PASS — five tests green.
+Expected: PASS, five tests green.
 
 - [ ] **Step 3: Commit**
 
@@ -2989,13 +2989,13 @@ git commit -m "feat(mapping_list): case-insensitive substring filter over name +
 
 ---
 
-## Phase E — Mapping list renderers (Tasks 14–22)
+## Phase E, Mapping list renderers (Tasks 14-22)
 
-### Task 14: `row::Row` — single mapping row component
+### Task 14: `row::Row`, single mapping row component
 
 Renders one row: name (12px), source-line (10px muted), optional gold `+` glyph + secondary input, optional violet `⊕` glyph + predicate summary. LMB sets `selected_mapping`; RMB opens the right-click menu (Task 19). Active state: `is-active` class adds 3px focus-cyan left border + 10% primary tint.
 
-The Row component is intentionally low-level — it does NOT own `selected_mapping` or the right-click menu state. The parent (`mod.rs`) hands it the relevant signals as props.
+The Row component is intentionally low-level, it does NOT own `selected_mapping` or the right-click menu state. The parent (`mod.rs`) hands it the relevant signals as props.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/frame/mapping_list/row.rs`
@@ -3120,7 +3120,7 @@ fn row_glyphs_render_for_merge_and_conditional() {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::mapping_list::tests::row_`
-Expected: FAIL — `row::Row` does not yet exist.
+Expected: FAIL, `row::Row` does not yet exist.
 
 - [ ] **Step 3: Implement `Row`**
 
@@ -3146,7 +3146,7 @@ use crate::frame::view_state::ViewState;
 pub(crate) fn Row(
     summary: MappingSummary,
     is_active: bool,
-    /// `Some(addr)` when this row's name is currently being inline-renamed —
+    /// `Some(addr)` when this row's name is currently being inline-renamed -
     /// the parent hoists this signal so only one row at a time is in rename
     /// mode. Owned by `mod.rs`. Task 14 only reads this for prop forwarding
     /// (the resting row never branches on it); Task 15 introduces the
@@ -3235,12 +3235,12 @@ pub(crate) fn Row(
 }
 ```
 
-**Task 14 ships only the resting row.** The `if is_renaming { RenameInline } else { ... }` branch is introduced by Task 15 (which modifies `row.rs` in addition to creating `rename_inline.rs`). Tests in Task 14 verify only the resting state — they do not assert on rename swap-in.
+**Task 14 ships only the resting row.** The `if is_renaming { RenameInline } else { ... }` branch is introduced by Task 15 (which modifies `row.rs` in addition to creating `rename_inline.rs`). Tests in Task 14 verify only the resting state, they do not assert on rename swap-in.
 
 - [ ] **Step 4: Run tests**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::mapping_list::tests::row_`
-Expected: PASS — three tests green.
+Expected: PASS, three tests green.
 
 - [ ] **Step 5: Commit**
 
@@ -3251,7 +3251,7 @@ git commit -m "feat(mapping_list): Row component with name, source line, glyphs,
 
 ---
 
-### Task 15: `rename_inline::RenameInline` — inline rename for an existing row
+### Task 15: `rename_inline::RenameInline`, inline rename for an existing row
 
 Mirrors F7's `mode_tabs::rename_inline::RenameInline` shape. Replaces the row's name `<div>` with a focused `<input>`. Enter dispatches `EngineCommand::SetMapping` with the same actions and the new name. Esc reverts. Blur with non-empty value commits; blur with empty reverts.
 
@@ -3340,7 +3340,7 @@ fn row_swaps_in_rename_inline_when_renaming_matches_input() {
             name: Some("Boost".to_owned()),
             glyphs: GlyphFlags::default(),
         };
-        // renaming.set(Some(summary.input)) — Row should swap into the rename branch.
+        // renaming.set(Some(summary.input)), Row should swap into the rename branch.
         let renaming: Signal<Option<InputAddress>> =
             use_signal(|| Some(summary.input.clone()));
         rsx! {
@@ -3359,7 +3359,7 @@ fn row_swaps_in_rename_inline_when_renaming_matches_input() {
         html.contains("if-row-rename"),
         "Row must swap in RenameInline when renaming matches the row's input: {html}",
     );
-    // Resting markup must be replaced — no `if-row__name` div.
+    // Resting markup must be replaced, no `if-row__name` div.
     assert!(
         !html.contains("if-row__name\""),
         "Row must NOT render the resting name div while renaming: {html}",
@@ -3418,7 +3418,7 @@ Create `crates/inputforge-gui-dx/src/frame/mapping_list/rename_inline.rs`:
 
 ```rust
 //! Inline rename for an existing mapping row. Mirrors F7's
-//! `mode_tabs::rename_inline::RenameInline` — Enter dispatches
+//! `mode_tabs::rename_inline::RenameInline`, Enter dispatches
 //! `SetMapping` with same actions + new name; Esc reverts; blur with
 //! empty value reverts; blur with non-empty value commits.
 
@@ -3552,7 +3552,7 @@ pub(crate) fn RenameInline(
 }
 ```
 
-If `TextInput` does not currently accept a `class` prop or `onkeydown` / `onfocusout` props, check the component definition at `crates/inputforge-gui-dx/src/components/text_input.rs`. The mode-tabs `RenameInline` passes those event handlers through a wrapping `<div>` rather than directly on `TextInput` — mirror that shape if `TextInput`'s prop surface is narrower:
+If `TextInput` does not currently accept a `class` prop or `onkeydown` / `onfocusout` props, check the component definition at `crates/inputforge-gui-dx/src/components/text_input.rs`. The mode-tabs `RenameInline` passes those event handlers through a wrapping `<div>` rather than directly on `TextInput`, mirror that shape if `TextInput`'s prop surface is narrower:
 
 ```rust
 div {
@@ -3643,11 +3643,11 @@ Create `crates/inputforge-gui-dx/src/frame/mapping_list/empty.rs`:
 ```rust
 //! Empty-state renderers for the F8 mapping list rail.
 //!
-//! State A — zero mappings overall (profile loaded, mode has none):
+//! State A, zero mappings overall (profile loaded, mode has none):
 //!   title + helper + primary `+ Add mapping` button that expands directly
 //!   into `CapturingArmed` (skips Resting → click).
 //!
-//! State B — zero filter results: title quoting `<query>` + helper +
+//! State B, zero filter results: title quoting `<query>` + helper +
 //!   ghost-link `Clear filter` button.
 
 use dioxus::prelude::*;
@@ -3711,11 +3711,11 @@ git commit -m "feat(mapping_list): empty-state components for zero-mappings and 
 
 ---
 
-### Task 17: `add_inline::AddInline` — `+ Add mapping` capture state machine
+### Task 17: `add_inline::AddInline`, `+ Add mapping` capture state machine
 
 The full state machine from spec §"`+ Add mapping` state machine". `Resting` → `CapturingArmed` → `{Captured | Collision | CapturingDisarmed}` → `Resting`. Watches `LiveCapture::captured` and re-validates `Collision` against `cfg.mappings` once per polling tick (collision drift).
 
-Component has its own internal state — the parent (`mod.rs`) only needs to mount it and read whether it's expanded (so the keyboard handler can know to skip Up/Down dispatch).
+Component has its own internal state, the parent (`mod.rs`) only needs to mount it and read whether it's expanded (so the keyboard handler can know to skip Up/Down dispatch).
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/frame/mapping_list/add_inline.rs`
@@ -3833,7 +3833,7 @@ pub(crate) fn AddInline(
     let mut state: Signal<AddState> = use_signal(|| AddState::Resting);
     let mut name: Signal<String> = use_signal(String::new);
 
-    // Honor `force_expanded` from the parent — used by EmptyZeroMappings'
+    // Honor `force_expanded` from the parent, used by EmptyZeroMappings'
     // primary button to skip the dashed-row click.
     {
         let mut state = state;
@@ -3847,7 +3847,7 @@ pub(crate) fn AddInline(
         });
     }
 
-    // Watch `cap.captured` — when capture lands, transition to Captured
+    // Watch `cap.captured`, when capture lands, transition to Captured
     // or Collision based on whether the address is already mapped in the
     // active editing mode.
     {
@@ -3889,7 +3889,7 @@ pub(crate) fn AddInline(
         });
     }
 
-    // Watch active flipping false externally (Esc taken by primitive) —
+    // Watch active flipping false externally (Esc taken by primitive) -
     // transition Armed → Disarmed.
     {
         let cap = cap;
@@ -3926,7 +3926,7 @@ pub(crate) fn AddInline(
     }
 
     // Dispatch `SetMapping` with empty-actions. Engine treats empty-actions
-    // SetMapping as a removal — but the F8 spec explicitly creates the
+    // SetMapping as a removal, but the F8 spec explicitly creates the
     // mapping with an empty action vector here to let F9 fill it in. We
     // dispatch the command and let F9 own the editor surface; the engine
     // will discard it on save unless F9 fills it in. (Per spec §"+ Add
@@ -3992,7 +3992,7 @@ pub(crate) fn AddInline(
                         state.set(AddState::CapturingArmed);
                         cap.start.call(CaptureFilter::Any);
                     },
-                    "Cancelled — click to capture again"
+                    "Cancelled, click to capture again"
                 }
                 TextInput {
                     value: ReadSignal::from(name),
@@ -4056,7 +4056,7 @@ pub(crate) fn AddInline(
         }
         AddState::Collision { existing_name, existing } => {
             let existing_for_btn = existing.clone();
-            // M4: dynamic source label for the collision message — no
+            // M4: dynamic source label for the collision message, no
             // hard-coded "Btn" prefix. Uses the same source_label::format
             // path as the resting row's source line.
             let cfg = ctx.config.read();
@@ -4099,7 +4099,7 @@ pub(crate) fn AddInline(
 - [ ] **Step 4: Run tests**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::mapping_list::tests::add_inline`
-Expected: PASS — both tests green.
+Expected: PASS, both tests green.
 
 - [ ] **Step 5: Commit**
 
@@ -4110,7 +4110,7 @@ git commit -m "feat(mapping_list): + Add mapping inline state machine with colli
 
 ---
 
-### Task 18: `keyboard::handle_key` — pure logic for Up/Down/Enter/Cmd-F/Esc
+### Task 18: `keyboard::handle_key`, pure logic for Up/Down/Enter/Cmd-F/Esc
 
 The keyboard logic that maps a key event + current state to a side-effect intent. Pure-fn-friendly: extracts the routing decision from the key dispatch so it can be unit-tested without mounting Dioxus. The `mod.rs` orchestrator wires the resulting intents to actual signals.
 
@@ -4382,7 +4382,7 @@ mod tests {
 - [ ] **Step 2: Run tests**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::mapping_list::keyboard::tests`
-Expected: PASS — nine tests green.
+Expected: PASS, nine tests green.
 
 - [ ] **Step 3: Commit**
 
@@ -4393,9 +4393,9 @@ git commit -m "feat(mapping_list): pure-logic keyboard intent dispatcher"
 
 ---
 
-### Task 19: `MappingList` orchestrator — wires filter, rows, empty states, add-inline
+### Task 19: `MappingList` orchestrator, wires filter, rows, empty states, add-inline
 
-Pulls everything together. Reads `cfg.config.mappings`, filters by mode (memo over `editing_mode`), then by query, buckets into groups, renders headers + rows + empty states + the AddInline. Carries the `selected_mapping` from `ViewState` and a `renaming: Signal<Option<InputAddress>>` it owns. The right-click menu and delete dialog are deferred to Task 20–21.
+Pulls everything together. Reads `cfg.config.mappings`, filters by mode (memo over `editing_mode`), then by query, buckets into groups, renders headers + rows + empty states + the AddInline. Carries the `selected_mapping` from `ViewState` and a `renaming: Signal<Option<InputAddress>>` it owns. The right-click menu and delete dialog are deferred to Task 20-21.
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/frame/mapping_list/mod.rs`
@@ -4508,7 +4508,7 @@ fn mapping_list_zero_mappings_renders_empty_state_a() {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::mapping_list::tests::mapping_list_`
-Expected: FAIL — current `MappingList` is the stub from Task 10.
+Expected: FAIL, current `MappingList` is the stub from Task 10.
 
 - [ ] **Step 3: Replace the stub `MappingList` body**
 
@@ -4619,7 +4619,7 @@ pub(crate) fn MappingList() -> Element {
     }
 
     // M2: rewrite group rendering as filter_map producing rsx for the
-    // surviving groups only — no `if/else rsx!{}` empty branches.
+    // surviving groups only, no `if/else rsx!{}` empty branches.
     let group_iter = GroupKind::ordered().into_iter().filter_map(|group| {
         let group_rows: Vec<MappingSummary> = rows
             .iter()
@@ -4668,7 +4668,7 @@ pub(crate) fn MappingList() -> Element {
             { group_iter }
             AddInline { force_expanded: force_expand_add }
             // Right-click menu (Task 20) and delete dialog (Task 21)
-            // mount points — populated when those tasks land.
+            // mount points, populated when those tasks land.
             ContextMenuMount {
                 menu_open: menu_open,
                 renaming: renaming,
@@ -4708,7 +4708,7 @@ fn FilterInput(value: Signal<String>, focused: Signal<bool>) -> Element {
     }
 }
 
-// Stub mounts — actual content arrives in Tasks 20 and 21. They're declared
+// Stub mounts, actual content arrives in Tasks 20 and 21. They're declared
 // here so MappingList compiles end-to-end; each task overwrites the body.
 #[component]
 fn ContextMenuMount(
@@ -4727,7 +4727,7 @@ fn DeleteDialogMount(delete_target: Signal<Option<MappingSummary>>) -> Element {
     rsx! {}
 }
 
-// D11: stub for the duplicate-capture watcher — Task 20 fills this in.
+// D11: stub for the duplicate-capture watcher, Task 20 fills this in.
 #[component]
 fn DuplicateWatcher(pending_duplicate: Signal<Option<MappingSummary>>) -> Element {
     let _ = pending_duplicate;
@@ -4738,7 +4738,7 @@ fn DuplicateWatcher(pending_duplicate: Signal<Option<MappingSummary>>) -> Elemen
 - [ ] **Step 4: Run tests**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::mapping_list::tests`
-Expected: PASS — all existing tests plus the two new orchestrator tests green.
+Expected: PASS, all existing tests plus the two new orchestrator tests green.
 
 - [ ] **Step 5: Commit**
 
@@ -4749,19 +4749,19 @@ git commit -m "feat(mapping_list): orchestrator wires filter, rows, groups, empt
 
 ---
 
-### Task 20: Right-click context menu — Rename / Duplicate / Duplicate to mode… / Delete
+### Task 20: Right-click context menu, Rename / Duplicate / Duplicate to mode… / Delete
 
-Replaces the `ContextMenuMount` stub with a real floating menu. Mirrors the F7 `mode_tabs::context_menu` shape (hand-rolled — `MenuRoot` is trigger-attached and not reusable here). On Rename click → `renaming.set(Some(input))`. On Delete click → `delete_target.set(Some(summary))` (Task 21 owns the dialog).
+Replaces the `ContextMenuMount` stub with a real floating menu. Mirrors the F7 `mode_tabs::context_menu` shape (hand-rolled, `MenuRoot` is trigger-attached and not reusable here). On Rename click → `renaming.set(Some(input))`. On Delete click → `delete_target.set(Some(summary))` (Task 21 owns the dialog).
 
-**Duplicate flow (D11 — fresh capture per spec §12).** Duplicate is an in-mode rebind that requires fresh capture:
+**Duplicate flow (D11, fresh capture per spec §12).** Duplicate is an in-mode rebind that requires fresh capture:
 1. Click "Duplicate" in the menu → menu closes.
 2. `pending_duplicate.set(Some(target_summary))` and `LiveCapture::start(CaptureFilter::Any)` arms capture.
-3. The `DuplicateWatcher` component (also wired in this task — replacing the stub from Task 19) subscribes to `LiveCapture::captured`. On capture-success:
+3. The `DuplicateWatcher` component (also wired in this task, replacing the stub from Task 19) subscribes to `LiveCapture::captured`. On capture-success:
    - If the captured `InputAddress` is already mapped in the active mode, reuse the AddInline collision-redirect: switch selection to the existing row and surface the redirect strip.
    - Otherwise dispatch `EngineCommand::SetMapping { input: captured_addr, mode: active_mode, name: format!("{} (copy)", original.name), actions: original.actions.clone() }`.
 4. Clear `pending_duplicate` on completion.
 
-A transient "duplicate-capture pending" pad mirrors AddInline's `CapturingArmed` UI so the user has visual confirmation that capture is armed (key difference: copy stays — same row, but with a "Press an input to bind…" pad floating above it). Duplicate-to-mode submenu lists `meta.modes` minus active and dispatches without fresh capture (the spec only requires fresh capture for in-mode Duplicate).
+A transient "duplicate-capture pending" pad mirrors AddInline's `CapturingArmed` UI so the user has visual confirmation that capture is armed (key difference: copy stays, same row, but with a "Press an input to bind…" pad floating above it). Duplicate-to-mode submenu lists `meta.modes` minus active and dispatches without fresh capture (the spec only requires fresh capture for in-mode Duplicate).
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/frame/mapping_list/mod.rs`
@@ -4816,7 +4816,7 @@ fn context_menu_renders_when_menu_open_is_set() {
     let mut vdom = VirtualDom::new(TestComponent);
     vdom.rebuild_in_place();
     vdom.rebuild_in_place();
-    // We can't easily fire a real contextmenu event in SSR — the
+    // We can't easily fire a real contextmenu event in SSR, the
     // assertion here is structural: the menu mount must be present in
     // the rendered tree (even if hidden).
     let html = render(&vdom);
@@ -4827,7 +4827,7 @@ fn context_menu_renders_when_menu_open_is_set() {
 }
 ```
 
-- [ ] **Step 2: Run test (compiles + passes — new menu only adds DOM when `menu_open == Some(_)`)**
+- [ ] **Step 2: Run test (compiles + passes, new menu only adds DOM when `menu_open == Some(_)`)**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::mapping_list::tests::context_menu`
 Expected: PASS (the structural test does not require the menu to be open).
@@ -4907,7 +4907,7 @@ fn ContextMenuMount(
                 role: "menuitem",
                 class: "if-row-menu__item",
                 onclick: move |_| {
-                    // D11 — Duplicate: spec §12 says "in-mode rebind, requires
+                    // D11, Duplicate: spec §12 says "in-mode rebind, requires
                     // fresh capture". We close the menu, set pending_duplicate,
                     // and arm LiveCapture. The DuplicateWatcher (below)
                     // observes LiveCapture::captured and dispatches SetMapping
@@ -4928,7 +4928,7 @@ fn ContextMenuMount(
                 },
                 "Duplicate"
             }
-            // Duplicate to mode… (submenu — flat list under the parent for now;
+            // Duplicate to mode… (submenu, flat list under the parent for now;
             // proper submenu UX is impeccable:layout's job).
             div {
                 class: "if-row-menu__item if-row-menu__item--submenu-host",
@@ -5208,7 +5208,7 @@ fn duplicate_capture_dispatches_setmapping_with_copy_suffix_and_cloned_actions()
     // The watcher's effect should observe captured + pending_duplicate
     // and send SetMapping over the channel.
     //
-    // (Detailed construction omitted here — this is a placeholder verifying
+    // (Detailed construction omitted here, this is a placeholder verifying
     // the test will live in this slot once the watcher's signal-driven
     // dispatch shape settles in implementation.)
     // Required assertion shape:
@@ -5221,7 +5221,7 @@ fn duplicate_capture_dispatches_setmapping_with_copy_suffix_and_cloned_actions()
 - [ ] **Step 6: Run tests**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::mapping_list::tests`
-Expected: PASS — every test from prior tasks plus the duplicate flow tests.
+Expected: PASS, every test from prior tasks plus the duplicate flow tests.
 
 - [ ] **Step 7: Commit**
 
@@ -5232,7 +5232,7 @@ git commit -m "feat(mapping_list): right-click menu with Rename/Duplicate(fresh-
 
 ---
 
-### Task 21: Delete dialog — F4 destructive confirm dispatching `RemoveMapping`
+### Task 21: Delete dialog, F4 destructive confirm dispatching `RemoveMapping`
 
 Replaces the `DeleteDialogMount` stub with a real F4 destructive `Dialog` mirroring the `mode_tabs` Delete confirm shape. Confirm → `EngineCommand::RemoveMapping { input, mode }`.
 
@@ -5283,7 +5283,7 @@ fn delete_dialog_renders_when_target_set() {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::mapping_list::tests::delete_dialog`
-Expected: FAIL — the stub renders nothing.
+Expected: FAIL, the stub renders nothing.
 
 - [ ] **Step 3: Replace the `DeleteDialogMount` stub**
 
@@ -5388,15 +5388,15 @@ git commit -m "feat(mapping_list): F4 destructive Delete dialog dispatching Remo
 
 ### Task 22: Wire keyboard handlers via document-level listener
 
-Mounts a true document-level `keydown` listener via `document::eval` + `window.addEventListener("keydown", h, true /* capture phase */)` — same pattern as Task 8's Esc listener (D4). Each event resolves through `keyboard::handle_key` to an `Intent`, then the orchestrator translates the intent to signal writes (selection, focus, filter clear). Cmd-F is detected via `evt.modifiers().meta()` (macOS) or `.ctrl()` (Windows/Linux).
+Mounts a true document-level `keydown` listener via `document::eval` + `window.addEventListener("keydown", h, true /* capture phase */)`, same pattern as Task 8's Esc listener (D4). Each event resolves through `keyboard::handle_key` to an `Intent`, then the orchestrator translates the intent to signal writes (selection, focus, filter clear). Cmd-F is detected via `evt.modifiers().meta()` (macOS) or `.ctrl()` (Windows/Linux).
 
 **Coordination with Phase C's Esc listener.** Both listeners are document-level capture-phase. Task 22's handler reads `LiveCapture.active` synchronously and **early-returns** if `active == true` (the Phase C listener wins on Esc and other keys). This is a one-liner gate inside the JS body or the Rust dispatch.
 
 **Listener lifecycle.** Reuse Task 8's shutdown-signal + mounted-flag pattern: a `kb_listener_mounted: Signal<bool>` dedup guard and a `kb_shutdown_signal: Signal<bool>` Rust→JS teardown trigger. The listener mounts once (component lifetime) and tears down only when the rail unmounts.
 
-**`filter_focused` is read from a real signal** (D5) — `filter_focused: Signal<bool>` allocated in Task 19's orchestrator, threaded into FilterInput (which sets it true on focus / false on blur). Task 22 reads `*filter_focused.read()` into the `State` struct passed to `handle_key`. The redundant `onkeydown` on FilterInput from earlier drafts of this task is **removed**: the unified document listener handles all keyboard cases including filter-Esc-clear.
+**`filter_focused` is read from a real signal** (D5), `filter_focused: Signal<bool>` allocated in Task 19's orchestrator, threaded into FilterInput (which sets it true on focus / false on blur). Task 22 reads `*filter_focused.read()` into the `State` struct passed to `handle_key`. The redundant `onkeydown` on FilterInput from earlier drafts of this task is **removed**: the unified document listener handles all keyboard cases including filter-Esc-clear.
 
-**The rail div no longer needs `tabindex: 0`** — the listener is window-scoped, not focus-scoped.
+**The rail div no longer needs `tabindex: 0`**, the listener is window-scoped, not focus-scoped.
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/frame/mapping_list/mod.rs`
@@ -5428,7 +5428,7 @@ let nav_rows_memo = use_memo(move || {
 use_effect(move || {
     let mut mounted = kb_listener_mounted;
     if *mounted.peek() {
-        return; // already mounted — no re-install on render.
+        return; // already mounted, no re-install on render.
     }
     mounted.set(true);
     let mut sd = kb_shutdown_signal;
@@ -5438,7 +5438,7 @@ use_effect(move || {
         let mut handle = document::eval(
             "const h = (ev) => {\n\
                // Phase C wins while capture is armed: read armed flag from\n\
-               // a global the Rust side maintains — fall back to letting\n\
+               // a global the Rust side maintains, fall back to letting\n\
                // Phase C stopPropagation handle priority.\n\
                // Capture-phase listener.\n\
                const meta = ev.metaKey ? 1 : 0;\n\
@@ -5468,7 +5468,7 @@ use_effect(move || {
             let Ok((key_str, meta, ctrl)) = handle.recv::<(String, u8, u8)>().await else {
                 break;
             };
-            // Coordinate with Phase C — if capture is armed, defer to it.
+            // Coordinate with Phase C, if capture is armed, defer to it.
             if *cap_for_kb.active.read() {
                 continue;
             }
@@ -5525,14 +5525,14 @@ use_effect(move || {
 });
 ```
 
-The rail's outer `<div class="if-rail">` is unchanged — no `tabindex: 0`, no `onkeydown`. The rail does not need to be focusable.
+The rail's outer `<div class="if-rail">` is unchanged, no `tabindex: 0`, no `onkeydown`. The rail does not need to be focusable.
 
-The `FilterInput` component's redundant `onkeydown` is **not** added — removed entirely from the prior draft. The filter input only needs its `onfocus` / `onblur` handlers (already wired in Task 19) so the document listener knows whether the input has focus. Esc-on-filter-with-non-empty-query is handled in the unified document listener path through `Intent::ClearFilter`.
+The `FilterInput` component's redundant `onkeydown` is **not** added, removed entirely from the prior draft. The filter input only needs its `onfocus` / `onblur` handlers (already wired in Task 19) so the document listener knows whether the input has focus. Esc-on-filter-with-non-empty-query is handled in the unified document listener path through `Intent::ClearFilter`.
 
 - [ ] **Step 2: Run all mapping_list tests**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::mapping_list`
-Expected: PASS — no regressions.
+Expected: PASS, no regressions.
 
 - [ ] **Step 3: Commit**
 
@@ -5543,21 +5543,21 @@ git commit -m "feat(mapping_list): document-scoped keyboard listener routes thro
 
 ---
 
-## Phase F — Layout integration, CSS, manual smoke (Tasks 23–28)
+## Phase F, Layout integration, CSS, manual smoke (Tasks 23-28)
 
 ### Task 23: Wire `<MappingList />` into `frame::layout`
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/frame/layout/mod.rs`
 
-**Verify export path before editing.** Task 10 set up `pub(crate) use mapping_list::MappingList;` in `crates/inputforge-gui-dx/src/frame/mod.rs`, which makes `crate::frame::MappingList` the canonical reference. If the export was changed in a later task to `pub(crate) use mapping_list;` (module-only re-export), the path becomes `crate::frame::mapping_list::MappingList` — re-read `frame/mod.rs` before pasting the snippet below and adjust if needed.
+**Verify export path before editing.** Task 10 set up `pub(crate) use mapping_list::MappingList;` in `crates/inputforge-gui-dx/src/frame/mod.rs`, which makes `crate::frame::MappingList` the canonical reference. If the export was changed in a later task to `pub(crate) use mapping_list;` (module-only re-export), the path becomes `crate::frame::mapping_list::MappingList`, re-read `frame/mod.rs` before pasting the snippet below and adjust if needed.
 
 - [ ] **Step 1: Update the layout's main row**
 
 Edit `crates/inputforge-gui-dx/src/frame/layout/mod.rs`. Replace the current rail placeholder:
 
 ```rust
-div { class: "if-layout__rail", "Mapping list — F8 owns content" }
+div { class: "if-layout__rail", "Mapping list, F8 owns content" }
 ```
 
 with the real component (path verified per the note above):
@@ -5587,16 +5587,16 @@ git commit -m "feat(layout): mount MappingList into the if-layout__rail slot"
 
 ---
 
-### Task 24: Component test — full rail with seeded mappings
+### Task 24: Component test, full rail with seeded mappings
 
 The most ambitious SSR test: seed a `ConfigSnapshot` with three axes + one button mapping, plus glyphs (one MergeAxis, one Conditional), and verify the rendered HTML contains both group headers in order, four rows, and both glyph spans. Also adds two empty-state SSR tests so the empty paths are not solely manual-smoke covered.
 
-**Test fixture provenance.** This task uses the `provide_minimal_contexts()` helper introduced in Task 10's `tests.rs` (defined at the top of that file as `fn provide_minimal_contexts() { ... }`). It also relies on `crate::context::MetaSnapshot::from_state` and `crate::context::ConfigSnapshot::from_state` — both shipped in Phase B (Task 5 added `from_state` extension). No additional fixture work is required in this task; if any helper is missing at execution time, fall back to the in-test scaffolding pattern shown at lines around `mapping_list::tests::mapping_list_renders_axes_and_buttons_groups_in_order` (Task 19).
+**Test fixture provenance.** This task uses the `provide_minimal_contexts()` helper introduced in Task 10's `tests.rs` (defined at the top of that file as `fn provide_minimal_contexts() { ... }`). It also relies on `crate::context::MetaSnapshot::from_state` and `crate::context::ConfigSnapshot::from_state`, both shipped in Phase B (Task 5 added `from_state` extension). No additional fixture work is required in this task; if any helper is missing at execution time, fall back to the in-test scaffolding pattern shown at lines around `mapping_list::tests::mapping_list_renders_axes_and_buttons_groups_in_order` (Task 19).
 
 **Files:**
-- Modify: `crates/inputforge-gui-dx/src/frame/mapping_list/tests.rs` (this is a verification task — no separate failing-first step, the implementation already shipped in Tasks 10–22; we add tests here)
+- Modify: `crates/inputforge-gui-dx/src/frame/mapping_list/tests.rs` (this is a verification task, no separate failing-first step, the implementation already shipped in Tasks 10-22; we add tests here)
 
-- [ ] **Step 1 (verification task): Add empty-state SSR tests + seeded-snapshot test together.** This task does not have a failing-first gate — it ships the SSR tests against already-mounted components. Each test stands on its own.
+- [ ] **Step 1 (verification task): Add empty-state SSR tests + seeded-snapshot test together.** This task does not have a failing-first gate, it ships the SSR tests against already-mounted components. Each test stands on its own.
 
 - [ ] **Step 1a: Add `EmptyZeroMappings` SSR test (component-level)**
 
@@ -5680,7 +5680,7 @@ fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
         let modes = ModeTree::from_adjacency(&map).unwrap();
 
         let mappings = vec![
-            // Axis 0 — plain.
+            // Axis 0, plain.
             Mapping {
                 input: InputAddress {
                     device: DeviceId("dev".to_owned()),
@@ -5695,7 +5695,7 @@ fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
                     },
                 }],
             },
-            // Axis 1 — MergeAxis (gold + glyph).
+            // Axis 1, MergeAxis (gold + glyph).
             Mapping {
                 input: InputAddress {
                     device: DeviceId("dev".to_owned()),
@@ -5711,7 +5711,7 @@ fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
                     operation: MergeOp::Sum,
                 }],
             },
-            // Axis 2 — Conditional (violet ⊕ glyph).
+            // Axis 2, Conditional (violet ⊕ glyph).
             Mapping {
                 input: InputAddress {
                     device: DeviceId("dev".to_owned()),
@@ -5788,7 +5788,7 @@ fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
 - [ ] **Step 2: Run the tests**
 
 Run: `cargo test -p inputforge-gui-dx --lib frame::mapping_list::tests::rail_with_seeded_snapshot frame::mapping_list::tests::empty_zero_mappings_renders_full_anatomy frame::mapping_list::tests::empty_zero_filter_results_renders_full_anatomy`
-Expected: PASS — three tests green.
+Expected: PASS, three tests green.
 
 - [ ] **Step 3: Commit**
 
@@ -5808,7 +5808,7 @@ Two more SSR tests: (a) active row carries `is-active`, (b) inline rename swaps 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/frame/mapping_list/tests.rs`
 
-- [ ] **Step 1 (verification task): Append the two SSR tests.** This is a verification task — write tests and run them; the implementation already shipped in Task 14 (active-row class) and Task 15 (inline-rename swap-in).
+- [ ] **Step 1 (verification task): Append the two SSR tests.** This is a verification task, write tests and run them; the implementation already shipped in Task 14 (active-row class) and Task 15 (inline-rename swap-in).
 
 ```rust
 #[test]
@@ -5908,7 +5908,7 @@ fn inline_rename_swaps_in_for_active_row() {
             meta_signal.set(crate::context::MetaSnapshot::from_state(&state));
         });
 
-        // Open inline rename via context menu would require event firing —
+        // Open inline rename via context menu would require event firing -
         // for the SSR test, we set `renaming` directly through a child
         // signal. Hardest part is reaching into MappingList's local
         // `renaming` signal; the easier path is asserting through the
@@ -5954,9 +5954,9 @@ git commit -m "test(mapping_list): active-row class + inline-rename swap SSR cov
 
 ---
 
-### Task 26: CSS — full rail styling
+### Task 26: CSS, full rail styling
 
-Tokens-only — no raw color literals. Pull from `assets/tokens/*.css` (existing F2 design system) and the conventions established in `frame/top_bar.css`.
+Tokens-only, no raw color literals. Pull from `assets/tokens/*.css` (existing F2 design system) and the conventions established in `frame/top_bar.css`.
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/assets/frame/mapping_list.css`
@@ -5966,7 +5966,7 @@ Tokens-only — no raw color literals. Pull from `assets/tokens/*.css` (existing
 Edit `crates/inputforge-gui-dx/assets/frame/mapping_list.css`. Read `assets/frame/top_bar.css` first for the established patterns (rail width, padding rhythm, group headers, focus ring, glyph colors). Concrete rules:
 
 ```css
-/* F8 mapping list (left rail). Tokens-only — no raw color literals.
+/* F8 mapping list (left rail). Tokens-only, no raw color literals.
  * See DESIGN.md for token catalog. */
 
 .if-rail {
@@ -6099,7 +6099,7 @@ Edit `crates/inputforge-gui-dx/assets/frame/mapping_list.css`. Read `assets/fram
     color: var(--color-text-muted);
 }
 
-/* D8: Captured pad — same shell as armed (cyan border) but contains a
+/* D8: Captured pad, same shell as armed (cyan border) but contains a
  * named-input field where the user types the new mapping's name. */
 .if-add-inline__captured {
     background: var(--color-surface-2);
@@ -6121,7 +6121,7 @@ Edit `crates/inputforge-gui-dx/assets/frame/mapping_list.css`. Read `assets/fram
     padding: var(--space-1) var(--space-2);
 }
 
-/* D8: Collision strip — warning-tinted background; the [Edit existing →]
+/* D8: Collision strip, warning-tinted background; the [Edit existing →]
  * button styles like a ghost link so it reads as recovery rather than
  * destruction. */
 .if-add-inline__collision {
@@ -6143,7 +6143,7 @@ Edit `crates/inputforge-gui-dx/assets/frame/mapping_list.css`. Read `assets/fram
  * .if-rail-empty__clear-filter (compare with Task 26 base styling).
  * Calling out the choice explicitly so future authors match it. */
 
-/* D8: Inline-rename input styling — `.if-row-rename` was asserted by
+/* D8: Inline-rename input styling, `.if-row-rename` was asserted by
  * Task 25's SSR test but had no CSS until now. */
 .if-row-rename {
     font-size: 12px;
@@ -6155,7 +6155,7 @@ Edit `crates/inputforge-gui-dx/assets/frame/mapping_list.css`. Read `assets/fram
     width: 100%;
 }
 
-/* D8: focus-visible rules — applies to the rail's interactive surfaces.
+/* D8: focus-visible rules, applies to the rail's interactive surfaces.
  * Pattern mirrors `top_bar.css`'s focus-ring convention (token
  * `--color-focus-ring`; if missing in tokens.css, audit for
  * `--color-focus-cyan` usage and swap accordingly). */
@@ -6168,7 +6168,7 @@ Edit `crates/inputforge-gui-dx/assets/frame/mapping_list.css`. Read `assets/fram
 }
 
 /* D8: The empty-state primary button reuses .if-add-inline__dashed-row
- * styling (preferred per spec §16 — "primary `+ Add mapping` button that
+ * styling (preferred per spec §16, "primary `+ Add mapping` button that
  * expands directly into `CapturingArmed` (skips the dashed-row click)").
  * If a future design pass wants a dedicated treatment, add a
  * `.if-rail-empty__add` selector here. */
@@ -6235,7 +6235,7 @@ If any token referenced above does not exist in `assets/tokens/*.css` (`--color-
 - [ ] **Step 2: Run the GUI build**
 
 Run: `cargo build -p inputforge-gui-dx`
-Expected: PASS — CSS asset references compile and asset-include macros (which run during build, not during `cargo check`) succeed. `cargo check` is insufficient here because it does not exercise the asset-bundling pipeline.
+Expected: PASS, CSS asset references compile and asset-include macros (which run during build, not during `cargo check`) succeed. `cargo check` is insufficient here because it does not exercise the asset-bundling pipeline.
 
 - [ ] **Step 3: Manual visual smoke (the test harness can't render CSS)**
 
@@ -6258,13 +6258,13 @@ Eight scenarios, run against `cargo run --release`. Record PASS/FAIL inline. Any
 - [x] **Step 1: Group bucketing + selection**
   - Load a profile with axes + buttons + hats mapped in `Default`.
   - Verify rows render in AXES → BUTTONS → HATS order.
-  - LMB a row — `is-active` appears, `selected_mapping == Some((mode, input))`.
-  - Switch editing mode — selection clears, rail repopulates.
+  - LMB a row, `is-active` appears, `selected_mapping == Some((mode, input))`.
+  - Switch editing mode, selection clears, rail repopulates.
 
 - [x] **Step 2: Filter behavior**
-  - Type `boost` into the filter — only matching rows survive.
-  - Clear filter — all rows return.
-  - Filter to zero results — Empty State B renders quoting the query; Clear filter button works.
+  - Type `boost` into the filter, only matching rows survive.
+  - Clear filter, all rows return.
+  - Filter to zero results, Empty State B renders quoting the query; Clear filter button works.
 
 - [x] **Step 3: `+ Add mapping` flow (capture path)**
   - Click `+ Add mapping`. Capture pad appears. Press a button → Captured state.
@@ -6273,7 +6273,7 @@ Eight scenarios, run against `cargo run --release`. Record PASS/FAIL inline. Any
 - [x] **Step 4: `+ Add mapping` flow (collision path)**
   - Click `+ Add mapping`. Capture pad appears. Press an already-mapped input.
   - Collision strip appears: *"Btn N already mapped to <name>"* + `[Edit existing →]`.
-  - Click `Edit existing →` — selection jumps to the existing row, inline form closes.
+  - Click `Edit existing →`, selection jumps to the existing row, inline form closes.
 
 - [x] **Step 5: Right-click menu**
   - RMB a row. Menu appears anchored at cursor.
@@ -6286,27 +6286,27 @@ Eight scenarios, run against `cargo run --release`. Record PASS/FAIL inline. Any
   - On a multi-mode profile: submenu lists every other mode. Click one → row appears in target mode (verify by switching tab).
 
 - [x] **Step 7: Keyboard navigation**
-  - Click on the rail; press Down — first row selects.
+  - Click on the rail; press Down, first row selects.
   - Down/Up wraps at boundaries.
   - Cmd-F focuses filter.
   - Esc on filter with non-empty query clears.
-  - Enter on selected row — focus moves to `[data-editor-focus]` (F9 is not implemented, so this is a no-op from the user's POV; verify via DevTools that no error is thrown).
+  - Enter on selected row, focus moves to `[data-editor-focus]` (F9 is not implemented, so this is a no-op from the user's POV; verify via DevTools that no error is thrown).
 
 - [x] **Step 8: Live-capture Esc priority** *(behavior re-spec'd post-unified-pad: first Esc now closes the pad outright; the `CapturingDisarmed` intermediate was dropped in commit `776cbf7`. Verified by user.)*
   - Click `+ Add mapping`. Capture pad armed.
   - Press Esc → pad closes outright (returns to `Resting`).
 
-- [x] **Step 9: AC §11a — joystick already-displaced baseline**
+- [x] **Step 9: AC §11a, joystick already-displaced baseline**
   - Hold any analog stick axis displaced (e.g., near +0.3) before clicking `+ Add mapping`.
   - Click `+ Add mapping`. Confirm capture does NOT fire on arming (the pad stays in CapturingArmed; baseline is being recorded).
   - Then move the axis further past deadband (delta from baseline) → confirm capture fires and the captured `InputAddress` is the displaced axis.
 
-- [x] **Step 10: AC §11b — always-on switch toggles either direction**
+- [x] **Step 10: AC §11b, always-on switch toggles either direction**
   - If you have a switch-style hardware input (a toggle that's always pressed in one position), arm capture via `+ Add mapping`.
   - Flip the switch in either direction → confirm capture fires for both directions (AC §11b: baseline records the always-on press; the toggle is the edge that fires).
   - **If no such hardware is available**, mark this scenario as **untested** in the executor's report and flag AC §11b as deferred to a future smoke pass. Do not attempt to simulate via software.
 
-- [x] **Step 11: AC §12 — multi-axis simultaneous nudge**
+- [x] **Step 11: AC §12, multi-axis simultaneous nudge**
   - Arm capture via `+ Add mapping`.
   - Move two analog stick axes simultaneously such that one travels further than the other within ~50ms (the debounce window) → confirm the axis with the larger delta wins (the smaller-delta axis must NOT be captured).
   - The unit test in Task 7 covers this deterministically; this manual scenario is the integration check that the polling-tick rate + clone_compact + step pipeline produces the same outcome with real hardware.
@@ -6316,23 +6316,23 @@ If every scenario passes, commit a marker file or simply move on. If any fails, 
 - [x] **Step 12: Commit (only if you needed to fix anything)**
 
 ```bash
-# git status — if clean, skip.
+# git status, if clean, skip.
 git status
 ```
 
-Clean — no fixes needed from the manual smoke.
+Clean, no fixes needed from the manual smoke.
 
 ---
 
 ### Task 28: Self-review + impeccable invocations
 
-The spec lists six impeccable commands to run during F8 implementation: `shape`, `frontend-design`, `layout`, `typeset`, `clarify`, `polish`. They are interactive design-review skills, not file edits — invoke them after the GUI is mountable and visually inspectable.
+The spec lists six impeccable commands to run during F8 implementation: `shape`, `frontend-design`, `layout`, `typeset`, `clarify`, `polish`. They are interactive design-review skills, not file edits, invoke them after the GUI is mountable and visually inspectable.
 
 - [x] **Step 1: Run `cargo clippy --workspace --all-features -- -D warnings`**
 
 Expected: 0 warnings.
 
-The plan's literal `--all-features` gate is structurally impossible — `gui-egui` and `gui-dioxus` are mutually-exclusive features in `inputforge-app` (asserted via `compile_error!`). Substituted two passes that cover the same surface: `cargo clippy --workspace --exclude inputforge-app -- -D warnings` (libraries, all features) and `cargo clippy -p inputforge-app --no-default-features --features gui-dioxus -- -D warnings` (the dioxus app, the actual ship target). Both clean.
+The plan's literal `--all-features` gate is structurally impossible, `gui-egui` and `gui-dioxus` are mutually-exclusive features in `inputforge-app` (asserted via `compile_error!`). Substituted two passes that cover the same surface: `cargo clippy --workspace --exclude inputforge-app -- -D warnings` (libraries, all features) and `cargo clippy -p inputforge-app --no-default-features --features gui-dioxus -- -D warnings` (the dioxus app, the actual ship target). Both clean.
 
 - [x] **Step 2: Run `cargo test --workspace --all-features`**
 
@@ -6350,13 +6350,13 @@ Density: row source line restructured into device cell (truncates) + kind-tinted
 
 Visual treatment polish.
 
-Active-row side-stripe `border-left: 3px solid var(--color-border-focus)` removed — DESIGN.md §8 names it as a banned pattern (Toast accent is the only documented exception, peripheral-vision argument). Replaced with a stronger primary surface tint (10% → 18%) plus a 600-weight name override. Dashed `+ Add mapping` row promoted to a real affordance with `--color-border-strong` border, `--color-text` copy, and `font: inherit` so it stops falling through to the browser's default Arial.
+Active-row side-stripe `border-left: 3px solid var(--color-border-focus)` removed, DESIGN.md §8 names it as a banned pattern (Toast accent is the only documented exception, peripheral-vision argument). Replaced with a stronger primary surface tint (10% → 18%) plus a 600-weight name override. Dashed `+ Add mapping` row promoted to a real affordance with `--color-border-strong` border, `--color-text` copy, and `font: inherit` so it stops falling through to the browser's default Arial.
 
 - [x] **Step 5: Invoke `impeccable:layout`**
 
 Group-header rhythm, source-line indent. **Decide on group-header collapsibility here** (deferred from spec).
 
-Group-header rhythm verified live (10/600 uppercase, 8/12/4 padding). Source-line indent now flows from a flex layout, so the input identifier is right-anchored without margin tweaks. **Group-header collapsibility decision: NOT added.** Per PRODUCT.md "Power-user defaults, no apologies. Density over whitespace" — authoring/tuning users want all mappings visible at once. Revisit only if user feedback shows the rail growing past viewport.
+Group-header rhythm verified live (10/600 uppercase, 8/12/4 padding). Source-line indent now flows from a flex layout, so the input identifier is right-anchored without margin tweaks. **Group-header collapsibility decision: NOT added.** Per PRODUCT.md "Power-user defaults, no apologies. Density over whitespace", authoring/tuning users want all mappings visible at once. Revisit only if user feedback shows the rail growing past viewport.
 
 - [x] **Step 6: Invoke `impeccable:typeset`**
 
@@ -6368,13 +6368,13 @@ Name 12/500 (active row 12/600), source 11/regular muted, input identifier 10/mo
 
 Empty-state copy, filter placeholder, capture-pad copy ("Press an input on any device…"), collision redirect copy, "Duplicate to mode…" submenu copy. Update the strings in `mod.rs`, `add_inline.rs`, `empty.rs` accordingly.
 
-Capture-pad helper tightened from "Press an input on any device…" to "Press an input…" — the original was truncating to "Press an input on any devi…" inside the 280px rail with the chip + recapture icon eating ~80px. Filter placeholder, submenu host, and capture helper all use Unicode `\u{2026}` instead of three literal dots. Empty-state helper compressed from a two-clause sentence to one ("Press an input on any connected device, or name a mapping below."). Collision copy left as-is (already terse).
+Capture-pad helper tightened from "Press an input on any device…" to "Press an input…", the original was truncating to "Press an input on any devi…" inside the 280px rail with the chip + recapture icon eating ~80px. Filter placeholder, submenu host, and capture helper all use Unicode `\u{2026}` instead of three literal dots. Empty-state helper compressed from a two-clause sentence to one ("Press an input on any connected device, or name a mapping below."). Collision copy left as-is (already terse).
 
 - [x] **Step 8: Invoke `impeccable:polish`**
 
 Final pass. Commit improvements as separate commits with `style(mapping_list): ...` prefix.
 
-Combined into a single `refactor(mapping_list): ...` commit (`66e4508`) since the changes are structurally entangled — splitting the row source line into two cells, dropping the side-stripe, and bumping the dashed row are not independent "style" tweaks but a coherent design-system-compliance pass.
+Combined into a single `refactor(mapping_list): ...` commit (`66e4508`) since the changes are structurally entangled, splitting the row source line into two cells, dropping the side-stripe, and bumping the dashed row are not independent "style" tweaks but a coherent design-system-compliance pass.
 
 - [x] **Step 9: Final commit**
 
@@ -6384,7 +6384,7 @@ git log --oneline -- crates/inputforge-gui-dx/src/frame/mapping_list/
 # Verify the F8 commit history is clean.
 ```
 
-F8 commit history is clean — see `git log --oneline crates/inputforge-gui-dx/src/frame/mapping_list/`.
+F8 commit history is clean, see `git log --oneline crates/inputforge-gui-dx/src/frame/mapping_list/`.
 
 ---
 
@@ -6418,9 +6418,9 @@ Every AC has a task. If the impeccable passes (Task 28) revealed a behavioral ga
 
 ## Notes for the executing agent
 
-- **Do not skip the engine round-trip test in Task 3** even if the GUI side seems to "work" — the round-trip-from-disk assertion is the only thing keeping `Profile::save` honest after `remove_mapping`.
+- **Do not skip the engine round-trip test in Task 3** even if the GUI side seems to "work", the round-trip-from-disk assertion is the only thing keeping `Profile::save` honest after `remove_mapping`.
 - **`InputCacheStore::clone_compact` allocates per call.** The polling task ticks every 16ms; that's 62.5 allocations/sec for the snapshot Vec. Acceptable for F8, but if profiling shows pressure later, switch to a re-usable buffer threaded through `LiveCapture`.
-- **The Esc-priority listener (Task 8) uses a shutdown-signal + mounted-flag pattern** (D4): the JS body parks awaiting `__shutdown__` and calls `removeEventListener` on receipt; Rust-side, `armed_listener_mounted` deduplicates re-mounts and `shutdown_signal` triggers teardown on cancel/fire. The acceptance test for this listener is manual (Task 27 §8) — there is no SSR coverage. If Task 27 §8 shows Esc not firing reliably, the most likely culprit is the recv loop's send/recv ordering or a stale `shutdown_signal == true` from a previous capture; check the reset in the `use_effect` that mounts the listener.
+- **The Esc-priority listener (Task 8) uses a shutdown-signal + mounted-flag pattern** (D4): the JS body parks awaiting `__shutdown__` and calls `removeEventListener` on receipt; Rust-side, `armed_listener_mounted` deduplicates re-mounts and `shutdown_signal` triggers teardown on cancel/fire. The acceptance test for this listener is manual (Task 27 §8), there is no SSR coverage. If Task 27 §8 shows Esc not firing reliably, the most likely culprit is the recv loop's send/recv ordering or a stale `shutdown_signal == true` from a previous capture; check the reset in the `use_effect` that mounts the listener.
 - **Tokens used in CSS (Task 26) must already exist** in `assets/tokens/*.css`. If you find a missing token (`--color-surface-hover` is the most likely gap), add it as a separate commit BEFORE the CSS commit so the styling lands clean.
 
 ---

@@ -4,7 +4,7 @@
 //! entries, wraps it in `Arc<RwLock<_>>`, builds a drop-channel
 //! `mpsc::Sender<EngineCommand>` whose receiver is leaked, and calls
 //! `launch_gui` directly. No engine thread, no tray, no profile I/O,
-//! no `HidHide` scan — predictable seeded data, hot-reload safe.
+//! no `HidHide` scan, predictable seeded data, hot-reload safe.
 //!
 //! Run via:
 //!     dx serve --example `bridge_demo` --platform desktop
@@ -28,7 +28,7 @@ fn main() -> anyhow::Result<()> {
     "Demo".clone_into(&mut state.current_mode);
     state
         .warnings
-        .push("This is a seeded demo — no engine attached.".to_owned());
+        .push("This is a seeded demo, no engine attached.".to_owned());
 
     state.devices.push(DeviceState {
         info: DeviceInfo {
@@ -56,7 +56,7 @@ fn main() -> anyhow::Result<()> {
     let (commands, rx) = mpsc::channel::<EngineCommand>();
     Box::leak(Box::new(rx));
 
-    // Stub menu IDs — wired through to `use_muda_event_handler` at F3, but
+    // Stub menu IDs, wired through to `use_muda_event_handler` at F3, but
     // harmless here because no real tray icon is registered in this example,
     // so muda never emits `MenuEvent`s matching these IDs.
     let menu_ids = (

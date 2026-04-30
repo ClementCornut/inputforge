@@ -3,15 +3,15 @@
 //! design rationale.
 //!
 //! Composition (inside-out, in dependency order):
-//!   - `source_label::format` — `InputAddress` -> "TFM Throttle . Z" formatter
-//!   - `group::group_of`      — bucketing by `InputId` kind
-//!   - `filter::matches_filter` — name + source-label substring match
-//!   - `row::Row`             — single row component
-//!   - `rename_inline::RenameInline` — inline rename
-//!   - `add_inline::AddInline` — `+ Add mapping` capture state machine
+//!   - `source_label::format`, `InputAddress` -> "TFM Throttle . Z" formatter
+//!   - `group::group_of`     , bucketing by `InputId` kind
+//!   - `filter::matches_filter`, name + source-label substring match
+//!   - `row::Row`            , single row component
+//!   - `rename_inline::RenameInline`, inline rename
+//!   - `add_inline::AddInline`, `+ Add mapping` capture state machine
 //!   - `empty::EmptyZeroMappings` / `empty::EmptyZeroFilterResults`
-//!   - `keyboard::handle_key` — Up/Down/Enter/Cmd-F/Esc
-//!   - `MappingList` (this fn) — orchestrates everything
+//!   - `keyboard::handle_key`, Up/Down/Enter/Cmd-F/Esc
+//!   - `MappingList` (this fn), orchestrates everything
 
 #![allow(
     dead_code,
@@ -88,7 +88,7 @@ pub(crate) fn MappingList() -> Element {
         (total, filtered)
     });
 
-    // Document-scoped keyboard listener — mirrors Task 8's
+    // Document-scoped keyboard listener, mirrors Task 8's
     // `document::eval` + `window.addEventListener` pattern. Keydown
     // events are routed through the pure `keyboard::handle_key`
     // dispatcher; the resulting `Intent` is translated into signal
@@ -116,7 +116,7 @@ pub(crate) fn MappingList() -> Element {
     use_effect(move || {
         let mut mounted = kb_listener_mounted;
         if *mounted.peek() {
-            return; // already mounted — no re-install on render.
+            return; // already mounted, no re-install on render.
         }
         mounted.set(true);
         let mut sd = kb_shutdown_signal;
@@ -152,7 +152,7 @@ pub(crate) fn MappingList() -> Element {
                 let Ok((key_str, meta, ctrl)) = handle.recv::<(String, u8, u8)>().await else {
                     break;
                 };
-                // Coordinate with Phase C — if capture is armed, defer to it.
+                // Coordinate with Phase C, if capture is armed, defer to it.
                 if *cap_for_kb.active.read() {
                     continue;
                 }
@@ -333,7 +333,7 @@ fn FilterInput(value: Signal<String>, focused: Signal<bool>) -> Element {
     }
 }
 
-// Stub mount — actual content arrives in Task 21.
+// Stub mount, actual content arrives in Task 21.
 #[component]
 #[allow(
     unused_qualifications,

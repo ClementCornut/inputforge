@@ -36,7 +36,7 @@ use crate::error::{EngineError, Result};
 /// is true, and the latest existing snapshot has the same `content_hash`.
 /// `AutoBeforeRestore` and `Manual` always create.
 ///
-/// Does not call [`prune`] — caller is responsible.
+/// Does not call [`prune`], caller is responsible.
 ///
 /// # Errors
 ///
@@ -51,7 +51,7 @@ pub fn create(
     let body = std::fs::read_to_string(profile_path)?;
     // 2. Compute canonical content hash (D14).
     let content_hash = hash::hash_canonical_toml(&body)?;
-    // 3. Read prior entries ONCE — before any disk write. We must not call
+    // 3. Read prior entries ONCE, before any disk write. We must not call
     //    list() after writing the snapshot file: the orphan-recovery path
     //    in list() would pick up the just-written file and return a Vec
     //    that already contains our snapshot, causing a duplicate when we
@@ -156,7 +156,7 @@ pub fn list(profile_path: &Path) -> Result<Vec<Snapshot>> {
     let mut entries = if needs_rebuild {
         let rebuilt = index::rebuild_from_dir(&snap_dir)?;
         // Persist the rebuilt index only when it differs from the cached
-        // contents — a redundant write would just rewrite the same bytes.
+        // contents, a redundant write would just rewrite the same bytes.
         // Don't propagate write errors: a failed write is recoverable on
         // the next `list()`.
         if cached != rebuilt {
@@ -314,7 +314,7 @@ fn count_orphans(snap_dir: &Path, cached: &[Snapshot]) -> Result<usize> {
         let Some(name_str) = name.to_str() else {
             continue;
         };
-        // Case-insensitive `.toml` check — paths on Windows are case-insensitive
+        // Case-insensitive `.toml` check, paths on Windows are case-insensitive
         // and clippy::case_sensitive_file_extension_comparisons rejects raw
         // `ends_with(".toml")` for that reason.
         let is_toml = Path::new(name_str)

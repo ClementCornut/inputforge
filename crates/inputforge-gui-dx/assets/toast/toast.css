@@ -1,10 +1,10 @@
-/* Toast system — avionics annunciator panels.
+/* Toast system, avionics annunciator panels.
    Single fixed-positioned stack at top-right; toasts render in
    chronological order regardless of level (Warning/Error get
    `role="alert"` per item to preserve assertive announcements).
    Each toast is a backlit cockpit indicator: 3px left accent bar,
    inset top highlight, level-tinted surface. Motion is snappy;
-   nothing bounces. Cascade-mounted last in ThemeProvider — z-index
+   nothing bounces. Cascade-mounted last in ThemeProvider, z-index
    always wins. */
 
 /* ── Stack ───────────────────────────────────────────────────── */
@@ -41,7 +41,7 @@
     /* Flex row: icon | message (flex:1) | optional count | close. The
        message claims leftover space; the count slots between message
        and close when present and the close button stays anchored at
-       the right edge — adding/removing the count never shifts close. */
+       the right edge, adding/removing the count never shifts close. */
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -66,7 +66,7 @@
     }
 }
 
-/* Per-level accent bar — a 3px vertical strip on the left edge,
+/* Per-level accent bar, a 3px vertical strip on the left edge,
    inset slightly so it reads as part of the chamfer. */
 .if-toast::before {
     content: "";
@@ -80,7 +80,7 @@
     box-shadow: 0 0 8px -2px currentColor;  /* soft "backlit" glow */
 }
 
-/* Hover lifts the toast a hair and brightens the border —
+/* Hover lifts the toast a hair and brightens the border -
    subtle invitation that it's interactive. */
 .if-toast:hover {
     border-color: var(--color-border-strong);
@@ -95,7 +95,7 @@
 /* ── Per-level coloring ──────────────────────────────────────── */
 /* The accent uses currentColor; we tint the icon + accent bar by
    shifting `color` on the host. The background gets a 6% wash of the
-   level hue mixed into the elevated surface — enough to read as
+   level hue mixed into the elevated surface, enough to read as
    "this row is amber/red/etc." without competing with the message. */
 
 .if-toast--info {
@@ -140,7 +140,7 @@
 }
 
 .if-toast__count {
-    /* Coalesce badge — instrument-cluster style: subtle bezel,
+    /* Coalesce badge, instrument-cluster style: subtle bezel,
        tabular figures, level-tinted color. */
     display: inline-flex;
     align-items: center;

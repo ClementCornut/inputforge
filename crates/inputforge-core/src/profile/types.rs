@@ -68,7 +68,7 @@ impl ProfileSettings {
 
 /// Serializable calibration entry for a specific device axis.
 ///
-/// Fields are public following the DTO pattern — this type exists
+/// Fields are public following the DTO pattern, this type exists
 /// solely for serialization/deserialization between profile TOML
 /// and the validated [`Calibration`] domain type.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

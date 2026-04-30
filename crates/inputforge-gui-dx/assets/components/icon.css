@@ -9,7 +9,7 @@
 /*
  * Phosphor v2.0.8 regular-weight icons are STROKE-based: every shape uses
  * fill="none" stroke="currentColor" stroke-width="16" on a 256x256 viewBox.
- * We do NOT override fill or stroke at the CSS level — the SVG's built-in
+ * We do NOT override fill or stroke at the CSS level, the SVG's built-in
  * stroke="currentColor" inherits color from this `.if-icon` parent
  * (which inherits from the surrounding element).
  *

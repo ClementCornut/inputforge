@@ -16,7 +16,7 @@ use crate::toast::state::{Toast, ToastLevel, ToastState, is_expired};
 /// `state` is `pub` (rather than `pub(crate)`) so external example binaries
 /// (Cargo `examples/`) and downstream crates can construct a queue. Producers
 /// MUST initialize the inner Signal via `use_signal(ToastState::default)` from
-/// inside a Dioxus runtime — `Signal::new()` outside a hook leaks per
+/// inside a Dioxus runtime, `Signal::new()` outside a hook leaks per
 /// `dioxus-signals/src/signal.rs:30-52`. Production wiring lives in `app_root`.
 #[derive(Debug, Clone, Copy)]
 pub struct ToastQueue {
@@ -27,7 +27,7 @@ impl ToastQueue {
     pub fn push(&self, level: ToastLevel, message: impl Into<String>) {
         // `Signal<T>` is `Copy`; rebinding to a `mut` local gives us the
         // `&mut self` that `WritableExt::write` requires without forcing the
-        // method receiver to `&mut self` (Copy semantics — no aliasing risk).
+        // method receiver to `&mut self` (Copy semantics, no aliasing risk).
         let mut state = self.state;
         state.write().push(level, message);
     }

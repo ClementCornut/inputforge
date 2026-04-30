@@ -37,7 +37,7 @@ pub(crate) fn ProfileName() -> Element {
             // Empty state mirrors the loaded-state route: clicking
             // opens the Profiles side panel, the surface where a
             // profile is actually chosen. Sticking with a `<span>`
-            // dead-ended the user when no profile was loaded — the
+            // dead-ended the user when no profile was loaded, the
             // tools-cluster Profiles button was the only path
             // forward and not visually paired with this readout.
             None => rsx! {

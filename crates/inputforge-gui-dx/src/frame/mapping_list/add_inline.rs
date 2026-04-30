@@ -54,7 +54,7 @@ enum AddState {
     /// Pad collapsed; only the dashed `+ Add mapping` row renders.
     Resting,
     /// Pad expanded. The shell (chip, device cell, refresh icon, name
-    /// input, actions row) is identical between phases — only the chip
+    /// input, actions row) is identical between phases, only the chip
     /// cell and the disabled-state of refresh/Add change. Phase flips do
     /// not remount the shell, so the typed name carries through and
     /// focus stays put.
@@ -117,9 +117,9 @@ fn dispatch_add_helper(
 }
 
 /// Resolve the actions vec to commit. `Some(source)` means we're in a
-/// Duplicate flow — clone the source mapping's actions from the active
+/// Duplicate flow, clone the source mapping's actions from the active
 /// profile (or fall back to an empty vec if the source disappeared
-/// mid-flow). `None` means a fresh add — empty actions placeholder.
+/// mid-flow). `None` means a fresh add, empty actions placeholder.
 fn resolve_actions(source: Option<&MappingSummary>, ctx: &AppContext) -> Vec<Action> {
     match source {
         None => Vec::new(),
@@ -170,14 +170,14 @@ pub(crate) fn AddInline(
     // see it. Cleared on Cancel / Esc / commit / Resting transitions.
     let mut local_source: Signal<Option<MappingSummary>> = use_signal(|| None);
 
-    // Honor `force_expanded` from the parent — used by EmptyZeroMappings'
+    // Honor `force_expanded` from the parent, used by EmptyZeroMappings'
     // primary button to skip the dashed-row click. The component clears
     // the prop after observing the rising edge so the parent only needs
     // to set it once per open request.
     //
     // `use_hook` fires synchronously on first render so the initial mount
     // case (parent passes `Signal::new(true)`) lands in `Pad { Capturing }`
-    // without waiting for an effect tick — this is how the SSR test
+    // without waiting for an effect tick, this is how the SSR test
     // `add_inline_force_expanded_arms_capture` observes the listening pad.
     // The `use_effect` below handles subsequent rising edges (parent
     // re-flips false → true after a previous capture cycle closed).
@@ -203,7 +203,7 @@ pub(crate) fn AddInline(
         }
     });
 
-    // Honor `pending_duplicate` from the parent — set by the right-click
+    // Honor `pending_duplicate` from the parent, set by the right-click
     // menu's Duplicate item. Pre-fill name with `<source.name> (copy)`,
     // stash the source for the commit path, arm capture, and clear the
     // parent's signal (one-shot rising edge, same pattern as
@@ -241,7 +241,7 @@ pub(crate) fn AddInline(
         }
     });
 
-    // Watch `cap.captured` — when capture lands, transition the pad's
+    // Watch `cap.captured`, when capture lands, transition the pad's
     // phase to `Captured(addr)`, or transition the whole state to
     // `Collision` if the address is already mapped in the active mode.
     let editing_for_cap = view.editing_mode;
@@ -284,9 +284,9 @@ pub(crate) fn AddInline(
 
     // External-cancel watcher: when `cap.active` flips false while we are
     // in `Pad { Capturing }` AND no input was captured (i.e., LiveCapture
-    // was cancelled externally — its Esc listener fired, or some other
+    // was cancelled externally, its Esc listener fired, or some other
     // consumer called `cap.cancel`), close the pad outright (per design
-    // choice 2.a — first Esc closes, no Disarmed intermediate).
+    // choice 2.a, first Esc closes, no Disarmed intermediate).
     //
     // Distinguishing case: when `cap.captured` is `Some`, the captured-
     // watcher above is doing the work; this watcher must not race it.
@@ -346,7 +346,7 @@ pub(crate) fn AddInline(
     // rail's filter input so Task 22's filter-Esc-clears-query routing
     // keeps working without contention.
     //
-    // Pattern mirrors Task 8's LiveCapture Esc listener — capture-phase
+    // Pattern mirrors Task 8's LiveCapture Esc listener, capture-phase
     // window listener, parked recv loop, no shutdown signal because the
     // listener lives for the lifetime of the AddInline component (which
     // is the lifetime of the rail).
@@ -436,7 +436,7 @@ pub(crate) fn AddInline(
             drop(cfg);
 
             // Closures need owned captures; clone once per arm (Captured
-            // phase only — Capturing's clones are unused but cheap).
+            // phase only, Capturing's clones are unused but cheap).
             let addr_for_enter = captured_addr.clone();
             let addr_for_btn = captured_addr.clone();
             let view_for_enter = view;

@@ -76,7 +76,7 @@ pub(super) fn process_pipeline_outputs(
             }
             PipelineOutput::ChangeMode { strategy } => {
                 if mode_forced {
-                    // Forced override active — pipeline mode changes are paused.
+                    // Forced override active, pipeline mode changes are paused.
                     continue;
                 }
                 let old_mode = mode_state.current().to_owned();

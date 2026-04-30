@@ -8,7 +8,7 @@ use super::merge_class;
 ///
 /// `id` is the stable identifier the caller passes back via `onchange` and
 /// matches against `value`. `label` is the visible button text. `controls`,
-/// when set, is the DOM `id` of the tab's panel — it wires `aria-controls` on
+/// when set, is the DOM `id` of the tab's panel, it wires `aria-controls` on
 /// the tab to a `role="tabpanel"` element the caller renders elsewhere.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TabItem {
@@ -22,7 +22,7 @@ pub struct TabItem {
 /// - `role="tablist"` on the wrapper, `role="tab"` per item.
 /// - Each tab button gets `id="tab-{id}"`; when `TabItem::controls` is set,
 ///   `aria-controls` points at the caller's tabpanel id.
-/// - Arrow Left / Right cycles focus AND activates (automatic activation —
+/// - Arrow Left / Right cycles focus AND activates (automatic activation -
 ///   panel swaps are synchronous and cheap).
 /// - Home / End jumps to first / last (and activates).
 /// - `tabindex` is `0` for the active tab and `-1` for the rest (focus-roving).
@@ -32,7 +32,7 @@ pub struct TabItem {
 ///   `.if-tabs--disabled`.
 ///
 /// The component is stateless: the caller owns `value` and renders panel
-/// content based on it. F11 (Modes) reuses this — keeping it stateless avoids
+/// content based on it. F11 (Modes) reuses this, keeping it stateless avoids
 /// over-coupling.
 #[component]
 pub fn Tabs(

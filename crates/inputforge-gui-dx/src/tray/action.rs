@@ -1,4 +1,4 @@
-//! Tray menu routing — pure functions, no Dioxus or tao dependencies.
+//! Tray menu routing, pure functions, no Dioxus or tao dependencies.
 
 use muda::{MenuEvent, MenuId};
 
@@ -19,7 +19,7 @@ pub(crate) struct TrayMenuIds {
 }
 
 impl TrayAction {
-    /// Pure routing function — testable without constructing a `MenuEvent`.
+    /// Pure routing function, testable without constructing a `MenuEvent`.
     pub(crate) fn from_id(id: &MenuId, ids: &TrayMenuIds) -> Option<Self> {
         if *id == ids.show {
             return Some(Self::Show);
@@ -96,7 +96,7 @@ mod tests {
     /// Routing depends on `TrayMenuIds` equality, NOT on hardcoded
     /// `"show-gui"` / `"toggle-activation"` / `"quit"` string literals
     /// inside `from_id`. Use deliberately unconventional fixture strings
-    /// to prove this — if `from_id` ever grew a string-content fallback,
+    /// to prove this, if `from_id` ever grew a string-content fallback,
     /// this test would catch it via the final `assert_eq!(.., None)`.
     #[test]
     fn from_id_routes_by_identity_not_string_content() {

@@ -1,4 +1,4 @@
-# F2 — Design System & Theme Implementation Plan
+# F2, Design System & Theme Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -6,7 +6,7 @@
 
 **Goal:** Establish the visual language and 17-primitive component library for the Dioxus rewrite of `inputforge-gui`, replacing F1's inline-styled placeholder with a token-driven, theme-ready system gated through a `ThemeProvider`.
 
-**Architecture:** Six token CSS files (colors / typography / spacing / radii / elevation / motion) + a `global.css` baseline, mounted by a `ThemeProvider` Dioxus component using `document::Stylesheet` + `manganis::asset!()`. Component primitives live one-per-file in `src/components/` with sibling CSS in `assets/components/`, all sharing a BEM-ish `.if-<name>` class prefix and a `class: Option<String>` caller-composition prop. Icons stored as raw SVG files, included via `include_str!()` and exposed through an `Icon` enum. A standalone `examples/component_gallery.rs` mounts the provider and demos every primitive — it doubles as the visual smoke harness from Phase 1 onward.
+**Architecture:** Six token CSS files (colors / typography / spacing / radii / elevation / motion) + a `global.css` baseline, mounted by a `ThemeProvider` Dioxus component using `document::Stylesheet` + `manganis::asset!()`. Component primitives live one-per-file in `src/components/` with sibling CSS in `assets/components/`, all sharing a BEM-ish `.if-<name>` class prefix and a `class: Option<String>` caller-composition prop. Icons stored as raw SVG files, included via `include_str!()` and exposed through an `Icon` enum. A standalone `examples/component_gallery.rs` mounts the provider and demos every primitive, it doubles as the visual smoke harness from Phase 1 onward.
 
 **Tech Stack:** Rust 2024 / rustc 1.85, Dioxus 0.7.6 (desktop / wry / WebView2), `manganis` (transitive via Dioxus 0.7), CSS variables, Phosphor Icons (MIT), Inter + JetBrains Mono fonts (OFL-1.1).
 
@@ -14,13 +14,13 @@
 
 ## Context
 
-F1 (`docs/superpowers/plans/2026-04-25-f1-dioxus-scaffold-state-bridge.md`) shipped a state-bridge scaffold for `crates/inputforge-gui-dx`: signals, 60 Hz polling task, `AppContext` provider, and a single inline-styled `F1Readout` placeholder. There is **no** styling infrastructure yet — no CSS file, no fonts, no design tokens, no reusable components.
+F1 (`docs/superpowers/plans/2026-04-25-f1-dioxus-scaffold-state-bridge.md`) shipped a state-bridge scaffold for `crates/inputforge-gui-dx`: signals, 60 Hz polling task, `AppContext` provider, and a single inline-styled `F1Readout` placeholder. There is **no** styling infrastructure yet, no CSS file, no fonts, no design tokens, no reusable components.
 
 F2 is the second sequential foundation step. Every subsequent feature (F3 shell through F14 profile surface) builds on F2's tokens and primitives, so F2 must be:
 
 - **Theme-ready** (semantic naming so a future light theme is an override block, not a refactor)
 - **Complete** in primitives so later screens compose without revisiting F2
-- **Production-grade** in personality — first impression of the new GUI
+- **Production-grade** in personality, first impression of the new GUI
 
 The visual direction is "Evolved Glass Cockpit." The existing egui identity (dark navy `#1A1A2E` base, semantic accent quintet, Inter + JetBrains Mono, 8/4 spacing, 6px radius) is the baseline, but `impeccable:frontend-design` is **explicitly invited to challenge every aspect** mid-plan (Phase 2). Component CSS is written **after** frontend-design output is applied to the token files, to avoid rework.
 
@@ -38,36 +38,36 @@ All paths relative to `E:\Git\Perso\inputforge\` unless otherwise noted.
 - `assets/global.css`
 - `assets/components/{button,icon-button,text-input,number-input,select,slider,switch,checkbox,card,badge,tooltip,menu,separator,field,label,spinner,icon}.css` (17 files)
 - `assets/fonts/{Inter-Regular,Inter-SemiBold,JetBrainsMono-Regular}.ttf` (copied from `crates/inputforge-gui/assets/fonts/`)
-- `src/theme/mod.rs` — `ThemeProvider` component, `Asset` constants for every CSS file
-- `src/components/mod.rs` — re-exports
+- `src/theme/mod.rs`, `ThemeProvider` component, `Asset` constants for every CSS file
+- `src/components/mod.rs`, re-exports
 - `src/components/{button,icon_button,text_input,number_input,select,slider,switch,checkbox,card,badge,tooltip,menu,separator,field,label,spinner,icon}.rs` (17 files)
-- `src/icons/mod.rs` — `Icon` enum + `svg()` impl + `IconSize` enum
+- `src/icons/mod.rs`, `Icon` enum + `svg()` impl + `IconSize` enum
 - `src/icons/svg/*.svg` (~30 Phosphor SVGs)
-- `examples/component_gallery.rs` — visual harness for all 17 primitives
-- `THIRD_PARTY_LICENSES.md` — Phosphor MIT + Inter OFL-1.1 + JetBrains Mono OFL-1.1 attributions
+- `examples/component_gallery.rs`, visual harness for all 17 primitives
+- `THIRD_PARTY_LICENSES.md`, Phosphor MIT + Inter OFL-1.1 + JetBrains Mono OFL-1.1 attributions
 
 **Modified (in `crates/inputforge-gui-dx/`):**
 
-- `src/lib.rs` — add `pub mod theme;` + `pub mod components;` + `pub mod icons;`
-- `src/app.rs` — wrap `app_root`'s rsx output in `ThemeProvider`; rewrite `F1Readout` using primitives
-- `README.md` — gallery example, `ThemeProvider` usage, how to add a new icon, `dx serve` + WebView2 prerequisites
-- `Cargo.toml` — likely **no change** (manganis is transitive via dioxus 0.7.6); only add a direct `manganis` dep if Task 1 step 4 reveals it isn't reachable
+- `src/lib.rs`, add `pub mod theme;` + `pub mod components;` + `pub mod icons;`
+- `src/app.rs`, wrap `app_root`'s rsx output in `ThemeProvider`; rewrite `F1Readout` using primitives
+- `README.md`, gallery example, `ThemeProvider` usage, how to add a new icon, `dx serve` + WebView2 prerequisites
+- `Cargo.toml`, likely **no change** (manganis is transitive via dioxus 0.7.6); only add a direct `manganis` dep if Task 1 step 4 reveals it isn't reachable
 
 **Reused (do not modify):**
 
-- `src/context.rs` — `AppContext`, `MetaSnapshot`, `ConfigSnapshot`, `LiveSnapshot`
-- `src/bridge.rs` — polling task
+- `src/context.rs`, `AppContext`, `MetaSnapshot`, `ConfigSnapshot`, `LiveSnapshot`
+- `src/bridge.rs`, polling task
 - F1 `launch_gui` signature in `lib.rs`
 
 ---
 
 ## Existing Utilities To Reuse
 
-- **Egui font files** at `crates/inputforge-gui/assets/fonts/` — copy `Inter-Regular.ttf`, `Inter-SemiBold.ttf`, `JetBrainsMono-Regular.ttf` verbatim. No reformatting / re-encoding.
+- **Egui font files** at `crates/inputforge-gui/assets/fonts/`, copy `Inter-Regular.ttf`, `Inter-SemiBold.ttf`, `JetBrainsMono-Regular.ttf` verbatim. No reformatting / re-encoding.
 - **Egui DARK color palette** for placeholder token values, defined in `crates/inputforge-gui/src/theme.rs::DARK`. Values: base `#1A1A2E`, mantle `#16163A`, surface0 `#2A2A3E`, surface1 `#3A3A4E`, text `#E0E0E8`, text_dim `#A0A0B8`, primary `#4A9EFF`, live `#00E5A0`, warning `#FFB347`, error `#FF6B6B`, special `#B07FFF`, indicator_idle `#555570`.
 - **F1 snapshot factories** `MetaSnapshot::from_state(&AppState)` and `ConfigSnapshot::from_state(&AppState)` for the `F1Readout` regression test in Task 21 (`crates/inputforge-gui-dx/src/context.rs`).
-- **F1 `bridge_demo.rs` shape** at `crates/inputforge-gui-dx/examples/bridge_demo.rs` — model `examples/component_gallery.rs` after it (no engine, no I/O, hot-reload safe).
-- **F1 build matrix** documented in `crates/inputforge-gui-dx/README.md` — verification commands `dx serve --example bridge_demo --platform desktop` and `cargo build -p inputforge-app --no-default-features --features gui-dioxus` are reused below.
+- **F1 `bridge_demo.rs` shape** at `crates/inputforge-gui-dx/examples/bridge_demo.rs`, model `examples/component_gallery.rs` after it (no engine, no I/O, hot-reload safe).
+- **F1 build matrix** documented in `crates/inputforge-gui-dx/README.md`, verification commands `dx serve --example bridge_demo --platform desktop` and `cargo build -p inputforge-app --no-default-features --features gui-dioxus` are reused below.
 
 ---
 
@@ -75,27 +75,27 @@ All paths relative to `E:\Git\Perso\inputforge\` unless otherwise noted.
 
 Surface these in the implementer's mind before they hit them:
 
-- **`asset!()` paths must start with `/`** and are resolved relative to the **crate root**, not workspace root. On Windows, easy to mis-slash — use forward slashes inside the macro string.
+- **`asset!()` paths must start with `/`** and are resolved relative to the **crate root**, not workspace root. On Windows, easy to mis-slash, use forward slashes inside the macro string.
 - **`document::Stylesheet { href: ASSET }` mounts in render order, not declaration order.** The order of `Stylesheet { … }` calls inside `ThemeProvider`'s rsx! determines cascade priority. Locked order: tokens (colors → typography → spacing → radii → elevation → motion) → `global.css` → component files. Comment this in `theme/mod.rs`.
 - **`children: Element` is required by default**; use `Option<Element>` only where empty children are valid (Tooltip's wrapped trigger, Field's helper area). For most primitives `children: Element` is correct.
 - **`EventHandler<T>` already encodes optionality** (`.call(evt)` is idempotent if no handler attached). Do **not** wrap in `Option<EventHandler<_>>`.
-- **`ReadOnlySignal<T>` for read-only reactive props** — use for `value` props on inputs (TextInput, NumberInput, Slider, Switch, Checkbox) to avoid spurious clones. Spec doesn't mention this; it's a real 0.7 ergonomics gain.
-- **`dangerous_inner_html` argument type** in Dioxus 0.7.6 — verify with a single-line probe before scaling out the icon registry: it may want `String` not `&'static str`. Adjust the icon component to `.to_string()` if so.
-- **`include_str!()` icon SVGs do not hot-reload** — editing an SVG triggers a rebuild, not a Dioxus refresh. Document in README.
+- **`ReadOnlySignal<T>` for read-only reactive props**, use for `value` props on inputs (TextInput, NumberInput, Slider, Switch, Checkbox) to avoid spurious clones. Spec doesn't mention this; it's a real 0.7 ergonomics gain.
+- **`dangerous_inner_html` argument type** in Dioxus 0.7.6, verify with a single-line probe before scaling out the icon registry: it may want `String` not `&'static str`. Adjust the icon component to `.to_string()` if so.
+- **`include_str!()` icon SVGs do not hot-reload**, editing an SVG triggers a rebuild, not a Dioxus refresh. Document in README.
 - **`manganis::asset!` is re-exported via `dioxus::prelude::asset!`** in 0.7. Use the prelude form to avoid an extra direct dep.
-- **`ReadOnlySignal<T>` props accept `T` directly via blanket `From<T>`.** The gallery exercises this implicit conversion (e.g., `TextInput { value: "hello".to_string() }`). If you see an `Into`/`From` error at a call site, the impl moved or specialization changed — workaround: wrap the call site with `Signal::new(...)` or `value.into()`.
+- **`ReadOnlySignal<T>` props accept `T` directly via blanket `From<T>`.** The gallery exercises this implicit conversion (e.g., `TextInput { value: "hello".to_string() }`). If you see an `Into`/`From` error at a call site, the impl moved or specialization changed, workaround: wrap the call site with `Signal::new(...)` or `value.into()`.
 
 ---
 
 ## Phase Overview
 
-- **Phase 0** (Tasks 1–5) — Scaffolding & legal: directory skeleton, fonts, ThemeProvider shell, gallery skeleton, license attribution.
-- **Phase 1** (Tasks 6–8) — Token CSS files with placeholder values + asset-pipeline smoke test (proves the foundation works before scaling).
-- **Phase 2** (Tasks 9–10) — Frontend-design invocation & token finalization (locks visual values before component CSS is written).
-- **Phase 3** (Tasks 11–13) — Icon system: SVG files, `Icon` enum, `Icon` component.
-- **Phase 4** (Tasks 14–20) — Component primitives, grouped by behavioral family (7 tasks; Task 17 splits into 17a + 17b for risk isolation, see Task 17 below). Each appends a section to the gallery.
-- **Phase 5** (Task 21) — `F1Readout` rewrite using primitives, with data-binding regression test.
-- **Phase 6** (Tasks 22–23) — README updates and final verification.
+- **Phase 0** (Tasks 1-5), Scaffolding & legal: directory skeleton, fonts, ThemeProvider shell, gallery skeleton, license attribution.
+- **Phase 1** (Tasks 6-8), Token CSS files with placeholder values + asset-pipeline smoke test (proves the foundation works before scaling).
+- **Phase 2** (Tasks 9-10), Frontend-design invocation & token finalization (locks visual values before component CSS is written).
+- **Phase 3** (Tasks 11-13), Icon system: SVG files, `Icon` enum, `Icon` component.
+- **Phase 4** (Tasks 14-20), Component primitives, grouped by behavioral family (7 tasks; Task 17 splits into 17a + 17b for risk isolation, see Task 17 below). Each appends a section to the gallery.
+- **Phase 5** (Task 21), `F1Readout` rewrite using primitives, with data-binding regression test.
+- **Phase 6** (Tasks 22-23), README updates and final verification.
 
 ---
 
@@ -131,7 +131,7 @@ Verify: `ls crates/inputforge-gui-dx/assets/fonts/` lists all three TTFs.
 Run: `cargo tree -p inputforge-gui-dx --depth 5 | grep manganis`
 Expected: at least one line mentioning `manganis v0.7.x` (transitive through `dioxus`). The Cargo.lock check during F1 explored confirmed transitive presence; this step exists to fail-fast if that changes.
 
-If the grep returns nothing, add manganis as a direct dep. This requires **two atomic edits in a single commit** — the workspace declaration must exist before the crate can reference `{ workspace = true }`:
+If the grep returns nothing, add manganis as a direct dep. This requires **two atomic edits in a single commit**, the workspace declaration must exist before the crate can reference `{ workspace = true }`:
 
 1. Root `Cargo.toml` `[workspace.dependencies]`:
    ```toml
@@ -168,10 +168,10 @@ git commit -m "feat(gui-dx): copy F2 font assets (Inter + JetBrains Mono)"
 ## Task 2: lib.rs module declarations + ThemeProvider skeleton
 
 **Files:**
-- Modify: `crates/inputforge-gui-dx/src/lib.rs` — add three `pub mod` declarations
-- Create: `crates/inputforge-gui-dx/src/theme/mod.rs` — empty `ThemeProvider` (passes children through, no stylesheets)
-- Create: `crates/inputforge-gui-dx/src/components/mod.rs` — empty (placeholder for re-exports)
-- Create: `crates/inputforge-gui-dx/src/icons/mod.rs` — empty (placeholder for `Icon` enum)
+- Modify: `crates/inputforge-gui-dx/src/lib.rs`, add three `pub mod` declarations
+- Create: `crates/inputforge-gui-dx/src/theme/mod.rs`, empty `ThemeProvider` (passes children through, no stylesheets)
+- Create: `crates/inputforge-gui-dx/src/components/mod.rs`, empty (placeholder for re-exports)
+- Create: `crates/inputforge-gui-dx/src/icons/mod.rs`, empty (placeholder for `Icon` enum)
 
 - [ ] **Step 1: Edit `src/lib.rs`**
 
@@ -191,7 +191,7 @@ These are `pub` (not `pub(crate)`) so the `examples/component_gallery.rs` binary
 //! Mounts the F2 design-system stylesheets and exposes them to descendants.
 //!
 //! Stylesheet load order (cascade priority, lowest first):
-//! tokens → global → components. Order matters — do not reshuffle.
+//! tokens → global → components. Order matters, do not reshuffle.
 
 use dioxus::prelude::*;
 
@@ -229,7 +229,7 @@ feat(gui-dx): add theme/components/icons modules and ThemeProvider skeleton
 
 ## Task 3: Wire empty ThemeProvider into `app_root`
 
-Wrap the existing `F1Readout` in `ThemeProvider`. No styling change yet — this just lands the integration point.
+Wrap the existing `F1Readout` in `ThemeProvider`. No styling change yet, this just lands the integration point.
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/app.rs`
@@ -289,7 +289,7 @@ Write `crates/inputforge-gui-dx/THIRD_PARTY_LICENSES.md`:
 
 This crate bundles assets governed by upstream licenses. They are reproduced below in summary; see `THIRD_PARTY_LICENSES_FULL/` (if present) or the upstream sources for full text.
 
-## Phosphor Icons — MIT License
+## Phosphor Icons, MIT License
 
 Copyright (c) 2020 Phosphor Icons
 
@@ -301,7 +301,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 
 Source: https://github.com/phosphor-icons/core
 
-## Inter — SIL Open Font License 1.1
+## Inter, SIL Open Font License 1.1
 
 Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
 
@@ -311,7 +311,7 @@ https://openfontlicense.org
 
 Source: https://github.com/rsms/inter
 
-## JetBrains Mono — SIL Open Font License 1.1
+## JetBrains Mono, SIL Open Font License 1.1
 
 Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
@@ -333,7 +333,7 @@ docs(gui-dx): add THIRD_PARTY_LICENSES.md for Phosphor + Inter + JetBrains Mono
 
 ## Task 5: Component gallery skeleton
 
-Lands the visual smoke harness that Phases 1–4 will use. Mounts `ThemeProvider` directly (no engine, no signals); each subsequent primitive task appends a `<section>`.
+Lands the visual smoke harness that Phases 1-4 will use. Mounts `ThemeProvider` directly (no engine, no signals); each subsequent primitive task appends a `<section>`.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/examples/component_gallery.rs`
@@ -346,7 +346,7 @@ Lands the visual smoke harness that Phases 1–4 will use. Mounts `ThemeProvider
 //! Run via:
 //!     dx serve --example component_gallery --platform desktop
 //!
-//! Mounts `ThemeProvider` directly — no engine state required.
+//! Mounts `ThemeProvider` directly, no engine state required.
 //! Hot-reload friendly: editing CSS or RSX updates instantly.
 
 use dioxus::prelude::*;
@@ -365,7 +365,7 @@ fn gallery_root() -> Element {
         ThemeProvider {
             main {
                 style: "padding: 24px;",
-                h1 { "InputForge — Component Gallery (F2)" }
+                h1 { "InputForge, Component Gallery (F2)" }
                 p { "Primitives appear in sections below as Phase 4 lands them." }
             }
         }
@@ -373,7 +373,7 @@ fn gallery_root() -> Element {
 }
 ```
 
-The inline `padding: 24px;` style is intentional and temporary — it gives the page chrome before `global.css` exists. It's removed once `Card` is available (Task 17, Card+Badge+Separator+Spinner task) and the gallery sections wrap each primitive in a `Card`.
+The inline `padding: 24px;` style is intentional and temporary, it gives the page chrome before `global.css` exists. It's removed once `Card` is available (Task 17, Card+Badge+Separator+Spinner task) and the gallery sections wrap each primitive in a `Card`.
 
 - [ ] **Step 2: Verify the example compiles**
 
@@ -383,7 +383,7 @@ Expected: builds cleanly.
 - [ ] **Step 3: Smoke-run the gallery**
 
 Run: `dx serve --example component_gallery --platform desktop`
-Expected: a window opens showing the heading "InputForge — Component Gallery (F2)" and the placeholder paragraph. Close the window.
+Expected: a window opens showing the heading "InputForge, Component Gallery (F2)" and the placeholder paragraph. Close the window.
 
 (If `dx` is not installed, run `cargo install dioxus-cli --version 0.7.6` first.)
 
@@ -443,7 +443,7 @@ Six token CSS files seeded with values from the egui DARK palette. These will be
     --color-error:   #FF6B6B;
     --color-info:    #4A9EFF;
 
-    /* Categories — three INDEPENDENT accent hues (NOT aliased to
+    /* Categories, three INDEPENDENT accent hues (NOT aliased to
        action/status). Frontend-design (Task 10) will pick final values. */
     --color-processing:    #4A9EFF;   /* placeholder */
     --color-processing-bg: rgba(74, 158, 255, 0.12);
@@ -592,7 +592,7 @@ body {
 /* Components opt in to spacing via tokens; no implicit heading/paragraph margins. */
 h1, h2, h3, h4, h5, h6, p { margin: 0; }
 
-/* Custom scrollbar — Webkit + Firefox. */
+/* Custom scrollbar, Webkit + Firefox. */
 ::-webkit-scrollbar       { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--color-bg-elevated); }
 ::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: var(--radius-sm); }
@@ -618,8 +618,8 @@ Mounts the seven CSS files and proves the asset pipeline end-to-end. This is spe
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/theme/mod.rs`
-- Modify: `crates/inputforge-gui-dx/src/app.rs` — drop the inline `font-family` / `background` / `color` overrides on the `F1Readout`'s `<main>` so the body baseline shows through
-- Modify: `crates/inputforge-gui-dx/examples/component_gallery.rs` — drop the temporary `padding: 24px;` inline style (now use `var(--space-6)`)
+- Modify: `crates/inputforge-gui-dx/src/app.rs`, drop the inline `font-family` / `background` / `color` overrides on the `F1Readout`'s `<main>` so the body baseline shows through
+- Modify: `crates/inputforge-gui-dx/examples/component_gallery.rs`, drop the temporary `padding: 24px;` inline style (now use `var(--space-6)`)
 
 - [ ] **Step 1: Replace `src/theme/mod.rs`**
 
@@ -669,12 +669,12 @@ Locate the `<main style: "..." >` line in `F1Readout`. Replace the `style:` attr
 ```rust
         main {
             style: "padding: var(--space-6); min-height: 100vh;",
-            h1 { "InputForge — Dioxus (F1 bridge smoke test)" }
+            h1 { "InputForge, Dioxus (F1 bridge smoke test)" }
             // ... rest unchanged ...
         }
 ```
 
-The `font-family: system-ui` and `background: #1A1A2E` and `color: #ddd` are removed — they now come from `body` via `global.css`.
+The `font-family: system-ui` and `background: #1A1A2E` and `color: #ddd` are removed, they now come from `body` via `global.css`.
 
 - [ ] **Step 3: Update gallery to use spacing token**
 
@@ -694,11 +694,11 @@ Expected: builds cleanly.
 Run: `dx serve --example component_gallery --platform desktop`
 
 Expected:
-- Window opens with the dark navy background (`#1A1A2E`) — proves `colors.css` loaded.
-- Heading "InputForge — Component Gallery (F2)" renders in **Inter** (not system-ui) — proves `typography.css` and the font asset both loaded.
-- Custom thin scrollbar appears if you resize the window narrow enough — proves `global.css` loaded.
+- Window opens with the dark navy background (`#1A1A2E`), proves `colors.css` loaded.
+- Heading "InputForge, Component Gallery (F2)" renders in **Inter** (not system-ui), proves `typography.css` and the font asset both loaded.
+- Custom thin scrollbar appears if you resize the window narrow enough, proves `global.css` loaded.
 
-If the font fallback (system-ui) is showing, inspect the DevTools Network tab for the TTF request. If it 404s, double-check the `@font-face` `src: url(...)` paths in `typography.css` — they must start with `/assets/fonts/`.
+If the font fallback (system-ui) is showing, inspect the DevTools Network tab for the TTF request. If it 404s, double-check the `@font-face` `src: url(...)` paths in `typography.css`, they must start with `/assets/fonts/`.
 
 - [ ] **Step 6: DevTools-based verification (spec check #10)**
 
@@ -712,7 +712,7 @@ getComputedStyle(document.body).fontFamily
 // expect: includes "Inter"
 ```
 
-Both must resolve. If either is empty or the font is `system-ui`, the asset pipeline is broken — stop and diagnose before proceeding.
+Both must resolve. If either is empty or the font is `system-ui`, the asset pipeline is broken, stop and diagnose before proceeding.
 
 Also, in the same DevTools console, confirm the **stylesheet cascade order** matches the rsx render order:
 
@@ -720,7 +720,7 @@ Also, in the same DevTools console, confirm the **stylesheet cascade order** mat
 Array.from(document.head.querySelectorAll('link[rel=stylesheet]')).map(l => l.href)
 ```
 
-Expected: an array of 7 hrefs in this order — `colors.css`, `typography.css`, `spacing.css`, `radii.css`, `elevation.css`, `motion.css`, `global.css`.
+Expected: an array of 7 hrefs in this order, `colors.css`, `typography.css`, `spacing.css`, `radii.css`, `elevation.css`, `motion.css`, `global.css`.
 
 If the order is scrambled, `document::Stylesheet` doesn't preserve rsx render order in this Dioxus version, and the locked cascade (token → global → component) is unreliable. Mitigation: replace the multi-`Stylesheet` setup in `theme/mod.rs` with a single inlined `document::Style { ... include_str!("/* concatenated tokens.css */") ... }`, or introduce an `assets/tokens/tokens.css` that `@import`s the six token files in deterministic order. Document the deviation in `theme/mod.rs` so later contributors know why the structure changed.
 
@@ -753,7 +753,7 @@ cargo run -p inputforge-app --features gui-egui
 
 (Default features already include `gui-egui`; the explicit flag is for clarity.)
 
-- [ ] **Step 2: Capture 3–5 screenshots**
+- [ ] **Step 2: Capture 3-5 screenshots**
 
 Use OS screenshot tool (Win+Shift+S on Windows). Capture at minimum:
 - Main view with the device list and engine status
@@ -789,7 +789,7 @@ Use the `Skill` tool with `impeccable:frontend-design`. Provide this brief verba
 
 > **Task: Finalize F2 design tokens for InputForge (Dioxus rewrite).**
 >
-> **Context:** Replacing an egui-based desktop GUI with Dioxus. The product is a serious sim/HOTAS configuration tool for expert users — instrument-cluster heritage. Visual direction: "Evolved Glass Cockpit." Evolve the existing identity, don't replicate it.
+> **Context:** Replacing an egui-based desktop GUI with Dioxus. The product is a serious sim/HOTAS configuration tool for expert users, instrument-cluster heritage. Visual direction: "Evolved Glass Cockpit." Evolve the existing identity, don't replicate it.
 >
 > **Inputs:**
 > - Design spec: `docs/superpowers/specs/2026-04-25-f2-design-system-design.md`
@@ -805,11 +805,11 @@ Use the `Skill` tool with `impeccable:frontend-design`. Provide this brief verba
 > - Color values, accent saturation, type scale, spacing rhythm, motion language, font choice (Inter+JetBrainsMono is the default but not sacred), elevation philosophy, layout.
 >
 > **Specific questions to answer:**
-> 1. Type scale 12/13/14/15/18/22/28 clusters four sizes within 6px — please rationalize. Aim for 5–6 sizes max with clearer hierarchy.
-> 2. Pick the three category hues (processing/output/control) — must complement action (`--color-primary`) and status (`--color-live` / `--color-warning` / `--color-error`) without visual overlap.
+> 1. Type scale 12/13/14/15/18/22/28 clusters four sizes within 6px, please rationalize. Aim for 5-6 sizes max with clearer hierarchy.
+> 2. Pick the three category hues (processing/output/control), must complement action (`--color-primary`) and status (`--color-live` / `--color-warning` / `--color-error`) without visual overlap.
 > 3. Confirm or revise `--radius-md: 6px` for the "evolved glass cockpit" aesthetic.
 > 4. Elevation philosophy: spec proposes "borders over shadows." Confirm or shift.
-> 5. Motion: 120/180/260 ms with cubic-bezier easings — are these right for instrument-cluster aesthetic?
+> 5. Motion: 120/180/260 ms with cubic-bezier easings, are these right for instrument-cluster aesthetic?
 >
 > **Output:** revised values for the six token CSS files + a written rationale answering each question. The token NAMES must not change. .impeccable.md.
 
@@ -856,8 +856,8 @@ Phosphor source: https://github.com/phosphor-icons/core (MIT). Use the **regular
 Required icons (filename → Phosphor source name):
 - `joystick.svg` → `joystick.svg`
 - `device.svg` → `game-controller.svg` (rename to `device.svg`)
-- `axis.svg` → `crosshair.svg` (rename) — best fit; substitute if a more apt Phosphor icon exists
-- `button.svg` → `circle.svg` (rename) — substitute if a better fit appears
+- `axis.svg` → `crosshair.svg` (rename), best fit; substitute if a more apt Phosphor icon exists
+- `button.svg` → `circle.svg` (rename), substitute if a better fit appears
 - `hat.svg` → `arrows-out-cardinal.svg` (rename)
 - `mode.svg` → `swap.svg` (rename)
 - `profile.svg` → `user.svg` (rename)
@@ -870,7 +870,7 @@ Required icons (filename → Phosphor source name):
 - `minus.svg` → `minus.svg`
 - `trash.svg` → `trash.svg`
 - `settings.svg` → `gear.svg` (rename)
-- `chevron-down.svg`, `chevron-up.svg`, `chevron-left.svg`, `chevron-right.svg` — `caret-down/up/left/right.svg` (rename)
+- `chevron-down.svg`, `chevron-up.svg`, `chevron-left.svg`, `chevron-right.svg`, `caret-down/up/left/right.svg` (rename)
 - `x.svg` → `x.svg`
 - `check.svg` → `check.svg`
 - `warning.svg` → `warning.svg`
@@ -882,7 +882,7 @@ Required icons (filename → Phosphor source name):
 - `drag-handle.svg` → `dots-six-vertical.svg` (rename)
 - `dots-vertical.svg` → `dots-three-vertical.svg` (rename)
 
-Drop each `.svg` file into `crates/inputforge-gui-dx/src/icons/svg/`. Do NOT modify the SVG content — keep the upstream `<svg>` tag attributes intact (viewBox, fill, etc.).
+Drop each `.svg` file into `crates/inputforge-gui-dx/src/icons/svg/`. Do NOT modify the SVG content, keep the upstream `<svg>` tag attributes intact (viewBox, fill, etc.).
 
 - [ ] **Step 2: Sanity check**
 
@@ -915,7 +915,7 @@ feat(gui-dx): add 30 Phosphor SVG icons (regular weight)
 
 ---
 
-## Task 12: `src/icons/mod.rs` — Icon enum and svg() registry (TDD)
+## Task 12: `src/icons/mod.rs`, Icon enum and svg() registry (TDD)
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/icons/mod.rs`
@@ -1045,7 +1045,7 @@ mod tests {
 Run: `cargo test -p inputforge-gui-dx --lib icons::tests`
 Expected: all three tests PASS.
 
-If `every_variant_returns_well_formed_svg` fails, the offending SVG file is corrupt — re-download from the Phosphor source.
+If `every_variant_returns_well_formed_svg` fails, the offending SVG file is corrupt, re-download from the Phosphor source.
 
 - [ ] **Step 3: Commit**
 
@@ -1061,9 +1061,9 @@ feat(gui-dx): add Icon enum with svg() registry and well-formedness tests
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/components/icon.rs`
 - Create: `crates/inputforge-gui-dx/assets/components/icon.css`
-- Modify: `crates/inputforge-gui-dx/src/components/mod.rs` — re-export `Icon` component
-- Modify: `crates/inputforge-gui-dx/src/theme/mod.rs` — append `document::Stylesheet { href: ICON_CSS }`
-- Modify: `crates/inputforge-gui-dx/examples/component_gallery.rs` — append Icon section
+- Modify: `crates/inputforge-gui-dx/src/components/mod.rs`, re-export `Icon` component
+- Modify: `crates/inputforge-gui-dx/src/theme/mod.rs`, append `document::Stylesheet { href: ICON_CSS }`
+- Modify: `crates/inputforge-gui-dx/examples/component_gallery.rs`, append Icon section
 
 - [ ] **Step 1: Write `src/components/icon.rs`**
 
@@ -1071,7 +1071,7 @@ Note on `dangerous_inner_html`: if Dioxus 0.7.6 rejects `&'static str`, change `
 
 ```rust
 //! Renders an SVG icon. SVG content is trusted (Phosphor upstream),
-//! injected via `dangerous_inner_html` — never feed user-provided
+//! injected via `dangerous_inner_html`, never feed user-provided
 //! SVG through this component.
 
 use dioxus::prelude::*;
@@ -1147,7 +1147,7 @@ mod tests {
 /*
  * Phosphor regular weight icons are FILL-based (their paths use
  * fill="currentColor"). Forcing fill: none + stroke would draw thin
- * outlines along path borders instead of rendering filled shapes —
+ * outlines along path borders instead of rendering filled shapes -
  * every icon would look fundamentally wrong. Keep this rule fill-based.
  * If a stroked aesthetic is wanted later, switch the icon weight in
  * Task 11 to "light" or "thin" (which are stroke-based) AND change
@@ -1200,7 +1200,7 @@ fn gallery_root() -> Element {
         ThemeProvider {
             main {
                 style: "padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-8);",
-                h1 { "InputForge — Component Gallery (F2)" }
+                h1 { "InputForge, Component Gallery (F2)" }
 
                 section {
                     h2 { "Icon" }
@@ -1228,7 +1228,7 @@ cargo build -p inputforge-gui-dx --example component_gallery
 ```
 Expected: tests PASS, build OK.
 
-Then `dx serve --example component_gallery --platform desktop` — expect to see the Joystick icon in three sizes plus three more icons.
+Then `dx serve --example component_gallery --platform desktop`, expect to see the Joystick icon in three sizes plus three more icons.
 
 - [ ] **Step 7: Commit**
 
@@ -1241,16 +1241,16 @@ feat(gui-dx): add Icon component, icon.css, gallery section
 
 ## Task 14: Button + IconButton (canonical interactive pattern)
 
-This is the **worked example**. Subsequent primitive tasks adopt the same pattern: BEM classes, variant + size enums, all five interactive states (default / hover / focus-visible / active / disabled), `class: Option<String>` prop merged via `components::icon::merge_class` (move it to a shared module if needed — see step 1).
+This is the **worked example**. Subsequent primitive tasks adopt the same pattern: BEM classes, variant + size enums, all five interactive states (default / hover / focus-visible / active / disabled), `class: Option<String>` prop merged via `components::icon::merge_class` (move it to a shared module if needed, see step 1).
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/components/button.rs`
 - Create: `crates/inputforge-gui-dx/src/components/icon_button.rs`
 - Create: `crates/inputforge-gui-dx/assets/components/button.css`
 - Create: `crates/inputforge-gui-dx/assets/components/icon-button.css`
-- Modify: `crates/inputforge-gui-dx/src/components/mod.rs` — re-export `Button` + `IconButton` + relocate `merge_class` to `components/mod.rs` as `pub(crate)`
-- Modify: `crates/inputforge-gui-dx/src/theme/mod.rs` — append two stylesheet mounts
-- Modify: `crates/inputforge-gui-dx/examples/component_gallery.rs` — append Button and IconButton sections
+- Modify: `crates/inputforge-gui-dx/src/components/mod.rs`, re-export `Button` + `IconButton` + relocate `merge_class` to `components/mod.rs` as `pub(crate)`
+- Modify: `crates/inputforge-gui-dx/src/theme/mod.rs`, append two stylesheet mounts
+- Modify: `crates/inputforge-gui-dx/examples/component_gallery.rs`, append Button and IconButton sections
 
 - [ ] **Step 1: Lift `merge_class` from `components::icon` to `components::mod`**
 
@@ -1637,16 +1637,16 @@ feat(gui-dx): add Button and IconButton primitives with full state coverage
 
 ---
 
-## Task 15: Form input family — TextInput, NumberInput, Select, Slider
+## Task 15: Form input family, TextInput, NumberInput, Select, Slider
 
 Four primitives sharing the same `if-control` baseline (border, padding, focus ring) plus per-type accents.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/components/{text_input,number_input,select,slider}.rs`
 - Create: `crates/inputforge-gui-dx/assets/components/{text-input,number-input,select,slider}.css`
-- Modify: `src/components/mod.rs` — add `pub mod` + re-exports
-- Modify: `src/theme/mod.rs` — four `Asset` consts + four `Stylesheet` mounts
-- Modify: `examples/component_gallery.rs` — four sections
+- Modify: `src/components/mod.rs`, add `pub mod` + re-exports
+- Modify: `src/theme/mod.rs`, four `Asset` consts + four `Stylesheet` mounts
+- Modify: `examples/component_gallery.rs`, four sections
 
 - [ ] **Step 1: `src/components/text_input.rs`**
 
@@ -1773,7 +1773,7 @@ pub fn NumberInput(
 }
 ```
 
-(Stepper buttons are visual scaffolding only at F2; wiring them to actually mutate `value` is each consumer's responsibility — F2 ships the layout primitive.)
+(Stepper buttons are visual scaffolding only at F2; wiring them to actually mutate `value` is each consumer's responsibility, F2 ships the layout primitive.)
 
 - [ ] **Step 4: `assets/components/number-input.css`**
 
@@ -1985,7 +1985,7 @@ feat(gui-dx): add TextInput, NumberInput, Select, Slider primitives
 
 ---
 
-## Task 16: Toggle family — Switch + Checkbox
+## Task 16: Toggle family, Switch + Checkbox
 
 **Files:**
 - Create: `src/components/{switch,checkbox}.rs`
@@ -2188,7 +2188,7 @@ feat(gui-dx): add Switch and Checkbox primitives
 
 ---
 
-## Task 17: Display family — Card + Badge + Separator + Spinner
+## Task 17: Display family, Card + Badge + Separator + Spinner
 
 Non-interactive primitives. After this task, the gallery can wrap each section in a `Card`.
 
@@ -2390,7 +2390,7 @@ In `src/theme/mod.rs`, add four `Asset` consts and mounts.
 
 - [ ] **Step 10 (Task 17a): Add four new gallery sections demonstrating the new primitives**
 
-Append four new sections to `examples/component_gallery.rs`. These exercise Card / Badge / Separator / Spinner themselves; **do not** yet refactor the existing sections — that's Task 17b's job. Limiting the change set to "new primitives only" makes any failure attributable to the four files added in steps 1–8, not to a Card-wrap regression in older sections.
+Append four new sections to `examples/component_gallery.rs`. These exercise Card / Badge / Separator / Spinner themselves; **do not** yet refactor the existing sections, that's Task 17b's job. Limiting the change set to "new primitives only" makes any failure attributable to the four files added in steps 1-8, not to a Card-wrap regression in older sections.
 
 Imports to add at the top of the gallery: `Card, CardPadding, Badge, BadgeVariant, Separator, SeparatorOrientation, Spinner, SpinnerSize`.
 
@@ -2458,7 +2458,7 @@ A standalone refactor pass following Task 17a's primitive landings. Splitting th
 
 - [ ] **Step 1: Wrap each existing section in a `Card`**
 
-For each of these sections in the gallery — Icon, Button, IconButton, TextInput, NumberInput, Select, Slider, Switch, Checkbox — wrap the section's content in a `Card { padding: CardPadding::Md, … }`. Example for the Icon section:
+For each of these sections in the gallery, Icon, Button, IconButton, TextInput, NumberInput, Select, Slider, Switch, Checkbox, wrap the section's content in a `Card { padding: CardPadding::Md, … }`. Example for the Icon section:
 
 ```rust
                 section {
@@ -2482,7 +2482,7 @@ cargo build -p inputforge-gui-dx --example component_gallery
 dx serve --example component_gallery --platform desktop
 ```
 
-Visually compare against the pre-refactor screenshot from Task 17a's verification. All interactive primitives must still respond to hover/focus/click. Tab through the gallery — focus order unchanged. No closure capture regressions (signals inside Switch, Checkbox, etc. should still update the visible state on click). If anything regresses, the suspect surface is just the Card wrappers added in step 1.
+Visually compare against the pre-refactor screenshot from Task 17a's verification. All interactive primitives must still respond to hover/focus/click. Tab through the gallery, focus order unchanged. No closure capture regressions (signals inside Switch, Checkbox, etc. should still update the visible state on click). If anything regresses, the suspect surface is just the Card wrappers added in step 1.
 
 - [ ] **Step 3: Commit**
 
@@ -2495,7 +2495,7 @@ refactor(gui-dx): wrap gallery sections in Card for visual consistency
 
 ## Task 18: Tooltip (CSS-only)
 
-CSS-only via `:hover`/`:focus-within` — no JS positioning. Edge clipping is acceptable per spec risk note.
+CSS-only via `:hover`/`:focus-within`, no JS positioning. Edge clipping is acceptable per spec risk note.
 
 **Files:**
 - Create: `src/components/tooltip.rs`
@@ -2694,7 +2694,7 @@ pub fn MenuItem(
 }
 ```
 
-(Arrow-key roving focus is intentionally minimal at F2 — F15 polish can extend this. Tab still navigates between items, and ESC closes.)
+(Arrow-key roving focus is intentionally minimal at F2, F15 polish can extend this. Tab still navigates between items, and ESC closes.)
 
 - [ ] **Step 2: `assets/components/menu.css`**
 
@@ -2789,7 +2789,7 @@ feat(gui-dx): add Menu compound primitive (MenuRoot/Trigger/Items/Item)
 
 ---
 
-## Task 20: Form-wrapper pair — Field + Label
+## Task 20: Form-wrapper pair, Field + Label
 
 Field couples a label, an input area (children), helper text, and an error message. Label is the underlying type-consistent label primitive.
 
@@ -2925,12 +2925,12 @@ feat(gui-dx): add Field and Label form-wrapper primitives
 Demonstrates the design system on the F1 surface. Same six fields, same data, different presentation.
 
 **Files:**
-- Modify: `crates/inputforge-gui-dx/src/app.rs` — rewrite `F1Readout`
-- Modify: `crates/inputforge-gui-dx/src/context.rs` — add a unit test asserting `MetaSnapshot::from_state` + `ConfigSnapshot::from_state` produce the six values F1Readout displays for a known seeded `AppState`. (The existing F1 tests cover the factories generally; this new test pins the exact UI-data contract.)
+- Modify: `crates/inputforge-gui-dx/src/app.rs`, rewrite `F1Readout`
+- Modify: `crates/inputforge-gui-dx/src/context.rs`, add a unit test asserting `MetaSnapshot::from_state` + `ConfigSnapshot::from_state` produce the six values F1Readout displays for a known seeded `AppState`. (The existing F1 tests cover the factories generally; this new test pins the exact UI-data contract.)
 
 - [ ] **Step 0: Pre-flight verification of upstream API surface**
 
-The regression test in step 1 mutates `AppState` fields directly and the rewritten `F1Readout` matches on `EngineStatus` variants. Both assumptions held when this plan was written but should be verified before relying on them — `inputforge-core` may have evolved.
+The regression test in step 1 mutates `AppState` fields directly and the rewritten `F1Readout` matches on `EngineStatus` variants. Both assumptions held when this plan was written but should be verified before relying on them, `inputforge-core` may have evolved.
 
 ```bash
 grep -n "pub enum EngineStatus" crates/inputforge-core/src/state/status.rs
@@ -2985,7 +2985,7 @@ fn f1_readout_data_binding_contract() {
 ```
 
 Run: `cargo test -p inputforge-gui-dx --lib context::tests::f1_readout_data_binding_contract`
-Expected: PASS (the factories already work — this pins the contract so a future refactor can't silently change it).
+Expected: PASS (the factories already work, this pins the contract so a future refactor can't silently change it).
 
 - [ ] **Step 2: Rewrite `F1Readout` in `src/app.rs`**
 
@@ -3017,7 +3017,7 @@ fn F1Readout() -> Element {
     rsx! {
         main {
             style: "padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4);",
-            h1 { "InputForge — Dioxus (F1 bridge smoke test)" }
+            h1 { "InputForge, Dioxus (F1 bridge smoke test)" }
             crate::components::Card { padding: crate::components::CardPadding::Md,
                 div { style: "display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4);",
                     crate::components::Label { for_id: None::<String>, "Engine status:" }
@@ -3053,7 +3053,7 @@ Expected: all tests PASS, including `f1_readout_data_binding_contract`.
 - [ ] **Step 4: Smoke under full app**
 
 Run: `cargo run -p inputforge-app --no-default-features --features gui-dioxus`
-Expected: window opens with the new themed F1 readout — Card, Badges, Labels — bound to the same six fields. The success badge is green (engine running), warning badge is neutral if zero warnings.
+Expected: window opens with the new themed F1 readout, Card, Badges, Labels, bound to the same six fields. The success badge is green (engine running), warning badge is neutral if zero warnings.
 
 If the engine is `Stopped`, status badge reads `Stopped` with neutral styling. Cycle the engine to verify badge colors update.
 
@@ -3103,7 +3103,7 @@ rsx! {
 }
 ```
 
-`app_root` already wraps `F1Readout` in `ThemeProvider` — every screen
+`app_root` already wraps `F1Readout` in `ThemeProvider`, every screen
 mounted under `app_root` inherits it.
 
 ## Adding a new icon
@@ -3111,12 +3111,12 @@ mounted under `app_root` inherits it.
 1. Drop the `.svg` file under `src/icons/svg/<name>.svg` (Phosphor regular weight, 24×24 viewBox).
 2. Add a variant to the `Icon` enum in `src/icons/mod.rs`.
 3. Add a match arm in `Icon::svg()` mapping the variant to `include_str!("svg/<name>.svg")`.
-4. Run `cargo test -p inputforge-gui-dx --lib icons::tests` — the well-formedness test will catch corrupt files.
+4. Run `cargo test -p inputforge-gui-dx --lib icons::tests`, the well-formedness test will catch corrupt files.
 
 ## Toolchain prerequisites
 
-- `dx` (dioxus-cli) version 0.7.6 — install via `cargo install dioxus-cli --version 0.7.6`. Required for hot-reload (`dx serve`).
-- WebView2 runtime — bundled with Windows 11. On Windows 10 or earlier, install the Evergreen Standalone runtime from https://developer.microsoft.com/microsoft-edge/webview2/.
+- `dx` (dioxus-cli) version 0.7.6, install via `cargo install dioxus-cli --version 0.7.6`. Required for hot-reload (`dx serve`).
+- WebView2 runtime, bundled with Windows 11. On Windows 10 or earlier, install the Evergreen Standalone runtime from https://developer.microsoft.com/microsoft-edge/webview2/.
 ```
 
 - [ ] **Step 2: Commit**
@@ -3128,9 +3128,9 @@ docs(gui-dx): document gallery, ThemeProvider, icon-add workflow, toolchain prer
 
 ---
 
-## Task 23: Final verification (spec checks 1–11)
+## Task 23: Final verification (spec checks 1-11)
 
-Pure verification — no code changes unless a check fails (in which case fix and re-run).
+Pure verification, no code changes unless a check fails (in which case fix and re-run).
 
 - [ ] **Check 1: No new warnings in `inputforge-gui-dx` build**
 
@@ -3215,7 +3215,7 @@ Expected: file exists; grep returns at least three matching lines.
 
 - [ ] **Final commit (if any cosmetic fix landed during verification)**
 
-Invoke the `conventional-commits` skill if a fix was needed. Otherwise verification is read-only — no commit.
+Invoke the `conventional-commits` skill if a fix was needed. Otherwise verification is read-only, no commit.
 
 F2 complete. Hand off to F3 shell.
 
@@ -3225,11 +3225,11 @@ F2 complete. Hand off to F3 shell.
 
 The plan covers every section of the spec:
 
-- File layout (assets/ + src/) → Tasks 1, 6, 7, 11–20
+- File layout (assets/ + src/) → Tasks 1, 6, 7, 11-20
 - ThemeProvider wiring → Tasks 2, 3, 8 + every primitive task adds a stylesheet mount
 - Token system (six files + global) → Tasks 6, 7, with revision in Task 10
-- 17 component primitives → Tasks 13 (Icon) + 14–20 (16 in 7 grouped tasks; Task 17 splits into 17a for new primitives + 17b for the Card-wrap refactor of prior gallery sections)
-- Icon strategy → Tasks 11–13
+- 17 component primitives → Tasks 13 (Icon) + 14-20 (16 in 7 grouped tasks; Task 17 splits into 17a for new primitives + 17b for the Card-wrap refactor of prior gallery sections)
+- Icon strategy → Tasks 11-13
 - Test harness (`component_gallery.rs`) → Task 5 (skeleton) + every primitive task appends sections; Task 17b restructures existing sections to use Card
 - Frontend-design integration → Tasks 9, 10 (with explicit screenshot capture and brief)
 - Critical files to modify → covered in "Critical Files To Modify" section above
@@ -3247,23 +3247,23 @@ No placeholders detected. Type names referenced across tasks are consistent (`In
 After the F2 branch reached 28 commits, an end-of-branch code review (`/superpowers:requesting-code-review`) flagged 4 Important and 7 Minor issues plus a few impeccable cross-cutting concerns. All addressed in this branch before merge:
 
 **Important**
-- [x] **I1** — Checkbox indeterminate now syncs the DOM `.indeterminate` IDL property via `use_effect` + `document::eval`, plus `aria-checked="mixed"`. Generates an internal stable id when no caller `id` is supplied. (`src/components/checkbox.rs`)
-- [x] **I2** — Menu compound now handles ArrowDown/ArrowUp/Home/End keyboard nav and auto-focuses the first item when opening, via a small embedded JS focus-walker. (`src/components/menu.rs`)
-- [x] **I3** — Badge backgrounds now reference new `--color-{info,success,warning,error}-bg` tokens; rgba literals removed. Token RGB matches the revised palette. (`assets/tokens/colors.css`, `assets/components/badge.css`)
-- [x] **I4** — TextInput, NumberInput, Select, Slider, and Label now render `id`/`for` only when the prop is `Some`, eliminating HTML5-invalid empty-string attributes on default usage. (5 files under `src/components/`)
+- [x] **I1**, Checkbox indeterminate now syncs the DOM `.indeterminate` IDL property via `use_effect` + `document::eval`, plus `aria-checked="mixed"`. Generates an internal stable id when no caller `id` is supplied. (`src/components/checkbox.rs`)
+- [x] **I2**, Menu compound now handles ArrowDown/ArrowUp/Home/End keyboard nav and auto-focuses the first item when opening, via a small embedded JS focus-walker. (`src/components/menu.rs`)
+- [x] **I3**, Badge backgrounds now reference new `--color-{info,success,warning,error}-bg` tokens; rgba literals removed. Token RGB matches the revised palette. (`assets/tokens/colors.css`, `assets/components/badge.css`)
+- [x] **I4**, TextInput, NumberInput, Select, Slider, and Label now render `id`/`for` only when the prop is `Some`, eliminating HTML5-invalid empty-string attributes on default usage. (5 files under `src/components/`)
 
 **Minor**
-- [x] **M1** — `IconButton` now delegates to `ButtonVariant::class_for(prefix)` / `ButtonSize::class_for(prefix)` instead of duplicating match arms; exhaustive class-delegation tests added. (`src/components/{button,icon_button}.rs`)
-- [x] **M2** — `IconButton` ghost hover background switched from `--color-bg-elevated` to `--color-border` so hover stays visible inside Card. (`assets/components/icon-button.css`)
-- [x] **M3** — Inter-Bold v4.1 ttf shipped; `@font-face` block added; faux-bold warning comment removed; `THIRD_PARTY_LICENSES.md` lists the new file. (`assets/fonts/Inter-Bold.ttf`, `assets/tokens/typography.css`, `THIRD_PARTY_LICENSES.md`)
-- [x] **M4** — `MenuItems` is now always-mounted with the HTML `hidden` attribute when closed; `MenuTrigger` advertises `aria-controls=<menu-id>`. (`src/components/menu.rs`)
-- [x] **M5** — Slider/Switch raw px replaced with new `--control-size-{sm,md,lg}` + `--control-track-h` + `--control-border-w` tokens. (`assets/tokens/spacing.css`, `assets/components/{slider,switch}.css`)
-- [x] **M6** — Stack/Cluster/Inset layout primitives extracted; F1Readout and component_gallery layout sites migrated. (`src/components/layout.rs`, `assets/components/layout.css`, `src/app.rs`, `examples/component_gallery.rs`)
-- [x] **M7** — Tooltip overlays now apply `backdrop-filter: blur(8px)` so the translucency reads as a layer over Card surfaces. (`assets/components/tooltip.css`)
+- [x] **M1**, `IconButton` now delegates to `ButtonVariant::class_for(prefix)` / `ButtonSize::class_for(prefix)` instead of duplicating match arms; exhaustive class-delegation tests added. (`src/components/{button,icon_button}.rs`)
+- [x] **M2**, `IconButton` ghost hover background switched from `--color-bg-elevated` to `--color-border` so hover stays visible inside Card. (`assets/components/icon-button.css`)
+- [x] **M3**, Inter-Bold v4.1 ttf shipped; `@font-face` block added; faux-bold warning comment removed; `THIRD_PARTY_LICENSES.md` lists the new file. (`assets/fonts/Inter-Bold.ttf`, `assets/tokens/typography.css`, `THIRD_PARTY_LICENSES.md`)
+- [x] **M4**, `MenuItems` is now always-mounted with the HTML `hidden` attribute when closed; `MenuTrigger` advertises `aria-controls=<menu-id>`. (`src/components/menu.rs`)
+- [x] **M5**, Slider/Switch raw px replaced with new `--control-size-{sm,md,lg}` + `--control-track-h` + `--control-border-w` tokens. (`assets/tokens/spacing.css`, `assets/components/{slider,switch}.css`)
+- [x] **M6**, Stack/Cluster/Inset layout primitives extracted; F1Readout and component_gallery layout sites migrated. (`src/components/layout.rs`, `assets/components/layout.css`, `src/app.rs`, `examples/component_gallery.rs`)
+- [x] **M7**, Tooltip overlays now apply `backdrop-filter: blur(8px)` so the translucency reads as a layer over Card surfaces. (`assets/components/tooltip.css`)
 
 **Impeccable cross-cutting**
-- [x] **A** — `prefers-reduced-motion` media query in `motion.css` zeroes `--duration-*` tokens. Component CSS that pipes durations through tokens disables motion automatically.
-- [x] **B** — WCAG AA verification documented inline in `colors.css` for each new `*-bg` token (≥4.5:1 against `--color-text` on the composited surface).
-- [x] **C** — `impeccable:teach-impeccable` skipped in favor of inline rationale comments on every new token (palette intent, motion philosophy, geometry tokens) — same outcome with no tooling dependency.
+- [x] **A**, `prefers-reduced-motion` media query in `motion.css` zeroes `--duration-*` tokens. Component CSS that pipes durations through tokens disables motion automatically.
+- [x] **B**, WCAG AA verification documented inline in `colors.css` for each new `*-bg` token (≥4.5:1 against `--color-text` on the composited surface).
+- [x] **C**, `impeccable:teach-impeccable` skipped in favor of inline rationale comments on every new token (palette intent, motion philosophy, geometry tokens), same outcome with no tooling dependency.
 
 Verification: `cargo check`, `cargo test` (22 lib tests), `cargo build --example component_gallery`, `cargo build -p inputforge-app` (default + `--no-default-features --features gui-dioxus`), `cargo clippy -- -D warnings` all clean.

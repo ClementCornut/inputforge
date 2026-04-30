@@ -1,12 +1,12 @@
-# F4 — Toast & Dialog Infrastructure — Implementation Plan
+# F4, Toast & Dialog Infrastructure, Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Spec:** `docs/superpowers/specs/2026-04-26-f4-toast-dialog-design.md`
 
-**Goal:** Ship the fourth and final foundation feature in `crates/inputforge-gui-dx`: a global toast queue (level + dedupe + cap + auto-dismiss + pause + keyboard dismissal), a native-`<dialog>`-backed compound dialog primitive, a presentational `DirtyConfirmDialog` reusable, and one production subscriber wiring `MetaSnapshot.warnings` into the toast queue. After F4, all four foundation features (F1–F4) are in place and `--features gui-dioxus` covers warning visibility at parity with the egui crate.
+**Goal:** Ship the fourth and final foundation feature in `crates/inputforge-gui-dx`: a global toast queue (level + dedupe + cap + auto-dismiss + pause + keyboard dismissal), a native-`<dialog>`-backed compound dialog primitive, a presentational `DirtyConfirmDialog` reusable, and one production subscriber wiring `MetaSnapshot.warnings` into the toast queue. After F4, all four foundation features (F1-F4) are in place and `--features gui-dioxus` covers warning visibility at parity with the egui crate.
 
-**Architecture:** The toast queue is split into three layers: pure data (`ToastState` — runtime-free, fully unit-testable), a thin `Signal<ToastState>` wrapper (`ToastQueue`), and a single component (`ToastViewport`) that drives the 4 Hz expiration GC, owns the per-level ARIA live regions, and re-renders on each tick. The dialog primitive is a compound API (`DialogRoot/Title/Description/Body/Footer`) over the native `<dialog>` element + `showModal()` (focus trap, ESC, inert background, focus restore — all browser-handled); a tiny JS shim drives `showModal`/`close` and the `cancel` listener via `document::eval`. `DirtyConfirmDialog` is a thin presentational composer of those primitives with default copy and Cancel/Discard/Save buttons (Cancel-first for default focus). `install_warnings_bridge` is a `use_effect` closure that observes `ctx.meta.warnings` and pushes new tail entries as Warning-level toasts, idempotent under spurious re-runs.
+**Architecture:** The toast queue is split into three layers: pure data (`ToastState`, runtime-free, fully unit-testable), a thin `Signal<ToastState>` wrapper (`ToastQueue`), and a single component (`ToastViewport`) that drives the 4 Hz expiration GC, owns the per-level ARIA live regions, and re-renders on each tick. The dialog primitive is a compound API (`DialogRoot/Title/Description/Body/Footer`) over the native `<dialog>` element + `showModal()` (focus trap, ESC, inert background, focus restore, all browser-handled); a tiny JS shim drives `showModal`/`close` and the `cancel` listener via `document::eval`. `DirtyConfirmDialog` is a thin presentational composer of those primitives with default copy and Cancel/Discard/Save buttons (Cancel-first for default focus). `install_warnings_bridge` is a `use_effect` closure that observes `ctx.meta.warnings` and pushes new tail entries as Warning-level toasts, idempotent under spurious re-runs.
 
 **Tech Stack:** Rust 2024 / rustc 1.85, Dioxus 0.7.6 (desktop / wry / WebView2), `tokio::time::interval` (existing dep, used by viewport tick), F2 design-system primitives (Button + tokens), F3 placeholder shell + status-bar view (untouched). No new crate dependencies.
 
@@ -20,7 +20,7 @@ F1 shipped the state-bridge scaffold; F2 shipped the design system + 17 primitiv
 
 - **Layering matters.** Putting all toast logic in a `#[component]` ties tests to a Dioxus runtime. Splitting into pure-data (`state.rs`) + Signal wrapper (`queue.rs`) + viewport (`viewport.rs`) lets the unit tests run as plain `#[test]` functions, no harness, no scope. The Signal-wrapper convention from F1 (`use_signal` inside `app_root`) carries forward.
 - **The dialog id wiring is delicate.** `aria-labelledby`/`aria-describedby` must point at real ids on the very first render or AT users get a dangling-reference flash. Eagerly computing `dialog_id`/`title_id`/`desc_id` in `DialogRoot`'s `use_hook` initializer (which runs before children render) avoids the parent-child ordering bug.
-- **Warnings bridge re-run amplification is real.** Reading `ctx.meta` inside `use_effect` subscribes the entire `MetaSnapshot`. The length-diff guard makes it idempotent, but the wording in code matters — a wrong baseline on first mount would replay accumulated warnings as toasts (annoying, not unsafe). The plan locks the baseline shape.
+- **Warnings bridge re-run amplification is real.** Reading `ctx.meta` inside `use_effect` subscribes the entire `MetaSnapshot`. The length-diff guard makes it idempotent, but the wording in code matters, a wrong baseline on first mount would replay accumulated warnings as toasts (annoying, not unsafe). The plan locks the baseline shape.
 - **The frontend-design invocation is mid-stream.** Stand the primitives up with stub CSS so the gallery renders, then run `impeccable:frontend-design` against a real screenshot, then commit revised CSS. Doing it before any RSX exists wastes the briefing; doing it at the end means visual rework piles up after manual acceptance.
 
 Outcome at F4: `cargo run --no-default-features --features gui-dioxus` opens the F3 shell; pushing toasts (via gallery or a real engine warning) renders them top-right with per-level accents; ESC + close-button + auto-dismiss all work; opening a dialog traps focus and restores it on close; `DirtyConfirmDialog` exercises the Cancel/Discard/Save flow with Cancel-first default focus. `cargo run` (default features = egui) is byte-identical to today.
@@ -33,50 +33,50 @@ All paths relative to `E:\Git\Perso\inputforge\` unless otherwise noted.
 
 **Created (in `crates/inputforge-gui-dx/`):**
 
-- `src/toast/mod.rs` — module re-exports (`pub use state::*; pub use queue::ToastQueue; pub(crate) use viewport::ToastViewport; pub(crate) use warnings_bridge::install_warnings_bridge`)
-- `src/toast/state.rs` — `ToastLevel`, `Toast`, `ToastState`, `TOAST_DURATION`, `TOAST_MAX_VISIBLE`, `is_expired`; pure data + behavior with `#[cfg(test)] mod tests`
-- `src/toast/queue.rs` — `ToastQueue { state: Signal<ToastState> }` Signal wrapper; delegates `push`/`dismiss`/`pause`/`resume`; `visible(now)` snapshot
-- `src/toast/viewport.rs` — `ToastViewport` component (drives 4 Hz tick, splits into polite/assertive ARIA regions); `ToastItem` per-toast component with hover/focus/escape handling
-- `src/toast/warnings_bridge.rs` — `install_warnings_bridge(ctx, queue, last_seen)` returns the `use_effect` closure
-- `src/components/dialog.rs` — `DialogRoot`, `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogFooter` compound; `DIALOG_ID_COUNTER`; `DIALOG_OPEN_JS` / `DIALOG_CLOSE_JS` / `DIALOG_ATTACH_CANCEL_JS`; id-generation `#[cfg(test)]` test
-- `src/patterns/mod.rs` — `pub use dirty_confirm::DirtyConfirmDialog;`
-- `src/patterns/dirty_confirm.rs` — `DirtyConfirmDialog` presentational component
-- `assets/components/dialog.css` — `:modal`, `::backdrop`, panel surface, body scroll, footer alignment
-- `assets/toast/toast.css` — viewport position, per-level accents, count badge, hover/focus styles, motion
+- `src/toast/mod.rs`, module re-exports (`pub use state::*; pub use queue::ToastQueue; pub(crate) use viewport::ToastViewport; pub(crate) use warnings_bridge::install_warnings_bridge`)
+- `src/toast/state.rs`, `ToastLevel`, `Toast`, `ToastState`, `TOAST_DURATION`, `TOAST_MAX_VISIBLE`, `is_expired`; pure data + behavior with `#[cfg(test)] mod tests`
+- `src/toast/queue.rs`, `ToastQueue { state: Signal<ToastState> }` Signal wrapper; delegates `push`/`dismiss`/`pause`/`resume`; `visible(now)` snapshot
+- `src/toast/viewport.rs`, `ToastViewport` component (drives 4 Hz tick, splits into polite/assertive ARIA regions); `ToastItem` per-toast component with hover/focus/escape handling
+- `src/toast/warnings_bridge.rs`, `install_warnings_bridge(ctx, queue, last_seen)` returns the `use_effect` closure
+- `src/components/dialog.rs`, `DialogRoot`, `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogFooter` compound; `DIALOG_ID_COUNTER`; `DIALOG_OPEN_JS` / `DIALOG_CLOSE_JS` / `DIALOG_ATTACH_CANCEL_JS`; id-generation `#[cfg(test)]` test
+- `src/patterns/mod.rs`, `pub use dirty_confirm::DirtyConfirmDialog;`
+- `src/patterns/dirty_confirm.rs`, `DirtyConfirmDialog` presentational component
+- `assets/components/dialog.css`, `:modal`, `::backdrop`, panel surface, body scroll, footer alignment
+- `assets/toast/toast.css`, viewport position, per-level accents, count badge, hover/focus styles, motion
 
 **Modified (in `crates/inputforge-gui-dx/`):**
 
-- `src/lib.rs` — add `mod toast;` (private) and `pub mod patterns;`; no public surface changes from the toast module — the queue is reached via `use_context::<ToastQueue>()` and ToastQueue itself is `pub use`'d through `toast::mod`. Concretely: add `pub use toast::{ToastLevel, ToastQueue};` so external consumers (gallery, future F8/F11/F13/F14 producers) can name the level enum and the queue type.
-- `src/app.rs` — install `ToastQueue` context via `use_context_provider` adjacent to `AppContext`; install warnings bridge via `use_effect`; render `ToastViewport` as a sibling of `PlaceholderShell` inside `ThemeProvider`
-- `src/components/mod.rs` — add `pub mod dialog;` + re-export `DialogRoot`, `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogFooter`
-- `src/theme/mod.rs` — add `Stylesheet` mounts for `dialog.css` and `toast.css` (toast goes last — overlay layer on top of all component CSS)
-- `assets/tokens/elevation.css` — add `--z-toast` token (above the existing `1000` z-index used by Menu — pick `1100` to keep room for future `--z-dialog` if we ever want to swap order)
-- `examples/component_gallery.rs` — install `ToastQueue` in `gallery_root`; add three sections: Toasts (5 buttons), Dialog primitives (4 buttons), DirtyConfirmDialog (2 buttons)
-- `README.md` — document `ToastQueue`, dialog compound API, dirty-confirm pattern, warnings bridge
+- `src/lib.rs`, add `mod toast;` (private) and `pub mod patterns;`; no public surface changes from the toast module, the queue is reached via `use_context::<ToastQueue>()` and ToastQueue itself is `pub use`'d through `toast::mod`. Concretely: add `pub use toast::{ToastLevel, ToastQueue};` so external consumers (gallery, future F8/F11/F13/F14 producers) can name the level enum and the queue type.
+- `src/app.rs`, install `ToastQueue` context via `use_context_provider` adjacent to `AppContext`; install warnings bridge via `use_effect`; render `ToastViewport` as a sibling of `PlaceholderShell` inside `ThemeProvider`
+- `src/components/mod.rs`, add `pub mod dialog;` + re-export `DialogRoot`, `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogFooter`
+- `src/theme/mod.rs`, add `Stylesheet` mounts for `dialog.css` and `toast.css` (toast goes last, overlay layer on top of all component CSS)
+- `assets/tokens/elevation.css`, add `--z-toast` token (above the existing `1000` z-index used by Menu, pick `1100` to keep room for future `--z-dialog` if we ever want to swap order)
+- `examples/component_gallery.rs`, install `ToastQueue` in `gallery_root`; add three sections: Toasts (5 buttons), Dialog primitives (4 buttons), DirtyConfirmDialog (2 buttons)
+- `README.md`, document `ToastQueue`, dialog compound API, dirty-confirm pattern, warnings bridge
 
 **Reused (do not modify):**
 
-- `src/context.rs` — `AppContext`, `MetaSnapshot::warnings` (read-only consumer)
-- `src/bridge.rs` — `spawn_polling_task` (existing; gates writes via `PartialEq`, so the warnings-bridge re-run is throttled at the source)
-- `src/components/button.rs` — `Button { variant, onclick, ... }` (composed by `DirtyConfirmDialog` and the gallery sections)
-- `src/components/icon.rs` + `src/icons/mod.rs` — `Icon { name: IconKind::Info | Warning | Error | Check }` for per-level glyphs (`Check` is the closest existing fit for Success — the icon set is already at parity)
-- `src/components/menu.rs` — precedent for `document::eval`-driven JS shims; same shape applies to `dialog.rs`
+- `src/context.rs`, `AppContext`, `MetaSnapshot::warnings` (read-only consumer)
+- `src/bridge.rs`, `spawn_polling_task` (existing; gates writes via `PartialEq`, so the warnings-bridge re-run is throttled at the source)
+- `src/components/button.rs`, `Button { variant, onclick, ... }` (composed by `DirtyConfirmDialog` and the gallery sections)
+- `src/components/icon.rs` + `src/icons/mod.rs`, `Icon { name: IconKind::Info | Warning | Error | Check }` for per-level glyphs (`Check` is the closest existing fit for Success, the icon set is already at parity)
+- `src/components/menu.rs`, precedent for `document::eval`-driven JS shims; same shape applies to `dialog.rs`
 - F2 tokens: `--color-info-bg`, `--color-success-bg`, `--color-warning-bg`, `--color-error-bg`, `--color-info`, `--color-live`, `--color-warning`, `--color-error`, `--shadow-3`, `--space-{1..6}`, `--radius-md`, `--font-sans`
-- F3 `StatusBarView`'s `<span role="status" aria-live="polite">` wrapper — UNCHANGED. Spec confirms.
+- F3 `StatusBarView`'s `<span role="status" aria-live="polite">` wrapper, UNCHANGED. Spec confirms.
 
 ---
 
 ## Existing utilities to reuse
 
-- **F2's `merge_class(base, variant, caller)`** in `src/components/mod.rs:49-62` — every new primitive (Dialog parts, ToastItem) uses this to honor the `class: Option<String>` caller-composition prop.
-- **F2's component pattern** — sibling `.rs` + `.css` per primitive (`assets/components/<name>.css`), `asset!()` mounted from `theme/mod.rs`, `.if-<name>` BEM-ish class prefix. `assets/components/badge.css` is the canonical small-primitive template; `assets/components/menu.css` is the canonical eval-driven JS-paired template.
-- **F2's `Icon` enum** — already includes `Info`, `Warning`, `Error`, and `Check` (the latter for Success). See `src/icons/mod.rs:30-33` — no new icons needed.
-- **F2's `Button { variant: ButtonVariant::{Primary,Secondary,Danger}, onclick, ... }`** — `DirtyConfirmDialog` composes three of these in its footer.
-- **F1's `AppContext` + `MetaSnapshot`** — `ctx.meta.read().warnings` is the bridge's input; `ctx.meta.peek().warnings.len()` is the safe (non-subscribing) baseline read.
-- **F1's "Signal lives in `app_root`'s body" pattern** — see `src/app.rs:19-30`. `ToastQueue` follows it: `let toast_state = use_signal(ToastState::default); let toast_queue = ToastQueue { state: toast_state };`.
-- **Dioxus 0.7's `document::eval`** — already used by `components/menu.rs:105,118` for the focus walker. Same call shape applies to `DIALOG_OPEN_JS`/`DIALOG_CLOSE_JS`/`DIALOG_ATTACH_CANCEL_JS`.
-- **Dioxus 0.7's `use_future` + `tokio::time::interval`** — established 60 Hz pattern in `src/bridge.rs:16-19`. The viewport's 4 Hz GC tick reuses the same `tokio::time::interval` machinery (already in `[dependencies]`).
-- **`AtomicU64` id counter** — `src/components/menu.rs:1-10` shows the pattern; `dialog.rs` mirrors it.
+- **F2's `merge_class(base, variant, caller)`** in `src/components/mod.rs:49-62`, every new primitive (Dialog parts, ToastItem) uses this to honor the `class: Option<String>` caller-composition prop.
+- **F2's component pattern**, sibling `.rs` + `.css` per primitive (`assets/components/<name>.css`), `asset!()` mounted from `theme/mod.rs`, `.if-<name>` BEM-ish class prefix. `assets/components/badge.css` is the canonical small-primitive template; `assets/components/menu.css` is the canonical eval-driven JS-paired template.
+- **F2's `Icon` enum**, already includes `Info`, `Warning`, `Error`, and `Check` (the latter for Success). See `src/icons/mod.rs:30-33`, no new icons needed.
+- **F2's `Button { variant: ButtonVariant::{Primary,Secondary,Danger}, onclick, ... }`**, `DirtyConfirmDialog` composes three of these in its footer.
+- **F1's `AppContext` + `MetaSnapshot`**, `ctx.meta.read().warnings` is the bridge's input; `ctx.meta.peek().warnings.len()` is the safe (non-subscribing) baseline read.
+- **F1's "Signal lives in `app_root`'s body" pattern**, see `src/app.rs:19-30`. `ToastQueue` follows it: `let toast_state = use_signal(ToastState::default); let toast_queue = ToastQueue { state: toast_state };`.
+- **Dioxus 0.7's `document::eval`**, already used by `components/menu.rs:105,118` for the focus walker. Same call shape applies to `DIALOG_OPEN_JS`/`DIALOG_CLOSE_JS`/`DIALOG_ATTACH_CANCEL_JS`.
+- **Dioxus 0.7's `use_future` + `tokio::time::interval`**, established 60 Hz pattern in `src/bridge.rs:16-19`. The viewport's 4 Hz GC tick reuses the same `tokio::time::interval` machinery (already in `[dependencies]`).
+- **`AtomicU64` id counter**, `src/components/menu.rs:1-10` shows the pattern; `dialog.rs` mirrors it.
 
 ---
 
@@ -84,18 +84,18 @@ All paths relative to `E:\Git\Perso\inputforge\` unless otherwise noted.
 
 Surface these in the implementer's mind before they hit them:
 
-- **`Signal::new()` outside a hook leaks.** See `dioxus-signals/src/signal.rs:30-52`. `ToastQueue` exposes `state: Signal<ToastState>` but has NO `::new()` — the Signal must be created via `use_signal(ToastState::default)` inside `app_root` (production wiring) or `gallery_root` (gallery). Same shape F1 uses for `MetaSnapshot`.
+- **`Signal::new()` outside a hook leaks.** See `dioxus-signals/src/signal.rs:30-52`. `ToastQueue` exposes `state: Signal<ToastState>` but has NO `::new()`, the Signal must be created via `use_signal(ToastState::default)` inside `app_root` (production wiring) or `gallery_root` (gallery). Same shape F1 uses for `MetaSnapshot`.
 - **`use_context_provider` runs once per scope.** Calling it from inside `app_root`'s render body installs the `ToastQueue` for every descendant. Mirror the F1 `AppContext` pattern (`app.rs:31`).
-- **`use_effect` subscribes to every signal it reads.** Reading `ctx.meta` inside `install_warnings_bridge` subscribes the entire `MetaSnapshot` (engine_status, current_mode, profile_name, profile_path, warnings). Spurious re-runs (engine status flip, mode rename) are made idempotent by the length-diff guard. Acceptable — the polling task already throttles via `PartialEq` (`bridge.rs:38-46`).
-- **`Signal<T>` is `Copy`.** Pass by value into closures (`last_seen` Signal in the bridge); rebind as `mut` inside the closure if you need to call `set`. The F1 polling task does this exact dance — `bridge.rs:35-37`.
-- **`use_future` over `use_resource` for a side-effect tick.** A tokio interval that writes a Signal is a side effect, not a value; `use_future` is the standard place for it. The viewport pattern: `let mut now_signal = use_signal(Instant::now); use_future(move || async move { let mut t = tokio::time::interval(Duration::from_millis(250)); loop { t.tick().await; now_signal.set(Instant::now()); } });` — re-reading `now_signal` in the body produces the re-render.
+- **`use_effect` subscribes to every signal it reads.** Reading `ctx.meta` inside `install_warnings_bridge` subscribes the entire `MetaSnapshot` (engine_status, current_mode, profile_name, profile_path, warnings). Spurious re-runs (engine status flip, mode rename) are made idempotent by the length-diff guard. Acceptable, the polling task already throttles via `PartialEq` (`bridge.rs:38-46`).
+- **`Signal<T>` is `Copy`.** Pass by value into closures (`last_seen` Signal in the bridge); rebind as `mut` inside the closure if you need to call `set`. The F1 polling task does this exact dance, `bridge.rs:35-37`.
+- **`use_future` over `use_resource` for a side-effect tick.** A tokio interval that writes a Signal is a side effect, not a value; `use_future` is the standard place for it. The viewport pattern: `let mut now_signal = use_signal(Instant::now); use_future(move || async move { let mut t = tokio::time::interval(Duration::from_millis(250)); loop { t.tick().await; now_signal.set(Instant::now()); } });`, re-reading `now_signal` in the body produces the re-render.
 - **`document::eval` is fire-and-forget; the future returned must be discarded with `let _ =`.** Same as `menu.rs:105`. Errors propagate as eval-side JS exceptions, not Rust errors.
-- **`use_hook(|| ...)` initializer runs during the parent's render — BEFORE children render.** This is why `DialogRoot` uses `use_hook` (not `use_signal`) to compute `dialog_id`/`title_id`/`desc_id`: children that consume `DialogState` see fully-populated ids on their very first render. `use_signal` would also work but `use_hook` is the right semantic ("compute once, never write") and avoids unnecessary subscription bookkeeping.
+- **`use_hook(|| ...)` initializer runs during the parent's render, BEFORE children render.** This is why `DialogRoot` uses `use_hook` (not `use_signal`) to compute `dialog_id`/`title_id`/`desc_id`: children that consume `DialogState` see fully-populated ids on their very first render. `use_signal` would also work but `use_hook` is the right semantic ("compute once, never write") and avoids unnecessary subscription bookkeeping.
 - **`use_effect` runs AFTER DOM commit.** That's the post-commit ordering guarantee from `dioxus-core/src/scheduler.rs`. Use `use_effect` (not `use_hook`) for `document::eval` calls that need the `<dialog>` element to exist (`getElementById` lookups).
 - **Native `<dialog>` `cancel` event needs `preventDefault()` to suppress ESC dismissal.** Listener attached once on first commit via `DIALOG_ATTACH_CANCEL_JS`; the `dismissible` Rust prop is interpolated into the JS at attach time, so flipping `dismissible` after mount is **not supported**. F4 only ever opens dialogs with a stable `dismissible` value (DirtyConfirmDialog: `true`; gallery non-dismissible: `false`). Document this in the doc-comment on `DialogRoot`.
-- **`<dialog>` does NOT close on backdrop click by default.** The Rust-side `onclick` on `<dialog>` fires only on backdrop clicks because the inner `.if-dialog__panel` calls `evt.stop_propagation()` on its own `onclick`. Detection: gate `close_on_backdrop_click` on the existing `evt.stop_propagation()` shape — no `target === currentTarget` comparison needed because the panel swallows inner clicks.
+- **`<dialog>` does NOT close on backdrop click by default.** The Rust-side `onclick` on `<dialog>` fires only on backdrop clicks because the inner `.if-dialog__panel` calls `evt.stop_propagation()` on its own `onclick`. Detection: gate `close_on_backdrop_click` on the existing `evt.stop_propagation()` shape, no `target === currentTarget` comparison needed because the panel swallows inner clicks.
 - **`asset!()` paths must start with `/`** and resolve relative to crate root. `/assets/toast/toast.css` and `/assets/components/dialog.css`.
-- **`document::Stylesheet` mounts in render order.** `dialog.css` goes alongside other component CSS (after global, before `placeholder-shell.css`). `toast.css` goes LAST so its `position: fixed; z-index: var(--z-toast)` cascades over everything else — toasts always paint on top.
+- **`document::Stylesheet` mounts in render order.** `dialog.css` goes alongside other component CSS (after global, before `placeholder-shell.css`). `toast.css` goes LAST so its `position: fixed; z-index: var(--z-toast)` cascades over everything else, toasts always paint on top.
 - **`tokio::time::interval` is already in the workspace.** No `Cargo.toml` change. The `time` feature is enabled in `[workspace.dependencies] tokio = { version = "1", default-features = false, features = ["rt", "time", "sync"] }` (`Cargo.toml:28`).
 - **`Instant::now()` works inside Dioxus runtime.** Same `std::time::Instant` used elsewhere; no platform-specific gotcha.
 - **`onfocusin`/`onfocusout` (NOT `onfocus`/`onblur`) for hover-pause.** Native `focus`/`blur` don't bubble; `focusin`/`focusout` do, which matters because the toast's children (close button) shouldn't trigger separate pause/resume cycles. Dioxus 0.7 supports both; verify the lowercase event-name spelling matches the Dioxus event surface during Task 5 (`cargo check` will catch typos).
@@ -106,21 +106,21 @@ Surface these in the implementer's mind before they hit them:
 
 ## Phase Overview
 
-- **Phase 0** (Task 1) — Pre-flight: dependency-version verification, baseline warning count, F2 token compatibility check.
-- **Phase 1** (Tasks 2–5) — `ToastState` pure-data layer with TDD. Pure `#[test]` functions, no Dioxus runtime.
-- **Phase 2** (Tasks 6–8) — `ToastQueue` Signal wrapper, `ToastViewport` rendering with stub CSS, `--z-toast` token, ThemeProvider stylesheet mount.
-- **Phase 3** (Task 9) — Gallery wiring for Toasts (queue installation in `gallery_root` + 5-button section).
-- **Phase 4** (Tasks 10–11) — `Dialog` compound primitive with stub CSS + ThemeProvider mount; gallery section.
-- **Phase 5** (Tasks 12–13) — `DirtyConfirmDialog` patterns module; gallery section.
-- **Phase 6** (Tasks 14–15) — `impeccable:frontend-design` invocation against rendered gallery; apply revised `toast.css` + `dialog.css`.
-- **Phase 7** (Tasks 16–17) — Production wiring: `warnings_bridge` module, `app_root` installation.
-- **Phase 8** (Tasks 18–19) — README updates + final acceptance pass against the gallery and a live engine.
+- **Phase 0** (Task 1), Pre-flight: dependency-version verification, baseline warning count, F2 token compatibility check.
+- **Phase 1** (Tasks 2-5), `ToastState` pure-data layer with TDD. Pure `#[test]` functions, no Dioxus runtime.
+- **Phase 2** (Tasks 6-8), `ToastQueue` Signal wrapper, `ToastViewport` rendering with stub CSS, `--z-toast` token, ThemeProvider stylesheet mount.
+- **Phase 3** (Task 9), Gallery wiring for Toasts (queue installation in `gallery_root` + 5-button section).
+- **Phase 4** (Tasks 10-11), `Dialog` compound primitive with stub CSS + ThemeProvider mount; gallery section.
+- **Phase 5** (Tasks 12-13), `DirtyConfirmDialog` patterns module; gallery section.
+- **Phase 6** (Tasks 14-15), `impeccable:frontend-design` invocation against rendered gallery; apply revised `toast.css` + `dialog.css`.
+- **Phase 7** (Tasks 16-17), Production wiring: `warnings_bridge` module, `app_root` installation.
+- **Phase 8** (Tasks 18-19), README updates + final acceptance pass against the gallery and a live engine.
 
 ---
 
 ## Task 1: Pre-flight verification
 
-Three quick checks before any new file is created. Each is a 1–3 minute confirmation; they exist to lock the baseline so the final acceptance pass has something concrete to compare against.
+Three quick checks before any new file is created. Each is a 1-3 minute confirmation; they exist to lock the baseline so the final acceptance pass has something concrete to compare against.
 
 **Files:**
 - Read-only: `Cargo.toml` (workspace), `crates/inputforge-gui-dx/Cargo.toml`, `crates/inputforge-gui-dx/assets/tokens/colors.css`, `crates/inputforge-gui-dx/assets/tokens/spacing.css`, `crates/inputforge-gui-dx/assets/tokens/elevation.css`
@@ -155,7 +155,7 @@ grep -E '^\s*--(color-(info|success|warning|error)(-bg)?|color-(info|live|warnin
   crates/inputforge-gui-dx/assets/global.css
 ```
 
-Expected: at least one declaration line for each name. The full set is already verified by F2/F3 — this is a 30-second sanity check, not an investigation. If a token is missing under the expected name, RECORD the actual name and update every CSS code block in this plan to match before proceeding.
+Expected: at least one declaration line for each name. The full set is already verified by F2/F3, this is a 30-second sanity check, not an investigation. If a token is missing under the expected name, RECORD the actual name and update every CSS code block in this plan to match before proceeding.
 
 - [ ] **Step 4: No commit**
 
@@ -165,7 +165,7 @@ All three steps are read-only. No git activity.
 
 ## Task 2: Toast module scaffold + types
 
-Create the `toast` module skeleton: `state.rs` with type definitions only (enum, structs, constants), `mod.rs` with re-exports, `lib.rs` declaration. Compiles to nothing yet — push/dismiss/pause/resume/is_expired are added in Tasks 3–5 via TDD.
+Create the `toast` module skeleton: `state.rs` with type definitions only (enum, structs, constants), `mod.rs` with re-exports, `lib.rs` declaration. Compiles to nothing yet, push/dismiss/pause/resume/is_expired are added in Tasks 3-5 via TDD.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/toast/mod.rs`
@@ -175,7 +175,7 @@ Create the `toast` module skeleton: `state.rs` with type definitions only (enum,
 - [ ] **Step 1: Create `crates/inputforge-gui-dx/src/toast/state.rs` with type definitions only**
 
 ```rust
-//! Pure-data layer for the toast queue. No Dioxus runtime dependency —
+//! Pure-data layer for the toast queue. No Dioxus runtime dependency -
 //! every method on `ToastState` is `&mut self` and the unit tests construct
 //! `ToastState::default()` directly. The Signal wrapper lives in `queue.rs`.
 
@@ -194,7 +194,7 @@ pub struct Toast {
     pub id: u64,
     pub level: ToastLevel,
     pub message: String,
-    /// Dedupe coalesce count — starts at 1; `push` of an exact duplicate
+    /// Dedupe coalesce count, starts at 1; `push` of an exact duplicate
     /// against a non-dismissed entry increments this.
     pub count: u32,
     pub created: Instant,
@@ -233,7 +233,7 @@ pub use state::{Toast, ToastLevel, ToastState, TOAST_DURATION, TOAST_MAX_VISIBLE
 
 - [ ] **Step 3: Add `mod toast;` to `crates/inputforge-gui-dx/src/lib.rs`**
 
-Open `crates/inputforge-gui-dx/src/lib.rs`, find the private-module block (currently `mod app; mod bridge; mod context; mod lifecycle; mod shell; mod tray;` at lines 3–8). Add `mod toast;` keeping alphabetical order:
+Open `crates/inputforge-gui-dx/src/lib.rs`, find the private-module block (currently `mod app; mod bridge; mod context; mod lifecycle; mod shell; mod tray;` at lines 3-8). Add `mod toast;` keeping alphabetical order:
 
 ```rust
 mod app;
@@ -253,7 +253,7 @@ Run:
 cargo build -p inputforge-gui-dx
 ```
 
-Expected: PASS, warning count ≤ baseline (Task 1 Step 2). The new types are unused — clippy may flag `dead_code` on `Toast::id`/`Toast::created`/etc. If so, do NOT add `#[allow(dead_code)]` blanket attributes; the next task adds `push`, which uses every field. If the warning count is materially worse, pause and investigate.
+Expected: PASS, warning count ≤ baseline (Task 1 Step 2). The new types are unused, clippy may flag `dead_code` on `Toast::id`/`Toast::created`/etc. If so, do NOT add `#[allow(dead_code)]` blanket attributes; the next task adds `push`, which uses every field. If the warning count is materially worse, pause and investigate.
 
 - [ ] **Step 5: Commit**
 
@@ -268,7 +268,7 @@ Conventional Commits: `feat(gui-dx)`. Invoke the `conventional-commits` skill be
 
 ---
 
-## Task 3: TDD — `ToastState::push` (append, coalesce, monotonic ids)
+## Task 3: TDD, `ToastState::push` (append, coalesce, monotonic ids)
 
 First TDD bundle on `ToastState`. Three tests cover: empty-push appends; same `(level, message)` coalesces by incrementing `count` and resetting `created`; different levels do NOT coalesce; ids are monotonic.
 
@@ -335,7 +335,7 @@ cargo test -p inputforge-gui-dx toast::state::tests
 
 Expected: COMPILE FAILURE (no method `push` on `ToastState`). That's the failing-test signal.
 
-- [ ] **Step 3: Implement `push` (append + coalesce only — cap is Task 4)**
+- [ ] **Step 3: Implement `push` (append + coalesce only, cap is Task 4)**
 
 Add `impl ToastState` above the `#[cfg(test)] mod tests` block:
 
@@ -344,7 +344,7 @@ impl ToastState {
     pub fn push(&mut self, level: ToastLevel, message: impl Into<String>) {
         let msg = message.into();
 
-        // Coalesce — exact (level, message) match against non-dismissed entries.
+        // Coalesce, exact (level, message) match against non-dismissed entries.
         if let Some(t) = self
             .toasts
             .iter_mut()
@@ -358,7 +358,7 @@ impl ToastState {
         }
 
         // Append. wrapping_add on u64 is fine: id collisions only arise after
-        // 18 quintillion pushes against this single ToastState — not realistic.
+        // 18 quintillion pushes against this single ToastState, not realistic.
         let id = self.next_id;
         self.next_id = self.next_id.wrapping_add(1);
         self.toasts.push(Toast {
@@ -417,7 +417,7 @@ git commit -m "feat(gui-dx): toast push appends and coalesces"
 
 ---
 
-## Task 4: TDD — `ToastState::push` cap with FIFO drain
+## Task 4: TDD, `ToastState::push` cap with FIFO drain
 
 Adds the visible-cap behavior: when a non-coalescing push would exceed `TOAST_MAX_VISIBLE` non-dismissed toasts, the oldest non-dismissed entry is auto-dismissed (its `dismissed` field flips to `true`) before the new toast is appended.
 
@@ -439,7 +439,7 @@ Append inside `mod tests`:
         let visible_now = s.toasts.iter().filter(|t| !t.dismissed).count();
         assert_eq!(visible_now, TOAST_MAX_VISIBLE);
 
-        // Sixth push triggers the drain — the very first toast ("msg-0")
+        // Sixth push triggers the drain, the very first toast ("msg-0")
         // is the oldest non-dismissed entry.
         s.push(ToastLevel::Info, "overflow");
 
@@ -464,14 +464,14 @@ Append inside `mod tests`:
 cargo test -p inputforge-gui-dx toast::state::tests::push_drops_oldest_when_cap_exceeded
 ```
 
-Expected: FAIL — without the cap, `s.toasts[0].dismissed == false` and the visible count is 6.
+Expected: FAIL, without the cap, `s.toasts[0].dismissed == false` and the visible count is 6.
 
 - [ ] **Step 3: Add the cap+FIFO drain to `push`**
 
 Inside `impl ToastState::push`, between the coalesce block and the append block, insert the cap drain:
 
 ```rust
-        // Cap — FIFO drain when exceeded. Counts only non-dismissed entries
+        // Cap, FIFO drain when exceeded. Counts only non-dismissed entries
         // because dismissed-but-still-in-Vec is the steady state during the
         // CSS fade-out window.
         let visible = self.toasts.iter().filter(|t| !t.dismissed).count();
@@ -504,7 +504,7 @@ git commit -m "feat(gui-dx): toast cap fifo-drains oldest"
 
 ---
 
-## Task 5: TDD — `dismiss`, `pause`/`resume`, `is_expired`
+## Task 5: TDD, `dismiss`, `pause`/`resume`, `is_expired`
 
 Final pure-data behavior: explicit dismiss, hover/focus pause-resume, and the timer predicate that excludes paused intervals.
 
@@ -523,7 +523,7 @@ Append inside `mod tests`:
         let id = s.toasts[0].id;
         s.dismiss(id);
         assert!(s.toasts[0].dismissed);
-        // Idempotent — second dismiss is a no-op.
+        // Idempotent, second dismiss is a no-op.
         s.dismiss(id);
         assert!(s.toasts[0].dismissed);
     }
@@ -653,16 +653,16 @@ git commit -m "feat(gui-dx): toast dismiss/pause/resume/is_expired"
 
 ## Task 6: `ToastQueue` Signal wrapper
 
-Thin wrapper around `Signal<ToastState>` that delegates every method via `state.write()`. No logic of its own. Constructed in the parent scope (`app_root` or `gallery_root`) — `ToastQueue` itself has NO `::new()`, mirroring the F1 `AppContext` pattern.
+Thin wrapper around `Signal<ToastState>` that delegates every method via `state.write()`. No logic of its own. Constructed in the parent scope (`app_root` or `gallery_root`), `ToastQueue` itself has NO `::new()`, mirroring the F1 `AppContext` pattern.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/toast/queue.rs`
 - Modify: `crates/inputforge-gui-dx/src/toast/mod.rs` (add `pub mod queue; pub use queue::ToastQueue;`)
 - Modify: `crates/inputforge-gui-dx/src/lib.rs` (add `pub use toast::{ToastLevel, ToastQueue};` so the gallery and external producers can name them)
 
-- [ ] **Step 1: Write the failing compile (no test — pure delegation)**
+- [ ] **Step 1: Write the failing compile (no test, pure delegation)**
 
-This module is a one-liner per method, structurally tested by usage downstream. No unit tests warranted — the underlying `ToastState` methods are already covered. Move directly to implementation.
+This module is a one-liner per method, structurally tested by usage downstream. No unit tests warranted, the underlying `ToastState` methods are already covered. Move directly to implementation.
 
 - [ ] **Step 2: Create `crates/inputforge-gui-dx/src/toast/queue.rs`**
 
@@ -685,7 +685,7 @@ use crate::toast::state::{is_expired, Toast, ToastLevel, ToastState};
 /// `state` is `pub` (rather than `pub(crate)`) so external example binaries
 /// (Cargo `examples/`) and downstream crates can construct a queue. Producers
 /// MUST initialize the inner Signal via `use_signal(ToastState::default)` from
-/// inside a Dioxus runtime — `Signal::new()` outside a hook leaks per
+/// inside a Dioxus runtime, `Signal::new()` outside a hook leaks per
 /// `dioxus-signals/src/signal.rs:30-52`. Production wiring lives in `app_root`.
 #[derive(Clone, Copy)]
 pub struct ToastQueue {
@@ -742,7 +742,7 @@ pub use state::{is_expired, Toast, ToastLevel, ToastState, TOAST_DURATION, TOAST
 
 - [ ] **Step 4: Add public re-exports in `crates/inputforge-gui-dx/src/lib.rs`**
 
-After the existing `pub mod` block (currently lines 10–12 — `pub mod components; pub mod icons; pub mod theme;`), add:
+After the existing `pub mod` block (currently lines 10-12, `pub mod components; pub mod icons; pub mod theme;`), add:
 
 ```rust
 pub use toast::{ToastLevel, ToastQueue};
@@ -756,7 +756,7 @@ This is the only public surface F4 adds at the crate root: producers (gallery no
 cargo build -p inputforge-gui-dx
 ```
 
-Expected: PASS, warnings ≤ baseline. Clippy may flag `dead_code` on `ToastQueue::visible` (it has no caller yet — ToastViewport in Task 7 wires it). Do NOT add `#[allow(dead_code)]` — leave the warning for now; it disappears in Task 7.
+Expected: PASS, warnings ≤ baseline. Clippy may flag `dead_code` on `ToastQueue::visible` (it has no caller yet, ToastViewport in Task 7 wires it). Do NOT add `#[allow(dead_code)]`, leave the warning for now; it disappears in Task 7.
 
 - [ ] **Step 6: Commit**
 
@@ -771,7 +771,7 @@ git commit -m "feat(gui-dx): add ToastQueue signal wrapper"
 
 ## Task 7: `ToastViewport` component + stub `toast.css` + `--z-toast` token
 
-The single component that consumes `ToastQueue`, drives the 4 Hz expiration tick, splits visible toasts into per-level ARIA live regions, and renders `ToastItem` children with hover/focus/escape handling. CSS is a stub — Task 14 finalizes it after `impeccable:frontend-design`. Mounts the stylesheet in `ThemeProvider`.
+The single component that consumes `ToastQueue`, drives the 4 Hz expiration tick, splits visible toasts into per-level ARIA live regions, and renders `ToastItem` children with hover/focus/escape handling. CSS is a stub, Task 14 finalizes it after `impeccable:frontend-design`. Mounts the stylesheet in `ThemeProvider`.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/toast/viewport.rs`
@@ -797,7 +797,7 @@ Open `crates/inputforge-gui-dx/assets/tokens/elevation.css`. After the closing `
 - [ ] **Step 2: Create `crates/inputforge-gui-dx/assets/toast/toast.css` (stub)**
 
 ```css
-/* Stub — finalized in Task 14 after impeccable:frontend-design.
+/* Stub, finalized in Task 14 after impeccable:frontend-design.
    Layout-only: the viewport is fixed, top-right, two stacked ARIA
    regions; toasts are tab-reachable; per-level accent classes exist
    but are intentionally bare so frontend-design has clean ground. */
@@ -851,7 +851,7 @@ Open `crates/inputforge-gui-dx/assets/tokens/elevation.css`. After the closing `
 .if-toast__close:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
 ```
 
-The polite/assertive `top` values are deliberately identical for now — they stack via flex inside one viewport per region. Task 14 (frontend-design) may revisit (e.g., assertive overlays polite at the same anchor; or two columns; or a single region with z-index ordering). The Rust side stays stable across that decision.
+The polite/assertive `top` values are deliberately identical for now, they stack via flex inside one viewport per region. Task 14 (frontend-design) may revisit (e.g., assertive overlays polite at the same anchor; or two columns; or a single region with z-index ordering). The Rust side stays stable across that decision.
 
 - [ ] **Step 3: Create `crates/inputforge-gui-dx/src/toast/viewport.rs`**
 
@@ -980,16 +980,16 @@ pub(crate) use viewport::ToastViewport;
 
 - [ ] **Step 5: Mount `toast.css` in `ThemeProvider`**
 
-Open `crates/inputforge-gui-dx/src/theme/mod.rs`. Add the asset constant (alphabetized with the existing block at lines 10–36):
+Open `crates/inputforge-gui-dx/src/theme/mod.rs`. Add the asset constant (alphabetized with the existing block at lines 10-36):
 
 ```rust
 const TOAST_CSS: Asset = asset!("/assets/toast/toast.css");
 ```
 
-Then, inside the `rsx!` (currently lines 40–73), append the `Stylesheet` mount AFTER the last component CSS line and BEFORE `{children}`:
+Then, inside the `rsx!` (currently lines 40-73), append the `Stylesheet` mount AFTER the last component CSS line and BEFORE `{children}`:
 
 ```rust
-        // Toast overlay — last so its z-index cascade wins.
+        // Toast overlay, last so its z-index cascade wins.
         Stylesheet { href: TOAST_CSS }
 
         {children}
@@ -1001,7 +1001,7 @@ Then, inside the `rsx!` (currently lines 40–73), append the `Stylesheet` mount
 cargo build -p inputforge-gui-dx
 ```
 
-Expected: PASS. The `dead_code` warning on `ToastQueue::visible` from Task 6 should be GONE. The `dead_code` warning on `ToastViewport` will appear instead — gallery wiring (Task 9) consumes it. Acceptable.
+Expected: PASS. The `dead_code` warning on `ToastQueue::visible` from Task 6 should be GONE. The `dead_code` warning on `ToastViewport` will appear instead, gallery wiring (Task 9) consumes it. Acceptable.
 
 - [ ] **Step 7: Commit**
 
@@ -1018,15 +1018,15 @@ git commit -m "feat(gui-dx): add ToastViewport component"
 
 ## Task 8: Make `ToastViewport` reachable for gallery / app installation
 
-Tiny export-only task: bump `ToastViewport`'s visibility so the gallery and `app_root` can render it without going through a re-export shim. Already `pub(crate) use` — it's reachable from sibling `app.rs`. The gallery is a separate binary, so we need a public-by-feature-flag re-export OR the gallery installs its OWN `ToastViewport` via the public API.
+Tiny export-only task: bump `ToastViewport`'s visibility so the gallery and `app_root` can render it without going through a re-export shim. Already `pub(crate) use`, it's reachable from sibling `app.rs`. The gallery is a separate binary, so we need a public-by-feature-flag re-export OR the gallery installs its OWN `ToastViewport` via the public API.
 
-The simplest solution: keep `ToastViewport` `pub(crate)` for the production app installation, and have the gallery example install a tiny inline `ToastViewport` proxy that uses the public `ToastQueue`. But that duplicates rendering — unwanted.
+The simplest solution: keep `ToastViewport` `pub(crate)` for the production app installation, and have the gallery example install a tiny inline `ToastViewport` proxy that uses the public `ToastQueue`. But that duplicates rendering, unwanted.
 
 Better: re-export `ToastViewport` from `lib.rs` under `#[doc(hidden)]` so external consumers can render it but it doesn't show up in the public docs. Future external consumers (other examples, downstream crates) can wire it into their own roots without F4 needing to expose `ToastQueue::visible` or component internals.
 
 **Files:**
-- Modify: `crates/inputforge-gui-dx/src/toast/mod.rs` — change `pub(crate) use viewport::ToastViewport;` to `pub use viewport::ToastViewport;`
-- Modify: `crates/inputforge-gui-dx/src/lib.rs` — extend the `pub use toast::...` line to `pub use toast::{ToastLevel, ToastQueue, ToastViewport};` and add `#[doc(hidden)]` above it
+- Modify: `crates/inputforge-gui-dx/src/toast/mod.rs`, change `pub(crate) use viewport::ToastViewport;` to `pub use viewport::ToastViewport;`
+- Modify: `crates/inputforge-gui-dx/src/lib.rs`, extend the `pub use toast::...` line to `pub use toast::{ToastLevel, ToastQueue, ToastViewport};` and add `#[doc(hidden)]` above it
 
 - [ ] **Step 1: Update `crates/inputforge-gui-dx/src/toast/mod.rs`**
 
@@ -1060,7 +1060,7 @@ pub use toast::{ToastLevel, ToastQueue};
 cargo build -p inputforge-gui-dx
 ```
 
-Expected: PASS, warnings ≤ baseline. The `dead_code` warning from Task 7 stays — fixed by Task 9.
+Expected: PASS, warnings ≤ baseline. The `dead_code` warning from Task 7 stays, fixed by Task 9.
 
 - [ ] **Step 4: Commit**
 
@@ -1072,7 +1072,7 @@ git commit -m "feat(gui-dx): expose ToastViewport via doc(hidden)"
 
 ---
 
-## Task 9: Gallery — Toasts section
+## Task 9: Gallery, Toasts section
 
 Wires `ToastQueue` into `gallery_root` via `use_context_provider`, mounts `ToastViewport` at the top of the gallery, and adds the five-button section described in the spec. This is the first end-to-end render path for the toast infrastructure.
 
@@ -1088,7 +1088,7 @@ use inputforge_gui_dx::{ToastLevel, ToastQueue, ToastViewport};
 use inputforge_gui_dx::toast::ToastState;
 ```
 
-The second import accesses `ToastState` for `use_signal(ToastState::default)`. `crate::toast` is currently `mod toast` (private) at the crate root — we need to make `state::ToastState` reachable. The cleanest fix: re-export `ToastState` at the crate root alongside `ToastLevel` / `ToastQueue`.
+The second import accesses `ToastState` for `use_signal(ToastState::default)`. `crate::toast` is currently `mod toast` (private) at the crate root, we need to make `state::ToastState` reachable. The cleanest fix: re-export `ToastState` at the crate root alongside `ToastLevel` / `ToastQueue`.
 
 Update `crates/inputforge-gui-dx/src/lib.rs` to:
 
@@ -1119,11 +1119,11 @@ fn gallery_root() -> Element {
     // …unchanged…
 ```
 
-`ToastQueue { state: toast_state }` is a struct expression — `state` is `pub` (Task 6 made it pub specifically so example binaries can construct the queue). Cargo examples consume the crate as an external dependency, so only `pub` items are reachable. Verify with `cargo build --examples -p inputforge-gui-dx` after Step 4 if there's any doubt.
+`ToastQueue { state: toast_state }` is a struct expression, `state` is `pub` (Task 6 made it pub specifically so example binaries can construct the queue). Cargo examples consume the crate as an external dependency, so only `pub` items are reachable. Verify with `cargo build --examples -p inputforge-gui-dx` after Step 4 if there's any doubt.
 
 - [ ] **Step 3: Mount `ToastViewport` and add the Toasts section**
 
-Inside the existing `rsx! { ThemeProvider { main { Stack { ... } } } }` block — currently the heading-and-sections wall in the gallery — replace the outermost `ThemeProvider {` to also render `ToastViewport`:
+Inside the existing `rsx! { ThemeProvider { main { Stack { ... } } } }` block, currently the heading-and-sections wall in the gallery, replace the outermost `ThemeProvider {` to also render `ToastViewport`:
 
 ```rust
     rsx! {
@@ -1131,7 +1131,7 @@ Inside the existing `rsx! { ThemeProvider { main { Stack { ... } } } }` block �
             ToastViewport {}
             main {
                 Stack { gap: "--space-8".to_owned(), padding: "--space-6".to_owned(),
-                    h1 { "InputForge — Component Gallery (F4)" }
+                    h1 { "InputForge, Component Gallery (F4)" }
 
                     section {
                         h2 { "Toasts" }
@@ -1170,10 +1170,10 @@ Inside the existing `rsx! { ThemeProvider { main { Stack { ... } } } }` block �
                     }
 
                     // Existing F2 sections (h1 already moved above): Icon, Button, IconButton, …
-                    // Keep the existing wall as-is — don't reshuffle.
+                    // Keep the existing wall as-is, don't reshuffle.
 ```
 
-The replacement is structural: the existing `h1 { "InputForge — Component Gallery (F2)" }` line becomes the `(F4)` line, and the new `section` for Toasts is the FIRST section. The gallery h1 update is intentional — F3 had its own incremental update (it's `(F2)` today; F4 owns the bump).
+The replacement is structural: the existing `h1 { "InputForge, Component Gallery (F2)" }` line becomes the `(F4)` line, and the new `section` for Toasts is the FIRST section. The gallery h1 update is intentional, F3 had its own incremental update (it's `(F2)` today; F4 owns the bump).
 
 - [ ] **Step 4: Run the gallery and verify each interaction**
 
@@ -1216,7 +1216,7 @@ git commit -m "feat(gui-dx): add Toasts section to gallery"
 
 ---
 
-## Task 10: `Dialog` compound primitive — Rust file with JS shims + stub CSS
+## Task 10: `Dialog` compound primitive, Rust file with JS shims + stub CSS
 
 Native `<dialog>` + `showModal()`-driven compound. Eagerly computes `dialog_id`/`title_id`/`desc_id` in `DialogRoot`'s `use_hook` initializer so `aria-labelledby`/`aria-describedby` resolve correctly on the very first render. JS shims drive `showModal`/`close` and the `cancel` listener via `document::eval`.
 
@@ -1285,7 +1285,7 @@ use super::merge_class;
 
 static DIALOG_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// Test seam — bumps the counter and returns the new value. Production code
+/// Test seam, bumps the counter and returns the new value. Production code
 /// goes through `DialogRoot`'s `use_hook` and never calls this directly.
 #[cfg(test)]
 fn next_dialog_seq_for_test() -> u64 {
@@ -1318,7 +1318,7 @@ const DIALOG_ATTACH_CANCEL_JS: &str = r#"
 
 /// Shared per-dialog context. Children read; only `DialogRoot` writes.
 /// All ids are eagerly computed by `DialogRoot`'s `use_hook` initializer
-/// (which runs during render — BEFORE children render), so children see
+/// (which runs during render, BEFORE children render), so children see
 /// fully-populated ids on their very first render and `aria-labelledby` /
 /// `aria-describedby` resolve correctly on the initial `showModal()` call.
 #[derive(Clone)]
@@ -1345,7 +1345,7 @@ pub fn DialogRoot(
     #[props(default)]         class: Option<String>,
     children: Element,
 ) -> Element {
-    // Eager id derivation — runs once during the parent's render, BEFORE
+    // Eager id derivation, runs once during the parent's render, BEFORE
     // children render.
     let state = use_hook(|| {
         let n = DIALOG_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -1371,7 +1371,7 @@ pub fn DialogRoot(
     });
 
     // Attach `cancel` listener once after first DOM commit. The `dismissible`
-    // value is interpolated into the JS at attach time — see doc-comment.
+    // value is interpolated into the JS at attach time, see doc-comment.
     let id_for_cancel = state.dialog_id.clone();
     let dismissible_now = dismissible;
     let mut attached = use_signal(|| false);
@@ -1451,7 +1451,7 @@ Expected: 2/2 PASS.
 - [ ] **Step 5: Create `crates/inputforge-gui-dx/assets/components/dialog.css` (stub)**
 
 ```css
-/* Stub — finalized in Task 14 after impeccable:frontend-design.
+/* Stub, finalized in Task 14 after impeccable:frontend-design.
    Layout-only: native <dialog> resets, panel surface, scrollable body,
    right-aligned footer. No motion, no fancy backdrop yet. */
 
@@ -1530,7 +1530,7 @@ Then inside `rsx!`, add the `Stylesheet` mount alongside other component CSS, BE
         // …existing component CSS mounts unchanged…
 ```
 
-The exact ordering inside the component-CSS block isn't critical — pick a sensible alphabetical slot.
+The exact ordering inside the component-CSS block isn't critical, pick a sensible alphabetical slot.
 
 - [ ] **Step 8: Build and confirm clean**
 
@@ -1538,7 +1538,7 @@ The exact ordering inside the component-CSS block isn't critical — pick a sens
 cargo build -p inputforge-gui-dx
 ```
 
-Expected: PASS, warnings ≤ baseline. The Dialog parts are unused — gallery (Task 11) consumes them.
+Expected: PASS, warnings ≤ baseline. The Dialog parts are unused, gallery (Task 11) consumes them.
 
 - [ ] **Step 9: Commit**
 
@@ -1552,7 +1552,7 @@ git commit -m "feat(gui-dx): add Dialog compound primitive"
 
 ---
 
-## Task 11: Gallery — Dialog primitives section
+## Task 11: Gallery, Dialog primitives section
 
 Four buttons opening four dialogs that cover the contract: basic dismissible, non-dismissible, close-on-backdrop, scrollable body.
 
@@ -1724,10 +1724,10 @@ pub use dirty_confirm::DirtyConfirmDialog;
 ```rust
 //! Presentational dirty-state confirmation dialog. Cancel/Discard/Save in
 //! fixed document order so `showModal()`'s default-focus rule lands on
-//! Cancel (the safe default — destructive-confirmation a11y guidance).
+//! Cancel (the safe default, destructive-confirmation a11y guidance).
 //!
 //! ESC routes to `oncancel` (matches Cancel button). `close_on_backdrop_click`
-//! is hard-coded to `false` — destructive dialogs should not close on a stray
+//! is hard-coded to `false`, destructive dialogs should not close on a stray
 //! click outside the panel.
 
 use dioxus::prelude::*;
@@ -1742,14 +1742,14 @@ pub struct DirtyConfirmDialogProps {
     /// resolution path (Cancel/Discard/Save) and fires the matching callback.
     pub open: Signal<bool>,
 
-    /// Title — defaults to "Unsaved Changes".
+    /// Title, defaults to "Unsaved Changes".
     #[props(default)]
     pub title: Option<String>,
-    /// Description — defaults to
+    /// Description, defaults to
     /// "You have unsaved changes. What would you like to do?".
     #[props(default)]
     pub message: Option<String>,
-    /// Save button label — defaults to "Save". Future consumers may pass
+    /// Save button label, defaults to "Save". Future consumers may pass
     /// "Save & Switch", "Save & Close", etc.
     #[props(default)]
     pub save_label: Option<String>,
@@ -1779,7 +1779,7 @@ pub fn DirtyConfirmDialog(props: DirtyConfirmDialogProps) -> Element {
     rsx! {
         DialogRoot {
             open: open,
-            // ESC routes to Cancel — matches default-focus and safe-default
+            // ESC routes to Cancel, matches default-focus and safe-default
             // semantics. The dialog's own onclose handler fires after the
             // browser closes the <dialog>.
             onclose: move |_| {
@@ -1792,7 +1792,7 @@ pub fn DirtyConfirmDialog(props: DirtyConfirmDialogProps) -> Element {
 
             DialogTitle { "{title}" }
             DialogDescription { "{message}" }
-            DialogBody {} // empty — Description carries the body content
+            DialogBody {} // empty, Description carries the body content
             DialogFooter {
                 // Cancel first → receives showModal()'s default focus.
                 Button {
@@ -1839,7 +1839,7 @@ pub mod patterns;
 cargo build -p inputforge-gui-dx
 ```
 
-Expected: PASS, warnings ≤ baseline. `DirtyConfirmDialog` is unused — gallery (Task 13) consumes it.
+Expected: PASS, warnings ≤ baseline. `DirtyConfirmDialog` is unused, gallery (Task 13) consumes it.
 
 - [ ] **Step 5: Commit**
 
@@ -1852,7 +1852,7 @@ git commit -m "feat(gui-dx): add DirtyConfirmDialog pattern"
 
 ---
 
-## Task 13: Gallery — `DirtyConfirmDialog` section
+## Task 13: Gallery, `DirtyConfirmDialog` section
 
 Two buttons: default-copy variant and custom-copy variant. Three captions next to each button light up to confirm each callback fires exactly once per resolution.
 
@@ -1970,7 +1970,7 @@ git commit -m "feat(gui-dx): add DirtyConfirmDialog gallery section"
 
 ---
 
-## Task 14: `impeccable:frontend-design` — toast & dialog visual treatment
+## Task 14: `impeccable:frontend-design`, toast & dialog visual treatment
 
 The infrastructure renders. Now invoke `impeccable:frontend-design` against rendered screenshots, scoped narrowly to visual presentation of the new primitives. Apply the resulting CSS revisions to `toast.css` and `dialog.css`.
 
@@ -1983,10 +1983,10 @@ The infrastructure renders. Now invoke `impeccable:frontend-design` against rend
 Run `dx serve --example component_gallery --platform desktop`. Screenshot:
 - Gallery scrolled to the Toasts section with one of each level (info, success, warning, error) visible. Click each push button in turn so all four are stacked, then capture before any auto-dismiss.
 - Toast spam state: 5 visible toasts after "Push 7 distinct".
-- Dialog Basic — visible.
-- Dialog Non-dismissible — visible.
+- Dialog Basic, visible.
+- Dialog Non-dismissible, visible.
 - Dialog Scrollable body (mid-scroll inside).
-- DirtyConfirmDialog — visible.
+- DirtyConfirmDialog, visible.
 
 Save screenshots somewhere accessible (project-relative `tmp/` or attach when invoking the skill).
 
@@ -1999,19 +1999,19 @@ Brief (paste verbatim into the skill input):
 > **Inputs:**
 > - Screenshots of: four toast levels stacked; spam state with 5 visible toasts; four dialog variants (basic, non-dismissible, scrollable body, close-on-backdrop); DirtyConfirmDialog with three buttons.
 > - Tokens to use: `--color-info-bg/-bg`, `--color-success-bg`, `--color-warning-bg`, `--color-error-bg`, `--color-info`, `--color-live`, `--color-warning`, `--color-error`, `--shadow-3`, `--space-1..6`, `--radius-md`, `--font-sans`, `--color-bg-elevated`, `--color-bg-overlay`, `--color-border`, `--color-text`, `--color-text-muted`. New token allowed: `--z-toast` (already added).
-> - Elevation philosophy (project-wide): borders-over-shadows; real shadow blur reserved for genuine overlays. Both toasts and the dialog panel are genuine overlays — `--shadow-3` is appropriate. Backdrop is allowed (already `--color-bg-overlay`).
+> - Elevation philosophy (project-wide): borders-over-shadows; real shadow blur reserved for genuine overlays. Both toasts and the dialog panel are genuine overlays, `--shadow-3` is appropriate. Backdrop is allowed (already `--color-bg-overlay`).
 > - Existing F2 conventions: `.if-<name>` BEM-ish prefix; `--<level>` modifiers; per-level accent surfaces and borders mirror the Badge primitive (see `assets/components/badge.css`).
 >
 > **What I want:**
-> - Toast chrome: surface treatment (per-level accent), accent bar (left edge or top edge — your call), icon size/position relative to the message text, count badge styling (`×N`), close button affordance, hover/focus visual states.
-> - Toast motion: fade-in on mount; fade-out on expire/dismiss (the Rust side stops including dismissed toasts in the snapshot — CSS handles the fade). `transition-behavior: allow-discrete` + `@starting-style` are fine for Dioxus 0.7 / WebView2.
+> - Toast chrome: surface treatment (per-level accent), accent bar (left edge or top edge, your call), icon size/position relative to the message text, count badge styling (`×N`), close button affordance, hover/focus visual states.
+> - Toast motion: fade-in on mount; fade-out on expire/dismiss (the Rust side stops including dismissed toasts in the snapshot, CSS handles the fade). `transition-behavior: allow-discrete` + `@starting-style` are fine for Dioxus 0.7 / WebView2.
 > - Dialog: panel surface chrome, backdrop treatment (subtle blur or stay solid?), title/description/body/footer rhythm, footer button alignment, focused-button affordance, motion (fade-in on open; if any motion on close).
 >
 > **Constraints:**
 > - Cascade order in `theme/mod.rs` is fixed; do not assume rules can re-order CSS files.
 > - `toast.css` is mounted LAST (overlay layer); `dialog.css` is mounted with the rest of component CSS.
 > - Two stacked viewport divs (`.if-toast-viewport--polite` and `.if-toast-viewport--assertive`) currently render at the same `top: 12px`. If you need different anchors, adjust the CSS rules but keep the two-region structure (Rust contract).
-> - `pointer-events: none` on `.if-toast-viewport` and `pointer-events: auto` on `.if-toast` are load-bearing — do not remove them.
+> - `pointer-events: none` on `.if-toast-viewport` and `pointer-events: auto` on `.if-toast` are load-bearing, do not remove them.
 > - The `<dialog>` element's `:modal` and `::backdrop` pseudo-classes are the canonical hooks; native browser CSS reset is patchy across versions, so keep the `border: none; padding: 0; background: transparent` resets on `.if-dialog`.
 > - WebView2 (Chromium) supports `@starting-style` and `transition-behavior: allow-discrete`; both are fine to use.
 >
@@ -2019,7 +2019,7 @@ Brief (paste verbatim into the skill input):
 
 - [ ] **Step 3: Apply the revised CSS**
 
-Paste the skill output into `crates/inputforge-gui-dx/assets/toast/toast.css` and `crates/inputforge-gui-dx/assets/components/dialog.css` as full file replacements. Do NOT edit the Rust side — class names are contract.
+Paste the skill output into `crates/inputforge-gui-dx/assets/toast/toast.css` and `crates/inputforge-gui-dx/assets/components/dialog.css` as full file replacements. Do NOT edit the Rust side, class names are contract.
 
 If the output uses class names not in the Rust component (e.g., a new `.if-toast__icon` wrapper), add a doc-note in the CSS about which Rust element it targets, but do not change Rust. If a class is structurally needed and CSS-only is insufficient, raise it as a follow-up note (not a blocker for this task).
 
@@ -2027,10 +2027,10 @@ If the output uses class names not in the Rust component (e.g., a new `.if-toast
 
 Re-run `dx serve --example component_gallery --platform desktop`. Walk through:
 - All four toast levels look distinctly typed (clear accent per level).
-- Toast spam state — 5 visible toasts read as a stack, not a wall.
-- Dialog Basic — the panel and backdrop read as a "pause the world" overlay.
-- Scrollable body — body region scrolls; footer stays anchored.
-- DirtyConfirmDialog — Cancel button reads visually as the safe choice (Secondary), Discard as destructive (Danger styling), Save as the primary action.
+- Toast spam state, 5 visible toasts read as a stack, not a wall.
+- Dialog Basic, the panel and backdrop read as a "pause the world" overlay.
+- Scrollable body, body region scrolls; footer stays anchored.
+- DirtyConfirmDialog, Cancel button reads visually as the safe choice (Secondary), Discard as destructive (Danger styling), Save as the primary action.
 
 If anything looks broken (overlap, clipped content, focus ring missing), restore the previous file from git and re-invoke the skill with a tighter brief mentioning the specific issue.
 
@@ -2050,7 +2050,7 @@ git add crates/inputforge-gui-dx/assets/toast/toast.css \
 git commit -m "style(gui-dx): apply frontend-design pass for toast and dialog"
 ```
 
-The commit type is `style` per Conventional Commits — visual revisions only, no logic change. (Invoke `conventional-commits` skill before commit.)
+The commit type is `style` per Conventional Commits, visual revisions only, no logic change. (Invoke `conventional-commits` skill before commit.)
 
 ---
 
@@ -2101,7 +2101,7 @@ pub(crate) fn install_warnings_bridge(
             }
             seen.set(len);
         } else if len < last {
-            // Engine cleared/reset warnings — re-baseline.
+            // Engine cleared/reset warnings, re-baseline.
             seen.set(len);
         }
     }
@@ -2127,7 +2127,7 @@ pub use viewport::ToastViewport;
 pub(crate) use warnings_bridge::install_warnings_bridge;
 ```
 
-(Note: `ToastViewport` was already `pub use` from Task 8 with `#[doc(hidden)]` at the crate root — keep it `pub use` here to allow the example crate to import it.)
+(Note: `ToastViewport` was already `pub use` from Task 8 with `#[doc(hidden)]` at the crate root, keep it `pub use` here to allow the example crate to import it.)
 
 - [ ] **Step 3: Build and confirm clean**
 
@@ -2135,7 +2135,7 @@ pub(crate) use warnings_bridge::install_warnings_bridge;
 cargo build -p inputforge-gui-dx
 ```
 
-Expected: PASS, warnings ≤ baseline. `install_warnings_bridge` is unused — Task 16 wires it.
+Expected: PASS, warnings ≤ baseline. `install_warnings_bridge` is unused, Task 16 wires it.
 
 - [ ] **Step 4: Commit**
 
@@ -2167,14 +2167,14 @@ use crate::toast::{install_warnings_bridge, ToastQueue, ToastState, ToastViewpor
 After the `use_context_provider(|| ctx.clone());` line (currently `app.rs:31`) and BEFORE `use_hook(|| spawn_polling_task(ctx.clone()));`, insert:
 
 ```rust
-    // F4: ToastQueue context — Signal lives in app_root's scope, mirroring the
+    // F4: ToastQueue context, Signal lives in app_root's scope, mirroring the
     // F1 AppContext pattern. Calling Signal::new() outside a hook leaks per
     // dioxus-signals/src/signal.rs:30-52, so use_signal is mandatory here.
     let toast_state = use_signal(ToastState::default);
     let toast_queue = ToastQueue { state: toast_state };
     use_context_provider(|| toast_queue);
 
-    // F4: warnings bridge — reads ctx.meta, pushes new tail entries as
+    // F4: warnings bridge, reads ctx.meta, pushes new tail entries as
     // Warning toasts. last_seen initializes from peek() so first run is a
     // no-op even if warnings accumulated before mount.
     let last_seen = use_signal(|| ctx.meta.peek().warnings.len());
@@ -2212,7 +2212,7 @@ cargo build -p inputforge-app --no-default-features --features gui-dioxus
 cargo build -p inputforge-app
 ```
 
-All three: PASS, warnings ≤ baseline (`inputforge-gui-dx` only — `inputforge-app` is checked for compile, not warning count). Default-feature build (last command) verifies the egui crate is byte-identical (no F4 changes leak into it).
+All three: PASS, warnings ≤ baseline (`inputforge-gui-dx` only, `inputforge-app` is checked for compile, not warning count). Default-feature build (last command) verifies the egui crate is byte-identical (no F4 changes leak into it).
 
 - [ ] **Step 5: Run full test suite**
 
@@ -2220,7 +2220,7 @@ All three: PASS, warnings ≤ baseline (`inputforge-gui-dx` only — `inputforge
 cargo test -p inputforge-gui-dx
 ```
 
-Expected: all tests pass — pure-function `ToastState` tests (9), dialog id-generation tests (2), all existing F1/F2/F3 tests.
+Expected: all tests pass, pure-function `ToastState` tests (9), dialog id-generation tests (2), all existing F1/F2/F3 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -2243,7 +2243,7 @@ Document the F4 surfaces that future feature plans will consume: ToastQueue API,
 Open `crates/inputforge-gui-dx/README.md`. Append these sections after the existing F3 sections (before any "Next steps"-style closing block, if present). The exact heading style follows what F2/F3 used in this README.
 
 ```markdown
-## F4 — Toast & Dialog Infrastructure
+## F4, Toast & Dialog Infrastructure
 
 ### `ToastQueue`
 
@@ -2291,9 +2291,9 @@ rsx! {
 }
 ```
 
-- **`dismissible: bool` (default `true`)** — when `false`, ESC is suppressed.
+- **`dismissible: bool` (default `true`)**, when `false`, ESC is suppressed.
   Read once at mount; flipping after mount has no effect.
-- **`close_on_backdrop_click: bool` (default `false`)** — backdrop click
+- **`close_on_backdrop_click: bool` (default `false`)**, backdrop click
   resolves the dialog when `true`.
 - Native `<dialog>` provides focus trap, inert background, `aria-modal`, and
   focus restore on close.
@@ -2312,7 +2312,7 @@ let mut open = use_signal(|| false);
 rsx! {
     DirtyConfirmDialog {
         open: open,
-        oncancel:  move |_| { /* abort the action — distinct from discard */ },
+        oncancel:  move |_| { /* abort the action, distinct from discard */ },
         ondiscard: move |_| { /* drop unsaved changes, proceed */ },
         onsave:    move |_| { /* persist, then proceed */ },
     }
@@ -2326,7 +2326,7 @@ Override `title`, `message`, and `save_label` for context-specific phrasing
 
 `MetaSnapshot.warnings` (populated by the engine via the F1 polling task)
 flows into the toast queue as Warning-level toasts. Producers do not need to
-opt in — append to `AppState.warnings` and the bridge handles delivery.
+opt in, append to `AppState.warnings` and the bridge handles delivery.
 ```
 
 - [ ] **Step 2: Verify the README renders sensibly**
@@ -2335,7 +2335,7 @@ opt in — append to `AppState.warnings` and the bridge handles delivery.
 cat crates/inputforge-gui-dx/README.md | head -200
 ```
 
-Eyeball the new sections — fenced code blocks closed properly, headings consistent with the rest of the file.
+Eyeball the new sections, fenced code blocks closed properly, headings consistent with the rest of the file.
 
 - [ ] **Step 3: Commit**
 
@@ -2346,7 +2346,7 @@ git commit -m "docs(gui-dx): document F4 toast and dialog primitives"
 
 ---
 
-## Task 18: Final acceptance pass — gallery + live engine
+## Task 18: Final acceptance pass, gallery + live engine
 
 Walk every acceptance bullet from the spec. This is the gate before declaring F4 complete.
 
@@ -2382,7 +2382,7 @@ cargo test -p inputforge-gui-dx
 
 All pure-function tests pass: `toast::state::tests::*` (9 tests) and `components::dialog::tests::*` (2 tests), plus everything from F1/F2/F3.
 
-- [ ] **Step 3: Gallery — Toasts acceptance pass**
+- [ ] **Step 3: Gallery, Toasts acceptance pass**
 
 ```bash
 dx serve --example component_gallery --platform desktop
@@ -2397,10 +2397,10 @@ Walk through:
 - Tab key reaches each toast; focus visible.
 - Click in the empty viewport area → click reaches the underlying gallery section (verify by clicking through onto a Button in the Toasts section).
 
-- [ ] **Step 4: Gallery — Dialogs acceptance pass**
+- [ ] **Step 4: Gallery, Dialogs acceptance pass**
 
 - All four dialog demos open via `showModal()`.
-- Focus moves into the dialog on open (default focus on the first focusable element — the Close button for basic/scrollable, the Save button… wait — the basic dialog only has Close, so focus lands there).
+- Focus moves into the dialog on open (default focus on the first focusable element, the Close button for basic/scrollable, the Save button… wait, the basic dialog only has Close, so focus lands there).
 - Tab cycles inside; ESC closes the dismissible variants; ESC is no-op on the non-dismissible.
 - Backdrop click does nothing on basic / non-dismissible / scrollable; closes the close-on-backdrop variant.
 - Focus returns to the trigger button on close.
@@ -2408,9 +2408,9 @@ Walk through:
 Open WebView2 DevTools (right-click → Inspect, if available; otherwise rely on the visible behavior). Verify the structural ARIA contracts:
 - `<dialog>` carries `aria-modal="true"` while open (browser-set).
 - `aria-labelledby` resolves to the visible `<h2>` title.
-- `aria-describedby` resolves to the description `<p>` (or is dangling for dialogs that omit `DialogDescription` — F4's gallery dialogs all include it).
+- `aria-describedby` resolves to the description `<p>` (or is dangling for dialogs that omit `DialogDescription`, F4's gallery dialogs all include it).
 
-- [ ] **Step 5: Gallery — DirtyConfirmDialog acceptance pass**
+- [ ] **Step 5: Gallery, DirtyConfirmDialog acceptance pass**
 
 - Open the default-copy variant. Initial focus on Cancel.
 - ESC fires `oncancel` (caption "cancel"); dialog closes.
@@ -2424,7 +2424,7 @@ Where DevTools is available (WebView2 in dev mode supports it via right-click �
 - Each toast item: `tabindex="0"`. Close button: `aria-label="Dismiss"`.
 - Dialog: `aria-modal="true"` while open; `aria-labelledby` and `aria-describedby` reference the title/description ids.
 
-- [ ] **Step 7: Live engine — warnings bridge end-to-end**
+- [ ] **Step 7: Live engine, warnings bridge end-to-end**
 
 Run the production app under `gui-dioxus`:
 
@@ -2432,10 +2432,10 @@ Run the production app under `gui-dioxus`:
 cargo run -p inputforge-app --no-default-features --features gui-dioxus
 ```
 
-Trigger a real warning. The simplest reproducible path: launch with HidHide unavailable on the system (or invoke whatever code path the existing egui crate already surfaces as a warning toast — `inputforge-core/src/state.rs::AppState::warnings` is the source of truth). The expected behavior:
+Trigger a real warning. The simplest reproducible path: launch with HidHide unavailable on the system (or invoke whatever code path the existing egui crate already surfaces as a warning toast, `inputforge-core/src/state.rs::AppState::warnings` is the source of truth). The expected behavior:
 - Warning appears as a Warning-level toast within ~1 polling tick (16 ms cadence).
 - Identical warning emitted again coalesces into `×2`.
-- The F3 status-bar engine-status badge UNCHANGED — F4 does not push toasts on engine-status flips.
+- The F3 status-bar engine-status badge UNCHANGED, F4 does not push toasts on engine-status flips.
 
 If the live engine is unavailable today (e.g., HidHide is fine on this machine and no warnings are emitted), document the constraint in the acceptance log and fall back to a manual injection: temporarily push a dummy warning into `AppState.warnings` from `inputforge-app/src/main.rs` startup (and revert before commit). This is a verification-only step; no production code change ships from this task.
 
@@ -2452,16 +2452,16 @@ Expected: the lines exist and read exactly as F3 left them.
 - [ ] **Step 9: Z-stack and pointer-events smoke**
 
 Still in the running gallery:
-- Open a dialog. Push a toast (e.g., via the Toasts section's Push Warning button — they'd both be visible if the dialog doesn't fully cover the viewport region). The toast paints ABOVE the dialog (intentional; spec confirms).
+- Open a dialog. Push a toast (e.g., via the Toasts section's Push Warning button, they'd both be visible if the dialog doesn't fully cover the viewport region). The toast paints ABOVE the dialog (intentional; spec confirms).
 - Close the dialog. Click somewhere in the upper-right of the gallery where the (now-empty) viewport sits. The click reaches the underlying gallery content (verifies `pointer-events: none` on `.if-toast-viewport`).
 
-- [ ] **Step 10: Egui parity — default features unchanged**
+- [ ] **Step 10: Egui parity, default features unchanged**
 
 ```bash
 cargo run -p inputforge-app
 ```
 
-Visually identical to before F4. The egui crate is in `crates/inputforge-gui` — F4 should not have touched it. Verify:
+Visually identical to before F4. The egui crate is in `crates/inputforge-gui`, F4 should not have touched it. Verify:
 
 ```bash
 git log --since="<F4 start commit>" -- crates/inputforge-gui/
@@ -2485,9 +2485,9 @@ git commit --allow-empty -m "chore(gui-dx): close F4 acceptance pass"
 ## Task 19: Hand off
 
 After Task 18 passes, F4 is shippable. The successor features (F5+ shell composer, F8 mapping editor, F11 mode editor, F13 calibration, F14 profile manager) consume:
-- `use_context::<ToastQueue>().push(level, msg)` — every producer except the warnings bridge.
-- `DialogRoot { ... }` and `DirtyConfirmDialog { ... }` — every modal flow.
-- The `MetaSnapshot.warnings` → toast bridge — already wired; producers append to `AppState.warnings` and toasts surface automatically.
+- `use_context::<ToastQueue>().push(level, msg)`, every producer except the warnings bridge.
+- `DialogRoot { ... }` and `DirtyConfirmDialog { ... }`, every modal flow.
+- The `MetaSnapshot.warnings` → toast bridge, already wired; producers append to `AppState.warnings` and toasts surface automatically.
 
 There is no F4 follow-up work. The next plan is for F5 (shell composer) once that spec lands.
 
@@ -2504,11 +2504,11 @@ git commit -m "docs(rewrite): mark F4 complete"
 
 ---
 
-## Self-review — items checked against spec
+## Self-review, items checked against spec
 
-(Reviewer notes — recorded here, not as a task; written at plan-completion time.)
+(Reviewer notes, recorded here, not as a task; written at plan-completion time.)
 
-- **Spec coverage:** Each numbered design choice (1–13) maps to at least one task. Production wiring scope (1) → Tasks 15–16. ToastQueue context (2) → Tasks 6, 16. Compound dialog (3) → Tasks 10–11. DirtyConfirmDialog (4) → Tasks 12–13. Cancel/Discard/Save order (5) → Task 12. Four levels (6) → Task 2. Exact-string dedupe (7) → Task 3. Cap + FIFO (8) → Task 4. Per-level ARIA (9) → Task 7. Engine-status coexistence (10) → Task 18 Step 8. Hover/focus + ESC (11) → Tasks 5, 7. Top-right position (12) → Tasks 7, 14. Frontend-design pass (13) → Task 14.
+- **Spec coverage:** Each numbered design choice (1-13) maps to at least one task. Production wiring scope (1) → Tasks 15-16. ToastQueue context (2) → Tasks 6, 16. Compound dialog (3) → Tasks 10-11. DirtyConfirmDialog (4) → Tasks 12-13. Cancel/Discard/Save order (5) → Task 12. Four levels (6) → Task 2. Exact-string dedupe (7) → Task 3. Cap + FIFO (8) → Task 4. Per-level ARIA (9) → Task 7. Engine-status coexistence (10) → Task 18 Step 8. Hover/focus + ESC (11) → Tasks 5, 7. Top-right position (12) → Tasks 7, 14. Frontend-design pass (13) → Task 14.
 - **Acceptance bullets:** every bullet from the spec has a corresponding step in Task 18.
 - **Type consistency:** `ToastQueue { state: Signal<ToastState> }` consistent across `queue.rs`, `app.rs`, `gallery_root`. `EventHandler<()>` on `oncancel`/`ondiscard`/`onsave` matches the `Button` precedent. JS shim names (`DIALOG_OPEN_JS` / `DIALOG_CLOSE_JS` / `DIALOG_ATTACH_CANCEL_JS`) consistent across `dialog.rs` snippets.
-- **No placeholders:** every step contains the actual content — code blocks where code is needed, exact commands with expected outcomes, file paths verified against the F1/F2/F3 layout.
+- **No placeholders:** every step contains the actual content, code blocks where code is needed, exact commands with expected outcomes, file paths verified against the F1/F2/F3 layout.

@@ -17,7 +17,7 @@ body {
 /* Components opt in to spacing via tokens; no implicit heading/paragraph margins. */
 h1, h2, h3, h4, h5, h6, p { margin: 0; }
 
-/* Custom scrollbar — Webkit + Firefox. */
+/* Custom scrollbar, Webkit + Firefox. */
 ::-webkit-scrollbar       { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--color-bg-elevated); }
 ::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: var(--radius-sm); }

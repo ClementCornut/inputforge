@@ -2,7 +2,7 @@
    layouts where rows AND columns must align across siblings. F7's chrome
    is a 1D column-stack (top bar / banner / main / status) with one
    growing element, and the inner main row is a 1D row-flow (rail /
-   center / panel slot) with one growing element — canonical flex use
+   center / panel slot) with one growing element, canonical flex use
    cases. (Memory: feedback_dialog_flexbox.) */
 .if-layout {
     display: flex;
@@ -13,7 +13,7 @@
        Without `overflow: hidden` here, WebView2 spawns a 10px horizontal
        scrollbar at the document root for the duration of the animation,
        shrinking the body by 10px vertically and shifting every chrome
-       container — the visible "wiggle" the user reports on panel open.
+       container, the visible "wiggle" the user reports on panel open.
        Every layout child is already height/width-bounded by flex, so
        this clip is purely defensive against transform paint overflow. */
     width: 100vw;
@@ -48,7 +48,7 @@
    `border-strong` seam (matches the cockpit-panel-seam vocabulary
    established in elevation.css), and a top inset highlight that mimics
    light catching the chamfer. Vertical rhythm is one step looser than
-   horizontal — instrument lists read denser horizontally than they
+   horizontal, instrument lists read denser horizontally than they
    stack vertically. */
 .if-layout__rail {
     flex: 0 0 280px;
@@ -58,7 +58,7 @@
     overflow-y: auto;
 }
 
-/* The center is the working surface — sunken, with horizontal padding
+/* The center is the working surface, sunken, with horizontal padding
    one step wider than the rail to create breathing room around the
    primary editor canvas. */
 .if-layout__center {

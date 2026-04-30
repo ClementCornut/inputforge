@@ -7,7 +7,7 @@ use ulid::Ulid;
 /// A unique, sortable snapshot identifier (ULID-based).
 ///
 /// ULIDs are lexicographically sortable by creation time, but `list()`
-/// orders by `taken_at` (descending) for user-visible ordering — the
+/// orders by `taken_at` (descending) for user-visible ordering, the
 /// ULID sort is a secondary tiebreaker only when `taken_at` collides
 /// at millisecond precision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -48,7 +48,7 @@ pub struct Snapshot {
     pub kind: SnapshotKind,
     pub label: Option<String>,
     pub taken_at: DateTime<Utc>,
-    /// BLAKE3 of canonical TOML — see module-level docs.
+    /// BLAKE3 of canonical TOML, see module-level docs.
     #[serde(with = "hex_array_32")]
     pub content_hash: [u8; 32],
     pub pinned: bool,

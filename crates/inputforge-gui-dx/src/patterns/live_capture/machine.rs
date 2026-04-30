@@ -10,7 +10,7 @@ use inputforge_core::types::{HatDirection, InputAddress, InputValue};
 use super::CaptureFilter;
 
 /// Axis movement threshold. A delta below this against baseline is
-/// ignored — protects against sympathetic stick movement and analog
+/// ignored, protects against sympathetic stick movement and analog
 /// noise. Tunable, but no settings UI in F8.
 pub(crate) const AXIS_DEADBAND: f64 = 0.15;
 
@@ -39,7 +39,7 @@ pub(crate) struct CoreState {
     pub filter: CaptureFilter,
 }
 
-/// Pure state-transition fn — see F8 spec § "Internal mechanics".
+/// Pure state-transition fn, see F8 spec § "Internal mechanics".
 ///
 /// **Tied-axis tiebreak rule:** When two axes cross deadband on the
 /// same tick with identical absolute deltas, the first axis encountered
@@ -50,14 +50,14 @@ pub(crate) struct LiveCaptureCore;
 impl LiveCaptureCore {
     #[allow(
         clippy::too_many_lines,
-        reason = "single state-transition fn — splitting it would obscure the branch structure"
+        reason = "single state-transition fn, splitting it would obscure the branch structure"
     )]
     pub(crate) fn step(
         prev: CoreState,
         snapshot: &[InputCacheEntry],
         now: Instant,
     ) -> (CoreState, Option<InputAddress>) {
-        // Branch 1: first tick — record baseline, never fire.
+        // Branch 1: first tick, record baseline, never fire.
         let Some(baseline) = prev.baseline.as_ref() else {
             return (
                 CoreState {
@@ -213,7 +213,7 @@ fn pick_winner(crossings: &[(InputAddress, f64, InputKind)]) -> InputAddress {
 }
 
 /// Recompute the absolute delta for a pending address against the
-/// current snapshot — used when comparing newly-crossing inputs.
+/// current snapshot, used when comparing newly-crossing inputs.
 fn current_delta_for(
     addr: &InputAddress,
     baseline: &[InputCacheEntry],

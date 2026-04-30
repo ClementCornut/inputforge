@@ -6,7 +6,7 @@
    Cockpit-readout treatment: a small mono eyebrow (system-status idiom),
    a display-scale headline, a hairline rule (instrument-panel detail),
    and a muted hint. The structure communicates "the rig is online but
-   no profile is mounted" at a glance — same language as the engine
+   no profile is mounted" at a glance, same language as the engine
    pill, just at hero scale. */
 .if-empty-state {
     display: flex;
@@ -20,7 +20,7 @@
     text-align: center;
 }
 
-/* Mono eyebrow — the engine-pill / status-readout idiom at empty-state
+/* Mono eyebrow, the engine-pill / status-readout idiom at empty-state
    scale. Tabular figures via `--font-mono`; uppercase + letter-spacing
    matches the engine pill so the two surfaces read as the same family. */
 .if-empty-state__eyebrow {
@@ -39,7 +39,7 @@
     color: var(--color-text);
 }
 
-/* Hairline rule between heading and hint — a fixed-length `border-strong`
+/* Hairline rule between heading and hint, a fixed-length `border-strong`
    stroke. Reads as an instrument-panel separator, not a generic divider:
    the cockpit vocabulary says structural seams use `border-strong`. */
 .if-empty-state__rule {

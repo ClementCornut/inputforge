@@ -31,7 +31,7 @@ pub(crate) fn spawn_polling_task(ctx: AppContext) {
             // ctx.state from subscribers must not contend with the held guard.
             drop(guard);
 
-            // peek() reads without subscribing — the diff gate doesn't wake any component.
+            // peek() reads without subscribing, the diff gate doesn't wake any component.
             let mut meta_signal = ctx.meta;
             let mut config_signal = ctx.config;
             let mut live_signal = ctx.live;

@@ -1,6 +1,6 @@
 // Rust guideline compliant 2026-03-07
 
-//! `InputForge` GUI — egui-based configuration interface.
+//! `InputForge` GUI, egui-based configuration interface.
 //!
 //! Provides a three-panel layout for managing physical input device
 //! mappings to virtual vJoy outputs. The GUI communicates with the
@@ -29,7 +29,7 @@ use app::InputForgeApp;
 /// Blocks the calling thread until the window is closed.
 ///
 /// `start_minimized` is accepted for signature parity with
-/// `inputforge_gui_dx::launch_gui` and is ignored here — `main.rs` already
+/// `inputforge_gui_dx::launch_gui` and is ignored here, `main.rs` already
 /// gates the egui startup launch on `cli.start_minimized`. The parameter is
 /// removed at F16 cleanup when the egui crate is deleted.
 ///
@@ -74,6 +74,6 @@ pub fn launch_gui(
     )
     // eframe::Error is not Send + Sync (eframe 0.33 / glutin), so the blanket
     // anyhow::Error::from impl doesn't apply. Convert via Display; the source
-    // chain is dropped, which is acceptable here — main.rs only uses %e.
+    // chain is dropped, which is acceptable here, main.rs only uses %e.
     .map_err(|e| anyhow::Error::msg(e.to_string()))
 }

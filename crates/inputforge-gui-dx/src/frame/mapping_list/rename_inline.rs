@@ -1,12 +1,12 @@
 //! Inline rename for an existing mapping row. Mirrors F7's
-//! `mode_tabs::rename_inline::RenameInline` — Enter dispatches
+//! `mode_tabs::rename_inline::RenameInline`, Enter dispatches
 //! `SetMapping` with the same actions + new name; Esc reverts; blur
 //! with empty value reverts; blur with non-empty value commits.
 //!
 //! `TextInput` only forwards `oninput` / `onmounted` / `class` to its
 //! inner `<input>` (see `components::text_input`). To attach `onkeydown`
 //! and `onfocusout`, this component wraps the input in a `<div>` and
-//! relies on event bubbling — same shape F7's `mode_tabs::rename_inline`
+//! relies on event bubbling, same shape F7's `mode_tabs::rename_inline`
 //! uses.
 
 use std::sync::mpsc::Sender;
@@ -38,7 +38,7 @@ fn run_commit(
     }
     let new_name = trimmed.to_owned();
     if Some(&new_name) == summary.name.as_ref() {
-        // No-op rename — no need to round-trip through the engine.
+        // No-op rename, no need to round-trip through the engine.
         state.set(None);
         return;
     }
@@ -75,7 +75,7 @@ fn read_actions(ctx: &AppContext, summary: &MappingSummary) -> Vec<Action> {
 }
 
 /// Parent-driven inline rename editor for a mapping row. The parent owns
-/// `state: Signal<Option<InputAddress>>` — when this matches
+/// `state: Signal<Option<InputAddress>>`, when this matches
 /// `summary.input`, the editor is open. The component closes by calling
 /// `state.set(None)`.
 #[component]
@@ -96,7 +96,7 @@ pub(crate) fn RenameInline(
     let initial = summary.name.clone().unwrap_or_default();
     let mut value: Signal<String> = use_signal(|| initial);
 
-    // Per-handler clones — `Sender` is `!Copy` but trivially clonable;
+    // Per-handler clones, `Sender` is `!Copy` but trivially clonable;
     // cloning upfront lets each event closure own its sender and stay
     // `Fn` (no `FnMut` move-out errors when the same pair of closures
     // is referenced from both `onkeydown` and `onfocusout`).

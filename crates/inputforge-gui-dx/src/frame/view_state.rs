@@ -1,7 +1,7 @@
 //! GUI-only chrome state.
 //!
 //! Provided in `app_root` alongside `AppContext`, `LaunchParams`, and
-//! `ToastQueue`. Four Signals carry chrome-only state — `editing_mode`
+//! `ToastQueue`. Four Signals carry chrome-only state, `editing_mode`
 //! (the user's authoring focus), `panel_slot` (which right panel is open),
 //! `via_calibration` (sticky while `panel_slot == Devices` so the
 //! Calibration tool button can re-open Devices in calibration mode), and
@@ -16,7 +16,7 @@ use crate::context::MetaSnapshot;
 /// Which right-side panel is currently mounted.
 ///
 /// `None` collapses the panel column; `Devices` and `Profiles` mount the
-/// respective panel content (F12 / F13 own contents — F7 ships placeholders).
+/// respective panel content (F12 / F13 own contents, F7 ships placeholders).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(dead_code, reason = "Used by regions in Task 18+")]
 pub(crate) enum PanelSlot {
@@ -26,7 +26,7 @@ pub(crate) enum PanelSlot {
     Profiles,
 }
 
-/// GUI-only chrome state — provided once in `app_root`.
+/// GUI-only chrome state, provided once in `app_root`.
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code, reason = "Used in app_root context provider (Task 18)")]
 pub(crate) struct ViewState {
@@ -51,12 +51,12 @@ pub(crate) struct ViewState {
 /// cover it without a Dioxus runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ReconcileOutcome {
-    /// Profile and modes list are unchanged — no action required.
+    /// Profile and modes list are unchanged, no action required.
     NoChange,
     /// `meta.profile_name` differs from the previously seen profile name.
     ProfileFlipped,
     /// `cur_mode` (the current `editing_mode` signal value) differs from
-    /// `prev_mode` (the `last_editing_mode` shadow) — an external write
+    /// `prev_mode` (the `last_editing_mode` shadow), an external write
     /// flipped the editing mode without going through reconciliation.
     /// Callers MUST clear `selected_mapping`.
     ModeFlipped,
@@ -66,7 +66,7 @@ pub(crate) enum ReconcileOutcome {
     ModesListDrifted,
 }
 
-/// Pure reconciliation decision — unit-testable without a Dioxus runtime.
+/// Pure reconciliation decision, unit-testable without a Dioxus runtime.
 ///
 /// Given the previously-seen profile name, the previously-seen editing mode,
 /// the current live editing mode, and the latest `MetaSnapshot`, returns the
@@ -77,14 +77,14 @@ pub(crate) enum ReconcileOutcome {
 ///
 /// Branches are evaluated in priority order:
 ///
-/// 1. **Profile flip** — `meta.profile_name` differs from `prev_profile`.
+/// 1. **Profile flip**, `meta.profile_name` differs from `prev_profile`.
 ///    Resets everything downstream; wins over all other conditions.
-/// 2. **Mode flip** — `cur_mode` differs from `prev_mode`.
+/// 2. **Mode flip**, `cur_mode` differs from `prev_mode`.
 ///    External write changed `editing_mode`; clears `selected_mapping`.
-/// 3. **Modes-list drift** — `cur_mode` is absent from `meta.modes`.
+/// 3. **Modes-list drift**, `cur_mode` is absent from `meta.modes`.
 ///    Mode was deleted mid-session; caller falls back to `startup_mode`
 ///    or `modes[0]`.
-/// 4. **No change** — none of the above.
+/// 4. **No change**, none of the above.
 pub(crate) fn reconcile_pure(
     prev_profile: &str,
     prev_mode: &str,
@@ -113,14 +113,14 @@ pub(crate) fn reconcile_pure(
 /// editing mode.
 ///
 /// **Two-phase init.** The hook fires once at mount when `meta` is the
-/// `MetaSnapshot::default()` populated by `app.rs` — `startup_mode`
+/// `MetaSnapshot::default()` populated by `app.rs`, `startup_mode`
 /// is `None` at that point, so the initial `peek()` falls back to
 /// `"Default"`. The first effect run happens *after* the polling task
 /// has populated `meta` with a real profile (or kept the empty default
 /// if no profile is loaded). `last_profile_name` is peek-initialized
 /// to whatever `profile_name` is at mount, which in current `app_root`
 /// is `None` because `meta` is initialized to `MetaSnapshot::default`
-/// before this hook runs — so the first effect run sees
+/// before this hook runs, so the first effect run sees
 /// `profile_changed == false` (None → None) when no profile is loaded
 /// and `profile_changed == true` when one is loaded; both branches do
 /// the right thing.
@@ -229,7 +229,7 @@ mod tests {
     use super::*;
     use inputforge_core::types::{DeviceId, InputId};
 
-    /// Compile-time gate — proves `selected_mapping` lives on `ViewState`.
+    /// Compile-time gate, proves `selected_mapping` lives on `ViewState`.
     #[test]
     fn selected_mapping_field_type() {
         fn _assert(view: ViewState) {
@@ -252,7 +252,7 @@ mod tests {
             modes: vec!["Default".to_owned(), "Combat".to_owned()],
             ..MetaSnapshot::default()
         };
-        // cur_mode == prev_mode == "Default", profile unchanged — NoChange.
+        // cur_mode == prev_mode == "Default", profile unchanged, NoChange.
         let outcome = reconcile_pure("P", "Default", "Default", &meta);
         assert_eq!(outcome, ReconcileOutcome::NoChange);
     }
@@ -265,7 +265,7 @@ mod tests {
             modes: vec!["Default".to_owned()],
             ..MetaSnapshot::default()
         };
-        // prev_profile "P" vs cur_profile "Q" — ProfileFlipped.
+        // prev_profile "P" vs cur_profile "Q", ProfileFlipped.
         let outcome = reconcile_pure("P", "Default", "Default", &meta);
         assert_eq!(outcome, ReconcileOutcome::ProfileFlipped);
     }

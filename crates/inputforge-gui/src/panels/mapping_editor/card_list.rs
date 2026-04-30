@@ -175,7 +175,7 @@ fn render_single_card(
                     action_card::ActionCardResponse::None => {}
                 }
 
-                // Expanded config body — inside the card frame.
+                // Expanded config body, inside the card frame.
                 if expanded {
                     ui.separator();
                     ui.add_space(4.0);

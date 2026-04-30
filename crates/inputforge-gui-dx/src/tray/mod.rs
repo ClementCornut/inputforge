@@ -1,4 +1,4 @@
-//! Tray bridge — observes `dioxus-desktop`'s forwarded muda events via the
+//! Tray bridge, observes `dioxus-desktop`'s forwarded muda events via the
 //! `use_muda_event_handler` hook, routes through a bounded
 //! `tokio::sync::mpsc`, and dispatches in a Dioxus task.
 //!
@@ -7,7 +7,7 @@
 //! The design spec (`2026-04-26-f3-app-shell-tray-bridge-design.md`) calls
 //! for `Config::with_custom_event_handler` matching on
 //! `UserWindowEvent::MudaMenuEvent`. That type lives in
-//! `dioxus_desktop::ipc::UserWindowEvent` — but `mod ipc;` is private in
+//! `dioxus_desktop::ipc::UserWindowEvent`, but `mod ipc;` is private in
 //! `dioxus-desktop` 0.7.6, so the type is unreachable from external crates
 //! (verified at `dioxus-desktop-0.7.6/src/lib.rs:21`). `dioxus-desktop`
 //! exposes `use_muda_event_handler` (`hooks.rs:44`, re-exported via
@@ -39,7 +39,7 @@ use self::action::{TrayAction, TrayMenuIds};
 /// The channel buffers between the muda event handler (runs synchronously on
 /// the tao event-loop thread, so must never block) and the listener task
 /// (runs in the Dioxus runtime). The worst case is a burst of clicks during
-/// a stalled listener task — drainage normally resumes within single-digit
+/// a stalled listener task, drainage normally resumes within single-digit
 /// ms, and tray clicks are human-paced (≤ ~5 Hz peak from frantic clicking).
 /// Cap=2 would technically suffice; 8 gives generous headroom. Overflow is
 /// logged via `tracing::warn!` and the action is dropped (see
@@ -50,7 +50,7 @@ pub(crate) const CHANNEL_CAPACITY: usize = 8;
 /// scope (it wraps `use_muda_event_handler`, which is itself a hook).
 ///
 /// The handler runs synchronously on the tao event-loop thread; it must
-/// not block. We `try_send` and log any overflow rather than wait —
+/// not block. We `try_send` and log any overflow rather than wait -
 /// overflow is effectively impossible at human input rates, but a dropped
 /// send must never deadlock the event loop. The handler is observe-only;
 /// routing happens in `TrayAction::from_event` (pure) and dispatch in the
@@ -83,7 +83,7 @@ pub(crate) fn spawn_listener_task(mut rx: mpsc::Receiver<TrayAction>, ctx: AppCo
 /// current engine status, then send it on the engine command channel.
 ///
 /// `AppContext.commands` is `std::sync::mpsc::Sender<EngineCommand>` (an
-/// unbounded std channel from F1) — its `send` is non-blocking for unbounded
+/// unbounded std channel from F1), its `send` is non-blocking for unbounded
 /// channels, returning `Err` only if the receiver has been dropped. We
 /// discard the error: at that point the engine is already gone and the user
 /// is about to learn so via the normal shutdown path.

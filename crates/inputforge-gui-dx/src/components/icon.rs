@@ -1,5 +1,5 @@
 //! Renders an SVG icon. SVG content is trusted (Phosphor upstream),
-//! injected via `dangerous_inner_html` — never feed user-provided
+//! injected via `dangerous_inner_html`, never feed user-provided
 //! SVG through this component.
 
 use dioxus::prelude::*;

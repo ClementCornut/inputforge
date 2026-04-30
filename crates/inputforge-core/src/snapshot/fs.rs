@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn dropped_temp_does_not_create_destination() {
-        // Sanity: tempfile semantics — dropping without persist leaves nothing.
+        // Sanity: tempfile semantics, dropping without persist leaves nothing.
         let dir = tempfile::tempdir().unwrap();
         {
             let _tmp = tempfile::NamedTempFile::new_in(dir.path()).unwrap();

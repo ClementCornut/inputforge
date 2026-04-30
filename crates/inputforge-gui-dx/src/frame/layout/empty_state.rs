@@ -12,7 +12,7 @@ pub(crate) fn EmptyState() -> Element {
     rsx! {
         Stylesheet { href: EMPTY_STATE_CSS }
         div { class: "if-empty-state",
-            div { class: "if-empty-state__eyebrow", "Status — Standby" }
+            div { class: "if-empty-state__eyebrow", "Status, Standby" }
             div { class: "if-empty-state__heading", "No profile loaded" }
             div { class: "if-empty-state__rule", "aria-hidden": "true" }
             div { class: "if-empty-state__hint", "F13 owns this surface." }

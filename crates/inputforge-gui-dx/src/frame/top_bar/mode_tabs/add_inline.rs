@@ -113,7 +113,7 @@ pub(crate) fn AddInline(
     let modes_for_blur = modes.read().clone();
 
     // Single global id is safe because at most one AddInline mounts at
-    // a time — the `+` button toggles into one inline editor, never two.
+    // a time, the `+` button toggles into one inline editor, never two.
     // RenameInline derives a per-`from`-name id (different invariant:
     // up to N tabs, but only one rename can be active at once).
     let error_id = "mode-name-error-add";
@@ -167,7 +167,7 @@ pub(crate) fn AddInline(
                 size: InputSize::Sm,
                 placeholder: "New mode name".to_owned(),
                 invalid: error_msg.read().is_some(),
-                // Only point at the error span when it's actually mounted —
+                // Only point at the error span when it's actually mounted -
                 // otherwise the IDREF dangles. Tracks the same gate as the
                 // <span id="{error_id}"> branch below.
                 aria_describedby: error_msg.read().as_ref().map(|_| error_id.to_owned()),

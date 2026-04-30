@@ -26,7 +26,7 @@ pub fn Select(
             h.call(evt);
         }
     };
-    // HTML5 forbids id="" — so render the attribute only when Some.
+    // HTML5 forbids id="", so render the attribute only when Some.
     rsx! {
         if let Some(ref id_val) = id {
             select {

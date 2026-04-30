@@ -35,7 +35,7 @@ pub(crate) fn format(addr: &InputAddress, cfg: &ConfigSnapshot) -> String {
 
 /// Split form of `format`: returns `(device_label, input_label)` so callers
 /// can render the two cells separately. The captured-input chip in the F8
-/// `AddInline` pad uses this — the input identifier needs its own layout
+/// `AddInline` pad uses this, the input identifier needs its own layout
 /// cell so it stays visible when the device name truncates.
 pub(crate) fn split_label(addr: &InputAddress, cfg: &ConfigSnapshot) -> (String, String) {
     let device_label = match cfg.devices.iter().find(|d| d.info.id == addr.device) {

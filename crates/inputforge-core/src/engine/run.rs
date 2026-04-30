@@ -304,7 +304,7 @@ impl Engine {
     /// Handle a single engine command.
     #[expect(
         clippy::too_many_lines,
-        reason = "single match dispatch; each arm is a distinct command — \
+        reason = "single match dispatch; each arm is a distinct command, \
                   splitting into sub-functions would obscure the command flow"
     )]
     pub(crate) fn handle_command(&mut self, cmd: EngineCommand) -> Result<()> {
@@ -370,7 +370,7 @@ impl Engine {
                 if already_same {
                     return Ok(());
                 }
-                // Read mode tree from active_profile (may be absent — return early).
+                // Read mode tree from active_profile (may be absent, return early).
                 let tree = if let Some(p) = self.state.read().active_profile.as_ref() {
                     p.modes().clone()
                 } else {
@@ -473,7 +473,7 @@ impl Engine {
             EngineCommand::RenameMode { from, to } => {
                 // Validate both names against the same policy. Without
                 // this, an oversized `from` would fall through to
-                // `with_renamed` and surface as `ModeNotFound` — leaking
+                // `with_renamed` and surface as `ModeNotFound`, leaking
                 // an internal detail (the name doesn't match a tree node)
                 // when the policy reason (length cap) is what should
                 // surface. Symmetric validation pins the contract.
@@ -489,7 +489,7 @@ impl Engine {
                     return Ok(());
                 };
 
-                // Atomicity contract — order is load-bearing:
+                // Atomicity contract, order is load-bearing:
                 //   1. `with_renamed` clones the tree and validates the
                 //      collision (returns Err without mutating). Must run
                 //      first so a name collision doesn't leave a partial
@@ -499,7 +499,7 @@ impl Engine {
                 //      then mutates mappings + startup_mode in one pass.
                 //      Atomic on Err via the pre-validation pass.
                 //   3. `set_modes` swaps in the new tree last. Single-shot,
-                //      infallible — once the cascade has succeeded the
+                //      infallible, once the cascade has succeeded the
                 //      tree replacement cannot fail partway.
                 // Reordering risks: (1)→(3)→(2) commits a tree against
                 // stale mapping references if cycle-validation later
@@ -585,7 +585,7 @@ impl Engine {
                 if deleted.iter().any(|m| m == &startup) {
                     return Err(crate::error::EngineError::InvalidConfig {
                         reason: format!(
-                            "cannot delete mode '{name}' — its subtree contains startup mode '{startup}'"
+                            "cannot delete mode '{name}', its subtree contains startup mode '{startup}'"
                         ),
                     });
                 }
@@ -683,7 +683,7 @@ impl Engine {
                     return Ok(());
                 };
 
-                // Step 1 — capture AutoBeforeRestore (always fires; never deduped).
+                // Step 1, capture AutoBeforeRestore (always fires; never deduped).
                 let auto = crate::snapshot::create(
                     &path,
                     crate::snapshot::SnapshotKind::AutoBeforeRestore,
@@ -692,10 +692,10 @@ impl Engine {
                 )?;
                 let _ = crate::snapshot::prune(&path, &self.settings.snapshot)?;
 
-                // Step 2 — strip meta + atomically write target body to live path.
+                // Step 2, strip meta + atomically write target body to live path.
                 crate::snapshot::restore(&path, &id)?;
 
-                // Step 3 — reload from disk; auto-rollback on failure.
+                // Step 3, reload from disk; auto-rollback on failure.
                 if let Err(reload_err) = self.reload_profile_from_disk(&path) {
                     tracing::error!(
                         target: "snapshot",
@@ -732,7 +732,7 @@ impl Engine {
     /// Resets calibrations, mode state, callbacks, and the active profile to
     /// match `path` on disk. Shared between `LoadProfile` and `RestoreSnapshot`.
     ///
-    /// **Does not** touch `state.mode_force` — the caller is responsible for
+    /// **Does not** touch `state.mode_force`, the caller is responsible for
     /// that policy decision.
     ///
     /// # Errors
@@ -884,7 +884,7 @@ impl Engine {
         for event in events {
             match event {
                 HotplugEvent::Connected(info) => {
-                    // Skip vJoy virtual HID devices — InputForge controls
+                    // Skip vJoy virtual HID devices, InputForge controls
                     // them through the output system, not as input devices.
                     if info.name.to_ascii_lowercase().contains("vjoy") {
                         continue;

@@ -61,7 +61,7 @@ pub fn Cluster(
     }
 }
 
-/// Padded box. No layout opinion — just a token-driven inset.
+/// Padded box. No layout opinion, just a token-driven inset.
 #[component]
 pub fn Inset(
     #[props(default)] padding: Option<String>,

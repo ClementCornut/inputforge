@@ -11,7 +11,7 @@ use crate::types::DeviceId;
 ///
 /// Each physical device axis can have its own [`Calibration`] to map raw
 /// hardware values to normalized output. The two-level map avoids
-/// cloning `DeviceId` on every lookup — critical since `get()` sits
+/// cloning `DeviceId` on every lookup, critical since `get()` sits
 /// on the ~1 kHz input hot path.
 #[derive(Debug, Clone)]
 pub struct DeviceCalibrationStore {

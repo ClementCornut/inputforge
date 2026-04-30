@@ -45,7 +45,7 @@ const TOAST_CSS: Asset = asset!("/assets/toast/toast.css");
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
     // @font-face rules need manganis-bundled asset URLs interpolated at
-    // runtime — manganis 0.6 does NOT rewrite url() refs inside asset!()'d CSS,
+    // runtime, manganis 0.6 does NOT rewrite url() refs inside asset!()'d CSS,
     // so font URLs hardcoded in typography.css 404 on load. Inline <style>
     // here is the only way to get the hashed bundled URL into a font-face src.
     let font_faces = format!(
@@ -92,7 +92,7 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: TABS_CSS }
         Stylesheet { href: STATUS_BAR_CSS }
 
-        // Toast overlay — last so its z-index cascade wins.
+        // Toast overlay, last so its z-index cascade wins.
         Stylesheet { href: TOAST_CSS }
 
         {children}

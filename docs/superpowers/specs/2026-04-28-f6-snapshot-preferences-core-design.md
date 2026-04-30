@@ -1,12 +1,12 @@
-# F6 — Snapshot Module + Settings Extension + Forced-Mode Plumbing in `inputforge-core`: Design Spec
+# F6, Snapshot Module + Settings Extension + Forced-Mode Plumbing in `inputforge-core`: Design Spec
 
 **Status:** Design approved, ready for implementation plan
 **Date:** 2026-04-28
 **Parent specs:**
-- [`2026-04-24-egui-to-dioxus-rewrite-design.md`](./2026-04-24-egui-to-dioxus-rewrite-design.md) — master rewrite plan, F6 is its first post-F5 feature
-- [`2026-04-27-f5-architecture-ia-redesign-design.md`](./2026-04-27-f5-architecture-ia-redesign-design.md) — IA redesign that defines F6's surface
+- [`2026-04-24-egui-to-dioxus-rewrite-design.md`](./2026-04-24-egui-to-dioxus-rewrite-design.md), master rewrite plan, F6 is its first post-F5 feature
+- [`2026-04-27-f5-architecture-ia-redesign-design.md`](./2026-04-27-f5-architecture-ia-redesign-design.md), IA redesign that defines F6's surface
 
-**Predecessors:** F1 (state bridge), F2 (design system), F3 (shell + tray), F4 (toast + dialog), F5 (IA redesign — design only, no code)
+**Predecessors:** F1 (state bridge), F2 (design system), F3 (shell + tray), F4 (toast + dialog), F5 (IA redesign, design only, no code)
 **Type:** core-only, no GUI surface
 **Crate touched:** `crates/inputforge-core` only
 
@@ -18,11 +18,11 @@ F5 committed a clean-slate IA redesign for the Dioxus rewrite. Three engine-side
 
 1. **Snapshots.** F5's save model is *auto-commit + session undo + on-disk snapshots*. The on-disk snapshot layer needs an engine-owned module before any GUI can bind to it (F12 calibration save, F13 Profiles + Snapshots panel).
 2. **Forced runtime mode.** F7's chrome shows a runtime-mode marker and "Activate / Release" banner; that requires an engine field that pauses mode-change rules and a pair of commands to flip it.
-3. **User preferences.** Snapshot defaults (rolling-buffer count, content-hash dedup) are user-configurable. The spec wants direct-TOML-edit access from day one — no UI required — and an editor surface in F15.
+3. **User preferences.** Snapshot defaults (rolling-buffer count, content-hash dedup) are user-configurable. The spec wants direct-TOML-edit access from day one, no UI required, and an editor surface in F15.
 
-F6 is the engine-side foundation for items 1–3. It adds zero pixels of GUI. After F6, F7 can bind to `mode_force`, F12/F13 can dispatch the new snapshot commands, and F15 can ship a typed editor on top of the same data layer.
+F6 is the engine-side foundation for items 1-3. It adds zero pixels of GUI. After F6, F7 can bind to `mode_force`, F12/F13 can dispatch the new snapshot commands, and F15 can ship a typed editor on top of the same data layer.
 
-This is also the point at which we adapt F5's "preferences module" naming to the codebase's existing reality: `crates/inputforge-core/src/settings.rs` already exists and persists `AppSettings { last_profile }` to `%APPDATA%/inputforge/settings.toml`. F6 extends `AppSettings` rather than introducing a parallel `preferences` module — the user-edited prefs live as a sub-table inside the existing TOML.
+This is also the point at which we adapt F5's "preferences module" naming to the codebase's existing reality: `crates/inputforge-core/src/settings.rs` already exists and persists `AppSettings { last_profile }` to `%APPDATA%/inputforge/settings.toml`. F6 extends `AppSettings` rather than introducing a parallel `preferences` module, the user-edited prefs live as a sub-table inside the existing TOML.
 
 ---
 
@@ -32,7 +32,7 @@ The decisions below were validated during brainstorming dialogue; each is record
 
 ### Crate dependencies
 
-**1. `chrono` for timestamps.** Snapshot `taken_at: DateTime<Utc>` per F5 verbatim (used both for the `taken_at` field and as the canonical timestamp for `list()`'s newest-first sort — see acceptance criteria). Adds `chrono = { version = "0.4", features = ["serde"] }` to the workspace. Latest-packages skill must run when wiring.
+**1. `chrono` for timestamps.** Snapshot `taken_at: DateTime<Utc>` per F5 verbatim (used both for the `taken_at` field and as the canonical timestamp for `list()`'s newest-first sort, see acceptance criteria). Adds `chrono = { version = "0.4", features = ["serde"] }` to the workspace. Latest-packages skill must run when wiring.
 
 **2. `ulid` for snapshot IDs.** Sortable + monotonic; gives free time-ordering without a separate timestamp index. Adds `ulid = "1"` (with `serde` feature) to the workspace.
 
@@ -50,7 +50,7 @@ The decisions below were validated during brainstorming dialogue; each is record
 
 ### Snapshot file format
 
-**7. Snapshot file = profile TOML + leading `[snapshot_meta]` table.** Single file per snapshot. The meta table lives at the top of the file; the rest is the full profile TOML. On restore, the snapshot module deserializes the file as `toml::Value`, removes the `snapshot_meta` table, and serializes the remainder to the live profile path. `index.toml` is purely a cache rebuilt from headers when missing or stale — no single point of failure.
+**7. Snapshot file = profile TOML + leading `[snapshot_meta]` table.** Single file per snapshot. The meta table lives at the top of the file; the rest is the full profile TOML. On restore, the snapshot module deserializes the file as `toml::Value`, removes the `snapshot_meta` table, and serializes the remainder to the live profile path. `index.toml` is purely a cache rebuilt from headers when missing or stale, no single point of failure.
 
 **8. Storage layout is co-located with the profile** (already in F5 spec):
 
@@ -65,7 +65,7 @@ The decisions below were validated during brainstorming dialogue; each is record
 
 The `<stem>.snapshots/` folder name is computed from the profile path's file stem (Profile path `TFM_Throttle.toml` → `TFM_Throttle.snapshots/`). Move/copy/delete a profile and its snapshots travel with it.
 
-`snapshots_dir_for(profile_path)` strips the **first extension only** (via `Path::file_stem`). If a future spec adopts `<stem>.profile.toml` as the canonical profile extension, this helper must be revisited — it would currently produce `TFM_Throttle.profile.snapshots/`, which may or may not be the intended behavior depending on whether `.profile.toml` is treated as a single compound extension.
+`snapshots_dir_for(profile_path)` strips the **first extension only** (via `Path::file_stem`). If a future spec adopts `<stem>.profile.toml` as the canonical profile extension, this helper must be revisited, it would currently produce `TFM_Throttle.profile.snapshots/`, which may or may not be the intended behavior depending on whether `.profile.toml` is treated as a single compound extension.
 
 ### Restore semantics
 
@@ -74,7 +74,7 @@ The `<stem>.snapshots/` folder name is computed from the profile path's file ste
 2. Snapshot module strips `[snapshot_meta]` from the snapshot file and writes the result atomically over the live profile path.
 3. Engine reuses the same state-rebuild code path that handles `LoadProfile` (refresh `ModeState`, `DeviceCalibrationStore`, `current_mode`, `active_profile`). Implemented as a private helper extracted from the existing `LoadProfile` handler so both call sites share one source of truth.
 
-This keeps state-mutation logic in one place — restore can never drift from load.
+This keeps state-mutation logic in one place, restore can never drift from load.
 
 ### Forced mode
 
@@ -91,11 +91,11 @@ Field is on `AppState` (not `Engine`) because the GUI reads it through the exist
 
 **11. Mode-change rules pause via gates at the two pause points.** Engine has **five `ModeState` mutation sites** (six counting `LoadProfile`'s full-replacement path, which is intentionally ungated). The five gated sites collapse to **two pause points**:
 
-- `engine/output_handler.rs::process_pipeline_outputs`'s `Action::ChangeMode` arm covers four mutators (`ModeState::switch_to`, `push_temporary`, `go_previous`, `cycle`) — all reachable through the helper `apply_mode_change` invoked from this single arm. **One** guard at the top of the arm gates all four.
+- `engine/output_handler.rs::process_pipeline_outputs`'s `Action::ChangeMode` arm covers four mutators (`ModeState::switch_to`, `push_temporary`, `go_previous`, `cycle`), all reachable through the helper `apply_mode_change` invoked from this single arm. **One** guard at the top of the arm gates all four.
 - `engine/run.rs::tick`'s `ReleaseCallback::PopTemporaryMode` handler is the fifth mutator. **One** guard at the top of this handler gates it.
-- The sixth site is `engine/run.rs`'s `LoadProfile` arm (full ModeState replacement). It is **intentionally ungated** — `LoadProfile` clears `mode_force` so the gate would be moot, and a forced override should not survive a profile change.
+- The sixth site is `engine/run.rs`'s `LoadProfile` arm (full ModeState replacement). It is **intentionally ungated**, `LoadProfile` clears `mode_force` so the gate would be moot, and a forced override should not survive a profile change.
 
-Both gates skip mutation when `state.mode_force.is_some()`. The forced state is read once per tick (folded into the existing `state.read()` block at `engine/run.rs:91-97` that already clones `mappings` and `mode_tree` — no additional read-lock acquisition; see "Engine wiring" for the exact pattern) into a local `mode_forced: bool` flag so we don't acquire the read lock per event.
+Both gates skip mutation when `state.mode_force.is_some()`. The forced state is read once per tick (folded into the existing `state.read()` block at `engine/run.rs:91-97` that already clones `mappings` and `mode_tree`, no additional read-lock acquisition; see "Engine wiring" for the exact pattern) into a local `mode_forced: bool` flag so we don't acquire the read lock per event.
 
 `EngineCommand::ForceMode { mode }` bypasses the gate (per D15, idempotent on same-mode): when not currently forced, or when forced to a different mode, it calls `mode_state.switch_to(&mode, &tree)?`, sets `state.mode_force = Some(ForcedMode { mode })`, then runs `refresh_axes_for_mode_change` so vJoy outputs reflect the new mode immediately. When already forced to `mode`, it early-returns.
 
@@ -103,7 +103,7 @@ Both gates skip mutation when `state.mode_force.is_some()`. The forced state is 
 
 ### Concurrency
 
-**12. Atomic writes for snapshots; non-atomic for everything else.** Snapshot files are written via `tempfile::NamedTempFile::persist` (write to temp in same dir + rename) — atomic on NTFS and POSIX **only when the temp file lives on the same volume as the destination**. The `snapshot::fs` helper enforces this by creating the temp file inside `<stem>.snapshots/` (same directory as destination). Profile and `AppSettings` writes stay as plain `std::fs::write` (current behavior; out of F6 scope to change).
+**12. Atomic writes for snapshots; non-atomic for everything else.** Snapshot files are written via `tempfile::NamedTempFile::persist` (write to temp in same dir + rename), atomic on NTFS and POSIX **only when the temp file lives on the same volume as the destination**. The `snapshot::fs` helper enforces this by creating the temp file inside `<stem>.snapshots/` (same directory as destination). Profile and `AppSettings` writes stay as plain `std::fs::write` (current behavior; out of F6 scope to change).
 
 **13. Single-thread engine guarantees serial commands.** All snapshot operations dispatch from the engine thread via `EngineCommand` handlers. Commands are processed serially in `process_commands`. There is no in-engine concurrency between two snapshot ops, or between a snapshot op and a profile write. External writers (other processes editing the same files) are out of scope; atomic writes give a best-effort guarantee against torn reads anyway.
 
@@ -117,12 +117,12 @@ The following four decisions were resolved during the post-spec design review an
 
 **16. `RestoreSnapshot` auto-rollbacks to `AutoBeforeRestore` if reload fails.** Engine handler sequence:
 1. Create `AutoBeforeRestore` snapshot of current profile state. Capture its `SnapshotId`.
-2. `snapshot::restore(&path, &target_id)` — atomic write of restored profile bytes.
+2. `snapshot::restore(&path, &target_id)`, atomic write of restored profile bytes.
 3. `reload_profile_from_disk(&path)`. **On failure:** atomically write the `AutoBeforeRestore` body back to `path` (via `snapshot::restore(&path, &auto_before_id)`), call `reload_profile_from_disk(&path)` once more, log `tracing::error!` describing the original reload failure, propagate that error to the caller. If the rollback reload **also** fails: propagate the second error; engine in-memory state stays at the pre-restore snapshot's content and is now out of sync with disk. Worst-case requires a manual `LoadProfile` to recover.
 
 The `AutoBeforeRestore` snapshot is preserved in the rolling buffer regardless of restore success/failure, so the user can always re-trigger the restore manually.
 
-**17. `Engine::new` gains a `settings: AppSettings` parameter.** The constructor takes `settings` explicitly (not internally `AppSettings::load()`). Production callers — `crates/inputforge-core/src/main.rs:226` and engine test harnesses at `engine/tests.rs:132`, `:690`, `:1274` — pass `AppSettings::load()` (production) or a test-injected value (tests). This is a minor breaking change to the test harness; production callers update once. The trade-off is explicit testability: tests can inject custom `AppSettings` (e.g., reduced `max_count` for FIFO eviction tests) without monkey-patching the on-disk file. The `EngineCommand::ReloadSettings` handler does run `AppSettings::load()` internally to refresh the field after dispatch.
+**17. `Engine::new` gains a `settings: AppSettings` parameter.** The constructor takes `settings` explicitly (not internally `AppSettings::load()`). Production callers, `crates/inputforge-core/src/main.rs:226` and engine test harnesses at `engine/tests.rs:132`, `:690`, `:1274`, pass `AppSettings::load()` (production) or a test-injected value (tests). This is a minor breaking change to the test harness; production callers update once. The trade-off is explicit testability: tests can inject custom `AppSettings` (e.g., reduced `max_count` for FIFO eviction tests) without monkey-patching the on-disk file. The `EngineCommand::ReloadSettings` handler does run `AppSettings::load()` internally to refresh the field after dispatch.
 
 ---
 
@@ -160,7 +160,7 @@ use crate::error::Result;
 /// `cfg.skip_if_unchanged` is true). `AutoBeforeRestore` and `Manual`
 /// always create.
 ///
-/// Does not call `prune` — caller is responsible for invoking that when
+/// Does not call `prune`, caller is responsible for invoking that when
 /// FIFO eviction is desired (engine handler calls both in sequence).
 ///
 /// # Errors
@@ -358,7 +358,7 @@ pub enum EngineCommand {
 
 ### Engine struct gains an `AppSettings` field
 
-`crates/inputforge-core/src/engine/mod.rs::Engine` gains `settings: AppSettings`. Per D17, the constructor takes the settings as an explicit parameter — production callers pass `AppSettings::load()`, tests can inject a custom value. `EngineCommand::ReloadSettings` re-reads the file via `AppSettings::load()` and replaces the field. Snapshot calls take `&self.settings.snapshot`.
+`crates/inputforge-core/src/engine/mod.rs::Engine` gains `settings: AppSettings`. Per D17, the constructor takes the settings as an explicit parameter, production callers pass `AppSettings::load()`, tests can inject a custom value. `EngineCommand::ReloadSettings` re-reads the file via `AppSettings::load()` and replaces the field. Snapshot calls take `&self.settings.snapshot`.
 
 ### Command dispatch (`engine/run.rs::handle_command`)
 
@@ -387,7 +387,7 @@ EngineCommand::ReleaseMode => {
 }
 EngineCommand::ReloadSettings => {
     // AppSettings::load() already returns Default on missing/corrupt
-    // file with a tracing::warn — same behavior as engine startup.
+    // file with a tracing::warn, same behavior as engine startup.
     self.settings = AppSettings::load();
 }
 EngineCommand::CreateSnapshot { kind, label } => {
@@ -411,7 +411,7 @@ EngineCommand::RestoreSnapshot { id } => {
         )?;
         // 2. Strip meta + atomic write profile TOML to live path.
         snapshot::restore(&path, &id)?;
-        // 3. Reuse load-profile state rebuild — also clears mode_force.
+        // 3. Reuse load-profile state rebuild, also clears mode_force.
         if let Err(reload_err) = self.reload_profile_from_disk(&path) {
             tracing::error!(
                 target: "snapshot",
@@ -463,7 +463,7 @@ Snapshot module's `create` returns `Ok(None)` when `cfg.skip_if_unchanged && cur
 - `process_pipeline_outputs` is updated to skip applying `Action::ChangeMode` effects (and any sub-mode push) via `apply_mode_change` when `mode_forced` is true; the rest of the pipeline still runs.
 - The `ReleaseCallback::PopTemporaryMode` handler in `tick` early-returns when `mode_forced`.
 
-`refresh_axes_for_mode_change` is still called when `ForceMode` is dispatched (above) — that call sets `pending_output_refresh = true` so the next tick reapplies cached axes through the now-forced mode.
+`refresh_axes_for_mode_change` is still called when `ForceMode` is dispatched (above), that call sets `pending_output_refresh = true` so the next tick reapplies cached axes through the now-forced mode.
 
 ---
 
@@ -503,7 +503,7 @@ Default = []
 # ...
 ```
 
-`Profile::from_toml` already accepts unknown top-level keys (no `deny_unknown_fields`), so the same file would happily round-trip through the profile parser if it were ever loaded directly — but the snapshot module always strips the meta table before writing back to a profile path so the live profile stays meta-free.
+`Profile::from_toml` already accepts unknown top-level keys (no `deny_unknown_fields`), so the same file would happily round-trip through the profile parser if it were ever loaded directly, but the snapshot module always strips the meta table before writing back to a profile path so the live profile stays meta-free.
 
 ### `index.toml` cache
 
@@ -528,7 +528,7 @@ If `list()` finds `index.toml` **missing**, **unparseable** (TOML parse error), 
 - Snapshot file present on disk but missing from index → re-index it (orphan recovery).
 - Snapshot file present but its `[snapshot_meta]` header is unparseable (e.g., malformed ULID, missing required field) → log `tracing::warn!` with path, skip the file (it does not appear in the rebuilt list and is treated as deleted for `prune` purposes).
 
-Index rebuild is non-atomic (per decision #12) — a crash during rebuild leaves the index in some intermediate state, which is itself recoverable on the next `list()` call by the same logic.
+Index rebuild is non-atomic (per decision #12), a crash during rebuild leaves the index in some intermediate state, which is itself recoverable on the next `list()` call by the same logic.
 
 ---
 
@@ -558,7 +558,7 @@ ProfilePathHasNoParent { path: PathBuf },
 
 Existing `Io`, `ProfileParse`, `ProfileWrite` variants are reused where appropriate. `#[from]` on `std::io::Error` already provides automatic conversion at most call sites; the snapshot-specific variants are used at API boundaries where the path context matters.
 
-Malformed ULIDs found inside a snapshot's `[snapshot_meta]` header during `list()` rebuild map to `SnapshotIdInvalid` (not `SnapshotCorrupt`) so F13's UI can present a clearer message. Index parse errors do **not** propagate as errors — they trigger the rebuild path described in "On-disk formats" (the caller never sees them).
+Malformed ULIDs found inside a snapshot's `[snapshot_meta]` header during `list()` rebuild map to `SnapshotIdInvalid` (not `SnapshotCorrupt`) so F13's UI can present a clearer message. Index parse errors do **not** propagate as errors, they trigger the rebuild path described in "On-disk formats" (the caller never sees them).
 
 ---
 
@@ -589,20 +589,20 @@ crates/inputforge-core/src/
 
 ## Critical files (read these to execute the plan)
 
-- `crates/inputforge-core/src/state/mod.rs:30-118` — `AppState` struct, `new` / `with_profile` constructors that need the `mode_force` initializer.
-- `crates/inputforge-core/src/engine/command.rs:11-39` — `EngineCommand` enum; 8 variants append cleanly.
-- `crates/inputforge-core/src/engine/run.rs:257-331` — `handle_command` dispatch; `LoadProfile` arm at lines 259-290 is the source for `reload_profile_from_disk` extraction.
-- `crates/inputforge-core/src/engine/run.rs:104-190` — per-event loop; mode-pause gate goes here (mode_forced flag + release-callback skip + ChangeMode skip propagated through `process_pipeline_outputs`).
-- `crates/inputforge-core/src/engine/output_handler.rs` — `process_pipeline_outputs` signature gains `mode_forced: bool`; ChangeMode-output handling early-skips when set.
-- `crates/inputforge-core/src/engine/mod.rs:85-126` — `Engine::new` body; gains a `settings: AppSettings` parameter (D17), stores it on the struct.
-- `crates/inputforge-core/src/engine/tests.rs:132`, `:690`, `:1274` — engine test harness call sites; pass test-injected `AppSettings` to the new constructor.
-- `crates/inputforge-core/src/main.rs:226` — production engine construction; passes `AppSettings::load()`.
-- `crates/inputforge-core/src/profile/mod.rs:122-142` — existing `Profile::load` / `save`; snapshot::restore calls `Profile::load` after writing.
-- `crates/inputforge-core/src/profile/manager.rs` — synchronous file ops pattern reused by atomic-write helpers in `snapshot::fs`.
-- `crates/inputforge-core/src/settings.rs:14-110` — `AppSettings`; extend with `snapshot: SnapshotConfig`; existing tests round-trip the extended struct.
-- `crates/inputforge-core/src/error.rs:9-51` — `EngineError`; flat enum, append six new snapshot variants (per Errors section).
-- `Cargo.toml:16-77` — workspace `[workspace.dependencies]`; add `chrono`, `ulid`, `blake3` (use latest-packages skill to pin versions).
-- `crates/inputforge-core/Cargo.toml:21-37` — crate dependencies; add `chrono`, `ulid`, `blake3` references to the new workspace deps.
+- `crates/inputforge-core/src/state/mod.rs:30-118`, `AppState` struct, `new` / `with_profile` constructors that need the `mode_force` initializer.
+- `crates/inputforge-core/src/engine/command.rs:11-39`, `EngineCommand` enum; 8 variants append cleanly.
+- `crates/inputforge-core/src/engine/run.rs:257-331`, `handle_command` dispatch; `LoadProfile` arm at lines 259-290 is the source for `reload_profile_from_disk` extraction.
+- `crates/inputforge-core/src/engine/run.rs:104-190`, per-event loop; mode-pause gate goes here (mode_forced flag + release-callback skip + ChangeMode skip propagated through `process_pipeline_outputs`).
+- `crates/inputforge-core/src/engine/output_handler.rs`, `process_pipeline_outputs` signature gains `mode_forced: bool`; ChangeMode-output handling early-skips when set.
+- `crates/inputforge-core/src/engine/mod.rs:85-126`, `Engine::new` body; gains a `settings: AppSettings` parameter (D17), stores it on the struct.
+- `crates/inputforge-core/src/engine/tests.rs:132`, `:690`, `:1274`, engine test harness call sites; pass test-injected `AppSettings` to the new constructor.
+- `crates/inputforge-core/src/main.rs:226`, production engine construction; passes `AppSettings::load()`.
+- `crates/inputforge-core/src/profile/mod.rs:122-142`, existing `Profile::load` / `save`; snapshot::restore calls `Profile::load` after writing.
+- `crates/inputforge-core/src/profile/manager.rs`, synchronous file ops pattern reused by atomic-write helpers in `snapshot::fs`.
+- `crates/inputforge-core/src/settings.rs:14-110`, `AppSettings`; extend with `snapshot: SnapshotConfig`; existing tests round-trip the extended struct.
+- `crates/inputforge-core/src/error.rs:9-51`, `EngineError`; flat enum, append six new snapshot variants (per Errors section).
+- `Cargo.toml:16-77`, workspace `[workspace.dependencies]`; add `chrono`, `ulid`, `blake3` (use latest-packages skill to pin versions).
+- `crates/inputforge-core/Cargo.toml:21-37`, crate dependencies; add `chrono`, `ulid`, `blake3` references to the new workspace deps.
 
 ---
 
@@ -642,7 +642,7 @@ The following must all hold for F6 to merge:
 
 **Settings reload**
 - Hand-edit `settings.toml` → dispatch `ReloadSettings` → next snapshot operation observes the new `max_count` / `skip_if_unchanged`.
-- Hand-corrupt `settings.toml` to invalid TOML → `ReloadSettings` logs `tracing::warn!`, replaces in-memory `AppSettings` with `AppSettings::default()`, and **does not** overwrite the corrupt file on disk (no `save()` is called). A subsequent intentional `save()` (triggered by some other engine action) will overwrite the corruption with the in-memory defaults — the user is responsible for noticing the warn-log before that happens.
+- Hand-corrupt `settings.toml` to invalid TOML → `ReloadSettings` logs `tracing::warn!`, replaces in-memory `AppSettings` with `AppSettings::default()`, and **does not** overwrite the corrupt file on disk (no `save()` is called). A subsequent intentional `save()` (triggered by some other engine action) will overwrite the corruption with the in-memory defaults, the user is responsible for noticing the warn-log before that happens.
 
 **Tracing**
 - Every public `snapshot::*` op emits a structured `tracing` event (info on success, warn on recoverable failure, error on unrecoverable). Events include `id`, `kind`, `profile_path` where applicable.
@@ -656,7 +656,7 @@ The following must all hold for F6 to merge:
 
 **Workspace hygiene**
 - `cargo build --workspace`, `cargo test --workspace`, and `cargo clippy --workspace -- -D warnings` all pass.
-- `cargo build --features gui-egui` (egui app, current default) and `cargo build --features gui-dx` (Dioxus app under rewrite) both succeed unchanged (F6 doesn't touch GUI crates). Feature names per `crates/inputforge-app/Cargo.toml` — implementer must verify the actual feature names before merging; if the spec text is wrong, fix the spec.
+- `cargo build --features gui-egui` (egui app, current default) and `cargo build --features gui-dx` (Dioxus app under rewrite) both succeed unchanged (F6 doesn't touch GUI crates). Feature names per `crates/inputforge-app/Cargo.toml`, implementer must verify the actual feature names before merging; if the spec text is wrong, fix the spec.
 - Latest-packages skill verifies the pinned versions of `chrono`, `ulid`, `blake3` against their registries.
 
 ---
@@ -668,7 +668,7 @@ The following must all hold for F6 to merge:
 - **Schema versioning of profile or snapshot files.** F13's open question; F6 ships v1 implicitly (no version field). F13 owns migration policy when restoring older snapshots after profile-schema changes.
 - **Cross-process file locking.** Single-user desktop app; out of scope. Atomic writes give best-effort safety.
 - **Snapshot pruning toasts.** F13 open question; engine fires no user-facing notification, just emits tracing events.
-- **F13's "diff snapshot vs live" view.** Since `restore` writes the live profile through a `toml::Value` round-trip, the live profile may be byte-different from the original even when semantically equal. F6 commits `content_hash` over canonical TOML (per D14), so hash-equality answers "is this snapshot identical to live?" reliably. F13 will need to decide whether the visible diff is over raw bytes (will show whitespace drift) or canonical bytes (clean but less surprising) — out of F6 scope.
+- **F13's "diff snapshot vs live" view.** Since `restore` writes the live profile through a `toml::Value` round-trip, the live profile may be byte-different from the original even when semantically equal. F6 commits `content_hash` over canonical TOML (per D14), so hash-equality answers "is this snapshot identical to live?" reliably. F13 will need to decide whether the visible diff is over raw bytes (will show whitespace drift) or canonical bytes (clean but less surprising), out of F6 scope.
 
 ---
 
@@ -676,7 +676,7 @@ The following must all hold for F6 to merge:
 
 - **`reload_profile_from_disk` extraction touches the existing `LoadProfile` arm.** Low risk: the arm is currently ~30 lines of straightforward state mutation. Extraction is mechanical refactor; existing engine tests cover the behavior. Verify with `cargo test --package inputforge-core engine::tests`.
 - **Mode-pause gate plumbing through `process_pipeline_outputs`.** Function signature gains a parameter; one external caller (engine `tick`). Low risk; explicit param beats reading `AppState` inside the function (avoids re-acquiring the lock per event).
-- **`toml::Value` round-trip preservation of `[snapshot_meta]` strip.** TOML ordering and comments are not preserved by `toml::Value`. The strip-and-rewrite path produces a re-formatted profile TOML at restore time — the live profile file's exact byte representation may differ from the original even when the logical content is identical. Acceptable: the file remains semantically equivalent; users don't typically diff TOML byte-for-byte. Round-trip tests assert *parsed* equality, not byte equality.
+- **`toml::Value` round-trip preservation of `[snapshot_meta]` strip.** TOML ordering and comments are not preserved by `toml::Value`. The strip-and-rewrite path produces a re-formatted profile TOML at restore time, the live profile file's exact byte representation may differ from the original even when the logical content is identical. Acceptable: the file remains semantically equivalent; users don't typically diff TOML byte-for-byte. Round-trip tests assert *parsed* equality, not byte equality.
 - **`chrono` pulls more transitive deps than `time`.** Accepted; F13 will need relative-time formatting and chrono is more ergonomic.
 - **ULID time-jump regressions.** ULIDs encode wall-clock time; if the system clock moves backward between snapshot creations, ULID lex-order can disagree with `taken_at` order. F6 sorts `list()` by `taken_at` (see acceptance criteria), so the user-visible newest-first order is unaffected. ULIDs remain unique (random low bits) so no collision risk. Out of scope to detect or warn on clock skew.
 - **F7 `MetaSnapshot` projection.** F7 owns the GUI bridge that exposes `mode_force` to Dioxus; F6 only ships the engine-side field. F7 is responsible for adding `mode_force` to its `MetaSnapshot` projection in its own brainstorm/spec.
@@ -693,13 +693,13 @@ After implementation, before requesting review:
    cargo clippy --workspace --all-targets -- -D warnings
    cargo test --workspace
    ```
-2. **Targeted snapshot integration:** run `cargo test --package inputforge-core snapshot` — every test in the new module passes.
-3. **Engine integration:** run `cargo test --package inputforge-core engine` — existing engine tests pass unchanged; new tests for `ForceMode` / `ReleaseMode` / `RestoreSnapshot` pass.
+2. **Targeted snapshot integration:** run `cargo test --package inputforge-core snapshot`, every test in the new module passes.
+3. **Engine integration:** run `cargo test --package inputforge-core engine`, existing engine tests pass unchanged; new tests for `ForceMode` / `ReleaseMode` / `RestoreSnapshot` pass.
 4. **Hand-edit settings round-trip:**
    - Run a debug binary, observe `settings.toml` is created with `[snapshot]` table.
    - Edit `max_count = 3` by hand.
    - Trigger `ReloadSettings` (test command via the existing CLI hook or a unit test).
-   - Issue 4 `LoadProfile` commands across distinct profile content (forces 4 `AutoSessionStart` snapshots since auto-session is unpinned and not deduped against differing content); verify only the 3 newest remain — the oldest auto snapshot was FIFO-evicted.
+   - Issue 4 `LoadProfile` commands across distinct profile content (forces 4 `AutoSessionStart` snapshots since auto-session is unpinned and not deduped against differing content); verify only the 3 newest remain, the oldest auto snapshot was FIFO-evicted.
    - Then create a manual snapshot, verify it is pinned by default and survives a subsequent prune at `max_count = 1`.
 5. **Index recovery hand-checks:**
    - Delete `index.toml` between two `list()` calls; second call rebuilds from headers.

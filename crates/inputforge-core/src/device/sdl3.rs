@@ -359,7 +359,7 @@ impl InputSource for Sdl3Input {
 /// SDL3 reports axis values as `i16` in `[-32 768, 32 767]`.  Pedals and
 /// triggers typically rest at the minimum value (`-32 768`).  Any axis whose
 /// initial state is below this threshold (bottom 25 % of the signed range) is
-/// treated as unipolar so the GUI can display it as 0–100 % instead of
+/// treated as unipolar so the GUI can display it as 0-100 % instead of
 /// −100 %..+100 %.
 const UNIPOLAR_INITIAL_STATE_THRESHOLD: i16 = -16_384;
 

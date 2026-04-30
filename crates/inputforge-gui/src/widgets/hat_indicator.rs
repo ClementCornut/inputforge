@@ -79,7 +79,7 @@ pub(crate) fn hat_indicator(ui: &mut egui::Ui, direction: HatDirection) -> egui:
         ));
     }
 
-    // Center dot — uses idle color for visibility against the dark base.
+    // Center dot, uses idle color for visibility against the dark base.
     painter.circle_filled(center, CENTER_RADIUS, colors.indicator_idle);
 
     response

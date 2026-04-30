@@ -39,7 +39,7 @@ pub fn Checkbox(
 
     // Mirror the non-Signal `indeterminate` prop into a Signal so use_effect
     // can react to changes. Without this, the CSS class would update but the
-    // DOM .indeterminate IDL property would never sync — :indeterminate would
+    // DOM .indeterminate IDL property would never sync, :indeterminate would
     // never match and assistive tech would announce "checkbox, not checked"
     // instead of "mixed".
     let mut indet_signal = use_signal(|| indeterminate);

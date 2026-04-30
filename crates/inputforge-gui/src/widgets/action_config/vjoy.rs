@@ -73,7 +73,7 @@ pub(super) fn show_map_to_vjoy(
     changed
 }
 
-/// Device selector row — uses discovered devices when available,
+/// Device selector row, uses discovered devices when available,
 /// falls back to 1..=16 until the engine populates the list.
 fn vjoy_device_selector(
     ui: &mut egui::Ui,

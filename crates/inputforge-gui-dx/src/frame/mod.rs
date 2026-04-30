@@ -10,7 +10,7 @@ mod view_state;
 
 pub(crate) use layout::Layout;
 pub(crate) use mapping_list::MappingList;
-// `PanelSlot` and `ViewState` are not re-exported here — every consumer
+// `PanelSlot` and `ViewState` are not re-exported here, every consumer
 // imports them directly via `crate::frame::view_state::*` so a single
 // path style stays consistent across regions.
 pub(crate) use view_state::use_view_state_provider;

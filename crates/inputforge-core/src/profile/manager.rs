@@ -68,7 +68,7 @@ pub fn validate_profile_name(name: &str) -> Result<()> {
 ///
 /// Scans [`AppSettings::profiles_dir()`] for `.toml` files and returns a
 /// [`ProfileSummary`] for each, sorted alphabetically by name. No TOML
-/// parsing is performed — the display name is taken from the filename stem.
+/// parsing is performed, the display name is taken from the filename stem.
 ///
 /// # Errors
 ///

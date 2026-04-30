@@ -5,7 +5,7 @@ use std::path::Path;
 
 use inputforge_core::state::DeviceState;
 
-/// "N/M devices" — count connected vs total. Stable label for the middle slot.
+/// "N/M devices", count connected vs total. Stable label for the middle slot.
 #[allow(dead_code, reason = "consumed by StatusBar component in Task 20")]
 pub(crate) fn device_count_label(devices: &[DeviceState]) -> String {
     let connected = devices.iter().filter(|d| d.connected).count();

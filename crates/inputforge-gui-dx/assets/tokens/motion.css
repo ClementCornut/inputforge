@@ -1,14 +1,14 @@
 /* Cockpit-brisk durations and two-curve easing vocabulary.
-   No bounce, no elastic, no overshoot — real instruments don't bounce.
+   No bounce, no elastic, no overshoot, real instruments don't bounce.
 
    Two easing tokens, assigned by transition kind:
 
-   --easing-fast (ease-out-expo) — the synchronous curve for response-to-
+   --easing-fast (ease-out-expo), the synchronous curve for response-to-
    input transitions (hover, focus, press, opacity, colour). Begins
    immediately with the input event; carries deceleration, no initial
    dwell. Used at <=180ms.
 
-   --easing-standard (the dwell curve) — the "needle finding its mark"
+   --easing-standard (the dwell curve), the "needle finding its mark"
    curve for spatial container enter/exit (Dialog open, Toast slide).
    The slight ease-in (Y at P1 = 0.08) reads as panel weight at >=240ms
    but as latency at <=180ms; do not use it on hover/focus/press.
@@ -29,7 +29,7 @@
        (alarm reveal, mode switch confirmation). */
     --easing-emphasized: cubic-bezier(0.50, 0.00, 0.10, 1);
 
-    /* Linear is correct when the animation *is* the data —
+    /* Linear is correct when the animation *is* the data -
        live axis indicators, progress bound to a real metric.
        Also the easing under prefers-reduced-motion (set via duration
        collapse below; component CSS that uses tokens inherits this). */
@@ -43,7 +43,7 @@
        components that animate transform on entry must also gate their
        transform under this query. Component CSS that uses duration tokens
        inherits this automatically; CSS that hard-codes ms in transition
-       shorthands does not — keep all timing in tokens. */
+       shorthands does not, keep all timing in tokens. */
 @media (prefers-reduced-motion: reduce) {
     :root {
         --duration-fast: 0ms;

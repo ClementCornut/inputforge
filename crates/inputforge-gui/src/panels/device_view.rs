@@ -7,7 +7,7 @@
 
 use std::borrow::Cow;
 
-/// HID standard axis names for indices 0–7.
+/// HID standard axis names for indices 0-7.
 ///
 /// Maps to the standard HID usage page ordering: X, Y, Z, then rotational
 /// axes, then slider and dial.  Uses abbreviated forms to fit the 40 px
@@ -17,7 +17,7 @@ pub(crate) const HID_AXIS_LABELS: [&str; 8] =
 
 /// Return a human-readable label for the given 0-based axis index.
 ///
-/// Indices 0–7 use HID standard names; higher indices fall back to
+/// Indices 0-7 use HID standard names; higher indices fall back to
 /// `Ax {index}`.
 pub(crate) fn axis_label(index: usize) -> Cow<'static, str> {
     if index < HID_AXIS_LABELS.len() {

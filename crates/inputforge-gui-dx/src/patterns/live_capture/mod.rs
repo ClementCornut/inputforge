@@ -1,9 +1,9 @@
-//! Live-capture primitive — see Task 7's `machine.rs` for the pure
+//! Live-capture primitive, see Task 7's `machine.rs` for the pure
 //! state-transition logic.
 //!
 //! Single-instance pattern: provided once via context in `app_root`.
 //! Each consumer reads via `use_context::<LiveCapture>()`. Starting a
-//! new capture cancels any in-flight one — there is exactly one
+//! new capture cancels any in-flight one, there is exactly one
 //! capture at a time across the entire GUI.
 
 mod machine;
@@ -53,7 +53,7 @@ pub(crate) struct LiveCapture {
 /// Allocate the signals and callbacks, install the polling effect and
 /// the document-level Esc-priority listener, AND register the resulting
 /// `LiveCapture` with the Dioxus context system. Call exactly once from
-/// `app_root` — the provider self-installs.
+/// `app_root`, the provider self-installs.
 #[allow(
     clippy::too_many_lines,
     reason = "single-instance hook braids 5 signals + 2 callbacks + polling effect + Esc \
@@ -101,7 +101,7 @@ pub(crate) fn use_live_capture_provider() -> LiveCapture {
 
     let ctx = use_context::<AppContext>();
 
-    // Polling effect — subscribes to ctx.live as wake gate.
+    // Polling effect, subscribes to ctx.live as wake gate.
     use_effect(move || {
         let _live = ctx.live.read();
 
@@ -135,7 +135,7 @@ pub(crate) fn use_live_capture_provider() -> LiveCapture {
         }
     });
 
-    // Document-level Esc listener — mirrors the document::eval / dioxus.send
+    // Document-level Esc listener, mirrors the document::eval / dioxus.send
     // pattern used in mode_tabs::context_menu (see frame/top_bar/mode_tabs/mod.rs).
     let cancel_for_esc = cancel;
     use_effect(move || {

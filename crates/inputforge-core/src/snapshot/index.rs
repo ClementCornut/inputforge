@@ -16,7 +16,7 @@ struct IndexFile {
 }
 
 /// Read the index file at `path`. Returns an empty vec if the file is
-/// missing, unparseable, or truncated — these conditions are recoverable
+/// missing, unparseable, or truncated, these conditions are recoverable
 /// by a rebuild from snapshot file headers, performed by the caller.
 ///
 /// # Errors
@@ -26,7 +26,7 @@ struct IndexFile {
 #[allow(
     clippy::unnecessary_wraps,
     reason = "Result<Vec<>> signals operation completion; the Ok(Vec::new()) \
-              branches are intentional — callers treat empty-vec as rebuild trigger"
+              branches are intentional, callers treat empty-vec as rebuild trigger"
 )]
 pub(crate) fn read_index(path: &Path) -> Result<Vec<Snapshot>> {
     match std::fs::read_to_string(path) {
@@ -196,7 +196,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("index.toml");
         std::fs::write(&path, "{{{{ not toml").unwrap();
-        // Should NOT propagate the parse error — caller handles rebuild.
+        // Should NOT propagate the parse error, caller handles rebuild.
         assert!(read_index(&path).unwrap().is_empty());
     }
 }

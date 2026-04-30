@@ -42,7 +42,7 @@ pub(crate) fn Layout() -> Element {
                     div { class: "if-layout__rail",
                         crate::frame::MappingList {}
                     }
-                    div { class: "if-layout__center", "Mapping editor — F9 owns content" }
+                    div { class: "if-layout__center", "Mapping editor, F9 owns content" }
                     PanelSlotComponent {}
                 }
             } else {

@@ -1,23 +1,23 @@
-# F1 — Dioxus Crate Scaffold & State Bridge — Implementation Plan
+# F1, Dioxus Crate Scaffold & State Bridge, Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Spec:** `docs/superpowers/specs/2026-04-24-f1-dioxus-scaffold-state-bridge-design.md`
 
-**Goal:** Stand up `crates/inputforge-gui-dx` as a parallel Dioxus Desktop GUI crate, bridge `Arc<RwLock<AppState>>` into a three-signal live snapshot, and feature-flag the dispatch in `inputforge-app` — egui remains default, Dioxus opt-in.
+**Goal:** Stand up `crates/inputforge-gui-dx` as a parallel Dioxus Desktop GUI crate, bridge `Arc<RwLock<AppState>>` into a three-signal live snapshot, and feature-flag the dispatch in `inputforge-app`, egui remains default, Dioxus opt-in.
 
 **Architecture:** New workspace crate exposing `pub fn launch_gui(...) -> anyhow::Result<()>` with the same signature as the egui crate; `LaunchBuilder::with_context` ships raw handles (`Arc<RwLock<AppState>>`, `mpsc::Sender<EngineCommand>`, `Arc<AppSettings>`); root component creates three `Signal<T>` instances (Meta, Config, Live), assembles an `AppContext`, and spawns a 60Hz polling task that does `try_read()` + `from_state` + `PartialEq`-gated writes; `inputforge-app` picks the runtime via the `gui-egui` (default) or `gui-dioxus` feature, with two `cfg`-expressed lifecycle guards around the existing `launch_gui_blocking` call sites because `tao::EventLoop::run` is one-shot.
 
-**Tech Stack:** Rust 2024 / rustc 1.85, Dioxus 0.7.x (desktop feature), tokio 1 (rt + time + sync), parking_lot, anyhow, tracing, muda 0.17 (kept for type-identity with `main.rs`'s `MenuId` triple — events are stubbed at F1, F3 wires them).
+**Tech Stack:** Rust 2024 / rustc 1.85, Dioxus 0.7.x (desktop feature), tokio 1 (rt + time + sync), parking_lot, anyhow, tracing, muda 0.17 (kept for type-identity with `main.rs`'s `MenuId` triple, events are stubbed at F1, F3 wires them).
 
 ---
 
 ## Context
 
-The parent rewrite plan (`2026-04-24-egui-to-dioxus-rewrite-design.md`) breaks the egui→Dioxus migration into 16 features (F1–F16). F1 is pure foundation: a smoke-test readout proving the engine→GUI state bridge works under Dioxus, with **zero** behavior change on the default-feature `main` branch.
+The parent rewrite plan (`2026-04-24-egui-to-dioxus-rewrite-design.md`) breaks the egui→Dioxus migration into 16 features (F1-F16). F1 is pure foundation: a smoke-test readout proving the engine→GUI state bridge works under Dioxus, with **zero** behavior change on the default-feature `main` branch.
 
 Why this is worth a plan rather than just "hack it in":
-- **Three-signal pattern is load-bearing.** Splitting state by update frequency (`meta` = lifecycle, `config` = topology, `live` = per-frame values) at F1 sets the rerender-economy contract for F2–F14. Doing it later means rewriting every component built against a single signal.
+- **Three-signal pattern is load-bearing.** Splitting state by update frequency (`meta` = lifecycle, `config` = topology, `live` = per-frame values) at F1 sets the rerender-economy contract for F2-F14. Doing it later means rewriting every component built against a single signal.
 - **Lifecycle change is non-trivial.** `tao::EventLoop::run` is one-shot per process (Windows/wry/tao constraint); today's `main.rs` calls `launch_gui_blocking` at two sites. Without F1's `cfg`-expressed guards, `--features gui-dioxus` panics on the second tray **Show GUI** click.
 - **Engine cleanup must not regress.** `shutdown(cmd_tx, engine_handle)` flushes `HidHide` unhide and `vJoy` release via engine `Drop` impls. Both lifecycle guards must fall through to that path on both feature flags.
 
@@ -26,35 +26,35 @@ Outcome at F1: under default features, behavior is identical to today; under `--
 ## Critical files to modify
 
 **Created (in `crates/inputforge-gui-dx/`):**
-- `Cargo.toml` — package metadata (workspace-inherited) + deps (dioxus, tokio, muda, parking_lot, tracing, anyhow, serde, inputforge-core)
-- `src/lib.rs` — `pub fn launch_gui(...) -> anyhow::Result<()>` + module declarations
-- `src/context.rs` — `RawHandles`, `AppContext`, three snapshot structs (`MetaSnapshot`, `ConfigSnapshot`, `LiveSnapshot`), `DeviceInputValues`, `VjoyOutputValues`, `from_state` helpers, `#[cfg(test)] mod tests`
-- `src/bridge.rs` — `spawn_polling_task`
-- `src/app.rs` — `app_root` + `F1Readout` component
-- `examples/bridge_demo.rs` — seeded `AppState` harness for primary RSX dev loop
-- `README.md` — `dx serve` workflow, pinned versions, hot-reload validation
+- `Cargo.toml`, package metadata (workspace-inherited) + deps (dioxus, tokio, muda, parking_lot, tracing, anyhow, serde, inputforge-core)
+- `src/lib.rs`, `pub fn launch_gui(...) -> anyhow::Result<()>` + module declarations
+- `src/context.rs`, `RawHandles`, `AppContext`, three snapshot structs (`MetaSnapshot`, `ConfigSnapshot`, `LiveSnapshot`), `DeviceInputValues`, `VjoyOutputValues`, `from_state` helpers, `#[cfg(test)] mod tests`
+- `src/bridge.rs`, `spawn_polling_task`
+- `src/app.rs`, `app_root` + `F1Readout` component
+- `examples/bridge_demo.rs`, seeded `AppState` harness for primary RSX dev loop
+- `README.md`, `dx serve` workflow, pinned versions, hot-reload validation
 
 **Modified:**
-- `Cargo.toml` (root) — add `crates/inputforge-gui-dx` to `members`; add `dioxus`, `tokio`, `inputforge-gui-dx` to `[workspace.dependencies]`
-- `crates/inputforge-app/Cargo.toml` — `[features]` table (`default = ["gui-egui"]`, `gui-egui`, `gui-dioxus`); make `inputforge-gui` optional; add optional `inputforge-gui-dx`
-- `crates/inputforge-app/src/main.rs` — two `compile_error!`s, `cfg`-gated `use` line, `IS_GUI_DIOXUS` const sentinel, two `cfg`-expressed post-launch guards (line 115 startup site & line 300 `ShowGui` arm)
-- `crates/inputforge-gui/Cargo.toml` — add `anyhow` dep
-- `crates/inputforge-gui/src/lib.rs` — `launch_gui` returns `anyhow::Result<()>` via `.map_err(anyhow::Error::from)`
-- `crates/inputforge-core/src/state/status.rs` — add `Default` to `EngineStatus` derives, mark `#[default] Stopped`
-- `crates/inputforge-core/src/state/device.rs` — add `PartialEq, Eq` to `DeviceState` derives
+- `Cargo.toml` (root), add `crates/inputforge-gui-dx` to `members`; add `dioxus`, `tokio`, `inputforge-gui-dx` to `[workspace.dependencies]`
+- `crates/inputforge-app/Cargo.toml`, `[features]` table (`default = ["gui-egui"]`, `gui-egui`, `gui-dioxus`); make `inputforge-gui` optional; add optional `inputforge-gui-dx`
+- `crates/inputforge-app/src/main.rs`, two `compile_error!`s, `cfg`-gated `use` line, `IS_GUI_DIOXUS` const sentinel, two `cfg`-expressed post-launch guards (line 115 startup site & line 300 `ShowGui` arm)
+- `crates/inputforge-gui/Cargo.toml`, add `anyhow` dep
+- `crates/inputforge-gui/src/lib.rs`, `launch_gui` returns `anyhow::Result<()>` via `.map_err(anyhow::Error::from)`
+- `crates/inputforge-core/src/state/status.rs`, add `Default` to `EngineStatus` derives, mark `#[default] Stopped`
+- `crates/inputforge-core/src/state/device.rs`, add `PartialEq, Eq` to `DeviceState` derives
 
 ## Existing utilities to reuse
 
-- `inputforge_core::state::AppState::new()` — construct test fixtures (`crates/inputforge-core/src/state/mod.rs:65`).
-- `inputforge_core::state::InputCacheStore::update(&addr, &value)` — populate input cache for `LiveSnapshot::from_state` tests (`cache.rs:26`).
-- `inputforge_core::state::OutputCacheStore::set_axis/set_button/set_hat` — populate output cache for `LiveSnapshot::from_state` tests (`output_cache.rs:34/39/44`).
-- `inputforge_core::state::AppState::with_profile(profile)` — alternative constructor for tests that need `active_profile` populated (`state/mod.rs:86`).
-- `Profile::name()` / `Profile::mappings()` — read accessors used in `MetaSnapshot::from_state` and `ConfigSnapshot::from_state` (`profile/mod.rs:152` / `:170`).
-- `InputCache` trait methods on `InputCacheStore` (`get_axis(&addr) -> f64`, `get_button(&addr) -> bool`, `get_hat(&addr) -> HatDirection`) — directly used by `LiveSnapshot::from_state`.
-- `OutputCacheStore::get_axis(device, axis) -> f64`, `get_button(device, button) -> bool`, `get_hat(device, hat) -> HatDirection` — same.
-- `inputforge_core::types::{AxisPolarity, HatDirection, InputAddress, InputId, VJoyAxis, VirtualDeviceConfig}` — already `PartialEq, Eq, Clone` (verified during exploration).
-- Existing `#[cfg(test)] mod tests { use super::*; }` pattern from `state/cache.rs` and `state/mod.rs` — copy this for `context.rs` test module.
-- `crates/inputforge-app/src/main.rs::launch_gui_blocking` — unchanged; calls `inputforge_gui::launch_gui` (or the cfg-swapped Dioxus version) and post-processes the result. Already drains stale events via `drain_stale_gui_events(tray)`.
+- `inputforge_core::state::AppState::new()`, construct test fixtures (`crates/inputforge-core/src/state/mod.rs:65`).
+- `inputforge_core::state::InputCacheStore::update(&addr, &value)`, populate input cache for `LiveSnapshot::from_state` tests (`cache.rs:26`).
+- `inputforge_core::state::OutputCacheStore::set_axis/set_button/set_hat`, populate output cache for `LiveSnapshot::from_state` tests (`output_cache.rs:34/39/44`).
+- `inputforge_core::state::AppState::with_profile(profile)`, alternative constructor for tests that need `active_profile` populated (`state/mod.rs:86`).
+- `Profile::name()` / `Profile::mappings()`, read accessors used in `MetaSnapshot::from_state` and `ConfigSnapshot::from_state` (`profile/mod.rs:152` / `:170`).
+- `InputCache` trait methods on `InputCacheStore` (`get_axis(&addr) -> f64`, `get_button(&addr) -> bool`, `get_hat(&addr) -> HatDirection`), directly used by `LiveSnapshot::from_state`.
+- `OutputCacheStore::get_axis(device, axis) -> f64`, `get_button(device, button) -> bool`, `get_hat(device, hat) -> HatDirection`, same.
+- `inputforge_core::types::{AxisPolarity, HatDirection, InputAddress, InputId, VJoyAxis, VirtualDeviceConfig}`, already `PartialEq, Eq, Clone` (verified during exploration).
+- Existing `#[cfg(test)] mod tests { use super::*; }` pattern from `state/cache.rs` and `state/mod.rs`, copy this for `context.rs` test module.
+- `crates/inputforge-app/src/main.rs::launch_gui_blocking`, unchanged; calls `inputforge_gui::launch_gui` (or the cfg-swapped Dioxus version) and post-processes the result. Already drains stale events via `drain_stale_gui_events(tray)`.
 
 ---
 
@@ -82,7 +82,7 @@ Note the exact versions chosen. Tasks 3 (workspace `Cargo.toml`) and 11 (`README
 
 ## Task 2: Add `Default` to `EngineStatus` and `PartialEq, Eq` to `DeviceState`
 
-Two trivial additive derive changes the snapshot structs in Task 4 require to compile. TDD — both have one-line tests asserting the new behavior.
+Two trivial additive derive changes the snapshot structs in Task 4 require to compile. TDD, both have one-line tests asserting the new behavior.
 
 **Files:**
 - Modify: `crates/inputforge-core/src/state/status.rs:8-16`
@@ -90,7 +90,7 @@ Two trivial additive derive changes the snapshot structs in Task 4 require to co
 
 - [ ] **Step 1: Write the failing test for `EngineStatus::default()`**
 
-Add to `crates/inputforge-core/src/state/status.rs`'s existing `mod tests` block (already present at lines 18–44):
+Add to `crates/inputforge-core/src/state/status.rs`'s existing `mod tests` block (already present at lines 18-44):
 
 ```rust
 #[test]
@@ -102,11 +102,11 @@ fn default_is_stopped() {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cargo test -p inputforge-core --lib state::status::tests::default_is_stopped`
-Expected: FAIL — `EngineStatus` does not implement `Default`.
+Expected: FAIL, `EngineStatus` does not implement `Default`.
 
 - [ ] **Step 3: Add `Default` to `EngineStatus`**
 
-Edit `crates/inputforge-core/src/state/status.rs` lines 8–16 — change the derive line and annotate `Stopped`:
+Edit `crates/inputforge-core/src/state/status.rs` lines 8-16, change the derive line and annotate `Stopped`:
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -128,7 +128,7 @@ Expected: PASS.
 
 - [ ] **Step 5: Write the failing test for `DeviceState` equality**
 
-Add to `crates/inputforge-core/src/state/device.rs`'s existing tests module (or create one if absent) — fetch a real `DeviceState` shape; the test only needs the equality check itself:
+Add to `crates/inputforge-core/src/state/device.rs`'s existing tests module (or create one if absent), fetch a real `DeviceState` shape; the test only needs the equality check itself:
 
 ```rust
 #[cfg(test)]
@@ -166,11 +166,11 @@ mod tests {
 - [ ] **Step 6: Run the test to verify it fails**
 
 Run: `cargo test -p inputforge-core --lib state::device::tests::equality_is_structural`
-Expected: FAIL — `DeviceState` does not implement `PartialEq`.
+Expected: FAIL, `DeviceState` does not implement `PartialEq`.
 
 - [ ] **Step 7: Add `PartialEq, Eq` to `DeviceState`**
 
-Edit `crates/inputforge-core/src/state/device.rs` line 10 — extend the derive:
+Edit `crates/inputforge-core/src/state/device.rs` line 10, extend the derive:
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -200,14 +200,14 @@ git commit -m "feat(core): derive Default on EngineStatus and PartialEq on Devic
 
 ---
 
-## Task 3: Workspace plumbing — new crate skeleton + workspace `Cargo.toml`
+## Task 3: Workspace plumbing, new crate skeleton + workspace `Cargo.toml`
 
 Create the empty `inputforge-gui-dx` crate so the workspace compiles before any logic lands. Adds `dioxus`, `tokio`, and the new internal crate to `[workspace.dependencies]`.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/Cargo.toml`
 - Create: `crates/inputforge-gui-dx/src/lib.rs`
-- Modify: `Cargo.toml` (root) — `members` array and `[workspace.dependencies]`
+- Modify: `Cargo.toml` (root), `members` array and `[workspace.dependencies]`
 
 - [ ] **Step 1: Create the new crate's `Cargo.toml`**
 
@@ -268,12 +268,12 @@ The crate-level `[dependencies]` re-enables Dioxus's `desktop` feature on top of
 - [ ] **Step 4: Verify the workspace compiles**
 
 Run: `cargo check --workspace`
-Expected: PASS — all four crates compile (the new crate has no code yet, just the lib.rs comment).
+Expected: PASS, all four crates compile (the new crate has no code yet, just the lib.rs comment).
 
 - [ ] **Step 5: Verify lints are silent**
 
 Run: `cargo clippy --workspace --all-targets -- -D warnings`
-Expected: PASS — no new lint output from the new crate (it has no code).
+Expected: PASS, no new lint output from the new crate (it has no code).
 
 - [ ] **Step 6: Commit**
 
@@ -286,11 +286,11 @@ git commit -m "feat(gui-dx): scaffold inputforge-gui-dx crate"
 
 ## Task 4: Snapshot types in `context.rs` (no `from_state` yet)
 
-Define the structural pieces every later task depends on: `RawHandles`, the three snapshot structs, the inner `DeviceInputValues` / `VjoyOutputValues`, and `AppContext`. `from_state` helpers come in Tasks 5–7.
+Define the structural pieces every later task depends on: `RawHandles`, the three snapshot structs, the inner `DeviceInputValues` / `VjoyOutputValues`, and `AppContext`. `from_state` helpers come in Tasks 5-7.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/context.rs`
-- Modify: `crates/inputforge-gui-dx/src/lib.rs` — declare `mod context;`
+- Modify: `crates/inputforge-gui-dx/src/lib.rs`, declare `mod context;`
 
 - [ ] **Step 1: Write the failing test for snapshot defaults**
 
@@ -333,11 +333,11 @@ mod tests {
 - [ ] **Step 2: Run the test to verify it fails to compile**
 
 Run: `cargo test -p inputforge-gui-dx --lib`
-Expected: FAIL — `MetaSnapshot`, `ConfigSnapshot`, `LiveSnapshot` are not defined; `mod context` is not declared.
+Expected: FAIL, `MetaSnapshot`, `ConfigSnapshot`, `LiveSnapshot` are not defined; `mod context` is not declared.
 
 - [ ] **Step 3: Add `mod context;` declaration to `lib.rs`**
 
-Edit `crates/inputforge-gui-dx/src/lib.rs` — replace the placeholder doc-comment with:
+Edit `crates/inputforge-gui-dx/src/lib.rs`, replace the placeholder doc-comment with:
 
 ```rust
 //! Dioxus Desktop GUI for InputForge.
@@ -427,12 +427,12 @@ pub(crate) struct VjoyOutputValues {
 }
 ```
 
-If `Signal<T>` doesn't yet implement `Debug` on the pinned 0.7.x, hand-write a `Debug` impl for `AppContext` that skips the three `Signal` fields. The spec calls this out (line 299–304); the workaround is trivial.
+If `Signal<T>` doesn't yet implement `Debug` on the pinned 0.7.x, hand-write a `Debug` impl for `AppContext` that skips the three `Signal` fields. The spec calls this out (line 299-304); the workaround is trivial.
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `cargo test -p inputforge-gui-dx --lib`
-Expected: PASS — all three default-snapshot tests pass.
+Expected: PASS, all three default-snapshot tests pass.
 
 - [ ] **Step 6: Run clippy**
 
@@ -483,7 +483,7 @@ fn meta_from_state_extracts_lifecycle_fields() {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cargo test -p inputforge-gui-dx --lib meta_from_state_extracts_lifecycle_fields`
-Expected: FAIL — `MetaSnapshot::from_state` is not defined.
+Expected: FAIL, `MetaSnapshot::from_state` is not defined.
 
 - [ ] **Step 3: Implement `from_state`**
 
@@ -569,7 +569,7 @@ fn config_from_state_clones_devices_and_virtual_devices() {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cargo test -p inputforge-gui-dx --lib config_from_state_clones_devices_and_virtual_devices`
-Expected: FAIL — `ConfigSnapshot::from_state` is not defined.
+Expected: FAIL, `ConfigSnapshot::from_state` is not defined.
 
 - [ ] **Step 3: Implement `from_state`**
 
@@ -692,7 +692,7 @@ fn live_from_state_reads_caches_per_device_shape() {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cargo test -p inputforge-gui-dx --lib live_from_state_reads_caches_per_device_shape`
-Expected: FAIL — `LiveSnapshot::from_state` is not defined.
+Expected: FAIL, `LiveSnapshot::from_state` is not defined.
 
 - [ ] **Step 3: Implement `from_state`**
 
@@ -784,7 +784,7 @@ The 60Hz polling loop. `try_read()` + build snapshots + `PartialEq`-gated `set` 
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/bridge.rs`
-- Modify: `crates/inputforge-gui-dx/src/lib.rs` — declare `mod bridge;`
+- Modify: `crates/inputforge-gui-dx/src/lib.rs`, declare `mod bridge;`
 
 - [ ] **Step 1: Add `mod bridge;` to `lib.rs`**
 
@@ -831,7 +831,7 @@ pub(crate) fn spawn_polling_task(ctx: AppContext) {
             let live   = LiveSnapshot::from_state(&guard, &config);
             drop(guard);
 
-            // peek() reads without subscribing — the diff gate doesn't wake any component.
+            // peek() reads without subscribing, the diff gate doesn't wake any component.
             let mut meta_signal   = ctx.meta;
             let mut config_signal = ctx.config;
             let mut live_signal   = ctx.live;
@@ -843,7 +843,7 @@ pub(crate) fn spawn_polling_task(ctx: AppContext) {
 }
 ```
 
-(`Signal::set` requires `&mut self` on Dioxus 0.7 — copy the field into a local mutable binding. `Signal: Copy`, so the rebind is free.)
+(`Signal::set` requires `&mut self` on Dioxus 0.7, copy the field into a local mutable binding. `Signal: Copy`, so the rebind is free.)
 
 - [ ] **Step 3: Verify it compiles**
 
@@ -870,7 +870,7 @@ The root component creates the three signals (within the runtime), assembles `Ap
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/app.rs`
-- Modify: `crates/inputforge-gui-dx/src/lib.rs` — declare `mod app;`
+- Modify: `crates/inputforge-gui-dx/src/lib.rs`, declare `mod app;`
 
 - [ ] **Step 1: Add `mod app;` to `lib.rs`**
 
@@ -894,7 +894,7 @@ use dioxus::prelude::*;
 use crate::bridge::spawn_polling_task;
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
 
-/// Root Dioxus component — assembles `AppContext`, installs it for descendants,
+/// Root Dioxus component, assembles `AppContext`, installs it for descendants,
 /// spawns the polling task once, and renders the F1 readout.
 pub(crate) fn app_root() -> Element {
     let raw = use_context::<RawHandles>();
@@ -934,7 +934,7 @@ fn F1Readout() -> Element {
         main {
             style: "font-family: system-ui; padding: 24px; color: #ddd; \
                     background: #1A1A2E; min-height: 100vh;",
-            h1 { "InputForge — Dioxus (F1 bridge smoke test)" }
+            h1 { "InputForge, Dioxus (F1 bridge smoke test)" }
             p { "Engine status: "     strong { "{status}" } }
             p { "Current mode: "      strong { "{mode}" } }
             p { "Active profile: "    strong { "{profile}" } }
@@ -951,7 +951,7 @@ fn F1Readout() -> Element {
 - [ ] **Step 3: Verify it compiles**
 
 Run: `cargo check -p inputforge-gui-dx`
-Expected: PASS — `app_root` is `pub(crate)`; `lib.rs` will reference it in Task 10.
+Expected: PASS, `app_root` is `pub(crate)`; `lib.rs` will reference it in Task 10.
 
 - [ ] **Step 4: Run clippy**
 
@@ -1000,7 +1000,7 @@ use inputforge_core::state::AppState;
 use crate::context::RawHandles;
 
 /// Launch the Dioxus Desktop GUI. Blocks the calling thread on the OS event
-/// loop (wry/tao underneath) — matches the egui crate's `eframe::run_native`
+/// loop (wry/tao underneath), matches the egui crate's `eframe::run_native`
 /// blocking semantics.
 ///
 /// `tray_menu_ids` is accepted for signature parity with `inputforge_gui::launch_gui`
@@ -1079,7 +1079,7 @@ Create `crates/inputforge-gui-dx/examples/bridge_demo.rs`:
 //! entries, wraps it in `Arc<RwLock<_>>`, builds a drop-channel
 //! `mpsc::Sender<EngineCommand>` whose receiver is leaked, and calls
 //! `launch_gui` directly. No engine thread, no tray, no profile I/O,
-//! no `HidHide` scan — predictable seeded data, hot-reload safe.
+//! no `HidHide` scan, predictable seeded data, hot-reload safe.
 //!
 //! Run via:
 //!     dx serve --example bridge_demo --platform desktop
@@ -1104,7 +1104,7 @@ fn main() -> anyhow::Result<()> {
     let mut state = AppState::new();
     state.engine_status = EngineStatus::Running;
     state.current_mode = "Demo".to_owned();
-    state.warnings.push("This is a seeded demo — no engine attached.".to_owned());
+    state.warnings.push("This is a seeded demo, no engine attached.".to_owned());
 
     state.devices.push(DeviceState {
         info: DeviceInfo {
@@ -1132,7 +1132,7 @@ fn main() -> anyhow::Result<()> {
     let (commands, rx) = mpsc::channel::<EngineCommand>();
     Box::leak(Box::new(rx));
 
-    // Stub menu IDs — `launch_gui` ignores them at F1.
+    // Stub menu IDs, `launch_gui` ignores them at F1.
     let menu_ids = (
         muda::MenuId::new("show-gui"),
         muda::MenuId::new("toggle-activation"),
@@ -1178,7 +1178,7 @@ Create `crates/inputforge-gui-dx/README.md`:
 ```markdown
 # inputforge-gui-dx
 
-Dioxus Desktop GUI for InputForge — parallel runtime, opt-in via the
+Dioxus Desktop GUI for InputForge, parallel runtime, opt-in via the
 `gui-dioxus` feature on `inputforge-app`. The egui crate (`inputforge-gui`)
 remains the default until the F16 cutover.
 
@@ -1187,10 +1187,10 @@ remains the default until the F16 cutover.
 - `dioxus`: `<DIOXUS_VERSION>` (workspace-pinned, `desktop` feature)
 - `dioxus-cli`: `<DIOXUS_CLI_VERSION>`
 
-## Dev workflow — primary RSX loop (recommended)
+## Dev workflow, primary RSX loop (recommended)
 
 The `bridge_demo` example seeds a mock `AppState` and calls `launch_gui`
-directly. No engine, no tray, no profile I/O — safe to hot-reload.
+directly. No engine, no tray, no profile I/O, safe to hot-reload.
 
 ```bash
 cargo install dioxus-cli --version <DIOXUS_CLI_VERSION>
@@ -1198,13 +1198,13 @@ cd crates/inputforge-gui-dx
 dx serve --example bridge_demo --platform desktop
 ```
 
-Edit RSX in `src/app.rs` — the running window updates within ~1s without
+Edit RSX in `src/app.rs`, the running window updates within ~1s without
 restarting. Rust logic / state / non-RSX changes still require a full rebuild.
 
-## Dev workflow — full app integration smoke
+## Dev workflow, full app integration smoke
 
 Exercises the real engine thread, tray, profile autoload, and HidHide
-warning scan. **Not** the daily loop — each hot-reload respawns the engine
+warning scan. **Not** the daily loop, each hot-reload respawns the engine
 thread, re-registers the tray, re-runs HidHide detection.
 
 ```bash
@@ -1252,7 +1252,7 @@ anyhow = { workspace = true }
 
 - [ ] **Step 2: Update the return type and body**
 
-Edit `crates/inputforge-gui/src/lib.rs` lines 34–68 — change the return type on `launch_gui` from `eframe::Result<()>` to `anyhow::Result<()>` and adapt the final `eframe::run_native(..., Box::new(...))` call to map its error:
+Edit `crates/inputforge-gui/src/lib.rs` lines 34-68, change the return type on `launch_gui` from `eframe::Result<()>` to `anyhow::Result<()>` and adapt the final `eframe::run_native(..., Box::new(...))` call to map its error:
 
 ```rust
 pub fn launch_gui(
@@ -1277,12 +1277,12 @@ Expected: PASS.
 - [ ] **Step 4: Verify `inputforge-app` still compiles (it's the only caller)**
 
 Run: `cargo build -p inputforge-app`
-Expected: PASS — `tracing::error!(%e, "GUI exited with error")` formats `anyhow::Error` cleanly via `Display` (verified in spec §Risks).
+Expected: PASS, `tracing::error!(%e, "GUI exited with error")` formats `anyhow::Error` cleanly via `Display` (verified in spec §Risks).
 
 - [ ] **Step 5: Run existing tests**
 
 Run: `cargo test -p inputforge-gui`
-Expected: PASS — no test depends on the return type.
+Expected: PASS, no test depends on the return type.
 
 - [ ] **Step 6: Commit**
 
@@ -1324,14 +1324,14 @@ tray-icon         = { workspace = true }
 windows           = { workspace = true }
 ```
 
-(`inputforge-gui` was unconditionally required before; this makes it `optional = true` and gates it behind the `gui-egui` feature. Keep the rest of the file — `[lints] workspace = true`, `[package]`, etc. — unchanged.)
+(`inputforge-gui` was unconditionally required before; this makes it `optional = true` and gates it behind the `gui-egui` feature. Keep the rest of the file, `[lints] workspace = true`, `[package]`, etc., unchanged.)
 
 - [ ] **Step 2: Verify default build still passes**
 
 Run: `cargo build -p inputforge-app`
-Expected: PASS — default features include `gui-egui`, so `inputforge-gui` is pulled in.
+Expected: PASS, default features include `gui-egui`, so `inputforge-gui` is pulled in.
 
-Note: the build will still fail with a `cannot find crate` error inside `main.rs` because `main.rs` still does an unconditional `use inputforge_gui::launch_gui;` — that's fixed in Task 14. **Run this step's check assuming Task 14 will follow within the same session.**
+Note: the build will still fail with a `cannot find crate` error inside `main.rs` because `main.rs` still does an unconditional `use inputforge_gui::launch_gui;`, that's fixed in Task 14. **Run this step's check assuming Task 14 will follow within the same session.**
 
 If you'd rather have a green build at this checkpoint, swap Tasks 13 and 14: do the `main.rs` `cfg`-gating first, then the `Cargo.toml` flip. Both orderings work; the order chosen here is the spec's authoring order.
 
@@ -1344,7 +1344,7 @@ git commit -m "feat(app): add gui-egui (default) and gui-dioxus features"
 
 ---
 
-## Task 14: `main.rs` — compile guards, cfg-gated import, sentinel const
+## Task 14: `main.rs`, compile guards, cfg-gated import, sentinel const
 
 Add the two `compile_error!`s for invalid feature combos, swap the `use inputforge_gui::launch_gui;` line for a `cfg`-gated pair, and declare `IS_GUI_DIOXUS` for use by the lifecycle guards (Task 15).
 
@@ -1363,7 +1363,7 @@ compile_error!("features `gui-egui` and `gui-dioxus` are mutually exclusive");
 compile_error!("one of `gui-egui` or `gui-dioxus` must be enabled");
 ```
 
-Find the line in main.rs that today reads `use inputforge_gui::launch_gui;` (currently absent — main.rs uses `inputforge_gui::launch_gui` at the call site in `launch_gui_blocking` line 216, fully qualified). Search for `inputforge_gui::launch_gui` in main.rs:
+Find the line in main.rs that today reads `use inputforge_gui::launch_gui;` (currently absent, main.rs uses `inputforge_gui::launch_gui` at the call site in `launch_gui_blocking` line 216, fully qualified). Search for `inputforge_gui::launch_gui` in main.rs:
 
 - If it's a fully qualified call inside `launch_gui_blocking` (current state per exploration: line 216, `inputforge_gui::launch_gui(gui_state, gui_tx, menu_ids, settings.clone())`), **replace that fully qualified path** with a local `launch_gui(...)` call and add the `cfg`-gated `use` near the top of main.rs:
 
@@ -1407,7 +1407,7 @@ Expected: PASS.
 - [ ] **Step 5: Verify the conflict guard fires**
 
 Run: `cargo check -p inputforge-app --features gui-dioxus`
-Expected: FAIL with `error: features 'gui-egui' and 'gui-dioxus' are mutually exclusive` — both features are enabled (default `gui-egui` plus the explicit `gui-dioxus`), tripping the first `compile_error!`.
+Expected: FAIL with `error: features 'gui-egui' and 'gui-dioxus' are mutually exclusive`, both features are enabled (default `gui-egui` plus the explicit `gui-dioxus`), tripping the first `compile_error!`.
 
 - [ ] **Step 6: Verify the no-feature guard fires**
 
@@ -1425,14 +1425,14 @@ git commit -m "feat(app): cfg-gate launch_gui import and add IS_GUI_DIOXUS senti
 
 ## Task 15: Lifecycle guards in `main.rs`
 
-Two `cfg`-expressed guards around the existing `launch_gui_blocking` call sites. Both fall through to the existing `shutdown(cmd_tx, engine_handle)` call at line 137 — `HidHide` unhide / `vJoy` release run on both feature flags.
+Two `cfg`-expressed guards around the existing `launch_gui_blocking` call sites. Both fall through to the existing `shutdown(cmd_tx, engine_handle)` call at line 137, `HidHide` unhide / `vJoy` release run on both feature flags.
 
 **Files:**
 - Modify: `crates/inputforge-app/src/main.rs`
 
-- [ ] **Step 1: Add Guard 1 — startup site (around line 115)**
+- [ ] **Step 1: Add Guard 1, startup site (around line 115)**
 
-Edit `crates/inputforge-app/src/main.rs` lines 113–134. The current block reads:
+Edit `crates/inputforge-app/src/main.rs` lines 113-134. The current block reads:
 
 ```rust
 let mut quit_requested = false;
@@ -1493,9 +1493,9 @@ if !quit_requested {
 }
 ```
 
-- [ ] **Step 2: Add Guard 2 — `ShowGui` arm in `run_tray_loop` (around line 300)**
+- [ ] **Step 2: Add Guard 2, `ShowGui` arm in `run_tray_loop` (around line 300)**
 
-Edit `crates/inputforge-app/src/main.rs` lines 299–319. The current `ShowGui` arm reads:
+Edit `crates/inputforge-app/src/main.rs` lines 299-319. The current `ShowGui` arm reads:
 
 ```rust
 TrayAction::ShowGui => {
@@ -1586,29 +1586,29 @@ End-to-end sanity check across both feature flags. Most of these were spot-check
 
 ### Build matrix
 
-- [ ] `cargo build` (default) — PASS, egui included
-- [ ] `cargo run` (default) — opens egui window identically to today
-- [ ] `cargo build --no-default-features --features gui-dioxus` — PASS, Dioxus included
-- [ ] `cargo run --no-default-features --features gui-dioxus` — opens 1280×800 Dioxus window titled "InputForge", F1 readout visible
-- [ ] `cargo check --features gui-dioxus` (defaults still on) — FAIL with the mutual-exclusion `compile_error!`
-- [ ] `cargo check --no-default-features` — FAIL with the no-feature `compile_error!`
-- [ ] `cargo test --workspace` — PASS, all unit tests including the 6 new ones in `inputforge-gui-dx`
-- [ ] `cargo clippy --workspace --all-targets -- -D warnings` — PASS (default features)
-- [ ] `cargo clippy -p inputforge-app --no-default-features --features gui-dioxus --all-targets -- -D warnings` — PASS (per-package alt features; workspace clippy doesn't accept package-scoped features)
-- [ ] `cargo clippy -p inputforge-gui-dx --all-targets -- -D warnings` — PASS
+- [ ] `cargo build` (default), PASS, egui included
+- [ ] `cargo run` (default), opens egui window identically to today
+- [ ] `cargo build --no-default-features --features gui-dioxus`, PASS, Dioxus included
+- [ ] `cargo run --no-default-features --features gui-dioxus`, opens 1280×800 Dioxus window titled "InputForge", F1 readout visible
+- [ ] `cargo check --features gui-dioxus` (defaults still on), FAIL with the mutual-exclusion `compile_error!`
+- [ ] `cargo check --no-default-features`, FAIL with the no-feature `compile_error!`
+- [ ] `cargo test --workspace`, PASS, all unit tests including the 6 new ones in `inputforge-gui-dx`
+- [ ] `cargo clippy --workspace --all-targets -- -D warnings`, PASS (default features)
+- [ ] `cargo clippy -p inputforge-app --no-default-features --features gui-dioxus --all-targets -- -D warnings`, PASS (per-package alt features; workspace clippy doesn't accept package-scoped features)
+- [ ] `cargo clippy -p inputforge-gui-dx --all-targets -- -D warnings`, PASS
 
-### Manual smoke under default (egui) — confirm zero regression
+### Manual smoke under default (egui), confirm zero regression
 
-- [ ] `cargo run` — egui window opens, behavior identical to today
+- [ ] `cargo run`, egui window opens, behavior identical to today
 - [ ] Tray "Show GUI" / "Toggle Activation" / "Quit" all work
 - [ ] Window close keeps the tray alive (egui lifecycle preserved)
-- [ ] `cargo run -- --start-minimized` — tray-only startup, click "Show GUI" opens window, close exits via tray "Quit"
-- [ ] `cargo run -- --enable` — engine starts in `Running`, readout in egui shows it
-- [ ] `cargo run -- --profile <path>` — profile loads, name appears in egui
+- [ ] `cargo run -- --start-minimized`, tray-only startup, click "Show GUI" opens window, close exits via tray "Quit"
+- [ ] `cargo run -- --enable`, engine starts in `Running`, readout in egui shows it
+- [ ] `cargo run -- --profile <path>`, profile loads, name appears in egui
 
 ### Manual smoke under `--features gui-dioxus`
 
-- [ ] `cargo run --no-default-features --features gui-dioxus` — Dioxus window opens at 1280×800
+- [ ] `cargo run --no-default-features --features gui-dioxus`, Dioxus window opens at 1280×800
 - [ ] Readout shows: Engine status `Stopped`, mode `Default`, profile `<none>`, devices `0`, virtual devices `count from vJoy probe`, warnings `0` (or 1 if HidHide is unavailable on the test box)
 - [ ] `--enable` flag surfaces engine status changing to `Running` live in the readout (within ~16ms)
 - [ ] Plugging a joystick increments "Connected devices" live without restart
@@ -1622,18 +1622,18 @@ End-to-end sanity check across both feature flags. Most of these were spot-check
 - [ ] `cargo install dioxus-cli --version <DIOXUS_CLI_VERSION>` (from Task 1)
 - [ ] `cd crates/inputforge-gui-dx && dx serve --example bridge_demo --platform desktop`
 - [ ] Window opens with seeded readout (Engine status `Running`, mode `Demo`, devices `1`, virtual devices `1`, warnings `1`)
-- [ ] Edit a string in `crates/inputforge-gui-dx/src/app.rs`'s F1Readout RSX (e.g. change "InputForge — Dioxus (F1 bridge smoke test)" to "F1 hot-reload check") — window updates within ~1s without restart
+- [ ] Edit a string in `crates/inputforge-gui-dx/src/app.rs`'s F1Readout RSX (e.g. change "InputForge, Dioxus (F1 bridge smoke test)" to "F1 hot-reload check"), window updates within ~1s without restart
 - [ ] README's pinned versions match what the implementer just installed
 
 ### Engine-cleanup verification (the must-not-regress check)
 
 Under `--features gui-dioxus`, both lifecycle guards must reach `shutdown()`:
 
-- [ ] **Startup-path guard** — Run `cargo run --no-default-features --features gui-dioxus`, close the window with the X button, watch tracing logs:
+- [ ] **Startup-path guard**, Run `cargo run --no-default-features --features gui-dioxus`, close the window with the X button, watch tracing logs:
   - "Dioxus window closed; treating as app exit (hide-to-tray lands in F3)." appears
   - "engine thread joined cleanly" appears (or panicked variant if engine errored)
   - Process exits cleanly
-- [ ] **Tray ShowGui-path guard** — Run `cargo run --no-default-features --features gui-dioxus -- --start-minimized`, click tray "Show GUI", close the window:
+- [ ] **Tray ShowGui-path guard**, Run `cargo run --no-default-features --features gui-dioxus -- --start-minimized`, click tray "Show GUI", close the window:
   - The tray loop returns (no second `launch_gui_blocking` attempt)
   - "engine thread joined cleanly" appears
   - Process exits cleanly
@@ -1643,7 +1643,7 @@ Under `--features gui-dioxus`, both lifecycle guards must reach `shutdown()`:
 - [ ] Spec coverage: every §Architecture / §Files / §Acceptance criteria item maps to at least one task
 - [ ] No placeholders: all `<DIOXUS_VERSION>` / `<DIOXUS_CLI_VERSION>` substitutions made; no "TBD" / "fill in later" anywhere
 - [ ] Type consistency: `MetaSnapshot` / `ConfigSnapshot` / `LiveSnapshot` field names match across context.rs definitions, `from_state` impls, polling task, and `F1Readout` `use_memo` reads
-- [ ] CI matrix: spec mentions `--no-default-features --features gui-dioxus` as a new CI entry; **the repo has no `.github/workflows/` directory today** (verified during exploration), so this is a no-op for F1 — flagged for whichever future task introduces CI
+- [ ] CI matrix: spec mentions `--no-default-features --features gui-dioxus` as a new CI entry; **the repo has no `.github/workflows/` directory today** (verified during exploration), so this is a no-op for F1, flagged for whichever future task introduces CI
 
 ### Wrap-up
 

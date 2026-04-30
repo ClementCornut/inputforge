@@ -42,7 +42,7 @@ pub(crate) fn runtime_marker(
 /// `descendants` is the set of mode names below `name` in the tree (proper
 /// descendants, computed by the caller via `ModeTree::descendants_of`).
 ///
-/// Pure function — no Dioxus runtime, no profile access. The caller resolves
+/// Pure function, no Dioxus runtime, no profile access. The caller resolves
 /// the descendants list and passes it in so this helper is unit-testable
 /// without touching `inputforge_core::Profile`.
 pub(crate) fn delete_disabled_for_tab(
@@ -301,7 +301,7 @@ mod tests {
         // "👨‍👩‍👧‍👦" is one extended grapheme cluster (family ZWJ
         // sequence, 7 codepoints, 25 bytes) and "🇫🇷" is one (regional-
         // indicator pair, 2 codepoints, 8 bytes). Together with three
-        // ASCII chars the input has 5 user-visible graphemes — well
+        // ASCII chars the input has 5 user-visible graphemes, well
         // under the cap, so a grapheme-aware checker accepts it. A
         // naive `chars().count()` would yield 12 (still under the cap
         // but over-counting), and a byte-count comparison would yield
@@ -310,7 +310,7 @@ mod tests {
         let raw = "ab👨\u{200D}👩\u{200D}👧\u{200D}👦c🇫🇷";
         let grapheme_count = UnicodeSegmentation::graphemes(raw, true).count();
         assert_eq!(grapheme_count, 5);
-        // chars() over-counts (12 codepoints vs 5 graphemes) — proves
+        // chars() over-counts (12 codepoints vs 5 graphemes), proves
         // the input is non-trivially multi-codepoint.
         assert!(raw.chars().count() > grapheme_count);
         assert_eq!(

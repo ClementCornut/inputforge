@@ -2,7 +2,7 @@
 
 //! F4 destructive-confirm dialog for Delete-mode. Hoisted out of the
 //! `ModeTabs` component so it doesn't render as a child of the
-//! `.if-top-bar` flex line — the dialog now mounts as a sibling of the
+//! `.if-top-bar` flex line, the dialog now mounts as a sibling of the
 //! bar, which keeps the bar's children list pure (no hidden 0×0
 //! `<dialog>` flex child) and removes a structural smell flagged by
 //! the F8-impeccable audit.
@@ -41,7 +41,7 @@ pub(crate) fn ModeDeleteDialog() -> Element {
         }
     });
 
-    // Pre-compute the blast-radius counts every render — cheap walk.
+    // Pre-compute the blast-radius counts every render, cheap walk.
     // The numeric magnitudes are the dialog body's "what does this
     // affect" readout; mode count includes the target itself plus any
     // descendants in the active profile's mode tree.
@@ -74,7 +74,7 @@ pub(crate) fn ModeDeleteDialog() -> Element {
     // confirmed) or the user cancels, return focus to the tab at the
     // remembered index, clamped to the new list length. Uses a DOM
     // selector keyed off the integer-derived `mode-tab-N` id pattern
-    // emitted by `ModeTabs` — this decouples the dialog from
+    // emitted by `ModeTabs`, this decouples the dialog from
     // `ModeTabs`'s local `tab_refs` storage now that the two
     // components are siblings rather than a parent-child pair.
     let onclose = move |()| {

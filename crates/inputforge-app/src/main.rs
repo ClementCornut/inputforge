@@ -1,6 +1,6 @@
 // Rust guideline compliant 2026-03-07
 
-//! `InputForge` — desktop application entry point.
+//! `InputForge`, desktop application entry point.
 //!
 //! Wires together the engine thread, system tray icon, and optional GUI
 //! window. The engine runs on a dedicated thread (`SDL3` is `!Send`), while
@@ -123,7 +123,7 @@ fn main() -> Result<()> {
     // Create the system tray icon (always visible).
     let tray = AppTray::new(Arc::clone(&state))?;
 
-    // GUI launch — Shape A: cfg-split because the Dioxus and egui lifecycles
+    // GUI launch, Shape A: cfg-split because the Dioxus and egui lifecycles
     // diverge. The egui flow is byte-identical to today.
 
     #[cfg(feature = "gui-dioxus")]
@@ -138,7 +138,7 @@ fn main() -> Result<()> {
             tracing::error!(%e, "GUI exited with error");
         }
         // launch_gui only returns on real Quit (tray Quit click). Fall
-        // through to shutdown — no run_tray_loop, no drain_stale_gui_events,
+        // through to shutdown, no run_tray_loop, no drain_stale_gui_events,
         // no quit_requested flag. The window-hides-on-X behavior is owned
         // by Dioxus via WindowCloseBehaviour::WindowHides set in launch_gui.
     }
@@ -258,7 +258,7 @@ fn launch_gui_blocking(
     let menu_ids = tray.menu_item_ids();
 
     if let Err(e) = launch_gui(gui_state, gui_tx, menu_ids, settings.clone(), false) {
-        // start_minimized: false — main.rs gates the egui startup launch
+        // start_minimized: false, main.rs gates the egui startup launch
         // from cli.start_minimized itself; once we're in launch_gui_blocking,
         // we always want the window visible. Parameter exists only for
         // signature parity with the Dioxus crate (deletes at F16).
@@ -333,7 +333,7 @@ fn run_tray_loop(
         // owned by this thread (including the tray icon's hidden window).
         let ret = unsafe { GetMessageW(&raw mut msg, None, 0, 0) };
         if ret.0 <= 0 {
-            // WM_QUIT received or error — exit the loop.
+            // WM_QUIT received or error, exit the loop.
             break;
         }
         // SAFETY: `TranslateMessage` and `DispatchMessageW` are standard

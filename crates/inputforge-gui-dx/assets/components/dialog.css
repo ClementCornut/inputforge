@@ -1,4 +1,4 @@
-/* Dialog primitives — backlit instrument panel.
+/* Dialog primitives, backlit instrument panel.
    Native <dialog> reset, then a chamfered overlay surface that reads
    as a powered-on annunciator. ::backdrop dims the field; the panel
    carries the chamfer highlight + shadow-3 tier overlay shadow.
@@ -20,10 +20,10 @@
   min-width: min(24rem, calc(100vw - 32px));
   max-width: min(560px, calc(100vw - 32px));
   /* Override UA stylesheets that may set `inset: 0` and stretch
-       the dialog into the viewport — we want content-sized height. */
+       the dialog into the viewport, we want content-sized height. */
   inset: 0;
   margin: auto;
-  /* Open animation — runs when the dialog flips from closed→open
+  /* Open animation, runs when the dialog flips from closed→open
      via showModal(). transition-behavior allows the discrete
      `display: block` switch to participate in the timeline.
      --duration-slow (240ms) + --easing-standard per DESIGN.md
@@ -74,7 +74,7 @@
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   padding: var(--space-4);
-  /* shadow-3 (overlay) + inset top highlight (chamfer) — same
+  /* shadow-3 (overlay) + inset top highlight (chamfer), same
        motif as toast, scaled up for a larger surface. */
   box-shadow:
     var(--shadow-3),
@@ -83,7 +83,7 @@
   color: var(--color-text);
   /* Flex column: title, desc, body (flex:1), footer. The body claims
        leftover space, so the footer parks at the panel's bottom whether
-       or not body content exists — no grid `1fr` track to recalc when
+       or not body content exists, no grid `1fr` track to recalc when
        the body collapses, no `:empty` special-case needed. */
   display: flex;
   flex-direction: column;
@@ -91,13 +91,13 @@
   /* No min-height floor: the panel sizes to its intrinsic content height.
      A floor (e.g. 30vh / 360px) inflates the flex:1 body for short-content
      confirms and produces a hollow middle. The flex:1; min-height:0;
-     overflow-y:auto chain on .if-dialog__body still handles long content —
+     overflow-y:auto chain on .if-dialog__body still handles long content -
      it activates when intrinsic height meets the max-height ceiling, not
      when there is "extra room" to fill.
 
      Implicit lower visual bound: the design relies on a minimum content
      budget of (1 Title + 1 Description + 1 body line + Footer with at
-     least one Button) ≈ 220–260px painted height. Below that, the panel
+     least one Button) ≈ 220-260px painted height. Below that, the panel
      reads as a tooltip rather than a confirm dialog. Consumers must
      populate at minimum a Title and a Footer with one action; everything
      in this codebase does. */
@@ -135,7 +135,7 @@
 /* `flex: 1` claims leftover space (or zero when there is none, with
    `min-height: 0` allowing it to shrink past content height). When
    the body is empty, it just contributes zero/leftover space without
-   needing a `:empty` special-case — the flex parent handles it. */
+   needing a `:empty` special-case, the flex parent handles it. */
 
 .if-dialog__body {
   flex: 1;
@@ -145,7 +145,7 @@
   /* Scrollbar gutter so content doesn't jump when the bar appears.
        Nice-to-have on Chromium-based renderers (WebView2 included). */
   scrollbar-gutter: stable;
-  /* Subtle hairline above body when scrolled — fades in via JS hook
+  /* Subtle hairline above body when scrolled, fades in via JS hook
        in a future task. */
 }
 
@@ -164,7 +164,7 @@
      action band off the body, so it shares that seam role. The
      hairline --color-border value resolves to ~1.19:1 against
      bg-elevated (below the 3:1 non-text floor) and reads as
-     invisible — strong sits at ~1.74:1 and actually carries the
+     invisible, strong sits at ~1.74:1 and actually carries the
      partition. */
   border-top: 1px solid var(--color-border-strong);
   /* Pull the divider flush with the panel padding by extending

@@ -54,7 +54,7 @@ fn first_tick_records_baseline_and_does_not_fire() {
 
     assert!(
         fired.is_none(),
-        "first tick must never fire — only records baseline"
+        "first tick must never fire, only records baseline"
     );
     assert!(
         next.baseline.is_some(),

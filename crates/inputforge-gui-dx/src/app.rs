@@ -11,7 +11,7 @@ use crate::toast::{ToastQueue, ToastState, ToastViewport, install_warnings_bridg
 use crate::tray;
 use crate::tray::action::TrayAction;
 
-/// Root Dioxus component — assembles `AppContext`, installs it for descendants,
+/// Root Dioxus component, assembles `AppContext`, installs it for descendants,
 /// installs `ViewState` for frame chrome, spawns the polling task, wires the
 /// tray bridge (channel + handler + listener), applies `--start-minimized`,
 /// and renders the F7 frame layout.
@@ -36,7 +36,7 @@ pub(crate) fn app_root() -> Element {
     let view = frame::use_view_state_provider(ctx.meta);
     use_context_provider(|| view);
 
-    // F4: ToastQueue context — Signal lives in app_root's scope, mirroring the
+    // F4: ToastQueue context, Signal lives in app_root's scope, mirroring the
     // F1 AppContext pattern. Calling Signal::new() outside a hook leaks per
     // dioxus-signals/src/signal.rs:30-52, so use_signal is mandatory here.
     let toast_state = use_signal(ToastState::default);
@@ -47,23 +47,23 @@ pub(crate) fn app_root() -> Element {
     // Provider self-installs the context.
     use_live_capture_provider();
 
-    // F4: warnings bridge — reads ctx.meta, pushes new tail entries as
+    // F4: warnings bridge, reads ctx.meta, pushes new tail entries as
     // Warning toasts. last_seen initializes from peek() so first run is a
     // no-op even if warnings accumulated before mount.
     let last_seen = use_signal(|| ctx.meta.peek().warnings.len());
     use_effect(install_warnings_bridge(ctx.clone(), toast_queue, last_seen));
 
-    // Polling task — bridges AppState into Dioxus signals. One-shot per scope
+    // Polling task, bridges AppState into Dioxus signals. One-shot per scope
     // mount; auto-cancelled when the runtime tears down.
     use_hook(|| spawn_polling_task(ctx.clone()));
 
-    // Tray bridge — channel + listener task created once; the handler is
+    // Tray bridge, channel + listener task created once; the handler is
     // installed at the top level (it's itself a hook).
     //
     // The channel construction lives inside `use_hook` so it runs exactly
     // once per scope mount. `spawn_listener_task` consumes `rx` there.
     // `install_event_handler` MUST be top-level because it wraps
-    // `use_muda_event_handler` (a hook) — calling it from inside another
+    // `use_muda_event_handler` (a hook), calling it from inside another
     // hook's initializer would only register on first render.
     let tx = use_hook(|| {
         let (tx, rx) = tokio::sync::mpsc::channel::<TrayAction>(tray::CHANNEL_CAPACITY);
@@ -72,7 +72,7 @@ pub(crate) fn app_root() -> Element {
     });
     tray::install_event_handler(params.tray_menu_ids.clone(), tx);
 
-    // --start-minimized — applied once on first mount.
+    // --start-minimized, applied once on first mount.
     use_hook(|| lifecycle::apply_start_minimized(params.start_minimized));
 
     app_root_view()
@@ -81,7 +81,7 @@ pub(crate) fn app_root() -> Element {
 /// Pure render fn: assumes `AppContext`, `ViewState`, and `ToastQueue` are
 /// already in context (provided by `app_root` at runtime, by the test
 /// harness in unit tests). Holds the *single* source of truth for what
-/// the application root mounts — both `app_root` and the mount-regression
+/// the application root mounts, both `app_root` and the mount-regression
 /// test in `tests` below render through this function, so a regression
 /// that swaps `frame::Layout` for any other component lives here and gets
 /// caught by `app_root_mounts_frame_layout_not_placeholder_shell`.
@@ -121,7 +121,7 @@ mod tests {
     /// fails the assertions below.
     ///
     /// Side-effect hooks (`warnings_bridge`, polling task, tray bridge,
-    /// `start-minimized`) are intentionally not wired here — they require
+    /// `start-minimized`) are intentionally not wired here, they require
     /// a live Dioxus desktop runtime and are exercised by integration
     /// tests / the smoke run, not by this SSR mount test.
     fn app_root_view_with_stub_contexts() -> Element {

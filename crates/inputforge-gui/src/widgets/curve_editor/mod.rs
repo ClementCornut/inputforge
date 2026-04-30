@@ -37,7 +37,7 @@ const PLOT_MIN_SIZE: f32 = 250.0;
 const MIN_X_GAP: f64 = 0.001;
 
 // ---------------------------------------------------------------------------
-// CurveType — local enum for the ComboBox
+// CurveType, local enum for the ComboBox
 // ---------------------------------------------------------------------------
 
 /// Curve type discriminant used by the type-selector `ComboBox`.
@@ -226,7 +226,7 @@ fn rebuild_cache(curve: &ResponseCurve, cached_line: &mut Vec<[f64; 2]>) {
 /// For `CubicBezier`: returns points in segment order as
 /// `[start, control1, control2, end]` per segment (interleaved, 4 per
 /// segment). Adjacent endpoints from consecutive segments are returned
-/// separately — the caller must not assume they are the same.
+/// separately, the caller must not assume they are the same.
 fn extract_control_points(curve: &ResponseCurve) -> Vec<[f64; 2]> {
     match curve {
         ResponseCurve::PiecewiseLinear { points, .. }

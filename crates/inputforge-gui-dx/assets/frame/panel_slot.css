@@ -2,7 +2,7 @@
    the component isn't mounted (panel_slot == None), no flex item is
    produced, so `.if-layout__center` reclaims the space.
 
-   The aside is the right cockpit panel — same structural-seam vocabulary
+   The aside is the right cockpit panel, same structural-seam vocabulary
    as the rail (`border-strong` seam, top inset highlight, elevated
    surface). The header treatment lifts the placeholder text into a
    proper section-title rhythm so future content (F12/F13) inherits a
@@ -18,7 +18,7 @@
     /* Scroll responsibility lives on .if-panel-slot__body; the outer
        column clips. With overflow-y:auto here, the entrance translateX
        animation occasionally tipped the layout into spawning a 10px
-       scrollbar mid-animation — eating column width and reflowing text
+       scrollbar mid-animation, eating column width and reflowing text
        (the visible "wiggle" on second open). Same pattern the dialog
        primitive uses (dialog.css: panel `overflow:hidden`, body owns
        scroll). */
@@ -29,7 +29,7 @@
 
     /* Subtle entrance affordance. The aside is mounted/unmounted as a
        whole when `panel_slot` toggles, so a CSS transition on the
-       element wouldn't fire on entry — a keyframed animation does, and
+       element wouldn't fire on entry, a keyframed animation does, and
        inherits reduced-motion correctness because durations collapse to
        0ms under the `motion.css` token override. */
     animation: if-panel-slot-enter var(--duration-slow) var(--easing-standard) both;
@@ -46,7 +46,7 @@
     }
 }
 
-/* Reduced-motion gate per motion.css section 5 — see banner.css for the
+/* Reduced-motion gate per motion.css section 5, see banner.css for the
    matching pattern. Disabling the animation entirely (vs an opacity-only
    variant) avoids the residual translateX paint at 0ms duration. */
 @media (prefers-reduced-motion: reduce) {
@@ -55,7 +55,7 @@
     }
 }
 
-/* Section-title rhythm — same scale as a panel title (`--text-lg`),
+/* Section-title rhythm, same scale as a panel title (`--text-lg`),
    semibold for legibility, uppercase eyebrow caption underneath in
    `--font-mono` to mark the panel taxonomy ("F12", "F13"). Two-tier
    header pattern matches the cockpit/instrument vocabulary used in the

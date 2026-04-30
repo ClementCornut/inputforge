@@ -50,14 +50,14 @@ pub(super) fn render_plot(
         .show_axes([false, false])
         .show_grid(true)
         .show(ui, |plot_ui| {
-            // Lock the view to [-1.1, 1.1] — prevent auto-scaling.
+            // Lock the view to [-1.1, 1.1], prevent auto-scaling.
             plot_ui.set_plot_bounds(egui_plot::PlotBounds::from_min_max(
                 [-1.1, -1.1],
                 [1.1, 1.1],
             ));
             plot_ui.set_auto_bounds(egui::Vec2b::new(false, false));
 
-            // Layer 1 — identity reference line (dashed, recedes visually).
+            // Layer 1, identity reference line (dashed, recedes visually).
             plot_ui.line(
                 Line::new("identity", PlotPoints::new(vec![[-1.0, -1.0], [1.0, 1.0]]))
                     .style(LineStyle::dashed_loose())
@@ -65,19 +65,19 @@ pub(super) fn render_plot(
                     .width(1.0),
             );
 
-            // Layer 2 — Bezier control handles (start→c1 and c2→end segments).
+            // Layer 2, Bezier control handles (start→c1 and c2→end segments).
             if let ResponseCurve::CubicBezier { segments, .. } = curve {
                 render_bezier_handles(plot_ui, segments, colors);
             }
 
-            // Layer 3 — curve polyline (dominant element).
+            // Layer 3, curve polyline (dominant element).
             plot_ui.line(
                 Line::new("curve", PlotPoints::new(cached_line))
                     .color(colors.primary)
                     .width(2.5),
             );
 
-            // Layer 4 — control point markers.
+            // Layer 4, control point markers.
             render_control_point_markers(
                 plot_ui,
                 curve,
@@ -87,7 +87,7 @@ pub(super) fn render_plot(
                 colors,
             );
 
-            // Layer 5 — live input indicator (input on Y axis).
+            // Layer 5, live input indicator (input on Y axis).
             if let Some(input) = live_input {
                 let output = curve.evaluate(input);
                 plot_ui.hline(
