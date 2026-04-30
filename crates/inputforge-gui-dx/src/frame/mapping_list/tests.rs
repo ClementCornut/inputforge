@@ -291,3 +291,49 @@ fn row_renders_resting_when_renaming_is_none() {
         "Row must NOT render the rename input when renaming is None: {html}",
     );
 }
+
+#[test]
+fn empty_zero_mappings_renders_title_and_button() {
+    use crate::frame::mapping_list::empty::EmptyZeroMappings;
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        rsx! {
+            EmptyZeroMappings { on_start_capture: move |()| {} }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(html.contains("No mappings yet"), "title missing: {html}");
+    assert!(
+        html.contains("if-rail-empty"),
+        "rail-empty class missing: {html}"
+    );
+}
+
+#[test]
+fn empty_zero_filter_results_quotes_query() {
+    use crate::frame::mapping_list::empty::EmptyZeroFilterResults;
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        rsx! {
+            EmptyZeroFilterResults {
+                query: "ailerons".to_owned(),
+                on_clear: move |()| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("ailerons"),
+        "filtered-empty title must quote the current query: {html}",
+    );
+    assert!(
+        html.contains("Clear filter"),
+        "clear-filter button missing: {html}"
+    );
+}
