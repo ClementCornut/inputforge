@@ -1,5 +1,6 @@
 mod add_inline;
 mod context_menu;
+mod delete_dialog;
 mod logic;
 mod rename_inline;
 
@@ -7,11 +8,10 @@ use std::rc::Rc;
 
 use dioxus::prelude::*;
 
-use inputforge_core::engine::EngineCommand;
-
 use crate::context::AppContext;
 use crate::frame::view_state::ViewState;
 
+pub(crate) use delete_dialog::{ModeDeleteDialog, ModeDeleteSignal};
 use logic::{MarkerColor, runtime_marker};
 
 #[component]
@@ -62,9 +62,15 @@ pub(crate) fn ModeTabs() -> Element {
     // swapped to a `RenameInline` editor (the button isn't mounted, so
     // arrow-rolling onto it lands focus nowhere).
     let mut renaming: Signal<Option<String>> = use_signal(|| None);
-    // Tail `+` inline editor open-state and F4 delete-confirm target.
+    // Tail `+` inline editor open-state.
     let mut adding: Signal<bool> = use_signal(|| false);
-    let mut delete_target: Signal<Option<String>> = use_signal(|| None);
+    // F4 delete-confirm target. Owned by `TopBar` and provided through
+    // `ModeDeleteSignal` so the dialog component can render as a
+    // sibling of `.if-top-bar` (not a child) — the audit-flagged
+    // structural smell. ModeTabs writes here from the keyboard Delete
+    // arm and the context-menu Delete handler; `ModeDeleteDialog`
+    // reads it to drive its own `dialog_open` mirror.
+    let mut delete_target: Signal<Option<String>> = use_context::<ModeDeleteSignal>().0;
 
     // Which tab's context menu is open (if any), with anchor coords.
     // Hoisted so per-tab handlers can write and the post-loop render can
@@ -72,23 +78,6 @@ pub(crate) fn ModeTabs() -> Element {
     let mut open_for_tab: Signal<Option<(String, context_menu::AnchorRect)>> = use_signal(|| None);
 
     let editing_now = editing.read().clone();
-
-    // T31: F4 destructive-confirm dialog open-state derived from
-    // `delete_target`. One effect drives `dialog_open` from
-    // `delete_target` (the only Source); the reverse direction
-    // (`dialog_open == false` → clear `delete_target`) is covered by
-    // the DialogRoot's `onclose` handler (which fires on ESC and
-    // backdrop click) AND by the Cancel/Confirm `onclick`s — every
-    // path that flips `dialog_open` to false also clears
-    // `delete_target` directly, so the previously-needed second
-    // mirror-back effect was redundant.
-    let mut dialog_open: Signal<bool> = use_signal(|| false);
-    use_effect(move || {
-        let want = delete_target.read().is_some();
-        if *dialog_open.peek() != want {
-            dialog_open.set(want);
-        }
-    });
 
     // T31 Step 3a: focus newly-created tab once it appears in `modes`.
     // `pending_focus` is set explicitly by `add_inline::run_commit` on a
@@ -120,31 +109,6 @@ pub(crate) fn ModeTabs() -> Element {
             }
         }
     });
-
-    // Pre-compute the affected counts every render — cheap walk.
-    let (display_name, modes_count, mappings_count) = match delete_target.read().as_ref() {
-        Some(name) => {
-            let s = ctx.state.read();
-            let counts = s.active_profile.as_ref().map_or((1, 0), |p| {
-                let descendants = p.modes().descendants_of(name).unwrap_or_default();
-                let modes_count = 1 + descendants.len();
-                let mut deleted: Vec<String> = descendants;
-                deleted.push(name.clone());
-                let mappings_count = p
-                    .mappings()
-                    .iter()
-                    .filter(|m| deleted.iter().any(|d| d == &m.mode))
-                    .count();
-                (modes_count, mappings_count)
-            });
-            (name.clone(), counts.0, counts.1)
-        }
-        None => (String::new(), 0, 0),
-    };
-
-    let cmd_for_delete = ctx.commands.clone();
-    let confirm_name = display_name.clone();
-    let restore_idx_for_dialog = modes_now.iter().position(|m| m == &display_name);
 
     rsx! {
         // aria-label is required because the tablist has no visible
@@ -481,59 +445,6 @@ pub(crate) fn ModeTabs() -> Element {
                     onclick: move |_| adding.set(true),
                     "aria-label": "Add mode",
                     "+"
-                }
-            }
-        }
-        // T31: F4 destructive-confirm dialog for Delete. Lives outside the
-        // tablist so the dialog backdrop doesn't disturb tab layout.
-        crate::components::DialogRoot {
-            open: dialog_open,
-            onclose: move |()| {
-                if let Some(idx) = restore_idx_for_dialog {
-                    let target_idx = idx.min(tab_refs.read().len().saturating_sub(1));
-                    if let Some(node) = tab_refs.read().get(target_idx).and_then(Clone::clone) {
-                        spawn(async move {
-                            let _ = node.set_focus(true).await;
-                        });
-                    }
-                }
-                delete_target.set(None);
-            },
-            crate::components::DialogTitle { "Delete mode" }
-            // Body splits the prose question from the numeric blast-
-            // radius readout. The lead carries the action; the mono
-            // count strip below carries the consequence. Cockpit
-            // vocabulary: a system-status caption ("MODES" / "MAPPINGS")
-            // beside its tabular-nums value reads as a real instrument-
-            // panel readout, which fits a destructive-confirm better
-            // than a single prose sentence.
-            crate::components::DialogBody {
-                "Delete '{display_name}'?"
-                div { class: "if-modetab-delete-confirm__counts",
-                    span { strong { "{modes_count}" } " modes" }
-                    span { strong { "{mappings_count}" } " mappings" }
-                }
-            }
-            crate::components::DialogFooter {
-                crate::components::Button {
-                    variant: crate::components::ButtonVariant::Ghost,
-                    onmounted: move |evt: MountedEvent| {
-                        spawn(async move {
-                            let _ = evt.data().set_focus(true).await;
-                        });
-                    },
-                    onclick: move |_| { delete_target.set(None); },
-                    "Cancel"
-                }
-                crate::components::Button {
-                    variant: crate::components::ButtonVariant::Secondary,
-                    onclick: move |_| {
-                        let _ = cmd_for_delete.send(EngineCommand::DeleteMode {
-                            name: confirm_name.clone(),
-                        });
-                        delete_target.set(None);
-                    },
-                    "Confirm"
                 }
             }
         }
