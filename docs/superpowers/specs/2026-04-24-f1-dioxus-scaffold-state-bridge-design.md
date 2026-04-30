@@ -1,4 +1,4 @@
-# F1, Dioxus Crate Scaffold & State Bridge
+# F1: Dioxus Crate Scaffold & State Bridge
 
 **Status:** Design approved, ready for implementation planning
 **Date:** 2026-04-24

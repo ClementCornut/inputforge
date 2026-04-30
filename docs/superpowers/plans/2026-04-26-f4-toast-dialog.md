@@ -1,4 +1,4 @@
-# F4, Toast & Dialog Infrastructure, Implementation Plan
+# F4: Toast & Dialog Infrastructure, Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -268,7 +268,7 @@ Conventional Commits: `feat(gui-dx)`. Invoke the `conventional-commits` skill be
 
 ---
 
-## Task 3: TDD, `ToastState::push` (append, coalesce, monotonic ids)
+## Task 3, TDD: `ToastState::push` (append, coalesce, monotonic ids)
 
 First TDD bundle on `ToastState`. Three tests cover: empty-push appends; same `(level, message)` coalesces by incrementing `count` and resetting `created`; different levels do NOT coalesce; ids are monotonic.
 
@@ -417,7 +417,7 @@ git commit -m "feat(gui-dx): toast push appends and coalesces"
 
 ---
 
-## Task 4: TDD, `ToastState::push` cap with FIFO drain
+## Task 4, TDD: `ToastState::push` cap with FIFO drain
 
 Adds the visible-cap behavior: when a non-coalescing push would exceed `TOAST_MAX_VISIBLE` non-dismissed toasts, the oldest non-dismissed entry is auto-dismissed (its `dismissed` field flips to `true`) before the new toast is appended.
 
@@ -504,7 +504,7 @@ git commit -m "feat(gui-dx): toast cap fifo-drains oldest"
 
 ---
 
-## Task 5: TDD, `dismiss`, `pause`/`resume`, `is_expired`
+## Task 5, TDD: `dismiss`, `pause`/`resume`, `is_expired`
 
 Final pure-data behavior: explicit dismiss, hover/focus pause-resume, and the timer predicate that excludes paused intervals.
 
@@ -1072,7 +1072,7 @@ git commit -m "feat(gui-dx): expose ToastViewport via doc(hidden)"
 
 ---
 
-## Task 9: Gallery, Toasts section
+## Task 9, Gallery: Toasts section
 
 Wires `ToastQueue` into `gallery_root` via `use_context_provider`, mounts `ToastViewport` at the top of the gallery, and adds the five-button section described in the spec. This is the first end-to-end render path for the toast infrastructure.
 
@@ -1216,7 +1216,7 @@ git commit -m "feat(gui-dx): add Toasts section to gallery"
 
 ---
 
-## Task 10: `Dialog` compound primitive, Rust file with JS shims + stub CSS
+## Task 10, `Dialog` compound primitive: Rust file with JS shims + stub CSS
 
 Native `<dialog>` + `showModal()`-driven compound. Eagerly computes `dialog_id`/`title_id`/`desc_id` in `DialogRoot`'s `use_hook` initializer so `aria-labelledby`/`aria-describedby` resolve correctly on the very first render. JS shims drive `showModal`/`close` and the `cancel` listener via `document::eval`.
 
@@ -1552,7 +1552,7 @@ git commit -m "feat(gui-dx): add Dialog compound primitive"
 
 ---
 
-## Task 11: Gallery, Dialog primitives section
+## Task 11, Gallery: Dialog primitives section
 
 Four buttons opening four dialogs that cover the contract: basic dismissible, non-dismissible, close-on-backdrop, scrollable body.
 
@@ -1852,7 +1852,7 @@ git commit -m "feat(gui-dx): add DirtyConfirmDialog pattern"
 
 ---
 
-## Task 13: Gallery, `DirtyConfirmDialog` section
+## Task 13, Gallery: `DirtyConfirmDialog` section
 
 Two buttons: default-copy variant and custom-copy variant. Three captions next to each button light up to confirm each callback fires exactly once per resolution.
 
@@ -2243,7 +2243,7 @@ Document the F4 surfaces that future feature plans will consume: ToastQueue API,
 Open `crates/inputforge-gui-dx/README.md`. Append these sections after the existing F3 sections (before any "Next steps"-style closing block, if present). The exact heading style follows what F2/F3 used in this README.
 
 ```markdown
-## F4, Toast & Dialog Infrastructure
+## F4: Toast & Dialog Infrastructure
 
 ### `ToastQueue`
 

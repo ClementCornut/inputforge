@@ -1,4 +1,4 @@
-# F6, Snapshot Module + Settings Extension + Forced-Mode Plumbing, Implementation Plan
+# F6: Snapshot Module + Settings Extension + Forced-Mode Plumbing, Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -906,7 +906,7 @@ Suggested message: `feat(snapshot): index.toml read/write helpers`.
 
 ---
 
-# Phase 2, Snapshot Public API
+# Phase 2: Snapshot Public API
 
 The seven public functions live in `mod.rs` and orchestrate the helper modules. Each is implemented in its own task with TDD. Common test fixture helpers go in a `#[cfg(test)] mod tests` block at the bottom of `mod.rs`.
 
@@ -1876,9 +1876,9 @@ Suggested message: `feat(snapshot): prune() FIFO eviction skipping pinned`.
 
 ---
 
-# Phase 3, Settings Extension
+# Phase 3: Settings Extension
 
-## Task 14: Extend `AppSettings` with `snapshot: SnapshotConfig`
+## Task 14, Extend `AppSettings` with `snapshot: SnapshotConfig`
 
 **Files:**
 - Modify: `crates/inputforge-core/src/settings.rs`
@@ -1973,7 +1973,7 @@ Suggested message: `feat(settings): add snapshot sub-table to AppSettings`.
 
 ---
 
-# Phase 4, `AppState::mode_force` Field
+# Phase 4: `AppState::mode_force` Field
 
 ## Task 15: Add `ForcedMode` and `AppState::mode_force`
 
@@ -2067,7 +2067,7 @@ Suggested message: `feat(state): add ForcedMode and AppState::mode_force`.
 
 ---
 
-# Phase 5, Engine Wiring
+# Phase 5: Engine Wiring
 
 ## Task 16: Add 8 new `EngineCommand` variants
 
@@ -2168,7 +2168,7 @@ Suggested message: `feat(engine): add 8 EngineCommand variants for snapshot/forc
 
 ---
 
-## Task 17: Add `settings: AppSettings` to `Engine`; update constructor; update three test sites and one production site
+## Task 17, Add `settings: AppSettings` to `Engine`; update constructor; update three test sites and one production site
 
 Per decision D17: `Engine::new` takes `AppSettings` explicitly. Three call sites in `engine/tests.rs` (lines 132, 690, 1274) and one in `crates/inputforge-app/src/main.rs:226` must update to pass it.
 
@@ -2609,7 +2609,7 @@ Suggested message: `feat(engine): ReloadSettings handler replaces in-memory AppS
 
 ---
 
-## Task 21: Implement `CreateSnapshot`, `DeleteSnapshot`, `PinSnapshot`, `RenameSnapshot` handlers
+## Task 21, Implement `CreateSnapshot`: `DeleteSnapshot`, `PinSnapshot`, `RenameSnapshot` handlers
 
 These four are simple delegations to `snapshot::*` after a `state.read()` for the profile path.
 
@@ -3230,7 +3230,7 @@ Suggested message: `feat(engine): mode-pause gate for ChangeMode + PopTemporaryM
 
 ---
 
-# Phase 6, Acceptance tests + final verification
+# Phase 6: Acceptance tests + final verification
 
 ## Task 25: Sequential serial CreateSnapshot test (acceptance criterion)
 

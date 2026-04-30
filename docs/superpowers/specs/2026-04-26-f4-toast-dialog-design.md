@@ -248,7 +248,7 @@ mod tests {
 
 **Saturating arithmetic on `count`:** a long-running session can't panic on overflow. `next_id` uses `wrapping_add` for the same reason, the id space is uniqueness-over-the-current-Vec, not lifetime-of-process; collisions after wraparound are mathematically possible but require ~10^19 pushes.
 
-#### `toast/queue.rs`, Signal wrapper
+#### `toast/queue.rs`: Signal wrapper
 
 ```rust
 use std::time::Instant;

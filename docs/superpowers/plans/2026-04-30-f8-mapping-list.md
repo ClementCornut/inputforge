@@ -1,4 +1,4 @@
-# F8, Mapping List (Left Rail) Implementation Plan
+# F8: Mapping List (Left Rail) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -438,7 +438,7 @@ git commit -m "feat(engine): handle EngineCommand::RemoveMapping with disk-persi
 
 ---
 
-## Phase B, State infrastructure (Tasks 4-6)
+## Phase B: State infrastructure (Tasks 4-6)
 
 ### Task 4: `InputCacheStore::clone_compact()`
 
@@ -1359,7 +1359,7 @@ git commit -m "feat(view_state): add selected_mapping with editing-mode-flip rec
 
 ---
 
-## Phase C, Live-capture primitive (Tasks 7-9)
+## Phase C: Live-capture primitive (Tasks 7-9)
 
 ### Task 7: `LiveCaptureCore::step` pure logic + enumerated tests
 
@@ -2377,7 +2377,7 @@ Re-run `cargo fmt --check` before continuing past this gate. The previous auto-c
 
 ---
 
-## Phase D, Mapping list pure-logic leaves (Tasks 10-13)
+## Phase D: Mapping list pure-logic leaves (Tasks 10-13)
 
 Each pure-logic module ships first so its consumers (the renderers in Phase E) can compile against a known-good API. None of these tasks touch Dioxus.
 
@@ -2575,7 +2575,7 @@ git commit -m "feat(mapping_list): module skeleton with 8 sub-module stubs, CSS 
 
 ---
 
-### Task 11: `source_label::format`, InputAddress → "Device · Input" formatter
+### Task 11: `source_label::format`: InputAddress → "Device · Input" formatter
 
 Pure fn that walks `cfg.devices` to find the device by `addr.device` and formats `"<device.name> · <input-label>"`. Ports the legacy `axis_label` helper from `inputforge-gui` so HID-standard axis names (X / Y / Z / Rot X / …) survive the rewrite.
 
@@ -2989,7 +2989,7 @@ git commit -m "feat(mapping_list): case-insensitive substring filter over name +
 
 ---
 
-## Phase E, Mapping list renderers (Tasks 14-22)
+## Phase E: Mapping list renderers (Tasks 14-22)
 
 ### Task 14: `row::Row`, single mapping row component
 
@@ -3711,7 +3711,7 @@ git commit -m "feat(mapping_list): empty-state components for zero-mappings and 
 
 ---
 
-### Task 17: `add_inline::AddInline`, `+ Add mapping` capture state machine
+### Task 17: `add_inline::AddInline`: `+ Add mapping` capture state machine
 
 The full state machine from spec §"`+ Add mapping` state machine". `Resting` → `CapturingArmed` → `{Captured | Collision | CapturingDisarmed}` → `Resting`. Watches `LiveCapture::captured` and re-validates `Collision` against `cfg.mappings` once per polling tick (collision drift).
 
@@ -4749,7 +4749,7 @@ git commit -m "feat(mapping_list): orchestrator wires filter, rows, groups, empt
 
 ---
 
-### Task 20: Right-click context menu, Rename / Duplicate / Duplicate to mode… / Delete
+### Task 20, Right-click context menu: Rename / Duplicate / Duplicate to mode… / Delete
 
 Replaces the `ContextMenuMount` stub with a real floating menu. Mirrors the F7 `mode_tabs::context_menu` shape (hand-rolled, `MenuRoot` is trigger-attached and not reusable here). On Rename click → `renaming.set(Some(input))`. On Delete click → `delete_target.set(Some(summary))` (Task 21 owns the dialog).
 
@@ -5232,7 +5232,7 @@ git commit -m "feat(mapping_list): right-click menu with Rename/Duplicate(fresh-
 
 ---
 
-### Task 21: Delete dialog, F4 destructive confirm dispatching `RemoveMapping`
+### Task 21, Delete dialog: F4 destructive confirm dispatching `RemoveMapping`
 
 Replaces the `DeleteDialogMount` stub with a real F4 destructive `Dialog` mirroring the `mode_tabs` Delete confirm shape. Confirm → `EngineCommand::RemoveMapping { input, mode }`.
 
@@ -5543,7 +5543,7 @@ git commit -m "feat(mapping_list): document-scoped keyboard listener routes thro
 
 ---
 
-## Phase F, Layout integration, CSS, manual smoke (Tasks 23-28)
+## Phase F: Layout integration, CSS, manual smoke (Tasks 23-28)
 
 ### Task 23: Wire `<MappingList />` into `frame::layout`
 

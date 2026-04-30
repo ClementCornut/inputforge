@@ -1,4 +1,4 @@
-# F7 Acceptance Sweep, 2026-04-29
+# F7 Acceptance Sweep: 2026-04-29
 
 > **Status:** in-progress. Stub created at the start of the post-review fix pass; checkboxes tick as fixes land. Plan: `docs/superpowers/plans/2026-04-29-f7-frame.md`. Fix plan: `C:\Users\cornu\.claude\plans\plan-all-fixes-even-cozy-river.md`.
 
@@ -114,7 +114,7 @@ Verified 2026-04-30.
   ```
 - [x] **Pass criterion:** ≤1 trace per region per polling tick. **PASS**, verified 2026-04-30.
 
-### Captured trace (~233 ms window, ~14 ticks at 60 Hz)
+### Captured trace (~233 ms window: ~14 ticks at 60 Hz)
 
 | Region          | Traces | Notes |
 |-----------------|--------|-------|

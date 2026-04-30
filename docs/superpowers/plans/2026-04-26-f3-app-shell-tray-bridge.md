@@ -1,4 +1,4 @@
-# F3, Application Shell + Tray Bridge, Implementation Plan
+# F3: Application Shell + Tray Bridge, Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -145,7 +145,7 @@ Sanity check only.
 
 ---
 
-## Task 2: Tabs primitive, Rust file with ARIA and keyboard nav
+## Task 2, Tabs primitive: Rust file with ARIA and keyboard nav
 
 Pure component logic. CSS is a stub in this task (Task 5 wires it; Task 8 finalizes after frontend-design). The keyboard contract is the load-bearing part, it activates on arrow-key / Home / End and emits `onchange(id)` synchronously. F11 (Modes) reuses this primitive.
 
@@ -282,7 +282,7 @@ The file is orphaned until Task 4 wires it. Defer the commit to bundle Tabs + St
 
 ---
 
-## Task 3: StatusBar primitive, Rust file with three slots
+## Task 3, StatusBar primitive: Rust file with three slots
 
 Presentation-only primitive. ARIA-neutral wrapper (no `role="status"` at the primitive level, `role` lives on consumer-controlled inner elements). F11+ may reuse via composition.
 
@@ -742,7 +742,7 @@ git commit -m "feat(gui-dx): apply frontend-design revisions to Tabs and StatusB
 
 ---
 
-## Task 9: `tray/action.rs`, `TrayAction`, `TrayMenuIds`, routing (TDD)
+## Task 9, `tray/action.rs`: `TrayAction`, `TrayMenuIds`, routing (TDD)
 
 Pure logic. The `from_id` function is the unit-testable core; `from_event` is a one-line wrapper.
 
@@ -1275,7 +1275,7 @@ git commit -m "feat(gui-dx): wire tray bridge into launch_gui; add start_minimiz
 
 ---
 
-## Task 14: Shell scaffold, `mod.rs` and `placeholder.rs`
+## Task 14, Shell scaffold: `mod.rs` and `placeholder.rs`
 
 Disposable layout. The `pub(crate)` re-exports keep the surface narrow, F5 deletes this whole module.
 
@@ -1360,7 +1360,7 @@ Bundle with status_bar_view in Task 15.
 
 ---
 
-## Task 15: Shell consumer of StatusBar, `status_bar_view.rs`
+## Task 15, Shell consumer of StatusBar: `status_bar_view.rs`
 
 The only F3 surface that subscribes to AppContext signals. Reads `meta` and `config`, composes a real status bar.
 
@@ -1935,7 +1935,7 @@ Document the tray bridge model, hide-to-tray lifecycle, and new primitives.
 Open the existing `README.md` and append (at the end of the file, after F1/F2 sections):
 
 ```markdown
-## F3, Tray bridge & hide-to-tray lifecycle
+## F3: Tray bridge & hide-to-tray lifecycle
 
 ### Tray bridge
 

@@ -1,4 +1,4 @@
-# F1, Dioxus Crate Scaffold & State Bridge, Implementation Plan
+# F1: Dioxus Crate Scaffold & State Bridge, Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -80,7 +80,7 @@ Note the exact versions chosen. Tasks 3 (workspace `Cargo.toml`) and 11 (`README
 
 ---
 
-## Task 2: Add `Default` to `EngineStatus` and `PartialEq, Eq` to `DeviceState`
+## Task 2, Add `Default` to `EngineStatus` and `PartialEq, Eq` to `DeviceState`
 
 Two trivial additive derive changes the snapshot structs in Task 4 require to compile. TDD, both have one-line tests asserting the new behavior.
 

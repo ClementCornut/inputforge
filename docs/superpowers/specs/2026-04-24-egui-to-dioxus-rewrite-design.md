@@ -1,4 +1,4 @@
-# egui → Dioxus Rewrite, Master Plan
+# egui → Dioxus Rewrite: Master Plan
 
 **Status:** Design approved, ready for per-feature planning
 **Date:** 2026-04-24
@@ -104,7 +104,7 @@ This is chosen over a full-cutover branch because "on `main`" is a stated constr
 
 ### Architecture Pass
 
-#### F5. Architecture & IA Redesign Pass, *Resolved*
+#### F5. Architecture & IA Redesign Pass: *Resolved*
 
 Spec: [`2026-04-27-f5-architecture-ia-redesign-design.md`](./2026-04-27-f5-architecture-ia-redesign-design.md).
 
@@ -119,7 +119,7 @@ F5 audited the current egui IA at the structural level and committed a clean-sla
 
 **Acceptance:** the design doc above is committed; this master plan now incorporates the final feature set.
 
-### Core Screens, *resolved by F5*
+### Core Screens: *resolved by F5*
 
 #### F6. Snapshot module + preferences core in `inputforge-core`
 
@@ -137,15 +137,15 @@ Mode-scoped mapping list grouped by output category (Axes / Buttons / Hats), fil
 
 Heaviest IA-level surface. Owns the editor frame (header, name field, input field, live readout, pipeline graph, undo recap, inactive-in-runtime hint); the pipeline-graph component (chain layout, Conditional branch rendering, MergeAxis stage with secondary-input picker, stage add/remove/reorder); the per-mapping session-undo log; and live-input/output binding to F1's polling Signal. All edits commit live via `EngineCommand::SetMapping`, no save buttons. F10 and F11 own the heavy widgets that live inside curve and deadzone stages.
 
-#### F10. Curve editor (SVG inside curve stage), *signature feature*
+#### F10. Curve editor (SVG inside curve stage): *signature feature*
 
 The primary tool of the tuning session; flagged for visual ambition. Owns the SVG bezier curve editor: control-point and handle drag, symmetric mode, axis labels and ticks, live-value tracking dot, keyboard manipulation. Bezier math is a direct port of `crates/inputforge-gui/src/widgets/curve_editor/mutation.rs` (no re-derivation). Reference quality bar: synthesizer envelope editors and DAW LFO designers.
 
-#### F11. Deadzone editor (SVG inside deadzone stage), *signature feature*
+#### F11. Deadzone editor (SVG inside deadzone stage): *signature feature*
 
 Coherent with F10's animation timing and precision feel. Owns the deadzone visualization (input axis vs deadzone-applied output), inner/outer threshold drag handles on the curve, numeric input fields, live overlay showing where the live signal currently sits on the input-output curve.
 
-### Secondary Surfaces, *resolved by F5*
+### Secondary Surfaces: *resolved by F5*
 
 #### F12. Devices side panel + Calibration drill-in
 
@@ -192,7 +192,7 @@ Editor on top of F6's preferences core. Owns the settings surface (panel sub-sec
 - **Tray icon** (`inputforge-app` + `tray-icon` + `muda`): unchanged except for the `MenuId` bridge into the Dioxus GUI (F3).
 - **Settings, profiles, calibration data**: continue to live in `inputforge-core`.
 
-## Open Questions (Resolve Per Feature, Not Here)
+## Open Questions (Resolve Per Feature: Not Here)
 
 - **Testing story for Dioxus GUI.** `egui_kittest` snapshot tests are dropped at F17. Options include: (a) accept-reduced UI testing (rely on logic-layer tests in `inputforge-core`); (b) Playwright or similar against the WebView; (c) Dioxus-native renderer testing as that ecosystem matures. Decided per feature; F16 or F17 is the latest we should commit to an approach.
 - **Hot-reload ergonomics in release workflow.** Determine whether a dev-only script is needed. Deferred to F1 implementation detail.

@@ -1,4 +1,4 @@
-# F2, Design System & Theme Implementation Plan
+# F2: Design System & Theme Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -289,7 +289,7 @@ Write `crates/inputforge-gui-dx/THIRD_PARTY_LICENSES.md`:
 
 This crate bundles assets governed by upstream licenses. They are reproduced below in summary; see `THIRD_PARTY_LICENSES_FULL/` (if present) or the upstream sources for full text.
 
-## Phosphor Icons, MIT License
+## Phosphor Icons: MIT License
 
 Copyright (c) 2020 Phosphor Icons
 
@@ -301,7 +301,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 
 Source: https://github.com/phosphor-icons/core
 
-## Inter, SIL Open Font License 1.1
+## Inter: SIL Open Font License 1.1
 
 Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
 
@@ -311,7 +311,7 @@ https://openfontlicense.org
 
 Source: https://github.com/rsms/inter
 
-## JetBrains Mono, SIL Open Font License 1.1
+## JetBrains Mono: SIL Open Font License 1.1
 
 Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
@@ -915,7 +915,7 @@ feat(gui-dx): add 30 Phosphor SVG icons (regular weight)
 
 ---
 
-## Task 12: `src/icons/mod.rs`, Icon enum and svg() registry (TDD)
+## Task 12, `src/icons/mod.rs`: Icon enum and svg() registry (TDD)
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/icons/mod.rs`
@@ -1637,7 +1637,7 @@ feat(gui-dx): add Button and IconButton primitives with full state coverage
 
 ---
 
-## Task 15: Form input family, TextInput, NumberInput, Select, Slider
+## Task 15, Form input family: TextInput, NumberInput, Select, Slider
 
 Four primitives sharing the same `if-control` baseline (border, padding, focus ring) plus per-type accents.
 
@@ -1985,7 +1985,7 @@ feat(gui-dx): add TextInput, NumberInput, Select, Slider primitives
 
 ---
 
-## Task 16: Toggle family, Switch + Checkbox
+## Task 16, Toggle family: Switch + Checkbox
 
 **Files:**
 - Create: `src/components/{switch,checkbox}.rs`
@@ -2188,7 +2188,7 @@ feat(gui-dx): add Switch and Checkbox primitives
 
 ---
 
-## Task 17: Display family, Card + Badge + Separator + Spinner
+## Task 17, Display family: Card + Badge + Separator + Spinner
 
 Non-interactive primitives. After this task, the gallery can wrap each section in a `Card`.
 
@@ -2600,7 +2600,7 @@ feat(gui-dx): add Tooltip primitive (CSS-only)
 
 ---
 
-## Task 19: Menu (compound: MenuRoot / MenuTrigger / MenuItems / MenuItem)
+## Task 19, Menu (compound: MenuRoot / MenuTrigger / MenuItems / MenuItem)
 
 The most complex primitive in F2. Click-outside, ESC, arrow nav.
 
@@ -2789,7 +2789,7 @@ feat(gui-dx): add Menu compound primitive (MenuRoot/Trigger/Items/Item)
 
 ---
 
-## Task 20: Form-wrapper pair, Field + Label
+## Task 20, Form-wrapper pair: Field + Label
 
 Field couples a label, an input area (children), helper text, and an error message. Label is the underlying type-consistent label primitive.
 

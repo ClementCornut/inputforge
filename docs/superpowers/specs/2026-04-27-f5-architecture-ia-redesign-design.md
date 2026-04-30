@@ -370,7 +370,7 @@ The current master plan (`2026-04-24-egui-to-dioxus-rewrite-design.md`) declares
 
 Each feature lists the impeccable commands its focused plan should invoke. Commands are advisory, F6 implementation may decide to skip ones that don't apply.
 
-### F6, Snapshot module in `inputforge-core`
+### F6: Snapshot module in `inputforge-core`
 
 **Type:** core-only (no GUI, no shell changes)
 **Replaces:** new feature
@@ -400,7 +400,7 @@ Each feature lists the impeccable commands its focused plan should invoke. Comma
 
 ---
 
-### F7, Chrome shell (top bar, mode tabs, status bar, banner)
+### F7: Chrome shell (top bar, mode tabs, status bar, banner)
 
 **Type:** GUI shell upgrade
 **Replaces:** F3's `PlaceholderShell` + parts of F3's `StatusBarView`
@@ -426,7 +426,7 @@ Each feature lists the impeccable commands its focused plan should invoke. Comma
 
 ---
 
-### F8, Mapping list (left rail)
+### F8: Mapping list (left rail)
 
 **Type:** core screen
 **Replaces:** old F6 (Left Panel, Device List + Input Tree). The left rail is no longer device-rooted.
@@ -454,7 +454,7 @@ Each feature lists the impeccable commands its focused plan should invoke. Comma
 
 ---
 
-### F9, Mapping editor (pipeline structure)
+### F9: Mapping editor (pipeline structure)
 
 **Type:** core screen, the heaviest IA-level surface
 **Replaces:** old F7 (Mapping Editor, Shell + Action List) + old F8 (Action Config Forms), merged because the new IA collapses the action-list and per-action-config into one inline-edit pipeline view.
@@ -485,7 +485,7 @@ Each feature lists the impeccable commands its focused plan should invoke. Comma
 
 ---
 
-### F10, Curve editor (SVG inside curve stage), *signature feature*
+### F10: Curve editor (SVG inside curve stage), *signature feature*
 
 **Type:** core screen, heavy widget
 **Replaces:** old F9 (Mapping Editor, Curve Editor)
@@ -519,7 +519,7 @@ Each feature lists the impeccable commands its focused plan should invoke. Comma
 
 ---
 
-### F11, Deadzone editor (SVG inside deadzone stage), *signature feature*
+### F11: Deadzone editor (SVG inside deadzone stage), *signature feature*
 
 **Type:** core screen, heavy widget
 **Replaces:** old F10 (Mapping Editor, Deadzone Editor)
@@ -552,7 +552,7 @@ Each feature lists the impeccable commands its focused plan should invoke. Comma
 
 ---
 
-### F12, Devices side panel + Calibration drill-in
+### F12: Devices side panel + Calibration drill-in
 
 **Type:** secondary surface
 **Replaces:** old F12 (Input Viewer Surface) + old F13 (Calibration Surface), merged because the new IA puts calibration inside Devices via axis drill-in.
@@ -582,7 +582,7 @@ Each feature lists the impeccable commands its focused plan should invoke. Comma
 
 ---
 
-### F13, Profiles side panel + Snapshots + no-profile empty state
+### F13: Profiles side panel + Snapshots + no-profile empty state
 
 **Type:** secondary surface, also owns the no-profile workspace state.
 **Replaces:** old F14 (Profile Surface), expanded to absorb snapshot UI.
@@ -615,7 +615,7 @@ Each feature lists the impeccable commands its focused plan should invoke. Comma
 
 ---
 
-### F14, Mode editing (beyond tab CRUD)
+### F14: Mode editing (beyond tab CRUD)
 
 **Type:** core feature, downscoped from old F11 (Mode Editor)
 **Replaces:** old F11. Most mode CRUD (create/rename/delete/select/activate) lives in the chrome's mode tabs and right-click menu (delivered in F7). F14 is what's left.
@@ -637,7 +637,7 @@ Each feature lists the impeccable commands its focused plan should invoke. Comma
 
 ---
 
-### F15, Settings UI (preferences editor surface)
+### F15: Settings UI (preferences editor surface)
 
 **Type:** secondary surface, editor on top of F6's preferences core.
 **Replaces:** new feature
@@ -662,7 +662,7 @@ Each feature lists the impeccable commands its focused plan should invoke. Comma
 
 ---
 
-### F16, UX polish & audit (renamed; structurally unchanged)
+### F16: UX polish & audit (renamed; structurally unchanged)
 
 **Type:** integration / finish
 **Replaces:** old F15. Same shape, applied to the new IA.
@@ -681,7 +681,7 @@ Each feature lists the impeccable commands its focused plan should invoke. Comma
 
 ---
 
-### F17, Cutover & cleanup (unchanged)
+### F17: Cutover & cleanup (unchanged)
 
 **Type:** integration / finish
 **Replaces:** old F16, identical scope. Delete egui crate, rename Dioxus crate, drop feature flags, drop egui dependencies, drop `egui_kittest` snapshot tests, update README.
