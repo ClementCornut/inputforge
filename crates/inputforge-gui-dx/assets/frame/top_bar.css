@@ -274,7 +274,6 @@
     font: inherit;
     font-weight: var(--weight-medium);
     letter-spacing: 0.01em;
-    height: 100%;
     cursor: pointer;
     /* 2px transparent bottom border reserves the indicator strip's
        geometry so swapping the ::after on/off doesn't reflow the bar.
