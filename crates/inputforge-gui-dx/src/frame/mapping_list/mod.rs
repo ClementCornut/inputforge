@@ -42,6 +42,7 @@ use crate::frame::mapping_list::add_inline::AddInline;
 use crate::frame::mapping_list::empty::{EmptyZeroFilterResults, EmptyZeroMappings};
 use crate::frame::mapping_list::filter::matches_filter;
 use crate::frame::mapping_list::group::{GroupKind, group_of};
+use crate::frame::mapping_list::keyboard::{Intent, Key, State, handle_key};
 use crate::frame::mapping_list::row::Row;
 use crate::frame::view_state::ViewState;
 use crate::patterns::live_capture::LiveCapture;
@@ -85,6 +86,124 @@ pub(crate) fn MappingList() -> Element {
             }
         }
         (total, filtered)
+    });
+
+    // Document-scoped keyboard listener — mirrors Task 8's
+    // `document::eval` + `window.addEventListener` pattern. Keydown
+    // events are routed through the pure `keyboard::handle_key`
+    // dispatcher; the resulting `Intent` is translated into signal
+    // writes / focus calls. When `LiveCapture.active == true` the
+    // listener early-returns so Phase C's Esc listener wins.
+    let kb_listener_mounted: Signal<bool> = use_signal(|| false);
+    let kb_shutdown_signal: Signal<bool> = use_signal(|| false);
+
+    // Stable `(mode, input)` projection of the visible filtered rows.
+    // Recomputed when `view_state_memo` changes; consumed inside the
+    // listener loop to drive Up/Down navigation through `handle_key`.
+    let nav_rows_memo = use_memo(move || {
+        let snapshot = view_state_memo.read();
+        snapshot
+            .1
+            .iter()
+            .map(|r| (r.mode.clone(), r.input.clone()))
+            .collect::<Vec<(String, InputAddress)>>()
+    });
+
+    let cap_for_kb = use_context::<LiveCapture>();
+    let mut filter_query_writer = filter_query;
+    let mut sel_writer = view.selected_mapping;
+
+    use_effect(move || {
+        let mut mounted = kb_listener_mounted;
+        if *mounted.peek() {
+            return; // already mounted — no re-install on render.
+        }
+        mounted.set(true);
+        let mut sd = kb_shutdown_signal;
+        sd.set(false);
+
+        spawn(async move {
+            let mut handle = document::eval(
+                "const h = (ev) => {\n\
+                   const meta = ev.metaKey ? 1 : 0;\n\
+                   const ctrl = ev.ctrlKey ? 1 : 0;\n\
+                   dioxus.send([ev.key, meta, ctrl]);\n\
+                 };\n\
+                 window.addEventListener('keydown', h, true);\n\
+                 (async () => {\n\
+                   while (true) {\n\
+                     const msg = await dioxus.recv();\n\
+                     if (msg === '__shutdown__') {\n\
+                       window.removeEventListener('keydown', h, true);\n\
+                       dioxus.send(['__ack__', 0, 0]);\n\
+                       return;\n\
+                     }\n\
+                   }\n\
+                 })();\n\
+                 ",
+            );
+
+            loop {
+                if *kb_shutdown_signal.peek() {
+                    let _ = handle.send("__shutdown__".to_owned());
+                    let _ = handle.recv::<(String, u8, u8)>().await;
+                    break;
+                }
+                let Ok((key_str, meta, ctrl)) = handle.recv::<(String, u8, u8)>().await else {
+                    break;
+                };
+                // Coordinate with Phase C — if capture is armed, defer to it.
+                if *cap_for_kb.active.read() {
+                    continue;
+                }
+                let key = match key_str.as_str() {
+                    "ArrowUp" => Key::ArrowUp,
+                    "ArrowDown" => Key::ArrowDown,
+                    "Enter" => Key::Enter,
+                    "Escape" => Key::Escape,
+                    "f" | "F" if meta == 1 || ctrl == 1 => Key::FilterShortcut,
+                    _ => continue,
+                };
+                let nav_rows = nav_rows_memo.read().clone();
+                let visible_pairs: Vec<&(String, InputAddress)> = nav_rows.iter().collect();
+                let sel_snapshot = sel_writer.peek().clone();
+                let sel_view: Option<(&str, &InputAddress)> =
+                    sel_snapshot.as_ref().map(|(m, i)| (m.as_str(), i));
+                let state = State {
+                    visible_rows: &visible_pairs,
+                    selected: sel_view,
+                    capture_armed: *cap_for_kb.active.read(),
+                    filter_focused: *filter_focused.read(),
+                    filter_query_empty: filter_query_writer.peek().trim().is_empty(),
+                };
+                match handle_key(key, state) {
+                    Intent::Select((m, i)) => sel_writer.set(Some((m, i))),
+                    Intent::FocusEditor => {
+                        spawn(async move {
+                            let mut h2 = document::eval(
+                                "var el = document.querySelector('[data-editor-focus]'); \
+                                 if (el) el.focus(); dioxus.send(true);",
+                            );
+                            let _ = h2.recv::<bool>().await;
+                        });
+                    }
+                    Intent::FocusFilter => {
+                        spawn(async move {
+                            let mut h2 = document::eval(
+                                "var el = document.querySelector('.if-rail__filter input'); \
+                                 if (el) el.focus(); dioxus.send(true);",
+                            );
+                            let _ = h2.recv::<bool>().await;
+                        });
+                    }
+                    Intent::ClearFilter => filter_query_writer.set(String::new()),
+                    Intent::NoOp => {}
+                }
+            }
+
+            let mut mounted = kb_listener_mounted;
+            mounted.set(false);
+        });
     });
 
     let (total, rows) = {
