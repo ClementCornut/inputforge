@@ -600,3 +600,186 @@ fn duplicate_click_arms_live_capture() {
         "Duplicate flow's start.call must arm LiveCapture; got: {html}",
     );
 }
+
+#[test]
+fn empty_zero_mappings_renders_full_anatomy() {
+    use crate::frame::mapping_list::empty::EmptyZeroMappings;
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        rsx! {
+            EmptyZeroMappings { on_start_capture: move |()| {} }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(html.contains("No mappings yet"), "title missing: {html}");
+    assert!(
+        html.contains("Pick an input on a device") || html.contains("name one first"),
+        "helper text missing: {html}",
+    );
+    assert!(
+        html.contains("+ Add mapping"),
+        "primary button missing: {html}"
+    );
+    assert!(
+        html.contains("if-rail-empty"),
+        "rail-empty container class missing: {html}"
+    );
+}
+
+#[test]
+fn empty_zero_filter_results_renders_full_anatomy() {
+    use crate::frame::mapping_list::empty::EmptyZeroFilterResults;
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        rsx! {
+            EmptyZeroFilterResults {
+                query: "ailerons".to_owned(),
+                on_clear: move |()| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("ailerons"),
+        "title must quote the filter query: {html}"
+    );
+    assert!(
+        html.contains("Filter searches name and source label."),
+        "exact helper text per spec missing: {html}",
+    );
+    assert!(
+        html.contains("Clear filter"),
+        "Clear filter ghost-link missing: {html}"
+    );
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "seeded-snapshot SSR test inlines a 4-mapping fixture covering MapToVJoy, \
+              MergeAxis, Conditional, and resting Button — splitting it into helpers \
+              hurts readability for a test whose value is the whole assembled fixture."
+)]
+fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
+    use inputforge_core::action::{Action, Condition, Mapping};
+    use inputforge_core::mode::ModeTree;
+    use inputforge_core::profile::Profile;
+    use inputforge_core::state::AppState;
+    use inputforge_core::types::{
+        DeviceId, InputAddress, InputId, MergeOp, OutputAddress, OutputId, VJoyAxis,
+    };
+    use std::collections::HashMap;
+
+    fn TestComponent() -> Element {
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let mappings = vec![
+            Mapping {
+                input: InputAddress {
+                    device: DeviceId("dev".to_owned()),
+                    input: InputId::Axis { index: 0 },
+                },
+                mode: "Default".to_owned(),
+                name: Some("Throttle".to_owned()),
+                actions: vec![Action::MapToVJoy {
+                    output: OutputAddress {
+                        device: 1,
+                        output: OutputId::Axis { id: VJoyAxis::X },
+                    },
+                }],
+            },
+            Mapping {
+                input: InputAddress {
+                    device: DeviceId("dev".to_owned()),
+                    input: InputId::Axis { index: 1 },
+                },
+                mode: "Default".to_owned(),
+                name: Some("Yaw".to_owned()),
+                actions: vec![Action::MergeAxis {
+                    second_input: InputAddress {
+                        device: DeviceId("dev".to_owned()),
+                        input: InputId::Axis { index: 2 },
+                    },
+                    operation: MergeOp::Average,
+                }],
+            },
+            Mapping {
+                input: InputAddress {
+                    device: DeviceId("dev".to_owned()),
+                    input: InputId::Axis { index: 3 },
+                },
+                mode: "Default".to_owned(),
+                name: Some("Pitch".to_owned()),
+                actions: vec![Action::Conditional {
+                    condition: Condition::ButtonPressed {
+                        input: InputAddress {
+                            device: DeviceId("dev".to_owned()),
+                            input: InputId::Button { index: 5 },
+                        },
+                    },
+                    if_true: vec![],
+                    if_false: None,
+                }],
+            },
+            Mapping {
+                input: InputAddress {
+                    device: DeviceId("dev".to_owned()),
+                    input: InputId::Button { index: 0 },
+                },
+                mode: "Default".to_owned(),
+                name: Some("Boost".to_owned()),
+                actions: vec![],
+            },
+        ];
+
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+
+        provide_minimal_contexts();
+        let ctx_app = use_context::<AppContext>();
+        let mut cfg_signal = ctx_app.config;
+        let mut meta_signal = ctx_app.meta;
+        use_hook(move || {
+            cfg_signal.set(ConfigSnapshot::from_state(&state));
+            meta_signal.set(MetaSnapshot::from_state(&state));
+        });
+
+        rsx! { MappingList {} }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    let axes_pos = html.find("AXES").expect("AXES header missing");
+    let buttons_pos = html.find("BUTTONS").expect("BUTTONS header missing");
+    assert!(axes_pos < buttons_pos, "AXES must render before BUTTONS");
+
+    assert!(html.contains("Throttle"));
+    assert!(html.contains("Yaw"));
+    assert!(html.contains("Pitch"));
+    assert!(html.contains("Boost"));
+
+    assert!(
+        html.contains("glyph-merge"),
+        "MergeAxis row must render gold + glyph"
+    );
+    assert!(
+        html.contains("glyph-cond"),
+        "Conditional row must render violet glyph"
+    );
+}
