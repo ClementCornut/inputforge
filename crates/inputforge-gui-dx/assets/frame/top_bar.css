@@ -289,7 +289,14 @@
        elastically resizing the tab. `min-width: 0` is required so the
        flex parent permits the tab to shrink below its intrinsic
        content width on narrow viewports. The native `title` attribute
-       on the per-tab button surfaces the full name on hover. */
+       on the per-tab button surfaces the full name on hover.
+       `flex-shrink: 0` is the load-bearing rule for the tablist's
+       horizontal scrollbar: without it, flex-default shrinking
+       compresses tabs to fit the viewport and the parent never reports
+       overflow, so `overflow-x: auto` never spawns a scrollbar. With
+       shrink disabled, tabs hold their max-width and the parent
+       overflows, producing the scrollbar the user actually sees. */
+    flex-shrink: 0;
     max-width: 14rem;
     white-space: nowrap;
     overflow: hidden;
