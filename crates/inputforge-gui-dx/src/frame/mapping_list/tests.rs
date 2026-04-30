@@ -56,3 +56,123 @@ fn mapping_list_mounts_with_rail_class() {
         "MappingList should render the .if-rail container; got: {html}",
     );
 }
+
+#[test]
+fn row_renders_name_and_source_line() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::frame::mapping_list::row::Row;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let summary = MappingSummary {
+            input: InputAddress {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Boost".to_owned()),
+            glyphs: GlyphFlags::default(),
+        };
+        let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
+        rsx! {
+            Row {
+                summary: summary,
+                is_active: false,
+                renaming: renaming,
+                on_open_menu: move |_: (InputAddress, f64, f64)| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(html.contains("Boost"), "name must render: {html}");
+    assert!(html.contains("Btn 1"), "source line must render: {html}");
+    assert!(html.contains("if-row"), "row root class missing: {html}");
+}
+
+#[test]
+fn row_active_class_when_selected() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::frame::mapping_list::row::Row;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let summary = MappingSummary {
+            input: InputAddress {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Boost".to_owned()),
+            glyphs: GlyphFlags::default(),
+        };
+        let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
+        rsx! {
+            Row {
+                summary: summary,
+                is_active: true,
+                renaming: renaming,
+                on_open_menu: move |_: (InputAddress, f64, f64)| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("is-active"),
+        "active row must carry is-active class: {html}"
+    );
+}
+
+#[test]
+fn row_glyphs_render_for_merge_and_conditional() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::frame::mapping_list::row::Row;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let summary = MappingSummary {
+            input: InputAddress {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Axis { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Throttle".to_owned()),
+            glyphs: GlyphFlags {
+                merge_secondary: Some(InputAddress {
+                    device: DeviceId("dev".to_owned()),
+                    input: InputId::Axis { index: 1 },
+                }),
+                first_input_predicate: Some(InputAddress {
+                    device: DeviceId("dev".to_owned()),
+                    input: InputId::Button { index: 3 },
+                }),
+            },
+        };
+        let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
+        rsx! {
+            Row {
+                summary: summary,
+                is_active: false,
+                renaming: renaming,
+                on_open_menu: move |_: (InputAddress, f64, f64)| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("glyph-merge"),
+        "merge glyph class must render: {html}"
+    );
+    assert!(
+        html.contains("glyph-cond"),
+        "conditional glyph class must render: {html}"
+    );
+}
