@@ -4,10 +4,17 @@
 
 ## Build
 
-- [ ] `cargo build` (egui default): record exit code + warning delta vs F6 baseline.
-- [ ] `cargo build --no-default-features --features gui-dioxus -p inputforge-app`: record exit code.
-- [ ] `cargo test --workspace --all-features`: PASS, record engine + GUI test counts.
-- [ ] `cargo clippy --all-targets -- -D warnings`: clean.
+Verified 2026-04-30.
+
+- [x] `cargo build` (egui default): **PASS** (exit 0, 0 warnings).
+- [x] `cargo build --no-default-features --features gui-dioxus -p inputforge-app`: **PASS** (exit 0, 0 warnings).
+- [x] Workspace tests (split because `gui-egui` and `gui-dioxus` are mutually exclusive, so `--all-features` rejects with `compile_error!`):
+  - `cargo test -p inputforge-core --features test-util`: **596 passed**, 0 failed.
+  - `cargo test -p inputforge-gui-dx`: **90 passed**, 0 failed.
+  - `cargo test -p inputforge-gui`: **135 passed**, 0 failed.
+  - `cargo test -p inputforge-app`: **5 passed**, 0 failed.
+  - **Total: 826 passed, 0 failed.**
+- [x] `cargo clippy --all-targets -- -D warnings`: **clean** (exit 0).
 
 ## Manual sweep
 
