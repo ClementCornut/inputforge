@@ -528,7 +528,12 @@
     gap: var(--space-3);
     margin-top: var(--space-3);
     padding-top: var(--space-3);
-    border-top: 1px solid var(--color-border);
+    /* Seam register — partitions the prose question from the
+       blast-radius readout. --color-border (~1.19:1 on bg-elevated)
+       reads invisible; --color-border-strong (~1.74:1) actually
+       carries the divide. Same register correction as the dialog
+       footer divider. */
+    border-top: 1px solid var(--color-border-strong);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     font-weight: var(--weight-regular);

@@ -141,7 +141,14 @@
   align-items: center;
   gap: var(--space-2);
   padding-top: var(--space-4);
-  border-top: 1px solid var(--color-border);
+  /* Seam register, not hairline. The panel's outer border (line 68)
+     uses --color-border-strong; this footer divider partitions the
+     action band off the body, so it shares that seam role. The
+     hairline --color-border value resolves to ~1.19:1 against
+     bg-elevated (below the 3:1 non-text floor) and reads as
+     invisible — strong sits at ~1.74:1 and actually carries the
+     partition. */
+  border-top: 1px solid var(--color-border-strong);
   /* Pull the divider flush with the panel padding by extending
        horizontally. Negative margins are intentional here; the panel
        padding then "comes back" via padding-top above. */
