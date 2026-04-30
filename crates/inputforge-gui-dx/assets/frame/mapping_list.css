@@ -1,6 +1,267 @@
 /* F8 mapping list (left rail). Tokens-only — no raw color literals.
- * See DESIGN.md for token catalog. */
+ * See DESIGN.md for token catalog.
+ *
+ * Token substitutions (design plan vs actual token catalog in
+ * assets/tokens/colors.css + elevation.css):
+ *   --color-surface-1       -> --color-bg            (canonical surface)
+ *   --color-surface-2       -> --color-bg-elevated   (elevated surface)
+ *   --color-surface-hover   -> --color-border        (top_bar hover idiom)
+ *   --color-border-subtle   -> --color-border        (the regular border;
+ *                                                    border-strong is the
+ *                                                    "strong" tier)
+ *   --color-focus-cyan      -> --color-border-focus  (cockpit cyan-blue ring)
+ *   --color-focus-ring      -> --color-border-focus  (canonical focus ring)
+ *   --color-danger          -> --color-error         (error in this catalog)
+ *   --shadow-lg             -> --shadow-3            (genuine floating
+ *                                                    overlay shadow tier) */
 
 .if-rail {
-    /* placeholder — Task 26 fills in full styling */
+    width: 280px;
+    flex-shrink: 0;
+    height: 100%;
+    overflow-y: auto;
+    background: var(--color-bg);
+    border-right: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+}
+
+.if-rail__filter {
+    padding: var(--space-2) var(--space-3);
+    /* substituted --color-border for missing --color-border-subtle */
+    border-bottom: 1px solid var(--color-border);
+}
+
+.if-rail__group {
+    margin-bottom: var(--space-2);
+}
+
+.if-rail__group-header {
+    padding: var(--space-2) var(--space-3) var(--space-1);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+}
+
+.if-row {
+    padding: var(--space-2) var(--space-3);
+    border-left: 3px solid transparent;
+    cursor: pointer;
+    user-select: none;
+}
+
+.if-row:hover {
+    /* substituted --color-border for missing --color-surface-hover */
+    background: var(--color-border);
+}
+
+.if-row.is-active {
+    /* substituted --color-border-focus for missing --color-focus-cyan */
+    border-left-color: var(--color-border-focus);
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.if-row__name {
+    font-size: 12px;
+    color: var(--color-text);
+    line-height: 1.3;
+}
+
+.if-row__name--unnamed {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+.if-row__source {
+    font-size: 10px;
+    color: var(--color-text-muted);
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.glyph-merge {
+    color: var(--color-output);
+    margin: 0 var(--space-1);
+}
+
+.glyph-cond {
+    color: var(--color-control-badge-text);
+    margin: 0 var(--space-1);
+}
+
+.if-rail-empty {
+    padding: var(--space-4) var(--space-3);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    align-items: center;
+}
+
+.if-rail-empty__title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.if-rail-empty__helper {
+    font-size: 12px;
+    color: var(--color-text-muted);
+}
+
+.if-rail-empty .muted {
+    color: var(--color-text-muted);
+}
+
+.if-add-inline {
+    margin: var(--space-2) var(--space-3);
+}
+
+.if-add-inline__dashed-row {
+    width: 100%;
+    border: 1px dashed var(--color-border);
+    background: transparent;
+    color: var(--color-text-muted);
+    padding: var(--space-2);
+    cursor: pointer;
+}
+
+.if-add-inline__dashed-row:hover {
+    /* substituted --color-border for missing --color-surface-hover */
+    background: var(--color-border);
+}
+
+.if-add-inline__pad {
+    /* substituted --color-bg-elevated for missing --color-surface-2 */
+    background: var(--color-bg-elevated);
+    /* substituted --color-border-focus for missing --color-focus-cyan */
+    border: 1px solid var(--color-border-focus);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    text-align: center;
+    font-size: 12px;
+}
+
+.if-add-inline__pad--disarmed {
+    border-color: var(--color-border);
+    color: var(--color-text-muted);
+}
+
+.if-add-inline--captured {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-focus);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.if-add-inline--captured input {
+    font-size: 12px;
+    background: var(--color-bg);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-2);
+}
+
+.if-add-inline--collision {
+    background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+    border: 1px solid var(--color-warning);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.if-add-inline__collision-text {
+    font-size: 12px;
+    color: var(--color-text);
+}
+
+.if-row-rename {
+    font-size: 12px;
+    background: var(--color-bg);
+    color: var(--color-text);
+    /* substituted --color-border-focus for missing --color-focus-cyan */
+    border: 1px solid var(--color-border-focus);
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-2);
+    width: 100%;
+}
+
+.if-row:focus-visible,
+.if-rail__filter input:focus-visible,
+.if-row-rename:focus-visible,
+.if-add-inline--captured input:focus-visible {
+    /* substituted --color-border-focus for missing --color-focus-ring */
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 1px;
+}
+
+.if-row-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+}
+
+.if-row-menu {
+    z-index: 101;
+    /* substituted --color-bg-elevated for missing --color-surface-2 */
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    /* substituted --shadow-3 for missing --shadow-lg
+       (genuine floating-overlay shadow tier per elevation.css) */
+    box-shadow: var(--shadow-3);
+    min-width: 180px;
+    padding: var(--space-1) 0;
+}
+
+.if-row-menu__item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    padding: var(--space-2) var(--space-3);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.if-row-menu__item:hover {
+    /* substituted --color-border for missing --color-surface-hover */
+    background: var(--color-border);
+}
+
+.if-row-menu__item--danger {
+    /* substituted --color-error for missing --color-danger */
+    color: var(--color-error);
+}
+
+.if-row-menu__item--submenu-host {
+    position: relative;
+}
+
+.if-row-menu__submenu {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 100%;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-3);
+    min-width: 160px;
+}
+
+.if-row-menu__item--submenu-host:hover .if-row-menu__submenu,
+.if-row-menu__item--submenu-host:focus-within .if-row-menu__submenu {
+    display: block;
 }
