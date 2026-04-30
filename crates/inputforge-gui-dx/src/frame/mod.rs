@@ -2,12 +2,18 @@
 
 mod banner;
 mod layout;
+mod mapping_list;
 mod panel_slot;
 mod status_bar;
 mod top_bar;
 mod view_state;
 
 pub(crate) use layout::Layout;
+#[allow(
+    unused_imports,
+    reason = "Task 23 wires MappingList into frame::layout; until then the re-export is dormant."
+)]
+pub(crate) use mapping_list::MappingList;
 // `PanelSlot` and `ViewState` are not re-exported here — every consumer
 // imports them directly via `crate::frame::view_state::*` so a single
 // path style stays consistent across regions.
