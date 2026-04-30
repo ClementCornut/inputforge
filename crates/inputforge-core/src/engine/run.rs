@@ -718,6 +718,9 @@ impl Engine {
                     "RestoreSnapshot complete"
                 );
             }
+
+            // Task 3 wires the real handler logic for RemoveMapping.
+            EngineCommand::RemoveMapping { .. } => {}
         }
         Ok(())
     }

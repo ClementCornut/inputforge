@@ -38,6 +38,10 @@ pub enum EngineCommand {
         actions: Vec<Action>,
     },
 
+    /// Remove the mapping for `(input, mode)`. No-op if no such mapping
+    /// exists; the engine handler skips persistence on that fast path.
+    RemoveMapping { input: InputAddress, mode: String },
+
     /// Force the engine into the named mode and pause mode-change rules.
     ///
     /// Idempotent on the same mode (per design decision D15); rotates the
@@ -169,5 +173,25 @@ mod tests {
         };
         assert_eq!(a, b, "PartialEq must hold across the new variants");
         let _: String = format!("{a:?}");
+    }
+
+    #[test]
+    fn remove_mapping_variant_debug_and_partialeq() {
+        use crate::types::{DeviceId, InputId};
+
+        let input = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 3 },
+        };
+        let a = EngineCommand::RemoveMapping {
+            input: input.clone(),
+            mode: "Default".to_owned(),
+        };
+        let b = EngineCommand::RemoveMapping {
+            input: input.clone(),
+            mode: "Default".to_owned(),
+        };
+        assert_eq!(a, b, "PartialEq must hold across the new variant");
+        assert!(format!("{a:?}").contains("RemoveMapping"));
     }
 }
