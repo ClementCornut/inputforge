@@ -29,20 +29,14 @@ pub(crate) fn Row(
     let view = use_context::<ViewState>();
 
     // Rename branch — when this row's input matches the parent's
-    // rename selector, swap the resting row out for the inline editor.
-    // Early-return short-circuits all the resting-state setup below.
+    // rename selector, swap the name area for the inline editor while
+    // keeping the source line and glyphs in place. The source line is
+    // the user's only handle on which row they are renaming, so it must
+    // stay visible during the rename.
     let is_renaming = renaming
         .read()
         .as_ref()
         .is_some_and(|a| a == &summary.input);
-    if is_renaming {
-        return rsx! {
-            crate::frame::mapping_list::rename_inline::RenameInline {
-                summary: summary.clone(),
-                state: renaming,
-            }
-        };
-    }
 
     let source_text = source_label::format(&summary.input, &ctx.config.read());
 
@@ -89,11 +83,18 @@ pub(crate) fn Row(
             tabindex: if is_active { "0" } else { "-1" },
             onclick,
             oncontextmenu,
-            div { class: "if-row__name",
-                if let Some(name) = &summary.name {
-                    "{name}"
-                } else {
-                    em { class: "if-row__name--unnamed", "(unnamed)" }
+            if is_renaming {
+                crate::frame::mapping_list::rename_inline::RenameInline {
+                    summary: summary.clone(),
+                    state: renaming,
+                }
+            } else {
+                div { class: "if-row__name",
+                    if let Some(name) = &summary.name {
+                        "{name}"
+                    } else {
+                        em { class: "if-row__name--unnamed", "(unnamed)" }
+                    }
                 }
             }
             div { class: "if-row__source",

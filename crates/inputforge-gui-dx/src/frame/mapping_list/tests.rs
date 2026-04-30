@@ -250,6 +250,14 @@ fn row_swaps_in_rename_inline_when_renaming_matches_input() {
         !html.contains("if-row__name\""),
         "Row must NOT render the resting name div while renaming: {html}",
     );
+    assert!(
+        html.contains("if-row__source"),
+        "Row must STILL render the source line during rename so the user keeps a handle on which row they are editing: {html}",
+    );
+    assert!(
+        html.contains("Btn 1"),
+        "Source-label text must remain visible during rename: {html}",
+    );
 }
 
 #[test]
