@@ -15,6 +15,25 @@
     height: 100%;
 }
 
+/* Sub-pixel DPR guard — at fractional Windows scaling (1.25 / 1.5 / 1.75)
+   the 1px CSS border-bottom can resolve to a partial device pixel and
+   render thin or fuzzy. Range syntax `(resolution < 2dppx)` is required
+   here: the colon-form `(resolution: < 2dppx)` parses as an equality
+   comparison against a malformed value and silently never matches —
+   button.css:37 and icon-button.css:55 carry the same latent bug.
+   At low DPR, escalate to a box-shadow so the seam paints as a
+   guaranteed device pixel. The border-color fades to transparent to
+   avoid double-painting; the layout 1px stays so the bar's height
+   accounting is unchanged. */
+@media (resolution < 2dppx) {
+    .if-top-bar {
+        border-bottom-color: transparent;
+        box-shadow:
+            var(--shadow-1),
+            0 1px 0 var(--color-border-strong);
+    }
+}
+
 /* Structural seam between the context zone (engine pill + profile name)
    and the editing zone (mode tabs). Full bar height + border-strong
    background makes it read as a cockpit-panel seam rather than a
@@ -44,6 +63,12 @@
     align-items: center;
     gap: 0.375rem;
     padding: 0.125rem 0.625rem;
+    /* WCAG 2.5.8 — interactive controls clear a 24×24 CSS-pixel hit
+       area. The capsule's `0.125rem` vertical padding produces ~19px
+       at 12px label height; min-height absorbs the gap without
+       altering the documented `0.625rem` horizontal capsule
+       proportions or the centered-baseline dot positioning. */
+    min-height: 24px;
     border-radius: var(--radius-full);
     border: 1px solid var(--color-border);
     background: transparent;
@@ -211,6 +236,12 @@
     border: 1px solid transparent;
     color: var(--color-text-muted);
     padding: var(--space-1) 0.625rem;
+    /* WCAG 2.5.8 — at `--space-1` (4px) vertical padding the chip
+       reads ~23px tall, one pixel below the 24×24 minimum. min-height
+       lifts the hit area without changing the resting padding rhythm
+       or the aria-pressed latched-on visual (which still anchors to
+       the existing padding box). */
+    min-height: 24px;
     font-size: var(--text-sm);
     font-weight: var(--weight-medium);
     border-radius: var(--radius-sm);
