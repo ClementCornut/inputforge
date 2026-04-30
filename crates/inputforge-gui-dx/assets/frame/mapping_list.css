@@ -135,23 +135,10 @@
     background: var(--color-border);
 }
 
-.if-add-inline__pad {
-    /* substituted --color-bg-elevated for missing --color-surface-2 */
-    background: var(--color-bg-elevated);
-    /* substituted --color-border-focus for missing --color-focus-cyan */
-    border: 1px solid var(--color-border-focus);
-    padding: var(--space-2);
-    border-radius: var(--radius-sm);
-    text-align: center;
-    font-size: 12px;
-}
-
-.if-add-inline__pad--disarmed {
-    border-color: var(--color-border);
-    color: var(--color-text-muted);
-}
-
-.if-add-inline--captured {
+/* Unified pad shell — single container that hosts both the Capturing
+ * and Captured phases. Phase flips never remount this shell so the
+ * typed name and focus position carry through. */
+.if-add-inline--pad {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border-focus);
     border-radius: var(--radius-sm);
@@ -161,7 +148,7 @@
     gap: var(--space-2);
 }
 
-.if-add-inline--captured input {
+.if-add-inline--pad input {
     font-size: 12px;
     background: var(--color-bg);
     color: var(--color-text);
@@ -170,8 +157,8 @@
     padding: var(--space-1) var(--space-2);
 }
 
-/* Captured-pad readout row: input-identity chip (left, fixed-width) +
- * device name (flex-grows + truncates) + recapture icon-button (right,
+/* Pad readout row: input-identity chip (left, fixed-width) + device
+ * name (flex-grows + truncates) + recapture icon-button (right,
  * fixed-width). The chip sits in its own layout cell so the input
  * identifier never gets eaten by device-name truncation, and the
  * IconButton has flex: 0 0 auto so it stays inline at any rail width. */
@@ -182,15 +169,21 @@
     min-width: 0;
 }
 
+/* Chip is a flex container in both phases — text is centered when
+ * captured, the listening dot is centered while capturing. min-height
+ * is fixed so the cell does not jitter on phase flips. */
 .if-add-inline__chip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex: 0 0 auto;
     min-width: 32px;
+    min-height: 20px;
     padding: 2px var(--space-1);
     font-family: var(--font-mono);
     font-size: 12px;
     font-weight: 500;
     line-height: 1.15;
-    text-align: center;
     border-radius: var(--radius-sm);
     border: 1px solid currentColor;
     background: color-mix(in srgb, currentColor 14%, transparent);
@@ -200,6 +193,37 @@
 .if-add-inline__chip[data-kind="axis"]   { color: var(--color-output); }
 .if-add-inline__chip[data-kind="button"] { color: var(--color-control-badge-text); }
 .if-add-inline__chip[data-kind="hat"]    { color: var(--color-processing); }
+
+/* Listening modifier (Capturing phase): neutral chip with a phosphor
+ * dot pulsing inside. Reuses --color-live, the system's universal
+ * "this surface is listening" signal (engine status pill, etc.). The
+ * chip itself stays neutral — taxonomy hue commits only on capture. */
+.if-add-inline__chip--listening {
+    color: var(--color-text-muted);
+    background: var(--color-bg-sunken);
+    border-color: var(--color-border-strong);
+}
+
+.if-add-inline__chip--listening::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-live);
+    animation: if-add-pulse-dot 1100ms ease-in-out infinite;
+}
+
+@keyframes if-add-pulse-dot {
+    0%, 100% { opacity: 0.45; }
+    50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .if-add-inline__chip--listening::before {
+        animation: none;
+        opacity: 0.85;
+    }
+}
 
 .if-add-inline__device {
     flex: 1 1 auto;

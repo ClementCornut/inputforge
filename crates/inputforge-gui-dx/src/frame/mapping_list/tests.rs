@@ -383,12 +383,17 @@ fn add_inline_force_expanded_arms_capture() {
     // SSR rebuild_in_place re-creates the ROOT scope each time, so we can't
     // observe `cap.active` flipping in a parent scope across rebuilds (each
     // rebuild gets a fresh LiveCapture context). We instead assert that the
-    // AddInline child rendered the `--armed` modifier, which is only emitted
-    // when the state machine transitioned to `CapturingArmed` AND the
-    // `cap.start` callback was invoked from the same use_hook on first mount.
+    // AddInline child rendered the unified `--pad` modifier AND the chip's
+    // `--listening` modifier, which is only emitted when the state machine
+    // transitioned to `Pad { phase: Capturing }` AND the `cap.start`
+    // callback was invoked from the same use_hook on first mount.
     assert!(
-        html.contains("if-add-inline--armed"),
-        "force_expanded=true must arm capture (state machine -> CapturingArmed); got: {html}",
+        html.contains("if-add-inline--pad"),
+        "force_expanded=true must mount the pad shell; got: {html}",
+    );
+    assert!(
+        html.contains("if-add-inline__chip--listening"),
+        "Capturing phase must render the listening chip modifier; got: {html}",
     );
     assert!(
         html.contains("Press an input on any device"),

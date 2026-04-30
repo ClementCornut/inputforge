@@ -7,21 +7,32 @@
 //!   Resting
 //!     | click dashed row | force_expanded rising edge
 //!     v
-//!   CapturingArmed  ----- cap.captured fires ------> Captured | Collision
-//!     |                                                      |       |
-//!     | cap.active flips false externally                    |       |
-//!     v                                                      |       |
-//!   CapturingDisarmed                                         |       |
-//!     | click pad to re-arm -> CapturingArmed                |       |
-//!     | Esc                                                   |       |
-//!     v                                                      v       v
-//!                                                          Resting <- Esc/Cancel/Add
+//!   Pad { phase: Capturing }
+//!     |  ^                                       cap.captured fires
+//!     |  |  refresh-icon click (re-arm,            |
+//!     |  |  keep typed name)                       |   collision in active mode
+//!     |  |                                         v   |
+//!     |  └──────────────────────── Pad { phase: Captured(addr) } ──┐
+//!     |                                            |               |
+//!     | Esc / cap.cancel external                  | Esc / Cancel  | (no collision)
+//!     | (closes pad outright)                      | / Add commit  |
+//!     v                                            v               v
+//!                                              Resting          Collision
+//!                                                  ^               |
+//!                                                  └── Esc / Cancel / Edit existing
 //! ```
+//!
+//! `Pad` is a single shell with a `PadPhase` discriminator. The chip cell
+//! shows a listening animation in `Capturing` and the taxonomy-tinted
+//! input identifier in `Captured(addr)`; the refresh icon-button and Add
+//! button are disabled during `Capturing` (no captured input yet). Phase
+//! flips do not remount the shell, so the typed name and focus carry
+//! through.
 //!
 //! Collision drift: every effect tick, the `Collision` arm re-validates
 //! against `cfg.mappings` for the active mode. If the existing mapping is
-//! gone, the state transitions to `Captured` so the user can complete the
-//! add without re-pressing the input.
+//! gone, the state transitions to `Pad { phase: Captured(addr) }` so the
+//! user can complete the add without re-pressing the input.
 
 use std::sync::mpsc::Sender;
 
@@ -39,16 +50,33 @@ use crate::patterns::live_capture::{CaptureFilter, LiveCapture};
 
 #[derive(Debug, Clone, PartialEq)]
 enum AddState {
+    /// Pad collapsed; only the dashed `+ Add mapping` row renders.
     Resting,
-    CapturingArmed,
-    CapturingDisarmed,
-    Captured {
-        addr: InputAddress,
-    },
+    /// Pad expanded. The shell (chip, device cell, refresh icon, name
+    /// input, actions row) is identical between phases — only the chip
+    /// cell and the disabled-state of refresh/Add change. Phase flips do
+    /// not remount the shell, so the typed name carries through and
+    /// focus stays put.
+    Pad { phase: PadPhase },
+    /// Capture landed on an input that is already mapped in the active
+    /// mode. Distinct from `Pad` because the action row changes
+    /// semantics (Edit existing / Cancel) and the chip would otherwise
+    /// have to mean two different things ("what you captured" vs "what
+    /// was already there").
     Collision {
         existing_name: String,
         existing: InputAddress,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum PadPhase {
+    /// `LiveCapture` is armed. Chip shows the listening animation; refresh
+    /// icon and Add button are disabled (no captured input yet).
+    Capturing,
+    /// `LiveCapture` fired. Chip shows the taxonomy-tinted input
+    /// identifier; refresh and Add are enabled.
+    Captured(InputAddress),
 }
 
 /// Free-function commit path. Keeps the per-arm closures `Fn` (no
@@ -108,16 +136,18 @@ pub(crate) fn AddInline(
     // to set it once per open request.
     //
     // `use_hook` fires synchronously on first render so the initial mount
-    // case (parent passes `Signal::new(true)`) lands in CapturingArmed
+    // case (parent passes `Signal::new(true)`) lands in `Pad { Capturing }`
     // without waiting for an effect tick — this is how the SSR test
-    // `add_inline_force_expanded_arms_capture` observes ARMED status.
+    // `add_inline_force_expanded_arms_capture` observes the listening pad.
     // The `use_effect` below handles subsequent rising edges (parent
     // re-flips false → true after a previous capture cycle closed).
     use_hook(|| {
         let mut force = force_expanded;
         if *force.peek() {
             let mut state = state;
-            state.set(AddState::CapturingArmed);
+            state.set(AddState::Pad {
+                phase: PadPhase::Capturing,
+            });
             cap.start.call(CaptureFilter::Any);
             force.set(false);
         }
@@ -125,20 +155,27 @@ pub(crate) fn AddInline(
     let mut force_for_effect = force_expanded;
     use_effect(move || {
         if *force_for_effect.read() {
-            state.set(AddState::CapturingArmed);
+            state.set(AddState::Pad {
+                phase: PadPhase::Capturing,
+            });
             cap.start.call(CaptureFilter::Any);
             force_for_effect.set(false);
         }
     });
 
-    // Watch `cap.captured` — when capture lands, transition to Captured
-    // or Collision based on whether the address is already mapped in the
-    // active editing mode.
+    // Watch `cap.captured` — when capture lands, transition the pad's
+    // phase to `Captured(addr)`, or transition the whole state to
+    // `Collision` if the address is already mapped in the active mode.
     let editing_for_cap = view.editing_mode;
     let ctx_for_cap = ctx.clone();
     use_effect(move || {
         let captured_now = cap.captured.read().clone();
-        if *state.peek() != AddState::CapturingArmed {
+        if !matches!(
+            *state.peek(),
+            AddState::Pad {
+                phase: PadPhase::Capturing,
+            }
+        ) {
             return;
         }
         let Some(addr) = captured_now else {
@@ -158,28 +195,46 @@ pub(crate) fn AddInline(
                     .unwrap_or_else(|| "(unnamed)".to_owned()),
                 existing: existing.input.clone(),
             },
-            None => AddState::Captured { addr: addr.clone() },
+            None => AddState::Pad {
+                phase: PadPhase::Captured(addr.clone()),
+            },
         };
         drop(cfg);
         cap.cancel.call(());
         state.set(next_state);
     });
 
-    // Watch `cap.active` flipping false externally (Esc handled by the
-    // primitive's document-level listener, or `cancel` invoked elsewhere)
-    // — transition Armed -> Disarmed.
+    // External-cancel watcher: when `cap.active` flips false while we are
+    // in `Pad { Capturing }` AND no input was captured (i.e., LiveCapture
+    // was cancelled externally — its Esc listener fired, or some other
+    // consumer called `cap.cancel`), close the pad outright (per design
+    // choice 2.a — first Esc closes, no Disarmed intermediate).
+    //
+    // Distinguishing case: when `cap.captured` is `Some`, the captured-
+    // watcher above is doing the work; this watcher must not race it.
     use_effect(move || {
         if *cap.active.read() {
             return;
         }
-        if *state.peek() == AddState::CapturingArmed {
-            state.set(AddState::CapturingDisarmed);
+        if !matches!(
+            *state.peek(),
+            AddState::Pad {
+                phase: PadPhase::Capturing,
+            }
+        ) {
+            return;
         }
+        if cap.captured.peek().is_some() {
+            return;
+        }
+        state.set(AddState::Resting);
+        name.set(String::new());
     });
 
     // Collision drift: re-validate once per polling tick. If `existing` is
     // no longer in cfg.mappings for the active mode, transition to
-    // Captured so the user can complete the add without re-pressing.
+    // `Pad { Captured(addr) }` so the user can complete the add without
+    // re-pressing.
     let editing_for_drift = view.editing_mode;
     let ctx_for_drift = ctx.clone();
     use_effect(move || {
@@ -193,17 +248,20 @@ pub(crate) fn AddInline(
                 .any(|m| m.input == existing && m.mode == mode_now);
             drop(cfg);
             if !still_present {
-                state.set(AddState::Captured { addr: existing });
+                state.set(AddState::Pad {
+                    phase: PadPhase::Captured(existing),
+                });
             }
         }
     });
 
     // Document-level Esc listener that closes the pad whenever LiveCapture
-    // is NOT active. While `cap.active == true`, LiveCapture's own Esc
-    // listener (Task 8) owns the key and routes Armed → Disarmed; this
-    // listener stays out of the way. While `cap.active == false`
-    // (Captured / Disarmed / Collision), Esc closes the pad to Resting
-    // and clears the typed name.
+    // is NOT active. While `cap.active == true` (Pad { Capturing }),
+    // LiveCapture's own Esc listener (Task 8) owns the key and fires
+    // `cap.cancel`; the external-cancel watcher above then closes the
+    // pad. This listener handles the cap.active==false cases (Pad with
+    // Captured phase / Collision), where Esc closes the pad and clears
+    // the typed name.
     //
     // The JS handler short-circuits if the keystroke originated inside the
     // rail's filter input so Task 22's filter-Esc-clears-query routing
@@ -262,7 +320,9 @@ pub(crate) fn AddInline(
                     r#type: "button",
                     class: "if-add-inline__dashed-row",
                     onclick: move |_| {
-                        state.set(AddState::CapturingArmed);
+                        state.set(AddState::Pad {
+                            phase: PadPhase::Capturing,
+                        });
                         cap.start.call(CaptureFilter::Any);
                     },
                     "aria-label": "Add mapping",
@@ -270,69 +330,57 @@ pub(crate) fn AddInline(
                 }
             }
         },
-        AddState::CapturingArmed => rsx! {
-            div { class: "if-add-inline if-add-inline--armed",
-                div { class: "if-add-inline__pad",
-                    "Press an input on any device..."
-                }
-                TextInput {
-                    value: ReadSignal::from(name),
-                    size: InputSize::Sm,
-                    placeholder: "Mapping name (optional)".to_owned(),
-                    oninput: move |evt: FormEvent| name.set(evt.value()),
-                }
-            }
-        },
-        AddState::CapturingDisarmed => rsx! {
-            div {
-                class: "if-add-inline if-add-inline--disarmed",
-                // Esc handled by AddInline's document-level listener.
-                button {
-                    r#type: "button",
-                    class: "if-add-inline__pad if-add-inline__pad--disarmed",
-                    onclick: move |_| {
-                        state.set(AddState::CapturingArmed);
-                        cap.start.call(CaptureFilter::Any);
-                    },
-                    "Cancelled - click to capture again"
-                }
-                TextInput {
-                    value: ReadSignal::from(name),
-                    size: InputSize::Sm,
-                    placeholder: "Mapping name (optional)".to_owned(),
-                    oninput: move |evt: FormEvent| name.set(evt.value()),
-                }
-            }
-        },
-        AddState::Captured { addr } => {
-            let addr_for_enter = addr.clone();
-            let addr_for_btn = addr.clone();
+        AddState::Pad { phase } => {
+            // Compute phase-dependent content up-front so the rsx body is
+            // a single shell (no nested conditional that would reshape the
+            // DOM and reset focus / animation timing).
+            let captured_addr: Option<InputAddress> = match &phase {
+                PadPhase::Capturing => None,
+                PadPhase::Captured(addr) => Some(addr.clone()),
+            };
+            let is_capturing = captured_addr.is_none();
+
+            let cfg = ctx.config.read();
+            let (chip_label, device_label, kind_class): (String, String, &'static str) =
+                if let Some(addr) = &captured_addr {
+                    let (device, input) = source_label::split_label(addr, &cfg);
+                    let kind = match addr.input {
+                        InputId::Axis { .. } => "axis",
+                        InputId::Button { .. } => "button",
+                        InputId::Hat { .. } => "hat",
+                    };
+                    (input, device, kind)
+                } else {
+                    (
+                        String::new(),
+                        "Press an input on any device\u{2026}".to_owned(),
+                        "",
+                    )
+                };
+            drop(cfg);
+
+            // Closures need owned captures; clone once per arm (Captured
+            // phase only — Capturing's clones are unused but cheap).
+            let addr_for_enter = captured_addr.clone();
+            let addr_for_btn = captured_addr.clone();
             let view_for_enter = view;
             let view_for_btn = view;
             let cmd_for_enter = ctx.commands.clone();
             let cmd_for_btn = ctx.commands.clone();
-            let cfg = ctx.config.read();
-            let (device_label, input_label) = source_label::split_label(&addr, &cfg);
-            drop(cfg);
-            // The chip's hue classifies the captured input by kind, sharing
-            // the gold/violet/teal vocabulary already used for F8 row glyphs
-            // (`glyph-merge`, `glyph-cond`). Selector key is `data-kind`.
-            let kind_class = match addr.input {
-                InputId::Axis { .. } => "axis",
-                InputId::Button { .. } => "button",
-                InputId::Hat { .. } => "hat",
-            };
+
             rsx! {
                 div {
-                    class: "if-add-inline if-add-inline--captured",
+                    class: "if-add-inline if-add-inline--pad",
                     onkeydown: move |evt: KeyboardEvent| {
-                        // Esc is handled by AddInline's document-level
-                        // listener above; only Enter (commit) lives here.
-                        if evt.key() == Key::Enter {
+                        // Enter commits when an input has been captured.
+                        // Esc is handled by the document-level listener.
+                        if evt.key() == Key::Enter
+                            && let Some(addr) = &addr_for_enter
+                        {
                             evt.prevent_default();
                             let n = name.read().clone();
                             dispatch_add_helper(
-                                addr_for_enter.clone(),
+                                addr.clone(),
                                 &n,
                                 view_for_enter,
                                 &cmd_for_enter,
@@ -342,10 +390,19 @@ pub(crate) fn AddInline(
                         }
                     },
                     div { class: "if-add-inline__readout",
-                        span {
-                            class: "if-add-inline__chip",
-                            "data-kind": kind_class,
-                            "{input_label}"
+                        if is_capturing {
+                            // Listening chip: empty box with a phosphor dot
+                            // pulsing inside (CSS @keyframes if-add-pulse-dot).
+                            span {
+                                class: "if-add-inline__chip if-add-inline__chip--listening",
+                                "aria-label": "Listening for input",
+                            }
+                        } else {
+                            span {
+                                class: "if-add-inline__chip",
+                                "data-kind": kind_class,
+                                "{chip_label}"
+                            }
                         }
                         span { class: "if-add-inline__device", "{device_label}" }
                         IconButton {
@@ -353,10 +410,11 @@ pub(crate) fn AddInline(
                             label: "Capture a different input",
                             variant: ButtonVariant::Ghost,
                             size: ButtonSize::Sm,
+                            disabled: is_capturing,
                             onclick: move |_| {
-                                // Re-arm capture; keep the typed name so the user
-                                // does not have to retype after correcting the input.
-                                state.set(AddState::CapturingArmed);
+                                state.set(AddState::Pad {
+                                    phase: PadPhase::Capturing,
+                                });
                                 cap.start.call(CaptureFilter::Any);
                             },
                         }
@@ -380,16 +438,19 @@ pub(crate) fn AddInline(
                         Button {
                             variant: ButtonVariant::Primary,
                             size: ButtonSize::Sm,
+                            disabled: is_capturing,
                             onclick: move |_| {
-                                let n = name.read().clone();
-                                dispatch_add_helper(
-                                    addr_for_btn.clone(),
-                                    &n,
-                                    view_for_btn,
-                                    &cmd_for_btn,
-                                );
-                                state.set(AddState::Resting);
-                                name.set(String::new());
+                                if let Some(addr) = &addr_for_btn {
+                                    let n = name.read().clone();
+                                    dispatch_add_helper(
+                                        addr.clone(),
+                                        &n,
+                                        view_for_btn,
+                                        &cmd_for_btn,
+                                    );
+                                    state.set(AddState::Resting);
+                                    name.set(String::new());
+                                }
                             },
                             "Add"
                         }
