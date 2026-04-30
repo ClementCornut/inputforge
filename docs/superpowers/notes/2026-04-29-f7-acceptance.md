@@ -109,6 +109,7 @@ Captured during the post-review pass; tracked here so next session has a single 
 
 ### Reviewer false positives (no change needed)
 - **§2.1 status-bar class mismatch (plumbing reviewer):** the reviewer flagged `frame/status_bar/mod.rs:42`'s `if-frame-status-bar` class as not matching `layout.css:35`'s `.if-status-bar { flex: 0 0 28px }`. The `StatusBar` primitive at `components/status_bar.rs:24` already composes the base class via `merge_class("if-status-bar", "", class.as_deref())`, so the rendered HTML carries both classes (`class="if-status-bar if-frame-status-bar"`) and the layout's flex rule does apply. The frame's `if-frame-status-bar` namespace is the correct register for frame-level typography overrides on top of the primitive.
+- **§3.9 banner forced-variant contrast (CSS reviewer):** the reviewer asked to verify `--color-warning` on `--color-warning-bg` clears WCAG AA. `colors.css:85` documents it at 6.6× — well above the 4.5× AA floor — so no `--color-warning-badge-text` token is needed (the `--color-control-badge-text` mirror exists only because raw `--color-control` falls below AA on its own tint at 3.7×, a different situation).
 
 ## Risks tracked from the spec
 
