@@ -28,7 +28,7 @@
 }
 
 .if-top-bar__spacer {
-    flex: 1 1 auto;
+    flex: 0 0 var(--space-3);
 }
 
 /* Engine pill — a cockpit readout chip. The 0.625rem horizontal padding
@@ -160,6 +160,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-1);
+    flex-shrink: 0;
 }
 
 /* Tools cluster button — resting reads as muted text on transparent
@@ -222,13 +223,46 @@
    bar's 40px height — they keep the tab labels denser than a generic
    .if-tabs row without breaking the spacing-token convention.
    Transitions use --duration-base + --easing-fast: same lane the
-   canonical primitive uses, sub-200ms synchronous response. */
+   canonical primitive uses, sub-200ms synchronous response.
+   `flex: 1 1 0` absorbs all leftover bar space so the tablist
+   grows to fill — not shrinks to content — keeping the tools cluster
+   pinned at its natural width. `min-width: 0` allows the flex item
+   to shrink below intrinsic content width (prerequisite for
+   overflow-x to engage). `overflow-x: auto` spawns a scrollbar
+   only when tabs overflow; `overflow-y: hidden` suppresses the
+   vertical axis so the active-tab ::after underline at bottom: -1px
+   is not clipped (overflow-x implicitly makes overflow-y auto when
+   unset, which would clip the strip). */
 .if-mode-tabs {
     display: flex;
     align-items: stretch;
     gap: 0;
     margin-left: var(--space-2);
     height: 100%;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+}
+
+/* Chromium / WebKit narrow scrollbar for the tablist. Height ~6px
+   keeps the strip subtle — it reads as a structural rail, not a UI
+   element competing with the tabs. Thumb uses --color-border-strong
+   (the panel-seam token) on a transparent track so the scrollbar
+   blends into the cockpit vocabulary without introducing a raw hex. */
+.if-mode-tabs::-webkit-scrollbar {
+    height: 6px;
+}
+
+.if-mode-tabs::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.if-mode-tabs::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: var(--radius-full);
 }
 
 .if-mode-tab {
