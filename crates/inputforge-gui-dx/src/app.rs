@@ -5,6 +5,7 @@ use crate::bridge::spawn_polling_task;
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
 use crate::frame;
 use crate::lifecycle;
+use crate::patterns::live_capture::use_live_capture_provider;
 use crate::theme::ThemeProvider;
 use crate::toast::{ToastQueue, ToastState, ToastViewport, install_warnings_bridge};
 use crate::tray;
@@ -41,6 +42,10 @@ pub(crate) fn app_root() -> Element {
     let toast_state = use_signal(ToastState::default);
     let toast_queue = ToastQueue { state: toast_state };
     use_context_provider(|| toast_queue);
+
+    // F8: live-capture primitive. Single instance, sibling of ToastQueue.
+    // Provider self-installs the context.
+    use_live_capture_provider();
 
     // F4: warnings bridge — reads ctx.meta, pushes new tail entries as
     // Warning toasts. last_seen initializes from peek() so first run is a
@@ -157,6 +162,11 @@ mod tests {
         // provide it with an empty toast state.
         let toast_state = use_signal(ToastState::default);
         use_context_provider(|| ToastQueue { state: toast_state });
+
+        // F8: mirror the runtime path's live-capture provider install so
+        // any consumer that lands inside `app_root_view` and reads the
+        // context resolves successfully under the test harness too.
+        crate::patterns::live_capture::use_live_capture_provider();
 
         super::app_root_view()
     }

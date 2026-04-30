@@ -1,15 +1,6 @@
 //! Pure state-transition logic for the live-capture primitive. Lives
 //! outside any Dioxus runtime so it can be unit-tested by feeding
 //! hand-crafted snapshot sequences and `Instant`s.
-//!
-//! Items in this module are unused in the lib build until Task 8 wires
-//! the Dioxus hook adapter — `#[allow(dead_code)]` annotations are
-//! intentional and will be removed when that task lands.
-
-#![allow(
-    dead_code,
-    reason = "consumed by Task 8 hook adapter; tests already exercise these"
-)]
 
 use std::time::{Duration, Instant};
 

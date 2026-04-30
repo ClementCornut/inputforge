@@ -250,3 +250,81 @@ fn multi_axis_tie_first_encountered_wins() {
         "tied deltas → first axis in iteration order wins (axis 0)",
     );
 }
+
+#[cfg(test)]
+mod hook_tests {
+    use std::sync::{Arc, mpsc};
+
+    use dioxus::prelude::*;
+    use dioxus_ssr::render;
+    use parking_lot::RwLock;
+
+    use inputforge_core::settings::AppSettings;
+    use inputforge_core::state::AppState;
+
+    use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
+    use crate::patterns::live_capture::{CaptureFilter, use_live_capture_provider};
+
+    fn provide_stub_app_context() {
+        let (cmd_tx, _cmd_rx) = mpsc::channel();
+        let ctx = AppContext {
+            state: Arc::new(RwLock::new(AppState::new())),
+            commands: cmd_tx,
+            settings: Arc::new(AppSettings::default()),
+            meta: use_signal(MetaSnapshot::default),
+            config: use_signal(ConfigSnapshot::default),
+            live: use_signal(LiveSnapshot::default),
+        };
+        use_context_provider(|| ctx);
+    }
+
+    #[test]
+    fn use_live_capture_provider_smoke_does_not_panic() {
+        #[allow(
+            non_snake_case,
+            reason = "Dioxus components are PascalCase by convention"
+        )]
+        fn TestComponent() -> Element {
+            provide_stub_app_context();
+            let cap = use_live_capture_provider();
+            let armed_marker = if *cap.active.read() {
+                "ACTIVE_TRUE"
+            } else {
+                "ACTIVE_FALSE"
+            };
+            rsx! { div { "{armed_marker}" } }
+        }
+
+        let mut vdom = VirtualDom::new(TestComponent);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert!(
+            html.contains("ACTIVE_FALSE"),
+            "fresh hook must initialize active=false; got: {html}",
+        );
+    }
+
+    #[test]
+    fn start_callback_sets_active_true() {
+        #[allow(
+            non_snake_case,
+            reason = "Dioxus components are PascalCase by convention"
+        )]
+        fn TestComponent() -> Element {
+            provide_stub_app_context();
+            let cap = use_live_capture_provider();
+            use_hook(|| cap.start.call(CaptureFilter::Any));
+            let marker = if *cap.active.read() { "ARMED" } else { "IDLE" };
+            rsx! { div { "{marker}" } }
+        }
+
+        let mut vdom = VirtualDom::new(TestComponent);
+        vdom.rebuild_in_place();
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert!(
+            html.contains("ARMED"),
+            "start.call() must set active=true; got: {html}"
+        );
+    }
+}
