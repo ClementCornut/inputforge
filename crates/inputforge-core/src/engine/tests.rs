@@ -2429,6 +2429,68 @@ fn rename_mode_rejects_empty_to() {
 }
 
 #[test]
+fn rename_mode_rejects_empty_from_with_invalid_config() {
+    // Symmetric validation: an empty `from` returns InvalidConfig (the
+    // policy register), not ModeNotFound (which would leak the
+    // implementation detail that an empty string isn't in the tree).
+    let (mut engine, _state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine
+        .handle_command(EngineCommand::RenameMode {
+            from: String::new(),
+            to: "Approach".to_owned(),
+        })
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::EngineError::InvalidConfig { .. }),
+        "expected InvalidConfig for empty `from`, got: {err:?}"
+    );
+}
+
+#[test]
+fn rename_mode_rejects_overlong_from_with_invalid_config() {
+    // 65 graphemes is one past the cap.
+    let (mut engine, _state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine
+        .handle_command(EngineCommand::RenameMode {
+            from: "x".repeat(65),
+            to: "Approach".to_owned(),
+        })
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::EngineError::InvalidConfig { .. }),
+        "expected InvalidConfig for oversized `from`, got: {err:?}"
+    );
+}
+
+#[test]
+fn delete_mode_rejects_empty_name_with_invalid_config() {
+    let (mut engine, _state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine
+        .handle_command(EngineCommand::DeleteMode {
+            name: String::new(),
+        })
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::EngineError::InvalidConfig { .. }),
+        "expected InvalidConfig for empty name, got: {err:?}"
+    );
+}
+
+#[test]
+fn delete_mode_rejects_overlong_name_with_invalid_config() {
+    let (mut engine, _state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let err = engine
+        .handle_command(EngineCommand::DeleteMode {
+            name: "x".repeat(65),
+        })
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::EngineError::InvalidConfig { .. }),
+        "expected InvalidConfig for oversized name, got: {err:?}"
+    );
+}
+
+#[test]
 fn rename_mode_rejects_when_cycle_would_collapse() {
     use crate::action::{CycleModes, Mapping, ModeChangeStrategy};
 

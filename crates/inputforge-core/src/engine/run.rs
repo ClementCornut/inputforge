@@ -469,6 +469,13 @@ impl Engine {
                 tracing::info!(target: "engine", mode = %name, parent = %parent_name, "AddMode applied");
             }
             EngineCommand::RenameMode { from, to } => {
+                // Validate both names against the same policy. Without
+                // this, an oversized `from` would fall through to
+                // `with_renamed` and surface as `ModeNotFound` — leaking
+                // an internal detail (the name doesn't match a tree node)
+                // when the policy reason (length cap) is what should
+                // surface. Symmetric validation pins the contract.
+                validate_mode_name_for_engine(&from, "source mode name cannot be empty")?;
                 validate_mode_name_for_engine(&to, "mode name cannot be empty")?;
                 if from == to {
                     return Ok(());
@@ -480,10 +487,28 @@ impl Engine {
                     return Ok(());
                 };
 
+                // Atomicity contract — order is load-bearing:
+                //   1. `with_renamed` clones the tree and validates the
+                //      collision (returns Err without mutating). Must run
+                //      first so a name collision doesn't leave a partial
+                //      mapping rewrite behind.
+                //   2. `rename_mode_refs` pre-validates cycles across all
+                //      mappings (using its internal `check_cycle_rename`)
+                //      then mutates mappings + startup_mode in one pass.
+                //      Atomic on Err via the pre-validation pass.
+                //   3. `set_modes` swaps in the new tree last. Single-shot,
+                //      infallible — once the cascade has succeeded the
+                //      tree replacement cannot fail partway.
+                // Reordering risks: (1)→(3)→(2) commits a tree against
+                // stale mapping references if cycle-validation later
+                // rejects; (2)→(1)→(3) mutates mappings before the tree
+                // is validated against the new name, which would orphan
+                // mappings on collision.
                 // Step 1: tree rewrite (errors on missing-from / collision).
                 let new_tree = profile.modes().with_renamed(&from, &to)?;
                 // Step 2: pre-validate + cascade across mappings + startup.
                 let touched = profile.rename_mode_refs(&from, &to)?;
+                // Step 3: swap the new tree in last.
                 profile.set_modes(new_tree);
 
                 // Step 3: runtime-state cascade.
@@ -526,6 +551,11 @@ impl Engine {
                 );
             }
             EngineCommand::DeleteMode { name } => {
+                // Validate the name first so empty / oversized inputs
+                // surface as `InvalidConfig` rather than falling through
+                // to `contains` and returning `ModeNotFound` (the wrong
+                // error register for a policy violation).
+                validate_mode_name_for_engine(&name, "mode name cannot be empty")?;
                 let path = { self.state.read().profile_path.clone() };
                 let mut state = self.state.write();
                 let Some(profile) = state.active_profile.as_mut() else {
