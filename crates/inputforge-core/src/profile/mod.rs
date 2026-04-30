@@ -193,7 +193,8 @@ impl Profile {
 
     /// Set or update a mapping for a specific input and mode.
     ///
-    /// If `actions` is empty the mapping is removed instead.
+    /// Empty `actions` is a valid mapping (e.g., a freshly added entry
+    /// awaiting an action editor in F9). Use `remove_mapping` to delete.
     pub fn set_mapping(
         &mut self,
         input: &InputAddress,
@@ -201,11 +202,6 @@ impl Profile {
         name: Option<String>,
         actions: Vec<Action>,
     ) {
-        if actions.is_empty() {
-            self.mappings
-                .retain(|m| !(m.input == *input && m.mode == mode));
-            return;
-        }
         if let Some(existing) = self
             .mappings
             .iter_mut()
@@ -225,11 +221,6 @@ impl Profile {
 
     /// Remove the mapping for `(input, mode)`. Returns `true` if a mapping
     /// was removed, `false` if no matching mapping existed.
-    ///
-    /// Distinct from `set_mapping(_, _, None, vec![])` which can also remove —
-    /// `remove_mapping` is the explicit API for the F8 delete flow and lets
-    /// callers detect a no-op (race between two stale dispatches) without
-    /// comparing `mappings().len()` before-and-after.
     pub fn remove_mapping(&mut self, input: &InputAddress, mode: &str) -> bool {
         let before = self.mappings.len();
         self.mappings
@@ -1017,14 +1008,49 @@ enabled = true
     }
 
     #[test]
-    fn set_mapping_removes_when_actions_empty() {
+    fn set_mapping_with_empty_actions_inserts_placeholder_mapping() {
+        // F8 + Add mapping flow dispatches SetMapping with actions: vec![]
+        // before F9's action editor ships. The mapping must persist with
+        // the empty action vector so it appears in the rail; F9 will fill
+        // in actions later. Use `remove_mapping` for explicit deletion.
+        let mut profile = minimal_profile();
+        let new_input = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 7 },
+        };
+        let before_len = profile.mappings().len();
+
+        profile.set_mapping(&new_input, "Default", Some("Fresh".to_owned()), vec![]);
+
+        assert_eq!(profile.mappings().len(), before_len + 1);
+        let added = profile
+            .find_mapping(&new_input, "Default")
+            .expect("freshly added mapping must be findable");
+        assert_eq!(added.name.as_deref(), Some("Fresh"));
+        assert!(
+            added.actions.is_empty(),
+            "actions vec must round-trip empty"
+        );
+    }
+
+    #[test]
+    fn set_mapping_with_empty_actions_updates_existing_to_empty() {
+        // The shortcut "empty actions removes" used to live in set_mapping;
+        // it is now gone. Updating an existing mapping to empty actions
+        // must overwrite the actions, not delete the mapping.
         let mut profile = minimal_profile();
         assert_eq!(profile.mappings().len(), 1);
 
-        profile.set_mapping(&test_input(), "Default", None, vec![]);
+        profile.set_mapping(&test_input(), "Default", Some("Cleared".to_owned()), vec![]);
 
-        assert_eq!(profile.mappings().len(), 0);
-        assert!(profile.find_mapping(&test_input(), "Default").is_none());
+        assert_eq!(
+            profile.mappings().len(),
+            1,
+            "mapping must survive empty-action update"
+        );
+        let m = profile.find_mapping(&test_input(), "Default").unwrap();
+        assert_eq!(m.name, Some("Cleared".to_owned()));
+        assert!(m.actions.is_empty());
     }
 
     // --- set_modes / remove_mappings_for_mode ---
