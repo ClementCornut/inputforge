@@ -198,6 +198,63 @@ pub(crate) fn AddInline(
         }
     });
 
+    // Document-level Esc listener that closes the pad whenever LiveCapture
+    // is NOT active. While `cap.active == true`, LiveCapture's own Esc
+    // listener (Task 8) owns the key and routes Armed → Disarmed; this
+    // listener stays out of the way. While `cap.active == false`
+    // (Captured / Disarmed / Collision), Esc closes the pad to Resting
+    // and clears the typed name.
+    //
+    // The JS handler short-circuits if the keystroke originated inside the
+    // rail's filter input so Task 22's filter-Esc-clears-query routing
+    // keeps working without contention.
+    //
+    // Pattern mirrors Task 8's LiveCapture Esc listener — capture-phase
+    // window listener, parked recv loop, no shutdown signal because the
+    // listener lives for the lifetime of the AddInline component (which
+    // is the lifetime of the rail).
+    let esc_listener_mounted: Signal<bool> = use_signal(|| false);
+    use_effect(move || {
+        let mut mounted = esc_listener_mounted;
+        if *mounted.peek() {
+            return;
+        }
+        mounted.set(true);
+
+        spawn(async move {
+            let mut handle = document::eval(
+                "const h = (ev) => {\n\
+                   if (ev.key !== 'Escape') return;\n\
+                   // Defer to MappingList's filter-Esc handling when the\n\
+                   // filter input is the event target.\n\
+                   if (ev.target && ev.target.closest && ev.target.closest('.if-rail__filter')) return;\n\
+                   dioxus.send('esc');\n\
+                 };\n\
+                 window.addEventListener('keydown', h, true);\n\
+                 (async () => { while (true) { await dioxus.recv(); } })();\n\
+                 ",
+            );
+
+            loop {
+                match handle.recv::<String>().await {
+                    Ok(s) if s == "esc" => {
+                        // Gate: only close when LiveCapture is off and the
+                        // pad is currently expanded.
+                        if *cap.active.read() {
+                            continue;
+                        }
+                        if *state.peek() == AddState::Resting {
+                            continue;
+                        }
+                        state.set(AddState::Resting);
+                        name.set(String::new());
+                    }
+                    _ => break,
+                }
+            }
+        });
+    });
+
     match state.read().clone() {
         AddState::Resting => rsx! {
             div { class: "if-add-inline if-add-inline--resting",
@@ -229,13 +286,7 @@ pub(crate) fn AddInline(
         AddState::CapturingDisarmed => rsx! {
             div {
                 class: "if-add-inline if-add-inline--disarmed",
-                onkeydown: move |evt: KeyboardEvent| {
-                    if evt.key() == Key::Escape {
-                        evt.prevent_default();
-                        state.set(AddState::Resting);
-                        name.set(String::new());
-                    }
-                },
+                // Esc handled by AddInline's document-level listener.
                 button {
                     r#type: "button",
                     class: "if-add-inline__pad if-add-inline__pad--disarmed",
@@ -275,25 +326,19 @@ pub(crate) fn AddInline(
                 div {
                     class: "if-add-inline if-add-inline--captured",
                     onkeydown: move |evt: KeyboardEvent| {
-                        match evt.key() {
-                            Key::Enter => {
-                                evt.prevent_default();
-                                let n = name.read().clone();
-                                dispatch_add_helper(
-                                    addr_for_enter.clone(),
-                                    &n,
-                                    view_for_enter,
-                                    &cmd_for_enter,
-                                );
-                                state.set(AddState::Resting);
-                                name.set(String::new());
-                            }
-                            Key::Escape => {
-                                evt.prevent_default();
-                                state.set(AddState::Resting);
-                                name.set(String::new());
-                            }
-                            _ => {}
+                        // Esc is handled by AddInline's document-level
+                        // listener above; only Enter (commit) lives here.
+                        if evt.key() == Key::Enter {
+                            evt.prevent_default();
+                            let n = name.read().clone();
+                            dispatch_add_helper(
+                                addr_for_enter.clone(),
+                                &n,
+                                view_for_enter,
+                                &cmd_for_enter,
+                            );
+                            state.set(AddState::Resting);
+                            name.set(String::new());
                         }
                     },
                     div { class: "if-add-inline__readout",
