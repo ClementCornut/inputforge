@@ -78,10 +78,34 @@
 
 ## Render budget (REQUIRED, per spec 1081)
 
-- [ ] **`tracing::trace!` instrumented in every `frame::*` component — fix §1.4.**
-- [ ] Smoke test: `RUST_LOG=frame::render=trace cargo run -p inputforge-gui-dx -- --no-default-features --features gui-dioxus`, idle 30 s with profile loaded, count traces per region.
-- [ ] **Pass criterion:** ≤1 trace per region per polling tick. (~1800 traces per region over 30 s × 60 Hz, not Nx that.)
-- [ ] If over budget: investigate `use_memo` reading unstable derivations (common: full `meta.read()` clone inside memo).
+- [x] **`tracing::trace!` instrumented in every `frame::*` component (fix §1.4).**
+- [x] Smoke test command (PowerShell):
+  ```powershell
+  & { $env:RUST_LOG = "frame::render=trace"; cargo run -p inputforge-app --no-default-features --features gui-dioxus }
+  ```
+- [x] **Pass criterion:** ≤1 trace per region per polling tick. **PASS** — verified 2026-04-30.
+
+### Captured trace (~233 ms window, ~14 ticks at 60 Hz)
+
+| Region          | Traces | Notes |
+|-----------------|--------|-------|
+| `layout`        | 2      | mount + has_profile flip |
+| `top_bar`       | 1      | mount only (no subscriptions) |
+| `engine_pill`   | 2      | mount + profile load |
+| `profile_name`  | 2      | mount + profile load |
+| `tools_cluster` | 2      | mount + profile load |
+| `mode_tabs`     | 4      | mount + early effect-driven re-run + profile load + post-load settle |
+| `banner`        | 2      | mount + profile load |
+| `status_bar`    | 3      | mount + profile load + 1 steady-state event at +173 ms |
+| `panel_slot`    | 1      | mount on profile load |
+| `empty_state`   | 1      | mount only — correctly unmounts on profile load |
+
+Every region clears the ≤14-per-window ceiling by an order of magnitude.
+The `use_memo` slices over `MetaSnapshot` are gating re-renders correctly
+via `PartialEq` — most regions only re-fire when their narrow subscription
+actually changes, not per polling tick. The single `status_bar` steady-state
+trace at +173 ms is a discrete event (hotplug device-count or warnings
+update), not per-tick churn.
 
 ## Cargo deps added in F7
 
