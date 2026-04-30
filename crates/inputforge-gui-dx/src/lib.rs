@@ -101,7 +101,20 @@ pub fn launch_gui(
 
     let cfg = Config::new()
         .with_window(window)
-        .with_close_behaviour(WindowCloseBehaviour::WindowHides);
+        .with_close_behaviour(WindowCloseBehaviour::WindowHides)
+        // Required for HTML5 drag-and-drop on Windows. WebView2 ships
+        // with a native file-drop handler that swallows dragover events
+        // before the page can respond, leaving the cursor stuck on
+        // `no-drop`. Disabling it lets the sortable primitive's HTML5
+        // DnD plumbing fire normally. Documented upstream:
+        // https://docs.rs/dioxus-desktop/latest/dioxus_desktop/struct.Config.html#method.with_disable_drag_drop_handler
+        // ("On Windows the drop handler must be disabled for HTML drag
+        // and drop APIs to work.") The trade-off is that the OS file
+        // drop handler no longer fires, but InputForge does not consume
+        // dropped files anywhere, so this is a no-op for the app's
+        // current feature set. (Issue surfaced during F8 reorder
+        // smoke; see Phase A of the sortable primitive plan.)
+        .with_disable_drag_drop_handler(true);
     // exit_on_last_window_close left at its default (true).
     // Custom event handler NOT installed here, Task 10/11 deviation: the
     // handler is installed via `tray::install_event_handler` (a hook

@@ -263,6 +263,13 @@ impl Profile {
     /// here because the engine command receives only the source key,
     /// the GUI is responsible for rejecting cross-group drops before
     /// dispatching.
+    ///
+    /// # Panics
+    ///
+    /// Never panics on user input. Carries an `expect` that asserts a
+    /// freshly-located source index appears in its own group's index
+    /// list, which is structurally guaranteed by construction; the panic
+    /// would only fire on internal logic regression.
     pub fn reorder_mapping_in_group(
         &mut self,
         input: &InputAddress,
@@ -567,7 +574,7 @@ mod tests {
     use crate::action::{Condition, ModeChangeStrategy};
     use crate::processing::DeadzoneConfig;
     use crate::types::{
-        DeviceId, InputId, KeyCombo, KeyModifier, MergeOp, OutputAddress, OutputId, VJoyAxis,
+        DeviceId, KeyCombo, KeyModifier, MergeOp, OutputAddress, OutputId, VJoyAxis,
     };
     use std::collections::HashMap;
 
@@ -1513,5 +1520,237 @@ enabled = true
 
         assert!(!removed);
         assert!(profile.find_mapping(&target, "Default").is_some());
+    }
+
+    // --- reorder_mapping_in_group ---
+
+    fn input_axis(idx: u8) -> InputAddress {
+        InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: idx },
+        }
+    }
+    fn input_button(idx: u8) -> InputAddress {
+        InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: idx },
+        }
+    }
+    fn input_hat(idx: u8) -> InputAddress {
+        InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Hat { index: idx },
+        }
+    }
+    fn no_op_mapping(input: InputAddress, mode: &str) -> Mapping {
+        Mapping {
+            input,
+            mode: mode.to_owned(),
+            name: None,
+            actions: vec![],
+        }
+    }
+    /// Multi-group, multi-mode fixture.
+    /// Default mode flat order: Axis0, Axis1, Button0, Axis2, Button1, Hat0.
+    /// Combat mode flat order: Axis5.
+    fn reorder_fixture() -> Profile {
+        let modes = test_modes();
+        Profile::new(
+            "Reorder Fixture".to_owned(),
+            vec![DeviceEntry {
+                id: DeviceId("dev-1".to_owned()),
+                name: "Test Stick".to_owned(),
+            }],
+            modes,
+            vec![
+                no_op_mapping(input_axis(0), "Default"),
+                no_op_mapping(input_axis(1), "Default"),
+                no_op_mapping(input_button(0), "Default"),
+                no_op_mapping(input_axis(2), "Default"),
+                no_op_mapping(input_button(1), "Default"),
+                no_op_mapping(input_hat(0), "Default"),
+                no_op_mapping(input_axis(5), "Combat"),
+            ],
+            vec![],
+            "Default".to_owned(),
+        )
+    }
+
+    #[test]
+    fn reorder_within_axes_moves_subgroup_down() {
+        let mut profile = reorder_fixture();
+        // Axes group in Default mode is [Axis0, Axis1, Axis2]. Move Axis0 (subpos 0) to subpos 2.
+        let moved = profile.reorder_mapping_in_group(&input_axis(0), "Default", 2);
+        assert!(moved);
+        let inputs: Vec<&InputAddress> = profile
+            .mappings()
+            .iter()
+            .filter(|m| m.mode == "Default")
+            .map(|m| &m.input)
+            .collect();
+        // Reorder is local to the Axes group within the flat vec: Axis0
+        // lands AFTER the previous-last-axis (Axis2), preserving its
+        // contiguity with the rest of the axes. Buttons and Hat keep
+        // their flat-vec positions relative to one another.
+        assert_eq!(
+            inputs,
+            vec![
+                &input_axis(1),
+                &input_button(0),
+                &input_axis(2),
+                &input_axis(0),
+                &input_button(1),
+                &input_hat(0),
+            ]
+        );
+        // Axes bucket should read [Axis1, Axis2, Axis0] in subpos order.
+        let axes_subpos: Vec<&InputAddress> = profile
+            .mappings()
+            .iter()
+            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Axis { .. }))
+            .map(|m| &m.input)
+            .collect();
+        assert_eq!(
+            axes_subpos,
+            vec![&input_axis(1), &input_axis(2), &input_axis(0)]
+        );
+    }
+
+    #[test]
+    fn reorder_within_axes_moves_subgroup_up() {
+        let mut profile = reorder_fixture();
+        // Move Axis2 from subpos 2 to subpos 0.
+        let moved = profile.reorder_mapping_in_group(&input_axis(2), "Default", 0);
+        assert!(moved);
+        let axes_in_default: Vec<&InputAddress> = profile
+            .mappings()
+            .iter()
+            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Axis { .. }))
+            .map(|m| &m.input)
+            .collect();
+        assert_eq!(
+            axes_in_default,
+            vec![&input_axis(2), &input_axis(0), &input_axis(1)]
+        );
+    }
+
+    #[test]
+    fn reorder_within_buttons_does_not_perturb_axes_or_hats() {
+        let mut profile = reorder_fixture();
+        let axes_before: Vec<InputAddress> = profile
+            .mappings()
+            .iter()
+            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Axis { .. }))
+            .map(|m| m.input.clone())
+            .collect();
+        let hats_before: Vec<InputAddress> = profile
+            .mappings()
+            .iter()
+            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Hat { .. }))
+            .map(|m| m.input.clone())
+            .collect();
+
+        // Buttons group in Default: [Button0, Button1]. Swap them.
+        let moved = profile.reorder_mapping_in_group(&input_button(0), "Default", 1);
+        assert!(moved);
+
+        let axes_after: Vec<InputAddress> = profile
+            .mappings()
+            .iter()
+            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Axis { .. }))
+            .map(|m| m.input.clone())
+            .collect();
+        let hats_after: Vec<InputAddress> = profile
+            .mappings()
+            .iter()
+            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Hat { .. }))
+            .map(|m| m.input.clone())
+            .collect();
+        assert_eq!(axes_before, axes_after);
+        assert_eq!(hats_before, hats_after);
+
+        let buttons_after: Vec<&InputAddress> = profile
+            .mappings()
+            .iter()
+            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Button { .. }))
+            .map(|m| &m.input)
+            .collect();
+        assert_eq!(buttons_after, vec![&input_button(1), &input_button(0)]);
+    }
+
+    #[test]
+    fn reorder_clamps_oob_target_to_last_subpos() {
+        let mut profile = reorder_fixture();
+        // Axes group has 3 elements (subpos 0..2). Target 99 should clamp to 2.
+        let moved = profile.reorder_mapping_in_group(&input_axis(0), "Default", 99);
+        assert!(moved);
+        let axes_after: Vec<&InputAddress> = profile
+            .mappings()
+            .iter()
+            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Axis { .. }))
+            .map(|m| &m.input)
+            .collect();
+        assert_eq!(
+            axes_after,
+            vec![&input_axis(1), &input_axis(2), &input_axis(0)]
+        );
+    }
+
+    #[test]
+    fn reorder_same_position_is_noop() {
+        let mut profile = reorder_fixture();
+        let before: Vec<Mapping> = profile.mappings().to_vec();
+        let moved = profile.reorder_mapping_in_group(&input_axis(1), "Default", 1);
+        assert!(!moved);
+        assert_eq!(profile.mappings(), &*before);
+    }
+
+    #[test]
+    fn reorder_single_element_group_is_noop() {
+        let mut profile = reorder_fixture();
+        // Hat group in Default has only Hat0; reorder is meaningless.
+        let before: Vec<Mapping> = profile.mappings().to_vec();
+        let moved = profile.reorder_mapping_in_group(&input_hat(0), "Default", 0);
+        assert!(!moved);
+        assert_eq!(profile.mappings(), &*before);
+    }
+
+    #[test]
+    fn reorder_unknown_mapping_is_noop() {
+        let mut profile = reorder_fixture();
+        let before: Vec<Mapping> = profile.mappings().to_vec();
+        let moved = profile.reorder_mapping_in_group(&input_axis(99), "Default", 0);
+        assert!(!moved);
+        assert_eq!(profile.mappings(), &*before);
+    }
+
+    #[test]
+    fn reorder_in_one_mode_does_not_touch_other_modes() {
+        let mut profile = reorder_fixture();
+        let combat_before: Vec<Mapping> = profile
+            .mappings()
+            .iter()
+            .filter(|m| m.mode == "Combat")
+            .cloned()
+            .collect();
+        let moved = profile.reorder_mapping_in_group(&input_axis(0), "Default", 2);
+        assert!(moved);
+        let combat_after: Vec<Mapping> = profile
+            .mappings()
+            .iter()
+            .filter(|m| m.mode == "Combat")
+            .cloned()
+            .collect();
+        assert_eq!(combat_before, combat_after);
+    }
+
+    #[test]
+    fn reorder_round_trips_through_toml() {
+        let mut profile = reorder_fixture();
+        let moved = profile.reorder_mapping_in_group(&input_axis(0), "Default", 2);
+        assert!(moved);
+        let toml_str = profile.to_toml().unwrap();
+        let back = Profile::from_toml(&toml_str).unwrap();
+        assert_eq!(profile.mappings(), back.mappings());
     }
 }

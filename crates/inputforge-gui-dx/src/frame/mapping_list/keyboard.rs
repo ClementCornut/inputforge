@@ -15,10 +15,22 @@ use inputforge_core::types::InputAddress;
 pub(crate) enum Key {
     ArrowUp,
     ArrowDown,
+    /// `Alt + ArrowUp` on a focused row -> reorder selection up within
+    /// its group. Mirrors F9's stage `Alt+Up` convention.
+    AltArrowUp,
+    /// `Alt + ArrowDown` on a focused row -> reorder selection down
+    /// within its group.
+    AltArrowDown,
     Enter,
     Escape,
     /// Cmd-F (macOS) or Ctrl-F (Windows/Linux). Caller normalizes.
     FilterShortcut,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReorderDir {
+    Up,
+    Down,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +52,16 @@ pub(crate) enum Intent {
     FocusFilter,
     /// Clear filter query and unfocus.
     ClearFilter,
+    /// User pressed `Alt+ArrowUp` / `Alt+ArrowDown` on a focused row.
+    /// The orchestrator reads the active profile to compute the
+    /// row's group + subgroup index, gates on boundary / single-element-
+    /// group, and dispatches `EngineCommand::ReorderMapping`. `handle_key`
+    /// stays pure: it does not know group bucketing.
+    ReorderSelected {
+        mode: String,
+        input: InputAddress,
+        dir: ReorderDir,
+    },
     /// Do nothing (key not handled in this context).
     NoOp,
 }
@@ -51,7 +73,12 @@ pub(crate) enum Intent {
 pub(crate) fn handle_key(key: Key, state: State<'_>) -> Intent {
     // Capture-armed always shadows Up/Down (and Enter/Esc which the
     // primitive owns). Filter-focused Esc with non-empty query clears.
-    if state.capture_armed && matches!(key, Key::ArrowUp | Key::ArrowDown) {
+    if state.capture_armed
+        && matches!(
+            key,
+            Key::ArrowUp | Key::ArrowDown | Key::AltArrowUp | Key::AltArrowDown
+        )
+    {
         return Intent::NoOp;
     }
     match key {
@@ -60,6 +87,27 @@ pub(crate) fn handle_key(key: Key, state: State<'_>) -> Intent {
         Key::Escape => Intent::NoOp,
         Key::Enter if state.selected.is_some() => Intent::FocusEditor,
         Key::Enter => Intent::NoOp,
+        Key::AltArrowUp | Key::AltArrowDown => {
+            // Reorder is disabled when filtering or when nothing is
+            // selected. Boundary and single-element-group checks live
+            // in the orchestrator (it has the active profile to read).
+            if state.filter_focused || !state.filter_query_empty {
+                return Intent::NoOp;
+            }
+            let Some((mode, input)) = state.selected else {
+                return Intent::NoOp;
+            };
+            let dir = if matches!(key, Key::AltArrowUp) {
+                ReorderDir::Up
+            } else {
+                ReorderDir::Down
+            };
+            Intent::ReorderSelected {
+                mode: mode.to_owned(),
+                input: input.clone(),
+                dir,
+            }
+        }
         Key::ArrowDown | Key::ArrowUp => {
             if state.visible_rows.is_empty() {
                 return Intent::NoOp;

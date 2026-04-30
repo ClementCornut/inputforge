@@ -15,6 +15,7 @@ pub mod number_input;
 pub mod select;
 pub mod separator;
 pub mod slider;
+pub mod sortable;
 pub mod spinner;
 pub mod status_bar;
 pub mod switch;

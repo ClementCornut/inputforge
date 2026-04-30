@@ -54,7 +54,14 @@
  * sit foveal). Selection legibility comes from the bumped primary tint
  * + the bolder name weight on `.is-active`. */
 .if-row {
-    padding: var(--space-2) var(--space-3);
+    position: relative;
+    /* Reserve a 10 px left column for the hover-only drag handle
+       (4 px gutter + 6 px handle visual width, centered as a 10 px
+       SVG box). Hidden at rest so density is preserved when the
+       user is not interacting with this row. The 22 px padding-left
+       holds even when the handle is invisible to avoid layout
+       reflow on hover. */
+    padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) + 10px);
     cursor: pointer;
     user-select: none;
 }
@@ -63,6 +70,12 @@
     /* substituted --color-border for missing --color-surface-hover */
     background: var(--color-border);
 }
+
+/* DnD chrome (drag handle, dragging dim, insertion bars) lives in the
+   reusable sortable primitive at `assets/components/sortable.css`. The
+   row keeps the 10 px left-padding gutter (above) so the handle has a
+   place to sit, and the consumer applies the primitive's modifier
+   classes via the shared `SortableState`. */
 
 .if-row.is-active {
     background: color-mix(in srgb, var(--color-primary) 18%, transparent);
@@ -377,6 +390,20 @@
 .if-row-menu__item:hover {
     /* substituted --color-border for missing --color-surface-hover */
     background: var(--color-border);
+}
+
+/* Disabled menu items (boundary, filter-active, single-element-group)
+   render at half opacity with the canonical not-allowed cursor and no
+   hover affordance. Same idiom the F8 audit added to the
+   tools-cluster button (`disabled` attribute), translated to the
+   aria-disabled marker the menu items use. */
+.if-row-menu__item[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.if-row-menu__item[aria-disabled="true"]:hover {
+    background: transparent;
 }
 
 .if-row-menu__item--danger {

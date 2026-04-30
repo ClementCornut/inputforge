@@ -42,6 +42,19 @@ pub enum EngineCommand {
     /// exists; the engine handler skips persistence on that fast path.
     RemoveMapping { input: InputAddress, mode: String },
 
+    /// Move the mapping `(input, mode)` to position `target_index_in_group`
+    /// within its visual group (Axes / Buttons / Hats). Out-of-bounds
+    /// targets clamp to the group's last position; same-position and
+    /// single-element-group calls are no-ops with no persistence cost.
+    /// Reorder is within-group only; the GUI rejects cross-group drops
+    /// before dispatching, so this command never crosses the Axis /
+    /// Button / Hat boundary.
+    ReorderMapping {
+        input: InputAddress,
+        mode: String,
+        target_index_in_group: usize,
+    },
+
     /// Force the engine into the named mode and pause mode-change rules.
     ///
     /// Idempotent on the same mode (per design decision D15); rotates the

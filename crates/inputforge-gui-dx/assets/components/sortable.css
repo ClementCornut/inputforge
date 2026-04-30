@@ -1,0 +1,90 @@
+/* Sortable primitive — DnD affordances. Tokens-only.
+ *
+ * Behaves on top of the consumer's row container; the consumer applies
+ * the modifier classes (.if-sortable--dragging, .if-sortable--drop-before,
+ * .if-sortable--drop-after, .if-sortable--drop-invalid) based on the
+ * shared SortableState.
+ *
+ * Phase A coupling note: the hover-reveal rule below targets
+ * `.if-row:hover .if-sortable-handle` rather than just `:hover` on the
+ * handle's own parent. This couples the primitive to the F8 consumer's
+ * `.if-row` class name; F9 will need to either rename or generalize
+ * this rule (e.g. via a CSS variable, a `:has()` selector, or a
+ * consumer-supplied utility class). Out-of-scope for Phase A.
+ *
+ * The consumer's row container is also responsible for:
+ * - `position: relative` (insertion bars use absolute positioning)
+ * - reserving left padding for the handle (the F8 consumer uses
+ *   `padding-left: calc(var(--space-3) + 10px)`)
+ */
+
+/* Drag handle — 6-dot grip, hover-only.
+ *
+ * `pointer-events: none` at rest keeps the leftmost row strip click-to-
+ * select; on hover it switches to `auto` so the handle can catch the
+ * dragstart. The `display: flex` + transform absolute-positioning
+ * centers the SVG vertically against the row's `padding: 8px / line-
+ * height` rhythm without coupling to the row's exact height. */
+.if-sortable-handle {
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-subtle);
+    opacity: 0;
+    pointer-events: none;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    transition: opacity var(--duration-fast) var(--easing-fast);
+}
+
+/* Phase A coupling: hover trigger keyed off the F8 consumer's row class.
+   F9 will need to rename or generalize this when adopting the primitive. */
+.if-row:hover .if-sortable-handle {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.if-sortable-handle:active {
+    cursor: grabbing;
+}
+
+/* Source row dimming while a drag is in flight. Consumer applies the
+   modifier class based on `state.drag_from`. */
+.if-sortable--dragging {
+    opacity: 0.4;
+    transition: opacity var(--duration-fast) var(--easing-fast);
+}
+
+/* Drop-target indicator. 2px bar painted on the appropriate edge
+   (`::before` above, `::after` below). Token: `--color-border-focus` is
+   the transient drop-target token (separate from `--color-primary`
+   which is reserved for persistent action indicators per
+   DESIGN.md §2). The `--drop-invalid` modifier swaps the bar to
+   `--color-error` for cross-group rejection (paints for 200ms then the
+   row clears the modifier). */
+.if-sortable--drop-before::before,
+.if-sortable--drop-after::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    pointer-events: none;
+    background: var(--color-border-focus);
+    transition: opacity var(--duration-fast) var(--easing-fast);
+}
+
+.if-sortable--drop-before::before {
+    top: -1px;
+}
+
+.if-sortable--drop-after::after {
+    bottom: -1px;
+}
+
+.if-sortable--drop-invalid::before,
+.if-sortable--drop-invalid::after {
+    background: var(--color-error);
+}

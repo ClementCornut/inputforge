@@ -36,14 +36,37 @@ use dioxus::prelude::*;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::InputAddress;
 
+use crate::components::sortable::{SortableLiveRegion, use_sortable_state};
 use crate::components::{InputSize, TextInput};
 use crate::context::{AppContext, MappingSummary};
 use crate::frame::mapping_list::add_inline::AddInline;
 use crate::frame::mapping_list::empty::{EmptyZeroFilterResults, EmptyZeroMappings};
 use crate::frame::mapping_list::filter::matches_filter;
 use crate::frame::mapping_list::group::{GroupKind, group_of};
-use crate::frame::mapping_list::keyboard::{Intent, Key, State, handle_key};
+use crate::frame::mapping_list::keyboard::{Intent, Key, ReorderDir, State, handle_key};
 use crate::frame::mapping_list::row::Row;
+
+/// Format the AT live-region phrase for a successful reorder. Shared
+/// between the keyboard handler, the context menu items, and the row's
+/// drop handler so all three reorder paths produce identical
+/// announcements (per the F8-impeccable critique pass).
+pub(crate) fn format_reorder_announcement(
+    new_subpos: usize,
+    group_len: usize,
+    group: GroupKind,
+) -> String {
+    let phrase = match group {
+        GroupKind::Axes => "axes",
+        GroupKind::Buttons => "buttons",
+        GroupKind::Hats => "hats",
+    };
+    format!(
+        "Mapping moved to position {} of {} in {}.",
+        new_subpos + 1,
+        group_len,
+        phrase
+    )
+}
 use crate::frame::view_state::ViewState;
 use crate::patterns::live_capture::LiveCapture;
 
@@ -71,6 +94,13 @@ pub(crate) fn MappingList() -> Element {
     let menu_open: Signal<Option<(InputAddress, f64, f64)>> = use_signal(|| None);
     let delete_target: Signal<Option<MappingSummary>> = use_signal(|| None);
     let pending_duplicate: Signal<Option<MappingSummary>> = use_signal(|| None);
+    // DnD state -- shared with every Row via the sortable primitive.
+    // Holds the in-flight drag source index, source group, drop-target
+    // indicator, and the AT live-region content. The primitive's
+    // `SortableHandle.ondragstart` calls `data_transfer().set_data(...)`
+    // natively (no JS bootstrap), so this rail no longer mounts a
+    // document-level dragstart/dragover listener.
+    let sortable = use_sortable_state();
 
     // Single memo computes filtered, grouped rows AND total in-mode count.
     let view_state_memo = use_memo(move || {
@@ -112,6 +142,10 @@ pub(crate) fn MappingList() -> Element {
     let cap_for_kb = use_context::<LiveCapture>();
     let mut filter_query_writer = filter_query;
     let mut sel_writer = view.selected_mapping;
+    // Clone context handles needed inside the spawned listener so the
+    // FnMut effect closure can re-fire without moving `ctx`.
+    let cmd_for_kb = ctx.commands.clone();
+    let ctx_for_kb = ctx.clone();
 
     use_effect(move || {
         let mut mounted = kb_listener_mounted;
@@ -121,13 +155,16 @@ pub(crate) fn MappingList() -> Element {
         mounted.set(true);
         let mut sd = kb_shutdown_signal;
         sd.set(false);
+        let cmd_kb = cmd_for_kb.clone();
+        let ctx_kb = ctx_for_kb.clone();
 
         spawn(async move {
             let mut handle = document::eval(
                 "const h = (ev) => {\n\
                    const meta = ev.metaKey ? 1 : 0;\n\
                    const ctrl = ev.ctrlKey ? 1 : 0;\n\
-                   dioxus.send([ev.key, meta, ctrl]);\n\
+                   const alt  = ev.altKey  ? 1 : 0;\n\
+                   dioxus.send([ev.key, meta, ctrl, alt]);\n\
                  };\n\
                  window.addEventListener('keydown', h, true);\n\
                  (async () => {\n\
@@ -135,7 +172,7 @@ pub(crate) fn MappingList() -> Element {
                      const msg = await dioxus.recv();\n\
                      if (msg === '__shutdown__') {\n\
                        window.removeEventListener('keydown', h, true);\n\
-                       dioxus.send(['__ack__', 0, 0]);\n\
+                       dioxus.send(['__ack__', 0, 0, 0]);\n\
                        return;\n\
                      }\n\
                    }\n\
@@ -146,10 +183,11 @@ pub(crate) fn MappingList() -> Element {
             loop {
                 if *kb_shutdown_signal.peek() {
                     let _ = handle.send("__shutdown__".to_owned());
-                    let _ = handle.recv::<(String, u8, u8)>().await;
+                    let _ = handle.recv::<(String, u8, u8, u8)>().await;
                     break;
                 }
-                let Ok((key_str, meta, ctrl)) = handle.recv::<(String, u8, u8)>().await else {
+                let Ok((key_str, meta, ctrl, alt)) = handle.recv::<(String, u8, u8, u8)>().await
+                else {
                     break;
                 };
                 // Coordinate with Phase C, if capture is armed, defer to it.
@@ -157,6 +195,8 @@ pub(crate) fn MappingList() -> Element {
                     continue;
                 }
                 let key = match key_str.as_str() {
+                    "ArrowUp" if alt == 1 => Key::AltArrowUp,
+                    "ArrowDown" if alt == 1 => Key::AltArrowDown,
                     "ArrowUp" => Key::ArrowUp,
                     "ArrowDown" => Key::ArrowDown,
                     "Enter" => Key::Enter,
@@ -197,6 +237,59 @@ pub(crate) fn MappingList() -> Element {
                         });
                     }
                     Intent::ClearFilter => filter_query_writer.set(String::new()),
+                    Intent::ReorderSelected { mode, input, dir } => {
+                        // Read the active profile to compute group + subpos.
+                        // Boundary / single-element-group / unknown-mapping
+                        // checks happen here; the engine then re-validates
+                        // and silent-no-ops if any of them slip through.
+                        let cfg = ctx_kb.config.read();
+                        let group_inputs: Vec<&InputAddress> = cfg
+                            .mappings
+                            .iter()
+                            .filter(|m| m.mode == mode && group_of(&m.input) == group_of(&input))
+                            .map(|m| &m.input)
+                            .collect();
+                        let group_len = group_inputs.len();
+                        let cur = group_inputs.iter().position(|i| **i == input).unwrap_or(0);
+                        drop(cfg);
+                        if group_len < 2 {
+                            continue;
+                        }
+                        let target = match dir {
+                            ReorderDir::Up => {
+                                if cur == 0 {
+                                    continue;
+                                }
+                                cur - 1
+                            }
+                            ReorderDir::Down => {
+                                if cur + 1 >= group_len {
+                                    continue;
+                                }
+                                cur + 1
+                            }
+                        };
+                        let _ = cmd_kb.send(EngineCommand::ReorderMapping {
+                            input: input.clone(),
+                            mode: mode.clone(),
+                            target_index_in_group: target,
+                        });
+                        let mut live = sortable.live_announcement;
+                        live.set(format_reorder_announcement(
+                            target,
+                            group_len,
+                            group_of(&input),
+                        ));
+                        tracing::info!(
+                            target: "f8::mapping_list",
+                            action = "reorder_keyboard",
+                            ?input,
+                            mode = %mode,
+                            from = cur,
+                            to = target,
+                            "dispatch ReorderMapping",
+                        );
+                    }
                     Intent::NoOp => {}
                 }
             }
@@ -277,6 +370,8 @@ pub(crate) fn MappingList() -> Element {
                                 summary: row.clone(),
                                 is_active: is_active,
                                 renaming: renaming,
+                                sortable: sortable,
+                                filter_active: !query.trim().is_empty(),
                                 on_open_menu: move |(input, x, y): (InputAddress, f64, f64)| {
                                     menu_setter.set(Some((input, x, y)));
                                 },
@@ -302,8 +397,15 @@ pub(crate) fn MappingList() -> Element {
                 renaming: renaming,
                 delete_target: delete_target,
                 pending_duplicate: pending_duplicate,
+                filter_query: filter_query,
+                live_announcement: sortable.live_announcement,
             }
             DeleteDialogMount { delete_target: delete_target }
+            // sr-only live region. Mounted once at the rail root so AT
+            // users hear every reorder action (drag-drop, context menu
+            // Move up/down, keyboard Alt+Arrow). The text is overwritten
+            // at each dispatch site via `format_reorder_announcement`.
+            SortableLiveRegion { state: sortable }
         }
     }
 }
@@ -344,6 +446,8 @@ fn ContextMenuMount(
     renaming: Signal<Option<InputAddress>>,
     delete_target: Signal<Option<MappingSummary>>,
     pending_duplicate: Signal<Option<MappingSummary>>,
+    filter_query: Signal<String>,
+    live_announcement: Signal<String>,
 ) -> Element {
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
@@ -358,6 +462,28 @@ fn ContextMenuMount(
         .iter()
         .find(|m| m.input == target_input && m.mode == mode_now)
         .cloned();
+    // Compute the target's group-local position and group length while we
+    // still hold the cfg read lock. group_of bucketing matches what the
+    // engine's reorder helper uses; consistent on both sides of the
+    // command channel.
+    let target_group = target.as_ref().map(|t| group_of(&t.input));
+    let (current_subpos, group_len) = match (&target, target_group) {
+        (Some(t), Some(g)) => {
+            let group_inputs: Vec<&InputAddress> = cfg
+                .mappings
+                .iter()
+                .filter(|m| m.mode == mode_now && group_of(&m.input) == g)
+                .map(|m| &m.input)
+                .collect();
+            let len = group_inputs.len();
+            let pos = group_inputs
+                .iter()
+                .position(|i| **i == t.input)
+                .unwrap_or(0);
+            (pos, len)
+        }
+        _ => (0usize, 0usize),
+    };
     drop(cfg);
     let Some(target) = target else {
         let mut menu_open = menu_open;
@@ -373,6 +499,18 @@ fn ContextMenuMount(
         .collect();
     let dup_to_mode_disabled = modes_all.len() <= 1;
 
+    // Filter-active gate: reorder is disabled while the filter input is
+    // non-empty (per spec). Same idiom as the F8 audit's
+    // disabled-with-title pattern from tools_cluster/mod.rs.
+    let filter_active = !filter_query.read().trim().is_empty();
+    let move_up_disabled = filter_active || group_len < 2 || current_subpos == 0;
+    let move_down_disabled = filter_active || group_len < 2 || current_subpos + 1 >= group_len;
+    let move_disabled_reason = if filter_active {
+        "Clear filter to reorder."
+    } else {
+        ""
+    };
+
     let mut menu_open_writer = menu_open;
     let close = move |_| menu_open_writer.set(None);
 
@@ -380,7 +518,11 @@ fn ContextMenuMount(
     let target_for_dup = target.clone();
     let target_for_dup_to = target.clone();
     let target_for_delete = target.clone();
+    let target_for_move_up = target.clone();
+    let target_for_move_down = target.clone();
     let cmd_for_dup_to = ctx.commands.clone();
+    let cmd_for_move_up = ctx.commands.clone();
+    let cmd_for_move_down = ctx.commands.clone();
 
     rsx! {
         div { class: "if-row-menu-backdrop", onclick: close }
@@ -498,6 +640,74 @@ fn ContextMenuMount(
                         }
                     }
                 }
+            }
+            button {
+                r#type: "button",
+                role: "menuitem",
+                class: "if-row-menu__item",
+                "aria-disabled": "{move_up_disabled}",
+                title: if move_up_disabled { move_disabled_reason } else { "" },
+                onclick: move |_| {
+                    if move_up_disabled {
+                        return;
+                    }
+                    let new_subpos = current_subpos.saturating_sub(1);
+                    let _ = cmd_for_move_up.send(EngineCommand::ReorderMapping {
+                        input: target_for_move_up.input.clone(),
+                        mode: target_for_move_up.mode.clone(),
+                        target_index_in_group: new_subpos,
+                    });
+                    let mut live = live_announcement;
+                    if let Some(g) = target_group {
+                        live.set(format_reorder_announcement(new_subpos, group_len, g));
+                    }
+                    tracing::info!(
+                        target: "f8::mapping_list",
+                        action = "reorder_move_up",
+                        ?target_for_move_up.input,
+                        mode = %target_for_move_up.mode,
+                        from = current_subpos,
+                        to = new_subpos,
+                        "dispatch ReorderMapping",
+                    );
+                    let mut menu_open = menu_open;
+                    menu_open.set(None);
+                },
+                "Move up"
+            }
+            button {
+                r#type: "button",
+                role: "menuitem",
+                class: "if-row-menu__item",
+                "aria-disabled": "{move_down_disabled}",
+                title: if move_down_disabled { move_disabled_reason } else { "" },
+                onclick: move |_| {
+                    if move_down_disabled {
+                        return;
+                    }
+                    let new_subpos = current_subpos + 1;
+                    let _ = cmd_for_move_down.send(EngineCommand::ReorderMapping {
+                        input: target_for_move_down.input.clone(),
+                        mode: target_for_move_down.mode.clone(),
+                        target_index_in_group: new_subpos,
+                    });
+                    let mut live = live_announcement;
+                    if let Some(g) = target_group {
+                        live.set(format_reorder_announcement(new_subpos, group_len, g));
+                    }
+                    tracing::info!(
+                        target: "f8::mapping_list",
+                        action = "reorder_move_down",
+                        ?target_for_move_down.input,
+                        mode = %target_for_move_down.mode,
+                        from = current_subpos,
+                        to = new_subpos,
+                        "dispatch ReorderMapping",
+                    );
+                    let mut menu_open = menu_open;
+                    menu_open.set(None);
+                },
+                "Move down"
             }
             button {
                 r#type: "button",

@@ -356,6 +356,13 @@ impl Engine {
                 self.set_mapping(&input, &mode, name, actions);
                 self.pending_output_refresh = true;
             }
+            EngineCommand::ReorderMapping {
+                input,
+                mode,
+                target_index_in_group,
+            } => {
+                self.reorder_mapping_in_group(&input, &mode, target_index_in_group);
+            }
             EngineCommand::Shutdown => {
                 self.shutdown = true;
             }
@@ -800,6 +807,43 @@ impl Engine {
                 path = %path.display(),
                 error = %e,
                 "failed to save mapping to profile"
+            );
+        }
+    }
+
+    fn reorder_mapping_in_group(
+        &self,
+        input: &InputAddress,
+        mode: &str,
+        target_index_in_group: usize,
+    ) {
+        let mut state = self.state.write();
+
+        if state.active_profile.is_none() {
+            tracing::warn!("cannot reorder mapping: no profile loaded");
+            return;
+        }
+
+        let Some(path) = state.profile_path.clone() else {
+            tracing::warn!("cannot save reorder: no profile path");
+            return;
+        };
+
+        let profile = state.active_profile.as_mut().expect("checked above");
+        let moved = profile.reorder_mapping_in_group(input, mode, target_index_in_group);
+
+        // Skip the file write on no-ops (same-position, single-element
+        // group, unknown mapping). Mirrors the SetMapping fast path:
+        // persistence cost is paid only when the profile actually changed.
+        if !moved {
+            return;
+        }
+
+        if let Err(e) = profile.save(&path) {
+            tracing::warn!(
+                path = %path.display(),
+                error = %e,
+                "failed to save reordered mapping to profile"
             );
         }
     }
