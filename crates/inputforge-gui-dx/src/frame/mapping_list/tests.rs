@@ -539,6 +539,42 @@ fn context_menu_renders_when_menu_open_is_set() {
 }
 
 #[test]
+fn delete_dialog_renders_when_target_set() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let target = MappingSummary {
+            input: InputAddress {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Boost".to_owned()),
+            glyphs: GlyphFlags::default(),
+        };
+        let delete_target: Signal<Option<MappingSummary>> = use_signal(|| Some(target));
+        rsx! {
+            crate::frame::mapping_list::DeleteDialogMount {
+                delete_target: delete_target,
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("Boost"),
+        "dialog must mention the row name: {html}"
+    );
+    assert!(
+        html.contains("Delete") && html.contains("Cancel"),
+        "dialog must show Delete + Cancel buttons: {html}",
+    );
+}
+
+#[test]
 fn duplicate_click_arms_live_capture() {
     use crate::patterns::live_capture::{CaptureFilter, LiveCapture};
 

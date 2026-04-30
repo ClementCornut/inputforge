@@ -387,10 +387,78 @@ fn ContextMenuMount(
 }
 
 #[component]
-#[allow(dead_code, reason = "Replaced in Task 21")]
+#[allow(
+    unused_qualifications,
+    reason = "Dioxus 0.7 RSX macro emits redundant qualifications on event listeners."
+)]
 pub(crate) fn DeleteDialogMount(delete_target: Signal<Option<MappingSummary>>) -> Element {
-    let _ = delete_target;
-    rsx! {}
+    let ctx = use_context::<AppContext>();
+
+    let mut dialog_open: Signal<bool> = use_signal(|| false);
+    use_effect(move || {
+        let want = delete_target.read().is_some();
+        if *dialog_open.peek() != want {
+            dialog_open.set(want);
+        }
+    });
+
+    let display_name = delete_target
+        .read()
+        .as_ref()
+        .and_then(|t| t.name.clone())
+        .unwrap_or_else(|| "(unnamed)".to_owned());
+    let target_clone = delete_target.read().clone();
+    let cmd_for_delete = ctx.commands.clone();
+
+    rsx! {
+        crate::components::DialogRoot {
+            open: dialog_open,
+            onclose: move |()| {
+                let mut dt = delete_target;
+                dt.set(None);
+            },
+            crate::components::DialogTitle { "Delete mapping" }
+            crate::components::DialogBody {
+                "Delete '{display_name}'? Undo available this session only."
+            }
+            crate::components::DialogFooter {
+                crate::components::Button {
+                    variant: crate::components::ButtonVariant::Ghost,
+                    onmounted: move |evt: MountedEvent| {
+                        spawn(async move {
+                            let _ = evt.data().set_focus(true).await;
+                        });
+                    },
+                    onclick: move |_| {
+                        let mut dt = delete_target;
+                        dt.set(None);
+                    },
+                    "Cancel"
+                }
+                crate::components::Button {
+                    variant: crate::components::ButtonVariant::Danger,
+                    onclick: move |_| {
+                        if let Some(target) = &target_clone {
+                            let _ = cmd_for_delete.send(EngineCommand::RemoveMapping {
+                                input: target.input.clone(),
+                                mode: target.mode.clone(),
+                            });
+                            tracing::info!(
+                                target: "f8::mapping_list",
+                                action = "remove",
+                                ?target.input,
+                                mode = %target.mode,
+                                "dispatch RemoveMapping",
+                            );
+                        }
+                        let mut dt = delete_target;
+                        dt.set(None);
+                    },
+                    "Delete"
+                }
+            }
+        }
+    }
 }
 
 #[component]
