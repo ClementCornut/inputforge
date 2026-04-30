@@ -74,7 +74,12 @@
     border-radius: var(--radius-full);
     background: currentColor;
     box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 24%, transparent);
-    transform: translateY(0.5px);
+    /* No translate: Inter's typo metrics are tuned so cap-midline
+       coincides with the em-square midpoint
+       ((typoAscender 1984 - |typoDescender 494| - sCapHeight 1490) / 2 = 0
+       in font units), which means flex `align-items: center` lands the
+       8x8 dot box dead-on the cap-midline at any line-height. The prior
+       0.5px push moved it _below_ that line — wrong direction. */
 }
 
 .if-engine-pill__label {
