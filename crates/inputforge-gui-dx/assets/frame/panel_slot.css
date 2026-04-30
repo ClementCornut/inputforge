@@ -15,7 +15,14 @@
     background: var(--color-bg-elevated);
     border-left: 1px solid var(--color-border-strong);
     box-shadow: var(--shadow-1);
-    overflow-y: auto;
+    /* Scroll responsibility lives on .if-panel-slot__body; the outer
+       column clips. With overflow-y:auto here, the entrance translateX
+       animation occasionally tipped the layout into spawning a 10px
+       scrollbar mid-animation — eating column width and reflowing text
+       (the visible "wiggle" on second open). Same pattern the dialog
+       primitive uses (dialog.css: panel `overflow:hidden`, body owns
+       scroll). */
+    overflow: hidden;
     padding: var(--space-4) var(--space-3);
     color: var(--color-text);
     font-size: var(--text-base);
@@ -69,6 +76,14 @@
 }
 
 .if-panel-slot__body {
+    /* Body claims leftover space and owns the scroll region.
+       scrollbar-gutter:stable reserves the 10px gutter so content does
+       not jump when the bar appears (same idiom as dialog.css:138). */
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
     color: var(--color-text-muted);
     font-size: var(--text-base);
 }

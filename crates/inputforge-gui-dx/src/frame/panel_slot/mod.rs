@@ -8,20 +8,34 @@ const PANEL_SLOT_CSS: Asset = asset!("/assets/frame/panel_slot.css");
 pub(crate) fn PanelSlot() -> Element {
     let view = use_context::<ViewState>();
     let slot = use_memo(move || *view.panel_slot.read());
+    let via_calib = use_memo(move || *view.via_calibration.read());
 
     rsx! {
         Stylesheet { href: PANEL_SLOT_CSS }
         match *slot.read() {
             PanelSlotEnum::None => rsx! {},
-            PanelSlotEnum::Devices => rsx! {
-                aside {
-                    class: "if-panel-slot if-panel-slot--devices",
-                    "aria-label": "Devices panel",
-                    header { class: "if-panel-slot__header",
-                        div { class: "if-panel-slot__caption", "Panel · F12" }
-                        h2 { class: "if-panel-slot__title", "Devices" }
+            PanelSlotEnum::Devices => {
+                // F7 placeholder swaps title to reflect the active tool
+                // (Devices vs Calibration drill). F12 will replace this
+                // file end-to-end when it lands; the placeholder just
+                // stops lying about which mode is active.
+                let calib = *via_calib.read();
+                let title = if calib { "Calibration" } else { "Devices" };
+                let body = if calib {
+                    "F12 owns content (calibration)"
+                } else {
+                    "F12 owns content"
+                };
+                rsx! {
+                    aside {
+                        class: "if-panel-slot if-panel-slot--devices",
+                        "aria-label": "{title} panel",
+                        header { class: "if-panel-slot__header",
+                            div { class: "if-panel-slot__caption", "Panel · F12" }
+                            h2 { class: "if-panel-slot__title", "{title}" }
+                        }
+                        div { class: "if-panel-slot__body", "{body}" }
                     }
-                    div { class: "if-panel-slot__body", "F12 owns content" }
                 }
             },
             PanelSlotEnum::Profiles => rsx! {
