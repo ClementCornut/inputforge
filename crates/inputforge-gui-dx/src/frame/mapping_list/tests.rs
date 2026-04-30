@@ -783,3 +783,90 @@ fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
         "Conditional row must render violet glyph"
     );
 }
+
+#[test]
+fn active_row_carries_is_active_class_in_full_rail() {
+    use inputforge_core::action::Mapping;
+    use inputforge_core::mode::ModeTree;
+    use inputforge_core::profile::Profile;
+    use inputforge_core::state::AppState;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+    use std::collections::HashMap;
+
+    fn TestComponent() -> Element {
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let target_input = InputAddress {
+            device: DeviceId("dev".to_owned()),
+            input: InputId::Button { index: 0 },
+        };
+        let mappings = vec![Mapping {
+            input: target_input.clone(),
+            mode: "Default".to_owned(),
+            name: Some("Boost".to_owned()),
+            actions: vec![],
+        }];
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+
+        provide_minimal_contexts();
+        let ctx_app = use_context::<AppContext>();
+        let mut cfg_signal = ctx_app.config;
+        let mut meta_signal = ctx_app.meta;
+        let view = use_context::<crate::frame::view_state::ViewState>();
+        let mut sel = view.selected_mapping;
+        use_hook(move || {
+            cfg_signal.set(ConfigSnapshot::from_state(&state));
+            meta_signal.set(MetaSnapshot::from_state(&state));
+            sel.set(Some(("Default".to_owned(), target_input)));
+        });
+
+        rsx! { MappingList {} }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("is-active"),
+        "selected row must render is-active in the full rail; got: {html}",
+    );
+}
+
+#[test]
+fn inline_rename_swaps_in_for_active_row() {
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let target_input = InputAddress {
+            device: DeviceId("dev".to_owned()),
+            input: InputId::Button { index: 0 },
+        };
+        rsx! {
+            crate::frame::mapping_list::rename_inline::RenameInline {
+                summary: crate::context::MappingSummary {
+                    input: target_input.clone(),
+                    mode: "Default".to_owned(),
+                    name: Some("Boost".to_owned()),
+                    glyphs: crate::context::GlyphFlags::default(),
+                },
+                state: use_signal(|| Some(target_input)),
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-row-rename"),
+        "rename-inline class must be present when state is Some: {html}",
+    );
+}
