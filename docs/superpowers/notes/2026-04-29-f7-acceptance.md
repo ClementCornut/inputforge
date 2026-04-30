@@ -49,6 +49,12 @@ Verified 2026-04-30.
 
 ## Screen-reader (NVDA / Orca)
 
+**Deferred** to the post-feature-complete acceptance pass — will be run
+once F8 (mapping list) + F9 (mapping editor) + F11–F13 land and the AT
+journey covers the full primary flow, not just the chrome. Static ARIA
+contracts (role, aria-live, aria-disabled, aria-selected) are verified
+by code review until then. Tracked in Follow-ups below.
+
 - [ ] Banner Hidden → Diverged: "Mode banner. Editing X — engine is in Y" (polite).
 - [ ] Diverged → Forced: "Mode banner. Engine override: X. Mode-change rules paused" (polite).
 - [ ] Forced → ForcedAndDiverged: assertive interrupt via `role=alert`.
@@ -70,10 +76,10 @@ not blocking. Project tokens are pinned to AA in `colors.css`.
 - [x] Banner ForcedAndDiverged text on `--color-warning-bg`: **AA + AAA pass**.
 - [x] Mode-tab active text on `--color-bg`: **AA + AAA pass**.
 - [x] Mode-tab inactive text on `--color-bg`: **6.07×** (AA pass, AAA fail — acceptable).
-- [ ] Empty-state heading + hint on `--color-bg`: not yet sampled.
+- [ ] Empty-state heading + hint on `--color-bg`: **deferred** — empty-state branch is hard to reach in current dev mode (autoload prevents the cold no-profile path). Sample once a clean-profile-state launch flag exists.
 - [x] Engine pill **Running** text on `--color-bg-elevated`: **AA + AAA pass**.
 - [x] Engine pill **Stopped** text on `--color-bg-elevated`: was **4.1× (AA FAIL)** with raw `--color-error`. **Fixed** by switching `.if-engine-pill--error { color }` to `--color-error-hover` (mirrors the error-badge pattern documented at `colors.css:86`). Re-verify with DevTools after the fix lands.
-- [ ] Engine pill **Paused** text on `--color-bg-elevated`: not sampled (warning hue; expected to clear AA based on `--color-warning` ratios in other variants — verify).
+- [ ] Engine pill **Paused** text on `--color-bg-elevated`: **deferred** — Paused state requires an engine-pause path that isn't easily triggerable from the UI yet. Same warning hue as the banner Forced variant (which clears AA + AAA), so likely fine; verify when the pause path is reachable.
 
 ## Reduced-motion
 
@@ -148,6 +154,11 @@ Captured during the post-review pass; tracked here so next session has a single 
 - `unused_qualifications` allow in `frame/top_bar/profile_name.rs` — Dioxus 0.7 RSX macro artifact; revisit when Dioxus upstream fixes the redundant qualification emission.
 - `Profile::rename_mode_refs` walks every mapping's actions twice (cycle pre-validate then rewrite). Fine until profile sizes balloon; flag for perf pass once mapping counts >> 1k.
 - Property-test harness for `runtime_marker` and other pure-logic functions — would harden coverage but not required by any reviewer-flagged bug.
+
+### Deferred to the post-feature-complete acceptance pass
+- **Full screen-reader sweep with NVDA + Speech Viewer** — covers the 9 boxes in the Screen-reader section above. Run once F8 / F9 / F11 / F12 / F13 land so the AT journey covers the primary flow (mapping list, editor, profile management, devices) not just the chrome. Re-verify the chrome bullets at the same time so a single coherent NVDA pass produces the audit trail.
+- **Empty-state contrast sample** — needs a clean cold-launch path (autoload-disabled flag or equivalent) so the no-profile branch is reachable.
+- **Engine pill Paused contrast sample** — needs a UI-triggerable engine-pause path. The hue is `--color-warning` which clears AA in every other variant tested, so this is verification rather than expected discovery.
 
 ### Reviewer false positives (no change needed)
 - **§2.1 status-bar class mismatch (plumbing reviewer):** the reviewer flagged `frame/status_bar/mod.rs:42`'s `if-frame-status-bar` class as not matching `layout.css:35`'s `.if-status-bar { flex: 0 0 28px }`. The `StatusBar` primitive at `components/status_bar.rs:24` already composes the base class via `merge_class("if-status-bar", "", class.as_deref())`, so the rendered HTML carries both classes (`class="if-status-bar if-frame-status-bar"`) and the layout's flex rule does apply. The frame's `if-frame-status-bar` namespace is the correct register for frame-level typography overrides on top of the primitive.
