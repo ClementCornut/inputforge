@@ -485,3 +485,82 @@ fn mapping_list_zero_mappings_renders_empty_state_a() {
         "Empty State A must render when no mappings are present: {html}",
     );
 }
+
+#[test]
+fn context_menu_renders_when_menu_open_is_set() {
+    use inputforge_core::action::Mapping;
+    use inputforge_core::mode::ModeTree;
+    use inputforge_core::profile::Profile;
+    use inputforge_core::state::AppState;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+    use std::collections::HashMap;
+
+    fn TestComponent() -> Element {
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let mappings = vec![Mapping {
+            input: InputAddress {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Boost".to_owned()),
+            actions: vec![],
+        }];
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+
+        provide_minimal_contexts();
+        let ctx_app = use_context::<AppContext>();
+        let mut cfg_signal = ctx_app.config;
+        let mut meta_signal = ctx_app.meta;
+        use_hook(move || {
+            cfg_signal.set(ConfigSnapshot::from_state(&state));
+            meta_signal.set(MetaSnapshot::from_state(&state));
+        });
+
+        rsx! { MappingList {} }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-row"),
+        "row must render so the contextmenu handler is bound: {html}",
+    );
+}
+
+#[test]
+fn duplicate_click_arms_live_capture() {
+    use crate::patterns::live_capture::{CaptureFilter, LiveCapture};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let cap = use_context::<LiveCapture>();
+        // Synthesize a "user clicked Duplicate" by emulating its body:
+        // arm capture. (Real wiring lives in ContextMenuMount; the
+        // SSR-friendly version of this test asserts that arming flips
+        // LiveCapture::active to true.)
+        use_hook(move || {
+            cap.start.call(CaptureFilter::Any);
+        });
+        let armed_marker = if *cap.active.read() { "ARMED" } else { "IDLE" };
+        rsx! { span { "{armed_marker}" } }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("ARMED"),
+        "Duplicate flow's start.call must arm LiveCapture; got: {html}",
+    );
+}

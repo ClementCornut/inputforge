@@ -33,6 +33,7 @@ mod tests;
 
 use dioxus::prelude::*;
 
+use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::InputAddress;
 
 use crate::components::{InputSize, TextInput};
@@ -43,6 +44,7 @@ use crate::frame::mapping_list::filter::matches_filter;
 use crate::frame::mapping_list::group::{GroupKind, group_of};
 use crate::frame::mapping_list::row::Row;
 use crate::frame::view_state::ViewState;
+use crate::patterns::live_capture::LiveCapture;
 
 #[allow(
     dead_code,
@@ -204,17 +206,184 @@ fn FilterInput(value: Signal<String>, focused: Signal<bool>) -> Element {
     }
 }
 
-// Stub mounts — actual content arrives in Tasks 20 and 21.
+// Stub mount — actual content arrives in Task 21.
 #[component]
-#[allow(dead_code, reason = "Replaced in Task 20")]
+#[allow(
+    unused_qualifications,
+    reason = "Dioxus 0.7 RSX macro emits redundant qualifications on event listeners."
+)]
 fn ContextMenuMount(
     menu_open: Signal<Option<(InputAddress, f64, f64)>>,
     renaming: Signal<Option<InputAddress>>,
     delete_target: Signal<Option<MappingSummary>>,
     pending_duplicate: Signal<Option<MappingSummary>>,
 ) -> Element {
-    let _ = (menu_open, renaming, delete_target, pending_duplicate);
-    rsx! {}
+    let ctx = use_context::<AppContext>();
+    let view = use_context::<ViewState>();
+    let cap = use_context::<LiveCapture>();
+
+    let Some((target_input, anchor_x, anchor_y)) = menu_open.read().clone() else {
+        return rsx! {};
+    };
+    let mode_now = view.editing_mode.read().clone();
+    let cfg = ctx.config.read();
+    let target = cfg
+        .mappings
+        .iter()
+        .find(|m| m.input == target_input && m.mode == mode_now)
+        .cloned();
+    drop(cfg);
+    let Some(target) = target else {
+        let mut menu_open = menu_open;
+        menu_open.set(None);
+        return rsx! {};
+    };
+
+    let modes_all = ctx.meta.read().modes.clone();
+    let other_modes: Vec<String> = modes_all
+        .iter()
+        .filter(|m| **m != mode_now)
+        .cloned()
+        .collect();
+    let dup_to_mode_disabled = modes_all.len() <= 1;
+
+    let mut menu_open_writer = menu_open;
+    let close = move |_| menu_open_writer.set(None);
+
+    let target_for_rename = target.input.clone();
+    let target_for_dup = target.clone();
+    let target_for_dup_to = target.clone();
+    let target_for_delete = target.clone();
+    let cmd_for_dup_to = ctx.commands.clone();
+
+    rsx! {
+        div { class: "if-row-menu-backdrop", onclick: close }
+        div {
+            class: "if-row-menu",
+            role: "menu",
+            style: "position: fixed; left: {anchor_x}px; top: {anchor_y}px;",
+            button {
+                r#type: "button",
+                role: "menuitem",
+                class: "if-row-menu__item",
+                onclick: move |_| {
+                    let mut renaming = renaming;
+                    renaming.set(Some(target_for_rename.clone()));
+                    let mut menu_open = menu_open;
+                    menu_open.set(None);
+                },
+                "Rename"
+            }
+            button {
+                r#type: "button",
+                role: "menuitem",
+                class: "if-row-menu__item",
+                onclick: move |_| {
+                    let mut pd = pending_duplicate;
+                    pd.set(Some(target_for_dup.clone()));
+                    cap.start.call(crate::patterns::live_capture::CaptureFilter::Any);
+                    tracing::info!(
+                        target: "f8::mapping_list",
+                        action = "duplicate_arm",
+                        ?target_for_dup.input,
+                        mode = %target_for_dup.mode,
+                        "duplicate flow armed; awaiting fresh capture",
+                    );
+                    let mut menu_open = menu_open;
+                    menu_open.set(None);
+                },
+                "Duplicate"
+            }
+            div {
+                class: "if-row-menu__item if-row-menu__item--submenu-host",
+                "aria-disabled": "{dup_to_mode_disabled}",
+                "Duplicate to mode..."
+                if !dup_to_mode_disabled {
+                    div {
+                        class: "if-row-menu__submenu",
+                        role: "menu",
+                        for target_mode in other_modes.iter().cloned() {
+                            {
+                                let target_mode_clone = target_mode.clone();
+                                let target_for_each = target_for_dup_to.clone();
+                                let cmd_for_each = cmd_for_dup_to.clone();
+                                let ctx_for_each = ctx.clone();
+                                let mut menu_open_each = menu_open;
+                                rsx! {
+                                    button {
+                                        key: "{target_mode}",
+                                        r#type: "button",
+                                        role: "menuitem",
+                                        class: "if-row-menu__item",
+                                        onclick: move |_| {
+                                            let cfg = ctx_for_each.config.read();
+                                            let collision = cfg.mappings.iter().any(|m| {
+                                                m.input == target_for_each.input
+                                                    && m.mode == target_mode_clone
+                                            });
+                                            drop(cfg);
+                                            if collision {
+                                                let mut em = view.editing_mode;
+                                                em.set(target_mode_clone.clone());
+                                                let mut sel = view.selected_mapping;
+                                                sel.set(Some((
+                                                    target_mode_clone.clone(),
+                                                    target_for_each.input.clone(),
+                                                )));
+                                            } else {
+                                                let actions = ctx_for_each
+                                                    .state
+                                                    .read()
+                                                    .active_profile
+                                                    .as_ref()
+                                                    .and_then(|p| {
+                                                        p.find_mapping(
+                                                            &target_for_each.input,
+                                                            &target_for_each.mode,
+                                                        )
+                                                        .map(|m| m.actions.clone())
+                                                    })
+                                                    .unwrap_or_default();
+                                                let _ = cmd_for_each.send(
+                                                    EngineCommand::SetMapping {
+                                                        input: target_for_each.input.clone(),
+                                                        mode: target_mode_clone.clone(),
+                                                        name: target_for_each.name.clone(),
+                                                        actions,
+                                                    },
+                                                );
+                                                tracing::info!(
+                                                    target: "f8::mapping_list",
+                                                    action = "duplicate_to_mode",
+                                                    ?target_for_each.input,
+                                                    mode = %target_mode_clone,
+                                                    "dispatch SetMapping (duplicate_to_mode)",
+                                                );
+                                            }
+                                            menu_open_each.set(None);
+                                        },
+                                        "{target_mode}"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            button {
+                r#type: "button",
+                role: "menuitem",
+                class: "if-row-menu__item if-row-menu__item--danger",
+                onclick: move |_| {
+                    let mut delete_target = delete_target;
+                    delete_target.set(Some(target_for_delete.clone()));
+                    let mut menu_open = menu_open;
+                    menu_open.set(None);
+                },
+                "Delete"
+            }
+        }
+    }
 }
 
 #[component]
@@ -225,8 +394,82 @@ pub(crate) fn DeleteDialogMount(delete_target: Signal<Option<MappingSummary>>) -
 }
 
 #[component]
-#[allow(dead_code, reason = "Replaced in Task 20")]
+#[allow(
+    unused_qualifications,
+    reason = "Dioxus 0.7 RSX macro emits redundant qualifications on event listeners."
+)]
 fn DuplicateWatcher(pending_duplicate: Signal<Option<MappingSummary>>) -> Element {
-    let _ = pending_duplicate;
-    rsx! {}
+    let ctx = use_context::<AppContext>();
+    let view = use_context::<ViewState>();
+    let cap = use_context::<LiveCapture>();
+
+    let editing = view.editing_mode;
+    let ctx_for_cap = ctx.clone();
+    use_effect(move || {
+        let captured_now = cap.captured.read().clone();
+        let Some(source) = pending_duplicate.read().clone() else {
+            return;
+        };
+        let Some(captured_addr) = captured_now else {
+            return;
+        };
+        let mode_now = editing.read().clone();
+        let cfg = ctx_for_cap.config.read();
+        let collision = cfg
+            .mappings
+            .iter()
+            .any(|m| m.input == captured_addr && m.mode == mode_now);
+        drop(cfg);
+
+        if collision {
+            let mut sel = view.selected_mapping;
+            sel.set(Some((mode_now.clone(), captured_addr.clone())));
+        } else {
+            let actions = ctx_for_cap
+                .state
+                .read()
+                .active_profile
+                .as_ref()
+                .and_then(|p| {
+                    p.find_mapping(&source.input, &source.mode)
+                        .map(|m| m.actions.clone())
+                })
+                .unwrap_or_default();
+            let new_name = format!("{} (copy)", source.name.as_deref().unwrap_or("(unnamed)"),);
+            let _ = ctx_for_cap.commands.send(EngineCommand::SetMapping {
+                input: captured_addr.clone(),
+                mode: mode_now.clone(),
+                name: Some(new_name),
+                actions,
+            });
+            let mut sel = view.selected_mapping;
+            sel.set(Some((mode_now, captured_addr)));
+            tracing::info!(
+                target: "f8::mapping_list",
+                action = "duplicate_capture_success",
+                "dispatch SetMapping (duplicate-with-fresh-capture)",
+            );
+        }
+        cap.cancel.call(());
+        let mut pd = pending_duplicate;
+        pd.set(None);
+    });
+
+    let pending = pending_duplicate.read().clone();
+    if pending.is_none() || !*cap.active.read() {
+        return rsx! {};
+    }
+    let source_name = pending
+        .as_ref()
+        .and_then(|s| s.name.clone())
+        .unwrap_or_else(|| "(unnamed)".to_owned());
+    rsx! {
+        div { class: "if-add-inline if-add-inline--armed if-add-inline--duplicate",
+            div { class: "if-add-inline__pad",
+                "Press an input to bind the copy of "
+                strong { "{source_name}" }
+                "..."
+            }
+        }
+    }
 }
