@@ -108,6 +108,16 @@ pub fn launch_gui(
     // wrapping `use_muda_event_handler`) from inside `app_root`'s `use_hook`,
     // because `dioxus_desktop::ipc::UserWindowEvent` is private in 0.7.6.
 
+    // CDP for chrome-devtools-mcp: debug+Windows only. WRY_DEFAULTS must be
+    // re-included verbatim — Wry replaces (not appends) browser args, and
+    // dropping these re-enables SmartScreen prompts (tauri-apps/wry#705).
+    #[cfg(all(debug_assertions, target_os = "windows"))]
+    let cfg = {
+        const WRY_DEFAULTS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
+        let extra = format!("{WRY_DEFAULTS} --remote-debugging-port=9222 --remote-allow-origins=*");
+        cfg.with_windows_browser_args(extra)
+    };
+
     LaunchBuilder::desktop()
         .with_cfg(cfg)
         .with_context(handles)
