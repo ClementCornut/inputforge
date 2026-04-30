@@ -64,6 +64,17 @@
     opacity: 0.5;
 }
 
+/* WCAG 2.4.7 — keyboard focus must be visible. Mirrors the canonical
+   ring used by .if-tools-cluster__button and .if-mode-tab; offset 0px
+   so the 2px ring sits flush outside the capsule's 1px border without
+   intruding on the LED-dot register inside. radius-full keeps the ring
+   matched to the pill geometry. */
+.if-engine-pill:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 0;
+    border-radius: var(--radius-full);
+}
+
 /* The dot is the LED face. `currentColor` carries the variant hue, and
    the box-shadow is a 0/0/0 spread halo — no blur, just a flat ring at
    the same hue at low alpha. Reads as light leaking around a panel-
@@ -128,6 +139,15 @@
 .if-profile-name--loaded:hover {
     background: var(--color-border);
     border-color: var(--color-border-strong);
+}
+
+/* WCAG 2.4.7 — keyboard focus must be visible. Same ring as the
+   tools-cluster button (radius-sm + offset -1px so the ring sits inside
+   the 1px transparent border without causing reflow). */
+.if-profile-name:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: -1px;
+    border-radius: var(--radius-sm);
 }
 
 .if-profile-name--empty {
