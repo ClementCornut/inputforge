@@ -337,3 +337,53 @@ fn empty_zero_filter_results_quotes_query() {
         "clear-filter button missing: {html}"
     );
 }
+
+#[test]
+fn add_inline_resting_renders_dashed_row() {
+    use crate::frame::mapping_list::add_inline::AddInline;
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let force_expanded: Signal<bool> = use_signal(|| false);
+        rsx! { AddInline { force_expanded: force_expanded } }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-add-inline"),
+        "AddInline root class missing: {html}",
+    );
+    assert!(
+        html.contains("Add mapping") || html.contains("+ "),
+        "resting state must advertise the add affordance: {html}",
+    );
+}
+
+#[test]
+fn add_inline_force_expanded_arms_capture() {
+    use crate::frame::mapping_list::add_inline::AddInline;
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let force_expanded: Signal<bool> = use_signal(|| true);
+        rsx! { AddInline { force_expanded: force_expanded } }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    // SSR rebuild_in_place re-creates the ROOT scope each time, so we can't
+    // observe `cap.active` flipping in a parent scope across rebuilds (each
+    // rebuild gets a fresh LiveCapture context). We instead assert that the
+    // AddInline child rendered the `--armed` modifier, which is only emitted
+    // when the state machine transitioned to `CapturingArmed` AND the
+    // `cap.start` callback was invoked from the same use_hook on first mount.
+    assert!(
+        html.contains("if-add-inline--armed"),
+        "force_expanded=true must arm capture (state machine -> CapturingArmed); got: {html}",
+    );
+    assert!(
+        html.contains("Press an input on any device"),
+        "armed prompt text must render; got: {html}",
+    );
+}
