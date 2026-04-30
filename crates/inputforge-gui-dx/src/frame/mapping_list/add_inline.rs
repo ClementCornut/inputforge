@@ -28,12 +28,13 @@ use std::sync::mpsc::Sender;
 use dioxus::prelude::*;
 
 use inputforge_core::engine::EngineCommand;
-use inputforge_core::types::InputAddress;
+use inputforge_core::types::{InputAddress, InputId};
 
-use crate::components::{Button, ButtonVariant, InputSize, TextInput};
+use crate::components::{Button, ButtonSize, ButtonVariant, IconButton, InputSize, TextInput};
 use crate::context::AppContext;
 use crate::frame::mapping_list::source_label;
 use crate::frame::view_state::ViewState;
+use crate::icons::Icon as IconKind;
 use crate::patterns::live_capture::{CaptureFilter, LiveCapture};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -260,8 +261,16 @@ pub(crate) fn AddInline(
             let cmd_for_enter = ctx.commands.clone();
             let cmd_for_btn = ctx.commands.clone();
             let cfg = ctx.config.read();
-            let label = source_label::format(&addr, &cfg);
+            let (device_label, input_label) = source_label::split_label(&addr, &cfg);
             drop(cfg);
+            // The chip's hue classifies the captured input by kind, sharing
+            // the gold/violet/teal vocabulary already used for F8 row glyphs
+            // (`glyph-merge`, `glyph-cond`). Selector key is `data-kind`.
+            let kind_class = match addr.input {
+                InputId::Axis { .. } => "axis",
+                InputId::Button { .. } => "button",
+                InputId::Hat { .. } => "hat",
+            };
             rsx! {
                 div {
                     class: "if-add-inline if-add-inline--captured",
@@ -287,17 +296,24 @@ pub(crate) fn AddInline(
                             _ => {}
                         }
                     },
-                    div { class: "if-add-inline__captured-header",
-                        div { class: "if-add-inline__captured-label", "{label}" }
-                        Button {
+                    div { class: "if-add-inline__readout",
+                        span {
+                            class: "if-add-inline__chip",
+                            "data-kind": kind_class,
+                            "{input_label}"
+                        }
+                        span { class: "if-add-inline__device", "{device_label}" }
+                        IconButton {
+                            icon: IconKind::Refresh,
+                            label: "Capture a different input",
                             variant: ButtonVariant::Ghost,
+                            size: ButtonSize::Sm,
                             onclick: move |_| {
                                 // Re-arm capture; keep the typed name so the user
                                 // does not have to retype after correcting the input.
                                 state.set(AddState::CapturingArmed);
                                 cap.start.call(CaptureFilter::Any);
                             },
-                            "Change"
                         }
                     }
                     TextInput {
@@ -309,6 +325,7 @@ pub(crate) fn AddInline(
                     div { class: "if-add-inline__actions",
                         Button {
                             variant: ButtonVariant::Ghost,
+                            size: ButtonSize::Sm,
                             onclick: move |_| {
                                 state.set(AddState::Resting);
                                 name.set(String::new());
@@ -317,6 +334,7 @@ pub(crate) fn AddInline(
                         }
                         Button {
                             variant: ButtonVariant::Primary,
+                            size: ButtonSize::Sm,
                             onclick: move |_| {
                                 let n = name.read().clone();
                                 dispatch_add_helper(

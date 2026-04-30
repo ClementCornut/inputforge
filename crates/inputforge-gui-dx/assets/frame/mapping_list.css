@@ -170,32 +170,66 @@
     padding: var(--space-1) var(--space-2);
 }
 
-/* Header row: captured-input label on the left, Change button on the
- * right. Label flex-grows + truncates so long device names do not push
- * the Change button off-canvas. */
-.if-add-inline__captured-header {
+/* Captured-pad readout row: input-identity chip (left, fixed-width) +
+ * device name (flex-grows + truncates) + recapture icon-button (right,
+ * fixed-width). The chip sits in its own layout cell so the input
+ * identifier never gets eaten by device-name truncation, and the
+ * IconButton has flex: 0 0 auto so it stays inline at any rail width. */
+.if-add-inline__readout {
+    display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: var(--space-2);
+    min-width: 0;
 }
 
-.if-add-inline__captured-label {
+.if-add-inline__chip {
+    flex: 0 0 auto;
+    min-width: 32px;
+    padding: 2px var(--space-1);
+    font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--color-text);
     font-weight: 500;
+    line-height: 1.15;
+    text-align: center;
+    border-radius: var(--radius-sm);
+    border: 1px solid currentColor;
+    background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+/* Per-input-kind hue: same taxonomy already in use on F8 row glyphs. */
+.if-add-inline__chip[data-kind="axis"]   { color: var(--color-output); }
+.if-add-inline__chip[data-kind="button"] { color: var(--color-control-badge-text); }
+.if-add-inline__chip[data-kind="hat"]    { color: var(--color-processing); }
+
+.if-add-inline__device {
     flex: 1 1 auto;
     min-width: 0;
+    color: var(--color-text-muted);
+    font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-/* Action row at the bottom of the captured pad. Right-aligned so the
- * primary action (Add) sits at the trailing edge per platform
- * convention. */
+/* The IconButton (refresh) must never wrap or shrink. */
+.if-add-inline__readout > .if-icon-button {
+    flex: 0 0 auto;
+}
+
+/* Action row at the bottom of the captured pad: Cancel + Add right-
+ * aligned, with a hairline divider above. Negative horizontal margins
+ * extend the divider to the panel's inner edge so it reads as a
+ * structural seam rather than a contained line. Mirrors the F4 Dialog
+ * footer convention. */
 .if-add-inline__actions {
+    display: flex;
     justify-content: flex-end;
     gap: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border);
+    margin: 0 calc(-1 * var(--space-2));
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
 }
 
 .if-add-inline--collision {

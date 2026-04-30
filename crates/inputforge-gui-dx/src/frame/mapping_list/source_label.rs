@@ -29,6 +29,15 @@ fn axis_label(index: u8) -> Cow<'static, str> {
 /// - Missing device: `"<DeviceId> · <input-label>"`. Caller's CSS may
 ///   italicize via `.if-row__source--unknown` to flag the gap.
 pub(crate) fn format(addr: &InputAddress, cfg: &ConfigSnapshot) -> String {
+    let (device_label, input_label) = split_label(addr, cfg);
+    format!("{device_label} \u{00b7} {input_label}")
+}
+
+/// Split form of `format`: returns `(device_label, input_label)` so callers
+/// can render the two cells separately. The captured-input chip in the F8
+/// `AddInline` pad uses this — the input identifier needs its own layout
+/// cell so it stays visible when the device name truncates.
+pub(crate) fn split_label(addr: &InputAddress, cfg: &ConfigSnapshot) -> (String, String) {
     let device_label = match cfg.devices.iter().find(|d| d.info.id == addr.device) {
         Some(device) => device.info.name.clone(),
         None => addr.device.0.clone(),
@@ -38,7 +47,7 @@ pub(crate) fn format(addr: &InputAddress, cfg: &ConfigSnapshot) -> String {
         InputId::Button { index } => format!("Btn {}", index + 1),
         InputId::Hat { index } => format!("Hat {index}"),
     };
-    format!("{device_label} \u{00b7} {input_label}")
+    (device_label, input_label)
 }
 
 #[cfg(test)]
@@ -114,5 +123,41 @@ mod tests {
             input: InputId::Button { index: 0 },
         };
         assert_eq!(format(&addr, &cfg), "tfm-disconnected \u{00b7} Btn 1");
+    }
+
+    #[test]
+    fn split_label_returns_device_and_input_separately() {
+        let cfg = cfg_with_device("TFM Throttle", "tfm");
+        let addr = InputAddress {
+            device: DeviceId("tfm".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        let (device, input) = split_label(&addr, &cfg);
+        assert_eq!(device, "TFM Throttle");
+        assert_eq!(input, "X");
+    }
+
+    #[test]
+    fn split_label_button_one_indexed() {
+        let cfg = cfg_with_device("TFM Throttle", "tfm");
+        let addr = InputAddress {
+            device: DeviceId("tfm".to_owned()),
+            input: InputId::Button { index: 3 },
+        };
+        let (device, input) = split_label(&addr, &cfg);
+        assert_eq!(device, "TFM Throttle");
+        assert_eq!(input, "Btn 4");
+    }
+
+    #[test]
+    fn split_label_missing_device_falls_back_to_id() {
+        let cfg = ConfigSnapshot::default();
+        let addr = InputAddress {
+            device: DeviceId("ghost-dev".to_owned()),
+            input: InputId::Hat { index: 0 },
+        };
+        let (device, input) = split_label(&addr, &cfg);
+        assert_eq!(device, "ghost-dev");
+        assert_eq!(input, "Hat 0");
     }
 }
