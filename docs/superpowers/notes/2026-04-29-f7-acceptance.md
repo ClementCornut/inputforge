@@ -18,30 +18,34 @@ Verified 2026-04-30.
 
 ## Manual sweep
 
-- [ ] Engine pill state machine + ARIA (Stopped → Running click cycle, role=status announce, disabled when no profile).
-- [ ] Profile name slot (button vs em-dash empty state, focus-visible ring after fix §1.3).
-- [ ] Mode tabs flat list + arrow roving + runtime marker (Natural green vs Forced amber).
-- [ ] Mode tabs `+` inline add (commit valid, reject empty/duplicate/oversized, focus-on-create after fix §2.8).
-- [ ] Mode tabs right-click menu (4 items + disabled states; subtree-contains-startup disables Delete).
-- [ ] Mode tabs Shift+F10 (opens menu anchored to bounding rect, no JS injection after fix §1.1).
-- [ ] Mode tabs inline rename (Esc reverts focus, Enter commits, validation).
-- [ ] Mode tabs F4 destructive delete via context menu AND via Delete key after fix §1.2.
-- [ ] Banner state machine (Hidden / Diverged / Forced / ForcedAndDiverged transitions).
-- [ ] Tools cluster + panel slot transitions (Devices / Calibration / Profiles, F12/F13 placeholders).
-- [ ] No-profile empty-state branch (top bar disabled, status bar shows `0/0 devices`, `—`).
+Verified 2026-04-30.
+
+- [x] Engine pill state machine + ARIA (Stopped → Running click cycle, role=status announce, disabled when no profile).
+- [x] Profile name slot (button vs em-dash empty state, focus-visible ring after fix §1.3).
+- [x] Mode tabs flat list + arrow roving + runtime marker (Natural green vs Forced amber).
+- [x] Mode tabs `+` inline add (commit valid, reject empty/duplicate/oversized, focus-on-create after fix §2.8).
+- [x] Mode tabs right-click menu (4 items + disabled states; subtree-contains-startup disables Delete).
+- [x] Mode tabs Shift+F10 (opens menu anchored to bounding rect, no JS injection after fix §1.1).
+- [x] Mode tabs inline rename (Esc reverts focus, Enter commits, validation).
+- [x] Mode tabs F4 destructive delete via context menu AND via Delete key after fix §1.2.
+- [x] Banner state machine (Hidden / Diverged / Forced / ForcedAndDiverged transitions).
+- [x] Tools cluster + panel slot transitions (Devices / Calibration / Profiles, F12/F13 placeholders).
+- [x] No-profile empty-state branch (top bar disabled, status bar shows `0/0 devices`, `—`).
 
 ## Keyboard-only walkthrough
 
-- [ ] Tab into engine pill → Enter activates.
-- [ ] Tab into mode tablist → ArrowLeft/Right cycles with wrap; Home/End jumps.
-- [ ] Shift+F10 on a tab opens context menu; ArrowDown/Up cycles items skipping `aria-disabled`.
-- [ ] Escape closes context menu; focus restored to originating tab.
-- [ ] **Tab inside open context menu closes it and focus moves to next focusable element (no contention with parent re-focus) — fix §2.4.**
-- [ ] **Delete on focused tab opens F4 confirm — fix §1.2.**
-- [ ] `+` add inline opens with focus inside input; Esc reverts to `+` button focus; Enter commits and focuses new tab.
-- [ ] Rename inline: Esc reverts and restores focus; Enter commits and focuses renamed tab.
-- [ ] Tab cycles out of tablist into tools cluster; Shift+Tab reverses.
-- [ ] **Engine pill and profile name buttons show visible focus rings — fix §1.3.**
+Verified 2026-04-30.
+
+- [x] Tab into engine pill → Enter activates.
+- [x] Tab into mode tablist → ArrowLeft/Right cycles with wrap; Home/End jumps.
+- [x] Shift+F10 on a tab opens context menu; ArrowDown/Up cycles items skipping `aria-disabled`.
+- [x] Escape closes context menu; focus restored to originating tab.
+- [x] **Tab inside open context menu closes it and focus moves to next focusable element (no contention with parent re-focus) — fix §2.4.**
+- [x] **Delete on focused tab opens F4 confirm — fix §1.2.**
+- [x] `+` add inline opens with focus inside input; Esc reverts to `+` button focus; Enter commits and focuses new tab.
+- [x] Rename inline: Esc reverts and restores focus; Enter commits and focuses renamed tab.
+- [x] Tab cycles out of tablist into tools cluster; Shift+Tab reverses.
+- [x] **Engine pill and profile name buttons show visible focus rings — fix §1.3.**
 
 ## Screen-reader (NVDA / Orca)
 
