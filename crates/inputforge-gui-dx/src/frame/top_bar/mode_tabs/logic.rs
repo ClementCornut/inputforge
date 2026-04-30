@@ -47,6 +47,28 @@ pub(crate) fn runtime_marker(
     RuntimeMarker { tab_index, color }
 }
 
+/// Whether the Delete action should be disabled for the named tab.
+///
+/// Spec: delete is disabled when the tab is the root, when the tab IS the
+/// startup mode, or when the subtree of the tab CONTAINS the startup mode.
+/// `descendants` is the set of mode names below `name` in the tree (proper
+/// descendants, computed by the caller via `ModeTree::descendants_of`).
+///
+/// Pure function — no Dioxus runtime, no profile access. The caller resolves
+/// the descendants list and passes it in so this helper is unit-testable
+/// without touching `inputforge_core::Profile`.
+pub(crate) fn delete_disabled_for_tab(
+    name: &str,
+    modes: &[String],
+    startup: Option<&str>,
+    descendants: &[String],
+) -> bool {
+    let is_root = modes.first().is_some_and(|first| first == name);
+    let subtree_contains_startup =
+        startup.is_some_and(|sm| sm == name || descendants.iter().any(|d| d == sm));
+    is_root || subtree_contains_startup
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(
     dead_code,
@@ -226,6 +248,64 @@ mod tests {
             validate_mode_name(&raw, &modes(), None),
             NameValidation::Valid(raw.clone())
         );
+    }
+
+    #[test]
+    fn delete_disabled_for_root_tab() {
+        let modes = vec!["Default".to_owned(), "Combat".to_owned()];
+        assert!(delete_disabled_for_tab(
+            "Default",
+            &modes,
+            Some("Default"),
+            &[]
+        ));
+    }
+
+    #[test]
+    fn delete_disabled_when_tab_is_startup() {
+        let modes = vec!["Default".to_owned(), "Combat".to_owned()];
+        // Combat is not the root, but it IS the startup mode → disabled.
+        assert!(delete_disabled_for_tab(
+            "Combat",
+            &modes,
+            Some("Combat"),
+            &[]
+        ));
+    }
+
+    #[test]
+    fn delete_disabled_when_subtree_contains_startup() {
+        let modes = vec![
+            "Default".to_owned(),
+            "Combat".to_owned(),
+            "Missiles".to_owned(),
+        ];
+        let descendants = vec!["Missiles".to_owned()];
+        // Combat itself isn't startup, but Missiles (its descendant) is.
+        assert!(delete_disabled_for_tab(
+            "Combat",
+            &modes,
+            Some("Missiles"),
+            &descendants
+        ));
+    }
+
+    #[test]
+    fn delete_enabled_for_unrelated_leaf() {
+        let modes = vec!["Default".to_owned(), "Landing".to_owned()];
+        assert!(!delete_disabled_for_tab(
+            "Landing",
+            &modes,
+            Some("Default"),
+            &[]
+        ));
+    }
+
+    #[test]
+    fn delete_enabled_when_no_startup_set() {
+        let modes = vec!["Default".to_owned(), "Combat".to_owned()];
+        // No startup set at all → only is_root governs. Combat is not root.
+        assert!(!delete_disabled_for_tab("Combat", &modes, None, &[]));
     }
 
     #[test]

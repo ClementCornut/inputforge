@@ -23,6 +23,7 @@ use logic::{MarkerColor, runtime_marker};
               This is a macro-level artifact, not authored qualifications."
 )]
 pub(crate) fn ModeTabs() -> Element {
+    tracing::trace!(target: "frame::render", region = "mode_tabs");
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
 
@@ -152,8 +153,13 @@ pub(crate) fn ModeTabs() -> Element {
                 {
                     let is_active = name == editing_now;
                     let marker_for_tab = (marker.tab_index == Some(idx)).then_some(marker.color);
-                    let tab_id = format!("mode-tab-{name}");
-                    let menu_id = format!("mode-tab-menu-{name}");
+                    // DOM ids are derived from the tab's index, not the
+                    // mode name, so they're guaranteed HTML5-valid AND safe
+                    // to interpolate into JS-eval strings (see kb_tab_id
+                    // below + focus_walker.rs eval). Mode names land on
+                    // `data-mode` for DevTools/CSS hooks.
+                    let tab_id = format!("mode-tab-{idx}");
+                    let menu_id = format!("mode-tab-menu-{idx}");
                     let menu_open = open_for_tab
                         .read()
                         .as_ref()
@@ -162,8 +168,17 @@ pub(crate) fn ModeTabs() -> Element {
                     let select_name = name.clone();
                     let key_modes = modes_now.clone();
                     let ctxmenu_name = name.clone();
+                    // Carries the mode name into the open-state signal so
+                    // the matching tab can be identified later. The DOM
+                    // lookup uses the integer-derived `kb_tab_id` instead.
                     let kb_menu_name = name.clone();
                     let kb_tab_id = tab_id.clone();
+                    // Plumbing for the Delete keybind: the closure resolves
+                    // the disabled flag at event time (cheap — runs only on
+                    // Delete keystroke) by reading meta + state, so render
+                    // doesn't pay an O(N) descendants_of cost per tab.
+                    let kb_delete_name = name.clone();
+                    let kb_ctx = ctx.clone();
                     let onclick = move |_| {
                         editing_setter.set(select_name.clone());
                     };
@@ -216,6 +231,35 @@ pub(crate) fn ModeTabs() -> Element {
                                     )));
                                 }
                             });
+                            return;
+                        }
+
+                        // Delete → opens F4 destructive-confirm (T31). Same
+                        // disabled rules as the context-menu Delete item:
+                        // root tabs and any tab whose subtree contains the
+                        // startup mode are immune. The existing
+                        // `dialog_open` effect picks up the `delete_target`
+                        // change and mounts the dialog.
+                        if evt.key() == Key::Delete {
+                            evt.prevent_default();
+                            let modes_snapshot = key_modes.clone();
+                            let startup = kb_ctx.meta.read().startup_mode.clone();
+                            let descendants = kb_ctx
+                                .state
+                                .read()
+                                .active_profile
+                                .as_ref()
+                                .and_then(|p| p.modes().descendants_of(&kb_delete_name).ok())
+                                .unwrap_or_default();
+                            if !logic::delete_disabled_for_tab(
+                                &kb_delete_name,
+                                &modes_snapshot,
+                                startup.as_deref(),
+                                &descendants,
+                            ) {
+                                let mut delete_target = delete_target;
+                                delete_target.set(Some(kb_delete_name.clone()));
+                            }
                             return;
                         }
 
@@ -288,6 +332,7 @@ pub(crate) fn ModeTabs() -> Element {
                             button {
                                 key: "{name}",
                                 id: "{tab_id}",
+                                "data-mode": "{name}",
                                 r#type: "button",
                                 class: if is_active { "if-mode-tab if-mode-tab--active" } else { "if-mode-tab" },
                                 role: "tab",
@@ -343,34 +388,38 @@ pub(crate) fn ModeTabs() -> Element {
                     let has_profile = m.profile_name.is_some();
                     drop(m);
 
-                    let subtree_contains_startup = {
+                    // Resolve descendants once; both the menu's Delete-flag
+                    // and the keydown Delete arm share the same helper for
+                    // a single source of truth.
+                    let descendants = {
                         let s = ctx.state.read();
                         s.active_profile
                             .as_ref()
-                            .and_then(|p| {
-                                let descendants = p.modes().descendants_of(&open_name).ok()?;
-                                startup.as_ref().map(|sm| {
-                                    sm == &open_name || descendants.iter().any(|d| d == sm)
-                                })
-                            })
-                            .unwrap_or(false)
+                            .and_then(|p| p.modes().descendants_of(&open_name).ok())
+                            .unwrap_or_default()
                     };
 
-                    let is_root = modes_for_flags
-                        .first()
-                        .is_some_and(|first| first == &open_name);
                     let is_startup = startup.as_ref().is_some_and(|s| s == &open_name);
                     let already_forced =
                         force_mode.is_some_and(|m| m == open_name);
+                    // Numeric index of the open tab. Used by the context
+                    // menu to derive its DOM id and aria-labelledby target
+                    // (which point at the integer-derived tab id, never
+                    // the raw mode name — see JS-injection note in mod.rs).
+                    let open_tab_idx = modes_for_flags
+                        .iter()
+                        .position(|m| m == &open_name)
+                        .unwrap_or(0);
 
                     let flags = context_menu::ContextMenuFlags {
                         activate_disabled: already_forced,
                         rename_disabled: !has_profile,
-                        // Spec: delete is disabled when the tab is the
-                        // root, when the tab IS the startup mode, or when
-                        // the subtree of the tab CONTAINS the startup
-                        // mode.
-                        delete_disabled: is_root || subtree_contains_startup,
+                        delete_disabled: logic::delete_disabled_for_tab(
+                            &open_name,
+                            &modes_for_flags,
+                            startup.as_deref(),
+                            &descendants,
+                        ),
                         set_default_disabled: is_startup,
                     };
 
@@ -379,6 +428,7 @@ pub(crate) fn ModeTabs() -> Element {
                     rsx! {
                         context_menu::ModeTabContextMenu {
                             tab_name: open_name.clone(),
+                            tab_idx: open_tab_idx,
                             open: open_for_tab,
                             flags,
                             on_close: move |n: String| {

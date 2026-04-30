@@ -50,6 +50,12 @@ pub(crate) struct ContextMenuFlags {
 )]
 pub(crate) fn ModeTabContextMenu(
     tab_name: String,
+    /// Index of the open tab in the modes list. The menu's DOM `id` and
+    /// `aria-labelledby` target are derived from this integer so the
+    /// `document::eval` path in `focus_walker` is JS-string-safe even when
+    /// the mode name contains quotes, backslashes, or `'); alert(1); //`.
+    /// The mode name itself never reaches the DOM/JS layer.
+    tab_idx: usize,
     /// Source of truth for whether this menu is open. Carries the anchor
     /// coordinates so the menu can position itself.
     open: Signal<Option<(String, AnchorRect)>>,
@@ -63,12 +69,14 @@ pub(crate) fn ModeTabContextMenu(
     /// dialog with the affected count.
     on_delete: EventHandler<String>,
 ) -> Element {
+    tracing::trace!(target: "frame::render", region = "mode_tabs::context_menu");
     let ctx = use_context::<AppContext>();
     let cmd_activate = ctx.commands.clone();
     let cmd_default = ctx.commands.clone();
 
-    let menu_id = format!("mode-tab-menu-{tab_name}");
+    let menu_id = format!("mode-tab-menu-{tab_idx}");
     let menu_id_for_keys = menu_id.clone();
+    let labelled_by = format!("mode-tab-{tab_idx}");
 
     let anchor = match open.read().as_ref() {
         Some((n, rect)) if n == &tab_name => *rect,
@@ -212,7 +220,7 @@ pub(crate) fn ModeTabContextMenu(
             class: "if-modetab-context-menu",
             id: "{menu_id}",
             role: "menu",
-            "aria-labelledby": "mode-tab-{tab_name}",
+            "aria-labelledby": "{labelled_by}",
             tabindex: "-1",
             style: "{style}",
             onkeydown: menu_onkeydown,

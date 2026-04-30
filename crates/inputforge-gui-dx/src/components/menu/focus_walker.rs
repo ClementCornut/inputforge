@@ -61,6 +61,15 @@ const MENU_FOCUS_JS: &str = r#"
 /// is set (the F2 dropdown items use HTML `disabled`); the F7 context menu
 /// uses `aria-disabled` plus a click-handler bail-out, with the focus walker
 /// still rolling through them.
+///
+/// # Safety contract
+///
+/// `menu_id` is interpolated directly into a `document::eval` JS string
+/// (see the format! call below), which means it MUST be JS-string-safe.
+/// Callers should derive it from a trusted integer or a static slug —
+/// **never from user input** (mode names, profile names, etc). The F7
+/// `mode_tabs/context_menu.rs` constructs `menu_id = "mode-tab-menu-{idx}"`
+/// from the tab's positional index for exactly this reason.
 pub(crate) fn focus_menu_item(menu_id: &str, action: FocusAction) {
     let verb = action.as_verb();
     let _ = document::eval(&format!("{MENU_FOCUS_JS}('{menu_id}', '{verb}');"));
