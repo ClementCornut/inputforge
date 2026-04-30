@@ -287,27 +287,49 @@ pub(crate) fn AddInline(
                             _ => {}
                         }
                     },
-                    div { class: "if-add-inline__captured-label", "{label}" }
+                    div { class: "if-add-inline__captured-header",
+                        div { class: "if-add-inline__captured-label", "{label}" }
+                        Button {
+                            variant: ButtonVariant::Ghost,
+                            onclick: move |_| {
+                                // Re-arm capture; keep the typed name so the user
+                                // does not have to retype after correcting the input.
+                                state.set(AddState::CapturingArmed);
+                                cap.start.call(CaptureFilter::Any);
+                            },
+                            "Change"
+                        }
+                    }
                     TextInput {
                         value: ReadSignal::from(name),
                         size: InputSize::Sm,
                         placeholder: "Mapping name".to_owned(),
                         oninput: move |evt: FormEvent| name.set(evt.value()),
                     }
-                    Button {
-                        variant: ButtonVariant::Primary,
-                        onclick: move |_| {
-                            let n = name.read().clone();
-                            dispatch_add_helper(
-                                addr_for_btn.clone(),
-                                &n,
-                                view_for_btn,
-                                &cmd_for_btn,
-                            );
-                            state.set(AddState::Resting);
-                            name.set(String::new());
-                        },
-                        "Add"
+                    div { class: "if-add-inline__actions",
+                        Button {
+                            variant: ButtonVariant::Ghost,
+                            onclick: move |_| {
+                                state.set(AddState::Resting);
+                                name.set(String::new());
+                            },
+                            "Cancel"
+                        }
+                        Button {
+                            variant: ButtonVariant::Primary,
+                            onclick: move |_| {
+                                let n = name.read().clone();
+                                dispatch_add_helper(
+                                    addr_for_btn.clone(),
+                                    &n,
+                                    view_for_btn,
+                                    &cmd_for_btn,
+                                );
+                                state.set(AddState::Resting);
+                                name.set(String::new());
+                            },
+                            "Add"
+                        }
                     }
                 }
             }

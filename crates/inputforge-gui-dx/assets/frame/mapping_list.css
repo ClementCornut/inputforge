@@ -170,6 +170,34 @@
     padding: var(--space-1) var(--space-2);
 }
 
+/* Header row: captured-input label on the left, Change button on the
+ * right. Label flex-grows + truncates so long device names do not push
+ * the Change button off-canvas. */
+.if-add-inline__captured-header {
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+
+.if-add-inline__captured-label {
+    font-size: 12px;
+    color: var(--color-text);
+    font-weight: 500;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Action row at the bottom of the captured pad. Right-aligned so the
+ * primary action (Add) sits at the trailing edge per platform
+ * convention. */
+.if-add-inline__actions {
+    justify-content: flex-end;
+    gap: var(--space-2);
+}
+
 .if-add-inline--collision {
     background: color-mix(in srgb, var(--color-warning) 12%, transparent);
     border: 1px solid var(--color-warning);
