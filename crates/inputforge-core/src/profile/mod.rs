@@ -223,6 +223,20 @@ impl Profile {
         }
     }
 
+    /// Remove the mapping for `(input, mode)`. Returns `true` if a mapping
+    /// was removed, `false` if no matching mapping existed.
+    ///
+    /// Distinct from `set_mapping(_, _, None, vec![])` which can also remove —
+    /// `remove_mapping` is the explicit API for the F8 delete flow and lets
+    /// callers detect a no-op (race between two stale dispatches) without
+    /// comparing `mappings().len()` before-and-after.
+    pub fn remove_mapping(&mut self, input: &InputAddress, mode: &str) -> bool {
+        let before = self.mappings.len();
+        self.mappings
+            .retain(|m| !(m.input == *input && m.mode == mode));
+        self.mappings.len() != before
+    }
+
     /// Replace the calibration entries.
     pub fn set_calibrations(&mut self, entries: Vec<CalibrationEntry>) {
         self.calibrations = entries;
@@ -1325,5 +1339,58 @@ enabled = true
 
         let touched = profile.rename_mode_refs("Combat", "Fighter").unwrap();
         assert_eq!(touched, 1);
+    }
+
+    // --- remove_mapping ---
+
+    #[test]
+    fn remove_mapping_drops_existing_returns_true() {
+        let mut profile = minimal_profile();
+        assert!(!profile.mappings().is_empty(), "fixture invariant");
+        let target = profile.mappings()[0].input.clone();
+        let target_mode = profile.mappings()[0].mode.clone();
+
+        let before_len = profile.mappings().len();
+        let removed = profile.remove_mapping(&target, &target_mode);
+
+        assert!(
+            removed,
+            "remove_mapping should return true when a mapping was removed"
+        );
+        assert_eq!(profile.mappings().len(), before_len - 1);
+        assert!(profile.find_mapping(&target, &target_mode).is_none());
+    }
+
+    #[test]
+    fn remove_mapping_unknown_returns_false() {
+        let mut profile = minimal_profile();
+        assert!(!profile.mappings().is_empty(), "fixture invariant");
+        let target = InputAddress {
+            device: DeviceId("nonexistent".to_owned()),
+            input: InputId::Button { index: 99 },
+        };
+
+        let before_len = profile.mappings().len();
+        let removed = profile.remove_mapping(&target, "Default");
+
+        assert!(
+            !removed,
+            "remove_mapping should return false when nothing matched"
+        );
+        assert_eq!(profile.mappings().len(), before_len);
+    }
+
+    #[test]
+    fn remove_mapping_wrong_mode_returns_false() {
+        // remove_mapping is mode-scoped: a matching input in a different
+        // mode must NOT be removed.
+        let mut profile = minimal_profile();
+        assert!(!profile.mappings().is_empty(), "fixture invariant");
+        let target = profile.mappings()[0].input.clone();
+
+        let removed = profile.remove_mapping(&target, "NonexistentMode");
+
+        assert!(!removed);
+        assert!(profile.find_mapping(&target, "Default").is_some());
     }
 }
