@@ -83,11 +83,14 @@ not blocking. Project tokens are pinned to AA in `colors.css`.
 
 ## Reduced-motion
 
-- [ ] DevTools Rendering panel: emulate `prefers-reduced-motion: reduce`.
-- [ ] **Banner enter/exit honors gate (no `translateY` animation) — fix §2.5.**
-- [ ] **Panel-slot enter honors gate (no `translateX` animation) — fix §2.5.**
-- [ ] Runtime-marker color transitions (when impeccable:animate adds them) honor reduced-motion.
-- [ ] No raw ms timing in F7 CSS (verified by grep).
+Verified 2026-04-30 via DevTools Rendering panel (Ctrl+Shift+P → Show Rendering
+→ "Emulate CSS media feature prefers-reduced-motion: reduce").
+
+- [x] DevTools Rendering panel: emulate `prefers-reduced-motion: reduce`.
+- [x] **Banner enter/exit honors gate (no `translateY` animation) — fix §2.5.** Banner snaps in instantly with no slide.
+- [x] **Panel-slot enter honors gate (no `translateX` animation) — fix §2.5.** Panel slot snaps in instantly with no slide.
+- [-] Runtime-marker color transitions (when impeccable:animate adds them) honor reduced-motion. **N/A today** — no marker color transitions exist yet; revisit when `impeccable:animate` adds them.
+- [x] No raw ms timing in F7 CSS (verified by grep `\b\d+ms\b` — only matches are inside CSS comments).
 
 ## Edge cases
 
