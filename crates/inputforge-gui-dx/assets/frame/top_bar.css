@@ -69,6 +69,7 @@
     border-radius: var(--radius-full);
     background: currentColor;
     box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 24%, transparent);
+    transform: translateY(0.5px);
 }
 
 .if-engine-pill__label {
