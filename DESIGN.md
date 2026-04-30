@@ -357,7 +357,7 @@ Five variants in three sizes. Button shape and motion is consistent across varia
 - **Secondary:** elevated-navy background, regular text, **strong** border. Hover raises border to focus-cyan only; the surface stays.
 - **Ghost:** transparent background, no border. Hover fills with elevated-navy and shows a hairline border (so a ghost button on a card surface still reads on hover, since the card is already elevated-navy).
 - **Danger:** error red surface, inverse text. Reserved for irrevocable actions. Hover brightens, active deepens.
-- **Active state across all variants:** `transform: translateY(1px)`. The button mechanically depresses by one pixel. No bounce. On standard-resolution displays (`@media (resolution: < 2dppx)`) the press becomes `translateY(2px)` so the displacement remains perceptible — a 1px translate at 1× DPR can render as sub-pixel and disappear.
+- **Active state across all variants:** `transform: translateY(1px)`. The button mechanically depresses by one pixel. No bounce. On standard-resolution displays (`@media (resolution < 2dppx)`) the press becomes `translateY(2px)` so the displacement remains perceptible — a 1px translate at 1× DPR can render as sub-pixel and disappear.
 - **Focus:** 2px focus-cyan outline at 2px offset. Visible against every background in the system.
 - **Disabled:** opacity 0.5, cursor not-allowed. No surface tinting, no removed border, no decorative crossed-out style.
 
