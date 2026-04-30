@@ -50,44 +50,55 @@ pub(crate) struct ViewState {
 /// effects (signal writes). Keeping the decision logic pure lets unit tests
 /// cover it without a Dioxus runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(
-    dead_code,
-    reason = "Consumed by unit tests and future mapping-list tasks"
-)]
 pub(crate) enum ReconcileOutcome {
     /// Profile and modes list are unchanged — no action required.
     NoChange,
     /// `meta.profile_name` differs from the previously seen profile name.
     ProfileFlipped,
-    /// The profile name is the same but `prev_mode` is no longer present in
-    /// `meta.modes` (mode was deleted mid-session).
+    /// `cur_mode` (the current `editing_mode` signal value) differs from
+    /// `prev_mode` (the `last_editing_mode` shadow) — an external write
+    /// flipped the editing mode without going through reconciliation.
+    /// Callers MUST clear `selected_mapping`.
+    ModeFlipped,
+    /// `cur_mode` (or `prev_mode`, equivalently after a fresh tick) is no
+    /// longer present in `meta.modes`. Caller falls back to `startup_mode`
+    /// or the first available mode.
     ModesListDrifted,
 }
 
 /// Pure reconciliation decision — unit-testable without a Dioxus runtime.
 ///
 /// Given the previously-seen profile name, the previously-seen editing mode,
-/// and the latest `MetaSnapshot`, returns the appropriate `ReconcileOutcome`.
-/// The hook adapter applies the resulting side effects (signal writes).
+/// the current live editing mode, and the latest `MetaSnapshot`, returns the
+/// appropriate [`ReconcileOutcome`]. The hook adapter applies the resulting
+/// side effects (signal writes).
 ///
-/// Note: editing-mode *flip* (user switching tabs) is detected on the hook
-/// side via the `last_editing_mode` shadow signal because it requires
-/// comparing two runtime signals, which is not representable in this pure
-/// (`prev_profile`, `prev_mode`, meta) signature.
-#[allow(
-    dead_code,
-    reason = "Consumed by unit tests and future mapping-list tasks"
-)]
+/// ## Branch ordering
+///
+/// Branches are evaluated in priority order:
+///
+/// 1. **Profile flip** — `meta.profile_name` differs from `prev_profile`.
+///    Resets everything downstream; wins over all other conditions.
+/// 2. **Mode flip** — `cur_mode` differs from `prev_mode`.
+///    External write changed `editing_mode`; clears `selected_mapping`.
+/// 3. **Modes-list drift** — `cur_mode` is absent from `meta.modes`.
+///    Mode was deleted mid-session; caller falls back to `startup_mode`
+///    or `modes[0]`.
+/// 4. **No change** — none of the above.
 pub(crate) fn reconcile_pure(
     prev_profile: &str,
     prev_mode: &str,
+    cur_mode: &str,
     meta: &MetaSnapshot,
 ) -> ReconcileOutcome {
     let cur_profile = meta.profile_name.as_deref().unwrap_or("");
     if prev_profile != cur_profile {
         return ReconcileOutcome::ProfileFlipped;
     }
-    if !meta.modes.iter().any(|m| m == prev_mode) {
+    if cur_mode != prev_mode {
+        return ReconcileOutcome::ModeFlipped;
+    }
+    if !meta.modes.iter().any(|m| m == cur_mode) {
         return ReconcileOutcome::ModesListDrifted;
     }
     ReconcileOutcome::NoChange
@@ -120,24 +131,26 @@ pub(crate) fn reconcile_pure(
 /// - `via_calibration`  = `false`
 /// - `selected_mapping` = `None`
 ///
-/// Reconciliation `use_effect` — three branches, evaluated in order:
+/// Reconciliation `use_effect` delegates to [`reconcile_pure`] and matches
+/// on the returned [`ReconcileOutcome`]:
 ///
-/// **Branch 1 (profile flip):** `meta.profile_name` changed.
+/// **`ProfileFlipped`:** `meta.profile_name` changed.
 ///   Reset `editing_mode` to the new `startup_mode` (or `"Default"`),
 ///   mirror the new editing mode into `last_editing_mode`, and clear
-///   `selected_mapping`. The mirror prevents Branch 2 from firing
+///   `selected_mapping`. The mirror prevents `ModeFlipped` from firing
 ///   spuriously on the same tick.
 ///
-/// **Branch 2 (editing-mode flip):** `editing_mode` changed since the last
-///   tick (detected via `last_editing_mode` shadow). Write the new value
-///   into `last_editing_mode` and clear `selected_mapping`.
+/// **`ModeFlipped`:** `editing_mode` changed since the last tick
+///   (detected via `last_editing_mode` shadow). Write the new value into
+///   `last_editing_mode` and clear `selected_mapping`.
 ///
-/// **Branch 3 (modes-list drift):** `editing_mode` is no longer in
-///   `meta.modes` (mode deleted mid-session). Reset to `startup_mode`;
-///   if that is also missing, fall back to `modes[0]`; if `modes` is
-///   empty, leave `editing_mode` unchanged. Branch 2 will clear
-///   `selected_mapping` on the subsequent effect tick when it detects
-///   the value change.
+/// **`ModesListDrifted`:** `editing_mode` is no longer in `meta.modes`
+///   (mode deleted mid-session). Reset to `startup_mode`; if that is also
+///   missing, fall back to `modes[0]`; if `modes` is empty, leave
+///   `editing_mode` unchanged. `ModeFlipped` will clear `selected_mapping`
+///   on the subsequent effect tick when it detects the value change.
+///
+/// **`NoChange`:** no action required.
 #[allow(dead_code, reason = "Called from app_root in Task 18")]
 pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
     let initial_editing = meta
@@ -159,52 +172,43 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
     let mut sel = selected_mapping;
     use_effect(move || {
         let m = meta.read();
+        let prev_profile = last_profile_name.peek().clone().unwrap_or_default();
+        let prev_mode = last_editing_mode.peek().clone();
+        let cur_mode = em.peek().clone();
+        let outcome = reconcile_pure(&prev_profile, &prev_mode, &cur_mode, &m);
 
-        // Branch 1: profile flip.
-        let profile_changed = *last_profile_name.peek() != m.profile_name;
-        if profile_changed {
-            last_profile_name.write().clone_from(&m.profile_name);
-            let next = m
-                .startup_mode
-                .clone()
-                .unwrap_or_else(|| "Default".to_owned());
-            // Mirror into the shadow first so Branch 2 does not fire on the
-            // same tick and clear selection a second time unnecessarily.
-            last_editing_mode.write().clone_from(&next);
-            *em.write() = next;
-            sel.set(None);
-            return;
-        }
-
-        // Branch 2: editing-mode flip (user switched tabs).
-        let editing_now = em.peek().clone();
-        if *last_editing_mode.peek() != editing_now {
-            *last_editing_mode.write() = editing_now;
-            sel.set(None);
-            return;
-        }
-
-        // Branch 3: modes-list drift — editing mode was deleted mid-session.
-        if !m.modes.iter().any(|n| n == &*em.peek()) {
-            let editing_now = em.peek().clone();
-            let fallback = if let Some(s) = m.startup_mode.as_ref() {
-                if m.modes.iter().any(|n| n == s) {
-                    s.clone()
+        match outcome {
+            ReconcileOutcome::NoChange => {}
+            ReconcileOutcome::ProfileFlipped => {
+                last_profile_name.write().clone_from(&m.profile_name);
+                let next = m
+                    .startup_mode
+                    .clone()
+                    .unwrap_or_else(|| "Default".to_owned());
+                // Mirror into the shadow first so ModeFlipped does not fire on
+                // the same tick and clear selection a second time unnecessarily.
+                (*last_editing_mode.write()).clone_from(&next);
+                *em.write() = next;
+                sel.set(None);
+            }
+            ReconcileOutcome::ModeFlipped => {
+                *last_editing_mode.write() = cur_mode;
+                sel.set(None);
+            }
+            ReconcileOutcome::ModesListDrifted => {
+                let fallback = if let Some(s) = m.startup_mode.as_ref() {
+                    if m.modes.iter().any(|n| n == s) {
+                        s.clone()
+                    } else {
+                        m.modes.first().cloned().unwrap_or(cur_mode)
+                    }
                 } else {
-                    m.modes
-                        .first()
-                        .cloned()
-                        .unwrap_or_else(|| editing_now.clone())
-                }
-            } else {
-                m.modes
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| editing_now.clone())
-            };
-            *em.write() = fallback;
-            // Branch 2 clears selected_mapping on the next effect tick when
-            // it detects the editing_mode value has changed.
+                    m.modes.first().cloned().unwrap_or(cur_mode)
+                };
+                *em.write() = fallback;
+                // ModeFlipped clears selected_mapping on the next effect tick
+                // when it detects that editing_mode has changed.
+            }
         }
     });
 
@@ -248,7 +252,8 @@ mod tests {
             modes: vec!["Default".to_owned(), "Combat".to_owned()],
             ..MetaSnapshot::default()
         };
-        let outcome = reconcile_pure("P", "Default", &meta);
+        // cur_mode == prev_mode == "Default", profile unchanged — NoChange.
+        let outcome = reconcile_pure("P", "Default", "Default", &meta);
         assert_eq!(outcome, ReconcileOutcome::NoChange);
     }
 
@@ -260,20 +265,50 @@ mod tests {
             modes: vec!["Default".to_owned()],
             ..MetaSnapshot::default()
         };
-        let outcome = reconcile_pure("P", "Default", &meta);
+        // prev_profile "P" vs cur_profile "Q" — ProfileFlipped.
+        let outcome = reconcile_pure("P", "Default", "Default", &meta);
         assert_eq!(outcome, ReconcileOutcome::ProfileFlipped);
     }
 
     #[test]
     fn reconcile_modes_list_drift() {
-        // prev_mode points at a mode no longer in meta.modes.
+        // cur_mode == prev_mode == "Combat", but "Combat" is not in meta.modes.
         let meta = MetaSnapshot {
             profile_name: Some("P".to_owned()),
             startup_mode: Some("Default".to_owned()),
             modes: vec!["Default".to_owned()],
             ..MetaSnapshot::default()
         };
-        let outcome = reconcile_pure("P", "Combat", &meta);
+        let outcome = reconcile_pure("P", "Combat", "Combat", &meta);
         assert_eq!(outcome, ReconcileOutcome::ModesListDrifted);
     }
+
+    #[test]
+    fn reconcile_mode_flipped_when_cur_differs_from_prev() {
+        let meta = MetaSnapshot {
+            profile_name: Some("P".to_owned()),
+            startup_mode: Some("Default".to_owned()),
+            modes: vec!["Default".to_owned(), "Combat".to_owned()],
+            ..MetaSnapshot::default()
+        };
+        // prev_mode = "Default" (shadow), cur_mode = "Combat" (live signal).
+        // External write flipped editing_mode → ModeFlipped.
+        let outcome = reconcile_pure("P", "Default", "Combat", &meta);
+        assert_eq!(outcome, ReconcileOutcome::ModeFlipped);
+    }
+
+    #[test]
+    fn reconcile_profile_flip_takes_precedence_over_mode_flip() {
+        let meta = MetaSnapshot {
+            profile_name: Some("Q".to_owned()),
+            startup_mode: Some("Default".to_owned()),
+            modes: vec!["Default".to_owned()],
+            ..MetaSnapshot::default()
+        };
+        // Both prev_profile != cur_profile AND prev_mode != cur_mode.
+        // Profile flip wins over mode flip.
+        let outcome = reconcile_pure("P", "Default", "Combat", &meta);
+        assert_eq!(outcome, ReconcileOutcome::ProfileFlipped);
+    }
 }
+// Rust guideline compliant 2026-04-30
