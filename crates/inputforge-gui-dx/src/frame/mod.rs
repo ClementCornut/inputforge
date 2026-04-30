@@ -7,13 +7,8 @@ mod status_bar;
 mod top_bar;
 mod view_state;
 
-#[allow(
-    unused_imports,
-    reason = "Layout exported for use in app_root (Task 18)"
-)]
 pub(crate) use layout::Layout;
-#[allow(
-    unused_imports,
-    reason = "ViewState types exported for app_root provider (Task 18)"
-)]
-pub(crate) use view_state::{PanelSlot, ViewState, use_view_state_provider};
+// `PanelSlot` and `ViewState` are not re-exported here — every consumer
+// imports them directly via `crate::frame::view_state::*` so a single
+// path style stays consistent across regions.
+pub(crate) use view_state::use_view_state_provider;

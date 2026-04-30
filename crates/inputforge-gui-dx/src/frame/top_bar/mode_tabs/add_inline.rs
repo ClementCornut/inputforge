@@ -112,6 +112,10 @@ pub(crate) fn AddInline(
     let modes_for_keydown = modes.read().clone();
     let modes_for_blur = modes.read().clone();
 
+    // Single global id is safe because at most one AddInline mounts at
+    // a time — the `+` button toggles into one inline editor, never two.
+    // RenameInline derives a per-`from`-name id (different invariant:
+    // up to N tabs, but only one rename can be active at once).
     let error_id = "mode-name-error-add";
 
     rsx! {

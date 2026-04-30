@@ -20,7 +20,7 @@ pub(crate) fn EnginePill() -> Element {
 
     let s = *status.read();
     let p = *has_profile.read();
-    let (variant, label, command) = engine_pill_state(s, p);
+    let (variant, label, command) = engine_pill_state(s);
     let class = format!("if-engine-pill if-engine-pill--{}", variant.class_suffix());
 
     // `EngineCommand` is not `Clone`/`Copy` (some variants carry

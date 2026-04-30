@@ -24,13 +24,11 @@ impl Variant {
 
 /// Map an engine status to (visual variant, label, command-on-click).
 ///
-/// `has_profile` is purely advisory — the caller renders `disabled: !has_profile`
-/// on the button so the returned command is unreachable in the no-profile case,
-/// but we still return a sane default to keep the call-site simple.
-pub(crate) fn engine_pill_state(
-    status: EngineStatus,
-    _has_profile: bool,
-) -> (Variant, &'static str, EngineCommand) {
+/// The caller is responsible for rendering `disabled: !has_profile` on
+/// the button, which makes the returned command unreachable in the
+/// no-profile case. The dispatch table is therefore a pure function of
+/// `status` only — no advisory profile flag needed.
+pub(crate) fn engine_pill_state(status: EngineStatus) -> (Variant, &'static str, EngineCommand) {
     match status {
         EngineStatus::Running => (Variant::Live, "Running", EngineCommand::Deactivate),
         EngineStatus::Paused => (Variant::Warning, "Paused", EngineCommand::Activate),
@@ -44,7 +42,7 @@ mod tests {
 
     #[test]
     fn running_yields_live_running_deactivate() {
-        let (v, l, cmd) = engine_pill_state(EngineStatus::Running, true);
+        let (v, l, cmd) = engine_pill_state(EngineStatus::Running);
         assert_eq!(v, Variant::Live);
         assert_eq!(l, "Running");
         assert!(matches!(cmd, EngineCommand::Deactivate));
@@ -52,7 +50,7 @@ mod tests {
 
     #[test]
     fn paused_yields_warning_paused_activate() {
-        let (v, l, cmd) = engine_pill_state(EngineStatus::Paused, true);
+        let (v, l, cmd) = engine_pill_state(EngineStatus::Paused);
         assert_eq!(v, Variant::Warning);
         assert_eq!(l, "Paused");
         assert!(matches!(cmd, EngineCommand::Activate));
@@ -60,7 +58,7 @@ mod tests {
 
     #[test]
     fn stopped_yields_error_stopped_activate() {
-        let (v, l, cmd) = engine_pill_state(EngineStatus::Stopped, true);
+        let (v, l, cmd) = engine_pill_state(EngineStatus::Stopped);
         assert_eq!(v, Variant::Error);
         assert_eq!(l, "Stopped");
         assert!(matches!(cmd, EngineCommand::Activate));

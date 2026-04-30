@@ -37,12 +37,14 @@ pub(crate) struct ViewState {
 /// editing mode.
 ///
 /// **Two-phase init.** The hook fires once at mount when `meta` is the
-/// `MetaSnapshot::default()` populated by `app.rs:20` — `startup_mode`
+/// `MetaSnapshot::default()` populated by `app.rs` — `startup_mode`
 /// is `None` at that point, so the initial `peek()` falls back to
 /// `"Default"`. The first effect run happens *after* the polling task
 /// has populated `meta` with a real profile (or kept the empty default
-/// if no profile is loaded). Because `last_profile_name` is also
-/// peek-initialized to `None`, the first effect run sees
+/// if no profile is loaded). `last_profile_name` is peek-initialized
+/// to whatever `profile_name` is at mount, which in current `app_root`
+/// is `None` because `meta` is initialized to `MetaSnapshot::default`
+/// before this hook runs — so the first effect run sees
 /// `profile_changed == false` (None → None) when no profile is loaded
 /// and `profile_changed == true` when one is loaded; both branches do
 /// the right thing.

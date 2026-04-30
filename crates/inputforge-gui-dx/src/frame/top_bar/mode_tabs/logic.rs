@@ -1,20 +1,8 @@
 //! Pure logic for mode-tabs runtime-marker derivation and name validation.
 
+use inputforge_core::engine::MAX_MODE_NAME_GRAPHEMES;
 use inputforge_core::state::ForcedMode;
 use unicode_segmentation::UnicodeSegmentation;
-
-/// Maximum mode-name length, measured in extended grapheme clusters.
-///
-/// Mirrors the engine-side cap in `engine/run.rs` so the GUI rejects
-/// over-length names inline before dispatching the command and the
-/// engine still rejects any out-of-band caller (scripted commands,
-/// migrated profiles) by the same yardstick. Keep these two
-/// constants in sync if the policy changes.
-#[allow(
-    dead_code,
-    reason = "consumed by inline editors via NameValidation::TooLong"
-)]
-pub(crate) const MAX_MODE_NAME_GRAPHEMES: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MarkerColor {

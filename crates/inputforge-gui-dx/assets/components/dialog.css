@@ -93,7 +93,14 @@
      confirms and produces a hollow middle. The flex:1; min-height:0;
      overflow-y:auto chain on .if-dialog__body still handles long content —
      it activates when intrinsic height meets the max-height ceiling, not
-     when there is "extra room" to fill. */
+     when there is "extra room" to fill.
+
+     Implicit lower visual bound: the design relies on a minimum content
+     budget of (1 Title + 1 Description + 1 body line + Footer with at
+     least one Button) ≈ 220–260px painted height. Below that, the panel
+     reads as a tooltip rather than a confirm dialog. Consumers must
+     populate at minimum a Title and a Footer with one action; everything
+     in this codebase does. */
   max-height: min(80vh, 720px);
   /* Prevent panel from horizontal-scrolling its scrollbar gutter. */
   overflow: hidden;

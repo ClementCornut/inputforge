@@ -73,21 +73,20 @@ pub(crate) fn ModeTabs() -> Element {
 
     let editing_now = editing.read().clone();
 
-    // T31: F4 destructive-confirm dialog open-state mirrored from
-    // `delete_target`. Two effects keep them in sync — one drives
-    // `dialog_open` from `delete_target`, the other clears
-    // `delete_target` if `dialog_open` flips back to false (ESC path).
+    // T31: F4 destructive-confirm dialog open-state derived from
+    // `delete_target`. One effect drives `dialog_open` from
+    // `delete_target` (the only Source); the reverse direction
+    // (`dialog_open == false` → clear `delete_target`) is covered by
+    // the DialogRoot's `onclose` handler (which fires on ESC and
+    // backdrop click) AND by the Cancel/Confirm `onclick`s — every
+    // path that flips `dialog_open` to false also clears
+    // `delete_target` directly, so the previously-needed second
+    // mirror-back effect was redundant.
     let mut dialog_open: Signal<bool> = use_signal(|| false);
     use_effect(move || {
         let want = delete_target.read().is_some();
         if *dialog_open.peek() != want {
             dialog_open.set(want);
-        }
-    });
-    use_effect(move || {
-        let is_open = *dialog_open.read();
-        if !is_open && delete_target.peek().is_some() {
-            delete_target.set(None);
         }
     });
 
