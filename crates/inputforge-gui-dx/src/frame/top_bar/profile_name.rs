@@ -34,9 +34,21 @@ pub(crate) fn ProfileName() -> Element {
                     span { class: "if-profile-name__value", "{s}" }
                 }
             },
+            // Empty state mirrors the loaded-state route: clicking
+            // opens the Profiles side panel, the surface where a
+            // profile is actually chosen. Sticking with a `<span>`
+            // dead-ended the user when no profile was loaded — the
+            // tools-cluster Profiles button was the only path
+            // forward and not visually paired with this readout.
             None => rsx! {
-                span {
+                button {
+                    r#type: "button",
                     class: "if-profile-name if-profile-name--empty",
+                    "aria-label": "Choose profile",
+                    onclick: move |_| {
+                        let mut slot = view.panel_slot;
+                        slot.set(PanelSlot::Profiles);
+                    },
                     span { class: "if-profile-name__role", "profile" }
                     span { class: "if-profile-name__value", "no profile loaded" }
                 }

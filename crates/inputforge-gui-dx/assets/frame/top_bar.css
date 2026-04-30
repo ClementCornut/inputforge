@@ -190,7 +190,16 @@
     font-weight: var(--weight-regular);
     text-transform: uppercase;
     letter-spacing: 0.18em;
-    cursor: default;
+    /* Interactive: clicking opens the Profiles panel. Cursor falls
+       through to the base `.if-profile-name` `pointer` since the
+       previous `default` override would have read as "static text"
+       on a button element. */
+}
+
+.if-profile-name--empty:hover {
+    color: var(--color-text);
+    background: var(--color-border);
+    border-color: var(--color-border-strong);
 }
 
 /* Eyebrow caption — mono uppercase role label matching the empty-state
