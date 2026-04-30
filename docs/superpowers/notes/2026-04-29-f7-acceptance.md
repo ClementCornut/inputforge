@@ -107,6 +107,9 @@ Captured during the post-review pass; tracked here so next session has a single 
 - `Profile::rename_mode_refs` walks every mapping's actions twice (cycle pre-validate then rewrite). Fine until profile sizes balloon; flag for perf pass once mapping counts >> 1k.
 - Property-test harness for `runtime_marker` and other pure-logic functions — would harden coverage but not required by any reviewer-flagged bug.
 
+### Reviewer false positives (no change needed)
+- **§2.1 status-bar class mismatch (plumbing reviewer):** the reviewer flagged `frame/status_bar/mod.rs:42`'s `if-frame-status-bar` class as not matching `layout.css:35`'s `.if-status-bar { flex: 0 0 28px }`. The `StatusBar` primitive at `components/status_bar.rs:24` already composes the base class via `merge_class("if-status-bar", "", class.as_deref())`, so the rendered HTML carries both classes (`class="if-status-bar if-frame-status-bar"`) and the layout's flex rule does apply. The frame's `if-frame-status-bar` namespace is the correct register for frame-level typography overrides on top of the primitive.
+
 ## Risks tracked from the spec
 
 - **F2 Tabs primitive shape** — resolved in Task 15 audit: Path B (rebuild locally). Audit doc: `docs/superpowers/notes/2026-04-29-f7-tabs-audit.md`.
