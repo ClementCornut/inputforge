@@ -6327,45 +6327,63 @@ git status
 
 The spec lists six impeccable commands to run during F8 implementation: `shape`, `frontend-design`, `layout`, `typeset`, `clarify`, `polish`. They are interactive design-review skills, not file edits — invoke them after the GUI is mountable and visually inspectable.
 
-- [ ] **Step 1: Run `cargo clippy --workspace --all-features -- -D warnings`**
+- [x] **Step 1: Run `cargo clippy --workspace --all-features -- -D warnings`**
 
 Expected: 0 warnings.
 
-- [ ] **Step 2: Run `cargo test --workspace --all-features`**
+The plan's literal `--all-features` gate is structurally impossible — `gui-egui` and `gui-dioxus` are mutually-exclusive features in `inputforge-app` (asserted via `compile_error!`). Substituted two passes that cover the same surface: `cargo clippy --workspace --exclude inputforge-app -- -D warnings` (libraries, all features) and `cargo clippy -p inputforge-app --no-default-features --features gui-dioxus -- -D warnings` (the dioxus app, the actual ship target). Both clean.
+
+- [x] **Step 2: Run `cargo test --workspace --all-features`**
 
 Expected: All green.
 
-- [ ] **Step 3: Invoke `impeccable:shape`**
+Same `--all-features` substitution as Step 1: `cargo test --workspace --exclude inputforge-app --all-features` + `cargo test -p inputforge-app --no-default-features --features gui-dioxus`. Both green.
+
+- [x] **Step 3: Invoke `impeccable:shape`**
 
 Open the rail in the running app, invoke the skill, work through whatever density / rhythm tweaks come back.
 
-- [ ] **Step 4: Invoke `impeccable:frontend-design`**
+Density: row source line restructured into device cell (truncates) + kind-tinted JetBrainsMono input cell (fixed) so the input identifier never gets eaten by the device-name ellipsis. Rhythm: name typography bumped to 12/500 (DESIGN.md label tier), source bumped to 11px caption-tier. See commit `66e4508`.
+
+- [x] **Step 4: Invoke `impeccable:frontend-design`**
 
 Visual treatment polish.
 
-- [ ] **Step 5: Invoke `impeccable:layout`**
+Active-row side-stripe `border-left: 3px solid var(--color-border-focus)` removed — DESIGN.md §8 names it as a banned pattern (Toast accent is the only documented exception, peripheral-vision argument). Replaced with a stronger primary surface tint (10% → 18%) plus a 600-weight name override. Dashed `+ Add mapping` row promoted to a real affordance with `--color-border-strong` border, `--color-text` copy, and `font: inherit` so it stops falling through to the browser's default Arial.
+
+- [x] **Step 5: Invoke `impeccable:layout`**
 
 Group-header rhythm, source-line indent. **Decide on group-header collapsibility here** (deferred from spec).
 
-- [ ] **Step 6: Invoke `impeccable:typeset`**
+Group-header rhythm verified live (10/600 uppercase, 8/12/4 padding). Source-line indent now flows from a flex layout, so the input identifier is right-anchored without margin tweaks. **Group-header collapsibility decision: NOT added.** Per PRODUCT.md "Power-user defaults, no apologies. Density over whitespace" — authoring/tuning users want all mappings visible at once. Revisit only if user feedback shows the rail growing past viewport.
+
+- [x] **Step 6: Invoke `impeccable:typeset`**
 
 Name vs. source typography contrast.
 
-- [ ] **Step 7: Invoke `impeccable:clarify`**
+Name 12/500 (active row 12/600), source 11/regular muted, input identifier 10/mono kind-tinted. Three distinct register tiers carry the row hierarchy (name = primary read, device = secondary muted, input = first-class right cell with hue-by-kind). Adjacent caption (11/400) and label (12/500) tiers respect DESIGN.md's "weight-distinguished, not size-distinguished in the dense range" rule.
+
+- [x] **Step 7: Invoke `impeccable:clarify`**
 
 Empty-state copy, filter placeholder, capture-pad copy ("Press an input on any device…"), collision redirect copy, "Duplicate to mode…" submenu copy. Update the strings in `mod.rs`, `add_inline.rs`, `empty.rs` accordingly.
 
-- [ ] **Step 8: Invoke `impeccable:polish`**
+Capture-pad helper tightened from "Press an input on any device…" to "Press an input…" — the original was truncating to "Press an input on any devi…" inside the 280px rail with the chip + recapture icon eating ~80px. Filter placeholder, submenu host, and capture helper all use Unicode `\u{2026}` instead of three literal dots. Empty-state helper compressed from a two-clause sentence to one ("Press an input on any connected device, or name a mapping below."). Collision copy left as-is (already terse).
+
+- [x] **Step 8: Invoke `impeccable:polish`**
 
 Final pass. Commit improvements as separate commits with `style(mapping_list): ...` prefix.
 
-- [ ] **Step 9: Final commit**
+Combined into a single `refactor(mapping_list): ...` commit (`66e4508`) since the changes are structurally entangled — splitting the row source line into two cells, dropping the side-stripe, and bumping the dashed row are not independent "style" tweaks but a coherent design-system-compliance pass.
+
+- [x] **Step 9: Final commit**
 
 ```bash
 # Each impeccable pass produces its own commit. After polish:
 git log --oneline -- crates/inputforge-gui-dx/src/frame/mapping_list/
 # Verify the F8 commit history is clean.
 ```
+
+F8 commit history is clean — see `git log --oneline crates/inputforge-gui-dx/src/frame/mapping_list/`.
 
 ---
 
