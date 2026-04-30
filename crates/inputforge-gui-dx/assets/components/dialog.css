@@ -11,7 +11,13 @@
   border: none;
   padding: 0;
   color: var(--color-text);
-  /* Native :modal centers the dialog; we just constrain width. */
+  /* Native :modal centers the dialog; we constrain width with both a
+     floor and a ceiling. The min-width floor (24rem ≈ 384px) gives every
+     confirm dialog a stable reading register so short content (Title +
+     1-line desc + 1-line body) does not shrink-fit to a 160px ribbon.
+     The narrow-viewport calc() fallback mirrors the max-width side so
+     the floor never exceeds the available width. */
+  min-width: min(24rem, calc(100vw - 32px));
   max-width: min(560px, calc(100vw - 32px));
   /* Override UA stylesheets that may set `inset: 0` and stretch
        the dialog into the viewport — we want content-sized height. */
@@ -82,7 +88,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  min-height: min(30vh, 360px);
+  /* No min-height floor: the panel sizes to its intrinsic content height.
+     A floor (e.g. 30vh / 360px) inflates the flex:1 body for short-content
+     confirms and produces a hollow middle. The flex:1; min-height:0;
+     overflow-y:auto chain on .if-dialog__body still handles long content —
+     it activates when intrinsic height meets the max-height ceiling, not
+     when there is "extra room" to fill. */
   max-height: min(80vh, 720px);
   /* Prevent panel from horizontal-scrolling its scrollbar gutter. */
   overflow: hidden;
