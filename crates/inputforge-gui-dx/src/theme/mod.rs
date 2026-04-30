@@ -7,6 +7,11 @@
 
 use dioxus::prelude::*;
 
+const INTER_REGULAR: Asset = asset!("/assets/fonts/Inter-Regular.ttf");
+const INTER_SEMIBOLD: Asset = asset!("/assets/fonts/Inter-SemiBold.ttf");
+const INTER_BOLD: Asset = asset!("/assets/fonts/Inter-Bold.ttf");
+const JETBRAINS_MONO: Asset = asset!("/assets/fonts/JetBrainsMono-Regular.ttf");
+
 const COLORS_CSS: Asset = asset!("/assets/tokens/colors.css");
 const TYPOGRAPHY_CSS: Asset = asset!("/assets/tokens/typography.css");
 const SPACING_CSS: Asset = asset!("/assets/tokens/spacing.css");
@@ -39,7 +44,20 @@ const TOAST_CSS: Asset = asset!("/assets/toast/toast.css");
 
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
+    // @font-face rules need manganis-bundled asset URLs interpolated at
+    // runtime — manganis 0.6 does NOT rewrite url() refs inside asset!()'d CSS,
+    // so font URLs hardcoded in typography.css 404 on load. Inline <style>
+    // here is the only way to get the hashed bundled URL into a font-face src.
+    let font_faces = format!(
+        "@font-face {{ font-family: 'Inter'; src: url('{INTER_REGULAR}') format('truetype'); font-weight: 400; font-display: swap; }}\
+         @font-face {{ font-family: 'Inter'; src: url('{INTER_SEMIBOLD}') format('truetype'); font-weight: 600; font-display: swap; }}\
+         @font-face {{ font-family: 'Inter'; src: url('{INTER_BOLD}') format('truetype'); font-weight: 700; font-display: swap; }}\
+         @font-face {{ font-family: 'JetBrainsMono'; src: url('{JETBRAINS_MONO}') format('truetype'); font-weight: 400; font-display: swap; }}"
+    );
+
     rsx! {
+        style { "{font_faces}" }
+
         // Tokens first (lowest cascade priority).
         Stylesheet { href: COLORS_CSS }
         Stylesheet { href: TYPOGRAPHY_CSS }

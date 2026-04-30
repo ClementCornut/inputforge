@@ -1,30 +1,5 @@
-@font-face {
-    font-family: 'Inter';
-    src: url('/assets/fonts/Inter-Regular.ttf') format('truetype');
-    font-weight: 400;
-    font-display: swap;
-}
-
-@font-face {
-    font-family: 'Inter';
-    src: url('/assets/fonts/Inter-SemiBold.ttf') format('truetype');
-    font-weight: 600;
-    font-display: swap;
-}
-
-@font-face {
-    font-family: 'Inter';
-    src: url('/assets/fonts/Inter-Bold.ttf') format('truetype');
-    font-weight: 700;
-    font-display: swap;
-}
-
-@font-face {
-    font-family: 'JetBrainsMono';
-    src: url('/assets/fonts/JetBrainsMono-Regular.ttf') format('truetype');
-    font-weight: 400;
-    font-display: swap;
-}
+/* @font-face rules live in `src/theme/mod.rs` — they need manganis-resolved
+   asset URLs interpolated at runtime, which a static CSS file can't do. */
 
 :root {
     --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
