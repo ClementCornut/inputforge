@@ -21,6 +21,7 @@ pub(crate) use empty_state::EmptyState;
 /// panel slot) or empty-state, status bar.
 #[component]
 pub(crate) fn Layout() -> Element {
+    tracing::trace!(target: "frame::render", region = "layout");
     let ctx = use_context::<AppContext>();
     // Calling `use_context::<ViewState>()` here is a structural panic guard:
     // every region component (Banner, ModeTabs, ToolsCluster, etc.) reads

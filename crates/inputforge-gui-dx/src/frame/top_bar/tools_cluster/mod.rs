@@ -9,6 +9,7 @@ use logic::{Tool, tool_active};
 
 #[component]
 pub(crate) fn ToolsCluster() -> Element {
+    tracing::trace!(target: "frame::render", region = "tools_cluster");
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
 

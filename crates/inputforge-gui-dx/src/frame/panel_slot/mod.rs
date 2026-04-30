@@ -6,6 +6,7 @@ const PANEL_SLOT_CSS: Asset = asset!("/assets/frame/panel_slot.css");
 
 #[component]
 pub(crate) fn PanelSlot() -> Element {
+    tracing::trace!(target: "frame::render", region = "panel_slot");
     let view = use_context::<ViewState>();
     let slot = use_memo(move || *view.panel_slot.read());
     let via_calib = use_memo(move || *view.via_calibration.read());

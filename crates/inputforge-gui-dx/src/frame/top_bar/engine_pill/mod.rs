@@ -12,6 +12,7 @@ use logic::engine_pill_state;
 
 #[component]
 pub(crate) fn EnginePill() -> Element {
+    tracing::trace!(target: "frame::render", region = "engine_pill");
     let ctx = use_context::<AppContext>();
     let status = use_memo(move || ctx.meta.read().engine_status);
     let has_profile = use_memo(move || ctx.meta.read().profile_name.is_some());

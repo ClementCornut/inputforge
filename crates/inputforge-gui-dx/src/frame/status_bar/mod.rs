@@ -20,6 +20,7 @@ const PATH_TRUNCATE_BUDGET: usize = 64;
 /// profile path or em-dash (end).
 #[component]
 pub(crate) fn StatusBar() -> Element {
+    tracing::trace!(target: "frame::render", region = "status_bar");
     let ctx = use_context::<AppContext>();
 
     let devices_label = use_memo(move || device_count_label(&ctx.config.read().devices));

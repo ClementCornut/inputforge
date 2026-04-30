@@ -12,6 +12,7 @@ use crate::frame::view_state::{PanelSlot, ViewState};
               This is a macro-level artifact, not authored qualifications."
 )]
 pub(crate) fn ProfileName() -> Element {
+    tracing::trace!(target: "frame::render", region = "profile_name");
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
     let name = use_memo(move || ctx.meta.read().profile_name.clone());

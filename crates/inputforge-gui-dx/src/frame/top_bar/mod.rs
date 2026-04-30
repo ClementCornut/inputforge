@@ -18,6 +18,7 @@ const TOP_BAR_CSS: Asset = asset!("/assets/frame/top_bar.css");
 
 #[component]
 pub(crate) fn TopBar() -> Element {
+    tracing::trace!(target: "frame::render", region = "top_bar");
     rsx! {
         Stylesheet { href: TOP_BAR_CSS }
         div { class: "if-top-bar",

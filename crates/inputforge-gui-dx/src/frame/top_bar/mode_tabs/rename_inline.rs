@@ -80,6 +80,7 @@ fn run_revert(
               This is a macro-level artifact, not authored qualifications."
 )]
 pub(crate) fn RenameInline(from: String, state: Signal<Option<String>>) -> Element {
+    tracing::trace!(target: "frame::render", region = "mode_tabs::rename_inline");
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
     let modes = use_memo(move || ctx.meta.read().modes.clone());

@@ -18,6 +18,7 @@ const BANNER_CSS: Asset = asset!("/assets/frame/banner.css");
 
 #[component]
 pub(crate) fn Banner() -> Element {
+    tracing::trace!(target: "frame::render", region = "banner");
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
     let commands_ref = ctx.commands.clone();

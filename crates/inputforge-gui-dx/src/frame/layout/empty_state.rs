@@ -8,6 +8,7 @@ const EMPTY_STATE_CSS: Asset = asset!("/assets/frame/empty_state.css");
 
 #[component]
 pub(crate) fn EmptyState() -> Element {
+    tracing::trace!(target: "frame::render", region = "empty_state");
     rsx! {
         Stylesheet { href: EMPTY_STATE_CSS }
         div { class: "if-empty-state",
