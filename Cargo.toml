@@ -45,6 +45,9 @@ unicode-segmentation = "1.13"
 blake3 = "1.8.5"
 chrono = { version = "0.4.44", features = ["serde"] }
 
+# Collections
+indexmap = "2.14"
+
 # Allocator
 mimalloc = "0.1"
 

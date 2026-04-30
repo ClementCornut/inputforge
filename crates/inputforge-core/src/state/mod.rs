@@ -12,7 +12,7 @@ mod device;
 mod output_cache;
 mod status;
 
-pub use cache::InputCacheStore;
+pub use cache::{InputCacheEntry, InputCacheStore};
 pub use calibration::DeviceCalibrationStore;
 pub use device::DeviceState;
 pub use output_cache::OutputCacheStore;

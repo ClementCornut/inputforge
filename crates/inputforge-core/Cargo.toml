@@ -32,6 +32,7 @@ unicode-segmentation = { workspace = true }
 blake3 = { workspace = true }
 chrono = { workspace = true }
 ulid = { workspace = true }
+indexmap = { workspace = true }
 
 # Hardware I/O (optional, behind feature gates)
 sdl3 = { workspace = true, optional = true }

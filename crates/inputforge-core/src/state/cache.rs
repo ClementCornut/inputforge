@@ -1,6 +1,6 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-04-30
 
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 use crate::pipeline::InputCache;
 use crate::types::{DeviceId, HatDirection, InputAddress, InputValue};
@@ -10,9 +10,26 @@ use crate::types::{DeviceId, HatDirection, InputAddress, InputValue};
 /// Implements [`InputCache`] so it can be passed directly into
 /// pipeline execution. The engine updates this cache on every
 /// input event; the GUI reads it for live display.
+///
+/// **Iteration order guarantee**: the internal store is an [`IndexMap`],
+/// which preserves insertion order. This makes [`InputCacheStore::clone_compact`]
+/// stable and deterministic across calls — a requirement for the
+/// live-capture tied-axis tiebreak logic in `patterns::live_capture`.
 #[derive(Debug, Default)]
 pub struct InputCacheStore {
-    values: HashMap<InputAddress, InputValue>,
+    values: IndexMap<InputAddress, InputValue>,
+}
+
+/// One entry in an [`InputCacheStore`] snapshot. Used by GUI consumers
+/// (notably the live-capture primitive) that need to compare current
+/// state against an earlier baseline without holding any read lock.
+///
+/// Derives [`PartialEq`] so polling effects can do `prev != next`
+/// equality checks without manually comparing fields.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InputCacheEntry {
+    pub address: InputAddress,
+    pub value: InputValue,
 }
 
 impl InputCacheStore {
@@ -53,6 +70,31 @@ impl InputCacheStore {
     /// Remove all cached values.
     pub fn clear(&mut self) {
         self.values.clear();
+    }
+
+    /// Snapshot every cached `(address, value)` pair into an owned [`Vec`].
+    ///
+    /// # Iteration order
+    ///
+    /// Order is **stable and deterministic** across calls because the
+    /// internal store is an [`IndexMap`], which preserves insertion order.
+    /// The live-capture tied-axis tiebreak
+    /// (`patterns::live_capture::machine::pick_winner`) relies on
+    /// first-encountered order being well-defined: when two axes cross
+    /// deadband simultaneously with identical absolute deltas, the first
+    /// one in this iteration order wins.
+    ///
+    /// The return value is fully owned, so the caller can drop the
+    /// underlying lock guard immediately after this call returns.
+    #[must_use]
+    pub fn clone_compact(&self) -> Vec<InputCacheEntry> {
+        self.values
+            .iter()
+            .map(|(addr, val)| InputCacheEntry {
+                address: addr.clone(),
+                value: val.clone(),
+            })
+            .collect()
     }
 }
 
@@ -253,6 +295,75 @@ mod tests {
     fn get_all_axis_entries_empty_cache() {
         let cache = InputCacheStore::new();
         assert!(cache.get_all_axis_entries().is_empty());
+    }
+
+    // --- clone_compact ---
+
+    #[test]
+    fn clone_compact_returns_all_entries_with_address_and_value() {
+        let mut cache = InputCacheStore::new();
+        cache.update(
+            &axis_address(0),
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+            },
+        );
+        cache.update(&button_address(1), &InputValue::Button { pressed: true });
+        cache.update(
+            &hat_address(0),
+            &InputValue::Hat {
+                direction: HatDirection::N,
+            },
+        );
+
+        let entries = cache.clone_compact();
+        assert_eq!(entries.len(), 3, "all three entries should be present");
+
+        let axis_entry = entries
+            .iter()
+            .find(|e| e.address == axis_address(0))
+            .unwrap();
+        match &axis_entry.value {
+            InputValue::Axis { value } => assert!((value.value() - 0.5).abs() < f64::EPSILON),
+            other => panic!("expected Axis variant, got {other:?}"),
+        }
+
+        let button_entry = entries
+            .iter()
+            .find(|e| e.address == button_address(1))
+            .unwrap();
+        assert!(matches!(
+            button_entry.value,
+            InputValue::Button { pressed: true }
+        ));
+
+        let hat_entry = entries
+            .iter()
+            .find(|e| e.address == hat_address(0))
+            .unwrap();
+        assert!(matches!(
+            hat_entry.value,
+            InputValue::Hat {
+                direction: HatDirection::N,
+            }
+        ));
+    }
+
+    #[test]
+    fn clone_compact_empty_cache_returns_empty_vec() {
+        let cache = InputCacheStore::new();
+        assert!(cache.clone_compact().is_empty());
+    }
+
+    #[test]
+    fn clone_compact_does_not_mutate_cache() {
+        let mut cache = InputCacheStore::new();
+        cache.update(&button_address(0), &InputValue::Button { pressed: true });
+
+        let _ = cache.clone_compact();
+        let _ = cache.clone_compact();
+
+        assert!(cache.get_button(&button_address(0)));
     }
 
     // --- clear ---

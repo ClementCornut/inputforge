@@ -3399,6 +3399,7 @@ dependencies = [
  "blake3",
  "chrono",
  "dirs",
+ "indexmap",
  "parking_lot",
  "sdl3",
  "serde",
