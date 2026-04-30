@@ -42,6 +42,7 @@ fn run_commit(
     mut value: Signal<String>,
     mut error_msg: Signal<Option<String>>,
     mut open: Signal<bool>,
+    mut pending_focus: Signal<Option<String>>,
 ) {
     match validate_mode_name(raw, modes, None) {
         NameValidation::Valid(name) => {
@@ -49,7 +50,12 @@ fn run_commit(
                 name: name.clone(),
                 parent: None,
             });
-            editing.set(name);
+            editing.set(name.clone());
+            // Hand the new name to ModeTabs's pending_focus effect so it
+            // focuses the new tab once the engine snapshot makes it
+            // mountable. Decoupled from `editing` so an Escape-cancel
+            // mid round-trip doesn't desync the focus target.
+            pending_focus.set(Some(name));
             value.set(String::new());
             error_msg.set(None);
             open.set(false);
@@ -84,7 +90,12 @@ fn run_revert(
               shorthand-with-no-prop-name as a fix, which would erase the intent). \
               This is a macro-level artifact, not authored qualifications."
 )]
-pub(crate) fn AddInline(open: Signal<bool>) -> Element {
+pub(crate) fn AddInline(
+    open: Signal<bool>,
+    /// Owned by the parent. Set on a successful commit so the parent's
+    /// focus effect can target the new tab once it appears in modes.
+    pending_focus: Signal<Option<String>>,
+) -> Element {
     tracing::trace!(target: "frame::render", region = "mode_tabs::add_inline");
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
@@ -119,6 +130,7 @@ pub(crate) fn AddInline(open: Signal<bool>) -> Element {
                             value,
                             error_msg,
                             open,
+                            pending_focus,
                         );
                     }
                     Key::Escape => {
@@ -141,6 +153,7 @@ pub(crate) fn AddInline(open: Signal<bool>) -> Element {
                         value,
                         error_msg,
                         open,
+                        pending_focus,
                     );
                 }
                 let _ = evt;

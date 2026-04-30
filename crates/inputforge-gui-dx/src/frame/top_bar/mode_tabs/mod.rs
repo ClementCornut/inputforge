@@ -92,23 +92,29 @@ pub(crate) fn ModeTabs() -> Element {
     });
 
     // T31 Step 3a: focus newly-created tab once it appears in `modes`.
-    // Sentinel-guarded so it only fires on transitions, not every meta
-    // tick — without `last_focused`, this would steal focus from any
-    // in-flight inline editor on every tick.
-    let editing_for_focus = view.editing_mode;
-    let mut last_focused: Signal<Option<String>> = use_signal(|| None);
+    // `pending_focus` is set explicitly by `add_inline::run_commit` on a
+    // successful AddMode dispatch and cleared here once the engine
+    // snapshot makes the new tab mountable. Decoupling from
+    // `editing_mode` (the previous sentinel approach) avoids the
+    // desync that happens when the user Escape-cancels mid round-trip:
+    // the editing signal gets clobbered by other code paths, but this
+    // signal is only ever written by add-commit, so the contract is
+    // narrow and predictable.
+    let pending_focus: Signal<Option<String>> = use_signal(|| None);
+    let mut pending_focus_writer = pending_focus;
     use_effect(move || {
-        let modes = mode_data.read().0.clone();
-        let target = editing_for_focus.read().clone();
-        if last_focused.peek().as_ref() == Some(&target) {
+        let Some(target) = pending_focus.read().clone() else {
             return;
-        }
+        };
+        let modes = mode_data.read().0.clone();
         if renaming.peek().is_some() || *adding.peek() {
             return;
         }
         if let Some(idx) = modes.iter().position(|m| m == &target) {
             if let Some(node) = tab_refs.read().get(idx).and_then(Clone::clone) {
-                last_focused.set(Some(target));
+                // Clear before spawning so a re-render can't double-focus
+                // if the snapshot tick races the spawn.
+                pending_focus_writer.set(None);
                 spawn(async move {
                     let _ = node.set_focus(true).await;
                 });
@@ -468,7 +474,7 @@ pub(crate) fn ModeTabs() -> Element {
             }
             // T31: tail `+` add tab — swaps to inline editor when open.
             if *adding.read() {
-                add_inline::AddInline { open: adding }
+                add_inline::AddInline { open: adding, pending_focus }
             } else {
                 button {
                     r#type: "button",
