@@ -10,45 +10,51 @@ pub(crate) fn PanelSlot() -> Element {
     let slot = use_memo(move || *view.panel_slot.read());
     let via_calib = use_memo(move || *view.via_calibration.read());
 
+    let s = *slot.read();
+    if matches!(s, PanelSlotEnum::None) {
+        return rsx! { Stylesheet { href: PANEL_SLOT_CSS } };
+    }
+
+    // Single stable <aside> across Devices ⇄ Profiles ⇄ Calibration.
+    // Hoisting the element outside the match keeps Dioxus's diff at the
+    // text-node level on tool swap, so the entrance keyframe only fires
+    // on the genuine None → Some open — not on every Some → Some swap
+    // (which previously read as a close-and-reopen animation). F12/F13
+    // will rewrite this file end-to-end; the placeholder just gives the
+    // chrome a faithful "which tool is active" readout in the meantime.
+    let calib = *via_calib.read();
+    let (caption, title, body, aria) = match s {
+        PanelSlotEnum::Devices if calib => (
+            "Panel · F12",
+            "Calibration",
+            "F12 owns content (calibration)",
+            "Calibration panel",
+        ),
+        PanelSlotEnum::Devices => (
+            "Panel · F12",
+            "Devices",
+            "F12 owns content",
+            "Devices panel",
+        ),
+        PanelSlotEnum::Profiles => (
+            "Panel · F13",
+            "Profiles",
+            "F13 owns content",
+            "Profiles panel",
+        ),
+        PanelSlotEnum::None => unreachable!("None branch returned above"),
+    };
+
     rsx! {
         Stylesheet { href: PANEL_SLOT_CSS }
-        match *slot.read() {
-            PanelSlotEnum::None => rsx! {},
-            PanelSlotEnum::Devices => {
-                // F7 placeholder swaps title to reflect the active tool
-                // (Devices vs Calibration drill). F12 will replace this
-                // file end-to-end when it lands; the placeholder just
-                // stops lying about which mode is active.
-                let calib = *via_calib.read();
-                let title = if calib { "Calibration" } else { "Devices" };
-                let body = if calib {
-                    "F12 owns content (calibration)"
-                } else {
-                    "F12 owns content"
-                };
-                rsx! {
-                    aside {
-                        class: "if-panel-slot if-panel-slot--devices",
-                        "aria-label": "{title} panel",
-                        header { class: "if-panel-slot__header",
-                            div { class: "if-panel-slot__caption", "Panel · F12" }
-                            h2 { class: "if-panel-slot__title", "{title}" }
-                        }
-                        div { class: "if-panel-slot__body", "{body}" }
-                    }
-                }
-            },
-            PanelSlotEnum::Profiles => rsx! {
-                aside {
-                    class: "if-panel-slot if-panel-slot--profiles",
-                    "aria-label": "Profiles panel",
-                    header { class: "if-panel-slot__header",
-                        div { class: "if-panel-slot__caption", "Panel · F13" }
-                        h2 { class: "if-panel-slot__title", "Profiles" }
-                    }
-                    div { class: "if-panel-slot__body", "F13 owns content" }
-                }
-            },
+        aside {
+            class: "if-panel-slot",
+            "aria-label": "{aria}",
+            header { class: "if-panel-slot__header",
+                div { class: "if-panel-slot__caption", "{caption}" }
+                h2 { class: "if-panel-slot__title", "{title}" }
+            }
+            div { class: "if-panel-slot__body", "{body}" }
         }
     }
 }
