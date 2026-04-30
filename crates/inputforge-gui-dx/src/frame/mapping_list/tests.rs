@@ -387,3 +387,101 @@ fn add_inline_force_expanded_arms_capture() {
         "armed prompt text must render; got: {html}",
     );
 }
+
+#[test]
+fn mapping_list_renders_axes_and_buttons_groups_in_order() {
+    use inputforge_core::action::{Action, Mapping};
+    use inputforge_core::mode::ModeTree;
+    use inputforge_core::profile::Profile;
+    use inputforge_core::state::AppState;
+    use inputforge_core::types::{
+        DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis,
+    };
+    use std::collections::HashMap;
+
+    fn TestComponent() -> Element {
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let mut mappings = vec![];
+        for i in 0..3 {
+            mappings.push(Mapping {
+                input: InputAddress {
+                    device: DeviceId("dev".to_owned()),
+                    input: InputId::Axis { index: i },
+                },
+                mode: "Default".to_owned(),
+                name: Some(format!("Axis{i}")),
+                actions: vec![Action::MapToVJoy {
+                    output: OutputAddress {
+                        device: 1,
+                        output: OutputId::Axis { id: VJoyAxis::X },
+                    },
+                }],
+            });
+        }
+        mappings.push(Mapping {
+            input: InputAddress {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Boost".to_owned()),
+            actions: vec![],
+        });
+
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+
+        provide_minimal_contexts();
+        let mut cfg_signal = use_context::<AppContext>().config;
+        let mut meta_signal = use_context::<AppContext>().meta;
+        use_hook(move || {
+            let cfg = ConfigSnapshot::from_state(&state);
+            cfg_signal.set(cfg);
+            let meta = MetaSnapshot::from_state(&state);
+            meta_signal.set(meta);
+        });
+
+        rsx! { MappingList {} }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    let axes_pos = html.find("AXES").expect("AXES header missing");
+    let buttons_pos = html.find("BUTTONS").expect("BUTTONS header missing");
+    assert!(
+        axes_pos < buttons_pos,
+        "AXES must render before BUTTONS; got: {html}",
+    );
+    assert!(html.contains("Axis0"));
+    assert!(html.contains("Axis1"));
+    assert!(html.contains("Axis2"));
+    assert!(html.contains("Boost"));
+    assert!(
+        !html.contains("HATS"),
+        "empty Hats group must not render header"
+    );
+}
+
+#[test]
+fn mapping_list_zero_mappings_renders_empty_state_a() {
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        rsx! { MappingList {} }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("No mappings yet"),
+        "Empty State A must render when no mappings are present: {html}",
+    );
+}
