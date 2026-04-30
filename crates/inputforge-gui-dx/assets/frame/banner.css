@@ -61,6 +61,18 @@
     }
 }
 
+/* Reduced-motion gate per motion.css section 5 — keyframes that animate
+   transform on entry MUST be disabled under prefers-reduced-motion (the
+   duration-token collapse alone leaves a brief from-state transform
+   visible because `animation-fill-mode: both` paints the initial frame
+   even at 0ms). `animation: none` overrides the keyframe entirely; the
+   banner mounts into its `to {}` state immediately. */
+@media (prefers-reduced-motion: reduce) {
+    .if-banner {
+        animation: none;
+    }
+}
+
 .if-banner__copy {
     flex: 1 1 auto;
 }

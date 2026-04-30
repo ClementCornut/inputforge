@@ -46,6 +46,15 @@
     }
 }
 
+/* Reduced-motion gate per motion.css section 5 — see banner.css for the
+   matching pattern. Disabling the animation entirely (vs an opacity-only
+   variant) avoids the residual translateX paint at 0ms duration. */
+@media (prefers-reduced-motion: reduce) {
+    .if-panel-slot {
+        animation: none;
+    }
+}
+
 /* Section-title rhythm — same scale as a panel title (`--text-lg`),
    semibold for legibility, uppercase eyebrow caption underneath in
    `--font-mono` to mark the panel taxonomy ("F12", "F13"). Two-tier
