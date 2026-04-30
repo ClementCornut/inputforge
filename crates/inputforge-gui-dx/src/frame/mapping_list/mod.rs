@@ -324,7 +324,7 @@ fn FilterInput(value: Signal<String>, focused: Signal<bool>) -> Element {
             TextInput {
                 value: ReadSignal::from(value),
                 size: InputSize::Sm,
-                placeholder: "Filter mappings...".to_owned(),
+                placeholder: "Filter mappings\u{2026}".to_owned(),
                 oninput: move |evt: FormEvent| {
                     value.set(evt.value());
                 },
@@ -426,7 +426,7 @@ fn ContextMenuMount(
             div {
                 class: "if-row-menu__item if-row-menu__item--submenu-host",
                 "aria-disabled": "{dup_to_mode_disabled}",
-                "Duplicate to mode..."
+                "Duplicate to mode\u{2026}"
                 if !dup_to_mode_disabled {
                     div {
                         class: "if-row-menu__submenu",

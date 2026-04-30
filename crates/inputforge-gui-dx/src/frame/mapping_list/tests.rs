@@ -410,7 +410,7 @@ fn add_inline_force_expanded_arms_capture() {
         "Capturing phase must render the listening chip modifier; got: {html}",
     );
     assert!(
-        html.contains("Press an input on any device"),
+        html.contains("Press an input"),
         "armed prompt text must render; got: {html}",
     );
 }
@@ -643,7 +643,8 @@ fn empty_zero_mappings_renders_full_anatomy() {
     let html = render(&vdom);
     assert!(html.contains("No mappings yet"), "title missing: {html}");
     assert!(
-        html.contains("Pick an input on a device") || html.contains("name one first"),
+        html.contains("Press an input on any connected device")
+            || html.contains("name a mapping below"),
         "helper text missing: {html}",
     );
     assert!(

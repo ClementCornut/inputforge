@@ -431,11 +431,7 @@ pub(crate) fn AddInline(
                     };
                     (input, device, kind)
                 } else {
-                    (
-                        String::new(),
-                        "Press an input on any device\u{2026}".to_owned(),
-                        "",
-                    )
+                    (String::new(), "Press an input\u{2026}".to_owned(), "")
                 };
             drop(cfg);
 

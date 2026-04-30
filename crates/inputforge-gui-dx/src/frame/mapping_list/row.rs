@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::types::InputAddress;
+use inputforge_core::types::{InputAddress, InputId};
 
 use crate::context::{AppContext, MappingSummary};
 use crate::frame::mapping_list::source_label;
@@ -38,7 +38,12 @@ pub(crate) fn Row(
         .as_ref()
         .is_some_and(|a| a == &summary.input);
 
-    let source_text = source_label::format(&summary.input, &ctx.config.read());
+    let (device_label, input_label) = source_label::split_label(&summary.input, &ctx.config.read());
+    let kind_class = match summary.input.input {
+        InputId::Axis { .. } => "axis",
+        InputId::Button { .. } => "button",
+        InputId::Hat { .. } => "hat",
+    };
 
     let mut sel = view.selected_mapping;
     let summary_for_click = summary.clone();
@@ -98,7 +103,12 @@ pub(crate) fn Row(
                 }
             }
             div { class: "if-row__source",
-                "{source_text}"
+                span { class: "if-row__source-device", "{device_label}" }
+                span {
+                    class: "if-row__source-input",
+                    "data-kind": kind_class,
+                    "{input_label}"
+                }
                 if let Some(secondary_label) = merge_glyph {
                     span {
                         class: "glyph-merge",

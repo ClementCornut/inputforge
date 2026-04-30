@@ -45,9 +45,16 @@
     text-transform: uppercase;
 }
 
+/* Row chrome.
+ *
+ * Selection signal: surface-tint only. We deliberately do NOT use a
+ * side-stripe `border-left` accent — DESIGN.md §8 names that pattern as
+ * banned (the Toast accent stripe is the only documented exception, and
+ * only because the toast surfaces in the user's peripheral field; rows
+ * sit foveal). Selection legibility comes from the bumped primary tint
+ * + the bolder name weight on `.is-active`. */
 .if-row {
     padding: var(--space-2) var(--space-3);
-    border-left: 3px solid transparent;
     cursor: pointer;
     user-select: none;
 }
@@ -58,30 +65,63 @@
 }
 
 .if-row.is-active {
-    /* substituted --color-border-focus for missing --color-focus-cyan */
-    border-left-color: var(--color-border-focus);
-    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.if-row.is-active .if-row__name {
+    font-weight: 600;
 }
 
 .if-row__name {
     font-size: 12px;
+    font-weight: 500;
     color: var(--color-text);
     line-height: 1.3;
 }
 
 .if-row__name--unnamed {
     color: var(--color-text-muted);
+    font-weight: 400;
     font-style: italic;
 }
 
+/* Source line — two-cell layout so the input identifier never gets eaten
+ * by device-name ellipsis. Hardware-as-protagonist principle (PRODUCT.md
+ * design principle #2): the input address (X / Btn 17 / Hat 0) is a
+ * first-class cell, not the tail of a truncated string. The device name
+ * flows muted in the leading cell and truncates harmlessly; the kind-
+ * tinted mono identifier holds the trailing cell. Glyphs append best-
+ * effort after (drop on overflow). */
 .if-row__source {
-    font-size: 10px;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-1);
+    font-size: 11px;
     color: var(--color-text-muted);
-    line-height: 1.3;
-    white-space: nowrap;
+    line-height: 1.4;
+    overflow: hidden;
+}
+
+.if-row__source-device {
+    flex: 1 1 0;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
+
+.if-row__source-input {
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.01em;
+}
+
+/* Per-input-kind hue: same taxonomy already in use on the AddInline pad
+ * chip. Subordinated chroma per DESIGN.md §2. */
+.if-row__source-input[data-kind="axis"]   { color: var(--color-output); }
+.if-row__source-input[data-kind="button"] { color: var(--color-control-badge-text); }
+.if-row__source-input[data-kind="hat"]    { color: var(--color-processing); }
 
 .glyph-merge {
     color: var(--color-output);
@@ -121,18 +161,30 @@
     margin: var(--space-2) var(--space-3);
 }
 
+/* The dashed `+ Add mapping` row is a primary affordance — it's how the
+ * user starts the core action of the rail. The previous styling matched
+ * the panel-seam color (--color-border on --color-bg-elevated) so the
+ * affordance read as a faint sketch. Bumped to --color-border-strong +
+ * brighter copy + an explicit font-family so it doesn't fall through to
+ * the browser default (Arial) on this surface. */
 .if-add-inline__dashed-row {
     width: 100%;
-    border: 1px dashed var(--color-border);
+    border: 1px dashed var(--color-border-strong);
     background: transparent;
-    color: var(--color-text-muted);
+    color: var(--color-text);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
     padding: var(--space-2);
+    border-radius: var(--radius-sm);
     cursor: pointer;
 }
 
 .if-add-inline__dashed-row:hover {
     /* substituted --color-border for missing --color-surface-hover */
     background: var(--color-border);
+    border-color: var(--color-border-focus);
+    color: var(--color-text);
 }
 
 /* Unified pad shell — single container that hosts both the Capturing

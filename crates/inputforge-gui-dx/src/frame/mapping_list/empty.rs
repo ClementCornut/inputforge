@@ -18,7 +18,7 @@ pub(crate) fn EmptyZeroMappings(on_start_capture: EventHandler<()>) -> Element {
         div { class: "if-rail-empty if-rail-empty--zero-mappings",
             div { class: "if-rail-empty__title", "No mappings yet" }
             div { class: "if-rail-empty__helper",
-                "Pick an input on a device to start binding. Or click below to name one first."
+                "Press an input on any connected device, or name a mapping below."
             }
             Button {
                 variant: ButtonVariant::Primary,
