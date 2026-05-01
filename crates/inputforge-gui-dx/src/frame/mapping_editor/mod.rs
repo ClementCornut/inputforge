@@ -11,17 +11,20 @@
 
 mod empty_state;
 mod engine_offline_banner;
+mod header;
 pub(crate) mod pipeline;
 pub(crate) mod undo_log;
 
 pub(crate) use empty_state::EmptyState;
 use engine_offline_banner::EngineOfflineBanner;
+use header::Header;
 
 use std::collections::{HashMap, HashSet};
 
 use dioxus::prelude::*;
 
 use crate::context::AppContext;
+use crate::frame::MappingKey;
 use crate::frame::mapping_editor::undo_log::{StageId, UndoLog};
 use crate::frame::view_state::ViewState;
 
@@ -33,26 +36,42 @@ const MAPPING_EDITOR_CSS: Asset = asset!("/assets/frame/mapping_editor.css");
 
 /// Top-level mapping editor orchestrator mounted in `if-layout__center`.
 ///
-/// Renders the empty-state CTA when no mapping is selected; subsequent tasks
-/// will fill the selection branch with header, fields, pipeline, and footer.
+/// Renders the empty-state CTA when no mapping is selected. When a mapping
+/// is selected, renders the header (h2 + subtitle); remaining frame sections
+/// land in subsequent tasks.
 #[component]
 pub(crate) fn MappingEditor() -> Element {
     tracing::trace!(target: "frame::render", region = "mapping_editor");
-    let _ctx = use_context::<AppContext>();
+    let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
     let _editor = use_context::<EditorState>();
 
-    let has_selection = view.selected_mapping.read().is_some();
+    let view_state_for_render: Option<MappingKey> = view.selected_mapping.read().clone();
 
-    rsx! {
-        Stylesheet { href: MAPPING_EDITOR_CSS }
-        div { class: "if-editor",
-            EngineOfflineBanner {}
-            if !has_selection {
+    if let Some((mode, input)) = view_state_for_render {
+        let mapping_name = ctx
+            .config
+            .read()
+            .mappings
+            .iter()
+            .find(|m| m.input == input && m.mode == mode)
+            .and_then(|m| m.name.clone())
+            .unwrap_or_else(|| "Untitled mapping".to_owned());
+        rsx! {
+            Stylesheet { href: MAPPING_EDITOR_CSS }
+            div { class: "if-editor",
+                EngineOfflineBanner {}
+                Header { name: mapping_name, input }
+                // Remaining sections (name field, live readout, pipeline, footer)
+                // land in subsequent tasks.
+            }
+        }
+    } else {
+        rsx! {
+            Stylesheet { href: MAPPING_EDITOR_CSS }
+            div { class: "if-editor",
+                EngineOfflineBanner {}
                 EmptyState {}
-            } else {
-                // Frame sections + pipeline land in subsequent tasks.
-                div { class: "if-editor__placeholder", "selection placeholder" }
             }
         }
     }

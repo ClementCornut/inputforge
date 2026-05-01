@@ -26,7 +26,7 @@ mod group;
 mod keyboard;
 mod rename_inline;
 mod row;
-mod source_label;
+pub(crate) mod source_label;
 
 #[cfg(test)]
 mod tests;

@@ -194,3 +194,220 @@ fn engine_offline_banner_visible_when_status_is_stopped() {
         "expected offline banner copy, got: {html}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Task 14: editor header (h2 + subtitle with optional output arrow)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn editor_header_shows_name_as_h2() {
+    use inputforge_core::action::{Action, Mapping};
+    use inputforge_core::mode::ModeTree;
+    use inputforge_core::profile::Profile;
+    use inputforge_core::state::AppState;
+    use inputforge_core::types::{
+        AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, OutputAddress, OutputId,
+        VJoyAxis,
+    };
+    use std::collections::HashMap;
+
+    #[allow(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn TestComponent() -> Element {
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let addr = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        let actions = vec![Action::MapToVJoy {
+            output: OutputAddress {
+                device: 1,
+                output: OutputId::Axis { id: VJoyAxis::X },
+            },
+        }];
+        let mappings = vec![Mapping {
+            input: addr.clone(),
+            mode: "Default".to_owned(),
+            name: Some("Yaw".to_owned()),
+            actions,
+        }];
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let mut state = AppState::with_profile(profile);
+        state.devices.push(inputforge_core::state::DeviceState {
+            info: DeviceInfo {
+                id: DeviceId("dev-1".to_owned()),
+                name: "Stick".to_owned(),
+                axes: 2,
+                buttons: 4,
+                hats: 0,
+                instance_path: None,
+                axis_polarities: vec![AxisPolarity::Bipolar; 2],
+            },
+            connected: true,
+        });
+
+        let (cmd_tx, _) = mpsc::channel();
+        let raw = RawHandles {
+            state: Arc::new(RwLock::new(state)),
+            commands: cmd_tx,
+            settings: Arc::new(AppSettings::default()),
+        };
+        use_context_provider(|| raw.clone());
+
+        let selection: crate::frame::MappingKey = ("Default".to_owned(), addr.clone());
+        let snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
+        let meta = use_signal(|| MetaSnapshot {
+            engine_status: inputforge_core::state::EngineStatus::Running,
+            profile_name: Some("P".to_owned()),
+            modes: vec!["Default".to_owned()],
+            startup_mode: Some("Default".to_owned()),
+            current_mode: "Default".to_owned(),
+            ..MetaSnapshot::default()
+        });
+        let config = use_signal(|| snap);
+        let live = use_signal(LiveSnapshot::default);
+        let ctx = AppContext {
+            state: Arc::clone(&raw.state),
+            commands: raw.commands.clone(),
+            settings: Arc::clone(&raw.settings),
+            meta,
+            config,
+            live,
+        };
+        use_context_provider(|| ctx);
+
+        let view = use_view_state_provider(meta);
+        view.selected_mapping
+            .clone()
+            .write()
+            .replace(("Default".to_owned(), addr));
+        use_context_provider(|| view);
+        use_live_capture_provider();
+        use_editor_state_provider();
+        let toast_state = use_signal(ToastState::default);
+        use_context_provider(|| ToastQueue { state: toast_state });
+        rsx! { MappingEditor {} }
+    }
+
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(html.contains("<h2"), "expected h2 element: {html}");
+    assert!(html.contains("Yaw"), "expected mapping name: {html}");
+    // Arrow present because MapToVJoy is in the action tree.
+    assert!(
+        html.contains('\u{2192}') || html.contains("&rarr;") || html.contains("&#8594;"),
+        "expected arrow when MapToVJoy present: {html}"
+    );
+}
+
+#[test]
+fn editor_header_omits_output_when_no_map_to_vjoy() {
+    use inputforge_core::action::{Action, Mapping};
+    use inputforge_core::mode::ModeTree;
+    use inputforge_core::profile::Profile;
+    use inputforge_core::state::AppState;
+    use inputforge_core::types::{AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId};
+    use std::collections::HashMap;
+
+    #[allow(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn TestComponent() -> Element {
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let addr = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        let mappings = vec![Mapping {
+            input: addr.clone(),
+            mode: "Default".to_owned(),
+            name: Some("Yaw".to_owned()),
+            actions: vec![Action::Invert],
+        }];
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let mut state = AppState::with_profile(profile);
+        state.devices.push(inputforge_core::state::DeviceState {
+            info: DeviceInfo {
+                id: DeviceId("dev-1".to_owned()),
+                name: "Stick".to_owned(),
+                axes: 2,
+                buttons: 4,
+                hats: 0,
+                instance_path: None,
+                axis_polarities: vec![AxisPolarity::Bipolar; 2],
+            },
+            connected: true,
+        });
+
+        let (cmd_tx, _) = mpsc::channel();
+        let raw = RawHandles {
+            state: Arc::new(RwLock::new(state)),
+            commands: cmd_tx,
+            settings: Arc::new(AppSettings::default()),
+        };
+        use_context_provider(|| raw.clone());
+
+        let selection: crate::frame::MappingKey = ("Default".to_owned(), addr.clone());
+        let snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
+        let meta = use_signal(|| MetaSnapshot {
+            engine_status: inputforge_core::state::EngineStatus::Running,
+            profile_name: Some("P".to_owned()),
+            modes: vec!["Default".to_owned()],
+            startup_mode: Some("Default".to_owned()),
+            current_mode: "Default".to_owned(),
+            ..MetaSnapshot::default()
+        });
+        let config = use_signal(|| snap);
+        let live = use_signal(LiveSnapshot::default);
+        let ctx = AppContext {
+            state: Arc::clone(&raw.state),
+            commands: raw.commands.clone(),
+            settings: Arc::clone(&raw.settings),
+            meta,
+            config,
+            live,
+        };
+        use_context_provider(|| ctx);
+
+        let view = use_view_state_provider(meta);
+        view.selected_mapping
+            .clone()
+            .write()
+            .replace(("Default".to_owned(), addr));
+        use_context_provider(|| view);
+        use_live_capture_provider();
+        use_editor_state_provider();
+        let toast_state = use_signal(ToastState::default);
+        use_context_provider(|| ToastQueue { state: toast_state });
+        rsx! { MappingEditor {} }
+    }
+
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    // No arrow because no MapToVJoy.
+    assert!(
+        !html.contains('\u{2192}') && !html.contains("&rarr;") && !html.contains("&#8594;"),
+        "expected no arrow when no MapToVJoy: {html}"
+    );
+}
