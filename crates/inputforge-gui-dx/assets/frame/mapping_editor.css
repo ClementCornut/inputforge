@@ -274,11 +274,6 @@
     color: var(--color-text);
 }
 
-.if-editor__readout-divider {
-    border-top: 1px solid var(--color-border-strong);
-    margin: 4px 0;
-}
-
 .if-editor__readout-divider-dashed {
     border-top: 1px dashed var(--color-border-strong);
     margin: 4px 0;

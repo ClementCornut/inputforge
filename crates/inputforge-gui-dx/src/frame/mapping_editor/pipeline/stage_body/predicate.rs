@@ -460,6 +460,12 @@ pub(crate) fn PredicateEditor(
             let mut max_sig: Signal<f64> = use_signal(move || max_val);
 
             // Amendment 5: malformed hint when min > max.
+            // REACTIVE-LOOP CONCERN (Task 40): both branches call
+            // malformed_hints.write(), dirtying the Signal. No loop forms
+            // because the effect subscribes to min_sig/max_sig (not to
+            // malformed_hints itself), so dirtying malformed_hints does not
+            // re-trigger this effect. A read-then-compare guard would be more
+            // explicit but is not required for correctness here.
             let sid_hint = stage_id.clone();
             let mut malformed_hints = editor.malformed_hints;
             use_effect(move || {
@@ -600,6 +606,12 @@ pub(crate) fn PredicateEditor(
             let dirs = directions.clone();
 
             // Amendment 5: malformed hint when directions is empty.
+            // REACTIVE-LOOP CONCERN (Task 40): both branches call
+            // malformed_hints.write(), dirtying the Signal. No loop forms
+            // because the effect captures dirs_hint by value (a plain Vec,
+            // not a Signal read), so dirtying malformed_hints does not
+            // re-trigger this effect. A read-then-compare guard would be more
+            // explicit but is not required for correctness here.
             let sid_hint = stage_id.clone();
             let dirs_hint = dirs.clone();
             let mut malformed_hints = editor.malformed_hints;
@@ -704,6 +716,12 @@ pub(crate) fn PredicateEditor(
             let sub_count = sub_conditions.len();
 
             // Amendment 5: malformed hint when no sub-conditions present.
+            // REACTIVE-LOOP CONCERN (Task 40): both branches call
+            // malformed_hints.write(), dirtying the Signal. No loop forms
+            // because the effect captures is_empty by value (a plain bool,
+            // not a Signal read), so dirtying malformed_hints does not
+            // re-trigger this effect. A read-then-compare guard would be more
+            // explicit but is not required for correctness here.
             let sid_hint = stage_id.clone();
             let is_empty = sub_count == 0;
             let mut malformed_hints = editor.malformed_hints;

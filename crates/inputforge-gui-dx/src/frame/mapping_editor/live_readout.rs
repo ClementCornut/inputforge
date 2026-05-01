@@ -144,10 +144,10 @@ fn ReadoutRow(label: String, display: AxisDisplay) -> Element {
 
 /// Thin display value carried through the readout component tree.
 #[derive(Clone, Copy, PartialEq)]
-pub(crate) struct AxisDisplay {
+struct AxisDisplay {
     /// Normalized value in [-1.0, 1.0].
-    pub value: f64,
-    pub polarity: AxisPolarity,
+    value: f64,
+    polarity: AxisPolarity,
 }
 
 /// Read the raw axis value and polarity for `addr` from the live snapshot.

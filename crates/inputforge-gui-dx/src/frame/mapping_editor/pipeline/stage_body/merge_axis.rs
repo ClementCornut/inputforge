@@ -124,6 +124,14 @@ pub(crate) fn MergeAxisBody(
     // Amendment 1: malformed-hint write / clear on every render.
     // When secondary == primary, the merge is a no-op and the stage is
     // flagged as malformed per spec lines 587-589.
+    //
+    // REACTIVE-LOOP CONCERN (Task 40): both branches call malformed.write(),
+    // which marks the Signal dirty and could re-trigger effects that read
+    // malformed_hints. In practice this is safe because use_effect captures
+    // the hint values at call time (secondary_for_hint / primary_addr are
+    // plain values, not Signal reads), so the effect does not re-subscribe
+    // to malformed_hints and therefore cannot form a loop. A read-then-compare
+    // guard would be more explicit but is not required for correctness here.
     let primary_addr = mapping_key.1.clone();
     let secondary_for_hint = second_input.clone();
     let stage_id_for_hint = stage_id.clone();

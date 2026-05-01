@@ -96,6 +96,12 @@ pub(crate) fn MapToKeyboardBody(
     let mut local_win: Signal<bool> = use_signal(|| combo.modifiers.contains(&KeyModifier::Win));
 
     // Amendment 3: malformed-hint write / clear on every render.
+    // REACTIVE-LOOP CONCERN (Task 40): this write happens during the render
+    // phase (not inside use_effect). Dioxus will schedule a re-render when
+    // malformed_hints is dirtied, but the write value is derived solely from
+    // local_key and the modifier Signals, none of which originate from
+    // malformed_hints, so no loop forms. A read-then-compare guard would be
+    // more explicit but is not required for correctness here.
     {
         let k = local_key.read();
         let has_modifiers =
