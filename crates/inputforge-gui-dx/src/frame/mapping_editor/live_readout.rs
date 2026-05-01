@@ -103,48 +103,64 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
             if let Some(secondary) = secondary_display {
                 // Merge layout: IN 1, IN 2, labeled divider, merged IN, OUT.
                 // No extra divider before OUT in the merge case (spec line 417).
+                // Each side of the divider is its own grid (`readout-group`)
+                // so the tag column in the input section auto-sizes to the
+                // longest source label, while the merged + OUT section
+                // sizes independently. Bars within a group share an x
+                // origin; bars across groups can differ.
                 // `merged_in_value` is always Some when secondary_display is
                 // Some (both derive from the same merge_ctx); the unwrap_or
                 // is a defensive default that should never fire.
-                ReadoutRow {
-                    label: "IN 1".to_owned(),
-                    tag: primary_tag.clone(),
-                    display: primary_value,
-                }
-                ReadoutRow {
-                    label: "IN 2".to_owned(),
-                    tag: secondary_tag.unwrap_or_default(),
-                    display: secondary,
+                div { class: "if-editor__readout-group",
+                    ReadoutRow {
+                        label: "IN 1".to_owned(),
+                        tag: primary_tag.clone(),
+                        display: primary_value,
+                    }
+                    ReadoutRow {
+                        label: "IN 2".to_owned(),
+                        tag: secondary_tag.unwrap_or_default(),
+                        display: secondary,
+                    }
                 }
                 ReadoutDivider { label: "merge".to_owned() }
-                ReadoutRow {
-                    label: "IN".to_owned(),
-                    tag: "merged".to_owned(),
-                    display: merged_in_value.unwrap_or(AxisDisplay {
-                        value: into_natural_domain(0.0, output_polarity),
-                        polarity: output_polarity,
-                    }),
-                }
-                if let Some(out) = out_value {
+                div { class: "if-editor__readout-group",
                     ReadoutRow {
-                        label: "OUT".to_owned(),
-                        tag: out_tag.clone().unwrap_or_default(),
-                        display: out,
+                        label: "IN".to_owned(),
+                        tag: "Merged".to_owned(),
+                        display: merged_in_value.unwrap_or(AxisDisplay {
+                            value: into_natural_domain(0.0, output_polarity),
+                            polarity: output_polarity,
+                        }),
+                    }
+                    if let Some(out) = out_value {
+                        ReadoutRow {
+                            label: "OUT".to_owned(),
+                            tag: out_tag.clone().unwrap_or_default(),
+                            display: out,
+                        }
                     }
                 }
             } else {
                 // Non-merge layout: IN, optional labeled divider + OUT.
-                ReadoutRow {
-                    label: "IN".to_owned(),
-                    tag: primary_tag.clone(),
-                    display: primary_value,
+                // Each row sits in its own group: in this case there's no
+                // alignment benefit (one row per group) but the markup
+                // stays parallel to the merge case.
+                div { class: "if-editor__readout-group",
+                    ReadoutRow {
+                        label: "IN".to_owned(),
+                        tag: primary_tag.clone(),
+                        display: primary_value,
+                    }
                 }
                 if let Some(out) = out_value {
                     ReadoutDivider { label: "out".to_owned() }
-                    ReadoutRow {
-                        label: "OUT".to_owned(),
-                        tag: out_tag.clone().unwrap_or_default(),
-                        display: out,
+                    div { class: "if-editor__readout-group",
+                        ReadoutRow {
+                            label: "OUT".to_owned(),
+                            tag: out_tag.clone().unwrap_or_default(),
+                            display: out,
+                        }
                     }
                 }
             }

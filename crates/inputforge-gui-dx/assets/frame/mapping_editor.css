@@ -370,15 +370,24 @@
     border-bottom: 1px solid var(--color-border);
 }
 
-.if-editor__readout-row {
+/* A readout group: each side of the dashed divider is its own grid so
+   the tag column auto-sizes per group. Bars within a group share an
+   x origin (longest tag in *that* group sets the column); bars across
+   groups can differ. Rows use `display: contents` to dissolve into
+   the group grid so each row's 4 cells become 4 grid items. */
+.if-editor__readout-group {
     display: grid;
     /* label | tag | bar | percentage. Tag column auto-sizes to its
        content, capped via max-width on the cell so very long device
        names truncate instead of eating the bar width. */
     grid-template-columns: 60px minmax(0, max-content) 1fr 60px;
+    column-gap: 12px;
+    row-gap: 8px;
     align-items: center;
-    gap: 12px;
-    padding: 4px 0;
+}
+
+.if-editor__readout-row {
+    display: contents;
 }
 
 .if-editor__readout-label {
