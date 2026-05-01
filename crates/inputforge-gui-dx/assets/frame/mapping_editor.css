@@ -204,20 +204,43 @@
     }
 }
 
-/* Source-address row used by the MergeAxis secondary picker (mirrors the
-   editor's main input field). Kept here because MergeAxis body still
-   composes the same source-label + rebind-button shape; the editor's own
-   input field was folded into the header's subtitle row. */
+/* Stage-body form rows (label-left, control-right). Mirrors the stage
+   header's left/right rhythm so the body reads as a continuation of the
+   header rather than a separate form. Sentence-case sans label keeps the
+   mono-uppercase channel reserved for section dividers (AXES, IN/OUT,
+   BRANCH). The +sibling rule gives adjacent fields a consistent gap
+   without forcing every body container to declare its own. */
 
-.if-editor__input-field {
+.if-stage__body-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 28px;
+}
+
+.if-stage__body-field + .if-stage__body-field {
+    margin-top: 6px;
+}
+
+.if-stage__body-label {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--color-text-muted);
+    flex: 0 0 auto;
+}
+
+/* Right-side composite for fields whose value is text + action (e.g.
+   MergeAxis secondary input: source label + rebind button). Plain inline
+   cluster, no border or padding (the parent row owns rhythm). */
+
+.if-stage__body-field-value {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 8px 16px;
-    border-bottom: 1px solid var(--color-border);
 }
 
-.if-editor__input-label {
+.if-stage__body-field-text {
     font-family: var(--font-mono);
     font-size: 12px;
     color: var(--color-text-muted);

@@ -347,8 +347,8 @@ pub(crate) fn MergeAxisBody(
             }
             div { class: "if-stage__body-field",
                 label { class: "if-stage__body-label", "Secondary input" }
-                div { class: "if-editor__input-field",
-                    div { class: "if-editor__input-label", "{secondary_label}" }
+                div { class: "if-stage__body-field-value",
+                    span { class: "if-stage__body-field-text", "{secondary_label}" }
                     Button {
                         variant: ButtonVariant::Ghost,
                         size: ButtonSize::Sm,
