@@ -12,8 +12,14 @@ use super::state::SortableState;
 ///
 /// The `if-sr-only` class is defined in `assets/global.css` (WCAG 2.1
 /// "screen-reader-only" recipe).
+///
+/// The `G` parameter is not used by this component directly; it is
+/// required because `SortableState<G>` carries the live-announcement
+/// signal together with the group-typed DnD signals. Callers pass the
+/// same `SortableState<G>` instance they created with
+/// `use_sortable_state::<G>()`.
 #[component]
-pub fn SortableLiveRegion(state: SortableState) -> Element {
+pub fn SortableLiveRegion<G: 'static + Clone + PartialEq>(state: SortableState<G>) -> Element {
     let text = state.live_announcement.read().clone();
     rsx! {
         span {

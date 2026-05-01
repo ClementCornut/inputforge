@@ -26,10 +26,10 @@ use super::state::SortableState;
     unused_qualifications,
     reason = "Dioxus 0.7 RSX macro emits redundant qualifications on event listeners."
 )]
-pub fn SortableHandle(
-    state: SortableState,
+pub fn SortableHandle<G: 'static + Clone + PartialEq>(
+    state: SortableState<G>,
     index: usize,
-    group: u32,
+    group: G,
     #[allow(
         unused_variables,
         reason = "group_len is part of the public API; reserved for consumer parity \
@@ -49,7 +49,10 @@ pub fn SortableHandle(
         let _ = evt.data_transfer().set_data("text/html", "");
         evt.data_transfer().set_effect_allowed("move");
         drag_from.set(Some(index));
-        drag_group.set(Some(group));
+        // Clone the group into the signal. For Copy types (e.g. `u32`)
+        // this is a zero-cost bitwise copy; for non-Copy types (e.g.
+        // `StageId`) it performs one allocation at dragstart.
+        drag_group.set(Some(group.clone()));
     };
 
     let draggable_str = if draggable { "true" } else { "false" };

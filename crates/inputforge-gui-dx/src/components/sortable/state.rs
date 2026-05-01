@@ -4,6 +4,10 @@
 //! `use_sortable_state`, `use_sortable_item`, `SortableHandle`, and
 //! `SortableLiveRegion`. Consumers create one per list (rail) and pass
 //! it down to every row.
+//!
+//! The group discriminator type `G` is generic so the same primitive can
+//! serve both F8 (which uses `u32` bucket IDs) and F9 (which will use a
+//! `StageId` path that is `Clone` but not `Copy`).
 
 use dioxus::prelude::*;
 
@@ -20,8 +24,13 @@ pub enum SortableSide {
 /// hovered row, cleared on `ondragleave` (cursor leaves the row) or
 /// `ondragend` / `ondrop` (drag operation ends). Valid and invalid
 /// indicators share the same lifecycle.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct DropTarget {
+///
+/// `Copy` is intentionally omitted: `G` is not required to be `Copy`
+/// (e.g. `StageId` is a `Vec`-backed path that is `Clone` but not
+/// `Copy`). Callers that previously relied on `DropTarget: Copy` should
+/// use `.clone()` instead.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DropTarget<G: 'static + Clone + PartialEq> {
     /// Group-local index of the hovered row.
     pub index: usize,
     /// Discriminator of the hovered row's group. Required because group-
@@ -29,7 +38,7 @@ pub struct DropTarget {
     /// 0 and Buttons idx 0 both exist): a single `index` filter would
     /// paint the indicator on every row whose subgroup-index matches,
     /// across groups. Consumers must filter on `(index, group)` together.
-    pub group: u32,
+    pub group: G,
     pub side: SortableSide,
     /// `true` when the source's group does not match the target's group
     /// (per the consumer's `validate_drop`). The indicator paints in
@@ -48,16 +57,16 @@ pub struct DropTarget {
     missing_debug_implementations,
     reason = "dioxus Signal<T> does not implement Debug"
 )]
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct SortableState {
+#[derive(Clone, Copy, PartialEq)]
+pub struct SortableState<G: 'static + Clone + PartialEq> {
     /// Source row index, set on dragstart, cleared on dragend / drop.
     /// `None` means no drag is in flight.
     pub drag_from: Signal<Option<usize>>,
     /// Source row's group discriminator. Same lifetime as `drag_from`.
-    pub drag_group: Signal<Option<u32>>,
+    pub drag_group: Signal<Option<G>>,
     /// Currently-hovered drop indicator. Set on dragover of the target
     /// row, cleared on dragleave / drop / 200ms invalid timer.
-    pub drop_target: Signal<Option<DropTarget>>,
+    pub drop_target: Signal<Option<DropTarget<G>>>,
     /// AT live-region content. Consumer writes the formatted reorder
     /// announcement here at every reorder dispatch site so AT users
     /// hear the outcome of every reorder path.
@@ -68,7 +77,7 @@ pub struct SortableState {
 /// component, returns the bundle by value. Idiomatic usage:
 ///
 /// ```ignore
-/// let sortable = use_sortable_state();
+/// let sortable = use_sortable_state::<u32>();
 /// rsx! {
 ///     for (idx, item) in items.iter().enumerate() {
 ///         Row { sortable, index: idx, /* ... */ }
@@ -76,7 +85,7 @@ pub struct SortableState {
 ///     SortableLiveRegion { state: sortable }
 /// }
 /// ```
-pub fn use_sortable_state() -> SortableState {
+pub fn use_sortable_state<G: 'static + Clone + PartialEq>() -> SortableState<G> {
     SortableState {
         drag_from: use_signal(|| None),
         drag_group: use_signal(|| None),

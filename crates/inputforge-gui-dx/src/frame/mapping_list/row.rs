@@ -45,7 +45,7 @@ pub(crate) fn Row(
     renaming: Signal<Option<InputAddress>>,
     /// Shared sortable state (drag source / drop indicator / live region).
     /// Owned by `MappingList`, threaded through every row.
-    sortable: SortableState,
+    sortable: SortableState<u32>,
     /// `true` when the filter input has narrowed the visible set. While
     /// active, the drag handle is non-draggable (drop-target rendering
     /// is also gated to ignore any in-flight drag).
@@ -188,7 +188,7 @@ pub(crate) fn Row(
         group: group_id,
         group_len,
         item_ref,
-        validate_drop: Some(|src, tgt| src == tgt),
+        validate_drop: Some(|src: &u32, tgt: &u32| src == tgt),
         on_drop: move |to: usize, _side: SortableSide| {
             // Read the source's group-local subpos from the primitive's
             // shared state. `drag_from` is populated on dragstart and

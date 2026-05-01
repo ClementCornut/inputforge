@@ -100,7 +100,7 @@ pub(crate) fn MappingList() -> Element {
     // `SortableHandle.ondragstart` calls `data_transfer().set_data(...)`
     // natively (no JS bootstrap), so this rail no longer mounts a
     // document-level dragstart/dragover listener.
-    let sortable = use_sortable_state();
+    let sortable = use_sortable_state::<u32>();
 
     // Single memo computes filtered, grouped rows AND total in-mode count.
     let view_state_memo = use_memo(move || {

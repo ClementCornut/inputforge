@@ -17,17 +17,26 @@ use super::state::{DropTarget, SortableSide, SortableState, resolve_drop_index};
 /// function pointer is `Copy + 'static`, which means the hook can stash
 /// it inside async drop-target timers without lifetime contortions.
 /// `None` is treated as "always allow" (cross-group drops are fine).
+///
+/// The validator receives both groups by reference so non-`Copy` group
+/// types (e.g. `StageId`) work without an extra clone at the call site.
 #[allow(
     missing_debug_implementations,
     reason = "dioxus Signal<T>, EventHandler<T>, and the user-supplied F closure do not implement Debug"
 )]
-pub struct SortableItemConfig<F: FnMut(usize, SortableSide) + 'static> {
-    pub state: SortableState,
+pub struct SortableItemConfig<G, F>
+where
+    G: 'static + Clone + PartialEq,
+    F: FnMut(usize, SortableSide) + 'static,
+{
+    pub state: SortableState<G>,
     pub index: usize,
-    pub group: u32,
+    pub group: G,
     pub group_len: usize,
     pub item_ref: Signal<Option<Rc<MountedData>>>,
-    pub validate_drop: Option<fn(u32, u32) -> bool>,
+    /// Optional cross-group gate. `fn(&G, &G) -> bool` -- returns `true`
+    /// when the drop from the first group onto the second group is valid.
+    pub validate_drop: Option<fn(&G, &G) -> bool>,
     pub on_drop: F,
 }
 
@@ -73,8 +82,9 @@ pub struct SortableItemHandlers {
     reason = "All four handlers (over/leave/end/drop) live in one hook by design \
               so they share captured state without an extra wrapper struct."
 )]
-pub fn use_sortable_item<F>(config: SortableItemConfig<F>) -> SortableItemHandlers
+pub fn use_sortable_item<G, F>(config: SortableItemConfig<G, F>) -> SortableItemHandlers
 where
+    G: 'static + Clone + PartialEq,
     F: FnMut(usize, SortableSide) + 'static,
 {
     let SortableItemConfig {
@@ -86,6 +96,14 @@ where
         validate_drop,
         on_drop,
     } = config;
+
+    // Pre-clone the group discriminator so each of the four closures below
+    // can capture an independent owned copy. For Copy types like `u32` this
+    // is a zero-cost bitwise copy; for non-Copy types like `StageId` it
+    // performs one allocation per use_sortable_item call (not per event).
+    let group_over = group.clone();
+    let group_leave = group.clone();
+    let group_drop = group;
 
     // Hoist the on_drop closure into a Signal so we can move a Copy handle
     // into the ondrop EventHandler without cloning the closure (which we
@@ -106,11 +124,19 @@ where
         let Some(_src_idx) = *drag_from.peek() else {
             return;
         };
-        let Some(src_group) = *drag_group.peek() else {
+        // Clone the Option<G> out of the signal so `src_group` is an
+        // owned value that can be moved into the async `spawn` block.
+        // For Copy types like `u32` this is a trivial bitwise copy;
+        // for non-Copy types like `StageId` it performs one allocation.
+        let Some(src_group) = drag_group.peek().clone() else {
             return;
         };
 
-        let invalid = validate_drop.is_some_and(|f| !f(src_group, group));
+        // Clone the group again for the async spawn block. `group_over` is
+        // the closure-captured copy; `group_for_async` is the per-event copy
+        // moved into the spawned future.
+        let group_for_async = group_over.clone();
+        let invalid = validate_drop.is_some_and(|f| !f(&src_group, &group_over));
         let cursor_y = evt.client_coordinates().y;
         let target_ref = item_ref.peek().clone();
         spawn(async move {
@@ -134,7 +160,7 @@ where
 
             drop_target.set(Some(DropTarget {
                 index,
-                group,
+                group: group_for_async,
                 side,
                 invalid,
             }));
@@ -157,7 +183,7 @@ where
         if drop_target
             .peek()
             .as_ref()
-            .is_some_and(|d| d.index == index && d.group == group)
+            .is_some_and(|d| d.index == index && d.group == group_leave)
         {
             drop_target.set(None);
         }
@@ -180,13 +206,15 @@ where
         let Some(from) = *drag_from.peek() else {
             return;
         };
-        let Some(src_group) = *drag_group.peek() else {
+        // Clone for the same reason as in ondragover: owned value needed
+        // for comparison; for Copy types the clone is zero-cost.
+        let Some(src_group) = drag_group.peek().clone() else {
             return;
         };
         // Validator gate (defense in depth: cross-group dragover does
         // call preventDefault per the official primitive's pattern, so
         // an invalid drop event CAN reach here).
-        if validate_drop.is_some_and(|f| !f(src_group, group)) {
+        if validate_drop.is_some_and(|f| !f(&src_group, &group_drop)) {
             drag_from.set(None);
             drag_group.set(None);
             drop_target.set(None);

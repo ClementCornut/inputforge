@@ -76,7 +76,7 @@ fn row_renders_name_and_source_line() {
             glyphs: GlyphFlags::default(),
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state();
+        let sortable = use_sortable_state::<u32>();
         rsx! {
             Row {
                 summary: summary,
@@ -114,7 +114,7 @@ fn row_active_class_when_selected() {
             glyphs: GlyphFlags::default(),
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state();
+        let sortable = use_sortable_state::<u32>();
         rsx! {
             Row {
                 summary: summary,
@@ -162,7 +162,7 @@ fn row_glyphs_render_for_merge_and_conditional() {
             },
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state();
+        let sortable = use_sortable_state::<u32>();
         rsx! {
             Row {
                 summary: summary,
@@ -240,7 +240,7 @@ fn row_swaps_in_rename_inline_when_renaming_matches_input() {
             glyphs: GlyphFlags::default(),
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| Some(summary.input.clone()));
-        let sortable = use_sortable_state();
+        let sortable = use_sortable_state::<u32>();
         rsx! {
             Row {
                 summary: summary,
@@ -291,7 +291,7 @@ fn row_renders_resting_when_renaming_is_none() {
             glyphs: GlyphFlags::default(),
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state();
+        let sortable = use_sortable_state::<u32>();
         rsx! {
             Row {
                 summary: summary,
