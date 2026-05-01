@@ -16,7 +16,8 @@ use crate::frame::mapping_editor::undo_log::StageId;
 mod invert;
 mod map_to_keyboard;
 mod map_to_vjoy;
-// MergeAxis and Conditional bodies land in tasks 25-26b.
+mod merge_axis;
+// Conditional body lands in task 26a-26b.
 // Placeholders for ResponseCurve, Deadzone, ChangeMode land in task 27.
 
 #[component]
@@ -47,7 +48,19 @@ pub(crate) fn StageBody(
                 root_actions: root_actions.clone(),
             }
         },
-        // Stub for other variants until tasks 25-26b.
+        Action::MergeAxis {
+            second_input,
+            operation,
+        } => rsx! {
+            merge_axis::MergeAxisBody {
+                mapping_key: mapping_key.clone(),
+                stage_id: stage_id.clone(),
+                second_input: second_input.clone(),
+                operation: *operation,
+                root_actions: root_actions.clone(),
+            }
+        },
+        // Stub for other variants until tasks 26a-26b and 27.
         _ => rsx! { div { class: "if-stage__body-stub", "(body coming soon)" } },
     }
 }

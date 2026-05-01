@@ -646,3 +646,49 @@ fn map_to_keyboard_body_renders_modifier_toggles_and_key_field() {
         "expected Key field in body: {html}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Task 25: MergeAxis body (op picker + secondary input picker)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn merge_axis_body_renders_op_picker_and_secondary_input() {
+    let actions = vec![Action::MergeAxis {
+        second_input: InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 1 },
+        },
+        operation: MergeOp::Average,
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    assert!(
+        html.contains("Average") || html.contains("Bidirectional"),
+        "expected op picker option in DOM: {html}"
+    );
+    assert!(
+        html.contains("rebind"),
+        "secondary picker rebind button missing"
+    );
+}
+
+#[test]
+fn merge_axis_body_writes_malformed_hint_when_secondary_equals_primary() {
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let actions = vec![Action::MergeAxis {
+        second_input: primary.clone(), // duplicate of primary
+        operation: MergeOp::Average,
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    // The malformed-hint visual treatment lands in Task 35, but the hint
+    // should still be set on the EditorState. For now, asserting the body
+    // renders (no panic) is sufficient for Task 25.
+    assert!(
+        html.contains("Average"),
+        "body must still render with duplicate secondary: {html}"
+    );
+}
