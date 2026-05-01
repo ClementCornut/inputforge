@@ -15,9 +15,12 @@ use dioxus::prelude::*;
 
 use inputforge_core::action::Action;
 use inputforge_core::processing::into_natural_domain;
-use inputforge_core::types::{AxisPolarity, InputAddress, InputId, InputValue, MergeOp};
+use inputforge_core::types::{
+    AxisPolarity, InputAddress, InputId, InputValue, MergeOp, OutputAddress, OutputId, VJoyAxis,
+};
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot};
+use crate::frame::mapping_list::source_label;
 
 // ---------------------------------------------------------------------------
 // Public component
@@ -36,7 +39,17 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
 
     let primary_value = read_axis_display(&primary, &live, &cfg);
     let merge_ctx = find_merge_context(&actions);
-    let out_present = first_map_to_vjoy(&actions);
+    let out_addr = first_map_to_vjoy_output(&actions);
+
+    // Resolve tags for each row up front (single read-lock). Tags echo
+    // info from the header subtitle and merge stage so the readout stays
+    // self-explanatory when the user is watching the bars move; the
+    // duplication is intentional, not redundant.
+    let primary_tag = source_label::format(&primary, &cfg);
+    let secondary_tag = merge_ctx
+        .as_ref()
+        .map(|c| source_label::format(&c.secondary, &cfg));
+    let out_tag = out_addr.as_ref().map(format_output_label);
 
     // Resolve secondary axis display once. Used for the IN 2 row and to
     // infer the merge result's output polarity (consumed by the IN row
@@ -71,7 +84,7 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
         }
     });
 
-    let out_value = out_present.then(|| {
+    let out_value = out_addr.is_some().then(|| {
         let state = ctx.state.read();
         let iv = inputforge_core::pipeline::evaluate_actions_through(
             &actions,
@@ -88,30 +101,51 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
     rsx! {
         div { class: "if-editor__readout",
             if let Some(secondary) = secondary_display {
-                // Merge layout: IN 1, IN 2, dashed divider, merged IN, OUT.
+                // Merge layout: IN 1, IN 2, labeled divider, merged IN, OUT.
                 // No extra divider before OUT in the merge case (spec line 417).
                 // `merged_in_value` is always Some when secondary_display is
                 // Some (both derive from the same merge_ctx); the unwrap_or
                 // is a defensive default that should never fire.
-                ReadoutRow { label: "IN 1".to_owned(), display: primary_value }
-                ReadoutRow { label: "IN 2".to_owned(), display: secondary }
-                div { class: "if-editor__readout-divider-dashed" }
+                ReadoutRow {
+                    label: "IN 1".to_owned(),
+                    tag: primary_tag.clone(),
+                    display: primary_value,
+                }
+                ReadoutRow {
+                    label: "IN 2".to_owned(),
+                    tag: secondary_tag.unwrap_or_default(),
+                    display: secondary,
+                }
+                ReadoutDivider { label: "merge".to_owned() }
                 ReadoutRow {
                     label: "IN".to_owned(),
+                    tag: "merged".to_owned(),
                     display: merged_in_value.unwrap_or(AxisDisplay {
                         value: into_natural_domain(0.0, output_polarity),
                         polarity: output_polarity,
                     }),
                 }
                 if let Some(out) = out_value {
-                    ReadoutRow { label: "OUT".to_owned(), display: out }
+                    ReadoutRow {
+                        label: "OUT".to_owned(),
+                        tag: out_tag.clone().unwrap_or_default(),
+                        display: out,
+                    }
                 }
             } else {
-                // Non-merge layout: IN, optional dashed divider + OUT.
-                ReadoutRow { label: "IN".to_owned(), display: primary_value }
+                // Non-merge layout: IN, optional labeled divider + OUT.
+                ReadoutRow {
+                    label: "IN".to_owned(),
+                    tag: primary_tag.clone(),
+                    display: primary_value,
+                }
                 if let Some(out) = out_value {
-                    div { class: "if-editor__readout-divider-dashed" }
-                    ReadoutRow { label: "OUT".to_owned(), display: out }
+                    ReadoutDivider { label: "out".to_owned() }
+                    ReadoutRow {
+                        label: "OUT".to_owned(),
+                        tag: out_tag.clone().unwrap_or_default(),
+                        display: out,
+                    }
                 }
             }
         }
@@ -122,12 +156,14 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
 // Sub-component
 // ---------------------------------------------------------------------------
 
-/// One row in the readout grid: label | bar | percentage text.
+/// One row in the readout grid: label | tag | bar | percentage text.
 ///
 /// The bar fill is anchored at 50% for bipolar axes and at 0% for
 /// unipolar axes, matching the live-green visual described in the spec.
+/// Bipolar bars also carry a `--bipolar` modifier class so the CSS can
+/// draw a center tick that communicates polarity at idle.
 #[component]
-fn ReadoutRow(label: String, display: AxisDisplay) -> Element {
+fn ReadoutRow(label: String, tag: String, display: AxisDisplay) -> Element {
     let pct_text = format_percentage(&display);
     let bipolar = matches!(display.polarity, AxisPolarity::Bipolar);
 
@@ -155,16 +191,37 @@ fn ReadoutRow(label: String, display: AxisDisplay) -> Element {
         format!("left: 0; right: auto; width: {fill_pct}%;")
     };
 
+    let bar_class = if bipolar {
+        "if-editor__readout-bar if-editor__readout-bar--bipolar"
+    } else {
+        "if-editor__readout-bar"
+    };
+
     rsx! {
         div { class: "if-editor__readout-row",
             div { class: "if-editor__readout-label", "{label}" }
-            div { class: "if-editor__readout-bar",
+            div { class: "if-editor__readout-tag", "{tag}" }
+            div { class: "{bar_class}",
                 div {
                     class: "if-editor__readout-fill",
                     style: "{bar_style}",
                 }
             }
             div { class: "if-editor__readout-pct", "{pct_text}" }
+        }
+    }
+}
+
+/// Section divider with an inline label (e.g. `─── merge ───`).
+///
+/// Renders as a single grid cell that spans the full row and contains
+/// dashed lines on either side of a small uppercase label, marking the
+/// transition between the input section and the merged-or-output section.
+#[component]
+fn ReadoutDivider(label: String) -> Element {
+    rsx! {
+        div { class: "if-editor__readout-divider",
+            span { class: "if-editor__readout-divider-label", "{label}" }
         }
     }
 }
@@ -279,16 +336,56 @@ fn find_merge_context(actions: &[Action]) -> Option<MergeContext> {
     })
 }
 
-/// `true` if `actions` contains a `MapToVJoy` anywhere in the tree
-/// (including inside `Conditional` branches).
-fn first_map_to_vjoy(actions: &[Action]) -> bool {
-    actions.iter().any(|a| match a {
-        Action::MapToVJoy { .. } => true,
-        Action::Conditional {
-            if_true, if_false, ..
-        } => first_map_to_vjoy(if_true) || if_false.as_deref().is_some_and(first_map_to_vjoy),
-        _ => false,
-    })
+/// First `MapToVJoy` output address anywhere in the tree (including
+/// inside `Conditional` branches), or `None` if no `MapToVJoy` exists.
+///
+/// Returns the address (not just a bool) so the OUT row's tag column
+/// can show the destination label (e.g. `vJoy 1 · Y axis`) without a
+/// second tree walk.
+fn first_map_to_vjoy_output(actions: &[Action]) -> Option<OutputAddress> {
+    for action in actions {
+        match action {
+            Action::MapToVJoy { output } => return Some(output.clone()),
+            Action::Conditional {
+                if_true, if_false, ..
+            } => {
+                if let Some(o) = first_map_to_vjoy_output(if_true) {
+                    return Some(o);
+                }
+                if let Some(branch) = if_false.as_deref()
+                    && let Some(o) = first_map_to_vjoy_output(branch)
+                {
+                    return Some(o);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Format a vJoy output address as `vJoy <device> · <axis|button|hat>`.
+///
+/// Mirrors the formatter in `header.rs` so the readout's OUT tag and
+/// the header subtitle's output label read identically. Worth deduping
+/// into a shared `output_label` module if a third call site appears.
+fn format_output_label(output: &OutputAddress) -> String {
+    let suffix = match output.output {
+        OutputId::Axis { id } => match id {
+            VJoyAxis::X => "X axis",
+            VJoyAxis::Y => "Y axis",
+            VJoyAxis::Z => "Z axis",
+            VJoyAxis::Rx => "Rx axis",
+            VJoyAxis::Ry => "Ry axis",
+            VJoyAxis::Rz => "Rz axis",
+            VJoyAxis::Slider0 => "Slider 0",
+            VJoyAxis::Slider1 => "Slider 1",
+        }
+        .to_owned(),
+        OutputId::Button { id } => format!("Button {id}"),
+        OutputId::Hat { id } => format!("Hat {id}"),
+    };
+    format!("vJoy {} \u{00b7} {}", output.device, suffix)
 }
 
 // ---------------------------------------------------------------------------

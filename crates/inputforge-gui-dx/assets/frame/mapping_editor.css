@@ -372,7 +372,10 @@
 
 .if-editor__readout-row {
     display: grid;
-    grid-template-columns: 60px 1fr 60px;
+    /* label | tag | bar | percentage. Tag column auto-sizes to its
+       content, capped via max-width on the cell so very long device
+       names truncate instead of eating the bar width. */
+    grid-template-columns: 60px minmax(0, max-content) 1fr 60px;
     align-items: center;
     gap: 12px;
     padding: 4px 0;
@@ -386,17 +389,46 @@
     color: var(--color-text-subtle);
 }
 
+.if-editor__readout-tag {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-subtle);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .if-editor__readout-bar {
     position: relative;
     height: 8px;
-    background: var(--color-bg-sunken);
+    /* Brighter bg + inset border for an at-idle visible track; the
+       inset shadow gives a 1px border without affecting layout so the
+       8px fill area is preserved. */
+    background: var(--color-bg-elevated);
     border-radius: 2px;
+    box-shadow: inset 0 0 0 1px var(--color-border);
     /* Clip the absolutely-positioned fill so any math regression (off-by
      * one, a polled value escaping [-1, 1] from a calibration bug, etc)
      * stays bounded to the cell instead of overflowing into the layout
      * and triggering a horizontal scrollbar. The `border-radius`
      * survives because the fill clips to the rounded corners. */
     overflow: hidden;
+}
+
+/* Bipolar bars carry a 1px center tick so the user can tell at idle
+   that fill grows from the middle (vs unipolar which grows from the
+   left edge). The fill is a child div drawn over this pseudo-element
+   in source order, so an active fill covers the tick where it
+   overlaps. */
+.if-editor__readout-bar--bipolar::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 1px;
+    height: 100%;
+    background: var(--color-border-strong);
 }
 
 .if-editor__readout-fill {
@@ -415,9 +447,31 @@
     color: var(--color-text);
 }
 
-.if-editor__readout-divider-dashed {
-    border-top: 1px dashed var(--color-border-strong);
+/* Section divider with inline label: dashed lines on either side of a
+   small uppercase label (e.g. `─── merge ───`). The flex pseudo-element
+   trick gives full-width dashes that auto-resize as the label grows
+   without measuring anything. Sits as a sibling of `.if-editor__
+   readout-row` inside the flex-column readout container, so it
+   naturally takes the container's full width. */
+.if-editor__readout-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin: 4px 0;
+}
+
+.if-editor__readout-divider::before,
+.if-editor__readout-divider::after {
+    content: "";
+    flex: 1 1 auto;
+    border-top: 1px dashed var(--color-border-strong);
+}
+
+.if-editor__readout-divider-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--color-text-subtle);
 }
 
 /* Task 18: inactive-runtime hint banner */
