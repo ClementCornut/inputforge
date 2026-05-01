@@ -98,20 +98,28 @@
     font-style: italic;
 }
 
-/* Source line, two-cell layout so the input identifier never gets eaten
- * by device-name ellipsis. Hardware-as-protagonist principle (PRODUCT.md
- * design principle #2): the input address (X / Btn 17 / Hat 0) is a
- * first-class cell, not the tail of a truncated string. The device name
- * flows muted in the leading cell and truncates harmlessly; the kind-
- * tinted mono identifier holds the trailing cell. Glyphs append best-
- * effort after (drop on overflow). */
+/* Source area: two-line stack when qualifiers (merge/cond) exist, single
+ * line otherwise. Hardware-as-protagonist (PRODUCT.md #2): the trigger
+ * (device + input id) sits on its own line so it stays the protagonist;
+ * qualifiers ride a second, tinier muted line so a row with a Conditional
+ * predictably costs 2 lines instead of accidentally wrapping to 4+. */
 .if-row__source {
     display: flex;
-    align-items: baseline;
-    gap: var(--space-1);
+    flex-direction: column;
+    gap: 1px;
     font-size: 11px;
     color: var(--color-text-muted);
     line-height: 1.4;
+    overflow: hidden;
+}
+
+/* Primary line: device name + input id. Two-cell layout so the input
+ * identifier never gets eaten by device-name ellipsis. */
+.if-row__source-primary {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-1);
+    min-width: 0;
     overflow: hidden;
 }
 
@@ -136,14 +144,47 @@
 .if-row__source-input[data-kind="button"] { color: var(--color-control-badge-text); }
 .if-row__source-input[data-kind="hat"]    { color: var(--color-processing); }
 
-.glyph-merge {
-    color: var(--color-output);
-    margin: 0 var(--space-1);
+/* Qualifier line: merge and/or conditional chips. Sits below the primary
+ * line at a smaller size so the trigger stays dominant. Each chip
+ * truncates independently with its own ellipsis. */
+.if-row__source-qualifiers {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+    font-size: 10px;
+    overflow: hidden;
 }
 
-.glyph-cond {
+.if-row__chip {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.if-row__chip-glyph {
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-weight: 600;
+}
+
+.glyph-merge .if-row__chip-glyph {
+    color: var(--color-output);
+}
+
+.glyph-cond .if-row__chip-glyph {
     color: var(--color-control-badge-text);
-    margin: 0 var(--space-1);
+}
+
+.if-row__chip-text {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-style: italic;
 }
 
 .if-rail-empty {
