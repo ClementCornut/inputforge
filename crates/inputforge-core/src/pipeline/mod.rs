@@ -154,26 +154,13 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                     _ => AxisPolarity::default(),
                 };
                 let (second, second_polarity) = ctx.input_cache.get_axis(second_input);
-                let first_value = ctx.current_value;
-                let result = merge_axes(
-                    first_value,
+                ctx.current_value = merge_axes(
+                    ctx.current_value,
                     second,
                     *operation,
                     first_polarity,
                     second_polarity,
                 );
-                tracing::info!(
-                    target: "polarity_debug",
-                    primary_value = first_value,
-                    ?first_polarity,
-                    secondary_addr = ?second_input,
-                    secondary_value = second,
-                    ?second_polarity,
-                    op = ?operation,
-                    result,
-                    "[merge_axes] called"
-                );
-                ctx.current_value = result;
             }
 
             // Control flow

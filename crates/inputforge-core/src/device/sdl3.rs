@@ -222,15 +222,7 @@ impl Sdl3Input {
                 // mid-press first-event value.
                 let axis_idx_u8 = u8::try_from(axis_idx).unwrap_or(u8::MAX);
                 let key = (instance_id_raw, axis_idx_u8);
-                if self.real_event_seen.contains(&key) {
-                    tracing::debug!(
-                        target: "polarity_debug",
-                        poll_count = self.poll_count,
-                        device = %device.info.name,
-                        axis_idx = axis_idx_u8,
-                        "[reprobe] skipping synthesis (real event seen)"
-                    );
-                } else {
+                if !self.real_event_seen.contains(&key) {
                     // Lock classification only if SDL gave us a definitive
                     // resting value. `current=0` is ambiguous: on Windows
                     // DirectInput, SDL_GetJoystickAxis often returns 0
@@ -242,24 +234,13 @@ impl Sdl3Input {
                     if current != 0 {
                         self.classified_axes.insert(key);
                     }
-                    let raw_value = f64::from(current) / f64::from(i16::MAX);
-                    tracing::info!(
-                        target: "polarity_debug",
-                        poll_count = self.poll_count,
-                        device = %device.info.name,
-                        axis_idx = axis_idx_u8,
-                        sdl_i16 = current,
-                        raw_f64 = raw_value,
-                        ?polarity,
-                        "[reprobe] synthesizing axis event"
-                    );
                     out.push(InputEvent {
                         source: InputAddress {
                             device: device.device_id.clone(),
                             input: InputId::Axis { index: axis_idx_u8 },
                         },
                         value: InputValue::Axis {
-                            value: AxisValue::raw(raw_value),
+                            value: AxisValue::raw(f64::from(current) / f64::from(i16::MAX)),
                             polarity,
                         },
                         timestamp: now,
@@ -352,32 +333,20 @@ impl Sdl3Input {
                     // `JoyAxisMotion`s for this axis flow through this
                     // arm normally; the cache holds whatever value the
                     // user last produced.
-                    let was_first_real = self.real_event_seen.insert(key);
+                    self.real_event_seen.insert(key);
                     let polarity = device
                         .info
                         .axis_polarities
                         .get(usize::from(axis_idx))
                         .copied()
                         .unwrap_or_default();
-                    let raw_value = f64::from(value) / f64::from(i16::MAX);
-                    tracing::info!(
-                        target: "polarity_debug",
-                        poll_count = self.poll_count,
-                        device = %device.info.name,
-                        axis_idx,
-                        sdl_i16 = value,
-                        raw_f64 = raw_value,
-                        ?polarity,
-                        first_real = was_first_real,
-                        "[joyaxismotion] dispatching real event"
-                    );
                     out.push(InputEvent {
                         source: InputAddress {
                             device: device.device_id.clone(),
                             input: InputId::Axis { index: axis_idx },
                         },
                         value: InputValue::Axis {
-                            value: AxisValue::raw(raw_value),
+                            value: AxisValue::raw(f64::from(value) / f64::from(i16::MAX)),
                             polarity,
                         },
                         timestamp: now,
