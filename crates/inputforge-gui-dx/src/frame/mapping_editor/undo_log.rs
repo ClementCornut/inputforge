@@ -85,6 +85,69 @@ pub(crate) struct UndoLog {
     pub stacks: HashMap<MappingKey, MappingHistory>,
 }
 
+/// Cap on per-mapping undo entries, per spec AC #25
+/// ("Undo stack caps 50 entries; FIFO eviction").
+const MAX_ENTRIES: usize = 50;
+
+impl UndoLog {
+    /// Append an edit entry. Clears the redo stack on this key.
+    /// Enforces 50-entry FIFO cap.
+    pub(crate) fn push_edit(
+        &mut self,
+        key: MappingKey,
+        before: Mapping,
+        kind: UndoKind,
+        label: String,
+    ) {
+        let history = self.stacks.entry(key).or_default();
+        history.redo.clear();
+        history.undo.push(UndoEntry {
+            kind,
+            mapping_before: before,
+            label,
+        });
+        if history.undo.len() > MAX_ENTRIES {
+            let drain_count = history.undo.len() - MAX_ENTRIES;
+            history.undo.drain(..drain_count);
+        }
+    }
+
+    /// Pop the last undo entry and push it to redo. Caller dispatches
+    /// `SetMapping` with `entry.mapping_before`.
+    pub(crate) fn undo(&mut self, key: &MappingKey) -> Option<UndoEntry> {
+        let history = self.stacks.get_mut(key)?;
+        let entry = history.undo.pop()?;
+        history.redo.push(entry.clone());
+        Some(entry)
+    }
+
+    /// Pop the last redo entry and push it to undo.
+    pub(crate) fn redo(&mut self, key: &MappingKey) -> Option<UndoEntry> {
+        let history = self.stacks.get_mut(key)?;
+        let entry = history.redo.pop()?;
+        history.undo.push(entry.clone());
+        Some(entry)
+    }
+
+    /// Clear both stacks for `key`.
+    ///
+    /// Removes the key entirely so that callers can test
+    /// `stacks.get(&key).is_none()` as a cheap "nothing recorded" check.
+    pub(crate) fn clear(&mut self, key: &MappingKey) {
+        self.stacks.remove(key);
+    }
+
+    /// Return the label of the topmost undo entry, if any.
+    ///
+    /// Used by the editor footer recap to display "Undo: <label>".
+    pub(crate) fn last_label(&self, key: &MappingKey) -> Option<String> {
+        self.stacks
+            .get(key)
+            .and_then(|h| h.undo.last())
+            .map(|e| e.label.clone())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,5 +169,214 @@ mod tests {
         let _ = StageIdSegment::Index(0);
         let _ = StageIdSegment::IfTrue;
         let _ = StageIdSegment::IfFalse;
+    }
+
+    // --- Task 7 tests ---
+
+    #[expect(
+        unused_imports,
+        reason = "Action imported for API completeness; not all tests use it"
+    )]
+    use inputforge_core::action::Action;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    fn synth_key() -> MappingKey {
+        (
+            "Default".to_owned(),
+            InputAddress {
+                device: DeviceId("dev-1".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+        )
+    }
+
+    fn synth_mapping(name: &str) -> Mapping {
+        Mapping {
+            input: synth_key().1,
+            mode: "Default".to_owned(),
+            name: Some(name.to_owned()),
+            actions: vec![],
+        }
+    }
+
+    #[test]
+    fn push_edit_appends_and_clears_redo() {
+        let mut log = UndoLog::default();
+        let key = synth_key();
+
+        log.push_edit(
+            key.clone(),
+            synth_mapping("v1"),
+            UndoKind::Rename,
+            "rename: 'X' -> 'v1'".to_owned(),
+        );
+
+        let stack = &log.stacks[&key];
+        assert_eq!(stack.undo.len(), 1);
+        assert!(stack.redo.is_empty());
+    }
+
+    #[test]
+    fn push_edit_clears_redo_stack_on_fresh_edit() {
+        let mut log = UndoLog::default();
+        let key = synth_key();
+        log.push_edit(
+            key.clone(),
+            synth_mapping("a"),
+            UndoKind::Rename,
+            "a".to_owned(),
+        );
+        log.undo(&key);
+        // redo now has 1 entry.
+        log.push_edit(
+            key.clone(),
+            synth_mapping("b"),
+            UndoKind::Rename,
+            "b".to_owned(),
+        );
+        let stack = &log.stacks[&key];
+        assert!(stack.redo.is_empty(), "fresh edit must clear redo");
+    }
+
+    #[test]
+    fn push_edit_caps_at_fifty_with_fifo_eviction() {
+        let mut log = UndoLog::default();
+        let key = synth_key();
+        for i in 0..60_u32 {
+            log.push_edit(
+                key.clone(),
+                synth_mapping(&format!("v{i}")),
+                UndoKind::Rename,
+                format!("rename to v{i}"),
+            );
+        }
+        let stack = &log.stacks[&key];
+        assert_eq!(stack.undo.len(), 50);
+        // Oldest entries (v0..v9) are evicted; the bottom of the stack is v10.
+        assert_eq!(stack.undo[0].label, "rename to v10");
+        assert_eq!(stack.undo[49].label, "rename to v59");
+    }
+
+    #[test]
+    fn undo_pops_and_pushes_to_redo() {
+        let mut log = UndoLog::default();
+        let key = synth_key();
+        log.push_edit(
+            key.clone(),
+            synth_mapping("a"),
+            UndoKind::Rename,
+            "a".to_owned(),
+        );
+
+        let entry = log.undo(&key).unwrap();
+        assert_eq!(entry.label, "a");
+        let stack = &log.stacks[&key];
+        assert!(stack.undo.is_empty());
+        assert_eq!(stack.redo.len(), 1);
+    }
+
+    #[test]
+    fn undo_returns_none_when_stack_empty() {
+        let mut log = UndoLog::default();
+        let key = synth_key();
+        assert!(log.undo(&key).is_none());
+    }
+
+    #[test]
+    fn redo_pops_and_pushes_to_undo() {
+        let mut log = UndoLog::default();
+        let key = synth_key();
+        log.push_edit(
+            key.clone(),
+            synth_mapping("a"),
+            UndoKind::Rename,
+            "a".to_owned(),
+        );
+        log.undo(&key);
+
+        let entry = log.redo(&key).unwrap();
+        assert_eq!(entry.label, "a");
+        let stack = &log.stacks[&key];
+        assert_eq!(stack.undo.len(), 1);
+        assert!(stack.redo.is_empty());
+    }
+
+    #[test]
+    fn clear_removes_both_stacks() {
+        let mut log = UndoLog::default();
+        let key = synth_key();
+        log.push_edit(
+            key.clone(),
+            synth_mapping("a"),
+            UndoKind::Rename,
+            "a".to_owned(),
+        );
+        log.undo(&key);
+        log.clear(&key);
+        // Implementation removes the entry entirely; pin that behavior.
+        assert!(!log.stacks.contains_key(&key), "clear must remove the key");
+    }
+
+    #[test]
+    fn last_label_returns_top_of_undo() {
+        let mut log = UndoLog::default();
+        let key = synth_key();
+        log.push_edit(
+            key.clone(),
+            synth_mapping("a"),
+            UndoKind::Rename,
+            "first".to_owned(),
+        );
+        log.push_edit(
+            key.clone(),
+            synth_mapping("b"),
+            UndoKind::Rename,
+            "second".to_owned(),
+        );
+        assert_eq!(log.last_label(&key).as_deref(), Some("second"));
+    }
+
+    #[test]
+    fn mapping_history_isolated_across_switches() {
+        // Switch A → B → A: A's undo/redo stacks must survive unchanged.
+        let mut log = UndoLog::default();
+        let key_a = synth_key();
+        let key_b = (
+            "Default".to_owned(),
+            InputAddress {
+                device: DeviceId("dev-1".to_owned()),
+                input: InputId::Button { index: 1 },
+            },
+        );
+
+        // Edit A.
+        log.push_edit(
+            key_a.clone(),
+            synth_mapping("a1"),
+            UndoKind::Rename,
+            "a1".to_owned(),
+        );
+        log.undo(&key_a);
+        // A now: undo=0, redo=1.
+
+        // Switch to B and edit.
+        log.push_edit(
+            key_b.clone(),
+            synth_mapping("b1"),
+            UndoKind::Rename,
+            "b1".to_owned(),
+        );
+
+        // Switch back to A. Verify A's stacks are intact.
+        let a = &log.stacks[&key_a];
+        assert_eq!(a.undo.len(), 0);
+        assert_eq!(a.redo.len(), 1);
+        let b = &log.stacks[&key_b];
+        assert_eq!(b.undo.len(), 1);
+        assert_eq!(b.redo.len(), 0);
+
+        // Redo on A still works.
+        let entry = log.redo(&key_a).unwrap();
+        assert_eq!(entry.label, "a1");
     }
 }
