@@ -10,6 +10,7 @@ mod top_bar;
 mod view_state;
 
 pub(crate) use layout::Layout;
+pub(crate) use mapping_editor::use_editor_state_provider;
 pub(crate) use mapping_list::MappingList;
 // `PanelSlot` and `ViewState` are not re-exported here, every consumer
 // imports them directly via `crate::frame::view_state::*` so a single

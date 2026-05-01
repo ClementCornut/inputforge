@@ -4,6 +4,7 @@ use crate::LaunchParams;
 use crate::bridge::spawn_polling_task;
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
 use crate::frame;
+use crate::frame::use_editor_state_provider;
 use crate::lifecycle;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::theme::ThemeProvider;
@@ -46,6 +47,9 @@ pub(crate) fn app_root() -> Element {
     // F8: live-capture primitive. Single instance, sibling of ToastQueue.
     // Provider self-installs the context.
     use_live_capture_provider();
+
+    // F9: editor-internal state. Single instance, sibling of LiveCapture.
+    use_editor_state_provider();
 
     // F4: warnings bridge, reads ctx.meta, pushes new tail entries as
     // Warning toasts. last_seen initializes from peek() so first run is a
@@ -167,6 +171,9 @@ mod tests {
         // any consumer that lands inside `app_root_view` and reads the
         // context resolves successfully under the test harness too.
         crate::patterns::live_capture::use_live_capture_provider();
+
+        // F9: mirror the runtime path's editor-state provider install.
+        frame::use_editor_state_provider();
 
         super::app_root_view()
     }
