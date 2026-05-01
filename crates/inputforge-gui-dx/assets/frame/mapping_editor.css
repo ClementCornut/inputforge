@@ -674,12 +674,12 @@
     position: relative;
 }
 
-/* End-of-pipeline trigger: full-width quiet "next slot" row. Same
-   dashed-violet family as the louder empty-state placeholder, but at
-   roughly half the alpha so it reads as "quietly clickable" rather
-   than "shouting empty drop zone". Hover brings border + bg + color
-   up to the louder intensity, so the affordance is always discoverable
-   on intent without dominating the pipeline at rest. Hit target is
+/* End-of-pipeline trigger: full-width "next slot" row. Same
+   dashed-violet family as the louder empty-state placeholder, including
+   the violet text color, so the two read as the same control at
+   different volumes rather than two different controls. Compact sits
+   at roughly half the dashed-border alpha so it stays quiet at rest;
+   hover brings border + bg up to the louder intensity. Hit target is
    the full row (~28px tall) instead of an 8x14px glyph. */
 .if-add-palette__trigger {
     width: 100%;
@@ -692,7 +692,7 @@
     border: 1px dashed rgba(184, 155, 234, 0.20);
     border-radius: 6px;
     padding: 6px 12px;
-    color: var(--color-text-muted);
+    color: var(--color-control-badge-text);
     font-family: var(--font-sans);
     font-size: 12px;
     font-weight: 500;
@@ -700,14 +700,12 @@
     cursor: pointer;
     transition:
         background var(--duration-fast) var(--easing-fast),
-        border-color var(--duration-fast) var(--easing-fast),
-        color var(--duration-fast) var(--easing-fast);
+        border-color var(--duration-fast) var(--easing-fast);
 }
 
 .if-add-palette__trigger:hover {
     background: rgba(154, 120, 214, 0.06);
     border-color: rgba(184, 155, 234, 0.40);
-    color: var(--color-control-badge-text);
 }
 
 .if-add-palette__trigger:focus-visible {
@@ -715,14 +713,14 @@
     outline-offset: 2px;
 }
 
-/* Empty-pipeline placeholder: louder version of the same family. Larger
-   padding so the empty card has more presence; intensity matches what
-   the compact trigger reaches on hover. */
+/* Empty-pipeline placeholder: louder version of the same family. Same
+   violet text color as the compact trigger; distinguished only by
+   higher dashed-border + bg alpha and larger padding so the empty
+   card has more presence than the inline next-slot trigger. */
 .if-add-palette__trigger--louder {
     background: rgba(154, 120, 214, 0.06);
     border-color: rgba(184, 155, 234, 0.40);
     padding: 10px 12px;
-    color: var(--color-control-badge-text);
     line-height: 1.45;
 }
 
