@@ -68,6 +68,83 @@ fn seeded_profile_with_one_mapping(actions: Vec<Action>) -> AppState {
     state
 }
 
+/// Like [`seeded_profile_with_one_mapping`] but with explicit per-axis
+/// polarities and a pre-seeded `input_cache` so pipeline evaluation
+/// (`evaluate_actions_through` for merged IN / OUT rows) sees the axis
+/// values that the live readout's `LiveSnapshot` will also be told
+/// about. Used by Task-3 polarity-inference SSR tests.
+fn seeded_profile_with_polarities_and_axes(
+    actions: Vec<Action>,
+    axis_polarities: Vec<AxisPolarity>,
+    axis_values: &[(u8, f64, AxisPolarity)],
+) -> AppState {
+    use inputforge_core::types::{AxisValue, InputValue};
+    use std::collections::HashMap;
+    let map = HashMap::from([("Default".to_owned(), vec![])]);
+    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let mappings = vec![Mapping {
+        input: primary,
+        mode: "Default".to_owned(),
+        name: Some("Yaw".to_owned()),
+        actions,
+    }];
+    let profile = Profile::new(
+        "P".to_owned(),
+        vec![],
+        modes,
+        mappings,
+        vec![],
+        "Default".to_owned(),
+    );
+    let mut state = AppState::with_profile(profile);
+    let axes_count: u8 =
+        u8::try_from(axis_polarities.len()).expect("test fixture should have <= 255 axes");
+    state.devices.push(inputforge_core::state::DeviceState {
+        info: DeviceInfo {
+            id: DeviceId("dev-1".to_owned()),
+            name: "Stick".to_owned(),
+            axes: axes_count,
+            buttons: 0,
+            hats: 0,
+            instance_path: None,
+            axis_polarities,
+        },
+        connected: true,
+    });
+    for &(idx, value, polarity) in axis_values {
+        let addr = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: idx },
+        };
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(value),
+                polarity,
+            },
+        );
+    }
+    state
+}
+
+/// Build a single-device `LiveSnapshot` with the given axis values.
+///
+/// `axes` is `[(value, polarity)]` indexed by the device's axis index.
+fn live_snapshot_with_axes(axes: Vec<(f64, AxisPolarity)>) -> LiveSnapshot {
+    LiveSnapshot {
+        device_inputs: vec![crate::context::DeviceInputValues {
+            axes,
+            buttons: vec![],
+            hats: vec![],
+        }],
+        output_values: vec![],
+    }
+}
+
 /// Props for the harness component.
 ///
 /// `AppState` is not `Clone`/`PartialEq`, so it is wrapped in
@@ -78,6 +155,10 @@ fn seeded_profile_with_one_mapping(actions: Vec<Action>) -> AppState {
 /// `current_mode` overrides the `MetaSnapshot::current_mode` field; when
 /// `None` it defaults to `"Default"` (matching the editing mode). Task 18
 /// needs `"Combat"` to drive the inactive-hint path.
+///
+/// `initial_live` seeds the `LiveSnapshot` signal so tests can drive
+/// the live-readout component with specific axis values + polarities.
+/// Defaults to the empty snapshot.
 #[derive(Clone, Props)]
 struct HarnessProps {
     state: Arc<RwLock<AppState>>,
@@ -86,6 +167,8 @@ struct HarnessProps {
     /// absent so existing tests that do not set this field are unaffected.
     #[props(default)]
     current_mode: Option<String>,
+    #[props(default)]
+    initial_live: Option<Arc<LiveSnapshot>>,
 }
 
 impl PartialEq for HarnessProps {
@@ -93,6 +176,11 @@ impl PartialEq for HarnessProps {
         Arc::ptr_eq(&self.state, &other.state)
             && self.addr == other.addr
             && self.current_mode == other.current_mode
+            && match (&self.initial_live, &other.initial_live) {
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            }
     }
 }
 
@@ -107,6 +195,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
         state,
         addr,
         current_mode,
+        initial_live,
     } = props;
 
     let runtime_mode = current_mode.unwrap_or_else(|| "Default".to_owned());
@@ -130,7 +219,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
         ..MetaSnapshot::default()
     });
     let config = use_signal(|| snap);
-    let live = use_signal(LiveSnapshot::default);
+    let live = use_signal(|| initial_live.as_deref().cloned().unwrap_or_default());
     let ctx = AppContext {
         state: Arc::clone(&raw.state),
         commands: raw.commands.clone(),
@@ -164,6 +253,7 @@ fn harness_with(state: AppState, addr: InputAddress) -> VirtualDom {
             state: Arc::new(RwLock::new(state)),
             addr,
             current_mode: None,
+            initial_live: None,
         },
     )
 }
@@ -183,6 +273,24 @@ fn harness_with_current_mode(
             state: Arc::new(RwLock::new(state)),
             addr,
             current_mode: Some(current_mode.to_owned()),
+            initial_live: None,
+        },
+    )
+}
+
+/// Build a `VirtualDom` with a pre-seeded `LiveSnapshot`.
+///
+/// Used by live-readout merge tests to drive specific axis values and
+/// polarities into the snapshot the component reads from. The snapshot
+/// is wrapped in `Arc` so `HarnessProps` stays cheap-clonable.
+fn harness_with_live(state: AppState, addr: InputAddress, live: LiveSnapshot) -> VirtualDom {
+    VirtualDom::new_with_props(
+        HarnessComponent,
+        HarnessProps {
+            state: Arc::new(RwLock::new(state)),
+            addr,
+            current_mode: None,
+            initial_live: Some(Arc::new(live)),
         },
     )
 }
@@ -552,6 +660,7 @@ fn editor_undo_recap_shows_label_and_kbd_hint() {
             state: Arc::new(RwLock::new(state)),
             addr,
             current_mode: None,
+            initial_live: None,
         },
     );
     vdom.rebuild_in_place();
@@ -650,6 +759,252 @@ fn editor_live_readout_renders_out_when_map_to_vjoy_present() {
     assert!(
         html.contains("OUT"),
         "OUT row should render with MapToVJoy: {html}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// F9 follow-up: live readout polarity inference for merge results
+// ---------------------------------------------------------------------------
+
+/// Rudder-pedals scenario: two unipolar pedals merged via Bidirectional.
+/// Both at idle (encoded -1, -1); diff = 0 (centered bipolar).
+/// Expected: IN row formats `+0.00` (bipolar with sign), bar centered.
+#[test]
+fn editor_live_readout_bidirectional_uu_idle_renders_centered_bipolar_in() {
+    use inputforge_core::types::MergeOp;
+
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let secondary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 1 },
+    };
+    let actions = vec![Action::MergeAxis {
+        second_input: secondary,
+        operation: MergeOp::Bidirectional,
+    }];
+    let state = seeded_profile_with_polarities_and_axes(
+        actions,
+        vec![AxisPolarity::Unipolar, AxisPolarity::Unipolar],
+        &[
+            (0, -1.0, AxisPolarity::Unipolar),
+            (1, -1.0, AxisPolarity::Unipolar),
+        ],
+    );
+    let live = live_snapshot_with_axes(vec![
+        (-1.0, AxisPolarity::Unipolar),
+        (-1.0, AxisPolarity::Unipolar),
+    ]);
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    // The merged IN row inherits Bidirectional's Bipolar output polarity,
+    // so the format includes a sign prefix and reads exactly `+0.00`.
+    assert!(
+        html.contains("+0.00"),
+        "expected merged IN to render +0.00 for UU idle Bidirectional; got: {html}"
+    );
+    // IN 2 row inherits Unipolar; format omits the sign and reads `0.00`.
+    assert!(
+        html.contains(">IN 2<") || html.contains(">IN 2 "),
+        "expected IN 2 row label; got: {html}"
+    );
+}
+
+/// Average of two unipolar pedals at idle (encoded -1, -1).
+/// Expected: IN row inherits Unipolar polarity (per truth table); the
+/// natural-domain remap turns encoded -1 into displayed 0.00 with no
+/// sign prefix, and the bar is empty (anchored at left, zero width).
+#[test]
+fn editor_live_readout_average_uu_idle_renders_empty_unipolar_in() {
+    use inputforge_core::types::MergeOp;
+
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let secondary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 1 },
+    };
+    let actions = vec![Action::MergeAxis {
+        second_input: secondary,
+        operation: MergeOp::Average,
+    }];
+    let state = seeded_profile_with_polarities_and_axes(
+        actions,
+        vec![AxisPolarity::Unipolar, AxisPolarity::Unipolar],
+        &[
+            (0, -1.0, AxisPolarity::Unipolar),
+            (1, -1.0, AxisPolarity::Unipolar),
+        ],
+    );
+    let live = live_snapshot_with_axes(vec![
+        (-1.0, AxisPolarity::Unipolar),
+        (-1.0, AxisPolarity::Unipolar),
+    ]);
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    // Unipolar format omits the sign. `0.00` (no leading +) appears for
+    // both per-input rows AND the merged IN row.
+    assert!(
+        !html.contains("+0.00"),
+        "no bipolar `+0.00` should appear for Average UU idle; got: {html}"
+    );
+    assert!(
+        html.contains("0.00"),
+        "expected unipolar `0.00` somewhere in the readout; got: {html}"
+    );
+    // The merged IN row's bar has `width: 0%` (empty), grown from the
+    // left edge.
+    assert!(
+        html.contains("left: 0; right: auto; width: 0%"),
+        "expected empty unipolar IN bar; got: {html}"
+    );
+}
+
+/// Average of two unipolar pedals fully pressed (encoded 1, 1).
+/// Expected: IN row Unipolar with natural value 1.0, format `1.00`,
+/// bar at full width.
+#[test]
+fn editor_live_readout_average_uu_full_press_renders_full_unipolar_in() {
+    use inputforge_core::types::MergeOp;
+
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let secondary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 1 },
+    };
+    let actions = vec![Action::MergeAxis {
+        second_input: secondary,
+        operation: MergeOp::Average,
+    }];
+    let state = seeded_profile_with_polarities_and_axes(
+        actions,
+        vec![AxisPolarity::Unipolar, AxisPolarity::Unipolar],
+        &[
+            (0, 1.0, AxisPolarity::Unipolar),
+            (1, 1.0, AxisPolarity::Unipolar),
+        ],
+    );
+    let live = live_snapshot_with_axes(vec![
+        (1.0, AxisPolarity::Unipolar),
+        (1.0, AxisPolarity::Unipolar),
+    ]);
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("1.00"),
+        "expected `1.00` (Unipolar full press); got: {html}"
+    );
+    assert!(
+        html.contains("left: 0; right: auto; width: 100%"),
+        "expected full unipolar IN bar; got: {html}"
+    );
+}
+
+/// Bipolar+Bipolar Average regression: behavior must not change when
+/// both inputs are Bipolar. Anchors the "no regression" promise from
+/// the plan's acceptance criteria.
+#[test]
+fn editor_live_readout_average_bb_renders_bipolar_unchanged() {
+    use inputforge_core::types::MergeOp;
+
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let secondary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 1 },
+    };
+    let actions = vec![Action::MergeAxis {
+        second_input: secondary,
+        operation: MergeOp::Average,
+    }];
+    // Primary at +0.5, secondary at -0.5. Average = 0.0 (bipolar center).
+    let state = seeded_profile_with_polarities_and_axes(
+        actions,
+        vec![AxisPolarity::Bipolar, AxisPolarity::Bipolar],
+        &[
+            (0, 0.5, AxisPolarity::Bipolar),
+            (1, -0.5, AxisPolarity::Bipolar),
+        ],
+    );
+    let live = live_snapshot_with_axes(vec![
+        (0.5, AxisPolarity::Bipolar),
+        (-0.5, AxisPolarity::Bipolar),
+    ]);
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    // Merged IN should be Bipolar (sign prefix) and read `+0.00`.
+    assert!(
+        html.contains("+0.00"),
+        "expected bipolar `+0.00` for BB Average regression; got: {html}"
+    );
+    // Per-input rows show `+0.50` and `-0.50` (Bipolar formatting).
+    assert!(
+        html.contains("+0.50"),
+        "expected primary `+0.50` per-input; got: {html}"
+    );
+    assert!(
+        html.contains("-0.50"),
+        "expected secondary `-0.50` per-input; got: {html}"
+    );
+}
+
+/// Unipolar primary, no merge, with `MapToVJoy`. The OUT row should
+/// inherit the primary's Unipolar polarity (since `find_merge_context`
+/// returns None) and apply the natural-domain remap.
+///
+/// Primary at encoded -1 (idle pedal) goes through `MapToVJoy` unchanged;
+/// the OUT row should show natural 0.00 (empty bar), not raw -1.00.
+#[test]
+fn editor_live_readout_unipolar_primary_no_merge_out_inherits_unipolar() {
+    use inputforge_core::types::{MergeOp, OutputAddress, OutputId, VJoyAxis};
+    let _ = MergeOp::Bidirectional; // avoid an unused-import warning if the test is reorganized
+
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let actions = vec![Action::MapToVJoy {
+        output: OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        },
+    }];
+    let state = seeded_profile_with_polarities_and_axes(
+        actions,
+        vec![AxisPolarity::Unipolar],
+        &[(0, -1.0, AxisPolarity::Unipolar)],
+    );
+    let live = live_snapshot_with_axes(vec![(-1.0, AxisPolarity::Unipolar)]);
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains(">OUT<") || html.contains(">OUT "),
+        "expected OUT row to render; got: {html}"
+    );
+    // Encoded -1 -> natural 0 via into_natural_domain. Format `0.00`
+    // (no sign prefix because Unipolar). The pre-Task-3 bug rendered
+    // this as `-1.00` (encoded passthrough).
+    assert!(
+        !html.contains("-1.00"),
+        "Unipolar OUT must NOT render encoded `-1.00`; got: {html}"
+    );
+    assert!(
+        html.contains("0.00"),
+        "expected natural-domain `0.00` for Unipolar OUT idle; got: {html}"
     );
 }
 

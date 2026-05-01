@@ -14,7 +14,8 @@
 use dioxus::prelude::*;
 
 use inputforge_core::action::Action;
-use inputforge_core::types::{AxisPolarity, InputAddress, InputId, InputValue};
+use inputforge_core::processing::into_natural_domain;
+use inputforge_core::types::{AxisPolarity, InputAddress, InputId, InputValue, MergeOp};
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot};
 
@@ -34,23 +35,39 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
     let cfg = ctx.config.read();
 
     let primary_value = read_axis_display(&primary, &live, &cfg);
-    let merge_secondary = first_merge_secondary(&actions);
-    let merge_index = first_merge_index(&actions);
+    let merge_ctx = find_merge_context(&actions);
     let out_present = first_map_to_vjoy(&actions);
+
+    // Resolve secondary axis display once. Used for the IN 2 row and to
+    // infer the merge result's output polarity (consumed by the IN row
+    // and OUT row).
+    let secondary_display = merge_ctx
+        .as_ref()
+        .map(|c| read_axis_display(&c.secondary, &live, &cfg));
+
+    // Polarity of the merged result (or, in the no-merge case, of the
+    // OUT row): primary inherits when there is no merge; otherwise the
+    // merge op's natural output polarity per `merge_output_polarity`.
+    let output_polarity = match (&merge_ctx, secondary_display) {
+        (Some(c), Some(secondary)) => {
+            merge_output_polarity(c.op, primary_value.polarity, secondary.polarity)
+        }
+        _ => primary_value.polarity,
+    };
 
     // Brief read-lock on AppState for pipeline evaluation.
     // Two separate guard scopes so Rust can prove non-overlapping borrows.
-    let merged_in_value = merge_index.map(|idx| {
+    let merged_in_value = merge_ctx.as_ref().map(|c| {
         let state = ctx.state.read();
         let iv = inputforge_core::pipeline::evaluate_actions_through(
             &actions,
             &state,
             &primary,
-            idx + 1,
+            c.index + 1,
         );
         AxisDisplay {
-            value: axis_f64(&iv),
-            polarity: primary_value.polarity,
+            value: into_natural_domain(axis_f64(&iv), output_polarity),
+            polarity: output_polarity,
         }
     });
 
@@ -63,25 +80,28 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
             actions.len(),
         );
         AxisDisplay {
-            value: axis_f64(&iv),
-            polarity: primary_value.polarity,
+            value: into_natural_domain(axis_f64(&iv), output_polarity),
+            polarity: output_polarity,
         }
     });
 
     rsx! {
         div { class: "if-editor__readout",
-            if let Some(secondary_addr) = merge_secondary {
+            if let Some(secondary) = secondary_display {
                 // Merge layout: IN 1, IN 2, dashed divider, merged IN, OUT.
                 // No extra divider before OUT in the merge case (spec line 417).
+                // `merged_in_value` is always Some when secondary_display is
+                // Some (both derive from the same merge_ctx); the unwrap_or
+                // is a defensive default that should never fire.
                 ReadoutRow { label: "IN 1".to_owned(), display: primary_value }
-                {
-                    let secondary_val = read_axis_display(&secondary_addr, &live, &cfg);
-                    rsx! { ReadoutRow { label: "IN 2".to_owned(), display: secondary_val } }
-                }
+                ReadoutRow { label: "IN 2".to_owned(), display: secondary }
                 div { class: "if-editor__readout-divider-dashed" }
                 ReadoutRow {
                     label: "IN".to_owned(),
-                    display: merged_in_value.unwrap_or(primary_value),
+                    display: merged_in_value.unwrap_or(AxisDisplay {
+                        value: into_natural_domain(0.0, output_polarity),
+                        polarity: output_polarity,
+                    }),
                 }
                 if let Some(out) = out_value {
                     ReadoutRow { label: "OUT".to_owned(), display: out }
@@ -172,9 +192,9 @@ struct AxisDisplay {
 ///
 /// Hardware reports both bipolar and unipolar axes in the bipolar-encoded
 /// range `[-1.0, 1.0]`. For unipolar axes (pedals, throttles, brakes) we
-/// remap to the natural `[0.0, 1.0]` domain so a Thrustmaster pedal idle
-/// reads `0.00` (not `-1.00`) and the unipolar bar fill grows monotonically
-/// with press depth.
+/// remap to the natural `[0.0, 1.0]` domain via `into_natural_domain` so a
+/// Thrustmaster pedal idle reads `0.00` (not `-1.00`) and the unipolar
+/// bar fill grows monotonically with press depth.
 fn read_axis_display(
     addr: &InputAddress,
     live: &LiveSnapshot,
@@ -191,13 +211,10 @@ fn read_axis_display(
         && let Some(dev_inputs) = live.device_inputs.get(di)
         && let Some(&(raw, polarity)) = dev_inputs.axes.get(usize::from(index))
     {
-        let value = match polarity {
-            AxisPolarity::Bipolar => raw,
-            // Remap [-1, 1] to [0, 1]: midpoint of `raw` and 1.0 hits 0
-            // at raw=-1, 0.5 at raw=0, and 1 at raw=1.
-            AxisPolarity::Unipolar => f64::midpoint(raw, 1.0),
+        return AxisDisplay {
+            value: into_natural_domain(raw, polarity),
+            polarity,
         };
-        return AxisDisplay { value, polarity };
     }
     AxisDisplay {
         value: 0.0,
@@ -227,21 +244,35 @@ fn axis_f64(v: &InputValue) -> f64 {
 // Action-tree walkers (top-level only for merge; recursive for MapToVJoy)
 // ---------------------------------------------------------------------------
 
-/// Index of the first top-level `MergeAxis` in `actions`.
+/// Resolved context for the first top-level `MergeAxis` in the pipeline.
 ///
 /// Top-level only by design: merges nested inside `Conditional` do not
-/// trigger the merge layout (acceptable per the task spec).
-fn first_merge_index(actions: &[Action]) -> Option<usize> {
-    actions
-        .iter()
-        .position(|a| matches!(a, Action::MergeAxis { .. }))
+/// trigger the merge layout (acceptable per the F9 task spec).
+#[derive(Clone, PartialEq)]
+struct MergeContext {
+    /// Position in the action list, used as the `stop_at` for the
+    /// pipeline subset that produces the merged IN value.
+    index: usize,
+    /// Merge operator (drives the polarity inference table).
+    op: MergeOp,
+    /// Secondary input address (the IN 2 row).
+    secondary: InputAddress,
 }
 
-/// `second_input` of the first top-level `MergeAxis`, if present.
-fn first_merge_secondary(actions: &[Action]) -> Option<InputAddress> {
-    actions.iter().find_map(|a| {
-        if let Action::MergeAxis { second_input, .. } = a {
-            Some(second_input.clone())
+/// Find the first top-level `MergeAxis` and return its index, op, and
+/// secondary input.
+fn find_merge_context(actions: &[Action]) -> Option<MergeContext> {
+    actions.iter().enumerate().find_map(|(idx, a)| {
+        if let Action::MergeAxis {
+            second_input,
+            operation,
+        } = a
+        {
+            Some(MergeContext {
+                index: idx,
+                op: *operation,
+                secondary: second_input.clone(),
+            })
         } else {
             None
         }
@@ -258,6 +289,35 @@ fn first_map_to_vjoy(actions: &[Action]) -> bool {
         } => first_map_to_vjoy(if_true) || if_false.as_deref().is_some_and(first_map_to_vjoy),
         _ => false,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Polarity inference
+// ---------------------------------------------------------------------------
+
+/// Infer the natural polarity of a merge result from the operator and
+/// each input's polarity.
+///
+/// See `docs/superpowers/plans/2026-05-01-f9-merge-polarity-followup.md`
+/// for the truth table and reasoning. Summary:
+/// - `Bidirectional`: always Bipolar (a difference can swing through zero).
+/// - `Average` / `Maximum`: preserve when both inputs match; Bipolar on mixed.
+#[must_use]
+fn merge_output_polarity(
+    op: MergeOp,
+    primary: AxisPolarity,
+    secondary: AxisPolarity,
+) -> AxisPolarity {
+    match op {
+        MergeOp::Bidirectional => AxisPolarity::Bipolar,
+        MergeOp::Average | MergeOp::Maximum => {
+            if primary == secondary {
+                primary
+            } else {
+                AxisPolarity::Bipolar
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -283,5 +343,159 @@ fn format_percentage(display: &AxisDisplay) -> String {
     match display.polarity {
         AxisPolarity::Bipolar => format!("{value:+.2}"),
         AxisPolarity::Unipolar => format!("{value:.2}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- merge_output_polarity ---------------------------------------------
+
+    #[test]
+    fn bidirectional_always_bipolar() {
+        for primary in [AxisPolarity::Bipolar, AxisPolarity::Unipolar] {
+            for secondary in [AxisPolarity::Bipolar, AxisPolarity::Unipolar] {
+                assert_eq!(
+                    merge_output_polarity(MergeOp::Bidirectional, primary, secondary),
+                    AxisPolarity::Bipolar,
+                    "Bidirectional should always be bipolar (got {primary:?} + {secondary:?})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn average_unipolar_pair_is_unipolar() {
+        assert_eq!(
+            merge_output_polarity(
+                MergeOp::Average,
+                AxisPolarity::Unipolar,
+                AxisPolarity::Unipolar
+            ),
+            AxisPolarity::Unipolar
+        );
+    }
+
+    #[test]
+    fn average_bipolar_pair_is_bipolar() {
+        assert_eq!(
+            merge_output_polarity(
+                MergeOp::Average,
+                AxisPolarity::Bipolar,
+                AxisPolarity::Bipolar
+            ),
+            AxisPolarity::Bipolar
+        );
+    }
+
+    #[test]
+    fn average_mixed_is_bipolar() {
+        assert_eq!(
+            merge_output_polarity(
+                MergeOp::Average,
+                AxisPolarity::Bipolar,
+                AxisPolarity::Unipolar
+            ),
+            AxisPolarity::Bipolar
+        );
+        assert_eq!(
+            merge_output_polarity(
+                MergeOp::Average,
+                AxisPolarity::Unipolar,
+                AxisPolarity::Bipolar
+            ),
+            AxisPolarity::Bipolar
+        );
+    }
+
+    #[test]
+    fn maximum_unipolar_pair_is_unipolar() {
+        assert_eq!(
+            merge_output_polarity(
+                MergeOp::Maximum,
+                AxisPolarity::Unipolar,
+                AxisPolarity::Unipolar
+            ),
+            AxisPolarity::Unipolar
+        );
+    }
+
+    #[test]
+    fn maximum_bipolar_pair_is_bipolar() {
+        assert_eq!(
+            merge_output_polarity(
+                MergeOp::Maximum,
+                AxisPolarity::Bipolar,
+                AxisPolarity::Bipolar
+            ),
+            AxisPolarity::Bipolar
+        );
+    }
+
+    #[test]
+    fn maximum_mixed_is_bipolar() {
+        assert_eq!(
+            merge_output_polarity(
+                MergeOp::Maximum,
+                AxisPolarity::Bipolar,
+                AxisPolarity::Unipolar
+            ),
+            AxisPolarity::Bipolar
+        );
+        assert_eq!(
+            merge_output_polarity(
+                MergeOp::Maximum,
+                AxisPolarity::Unipolar,
+                AxisPolarity::Bipolar
+            ),
+            AxisPolarity::Bipolar
+        );
+    }
+
+    #[test]
+    fn average_and_maximum_are_commutative() {
+        for op in [MergeOp::Average, MergeOp::Maximum] {
+            for a in [AxisPolarity::Bipolar, AxisPolarity::Unipolar] {
+                for b in [AxisPolarity::Bipolar, AxisPolarity::Unipolar] {
+                    assert_eq!(
+                        merge_output_polarity(op, a, b),
+                        merge_output_polarity(op, b, a),
+                        "{op:?}({a:?}, {b:?}) should equal {op:?}({b:?}, {a:?})"
+                    );
+                }
+            }
+        }
+    }
+
+    // -- find_merge_context ---------------------------------------------------
+
+    fn axis_addr(index: u8) -> InputAddress {
+        use inputforge_core::types::DeviceId;
+        InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index },
+        }
+    }
+
+    #[test]
+    fn find_merge_context_returns_none_for_no_merge() {
+        let actions = vec![Action::Invert];
+        assert!(find_merge_context(&actions).is_none());
+    }
+
+    #[test]
+    fn find_merge_context_picks_first_top_level_merge() {
+        let actions = vec![
+            Action::Invert,
+            Action::MergeAxis {
+                second_input: axis_addr(1),
+                operation: MergeOp::Bidirectional,
+            },
+        ];
+        let ctx = find_merge_context(&actions).expect("expected merge context");
+        assert_eq!(ctx.index, 1);
+        assert_eq!(ctx.op, MergeOp::Bidirectional);
+        assert_eq!(ctx.secondary, axis_addr(1));
     }
 }
