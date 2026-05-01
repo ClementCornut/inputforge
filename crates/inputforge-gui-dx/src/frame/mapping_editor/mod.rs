@@ -57,7 +57,10 @@ pub(crate) fn MappingEditor() -> Element {
     tracing::trace!(target: "frame::render", region = "mapping_editor");
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
-    let _editor = use_context::<EditorState>();
+    // `editor` must be `mut` because the Task 32 use_effect below calls
+    // `editor.undo_log.write()` to clear the log on profile flip. Dioxus
+    // Signals are Copy and the mutability lives on the binding, not the type.
+    let mut editor = use_context::<EditorState>();
 
     // One shared sortable state for the entire editor. Mounted unconditionally
     // (Dioxus hook rules) so the signals exist regardless of whether a mapping
@@ -74,6 +77,45 @@ pub(crate) fn MappingEditor() -> Element {
     // rules require all hooks to run every render). The listener internally
     // guards against re-installation on subsequent renders.
     keyboard::use_kb_listener();
+
+    // Task 32 (AC #26): clear the undo log on profile flip.
+    //
+    // The proper intercept point (a DirtyConfirmDialog wired into a real
+    // profile-picker component) cannot be implemented yet because the Profiles
+    // side panel is an F13 placeholder with no dispatch surface. Instead, we
+    // watch `ctx.meta.profile_name` for changes and clear on every transition.
+    //
+    // Race-condition note: a profile flip also rebuilds `ConfigSnapshot`
+    // (via the polling task in bridge.rs), so by the time any mapping-editor
+    // sub-component reads the new snapshot the undo log is already empty.
+    // The only observable gap is between the `profile_name` signal updating
+    // and this effect running, which is sub-frame and therefore safe.
+    //
+    // When F13 ships a real picker, replace this with a DirtyConfirmDialog
+    // onsave callback that calls `editor.undo_log.write().clear_all()` before
+    // dispatching the load-profile command, then remove this effect.
+    let profile_name_memo = use_memo(move || ctx.meta.read().profile_name.clone());
+    // `prev_profile` holds the last-seen name so we can detect the None to Some,
+    // Some to None, and Some(a) to Some(b) transitions without clearing on mount.
+    // Outer `Option` distinguishes "not yet observed" (initial mount) from
+    // "observed and stored". Inner `Option<String>` mirrors the meta field.
+    let mut prev_profile: Signal<Option<Option<String>>> = use_signal(|| None);
+    use_effect(move || {
+        let current = profile_name_memo.read().clone();
+        // Clone out of the read guard so we can call .set() without overlap.
+        let prev_snapshot = prev_profile.read().clone();
+        match prev_snapshot {
+            // First render: record the baseline without clearing.
+            None => prev_profile.set(Some(current)),
+            // Subsequent renders: clear only when the name actually changed.
+            Some(last) if last != current => {
+                editor.undo_log.write().clear_all();
+                prev_profile.set(Some(current));
+            }
+            // Same name: no-op.
+            Some(_) => {}
+        }
+    });
 
     let view_state_for_render: Option<MappingKey> = view.selected_mapping.read().clone();
 

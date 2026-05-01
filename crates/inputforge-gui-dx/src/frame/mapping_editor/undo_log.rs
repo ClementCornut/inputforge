@@ -146,6 +146,25 @@ impl UndoLog {
             .and_then(|h| h.undo.last())
             .map(|e| e.label.clone())
     }
+
+    /// Clear all per-mapping stacks. Used by Task 32's profile-flip handler.
+    ///
+    /// After this call `stacks` is empty, which means `has_pending_changes`
+    /// returns `false` for every key.
+    pub(crate) fn clear_all(&mut self) {
+        self.stacks.clear();
+    }
+
+    /// Returns `true` if any mapping has a non-empty undo OR redo stack.
+    ///
+    /// Used by the profile-name click handler to decide whether to open
+    /// `DirtyConfirmDialog` before navigating away. Returns `false` on a
+    /// fresh or already-cleared log.
+    pub(crate) fn has_pending_changes(&self) -> bool {
+        self.stacks
+            .values()
+            .any(|h| !h.undo.is_empty() || !h.redo.is_empty())
+    }
 }
 
 /// Argument bundle for [`format_undo_label`]. Each [`UndoKind`] reads a
@@ -458,6 +477,65 @@ mod tests {
         // Redo on A still works.
         let entry = log.redo(&key_a).unwrap();
         assert_eq!(entry.label, "a1");
+    }
+
+    // --- Task 32 tests ---
+
+    #[test]
+    fn clear_all_empties_all_stacks() {
+        let mut log = UndoLog::default();
+        let key_a = synth_key();
+        let key_b = (
+            "Default".to_owned(),
+            InputAddress {
+                device: DeviceId("dev-1".to_owned()),
+                input: InputId::Button { index: 1 },
+            },
+        );
+        log.push_edit(
+            key_a.clone(),
+            synth_mapping("a"),
+            UndoKind::Rename,
+            "a".to_owned(),
+        );
+        log.push_edit(
+            key_b.clone(),
+            synth_mapping("b"),
+            UndoKind::Rename,
+            "b".to_owned(),
+        );
+        assert!(
+            log.has_pending_changes(),
+            "should have changes before clear"
+        );
+        log.clear_all();
+        assert!(
+            log.stacks.is_empty(),
+            "stacks must be empty after clear_all"
+        );
+        assert!(
+            !log.has_pending_changes(),
+            "has_pending_changes must be false after clear_all"
+        );
+    }
+
+    #[test]
+    fn has_pending_changes_detects_redo_only_stack() {
+        let mut log = UndoLog::default();
+        let key = synth_key();
+        log.push_edit(
+            key.clone(),
+            synth_mapping("a"),
+            UndoKind::Rename,
+            "a".to_owned(),
+        );
+        // Move the entry to redo; undo stack becomes empty.
+        log.undo(&key);
+        // The redo stack is non-empty, so has_pending_changes must still be true.
+        assert!(
+            log.has_pending_changes(),
+            "redo-only stack must still count as pending"
+        );
     }
 
     // --- Task 8 tests ---
