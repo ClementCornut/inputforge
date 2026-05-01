@@ -53,14 +53,17 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 8px 12px;
-    /* rgb(242, 85, 85) is the spec-mandated error red; intentionally
-       not sourced from a CSS variable so the banner remains visible
-       even when the design-token stylesheet fails to load. */
-    background: rgba(242, 85, 85, 0.08);
-    border: 1px solid rgba(242, 85, 85, 0.22);
-    border-radius: 6px;
-    margin: 8px 12px;
+    padding: 8px 16px;
+    /* Flat full-width strip at the top of the editor pane: opaque bg
+       so scrolled content disappears under it cleanly, no margin or
+       border-radius so the strip reads as page chrome rather than a
+       floating card. The earlier translucent (8% alpha) bg let the
+       editor header and pipeline bleed visibly through the supposedly
+       sticky banner. rgb(242, 85, 85) is the spec-mandated error red;
+       the dark mix below is the same hue at 18% over the editor bg so
+       the banner stays unmistakably a warning while occluding content. */
+    background: #3a1f24;
+    border-bottom: 1px solid rgba(242, 85, 85, 0.32);
 }
 
 .if-editor__offline-text {
