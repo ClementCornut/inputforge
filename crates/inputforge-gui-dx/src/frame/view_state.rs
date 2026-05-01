@@ -13,6 +13,12 @@ use inputforge_core::types::InputAddress;
 
 use crate::context::MetaSnapshot;
 
+/// Identifier for a mapping in the editor: `(mode, input)`.
+///
+/// Used by `view.selected_mapping`, `ConfigSnapshot.selected_mapping_key`,
+/// the `UndoLog` map key, and every editor key passing.
+pub(crate) type MappingKey = (String, InputAddress);
+
 /// Which right-side panel is currently mounted.
 ///
 /// `None` collapses the panel column; `Devices` and `Profiles` mount the
@@ -37,7 +43,7 @@ pub(crate) struct ViewState {
     ///
     /// Reset to `None` on profile flip and on editing-mode flip so that
     /// stale selection state never leaks across context boundaries.
-    pub selected_mapping: Signal<Option<(String, InputAddress)>>,
+    pub selected_mapping: Signal<Option<MappingKey>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +168,7 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
     let editing_mode = use_signal(|| initial_editing.clone());
     let panel_slot = use_signal(PanelSlot::default);
     let via_calibration = use_signal(|| false);
-    let selected_mapping: Signal<Option<(String, InputAddress)>> = use_signal(|| None);
+    let selected_mapping: Signal<Option<MappingKey>> = use_signal(|| None);
 
     let mut last_profile_name: Signal<Option<String>> =
         use_signal(|| meta.peek().profile_name.clone());
@@ -233,7 +239,7 @@ mod tests {
     #[test]
     fn selected_mapping_field_type() {
         fn _assert(view: ViewState) {
-            let _: Signal<Option<(String, InputAddress)>> = view.selected_mapping;
+            let _: Signal<Option<MappingKey>> = view.selected_mapping;
         }
     }
 
@@ -309,6 +315,15 @@ mod tests {
         // Profile flip wins over mode flip.
         let outcome = reconcile_pure("P", "Default", "Combat", &meta);
         assert_eq!(outcome, ReconcileOutcome::ProfileFlipped);
+    }
+
+    #[test]
+    #[allow(
+        clippy::used_underscore_items,
+        reason = "_synthetic_addr is a test-only helper intentionally prefixed."
+    )]
+    fn mapping_key_alias_compiles() {
+        let _: MappingKey = ("Default".to_owned(), _synthetic_addr());
     }
 }
 // Rust guideline compliant 2026-04-30

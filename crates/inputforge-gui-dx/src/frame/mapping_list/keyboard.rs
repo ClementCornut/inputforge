@@ -8,6 +8,8 @@
 
 use inputforge_core::types::InputAddress;
 
+use crate::frame::view_state::MappingKey;
+
 /// Keys F8 cares about. Dioxus 0.7's `Key` enum carries platform-specific
 /// variants; we narrow to the F8 vocabulary here so the unit tests can
 /// drive `handle_key` with stable inputs.
@@ -35,7 +37,7 @@ pub(crate) enum ReorderDir {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct State<'a> {
-    pub visible_rows: &'a [&'a (String, InputAddress)],
+    pub visible_rows: &'a [&'a MappingKey],
     pub selected: Option<(&'a str, &'a InputAddress)>,
     pub capture_armed: bool,
     pub filter_focused: bool,
@@ -45,7 +47,7 @@ pub(crate) struct State<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Intent {
     /// Move selection to this row.
-    Select((String, InputAddress)),
+    Select(MappingKey),
     /// Focus `[data-editor-focus]` (F9 owns the attached element).
     FocusEditor,
     /// Focus the filter input.
@@ -158,7 +160,7 @@ mod tests {
             ("Default".to_owned(), addr(0)),
             ("Default".to_owned(), addr(1)),
         ];
-        let row_refs: Vec<&(String, InputAddress)> = rows.iter().collect();
+        let row_refs: Vec<&MappingKey> = rows.iter().collect();
         let state = State {
             visible_rows: &row_refs,
             selected: None,
@@ -181,7 +183,7 @@ mod tests {
             ("Default".to_owned(), addr(0)),
             ("Default".to_owned(), addr(1)),
         ];
-        let row_refs: Vec<&(String, InputAddress)> = rows.iter().collect();
+        let row_refs: Vec<&MappingKey> = rows.iter().collect();
         let state = State {
             visible_rows: &row_refs,
             selected: None,
@@ -201,7 +203,7 @@ mod tests {
             ("Default".to_owned(), addr(0)),
             ("Default".to_owned(), addr(1)),
         ];
-        let row_refs: Vec<&(String, InputAddress)> = rows.iter().collect();
+        let row_refs: Vec<&MappingKey> = rows.iter().collect();
         let mode = "Default".to_owned();
         let last = addr(1);
         let state = State {
@@ -220,7 +222,7 @@ mod tests {
     #[test]
     fn capture_armed_disables_up_down() {
         let rows = [("Default".to_owned(), addr(0))];
-        let row_refs: Vec<&(String, InputAddress)> = rows.iter().collect();
+        let row_refs: Vec<&MappingKey> = rows.iter().collect();
         let state = State {
             visible_rows: &row_refs,
             selected: None,
@@ -235,7 +237,7 @@ mod tests {
     #[test]
     fn enter_with_selection_focuses_editor() {
         let rows = [("Default".to_owned(), addr(0))];
-        let row_refs: Vec<&(String, InputAddress)> = rows.iter().collect();
+        let row_refs: Vec<&MappingKey> = rows.iter().collect();
         let mode = "Default".to_owned();
         let sel = addr(0);
         let state = State {
@@ -250,7 +252,7 @@ mod tests {
 
     #[test]
     fn enter_with_no_selection_is_noop() {
-        let row_refs: Vec<&(String, InputAddress)> = Vec::new();
+        let row_refs: Vec<&MappingKey> = Vec::new();
         let state = State {
             visible_rows: &row_refs,
             selected: None,
@@ -263,7 +265,7 @@ mod tests {
 
     #[test]
     fn cmd_f_focuses_filter() {
-        let row_refs: Vec<&(String, InputAddress)> = Vec::new();
+        let row_refs: Vec<&MappingKey> = Vec::new();
         let state = State {
             visible_rows: &row_refs,
             selected: None,
@@ -276,7 +278,7 @@ mod tests {
 
     #[test]
     fn esc_on_filter_with_query_clears() {
-        let row_refs: Vec<&(String, InputAddress)> = Vec::new();
+        let row_refs: Vec<&MappingKey> = Vec::new();
         let state = State {
             visible_rows: &row_refs,
             selected: None,
@@ -289,7 +291,7 @@ mod tests {
 
     #[test]
     fn esc_on_rail_with_empty_filter_is_noop() {
-        let row_refs: Vec<&(String, InputAddress)> = Vec::new();
+        let row_refs: Vec<&MappingKey> = Vec::new();
         let state = State {
             visible_rows: &row_refs,
             selected: None,

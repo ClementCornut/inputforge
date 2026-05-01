@@ -13,4 +13,10 @@ pub(crate) use mapping_list::MappingList;
 // `PanelSlot` and `ViewState` are not re-exported here, every consumer
 // imports them directly via `crate::frame::view_state::*` so a single
 // path style stays consistent across regions.
-pub(crate) use view_state::use_view_state_provider;
+// `MappingKey` is re-exported here for Task 3+ consumers (ConfigSnapshot,
+// UndoLog, EditorState). Until those tasks land it has no importers.
+#[allow(
+    unused_imports,
+    reason = "Forward-exported for Task 3+ consumers (ConfigSnapshot, UndoLog, EditorState)."
+)]
+pub(crate) use view_state::{MappingKey, use_view_state_provider};

@@ -67,7 +67,7 @@ pub(crate) fn format_reorder_announcement(
         phrase
     )
 }
-use crate::frame::view_state::ViewState;
+use crate::frame::view_state::{MappingKey, ViewState};
 use crate::patterns::live_capture::LiveCapture;
 
 #[allow(
@@ -136,7 +136,7 @@ pub(crate) fn MappingList() -> Element {
             .1
             .iter()
             .map(|r| (r.mode.clone(), r.input.clone()))
-            .collect::<Vec<(String, InputAddress)>>()
+            .collect::<Vec<MappingKey>>()
     });
 
     let cap_for_kb = use_context::<LiveCapture>();
@@ -205,7 +205,7 @@ pub(crate) fn MappingList() -> Element {
                     _ => continue,
                 };
                 let nav_rows = nav_rows_memo.read().clone();
-                let visible_pairs: Vec<&(String, InputAddress)> = nav_rows.iter().collect();
+                let visible_pairs: Vec<&MappingKey> = nav_rows.iter().collect();
                 let sel_snapshot = sel_writer.peek().clone();
                 let sel_view: Option<(&str, &InputAddress)> =
                     sel_snapshot.as_ref().map(|(m, i)| (m.as_str(), i));
