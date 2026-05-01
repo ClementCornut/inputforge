@@ -13,11 +13,12 @@ use inputforge_core::action::Action;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::undo_log::StageId;
 
+mod conditional;
 mod invert;
 mod map_to_keyboard;
 mod map_to_vjoy;
 mod merge_axis;
-// Conditional body lands in task 26a-26b.
+pub(crate) mod predicate;
 // Placeholders for ResponseCurve, Deadzone, ChangeMode land in task 27.
 
 #[component]
@@ -60,7 +61,37 @@ pub(crate) fn StageBody(
                 root_actions: root_actions.clone(),
             }
         },
-        // Stub for other variants until tasks 26a-26b and 27.
+        Action::Conditional {
+            condition,
+            if_true,
+            if_false,
+        } => rsx! {
+            conditional::ConditionalBody {
+                mapping_key: mapping_key.clone(),
+                stage_id: stage_id.clone(),
+                condition: condition.clone(),
+                if_true: if_true.clone(),
+                if_false: if_false.clone(),
+                root_actions: root_actions.clone(),
+                depth: u8::try_from(
+                    stage_id
+                        .0
+                        .iter()
+                        .filter(|s| {
+                            matches!(
+                                s,
+                                crate::frame::mapping_editor::undo_log::StageIdSegment::IfTrue
+                                    | crate::frame::mapping_editor::undo_log::StageIdSegment::IfFalse
+                            )
+                        })
+                        .count(),
+                )
+                // Nesting depth cannot exceed MAX_CONDITION_DEPTH (32) in practice;
+                // saturate on overflow so pathological inputs do not panic.
+                .unwrap_or(u8::MAX),
+            }
+        },
+        // Stub for other variants until task 27.
         _ => rsx! { div { class: "if-stage__body-stub", "(body coming soon)" } },
     }
 }

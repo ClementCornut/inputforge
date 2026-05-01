@@ -692,3 +692,107 @@ fn merge_axis_body_writes_malformed_hint_when_secondary_equals_primary() {
         "body must still render with duplicate secondary: {html}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Task 26a: Conditional shell with recursive branch sub-pipelines
+// ---------------------------------------------------------------------------
+
+#[test]
+fn conditional_body_renders_branches_with_correct_aria_labels() {
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Button { index: 0 },
+    };
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed {
+            input: primary.clone(),
+        },
+        if_true: vec![Action::Invert],
+        if_false: Some(vec![Action::Invert]),
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    assert!(
+        html.contains("if true branch"),
+        "expected if-true aria-label: {html}"
+    );
+    assert!(
+        html.contains("if false branch"),
+        "expected if-false aria-label: {html}"
+    );
+}
+
+#[test]
+fn conditional_empty_if_false_shows_add_else_affordance() {
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Button { index: 0 },
+    };
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed {
+            input: primary.clone(),
+        },
+        if_true: vec![],
+        if_false: None,
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    assert!(
+        html.contains("Add else branch"),
+        "expected else-branch affordance: {html}"
+    );
+}
+
+#[test]
+fn conditional_three_deep_renders_all_branches() {
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Button { index: 0 },
+    };
+    let inner = Action::Conditional {
+        condition: Condition::ButtonPressed {
+            input: primary.clone(),
+        },
+        if_true: vec![Action::Invert],
+        if_false: None,
+    };
+    let middle = Action::Conditional {
+        condition: Condition::ButtonPressed {
+            input: primary.clone(),
+        },
+        if_true: vec![inner],
+        if_false: None,
+    };
+    let outer = Action::Conditional {
+        condition: Condition::ButtonPressed {
+            input: primary.clone(),
+        },
+        if_true: vec![middle],
+        if_false: None,
+    };
+    let (state, addr) = build_state(vec![outer]);
+    let html = render_with_expanded(
+        state,
+        addr,
+        vec![
+            StageId(vec![StageIdSegment::Index(0)]),
+            StageId(vec![
+                StageIdSegment::Index(0),
+                StageIdSegment::IfTrue,
+                StageIdSegment::Index(0),
+            ]),
+            StageId(vec![
+                StageIdSegment::Index(0),
+                StageIdSegment::IfTrue,
+                StageIdSegment::Index(0),
+                StageIdSegment::IfTrue,
+                StageIdSegment::Index(0),
+            ]),
+        ],
+    );
+    // The innermost stage should render "Invert" inside the recursion
+    assert!(
+        html.contains("Invert"),
+        "innermost Invert stage missing: {html}"
+    );
+}
