@@ -231,7 +231,17 @@ impl Sdl3Input {
                         "[reprobe] skipping synthesis (real event seen)"
                     );
                 } else {
-                    self.classified_axes.insert(key);
+                    // Lock classification only if SDL gave us a definitive
+                    // resting value. `current=0` is ambiguous: on Windows
+                    // DirectInput, SDL_GetJoystickAxis often returns 0
+                    // until the device emits its first JoyAxisMotion (or
+                    // forever, for some Thrustmaster pedals). Locking on
+                    // an ambiguous 0 prevents the dispatch-side classifier
+                    // from later correcting the polarity based on a real
+                    // -32768 phantom event.
+                    if current != 0 {
+                        self.classified_axes.insert(key);
+                    }
                     let raw_value = f64::from(current) / f64::from(i16::MAX);
                     tracing::info!(
                         target: "polarity_debug",
@@ -292,15 +302,29 @@ impl Sdl3Input {
                 ..
             } => {
                 if let Some(device) = self.open_devices.get_mut(&which) {
-                    // Lazy polarity classification: on the first event
-                    // for each axis, check the raw value to determine
-                    // if it's a unipolar axis (pedal/trigger resting
-                    // at −32 768).  No-op when the deferred re-probe
-                    // has already classified this axis (the
-                    // resting-state classification is more reliable
-                    // than a mid-press first event).
+                    // Lazy polarity classification: on the first
+                    // *non-zero* event for each axis, classify based on
+                    // the raw value (pedal/trigger resting at −32 768
+                    // → Unipolar, anything else → Bipolar).
+                    //
+                    // The `value != 0` gate is load-bearing: on Windows
+                    // DirectInput, SDL emits a phantom `JoyAxisMotion`
+                    // with `value=0` immediately after device open
+                    // (SDL's tracked axis state initialized to 0,
+                    // then DirectInput populates the real value, which
+                    // SDL detects as a "change" event and reports as
+                    // 0 → -32768). The first phantom (value=0) tells
+                    // us nothing about polarity: it is the SDL
+                    // initial-state default, not an axis reading.
+                    // Locking classification on it would mis-classify a
+                    // unipolar pedal as Bipolar. Defer until the next
+                    // event (typically the real -32768) arrives.
+                    //
+                    // No-op when the deferred re-probe has already
+                    // classified this axis from a definitive
+                    // SDL_GetJoystickAxis read.
                     let key = (which, axis_idx);
-                    if self.classified_axes.insert(key) {
+                    if value != 0 && self.classified_axes.insert(key) {
                         let polarity = if value < UNIPOLAR_INITIAL_STATE_THRESHOLD {
                             AxisPolarity::Unipolar
                         } else {
