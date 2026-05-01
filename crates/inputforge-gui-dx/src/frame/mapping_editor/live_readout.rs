@@ -268,9 +268,20 @@ fn first_map_to_vjoy(actions: &[Action]) -> bool {
 ///
 /// Bipolar axes show a sign prefix (`+0.00` / `-0.00`) so the center is
 /// unambiguous. Unipolar axes omit the sign.
+///
+/// Sub-precision noise (raw values slightly outside `[-1, 1]` from
+/// device calibration drift, IEEE -0.0 from arithmetic, etc.) can round
+/// to "-0.00" at two-decimal precision and look wrong to the user. Snap
+/// any value whose absolute magnitude rounds to zero at this precision
+/// to a literal `0.0` so the output is always `0.00` / `+0.00` at idle.
 fn format_percentage(display: &AxisDisplay) -> String {
+    let value = if display.value.abs() < 0.005 {
+        0.0
+    } else {
+        display.value
+    };
     match display.polarity {
-        AxisPolarity::Bipolar => format!("{:+.2}", display.value),
-        AxisPolarity::Unipolar => format!("{:.2}", display.value),
+        AxisPolarity::Bipolar => format!("{value:+.2}"),
+        AxisPolarity::Unipolar => format!("{value:.2}"),
     }
 }
