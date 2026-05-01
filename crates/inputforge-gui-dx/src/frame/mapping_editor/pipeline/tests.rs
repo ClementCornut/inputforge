@@ -21,7 +21,7 @@ use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, EngineStatus};
 use inputforge_core::types::{
     AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, KeyCombo, KeyModifier, MergeOp,
-    OutputAddress, OutputId, VJoyAxis,
+    OutputAddress, OutputId, VJoyAxis, VirtualDeviceConfig,
 };
 use std::collections::HashMap;
 
@@ -329,6 +329,10 @@ struct HarnessProps {
     /// that assert on body content (Task 22+).
     #[props(default)]
     pre_expanded_stages: Vec<StageId>,
+    /// Virtual devices to seed into the `ConfigSnapshot`. Used by Task 23+
+    /// body tests that exercise the device/output pickers.
+    #[props(default)]
+    virtual_devices: Vec<VirtualDeviceConfig>,
 }
 
 impl PartialEq for HarnessProps {
@@ -336,6 +340,7 @@ impl PartialEq for HarnessProps {
         Arc::ptr_eq(&self.state, &other.state)
             && self.addr == other.addr
             && self.pre_expanded_stages == other.pre_expanded_stages
+            && self.virtual_devices == other.virtual_devices
     }
 }
 
@@ -348,6 +353,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
         state,
         addr,
         pre_expanded_stages,
+        virtual_devices,
     } = props;
 
     let (cmd_tx, _) = mpsc::channel();
@@ -359,7 +365,12 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     use_context_provider(|| raw.clone());
 
     let selection = ("Default".to_owned(), addr.clone());
-    let snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
+    let mut snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
+    // Inject test-supplied virtual devices into the snapshot so body
+    // components (Task 23+) that read `cfg.virtual_devices` see them.
+    if !virtual_devices.is_empty() {
+        snap.virtual_devices = virtual_devices;
+    }
     let meta = use_signal(|| MetaSnapshot {
         engine_status: EngineStatus::Running,
         profile_name: Some("P".to_owned()),
@@ -405,12 +416,24 @@ fn render_with_expanded(
     addr: InputAddress,
     pre_expanded_stages: Vec<StageId>,
 ) -> String {
+    render_with_full(state, addr, pre_expanded_stages, vec![])
+}
+
+/// Render helper that accepts both pre-expanded stages and virtual devices.
+/// Used by Task 23+ body tests.
+fn render_with_full(
+    state: AppState,
+    addr: InputAddress,
+    pre_expanded_stages: Vec<StageId>,
+    virtual_devices: Vec<VirtualDeviceConfig>,
+) -> String {
     let mut vdom = VirtualDom::new_with_props(
         HarnessComponent,
         HarnessProps {
             state: Arc::new(RwLock::new(state)),
             addr,
             pre_expanded_stages,
+            virtual_devices,
         },
     );
     vdom.rebuild_in_place();
@@ -559,5 +582,39 @@ fn invert_stage_expanded_renders_descriptive_caption() {
     assert!(
         html.contains("Inverts the input value"),
         "expected Invert descriptive caption in body: {html}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Task 23: MapToVJoy body (device + output pickers)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn map_to_vjoy_body() {
+    // Seed a vJoy device 1 with axes X and Y, and a mapping that uses it.
+    let vd = VirtualDeviceConfig {
+        device_id: 1,
+        axes: vec![VJoyAxis::X, VJoyAxis::Y],
+        button_count: 0,
+        hat_count: 0,
+    };
+    let output = OutputAddress {
+        device: 1,
+        output: OutputId::Axis { id: VJoyAxis::X },
+    };
+    let (state, addr) = build_state(vec![Action::MapToVJoy { output }]);
+    let pre_expanded = vec![StageId(vec![StageIdSegment::Index(0)])];
+    let html = render_with_full(state, addr, pre_expanded, vec![vd]);
+
+    // The body must render a device picker with a label containing "Device"
+    // and a select option for "vJoy device 1".
+    assert!(
+        html.contains("vJoy device 1"),
+        "expected 'vJoy device 1' option in device picker: {html}"
+    );
+    // The body must render an output picker with an option for X axis.
+    assert!(
+        html.contains("X axis") || html.contains('X'),
+        "expected axis option in output picker: {html}"
     );
 }

@@ -14,7 +14,8 @@ use crate::frame::MappingKey;
 use crate::frame::mapping_editor::undo_log::StageId;
 
 mod invert;
-// MapToVJoy, MapToKeyboard, MergeAxis, Conditional bodies land in tasks 23-26b.
+mod map_to_vjoy;
+// MapToKeyboard, MergeAxis, Conditional bodies land in tasks 24-26b.
 // Placeholders for ResponseCurve, Deadzone, ChangeMode land in task 27.
 
 #[component]
@@ -29,7 +30,15 @@ pub(crate) fn StageBody(
 ) -> Element {
     match &action {
         Action::Invert => rsx! { invert::InvertBody {} },
-        // Stub for other variants until tasks 23+.
+        Action::MapToVJoy { output } => rsx! {
+            map_to_vjoy::MapToVJoyBody {
+                mapping_key: mapping_key.clone(),
+                stage_id: stage_id.clone(),
+                output: output.clone(),
+                root_actions: root_actions.clone(),
+            }
+        },
+        // Stub for other variants until tasks 24-26b.
         _ => rsx! { div { class: "if-stage__body-stub", "(body coming soon)" } },
     }
 }
