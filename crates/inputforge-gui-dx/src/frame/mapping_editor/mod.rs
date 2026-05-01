@@ -12,6 +12,7 @@
 mod empty_state;
 mod engine_offline_banner;
 mod header;
+mod input_field;
 mod name_field;
 pub(crate) mod pipeline;
 pub(crate) mod undo_log;
@@ -19,6 +20,7 @@ pub(crate) mod undo_log;
 pub(crate) use empty_state::EmptyState;
 use engine_offline_banner::EngineOfflineBanner;
 use header::Header;
+use input_field::InputField;
 use name_field::NameField;
 
 use std::collections::{HashMap, HashSet};
@@ -76,9 +78,14 @@ pub(crate) fn MappingEditor() -> Element {
                     rsx! {
                         Header { name: mapping_name.clone(), input: input.clone() }
                         NameField {
-                            initial: mapping_name,
+                            initial: mapping_name.clone(),
+                            mapping_key: (mode.clone(), input.clone()),
+                            actions: actions_clone.clone(),
+                        }
+                        InputField {
                             mapping_key: (mode, input),
                             actions: actions_clone,
+                            name: Some(mapping_name),
                         }
                         // Remaining sections (live readout, pipeline, footer)
                         // land in subsequent tasks.

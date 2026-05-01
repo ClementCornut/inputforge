@@ -133,3 +133,19 @@
     outline: 2px solid var(--color-border-focus);
     outline-offset: 2px;
 }
+
+/* Task 16: input field (read-only source label + ghost rebind button) */
+
+.if-editor__input-field {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.if-editor__input-label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-muted);
+}

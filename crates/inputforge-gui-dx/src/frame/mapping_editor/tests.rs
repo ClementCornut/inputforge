@@ -401,3 +401,27 @@ fn editor_name_field_renders_input_with_current_value() {
     );
     assert!(html.contains("value=\"Yaw\""));
 }
+
+// ---------------------------------------------------------------------------
+// Task 16: input field with rebind action arming LiveCapture
+// ---------------------------------------------------------------------------
+
+#[test]
+fn editor_input_field_renders_source_label_and_rebind_button() {
+    let addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let state = seeded_profile_with_one_mapping(vec![Action::Invert]);
+    let mut vdom = harness_with(state, addr);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("Stick"),
+        "expected source device label; got: {html}"
+    );
+    assert!(
+        html.contains("rebind"),
+        "expected rebind button; got: {html}"
+    );
+}
