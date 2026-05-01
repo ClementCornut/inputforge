@@ -40,12 +40,6 @@
 //! read the current name from `cfg.mapping_names` so that user-set names are
 //! never silently cleared.
 //!
-//! # External-edit subscription (Amendment 6)
-//!
-//! A `use_effect` subscribes to `editor.external_edit_reset` so Dioxus
-//! re-renders the local `Signal`s when Task 33's reconciliation token
-//! advances. Local working copies are reset to the incoming prop when the
-//! token changes (the prop itself is updated by the reconciler).
 
 use dioxus::prelude::*;
 
@@ -78,14 +72,6 @@ pub(crate) fn MapToKeyboardBody(
 ) -> Element {
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
-
-    // Amendment 6: subscribe to external_edit_reset so that when Task 33's
-    // reconciliation token advances, Dioxus re-renders this component and the
-    // incoming `combo` prop (updated by the reconciler) refreshes local state.
-    let reset_token = editor.external_edit_reset;
-    use_effect(move || {
-        let _ = *reset_token.read();
-    });
 
     // Local working copies of each field so widgets are fully controlled.
     let mut local_key: Signal<String> = use_signal(|| combo.key.clone());

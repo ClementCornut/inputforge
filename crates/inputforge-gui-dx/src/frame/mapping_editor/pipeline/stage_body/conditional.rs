@@ -34,8 +34,6 @@
 //! 3. Dispatch-before-undo: `push_edit` called only after `cmd.send` succeeds.
 //! 4. Structural-mutation cleanup: `expanded_stages` and `malformed_hints`
 //!    cleared after an add-else-branch structural mutation (Task 11).
-//! 5. External-edit subscription: `use_effect` subscribes to
-//!    `editor.external_edit_reset` to participate in the reactive graph.
 
 use dioxus::prelude::*;
 
@@ -84,14 +82,6 @@ pub(crate) fn ConditionalBody(
 ) -> Element {
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
-
-    // Amendment 5: subscribe to external_edit_reset so Dioxus includes this
-    // component in the reactive graph. No local Signals to reset here; the
-    // subscription ensures re-renders when Task 33 advances the token.
-    let reset_token = editor.external_edit_reset;
-    use_effect(move || {
-        let _ = *reset_token.read();
-    });
 
     // Build the `path_prefix` for each branch by appending the branch segment
     // to the current stage_id's segments.

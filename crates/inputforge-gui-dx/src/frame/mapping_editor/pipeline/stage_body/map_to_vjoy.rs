@@ -28,12 +28,6 @@
 //! read the current name from `cfg.mapping_names` so that user-set names are
 //! never silently cleared.
 //!
-//! # External-edit subscription (Amendment 4)
-//!
-//! This body holds no local `Signal`s that mirror action fields, so the
-//! `use_effect` that watches `external_edit_reset` is a documented no-op: it
-//! reads the token to subscribe to the reactive graph, ensuring Dioxus
-//! re-renders when the reconciliation token advances (Task 33).
 
 use dioxus::prelude::*;
 
@@ -117,16 +111,6 @@ pub(crate) fn MapToVJoyBody(
 ) -> Element {
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
-
-    // Amendment 4: subscribe to external_edit_reset. This body has no local
-    // Signals that mirror action fields (the dropdowns are driven from the
-    // `output` prop directly), so the effect is a documented no-op: it reads
-    // the token purely to subscribe to the reactive graph. Dioxus will
-    // re-render when Task 33's reconciliation logic advances the token.
-    let reset_token = editor.external_edit_reset;
-    use_effect(move || {
-        let _ = *reset_token.read();
-    });
 
     let cfg = ctx.config.read();
 

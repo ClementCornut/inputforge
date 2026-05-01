@@ -11,7 +11,6 @@
 
 mod empty_state;
 mod engine_offline_banner;
-mod external_edit;
 mod header;
 mod inactive_hint;
 pub(crate) mod keyboard;
@@ -22,7 +21,6 @@ mod undo_recap;
 
 pub(crate) use empty_state::EmptyState;
 use engine_offline_banner::EngineOfflineBanner;
-use external_edit::ExternalEditReconciler;
 use header::Header;
 use inactive_hint::InactiveHint;
 use live_readout::LiveReadout;
@@ -194,7 +192,6 @@ pub(crate) fn MappingEditor() -> Element {
                             mapping_key: (mode.clone(), input.clone()),
                             root_actions: actions_clone.clone(),
                         }
-                        ExternalEditReconciler {}
                         InactiveHint {}
                         UndoRecap { mapping_key: (mode, input) }
                     }
@@ -233,18 +230,6 @@ pub(crate) struct EditorState {
     /// slot per spec lines 587-589. Bodies write on render; the stage
     /// header reads. Cleared on every structural mutation: see Task 11.
     pub malformed_hints: Signal<HashMap<StageId, String>>,
-    /// External-edit reconciliation token. Incremented by the polling
-    /// task (bridge.rs) on every external snapshot change. Bodies
-    /// subscribe via `use_effect` and reset their local Signals when the
-    /// token advances. See Task 33.
-    pub external_edit_reset: Signal<u64>,
-    /// Set to `true` by `ExternalEditReconciler` when an external edit is
-    /// detected while a body field has focus, a drag is active, or
-    /// `LiveCapture` is armed. The reconciler defers advancing
-    /// `external_edit_reset` until the guard clears. Currently always
-    /// `false` (eager reset) because F9 bodies are stateless; reserved
-    /// for future body types with true local state.
-    pub pending_external_reset: Signal<bool>,
 }
 
 /// Allocate signals and install `EditorState` in context. Call exactly
@@ -254,16 +239,12 @@ pub(crate) fn use_editor_state_provider() -> EditorState {
     let expanded_stages: Signal<HashSet<StageId>> = use_signal(HashSet::new);
     let stage_menu: Signal<Option<StageMenuState>> = use_signal(|| None);
     let malformed_hints: Signal<HashMap<StageId, String>> = use_signal(HashMap::new);
-    let external_edit_reset: Signal<u64> = use_signal(|| 0_u64);
-    let pending_external_reset: Signal<bool> = use_signal(|| false);
 
     let state = EditorState {
         undo_log,
         expanded_stages,
         stage_menu,
         malformed_hints,
-        external_edit_reset,
-        pending_external_reset,
     };
     use_context_provider(|| state);
     state

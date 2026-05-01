@@ -41,8 +41,7 @@
 //! 1. Name preservation: current name read from `cfg.mapping_names`.
 //! 2. Dispatch-before-undo: `push_edit` called only after `cmd.send` succeeds.
 //! 3. `is_armed_consumer` consumer-flag pattern (same as `MergeAxisBody`).
-//! 4. External-edit subscription via `use_effect` on `external_edit_reset`.
-//! 5. Malformed-hint write for `AxisInRange` (min > max), `HatDirection`
+//! 4. Malformed-hint write for `AxisInRange` (min > max), `HatDirection`
 //!    (empty directions), `All` / `Any` (zero conditions).
 
 use std::sync::mpsc;
@@ -342,12 +341,6 @@ pub(crate) fn PredicateEditor(
 ) -> Element {
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
-
-    // Amendment 4: subscribe to external_edit_reset.
-    let reset_token = editor.external_edit_reset;
-    use_effect(move || {
-        let _ = *reset_token.read();
-    });
 
     // Extract the two context fields used by commit_condition.
     // cmd_tx is cloned once here; cfg is Copy.

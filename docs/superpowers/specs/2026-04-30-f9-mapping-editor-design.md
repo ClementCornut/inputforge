@@ -113,6 +113,8 @@ Pinned by polish-pass (validated against `polish-pass.html` row e). Tokens consu
 
 **30. Cross-window conflict: trust the engine's last ack with focused-edit preservation.** No optimistic UI. The polling Signal projects engine state; the editor re-renders when the Signal changes. If another window edits the selected mapping while F9 has it open: **(a)** if no body field has focus and no drag is active, local working copies in stage bodies reset to engine state on the next polling tick and a Warning toast surfaces (`Mapping was edited externally`); **(b)** if a body field has focus or a drag is active, the reset is deferred, the toast surfaces immediately, but local state is preserved until blur or drag-end, at which point the edit commits and the next poll reconciles. This trades a single-window invariant (always-fresh) for a no-data-loss invariant during active edit, which the live-tuning workflow requires.
 
+**Amendment 2026-05-02 (descope):** the conflict-detection toast was removed in commit pending. The reconciler couldn't reliably distinguish a local SetMapping echo from a true external edit without plumbing a `last_local_dispatch` signal through every dispatch site (~15 sites), and in practice no concrete external-edit scenario exists today (the app does not support multi-window editing, no file watcher reloads on disk change, and manual TOML edits while the app is running are a power-user trick). Bodies are stateless mirrors of their props, so they re-render on any prop change via Dioxus's normal diffing without a reset token. If multi-window editing or file-watch reload ever lands, the detection mechanism can be reintroduced with proper local-vs-external classification.
+
 **31. Selected mapping deleted externally: fall back to empty state.** When `view.selected_mapping` is `Some(key)` but `key` is no longer in `ctx.config.read().mappings`, the editor reverts to the `Select a mapping` empty state. No special toast; the rail's deletion already communicates what happened.
 
 ## Non-goals (out of scope for this spec)
@@ -512,7 +514,7 @@ Three tiers, mirroring F8's pattern.
 - Footer recap text rebinds after Ctrl+Z. Redo stack clears on a fresh edit.
 - Channel disconnected: edits to fields stay locally responsive (input value updates), `SetMapping` dispatches drop, banner appears.
 - Conditional with `validate_depth` failure: stage title color flips to error, summary slot reads `Predicate exceeds nesting limit`.
-- External-edit reset: with no field focused, the local working copy resets and a `Mapping was edited externally` toast surfaces. With the name field focused, only the toast surfaces; the field value is preserved until blur.
+- ~~External-edit reset: with no field focused, the local working copy resets and a `Mapping was edited externally` toast surfaces. With the name field focused, only the toast surfaces; the field value is preserved until blur.~~ Descoped 2026-05-02; see choice 30 amendment.
 
 ### 3. Integration
 
@@ -548,7 +550,7 @@ The harness validates `frame::Layout` mounts. F9 plugs into the center slot. Uni
 24. Live readout bars (IN, OUT, IN N, merged IN) all use `--color-live` (#2EE0A0) for fill. Output-gold is reserved for the MapToVJoy stage card tint and never appears in any bar fill.
 25. Per-mapping undo stack caps at 50 entries; FIFO eviction beyond cap. No settings UI in F9.
 26. Editing-mode tab flip preserves the per-mapping undo log. Only profile flip clears it (via F4 confirm).
-27. External edit to the selected mapping surfaces a `Mapping was edited externally` Warning toast immediately. If a body field has focus or a drag is active, the local working-copy reset is deferred to blur or drag-end; otherwise the reset fires on the next polling tick.
+27. ~~External edit to the selected mapping surfaces a `Mapping was edited externally` Warning toast immediately. If a body field has focus or a drag is active, the local working-copy reset is deferred to blur or drag-end; otherwise the reset fires on the next polling tick.~~ Descoped 2026-05-02; see choice 30 amendment.
 28. Drag-and-drop reorder works between any pipeline (outer or any Conditional branch). Drop indicator: 2 px accent bar in `--color-border-focus`. Cycle-creating drops (a Conditional dropped into its own descendant branch) are rejected with a 200 ms error-red indicator and no state change.
 29. F10's live-tracking dot reads `inputforge-core::evaluate_actions_through(actions, &state, stop_at: usize) -> InputValue`; F9 ships this helper.
 

@@ -353,7 +353,7 @@ fn editor_renders_empty_state_when_no_selection() {
 
 #[test]
 fn editor_state_field_types_compile() {
-    // Compile-time gate: EditorState must expose all six signals.
+    // Compile-time gate: EditorState must expose its four signals.
     use std::collections::{HashMap, HashSet};
 
     use crate::frame::mapping_editor::{
@@ -366,8 +366,6 @@ fn editor_state_field_types_compile() {
         let _: Signal<HashSet<StageId>> = state.expanded_stages;
         let _: Signal<Option<StageMenuState>> = state.stage_menu;
         let _: Signal<HashMap<StageId, String>> = state.malformed_hints;
-        let _: Signal<u64> = state.external_edit_reset;
-        let _: Signal<bool> = state.pending_external_reset;
     }
 }
 
@@ -386,15 +384,6 @@ fn editor_state_provider_mounts_and_reads_via_use_context() {
         // Touch every field so a missing one causes a compile error.
         let undo_log = editor.undo_log.read();
         assert_eq!(undo_log.stacks.len(), 0, "fresh undo_log must be empty");
-        assert_eq!(
-            *editor.external_edit_reset.read(),
-            0_u64,
-            "external_edit_reset must start at 0"
-        );
-        assert!(
-            !*editor.pending_external_reset.read(),
-            "pending_external_reset must start at false"
-        );
         rsx! { div { "ok" } }
     }
 

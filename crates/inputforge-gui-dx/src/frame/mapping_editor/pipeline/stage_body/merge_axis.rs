@@ -36,13 +36,6 @@
 //!
 //! `push_edit` is only called after `cmd_tx.send` succeeds. A closed channel
 //! never generates phantom undo entries.
-//!
-//! # External-edit subscription (Amendment 4)
-//!
-//! A `use_effect` subscribes to `editor.external_edit_reset` so that when
-//! Task 33's reconciliation token advances Dioxus re-renders and any
-//! in-flight capture is cancelled (the reconciler may have replaced the
-//! secondary address externally).
 
 use dioxus::prelude::*;
 
@@ -113,19 +106,6 @@ pub(crate) fn MergeAxisBody(
     // Set to true only while THIS component is waiting for a secondary-input
     // capture; cleared when capture arrives or is cancelled.
     let mut is_armed_consumer: Signal<bool> = use_signal(|| false);
-
-    // Amendment 4: subscribe to external_edit_reset. When the reconciliation
-    // token advances, cancel any in-flight capture so the stale armed state
-    // does not consume a capture intended for the refreshed secondary address.
-    let reset_token = editor.external_edit_reset;
-    let cancel_cb = capture.cancel;
-    use_effect(move || {
-        let _ = *reset_token.read();
-        if *is_armed_consumer.peek() {
-            cancel_cb.call(());
-            is_armed_consumer.set(false);
-        }
-    });
 
     // Amendment 1: malformed-hint write / clear on every render.
     // When secondary == primary, the merge is a no-op and the stage is
