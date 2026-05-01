@@ -10,8 +10,10 @@ use dioxus::prelude::*;
 
 use inputforge_core::action::Action;
 
+use crate::components::Icon;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::undo_log::StageId;
+use crate::icons::{Icon as IconKind, IconSize};
 
 mod conditional;
 mod invert;
@@ -109,30 +111,35 @@ pub(crate) fn StageBody(
               Each will return a preview thumbnail when those tasks land; \
               collapsing into wildcard would erase the seam."
 )]
-pub(crate) fn header_right_slot(action: &Action, _expanded: bool) -> Element {
+pub(crate) fn header_right_slot(action: &Action, expanded: bool) -> Element {
     match action {
         // F10 will override (preview = curve thumbnail):
-        Action::ResponseCurve { .. } => default_chevron(),
+        Action::ResponseCurve { .. } => default_chevron(expanded),
         // F11 will override (preview = deadzone visualization):
-        Action::Deadzone { .. } => default_chevron(),
+        Action::Deadzone { .. } => default_chevron(expanded),
         // F14 will override (preview = mode badge):
-        Action::ChangeMode { .. } => default_chevron(),
+        Action::ChangeMode { .. } => default_chevron(expanded),
         // F9-owned variants: chevron only.
-        _ => default_chevron(),
+        _ => default_chevron(expanded),
     }
 }
 
-fn default_chevron() -> Element {
+/// Default expand/collapse chevron. Uses the shared Phosphor `ChevronDown`
+/// icon so stroke weight, color, and theming match the rest of the app's
+/// chevrons (select dropdown, etc). The `--collapsed` modifier rotates
+/// the chevron -90deg (tip points right) when the stage is collapsed;
+/// the rotation transition is owned by `.if-stage__chevron` CSS.
+fn default_chevron(expanded: bool) -> Element {
+    let class = if expanded {
+        "if-stage__chevron".to_owned()
+    } else {
+        "if-stage__chevron if-stage__chevron--collapsed".to_owned()
+    };
     rsx! {
-        // Chevron-down SVG; rotation is CSS-driven via `aria-expanded`.
-        svg {
-            xmlns: "http://www.w3.org/2000/svg",
-            width: "16",
-            height: "16",
-            view_box: "0 0 16 16",
-            fill: "currentColor",
-            "aria-hidden": "true",
-            path { d: "M3.5 5.5L8 10l4.5-4.5z" }
+        Icon {
+            name: IconKind::ChevronDown,
+            size: IconSize::Sm,
+            class,
         }
     }
 }

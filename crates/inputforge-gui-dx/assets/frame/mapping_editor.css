@@ -592,6 +592,19 @@
     text-align: right;
 }
 
+/* The right slot is the 32px column at the end of every stage header.
+   Flex-centers its child (chevron icon or, for F10/F11/F14, a preview
+   thumbnail) within the cell. `currentColor` flows from here through
+   the Phosphor icon's stroke="currentColor", so picking the muted text
+   color gives the chevron the same quiet treatment as the select
+   chevron without per-icon overrides. */
+.if-stage__right-slot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-muted);
+}
+
 .if-stage__chevron {
     transition: transform 180ms ease-out;
 }
