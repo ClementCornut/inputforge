@@ -42,6 +42,12 @@ pub struct Sdl3Input {
     /// event.  Key is `(instance_id, axis_index)`.  Once an axis is in
     /// this set its polarity is final and won't be re-evaluated.
     classified_axes: HashSet<(u32, u8)>,
+    /// Axes for which a synthetic initial-state event has already been
+    /// emitted by [`Self::deferred_reprobe_polarities`].  Without this
+    /// gate, the cache would only be populated for axes the user has
+    /// actually moved, leaving merged-axis pipelines reading the wrong
+    /// resting value for any unmoved unipolar pedal.
+    synthesized_axes: HashSet<(u32, u8)>,
     /// Number of poll cycles elapsed.  Used to trigger a deferred
     /// polarity re-probe after SDL3 has had time to populate hardware
     /// axis values via `DirectInput`.
@@ -89,6 +95,7 @@ impl Sdl3Input {
             open_devices: HashMap::new(),
             hotplug_buffer: Vec::new(),
             classified_axes: HashSet::new(),
+            synthesized_axes: HashSet::new(),
             poll_count: 0,
             _not_send: PhantomData,
         };
@@ -147,14 +154,22 @@ impl Sdl3Input {
     /// Any axes reclassified as unipolar trigger a
     /// `HotplugEvent::Connected` update so the engine and GUI pick up
     /// the corrected polarity.
+    ///
+    /// Also emits one synthetic [`InputEvent`] per axis (gated by
+    /// `synthesized_axes`) so the engine's input cache has a correct
+    /// resting value for axes the user has not yet moved.  Without
+    /// this, an unmoved unipolar pedal would default to encoded `0`
+    /// (= natural 0.5, "half-pressed") in the cache, breaking
+    /// merged-axis pipelines and per-input live readouts.
     #[expect(unsafe_code, reason = "SDL3 FFI calls for axis re-probe")]
     #[expect(
         clippy::cast_sign_loss,
         reason = "axis_idx iterates from 0..num_axes, always non-negative"
     )]
-    fn deferred_reprobe_polarities(&mut self) {
+    fn deferred_reprobe_polarities(&mut self, now: Instant, out: &mut Vec<InputEvent>) {
         for device in self.open_devices.values_mut() {
-            let instance_id = sdl3::sys::joystick::SDL_JoystickID(device.joystick.id());
+            let instance_id_raw = device.joystick.id();
+            let instance_id = sdl3::sys::joystick::SDL_JoystickID(instance_id_raw);
             // SAFETY: the joystick is open so the pointer is valid.
             let raw = unsafe { sdl3::sys::joystick::SDL_GetJoystickFromID(instance_id) };
             if raw.is_null() {
@@ -183,6 +198,27 @@ impl Sdl3Input {
                     device.info.axis_polarities[idx] = polarity;
                     changed = true;
                 }
+                // Synthetic initial-state event: one-shot per axis, gated
+                // so subsequent re-probe passes do not spam the cache.
+                // Skipped if a real `JoyAxisMotion` event has already
+                // populated the cache for this axis (the lazy classifier
+                // already authoritatively set polarity in that case).
+                let axis_idx_u8 = u8::try_from(axis_idx).unwrap_or(u8::MAX);
+                let key = (instance_id_raw, axis_idx_u8);
+                if !self.synthesized_axes.contains(&key) && !self.classified_axes.contains(&key) {
+                    self.synthesized_axes.insert(key);
+                    out.push(InputEvent {
+                        source: InputAddress {
+                            device: device.device_id.clone(),
+                            input: InputId::Axis { index: axis_idx_u8 },
+                        },
+                        value: InputValue::Axis {
+                            value: AxisValue::raw(f64::from(current) / f64::from(i16::MAX)),
+                            polarity,
+                        },
+                        timestamp: now,
+                    });
+                }
             }
             if changed {
                 self.hotplug_buffer
@@ -195,6 +231,7 @@ impl Sdl3Input {
     fn handle_device_removed(&mut self, instance_id: u32) {
         if let Some(removed) = self.open_devices.remove(&instance_id) {
             self.classified_axes.retain(|&(id, _)| id != instance_id);
+            self.synthesized_axes.retain(|&(id, _)| id != instance_id);
             self.hotplug_buffer
                 .push(HotplugEvent::Disconnected(removed.device_id));
         }
@@ -350,7 +387,7 @@ impl InputSource for Sdl3Input {
             && self.poll_count <= REPROBE_END
             && self.poll_count % REPROBE_INTERVAL == 0
         {
-            self.deferred_reprobe_polarities();
+            self.deferred_reprobe_polarities(now, out);
         }
     }
 
