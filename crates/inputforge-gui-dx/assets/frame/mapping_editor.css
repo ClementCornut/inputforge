@@ -329,6 +329,12 @@
     height: 8px;
     background: var(--color-bg-sunken);
     border-radius: 2px;
+    /* Clip the absolutely-positioned fill so any math regression (off-by
+     * one, a polled value escaping [-1, 1] from a calibration bug, etc)
+     * stays bounded to the cell instead of overflowing into the layout
+     * and triggering a horizontal scrollbar. The `border-radius`
+     * survives because the fill clips to the rounded corners. */
+    overflow: hidden;
 }
 
 .if-editor__readout-fill {

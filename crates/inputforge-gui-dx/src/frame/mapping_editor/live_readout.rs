@@ -109,19 +109,30 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
 #[component]
 fn ReadoutRow(label: String, display: AxisDisplay) -> Element {
     let pct_text = format_percentage(&display);
-    // Clamp to [0, 100] — values outside that range are always clipping.
-    let fill_pct = (display.value.abs() * 100.0).clamp(0.0, 100.0);
     let bipolar = matches!(display.polarity, AxisPolarity::Bipolar);
 
-    // Inline style positions the live-fill bar. Bipolar anchors at 50%,
-    // negative values extend left, positive extend right. Unipolar always
-    // extends from the left edge.
-    let bar_style = if bipolar && display.value < 0.0 {
-        format!("right: 50%; width: {fill_pct}%;")
-    } else if bipolar {
-        format!("left: 50%; width: {fill_pct}%;")
+    // Bipolar bars are anchored at the 50% center and grow toward one
+    // edge, so the visual maximum is half the container width. Unipolar
+    // bars grow from the left edge across the full width.
+    let fill_pct = if bipolar {
+        (display.value.abs() * 50.0).clamp(0.0, 50.0)
     } else {
-        format!("left: 0; width: {fill_pct}%;")
+        (display.value.abs() * 100.0).clamp(0.0, 100.0)
+    };
+
+    // Always set BOTH `left` and `right` (with `auto` for the off side)
+    // so Dioxus's per-property style diffing cannot leave a stale anchor
+    // from a previous render. Without this, switching from negative to
+    // positive (or vice versa) keeps the prior side's `50%` set, which
+    // CSS resolves into `left: 50%; right: 50%; width: <pct>%;` and
+    // honors `left + width` regardless of sign — so both signs grow
+    // rightward and overflow the container.
+    let bar_style = if bipolar && display.value < 0.0 {
+        format!("left: auto; right: 50%; width: {fill_pct}%;")
+    } else if bipolar {
+        format!("left: 50%; right: auto; width: {fill_pct}%;")
+    } else {
+        format!("left: 0; right: auto; width: {fill_pct}%;")
     };
 
     rsx! {
