@@ -119,6 +119,37 @@ pub(crate) fn MappingEditor() -> Element {
         }
     });
 
+    // Task 34 (AC #27): revert to empty state when the selected mapping has
+    // been deleted externally (e.g. from the rail or via an external edit).
+    //
+    // This MUST run inside a `use_effect` and NOT during render. Mutating a
+    // signal during render causes Dioxus to schedule an immediate re-render,
+    // creating an infinite loop. The effect runs after the DOM commit, so the
+    // write is batched into the next frame rather than into the current one.
+    //
+    // The key used here is `ctx.config` (reads `mappings`), which changes
+    // whenever the external snapshot is updated. Dioxus effects re-fire when
+    // any signal they read inside changes; `sel.peek()` is used so the effect
+    // does NOT re-fire merely because we cleared the selection ourselves.
+    let cfg_for_stale = ctx.config;
+    let mut sel = view.selected_mapping;
+    use_effect(move || {
+        // Reading `cfg_for_stale` subscribes this effect to config changes.
+        let snap = cfg_for_stale.read();
+        // `peek` does NOT subscribe; prevents a self-triggered re-run after
+        // we call `sel.set(None)` below.
+        let current = sel.peek().clone();
+        if let Some((mode, input)) = current {
+            let resolved = snap
+                .mappings
+                .iter()
+                .any(|m| m.input == input && m.mode == mode);
+            if !resolved {
+                sel.set(None);
+            }
+        }
+    });
+
     let view_state_for_render: Option<MappingKey> = view.selected_mapping.read().clone();
 
     // Hoist the stylesheet and offline banner above the if/else split so
