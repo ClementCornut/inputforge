@@ -73,6 +73,13 @@
     --color-control-bg:         rgba(154, 120, 214, 0.14);
     --color-control-badge-text: #B89BEA;                       /* AA-tuned badge text only, 5.5x on 14% control tint */
 
+    /* F9 mapping-editor stage card backgrounds. Tinted at 6/7/6%
+       per spec choice 11. Tokens are sRGB color-mix sources so the
+       tint matches the canonical category color exactly. */
+    --color-stage-tint-processing: color-mix(in srgb, var(--color-processing) 6%, transparent);
+    --color-stage-tint-output:     color-mix(in srgb, var(--color-output)     7%, transparent);
+    --color-stage-tint-control:    color-mix(in srgb, var(--color-control)    6%, transparent);
+
     /* Status backgrounds, composited tints of the matching foreground hue.
        Use these on Badge/Toast surfaces; never a raw rgba() literal in
        component CSS. The matching hue reads as the text on the composited
