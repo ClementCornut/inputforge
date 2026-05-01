@@ -9,14 +9,51 @@
               clippy's reachability check loses some pub(crate) items here."
 )]
 
+mod empty_state;
 pub(crate) mod pipeline;
 pub(crate) mod undo_log;
+
+pub(crate) use empty_state::EmptyState;
 
 use std::collections::{HashMap, HashSet};
 
 use dioxus::prelude::*;
 
+use crate::context::AppContext;
 use crate::frame::mapping_editor::undo_log::{StageId, UndoLog};
+use crate::frame::view_state::ViewState;
+
+#[allow(
+    dead_code,
+    reason = "rsx! macro is opaque to rustc; constant is consumed by Stylesheet { href: MAPPING_EDITOR_CSS }"
+)]
+const MAPPING_EDITOR_CSS: Asset = asset!("/assets/frame/mapping_editor.css");
+
+/// Top-level mapping editor orchestrator mounted in `if-layout__center`.
+///
+/// Renders the empty-state CTA when no mapping is selected; subsequent tasks
+/// will fill the selection branch with header, fields, pipeline, and footer.
+#[component]
+pub(crate) fn MappingEditor() -> Element {
+    tracing::trace!(target: "frame::render", region = "mapping_editor");
+    let _ctx = use_context::<AppContext>();
+    let view = use_context::<ViewState>();
+    let _editor = use_context::<EditorState>();
+
+    let has_selection = view.selected_mapping.read().is_some();
+
+    rsx! {
+        Stylesheet { href: MAPPING_EDITOR_CSS }
+        div { class: "if-editor",
+            if !has_selection {
+                EmptyState {}
+            } else {
+                // Frame sections + pipeline land in subsequent tasks.
+                div { class: "if-editor__placeholder", "selection placeholder" }
+            }
+        }
+    }
+}
 
 /// Right-click stage menu state.
 #[derive(Debug, Clone, PartialEq)]
@@ -37,13 +74,13 @@ pub(crate) struct EditorState {
     /// `DirtyConfirmDialog::onsave` callback.
     pub undo_log: Signal<UndoLog>,
     /// Stage IDs that are currently expanded. Resets on selection change
-    /// AND on every structural mutation (insert/remove) — see Task 11.
+    /// AND on every structural mutation (insert/remove): see Task 11.
     pub expanded_stages: Signal<HashSet<StageId>>,
     /// Right-click menu state (anchor + target stage).
     pub stage_menu: Signal<Option<StageMenuState>>,
     /// Per-stage validation hints surfaced in the stage header summary
     /// slot per spec lines 587-589. Bodies write on render; the stage
-    /// header reads. Cleared on every structural mutation — see Task 11.
+    /// header reads. Cleared on every structural mutation: see Task 11.
     pub malformed_hints: Signal<HashMap<StageId, String>>,
     /// External-edit reconciliation token. Incremented by the polling
     /// task (bridge.rs) on every external snapshot change. Bodies
@@ -73,82 +110,4 @@ pub(crate) fn use_editor_state_provider() -> EditorState {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn editor_state_field_types_compile() {
-        // Compile-time gate: EditorState must expose all five signals.
-        fn _assert(state: EditorState) {
-            let _: Signal<UndoLog> = state.undo_log;
-            let _: Signal<HashSet<StageId>> = state.expanded_stages;
-            let _: Signal<Option<StageMenuState>> = state.stage_menu;
-            let _: Signal<HashMap<StageId, String>> = state.malformed_hints;
-            let _: Signal<u64> = state.external_edit_reset;
-        }
-    }
-
-    #[test]
-    fn editor_state_provider_mounts_and_reads_via_use_context() {
-        // SSR smoke test: provider installs both LiveCapture and EditorState;
-        // a child renders and reads both via `use_context`.
-        use std::sync::{Arc, mpsc};
-
-        use dioxus::prelude::*;
-        use dioxus_ssr::render;
-        use parking_lot::RwLock;
-
-        use inputforge_core::settings::AppSettings;
-        use inputforge_core::state::AppState;
-
-        use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
-
-        #[allow(
-            non_snake_case,
-            reason = "Dioxus components are PascalCase by convention"
-        )]
-        fn Child() -> Element {
-            let _live = use_context::<crate::patterns::live_capture::LiveCapture>();
-            let editor = use_context::<EditorState>();
-            // Touch every field so a missing one would cause a compile error.
-            let undo_log = editor.undo_log.read();
-            assert_eq!(undo_log.stacks.len(), 0, "fresh undo_log must be empty");
-            assert_eq!(
-                *editor.external_edit_reset.read(),
-                0_u64,
-                "external_edit_reset must start at 0"
-            );
-            rsx! { div { "ok" } }
-        }
-
-        #[allow(
-            non_snake_case,
-            reason = "Dioxus components are PascalCase by convention"
-        )]
-        fn Root() -> Element {
-            // Provide AppContext stub that use_live_capture_provider requires.
-            let (cmd_tx, _cmd_rx) = mpsc::channel();
-            let ctx = AppContext {
-                state: Arc::new(RwLock::new(AppState::new())),
-                commands: cmd_tx,
-                settings: Arc::new(AppSettings::default()),
-                meta: use_signal(MetaSnapshot::default),
-                config: use_signal(ConfigSnapshot::default),
-                live: use_signal(LiveSnapshot::default),
-            };
-            use_context_provider(|| ctx);
-
-            crate::patterns::live_capture::use_live_capture_provider();
-            use_editor_state_provider();
-            rsx! { Child {} }
-        }
-
-        let mut vdom = VirtualDom::new(Root);
-        vdom.rebuild_in_place();
-        let html = render(&vdom);
-        assert!(
-            html.contains("ok"),
-            "child must render with both contexts available; got: {html}"
-        );
-    }
-}
+mod tests;
