@@ -150,6 +150,81 @@
     color: var(--color-text-muted);
 }
 
+/* Task 26b: predicate editor */
+
+.if-predicate {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 0;
+}
+
+.if-predicate__input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.if-predicate__input-label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-muted);
+    flex: 1;
+}
+
+.if-predicate__range-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.if-predicate__range-label {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--color-text-muted);
+    min-width: 24px;
+}
+
+/* Nested condition list for All / Any / Not. */
+.if-predicate__nested-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-left: 16px;
+    border-left: 2px solid var(--color-border);
+}
+
+.if-predicate__nested-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.if-predicate__nested-empty {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+/* 3-column compass grid for HatDirection checkboxes.
+   Fixed 120px width so the grid never reflows on long labels. */
+.if-hat-direction-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    width: 120px;
+}
+
+.if-hat-direction-grid__cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--color-text);
+    cursor: pointer;
+}
+
 /* Task 17: live readout (IN/OUT bars + merge layout) */
 
 .if-editor__readout {

@@ -694,6 +694,98 @@ fn merge_axis_body_writes_malformed_hint_when_secondary_equals_primary() {
 }
 
 // ---------------------------------------------------------------------------
+// Task 26b: PredicateEditor -- 7-kind picker + operand fields
+// ---------------------------------------------------------------------------
+
+#[test]
+fn predicate_editor_renders_kind_picker_with_seven_options() {
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Button { index: 0 },
+    };
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed {
+            input: primary.clone(),
+        },
+        if_true: vec![],
+        if_false: None,
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    // All 7 kind names must appear in the kind-picker select options.
+    assert!(
+        html.contains("ButtonPressed"),
+        "ButtonPressed missing: {html}"
+    );
+    assert!(
+        html.contains("ButtonReleased"),
+        "ButtonReleased missing: {html}"
+    );
+    assert!(html.contains("AxisInRange"), "AxisInRange missing: {html}");
+    assert!(
+        html.contains("HatDirection"),
+        "HatDirection missing: {html}"
+    );
+    assert!(html.contains(">All<"), "All option missing: {html}");
+    assert!(html.contains(">Any<"), "Any option missing: {html}");
+    assert!(html.contains(">Not<"), "Not option missing: {html}");
+}
+
+#[test]
+fn predicate_axis_in_range_renders_min_max_inputs() {
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let actions = vec![Action::Conditional {
+        condition: Condition::AxisInRange {
+            input: primary.clone(),
+            min: -0.5,
+            max: 0.5,
+        },
+        if_true: vec![],
+        if_false: None,
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    // NumberInput renders <input type="number"> elements for min and max.
+    let count = html.matches(r#"type="number""#).count();
+    assert!(
+        count >= 2,
+        "expected at least 2 number inputs for min+max, got {count}: {html}"
+    );
+}
+
+#[test]
+fn predicate_all_recursive_renders_nested_predicate_editors() {
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Button { index: 0 },
+    };
+    let actions = vec![Action::Conditional {
+        condition: Condition::All {
+            conditions: vec![
+                Condition::ButtonPressed {
+                    input: primary.clone(),
+                },
+                Condition::ButtonReleased {
+                    input: primary.clone(),
+                },
+            ],
+        },
+        if_true: vec![],
+        if_false: None,
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    // The outer All editor renders its nested-list container.
+    assert!(
+        html.contains("if-predicate__nested-list"),
+        "expected nested-list container for All: {html}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Task 26a: Conditional shell with recursive branch sub-pipelines
 // ---------------------------------------------------------------------------
 
