@@ -19,4 +19,4 @@ pub(crate) use mapping_list::MappingList;
     unused_imports,
     reason = "Forward-exported for Task 3+ consumers (ConfigSnapshot, UndoLog, EditorState)."
 )]
-pub(crate) use view_state::{MappingKey, use_view_state_provider};
+pub(crate) use view_state::{MappingKey, ViewState, use_view_state_provider};

@@ -3,6 +3,7 @@ use std::time::Duration;
 use dioxus::prelude::*;
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
+use crate::frame::ViewState;
 
 /// Spawn the ~60Hz state-bridge polling task (16ms tick interval).
 ///
@@ -12,7 +13,7 @@ use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
 ///
 /// The task is bound to the Dioxus runtime: it is auto-cancelled when the
 /// runtime tears down on window close.
-pub(crate) fn spawn_polling_task(ctx: AppContext) {
+pub(crate) fn spawn_polling_task(ctx: AppContext, view: ViewState) {
     spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_millis(16));
         loop {
@@ -25,7 +26,11 @@ pub(crate) fn spawn_polling_task(ctx: AppContext) {
             };
 
             let meta = MetaSnapshot::from_state(&guard);
-            let config = ConfigSnapshot::from_state(&guard, None);
+            // Read the selected mapping once per tick without subscribing.
+            // Binding to a local first ensures the peek guard's lifetime covers
+            // the as_ref() call that borrows through it.
+            let selection = view.selected_mapping.peek().clone();
+            let config = ConfigSnapshot::from_state(&guard, selection.as_ref());
             let live = LiveSnapshot::from_state(&guard, &config);
             // Release the read lock before calling Signal::set; reactive re-reads of
             // ctx.state from subscribers must not contend with the held guard.

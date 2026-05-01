@@ -55,7 +55,7 @@ pub(crate) fn app_root() -> Element {
 
     // Polling task, bridges AppState into Dioxus signals. One-shot per scope
     // mount; auto-cancelled when the runtime tears down.
-    use_hook(|| spawn_polling_task(ctx.clone()));
+    use_hook(|| spawn_polling_task(ctx.clone(), view));
 
     // Tray bridge, channel + listener task created once; the handler is
     // installed at the top level (it's itself a hook).
