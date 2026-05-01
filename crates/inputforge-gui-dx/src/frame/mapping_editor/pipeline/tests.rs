@@ -835,6 +835,23 @@ fn conditional_empty_if_false_shows_add_else_affordance() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Task 27: Placeholder bodies for ResponseCurve / Deadzone / ChangeMode
+// ---------------------------------------------------------------------------
+
+#[test]
+fn placeholder_bodies_show_spec_caption() {
+    let actions = vec![Action::Deadzone {
+        config: DeadzoneConfig::default(),
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    assert!(
+        html.contains("F10 / F11 / F14 owns this body"),
+        "expected placeholder caption: {html}"
+    );
+}
+
 #[test]
 fn conditional_three_deep_renders_all_branches() {
     let primary = InputAddress {

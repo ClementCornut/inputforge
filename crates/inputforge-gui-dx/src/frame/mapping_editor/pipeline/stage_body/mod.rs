@@ -18,8 +18,8 @@ mod invert;
 mod map_to_keyboard;
 mod map_to_vjoy;
 mod merge_axis;
+mod placeholders;
 pub(crate) mod predicate;
-// Placeholders for ResponseCurve, Deadzone, ChangeMode land in task 27.
 
 #[component]
 pub(crate) fn StageBody(
@@ -91,8 +91,9 @@ pub(crate) fn StageBody(
                 .unwrap_or(u8::MAX),
             }
         },
-        // Stub for other variants until task 27.
-        _ => rsx! { div { class: "if-stage__body-stub", "(body coming soon)" } },
+        Action::ResponseCurve { .. } => rsx! { placeholders::ResponseCurvePlaceholder {} },
+        Action::Deadzone { .. } => rsx! { placeholders::DeadzonePlaceholder {} },
+        Action::ChangeMode { .. } => rsx! { placeholders::ChangeModePlaceholder {} },
     }
 }
 
