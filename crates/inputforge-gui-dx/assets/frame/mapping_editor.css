@@ -204,35 +204,41 @@
     }
 }
 
-/* Stage-body form rows (label-left, control-right). Mirrors the stage
-   header's left/right rhythm so the body reads as a continuation of the
-   header rather than a separate form. Sentence-case sans label keeps the
-   mono-uppercase channel reserved for section dividers (AXES, IN/OUT,
-   BRANCH). The +sibling rule gives adjacent fields a consistent gap
-   without forcing every body container to declare its own. */
+/* Stage-body form layout: 2-column grid (label, control). Each body
+   container declares the grid; individual fields use `display: contents`
+   so their label + control unwrap directly into the parent grid. The
+   first column auto-sizes to the widest label in *that* body
+   (`max-content`), so Merge axis and Map to vJoy each get their own
+   column width without any magic numbers. `justify-items: start` keeps
+   controls at their natural width instead of stretching to fill the
+   1fr column. Sentence-case sans label keeps the mono-uppercase channel
+   reserved for section dividers (AXES, IN/OUT, BRANCH) so form labels
+   do not visually outrank the stage header above. */
 
-.if-stage__body-field {
-    display: flex;
+.if-stage__body-merge-axis,
+.if-stage__body-vjoy,
+.if-stage__body-keyboard {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 16px;
+    row-gap: 8px;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    min-height: 28px;
+    justify-items: start;
 }
 
-.if-stage__body-field + .if-stage__body-field {
-    margin-top: 6px;
+.if-stage__body-field {
+    display: contents;
 }
 
 .if-stage__body-label {
     font-family: var(--font-sans);
     font-size: 12px;
     color: var(--color-text-muted);
-    flex: 0 0 auto;
 }
 
 /* Right-side composite for fields whose value is text + action (e.g.
    MergeAxis secondary input: source label + rebind button). Plain inline
-   cluster, no border or padding (the parent row owns rhythm). */
+   cluster; the parent grid row owns vertical rhythm. */
 
 .if-stage__body-field-value {
     display: flex;
