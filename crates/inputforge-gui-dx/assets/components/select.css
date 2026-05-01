@@ -1,24 +1,37 @@
-/* Custom dropdown chevron. The native <select> chevron in Chromium /
-   WebView2 ignores padding, so we drop `appearance` and draw our own
-   chevron via background-image. The stroke color is hard-coded to the
-   current value of --color-text-muted (#9CA0BC); CSS custom properties
-   do not flow through data: URIs, so this hex must stay in sync with
-   the token if the muted color is ever retuned in tokens/colors.css. */
+/* Custom dropdown chevron via wrapped Icon component. The native
+   <select> chevron in Chromium / WebView2 ignores padding and is drawn
+   by the user-agent shadow tree, so we suppress it with appearance:none
+   and overlay an absolutely-positioned ChevronDown icon. The chevron
+   tracks --color-text-muted via currentColor on the icon span, so it
+   stays in sync with the design tokens automatically. */
+
+.if-select-wrapper {
+    display: inline-flex;
+    position: relative;
+    align-items: center;
+}
+
+.if-select-wrapper__chevron {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: var(--color-text-muted);
+}
 
 .if-select {
     appearance: none;
     -webkit-appearance: none;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
-    background-color: var(--color-bg-sunken);
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8" fill="none"><path d="M2 2l4 4 4-4" stroke="%239CA0BC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>');
-    background-repeat: no-repeat;
-    background-position: right 10px center;
-    background-size: 12px 8px;
+    background: var(--color-bg-sunken);
     color: var(--color-text);
     font-family: var(--font-sans);
     /* Long-form padding so size variants can override block / inline-start
-       without clobbering the inline-end space that the chevron needs. */
+       without clobbering the inline-end space that the chevron overlay
+       needs. 28px = 8px (chevron-to-border gap) + 14px (icon-sm) + 6px
+       (buffer between text and chevron). */
     padding-block: var(--space-2);
     padding-inline-start: var(--space-3);
     padding-inline-end: 28px;

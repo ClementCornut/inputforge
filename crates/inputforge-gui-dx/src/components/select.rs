@@ -1,7 +1,9 @@
 use dioxus::prelude::*;
 
 use super::merge_class;
+use crate::components::Icon;
 use crate::components::text_input::InputSize;
+use crate::icons::{Icon as IconKind, IconSize};
 
 #[component]
 pub fn Select(
@@ -26,28 +28,39 @@ pub fn Select(
             h.call(evt);
         }
     };
-    // HTML5 forbids id="", so render the attribute only when Some.
+    // Wrapper provides the positioning context for the chevron overlay.
+    // The native UA chevron is suppressed via `appearance: none` in CSS;
+    // we draw our own with the shared Phosphor ChevronDown icon so it
+    // tracks --color-text-muted via currentColor like every other icon
+    // in the app.
     rsx! {
-        if let Some(ref id_val) = id {
-            select {
-                class: "{combined}",
-                id: "{id_val}",
-                value: "{value}",
-                disabled,
-                onchange: change_handler,
-                for (val, label) in options.iter() {
-                    option { value: "{val}", "{label}" }
+        span { class: "if-select-wrapper",
+            if let Some(ref id_val) = id {
+                select {
+                    class: "{combined}",
+                    id: "{id_val}",
+                    value: "{value}",
+                    disabled,
+                    onchange: change_handler,
+                    for (val, label) in options.iter() {
+                        option { value: "{val}", "{label}" }
+                    }
+                }
+            } else {
+                select {
+                    class: "{combined}",
+                    value: "{value}",
+                    disabled,
+                    onchange: change_handler,
+                    for (val, label) in options.iter() {
+                        option { value: "{val}", "{label}" }
+                    }
                 }
             }
-        } else {
-            select {
-                class: "{combined}",
-                value: "{value}",
-                disabled,
-                onchange: change_handler,
-                for (val, label) in options.iter() {
-                    option { value: "{val}", "{label}" }
-                }
+            Icon {
+                name: IconKind::ChevronDown,
+                size: IconSize::Sm,
+                class: "if-select-wrapper__chevron".to_owned(),
             }
         }
     }
