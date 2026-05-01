@@ -402,6 +402,11 @@
     text-align: left;
 }
 
+/* Task 35: error-tint variant applied when a body writes a malformed hint. */
+.if-stage__title--error {
+    color: var(--color-error);
+}
+
 .if-stage__summary {
     font-family: var(--font-mono);
     font-size: 12px;

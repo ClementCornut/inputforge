@@ -26,6 +26,12 @@ pub(crate) fn StageHeader(
     title: String,
     summary: String,
     expanded: bool,
+    /// When `true`, a body has written a validation hint for this stage and
+    /// the title receives the `if-stage__title--error` class (error tint).
+    /// The `summary` prop is already overridden to the hint text by `Stage`
+    /// before it reaches this component.
+    #[props(default)]
+    is_malformed: bool,
     /// Element rendered in the 32x32 chevron/thumbnail slot on the right.
     /// Default for all F9-owned variants: chevron-down SVG (from
     /// `stage_body::header_right_slot`). F10/F11 override with a preview
@@ -44,6 +50,14 @@ pub(crate) fn StageHeader(
         }
     };
 
+    // Apply the error-tint modifier class when the stage body reported a
+    // validation hint. See `.if-stage__title--error` in mapping_editor.css.
+    let title_class = if is_malformed {
+        "if-stage__title if-stage__title--error"
+    } else {
+        "if-stage__title"
+    };
+
     rsx! {
         button {
             r#type: "button",
@@ -51,7 +65,7 @@ pub(crate) fn StageHeader(
             "aria-expanded": if expanded { "true" } else { "false" },
             "aria-controls": "{controls_id}",
             onclick,
-            div { class: "if-stage__title", "{title}" }
+            div { class: "{title_class}", "{title}" }
             div { class: "if-stage__summary", "{summary}" }
             div {
                 class: "if-stage__right-slot",

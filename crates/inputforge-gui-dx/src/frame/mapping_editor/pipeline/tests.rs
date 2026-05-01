@@ -339,6 +339,12 @@ struct HarnessProps {
     /// directly.
     #[props(default)]
     pre_stage_menu: Option<crate::frame::mapping_editor::StageMenuState>,
+    /// Pre-seed `EditorState::malformed_hints` so SSR tests can assert the
+    /// error-tint title treatment (Task 35). Body components write hints via
+    /// `use_effect`, which does not fire during SSR, so tests must inject
+    /// hints directly.
+    #[props(default)]
+    pre_malformed_hints: HashMap<StageId, String>,
 }
 
 impl PartialEq for HarnessProps {
@@ -348,6 +354,7 @@ impl PartialEq for HarnessProps {
             && self.pre_expanded_stages == other.pre_expanded_stages
             && self.virtual_devices == other.virtual_devices
             && self.pre_stage_menu == other.pre_stage_menu
+            && self.pre_malformed_hints == other.pre_malformed_hints
     }
 }
 
@@ -362,6 +369,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
         pre_expanded_stages,
         virtual_devices,
         pre_stage_menu,
+        pre_malformed_hints,
     } = props;
 
     let (cmd_tx, _) = mpsc::channel();
@@ -413,6 +421,9 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     if let Some(menu) = pre_stage_menu {
         editor.stage_menu.clone().write().replace(menu);
     }
+    if !pre_malformed_hints.is_empty() {
+        *editor.malformed_hints.clone().write() = pre_malformed_hints;
+    }
     let toast_state = use_signal(ToastState::default);
     use_context_provider(|| ToastQueue { state: toast_state });
     rsx! { MappingEditor {} }
@@ -446,6 +457,30 @@ fn render_with_full(
             pre_expanded_stages,
             virtual_devices,
             pre_stage_menu: None,
+            pre_malformed_hints: HashMap::new(),
+        },
+    );
+    vdom.rebuild_in_place();
+    render(&vdom)
+}
+
+/// Render helper that pre-seeds `EditorState::malformed_hints`. Used by
+/// Task 35's SSR test: body `use_effect` blocks do not fire during SSR, so
+/// we inject the hint directly and verify the visual treatment appears.
+fn render_with_malformed_hints(
+    state: AppState,
+    addr: InputAddress,
+    pre_malformed_hints: HashMap<StageId, String>,
+) -> String {
+    let mut vdom = VirtualDom::new_with_props(
+        HarnessComponent,
+        HarnessProps {
+            state: Arc::new(RwLock::new(state)),
+            addr,
+            pre_expanded_stages: vec![],
+            virtual_devices: vec![],
+            pre_stage_menu: None,
+            pre_malformed_hints,
         },
     );
     vdom.rebuild_in_place();
@@ -468,6 +503,7 @@ fn render_with_stage_menu(
             pre_expanded_stages: vec![],
             virtual_devices: vec![],
             pre_stage_menu,
+            pre_malformed_hints: HashMap::new(),
         },
     );
     vdom.rebuild_in_place();
@@ -1164,5 +1200,45 @@ fn dnd_can_move_stage_from_outer_into_conditional_if_true() {
         result.len(),
         1,
         "outer pipeline must have exactly one stage after the Invert is moved inside"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Task 35: malformed-action visual treatment (error-tint title + hint summary)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn malformed_merge_axis_with_secondary_equal_primary_shows_error_class() {
+    // Build a MergeAxis stage where secondary == primary. The body component
+    // writes "Secondary input must differ from primary" to malformed_hints via
+    // a use_effect, which does NOT fire during SSR. We pre-seed the hint
+    // directly so the Stage component sees it and applies the error-tint class.
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let stage_id = StageId(vec![StageIdSegment::Index(0)]);
+    let actions = vec![Action::MergeAxis {
+        second_input: primary.clone(),
+        operation: MergeOp::Average,
+    }];
+    let (state, addr) = build_state(actions);
+
+    let mut hints = HashMap::new();
+    hints.insert(
+        stage_id,
+        "Secondary input must differ from primary".to_owned(),
+    );
+    let html = render_with_malformed_hints(state, addr, hints);
+
+    // The error-tint modifier class must appear on the title element.
+    assert!(
+        html.contains("if-stage__title--error"),
+        "expected error-tint class on malformed stage title: {html}"
+    );
+    // The hint text must appear in the summary slot instead of the normal summary.
+    assert!(
+        html.contains("Secondary input must differ from primary"),
+        "expected malformed hint text in summary slot: {html}"
     );
 }

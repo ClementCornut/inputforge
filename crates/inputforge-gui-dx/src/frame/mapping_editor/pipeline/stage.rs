@@ -177,8 +177,14 @@ pub(crate) fn Stage(
         base_class.push_str(" if-sortable--drop-invalid");
     }
 
+    // Task 35: look up any validation hint written by the body for this stage.
+    // When a hint exists the summary slot shows it instead of the normal
+    // summary, and the title receives an error-tint class.
+    let malformed_hint: Option<String> = editor.malformed_hints.read().get(&stage_id).cloned();
+    let is_malformed = malformed_hint.is_some();
+
     let title = stage_title_for(&action).to_owned();
-    let summary = stage_summary_for(&action, &cfg);
+    let summary = malformed_hint.unwrap_or_else(|| stage_summary_for(&action, &cfg));
     let right_slot = stage_body::header_right_slot(&action, expanded);
     let body_id = format!("if-stage-body-{}", super::format_stage_id(&stage_id));
 
@@ -344,6 +350,7 @@ pub(crate) fn Stage(
                 title,
                 summary,
                 expanded,
+                is_malformed,
                 right_slot,
             }
             if expanded {
