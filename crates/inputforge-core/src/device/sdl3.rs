@@ -198,15 +198,22 @@ impl Sdl3Input {
                     device.info.axis_polarities[idx] = polarity;
                     changed = true;
                 }
-                // Synthetic initial-state event: one-shot per axis, gated
-                // so subsequent re-probe passes do not spam the cache.
-                // Skipped if a real `JoyAxisMotion` event has already
-                // populated the cache for this axis (the lazy classifier
-                // already authoritatively set polarity in that case).
+                // Synthetic initial-state event + classification lock:
+                // one-shot per axis. The deferred re-probe is the
+                // authoritative classifier because it reads SDL's
+                // resting-state value directly. Inserting into
+                // `classified_axes` here prevents the lazy classifier
+                // (which fires on the first `JoyAxisMotion` event) from
+                // overriding the resting-state classification with a
+                // mid-press value: a user pressing a unipolar pedal at
+                // half-throw on first move would otherwise flip
+                // polarity from Unipolar (resting at -1) to Bipolar
+                // (current value 0 > UNIPOLAR_INITIAL_STATE_THRESHOLD).
                 let axis_idx_u8 = u8::try_from(axis_idx).unwrap_or(u8::MAX);
                 let key = (instance_id_raw, axis_idx_u8);
                 if !self.synthesized_axes.contains(&key) && !self.classified_axes.contains(&key) {
                     self.synthesized_axes.insert(key);
+                    self.classified_axes.insert(key);
                     out.push(InputEvent {
                         source: InputAddress {
                             device: device.device_id.clone(),
