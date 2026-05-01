@@ -143,6 +143,12 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                 // secondary's from the cache. `merge_axes` consumes both
                 // for the natural-domain `Maximum` comparison; the other
                 // ops ignore polarity.
+                //
+                // Fallback to default (Bipolar) is reachable: nothing in
+                // the action editor prevents authoring a button or hat
+                // primary with a `MergeAxis` action. Treating the
+                // synthetic 0/1 (button) or 0.0 (hat) `current_value` as
+                // bipolar gives sensible Maximum semantics.
                 let first_polarity = match &ctx.input_value {
                     InputValue::Axis { polarity, .. } => *polarity,
                     _ => AxisPolarity::default(),

@@ -281,6 +281,14 @@ mod tests {
     }
 
     #[test]
+    fn average_unipolar_pair_at_full_press_round_trips_to_full_natural() {
+        // Two unipolar pedals fully pressed (encoded 1, 1):
+        // midpoint(1, 1) = 1. The GUI re-interprets this as natural 1
+        // (full bar) via into_natural_domain.
+        assert!((merge_axes(1.0, 1.0, MergeOp::Average, UU.0, UU.1) - 1.0).abs() < TOLERANCE);
+    }
+
+    #[test]
     fn average_unchanged_for_mixed_polarity() {
         // Encoded math identical regardless of polarity hints.
         let bb = merge_axes(0.5, 0.2, MergeOp::Average, BB.0, BB.1);
