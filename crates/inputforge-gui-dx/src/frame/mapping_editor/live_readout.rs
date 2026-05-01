@@ -55,6 +55,21 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
         _ => primary_value.polarity,
     };
 
+    if let (Some(c), Some(sec)) = (merge_ctx.as_ref(), secondary_display) {
+        tracing::info!(
+            target: "polarity_debug",
+            primary_addr = ?primary,
+            primary_natural = primary_value.value,
+            ?primary_value.polarity,
+            secondary_addr = ?c.secondary,
+            secondary_natural = sec.value,
+            ?sec.polarity,
+            op = ?c.op,
+            ?output_polarity,
+            "[live_readout] merge layout inputs (from LiveSnapshot, polarity = device.info)"
+        );
+    }
+
     // Brief read-lock on AppState for pipeline evaluation.
     // Two separate guard scopes so Rust can prove non-overlapping borrows.
     let merged_in_value = merge_ctx.as_ref().map(|c| {
@@ -65,8 +80,20 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
             &primary,
             c.index + 1,
         );
+        let raw_after_pipeline = axis_f64(&iv);
+        let display_value = into_natural_domain(raw_after_pipeline, output_polarity);
+        tracing::info!(
+            target: "polarity_debug",
+            primary_addr = ?primary,
+            stop_at = c.index + 1,
+            iv = ?iv,
+            raw_after_pipeline,
+            ?output_polarity,
+            display_value,
+            "[live_readout] merged_in_value computed (pipeline result via cache)"
+        );
         AxisDisplay {
-            value: into_natural_domain(axis_f64(&iv), output_polarity),
+            value: display_value,
             polarity: output_polarity,
         }
     });
