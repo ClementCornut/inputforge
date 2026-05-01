@@ -1204,6 +1204,118 @@ fn dnd_can_move_stage_from_outer_into_conditional_if_true() {
 }
 
 // ---------------------------------------------------------------------------
+// Task 38: four-stage pipeline SSR coverage (AC #9)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn four_stage_pipeline_renders_all_categories_and_summaries() {
+    // Build a four-stage pipeline that exercises all category tints:
+    //   0: Deadzone       -- is-processing
+    //   1: ResponseCurve  -- is-processing, 3 pts, symmetric=false (no "sym" qualifier)
+    //   2: MergeAxis      -- is-output
+    //   3: MapToVJoy      -- is-output
+    //
+    // The test renders collapsed (no pre-expanded stages) and walks the DOM
+    // with `scraper` to verify stage count, ordering, and category classes
+    // without relying on substring-search position arithmetic.
+    use scraper::{Html, Selector};
+
+    let second_input = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 1 },
+    };
+    let curve = inputforge_core::processing::ResponseCurve::piecewise_linear(
+        vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
+        false,
+    )
+    .expect("valid 3-point identity curve");
+
+    let actions = vec![
+        Action::Deadzone {
+            config: DeadzoneConfig::default(),
+        },
+        Action::ResponseCurve { curve },
+        Action::MergeAxis {
+            second_input,
+            operation: MergeOp::Average,
+        },
+        Action::MapToVJoy {
+            output: OutputAddress {
+                device: 1,
+                output: OutputId::Axis { id: VJoyAxis::X },
+            },
+        },
+    ];
+    let (state, addr) = build_state(actions);
+    // Collapsed render: no pre-expanded stages -- just verify structure.
+    let html = render_with_expanded(state, addr, vec![]);
+
+    let doc = Html::parse_document(&html);
+    let stage_sel = Selector::parse("li.if-stage").expect("selector must be valid");
+    let stages: Vec<_> = doc.select(&stage_sel).collect();
+    assert_eq!(
+        stages.len(),
+        4,
+        "expected 4 pipeline stages, got {}; html: {html}",
+        stages.len()
+    );
+
+    // Stage 0: Deadzone -- is-processing category.
+    let s0_class = stages[0].value().attr("class").unwrap_or("");
+    assert!(
+        s0_class.contains("is-processing"),
+        "stage 0 (Deadzone) must carry is-processing class; class='{s0_class}'"
+    );
+    assert!(
+        stages[0].html().contains("Deadzone"),
+        "stage 0 must display 'Deadzone' title"
+    );
+
+    // Stage 1: ResponseCurve -- is-processing, 3-point, symmetric=false.
+    // The formatter emits "linear · 3 pts" with no "sym" qualifier when symmetric=false.
+    let s1_class = stages[1].value().attr("class").unwrap_or("");
+    assert!(
+        s1_class.contains("is-processing"),
+        "stage 1 (ResponseCurve) must carry is-processing class; class='{s1_class}'"
+    );
+    assert!(
+        stages[1].html().contains("Response curve"),
+        "stage 1 must display 'Response curve' title"
+    );
+    assert!(
+        stages[1].html().contains("3 pts"),
+        "stage 1 summary must contain '3 pts' point count"
+    );
+    // symmetric=false: the "sym" qualifier must NOT appear.
+    assert!(
+        !stages[1].html().contains("sym"),
+        "stage 1 summary must not contain 'sym' when symmetric=false"
+    );
+
+    // Stage 2: MergeAxis -- is-output category.
+    let s2_class = stages[2].value().attr("class").unwrap_or("");
+    assert!(
+        s2_class.contains("is-output"),
+        "stage 2 (MergeAxis) must carry is-output class; class='{s2_class}'"
+    );
+    assert!(
+        stages[2].html().contains("Merge axis"),
+        "stage 2 must display 'Merge axis' title"
+    );
+
+    // Stage 3: MapToVJoy -- is-output category.
+    let s3_class = stages[3].value().attr("class").unwrap_or("");
+    assert!(
+        s3_class.contains("is-output"),
+        "stage 3 (MapToVJoy) must carry is-output class; class='{s3_class}'"
+    );
+    assert!(
+        stages[3].html().contains("Map to vJoy"),
+        "stage 3 must display 'Map to vJoy' title"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Task 35: malformed-action visual treatment (error-tint title + hint summary)
 // ---------------------------------------------------------------------------
 
