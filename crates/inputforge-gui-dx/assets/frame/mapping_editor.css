@@ -140,7 +140,12 @@
 .if-editor__subtitle {
     display: flex;
     flex-wrap: wrap;
-    align-items: baseline;
+    /* `center` (not `baseline`) so the rebind ghost button (height 23px,
+     * inner padding) and the listening cue (inline-flex with a centered
+     * pulse dot) line up with the plain-text source / output labels on
+     * the row's vertical centerline. Baseline alignment shifted the
+     * button up by ~2.6px and the listening span by ~1.3px. */
+    align-items: center;
     gap: 8px;
     font-family: var(--font-mono);
     font-size: 12px;

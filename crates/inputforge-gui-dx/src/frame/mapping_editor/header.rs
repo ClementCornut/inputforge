@@ -105,6 +105,18 @@ pub(crate) fn Header(
         };
 
         let (mode, old_addr) = mapping_key_for_capture.clone();
+
+        // No-op rebind: the user pressed the input that is already mapped
+        // here. Skip dispatch + undo, mirroring the rename path's
+        // same-name skip. Clearing `captured` and the consumer flag keeps
+        // the listening UI from sticking around.
+        if new_addr == old_addr {
+            is_armed_consumer.set(false);
+            let mut cap = capture.captured;
+            cap.set(None);
+            return;
+        }
+
         // Resolve labels before dispatch so the undo entry survives the
         // config snapshot rebuild that follows.
         let old_label = source_label::format(&old_addr, &cfg_for_capture.read());
