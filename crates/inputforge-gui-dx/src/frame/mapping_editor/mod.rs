@@ -27,7 +27,7 @@ use inactive_hint::InactiveHint;
 use input_field::InputField;
 use live_readout::LiveReadout;
 use name_field::NameField;
-use pipeline::Pipeline;
+use pipeline::{Pipeline, StageActionsMenu};
 use undo_recap::UndoRecap;
 
 use std::collections::{HashMap, HashSet};
@@ -104,6 +104,10 @@ pub(crate) fn MappingEditor() -> Element {
                             root_actions: actions_clone.clone(),
                             path_prefix: vec![],
                             depth: 0,
+                        }
+                        StageActionsMenu {
+                            mapping_key: (mode.clone(), input.clone()),
+                            root_actions: actions_clone.clone(),
                         }
                         InactiveHint {}
                         UndoRecap { mapping_key: (mode, input) }

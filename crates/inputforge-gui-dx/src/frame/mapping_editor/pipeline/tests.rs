@@ -333,6 +333,12 @@ struct HarnessProps {
     /// body tests that exercise the device/output pickers.
     #[props(default)]
     virtual_devices: Vec<VirtualDeviceConfig>,
+    /// Pre-seed the `EditorState::stage_menu` signal so SSR tests can assert
+    /// the right-click menu renders with the expected items (Task 29). SSR
+    /// cannot dispatch real `oncontextmenu` events, so we plant the state
+    /// directly.
+    #[props(default)]
+    pre_stage_menu: Option<crate::frame::mapping_editor::StageMenuState>,
 }
 
 impl PartialEq for HarnessProps {
@@ -341,6 +347,7 @@ impl PartialEq for HarnessProps {
             && self.addr == other.addr
             && self.pre_expanded_stages == other.pre_expanded_stages
             && self.virtual_devices == other.virtual_devices
+            && self.pre_stage_menu == other.pre_stage_menu
     }
 }
 
@@ -354,6 +361,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
         addr,
         pre_expanded_stages,
         virtual_devices,
+        pre_stage_menu,
     } = props;
 
     let (cmd_tx, _) = mpsc::channel();
@@ -402,6 +410,9 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     for stage_id in pre_expanded_stages {
         editor.expanded_stages.clone().write().insert(stage_id);
     }
+    if let Some(menu) = pre_stage_menu {
+        editor.stage_menu.clone().write().replace(menu);
+    }
     let toast_state = use_signal(ToastState::default);
     use_context_provider(|| ToastQueue { state: toast_state });
     rsx! { MappingEditor {} }
@@ -434,6 +445,29 @@ fn render_with_full(
             addr,
             pre_expanded_stages,
             virtual_devices,
+            pre_stage_menu: None,
+        },
+    );
+    vdom.rebuild_in_place();
+    render(&vdom)
+}
+
+/// Render helper that pre-seeds the right-click stage actions menu state.
+/// Used by Task 29's SSR test (real `oncontextmenu` events cannot be
+/// simulated through the SSR renderer).
+fn render_with_stage_menu(
+    state: AppState,
+    addr: InputAddress,
+    pre_stage_menu: Option<crate::frame::mapping_editor::StageMenuState>,
+) -> String {
+    let mut vdom = VirtualDom::new_with_props(
+        HarnessComponent,
+        HarnessProps {
+            state: Arc::new(RwLock::new(state)),
+            addr,
+            pre_expanded_stages: vec![],
+            virtual_devices: vec![],
+            pre_stage_menu,
         },
     );
     vdom.rebuild_in_place();
@@ -929,5 +963,100 @@ fn conditional_three_deep_renders_all_branches() {
     assert!(
         html.contains("Invert"),
         "innermost Invert stage missing: {html}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Task 29: right-click stage actions menu SSR test
+// ---------------------------------------------------------------------------
+
+#[test]
+fn right_click_on_stage_opens_actions_menu() {
+    use crate::frame::mapping_editor::StageMenuState;
+
+    let actions = vec![Action::Invert, Action::Invert];
+    let (state, addr) = build_state(actions);
+    let html = render_with_stage_menu(
+        state,
+        addr,
+        Some(StageMenuState {
+            stage: StageId(vec![StageIdSegment::Index(0)]),
+            x: 100.0,
+            y: 200.0,
+        }),
+    );
+    assert!(
+        html.contains("Move up"),
+        "expected 'Move up' menu item in: {html}"
+    );
+    assert!(
+        html.contains("Move down"),
+        "expected 'Move down' menu item in: {html}"
+    );
+    assert!(
+        html.contains("Delete"),
+        "expected 'Delete' menu item in: {html}"
+    );
+    // Menu must be anchored at cursor coordinates via inline style
+    assert!(
+        html.contains("left: 100px"),
+        "menu must be anchored at cursor x: {html}"
+    );
+    assert!(
+        html.contains("top: 200px"),
+        "menu must be anchored at cursor y: {html}"
+    );
+}
+
+#[test]
+fn stage_menu_disables_move_up_at_first_position() {
+    use crate::frame::mapping_editor::StageMenuState;
+
+    let actions = vec![Action::Invert, Action::Invert];
+    let (state, addr) = build_state(actions);
+    let html = render_with_stage_menu(
+        state,
+        addr,
+        Some(StageMenuState {
+            stage: StageId(vec![StageIdSegment::Index(0)]),
+            x: 0.0,
+            y: 0.0,
+        }),
+    );
+    // Move up button must carry the disabled attribute when index is 0.
+    // SSR emits boolean attrs as bare keywords; we look for the disabled
+    // attribute appearing alongside the Move up text.
+    let move_up_pos = html.find("Move up").expect("Move up item must render");
+    let prefix = &html[..move_up_pos];
+    assert!(
+        prefix.contains("aria-disabled=\"true\""),
+        "Move up at index 0 must be aria-disabled: {html}"
+    );
+}
+
+#[test]
+fn stage_menu_disables_move_down_at_last_position() {
+    use crate::frame::mapping_editor::StageMenuState;
+
+    let actions = vec![Action::Invert, Action::Invert];
+    let (state, addr) = build_state(actions);
+    let html = render_with_stage_menu(
+        state,
+        addr,
+        Some(StageMenuState {
+            stage: StageId(vec![StageIdSegment::Index(1)]),
+            x: 0.0,
+            y: 0.0,
+        }),
+    );
+    // The Move down button is the second menuitem; locate its substring
+    // and verify aria-disabled appears in its preceding attributes.
+    let move_down_pos = html.find("Move down").expect("Move down item must render");
+    // Look back at most 200 chars to find the button's own attributes
+    let start = move_down_pos.saturating_sub(200);
+    let chunk = &html[start..move_down_pos];
+    assert!(
+        chunk.contains("aria-disabled=\"true\""),
+        "Move down at last index must be aria-disabled: {html}"
     );
 }

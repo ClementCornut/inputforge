@@ -18,6 +18,7 @@
 
 mod add_palette;
 mod stage;
+mod stage_actions_menu;
 pub(crate) mod stage_body;
 mod stage_header;
 
@@ -26,6 +27,7 @@ mod tests;
 
 use add_palette::AddPalette;
 pub(crate) use stage::Stage;
+pub(crate) use stage_actions_menu::StageActionsMenu;
 
 /// Render a [`StageId`] as a dot-separated string of path segments.
 ///

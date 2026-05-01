@@ -14,10 +14,10 @@ use inputforge_core::types::{KeyCombo, KeyModifier, OutputAddress, OutputId, VJo
 
 use crate::context::ConfigSnapshot;
 use crate::frame::MappingKey;
-use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::pipeline::stage_body;
 use crate::frame::mapping_editor::pipeline::stage_header::StageHeader;
 use crate::frame::mapping_editor::undo_log::StageId;
+use crate::frame::mapping_editor::{EditorState, StageMenuState};
 
 #[component]
 pub(crate) fn Stage(
@@ -51,10 +51,28 @@ pub(crate) fn Stage(
     let right_slot = stage_body::header_right_slot(&action, expanded);
     let body_id = format!("if-stage-body-{}", super::format_stage_id(&stage_id));
 
+    // Build the context-menu handler. The closure captures the `stage_id`
+    // and writes the cursor coordinates + target id into `EditorState::stage_menu`.
+    let oncontextmenu = {
+        let stage_id = stage_id.clone();
+        let mut stage_menu = editor.stage_menu;
+        move |evt: MouseEvent| {
+            evt.prevent_default();
+            evt.stop_propagation();
+            let coords = evt.client_coordinates();
+            stage_menu.set(Some(StageMenuState {
+                stage: stage_id.clone(),
+                x: coords.x,
+                y: coords.y,
+            }));
+        }
+    };
+
     rsx! {
         li {
             class: "{class}",
             "data-stage-id": "{super::format_stage_id(&stage_id)}",
+            oncontextmenu,
             StageHeader {
                 stage_id: stage_id.clone(),
                 title,

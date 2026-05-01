@@ -554,3 +554,52 @@
 .if-add-palette__item:hover {
     background: var(--color-bg-sunken);
 }
+
+/* Task 29: right-click stage actions menu */
+
+/* Full-viewport transparent backdrop catches outside clicks to dismiss
+   the menu. z-index 99 sits just below the menu (100) but above all
+   editor content. */
+.if-stage-menu__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    background: transparent;
+}
+
+.if-stage-menu {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    min-width: 140px;
+    display: flex;
+    flex-direction: column;
+}
+
+.if-stage-menu__item {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    padding: 4px 8px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--color-text);
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.if-stage-menu__item:hover:not([disabled]) {
+    background: var(--color-bg-sunken);
+}
+
+.if-stage-menu__item[disabled] {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+}
+
+.if-stage-menu__item--danger {
+    color: var(--color-error, #f25555);
+}
