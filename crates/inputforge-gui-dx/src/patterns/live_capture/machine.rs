@@ -150,11 +150,11 @@ fn collect_crossings(
         }
         let baseline_value = baseline.iter().find(|b| b.address == entry.address);
         let delta = match (&entry.value, baseline_value.map(|b| &b.value)) {
-            (InputValue::Axis { value: cur }, Some(InputValue::Axis { value: base })) => {
+            (InputValue::Axis { value: cur, .. }, Some(InputValue::Axis { value: base, .. })) => {
                 let d = (cur.value() - base.value()).abs();
                 (d > AXIS_DEADBAND).then_some(d)
             }
-            (InputValue::Axis { value: cur }, None) => {
+            (InputValue::Axis { value: cur, .. }, None) => {
                 let d = cur.value().abs();
                 (d > AXIS_DEADBAND).then_some(d)
             }
@@ -222,10 +222,10 @@ fn current_delta_for(
     let snap = snapshot.iter().find(|e| &e.address == addr);
     let base = baseline.iter().find(|e| &e.address == addr);
     match (snap.map(|e| &e.value), base.map(|e| &e.value)) {
-        (Some(InputValue::Axis { value: cur }), Some(InputValue::Axis { value: base })) => {
+        (Some(InputValue::Axis { value: cur, .. }), Some(InputValue::Axis { value: base, .. })) => {
             (cur.value() - base.value()).abs()
         }
-        (Some(InputValue::Axis { value: cur }), None) => cur.value().abs(),
+        (Some(InputValue::Axis { value: cur, .. }), None) => cur.value().abs(),
         _ => 1.0,
     }
 }

@@ -11,7 +11,7 @@ pub fn evaluate_condition(condition: &Condition, cache: &dyn InputCache) -> bool
         Condition::ButtonPressed { input } => cache.get_button(input),
         Condition::ButtonReleased { input } => !cache.get_button(input),
         Condition::AxisInRange { input, min, max } => {
-            let value = cache.get_axis(input);
+            let (value, _polarity) = cache.get_axis(input);
             value >= *min && value <= *max
         }
         Condition::HatDirection { input, directions } => {

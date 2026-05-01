@@ -1,7 +1,9 @@
 use std::time::{Duration, Instant};
 
 use inputforge_core::state::InputCacheEntry;
-use inputforge_core::types::{AxisValue, DeviceId, InputAddress, InputId, InputValue};
+use inputforge_core::types::{
+    AxisPolarity, AxisValue, DeviceId, InputAddress, InputId, InputValue,
+};
 
 use super::CaptureFilter;
 use super::machine::{AXIS_DEADBAND, CoreState, DEBOUNCE_MS, LiveCaptureCore};
@@ -25,6 +27,7 @@ fn axis_entry(index: u8, value: f64) -> InputCacheEntry {
         address: axis_addr(index),
         value: InputValue::Axis {
             value: AxisValue::new(value),
+            polarity: AxisPolarity::Bipolar,
         },
     }
 }

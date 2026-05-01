@@ -211,7 +211,7 @@ fn read_axis_display(
 /// return 0.0.
 fn axis_f64(v: &InputValue) -> f64 {
     match v {
-        InputValue::Axis { value } => value.value(),
+        InputValue::Axis { value, .. } => value.value(),
         InputValue::Button { pressed } => {
             if *pressed {
                 1.0

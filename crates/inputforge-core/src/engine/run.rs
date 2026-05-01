@@ -959,7 +959,7 @@ impl Engine {
 /// Resolve the pipeline input value from an event, applying calibration if available.
 fn resolve_input_value(event: &InputEvent, calibrations: &DeviceCalibrationStore) -> f64 {
     match &event.value {
-        InputValue::Axis { value } => {
+        InputValue::Axis { value, .. } => {
             let raw = value.value();
             if let InputId::Axis { index } = &event.source.input {
                 calibrations

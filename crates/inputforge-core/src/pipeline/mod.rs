@@ -10,7 +10,9 @@ pub use merge::merge_axes;
 
 use crate::action::{Action, ModeChangeStrategy};
 use crate::processing::invert_axis;
-use crate::types::{HatDirection, InputAddress, InputId, InputValue, KeyCombo, OutputAddress};
+use crate::types::{
+    AxisPolarity, HatDirection, InputAddress, InputId, InputValue, KeyCombo, OutputAddress,
+};
 
 /// Threshold above which a button's `current_value` is considered pressed.
 ///
@@ -49,8 +51,10 @@ pub trait InputCache {
     /// Return whether the button at `address` is currently pressed.
     fn get_button(&self, address: &InputAddress) -> bool;
 
-    /// Return the current axis value at `address`.
-    fn get_axis(&self, address: &InputAddress) -> f64;
+    /// Return the current axis value at `address` paired with its
+    /// polarity. Polarity defaults to [`AxisPolarity::Bipolar`] when the
+    /// address is unknown.
+    fn get_axis(&self, address: &InputAddress) -> (f64, AxisPolarity);
 
     /// Return the current hat direction at `address`.
     fn get_hat(&self, address: &InputAddress) -> HatDirection;
@@ -135,7 +139,7 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                 second_input,
                 operation,
             } => {
-                let second = ctx.input_cache.get_axis(second_input);
+                let (second, _second_polarity) = ctx.input_cache.get_axis(second_input);
                 ctx.current_value = merge_axes(ctx.current_value, second, *operation);
             }
 
@@ -179,12 +183,17 @@ pub fn evaluate_actions_through(
     let stop = stop_at.min(actions.len());
 
     // Discriminate variant from the address; read via the InputCache trait.
-    // Returns the cache's default for missing entries (axis: 0.0, button: false,
-    // hat: HatDirection::Center): same convention as direct trait reads.
+    // Returns the cache's default for missing entries (axis: 0.0 + Bipolar,
+    // button: false, hat: HatDirection::Center): same convention as direct
+    // trait reads.
     let input_value = match &primary.input {
-        InputId::Axis { .. } => InputValue::Axis {
-            value: crate::types::AxisValue::new(state.input_cache.get_axis(primary)),
-        },
+        InputId::Axis { .. } => {
+            let (raw, polarity) = state.input_cache.get_axis(primary);
+            InputValue::Axis {
+                value: crate::types::AxisValue::new(raw),
+                polarity,
+            }
+        }
         InputId::Button { .. } => InputValue::Button {
             pressed: state.input_cache.get_button(primary),
         },
@@ -194,7 +203,7 @@ pub fn evaluate_actions_through(
     };
 
     let current_value: f64 = match &input_value {
-        InputValue::Axis { value } => value.value(),
+        InputValue::Axis { value, .. } => value.value(),
         InputValue::Button { pressed } => {
             if *pressed {
                 1.0
@@ -215,8 +224,9 @@ pub fn evaluate_actions_through(
     execute_pipeline(&actions[..stop], &mut ctx);
 
     match input_value {
-        InputValue::Axis { .. } => InputValue::Axis {
+        InputValue::Axis { polarity, .. } => InputValue::Axis {
             value: crate::types::AxisValue::new(ctx.current_value),
+            polarity,
         },
         InputValue::Button { .. } => InputValue::Button {
             pressed: ctx.current_value > BUTTON_PRESS_THRESHOLD,
@@ -256,6 +266,7 @@ mod tests {
             current_value: value,
             input_value: InputValue::Axis {
                 value: AxisValue::new(value),
+                polarity: AxisPolarity::Bipolar,
             },
             outputs: Vec::new(),
             input_cache: cache,
@@ -875,6 +886,7 @@ mod tests {
             &addr,
             &InputValue::Axis {
                 value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
             },
         );
 
@@ -882,7 +894,7 @@ mod tests {
         let out = evaluate_actions_through(&actions, &state, &addr, 0);
 
         match out {
-            InputValue::Axis { value } => {
+            InputValue::Axis { value, .. } => {
                 assert!((value.value() - 0.5).abs() < TOLERANCE);
             }
             other => panic!("expected Axis, got {other:?}"),
@@ -897,6 +909,7 @@ mod tests {
             &addr,
             &InputValue::Axis {
                 value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
             },
         );
 
@@ -904,7 +917,7 @@ mod tests {
         let out = evaluate_actions_through(&actions, &state, &addr, actions.len());
 
         match out {
-            InputValue::Axis { value } => {
+            InputValue::Axis { value, .. } => {
                 assert!((value.value() - (-0.5)).abs() < TOLERANCE);
             }
             other => panic!("expected Axis, got {other:?}"),
@@ -919,6 +932,7 @@ mod tests {
             &addr,
             &InputValue::Axis {
                 value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
             },
         );
 
@@ -926,7 +940,7 @@ mod tests {
         let actions = [Action::Invert, Action::Invert];
         let out = evaluate_actions_through(&actions, &state, &addr, 1);
         match out {
-            InputValue::Axis { value } => {
+            InputValue::Axis { value, .. } => {
                 assert!((value.value() - (-0.5)).abs() < TOLERANCE);
             }
             other => panic!("expected Axis, got {other:?}"),
@@ -941,6 +955,7 @@ mod tests {
             &addr,
             &InputValue::Axis {
                 value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
             },
         );
 
@@ -948,7 +963,7 @@ mod tests {
         // stop_at = 99 with 1 action; clamps to 1.
         let out = evaluate_actions_through(&actions, &state, &addr, 99);
         match out {
-            InputValue::Axis { value } => {
+            InputValue::Axis { value, .. } => {
                 assert!((value.value() - (-0.5)).abs() < TOLERANCE);
             }
             other => panic!("expected Axis, got {other:?}"),
@@ -981,7 +996,7 @@ mod tests {
         let actions: [Action; 0] = [];
         let out = evaluate_actions_through(&actions, &state, &addr, 0);
         match out {
-            InputValue::Axis { value } => {
+            InputValue::Axis { value, .. } => {
                 assert!(value.value().abs() < TOLERANCE);
             }
             other => panic!("expected Axis, got {other:?}"),
@@ -1019,6 +1034,7 @@ mod tests {
             &addr,
             &InputValue::Axis {
                 value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
             },
         );
 
@@ -1026,7 +1042,7 @@ mod tests {
         let actions = [Action::Invert, Action::Invert, Action::Invert];
         let out = evaluate_actions_through(&actions, &state, &addr, actions.len() - 1);
         match out {
-            InputValue::Axis { value } => {
+            InputValue::Axis { value, .. } => {
                 assert!((value.value() - 0.5).abs() < TOLERANCE);
             }
             other => panic!("expected Axis, got {other:?}"),

@@ -206,6 +206,10 @@ impl Sdl3Input {
         clippy::needless_pass_by_value,
         reason = "SDL Event is a small Copy-like enum"
     )]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "single match over the SDL event enum; splitting per-arm helpers fragments without value"
+    )]
     fn dispatch_sdl_event(&mut self, event: Event, now: Instant, out: &mut Vec<InputEvent>) {
         match event {
             Event::JoyAxisMotion {
@@ -242,6 +246,12 @@ impl Sdl3Input {
                                 .push(HotplugEvent::Connected(device.info.clone()));
                         }
                     }
+                    let polarity = device
+                        .info
+                        .axis_polarities
+                        .get(usize::from(axis_idx))
+                        .copied()
+                        .unwrap_or_default();
                     out.push(InputEvent {
                         source: InputAddress {
                             device: device.device_id.clone(),
@@ -249,6 +259,7 @@ impl Sdl3Input {
                         },
                         value: InputValue::Axis {
                             value: AxisValue::raw(f64::from(value) / f64::from(i16::MAX)),
+                            polarity,
                         },
                         timestamp: now,
                     });

@@ -5,6 +5,7 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 
 use super::address::InputAddress;
+use super::device::AxisPolarity;
 
 /// Normalized axis value in the range [-1.0, 1.0].
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -51,12 +52,24 @@ pub enum HatDirection {
 }
 
 /// A value read from an input.
+///
+/// Axis values carry their polarity so downstream consumers (pipeline
+/// merge, live readout) can interpret the bipolar-encoded `[-1, 1]`
+/// range correctly: bipolar axes rest at `0`, unipolar axes rest at `-1`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InputValue {
-    Axis { value: AxisValue },
-    Button { pressed: bool },
-    Hat { direction: HatDirection },
+    Axis {
+        value: AxisValue,
+        #[serde(default)]
+        polarity: AxisPolarity,
+    },
+    Button {
+        pressed: bool,
+    },
+    Hat {
+        direction: HatDirection,
+    },
 }
 
 /// An event produced by a physical input device.
@@ -123,10 +136,37 @@ mod tests {
     fn input_value_axis_serde_roundtrip() {
         let val = InputValue::Axis {
             value: AxisValue::new(0.75),
+            polarity: AxisPolarity::Bipolar,
         };
         let json = serde_json::to_string(&val).unwrap();
         let back: InputValue = serde_json::from_str(&json).unwrap();
         assert_eq!(val, back);
+    }
+
+    #[test]
+    fn input_value_axis_unipolar_serde_roundtrip() {
+        let val = InputValue::Axis {
+            value: AxisValue::new(-1.0),
+            polarity: AxisPolarity::Unipolar,
+        };
+        let json = serde_json::to_string(&val).unwrap();
+        let back: InputValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(val, back);
+    }
+
+    #[test]
+    fn input_value_axis_deserializes_without_polarity_default_bipolar() {
+        // Backwards-compatibility: existing serialized profiles without
+        // `polarity` deserialize as Bipolar (the AxisPolarity default).
+        let json = r#"{"type":"axis","value":0.5}"#;
+        let parsed: InputValue = serde_json::from_str(json).unwrap();
+        match parsed {
+            InputValue::Axis { value, polarity } => {
+                assert!((value.value() - 0.5).abs() < f64::EPSILON);
+                assert_eq!(polarity, AxisPolarity::Bipolar);
+            }
+            other => panic!("expected Axis, got {other:?}"),
+        }
     }
 
     #[test]

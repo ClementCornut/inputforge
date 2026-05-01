@@ -169,13 +169,18 @@ impl LiveSnapshot {
                                 device: did.clone(),
                                 input: InputId::Axis { index: i },
                             };
+                            // Prefer device-side polarity (from
+                            // axis_polarities, which updates on re-probe);
+                            // fall back to the cache's polarity tag if the
+                            // device entry is missing.
+                            let (value, cache_polarity) = s.input_cache.get_axis(&addr);
                             let pol = device
                                 .info
                                 .axis_polarities
                                 .get(usize::from(i))
                                 .copied()
-                                .unwrap_or_default();
-                            (s.input_cache.get_axis(&addr), pol)
+                                .unwrap_or(cache_polarity);
+                            (value, pol)
                         })
                         .collect(),
                     buttons: (0..device.info.buttons)
@@ -469,6 +474,7 @@ mod tests {
             },
             &InputValue::Axis {
                 value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
             },
         );
         state.input_cache.update(

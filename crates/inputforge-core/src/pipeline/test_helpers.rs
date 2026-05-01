@@ -3,12 +3,16 @@
 use std::collections::HashMap;
 
 use super::InputCache;
-use crate::types::{DeviceId, HatDirection, InputAddress, InputId};
+use crate::types::{AxisPolarity, DeviceId, HatDirection, InputAddress, InputId};
 
 /// Shared mock for [`InputCache`] used across pipeline tests.
+///
+/// Axes default to [`AxisPolarity::Bipolar`]; tests that need unipolar
+/// behavior insert into `axis_polarities` directly.
 pub(super) struct MockCache {
     pub buttons: HashMap<InputAddress, bool>,
     pub axes: HashMap<InputAddress, f64>,
+    pub axis_polarities: HashMap<InputAddress, AxisPolarity>,
     pub hats: HashMap<InputAddress, HatDirection>,
 }
 
@@ -33,6 +37,7 @@ impl MockCache {
         Self {
             buttons: HashMap::new(),
             axes: HashMap::new(),
+            axis_polarities: HashMap::new(),
             hats: HashMap::new(),
         }
     }
@@ -43,8 +48,14 @@ impl InputCache for MockCache {
         self.buttons.get(address).copied().unwrap_or(false)
     }
 
-    fn get_axis(&self, address: &InputAddress) -> f64 {
-        self.axes.get(address).copied().unwrap_or(0.0)
+    fn get_axis(&self, address: &InputAddress) -> (f64, AxisPolarity) {
+        let value = self.axes.get(address).copied().unwrap_or(0.0);
+        let polarity = self
+            .axis_polarities
+            .get(address)
+            .copied()
+            .unwrap_or_default();
+        (value, polarity)
     }
 
     fn get_hat(&self, address: &InputAddress) -> HatDirection {

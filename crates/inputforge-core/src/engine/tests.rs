@@ -25,8 +25,8 @@ use crate::profile::Profile;
 use crate::settings::AppSettings;
 use crate::state::{AppState, DeviceState, EngineStatus, InputCacheStore, OutputCacheStore};
 use crate::types::{
-    AxisValue, DeviceId, DeviceInfo, HatDirection, InputAddress, InputEvent, InputId, InputValue,
-    KeyCombo, OutputAddress, OutputId, VJoyAxis,
+    AxisPolarity, AxisValue, DeviceId, DeviceInfo, HatDirection, InputAddress, InputEvent, InputId,
+    InputValue, KeyCombo, OutputAddress, OutputId, VJoyAxis,
 };
 
 use super::Engine;
@@ -76,6 +76,7 @@ fn axis_event(index: u8, value: f64) -> InputEvent {
         source: axis_addr(index),
         value: InputValue::Axis {
             value: AxisValue::new(value),
+            polarity: AxisPolarity::Bipolar,
         },
         timestamp: Instant::now(),
     }
@@ -366,6 +367,7 @@ fn refresh_axes_reprocesses_cached_values() {
         &axis_addr(0),
         &InputValue::Axis {
             value: AxisValue::new(0.5),
+            polarity: AxisPolarity::Bipolar,
         },
     );
 
@@ -417,6 +419,7 @@ fn refresh_axes_skips_mode_changes_and_keys() {
         &axis_addr(0),
         &InputValue::Axis {
             value: AxisValue::new(0.3),
+            polarity: AxisPolarity::Bipolar,
         },
     );
 
@@ -921,6 +924,7 @@ fn refresh_axes_set_button_path() {
         &axis_addr(0),
         &InputValue::Axis {
             value: AxisValue::new(0.8),
+            polarity: AxisPolarity::Bipolar,
         },
     );
 

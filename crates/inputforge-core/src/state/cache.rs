@@ -3,7 +3,7 @@
 use indexmap::IndexMap;
 
 use crate::pipeline::InputCache;
-use crate::types::{DeviceId, HatDirection, InputAddress, InputValue};
+use crate::types::{AxisPolarity, DeviceId, HatDirection, InputAddress, InputValue};
 
 /// Stores the latest value for every physical input.
 ///
@@ -44,17 +44,18 @@ impl InputCacheStore {
         self.values.insert(address.clone(), value.clone());
     }
 
-    /// Return all cached axis entries as (address, value) pairs.
+    /// Return all cached axis entries as `(address, value, polarity)`
+    /// triples.
     ///
     /// Used for axis refresh when the active mode changes: every
     /// cached axis is re-processed through the new mode's pipeline.
     #[must_use]
-    pub fn get_all_axis_entries(&self) -> Vec<(InputAddress, f64)> {
+    pub fn get_all_axis_entries(&self) -> Vec<(InputAddress, f64, AxisPolarity)> {
         self.values
             .iter()
             .filter_map(|(addr, val)| {
-                if let InputValue::Axis { value } = val {
-                    Some((addr.clone(), value.value()))
+                if let InputValue::Axis { value, polarity } = val {
+                    Some((addr.clone(), value.value(), *polarity))
                 } else {
                     None
                 }
@@ -105,14 +106,16 @@ impl InputCache for InputCacheStore {
             .is_some_and(|v| matches!(v, InputValue::Button { pressed: true }))
     }
 
-    fn get_axis(&self, address: &InputAddress) -> f64 {
-        self.values.get(address).map_or(0.0, |v| {
-            if let InputValue::Axis { value } = v {
-                value.value()
-            } else {
-                0.0
-            }
-        })
+    fn get_axis(&self, address: &InputAddress) -> (f64, AxisPolarity) {
+        self.values
+            .get(address)
+            .map_or((0.0, AxisPolarity::default()), |v| {
+                if let InputValue::Axis { value, polarity } = v {
+                    (value.value(), *polarity)
+                } else {
+                    (0.0, AxisPolarity::default())
+                }
+            })
     }
 
     fn get_hat(&self, address: &InputAddress) -> HatDirection {
@@ -163,7 +166,9 @@ mod tests {
     #[test]
     fn get_axis_default_is_zero() {
         let cache = InputCacheStore::new();
-        assert!((cache.get_axis(&axis_address(0))).abs() < f64::EPSILON);
+        let (value, polarity) = cache.get_axis(&axis_address(0));
+        assert!(value.abs() < f64::EPSILON);
+        assert_eq!(polarity, AxisPolarity::Bipolar);
     }
 
     #[test]
@@ -198,9 +203,28 @@ mod tests {
             &addr,
             &InputValue::Axis {
                 value: AxisValue::new(0.75),
+                polarity: AxisPolarity::Bipolar,
             },
         );
-        assert!((cache.get_axis(&addr) - 0.75).abs() < f64::EPSILON);
+        let (value, polarity) = cache.get_axis(&addr);
+        assert!((value - 0.75).abs() < f64::EPSILON);
+        assert_eq!(polarity, AxisPolarity::Bipolar);
+    }
+
+    #[test]
+    fn update_and_get_axis_unipolar_round_trips_polarity() {
+        let mut cache = InputCacheStore::new();
+        let addr = axis_address(0);
+        cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(-1.0),
+                polarity: AxisPolarity::Unipolar,
+            },
+        );
+        let (value, polarity) = cache.get_axis(&addr);
+        assert!((value - (-1.0)).abs() < f64::EPSILON);
+        assert_eq!(polarity, AxisPolarity::Unipolar);
     }
 
     #[test]
@@ -224,15 +248,18 @@ mod tests {
             &addr,
             &InputValue::Axis {
                 value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
             },
         );
         cache.update(
             &addr,
             &InputValue::Axis {
                 value: AxisValue::new(-0.3),
+                polarity: AxisPolarity::Bipolar,
             },
         );
-        assert!((cache.get_axis(&addr) - (-0.3)).abs() < f64::EPSILON);
+        let (value, _) = cache.get_axis(&addr);
+        assert!((value - (-0.3)).abs() < f64::EPSILON);
     }
 
     // --- Type mismatch defaults ---
@@ -245,6 +272,7 @@ mod tests {
             &addr,
             &InputValue::Axis {
                 value: AxisValue::new(1.0),
+                polarity: AxisPolarity::Bipolar,
             },
         );
         assert!(!cache.get_button(&addr));
@@ -255,7 +283,9 @@ mod tests {
         let mut cache = InputCacheStore::new();
         let addr = button_address(0);
         cache.update(&addr, &InputValue::Button { pressed: true });
-        assert!((cache.get_axis(&addr)).abs() < f64::EPSILON);
+        let (value, polarity) = cache.get_axis(&addr);
+        assert!(value.abs() < f64::EPSILON);
+        assert_eq!(polarity, AxisPolarity::Bipolar);
     }
 
     // --- get_all_axis_entries ---
@@ -267,12 +297,14 @@ mod tests {
             &axis_address(0),
             &InputValue::Axis {
                 value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
             },
         );
         cache.update(
             &axis_address(1),
             &InputValue::Axis {
-                value: AxisValue::new(-0.3),
+                value: AxisValue::new(-1.0),
+                polarity: AxisPolarity::Unipolar,
             },
         );
         cache.update(&button_address(0), &InputValue::Button { pressed: true });
@@ -285,10 +317,13 @@ mod tests {
 
         let entries = cache.get_all_axis_entries();
         assert_eq!(entries.len(), 2);
-        // Both should be axis values
-        for (_, val) in &entries {
-            assert!(val.abs() <= 1.0);
+        for (_, value, _) in &entries {
+            assert!(value.abs() <= 1.0);
         }
+        // Polarity round-trips through get_all_axis_entries.
+        let polarities: Vec<AxisPolarity> = entries.iter().map(|(_, _, p)| *p).collect();
+        assert!(polarities.contains(&AxisPolarity::Bipolar));
+        assert!(polarities.contains(&AxisPolarity::Unipolar));
     }
 
     #[test]
@@ -306,6 +341,7 @@ mod tests {
             &axis_address(0),
             &InputValue::Axis {
                 value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
             },
         );
         cache.update(&button_address(1), &InputValue::Button { pressed: true });
@@ -324,7 +360,9 @@ mod tests {
             .find(|e| e.address == axis_address(0))
             .unwrap();
         match &axis_entry.value {
-            InputValue::Axis { value } => assert!((value.value() - 0.5).abs() < f64::EPSILON),
+            InputValue::Axis { value, .. } => {
+                assert!((value.value() - 0.5).abs() < f64::EPSILON);
+            }
             other => panic!("expected Axis variant, got {other:?}"),
         }
 
@@ -375,11 +413,13 @@ mod tests {
             &axis_address(0),
             &InputValue::Axis {
                 value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
             },
         );
         cache.update(&button_address(0), &InputValue::Button { pressed: true });
         cache.clear();
-        assert!((cache.get_axis(&axis_address(0))).abs() < f64::EPSILON);
+        let (value, _) = cache.get_axis(&axis_address(0));
+        assert!(value.abs() < f64::EPSILON);
         assert!(!cache.get_button(&button_address(0)));
         assert!(cache.get_all_axis_entries().is_empty());
     }

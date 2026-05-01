@@ -185,10 +185,11 @@ pub(super) fn refresh_axes_for_mode_change(
     output_sink: &mut dyn OutputSink,
     output_cache: &mut OutputCacheStore,
 ) -> Result<()> {
-    for (address, value) in cache.get_all_axis_entries() {
+    for (address, value, polarity) in cache.get_all_axis_entries() {
         if let Some(mapping) = resolve_mapping(mappings, &address, mode, tree) {
             let input_value = InputValue::Axis {
                 value: AxisValue::new(value),
+                polarity,
             };
             let mut ctx = PipelineContext {
                 current_value: value,
