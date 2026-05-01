@@ -511,12 +511,12 @@ fn format_key_combo(key: &KeyCombo) -> String {
 /// Format a [`ModeChangeStrategy`] to a concise one-line description.
 fn format_mode_strategy(strategy: &ModeChangeStrategy) -> String {
     match strategy {
-        ModeChangeStrategy::SwitchTo { mode } => format!("set {mode}"),
-        ModeChangeStrategy::Temporary { mode } => format!("hold {mode}"),
-        ModeChangeStrategy::Previous => "pop".to_owned(),
+        ModeChangeStrategy::SwitchTo { mode } => format!("Set {mode}"),
+        ModeChangeStrategy::Temporary { mode } => format!("Hold {mode}"),
+        ModeChangeStrategy::Previous => "Pop".to_owned(),
         ModeChangeStrategy::Cycle { modes } => {
             let labels = modes.modes().join(" \u{2192} ");
-            format!("cycle {labels}")
+            format!("Cycle {labels}")
         }
     }
 }
@@ -526,11 +526,11 @@ fn format_condition(condition: &Condition, cfg: &ConfigSnapshot) -> String {
     match condition {
         Condition::ButtonPressed { input } => {
             let dev = device_label(cfg, &input.device);
-            format!("button pressed \u{00b7} {dev}")
+            format!("Button pressed \u{00b7} {dev}")
         }
         Condition::ButtonReleased { input } => {
             let dev = device_label(cfg, &input.device);
-            format!("button released \u{00b7} {dev}")
+            format!("Button released \u{00b7} {dev}")
         }
         Condition::AxisInRange { input, min, max } => {
             let dev = device_label(cfg, &input.device);
@@ -538,16 +538,16 @@ fn format_condition(condition: &Condition, cfg: &ConfigSnapshot) -> String {
             // lossy float-to-int casts.
             let min_pct = *min * 100.0;
             let max_pct = *max * 100.0;
-            format!("axis {min_pct:.0}%\u{2013}{max_pct:.0}% \u{00b7} {dev}")
+            format!("Axis {min_pct:.0}%\u{2013}{max_pct:.0}% \u{00b7} {dev}")
         }
         Condition::HatDirection { input, directions } => {
             let dev = device_label(cfg, &input.device);
             let dir_count = directions.len();
-            format!("hat ({dir_count} dir) \u{00b7} {dev}")
+            format!("Hat ({dir_count} dir) \u{00b7} {dev}")
         }
-        Condition::All { conditions } => format!("all ({} conditions)", conditions.len()),
-        Condition::Any { conditions } => format!("any ({} conditions)", conditions.len()),
-        Condition::Not { .. } => "not".to_owned(),
+        Condition::All { conditions } => format!("All ({} conditions)", conditions.len()),
+        Condition::Any { conditions } => format!("Any ({} conditions)", conditions.len()),
+        Condition::Not { .. } => "Not".to_owned(),
     }
 }
 
@@ -556,18 +556,18 @@ fn format_response_curve_summary(curve: &ResponseCurve) -> String {
     match curve {
         ResponseCurve::PiecewiseLinear { points, symmetric } => {
             let sym = if *symmetric { " \u{00b7} sym" } else { "" };
-            format!("linear \u{00b7} {} pts{sym}", points.len())
+            format!("Linear \u{00b7} {} pts{sym}", points.len())
         }
         ResponseCurve::CubicSpline { points, symmetric } => {
             let sym = if *symmetric { " \u{00b7} sym" } else { "" };
-            format!("spline \u{00b7} {} pts{sym}", points.len())
+            format!("Spline \u{00b7} {} pts{sym}", points.len())
         }
         ResponseCurve::CubicBezier {
             segments,
             symmetric,
         } => {
             let sym = if *symmetric { " \u{00b7} sym" } else { "" };
-            format!("bezier \u{00b7} {} seg{sym}", segments.len())
+            format!("Bezier \u{00b7} {} seg{sym}", segments.len())
         }
     }
 }
