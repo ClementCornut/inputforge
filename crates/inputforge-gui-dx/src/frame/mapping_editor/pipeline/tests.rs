@@ -510,3 +510,17 @@ fn summary_map_to_keyboard_renders_combo() {
     assert!(s.contains("Shift"), "missing Shift in: {s}");
     assert!(s.contains('Q'), "missing key in: {s}");
 }
+
+#[test]
+fn summary_deadzone_reports_inner_band_width_and_outer_saturation_width() {
+    // low/high are the OUTER saturation thresholds; values past them clamp
+    // to +-1.0. So the outer dead band on the positive side is
+    // (1.0 - high) * 100. The inner dead band is the dead-center span,
+    // (center_high - center_low) * 100. Pin both so the formula does not
+    // drift back to reporting `high` directly (which would mislabel the
+    // live range as the dead band).
+    let cfg = DeadzoneConfig::new(-0.85, -0.10, 0.10, 0.85).unwrap();
+    let s = stage_summary_for(&Action::Deadzone { config: cfg }, &synth_cfg());
+    assert!(s.contains("inner 20%"), "expected inner 20% in: {s}");
+    assert!(s.contains("outer 15%"), "expected outer 15% in: {s}");
+}

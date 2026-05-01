@@ -102,14 +102,25 @@ pub(crate) fn stage_summary_for(action: &Action, cfg: &ConfigSnapshot) -> String
         Action::Invert => String::new(),
 
         Action::Deadzone { config } => {
-            // Show the outer low/high thresholds as percentages. The center
-            // band is omitted here because it is already visualised in the
-            // body widget (Task 27); the header needs only a glanceable hint.
-            // Format directly from f64 with no fractional digits; avoids
-            // lossy float-to-int casts.
-            let low_pct = config.low().abs() * 100.0;
-            let high_pct = config.high() * 100.0;
-            format!("inner {low_pct:.0}% \u{00b7} outer {high_pct:.0}%")
+            // DeadzoneConfig defines five zones on [-1, 1] (per its doc):
+            //   below `low`           -> saturates to -1.0  (outer dead band, neg side)
+            //   [low, center_low]     -> linear ramp to 0
+            //   [center_low,
+            //    center_high]         -> dead center        (inner dead band)
+            //   [center_high, high]   -> linear ramp to +1
+            //   above `high`          -> saturates to +1.0  (outer dead band, pos side)
+            //
+            // For the header we surface two glanceable percentages:
+            //   inner = width of the dead-center band
+            //         = (center_high - center_low) * 100
+            //   outer = width of the positive-side saturation band
+            //         = (1.0 - high) * 100
+            // The body widget (Task 27) shows the full picture; the header
+            // only needs a hint. Format directly from f64 with `{:.0}` to
+            // avoid the lossy float-to-int casts that clippy rejects.
+            let inner_pct = (config.center_high() - config.center_low()) * 100.0;
+            let outer_pct = (1.0 - config.high()) * 100.0;
+            format!("inner {inner_pct:.0}% \u{00b7} outer {outer_pct:.0}%")
         }
 
         Action::ResponseCurve { curve } => format_response_curve_summary(curve),
