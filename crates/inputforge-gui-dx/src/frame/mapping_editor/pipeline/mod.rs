@@ -16,8 +16,20 @@
               reachability check loses some pub(crate) items here."
 )]
 
+mod stage;
+pub(crate) mod stage_body;
+mod stage_header;
+
+#[cfg(test)]
+mod tests;
+
+pub(crate) use stage::Stage;
+
+use dioxus::prelude::*;
+
 use inputforge_core::action::Action;
 
+use crate::frame::MappingKey;
 use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
 
 /// Read the action at `path` in `actions`. Returns `None` when the
@@ -235,244 +247,81 @@ pub(crate) fn remove_at_path(actions: &[Action], path: &StageId) -> Option<Vec<A
     walk(actions, &path.0)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use inputforge_core::action::Condition;
-    use inputforge_core::types::{DeviceId, InputAddress, InputId, MergeOp};
-
-    fn synth_addr() -> InputAddress {
-        InputAddress {
-            device: DeviceId("dev-1".to_owned()),
-            input: InputId::Button { index: 0 },
-        }
-    }
-
-    #[test]
-    fn at_path_outer_index() {
-        let actions = vec![Action::Invert];
-        let path = StageId(vec![StageIdSegment::Index(0)]);
-        assert!(matches!(at_path(&actions, &path), Some(Action::Invert)));
-    }
-
-    #[test]
-    fn at_path_into_if_true_branch() {
-        let actions = vec![Action::Conditional {
-            condition: Condition::ButtonPressed {
-                input: synth_addr(),
-            },
-            if_true: vec![Action::Invert],
-            if_false: None,
-        }];
-        let path = StageId(vec![
-            StageIdSegment::Index(0),
-            StageIdSegment::IfTrue,
-            StageIdSegment::Index(0),
-        ]);
-        assert!(matches!(at_path(&actions, &path), Some(Action::Invert)));
-    }
-
-    #[test]
-    fn at_path_into_missing_if_false_returns_none() {
-        let actions = vec![Action::Conditional {
-            condition: Condition::ButtonPressed {
-                input: synth_addr(),
-            },
-            if_true: vec![],
-            if_false: None,
-        }];
-        let path = StageId(vec![
-            StageIdSegment::Index(0),
-            StageIdSegment::IfFalse,
-            StageIdSegment::Index(0),
-        ]);
-        assert!(at_path(&actions, &path).is_none());
-    }
-
-    #[test]
-    fn replace_at_path_outer_swaps_action() {
-        let actions = vec![Action::Invert];
-        let path = StageId(vec![StageIdSegment::Index(0)]);
-        let new = replace_at_path(
-            &actions,
-            &path,
-            Action::MergeAxis {
-                second_input: synth_addr(),
-                operation: MergeOp::Average,
-            },
-        )
-        .expect("valid path must succeed");
-        assert!(matches!(new[0], Action::MergeAxis { .. }));
-    }
-
-    #[test]
-    fn replace_at_path_inside_if_true_swaps_action() {
-        let actions = vec![Action::Conditional {
-            condition: Condition::ButtonPressed {
-                input: synth_addr(),
-            },
-            if_true: vec![Action::Invert],
-            if_false: None,
-        }];
-        let path = StageId(vec![
-            StageIdSegment::Index(0),
-            StageIdSegment::IfTrue,
-            StageIdSegment::Index(0),
-        ]);
-        let new = replace_at_path(
-            &actions,
-            &path,
-            Action::MergeAxis {
-                second_input: synth_addr(),
-                operation: MergeOp::Average,
-            },
-        )
-        .expect("valid path must succeed");
-        match &new[0] {
-            Action::Conditional { if_true, .. } => {
-                assert!(matches!(if_true[0], Action::MergeAxis { .. }));
+/// Recursive pipeline component. Renders the action vector as `<ol>` of
+/// `<Stage>` cards.
+///
+/// `mapping_key` identifies the mapping; `path_prefix` is the `StageId` path
+/// that gets prepended to each stage's per-step `Index(i)` segment so nested
+/// pipelines (Conditional branches) report deep IDs correctly.
+///
+/// `root_actions` is the mapping's outermost actions vec, threaded unchanged
+/// through every recursion into Conditional branches. Bodies use it (NOT
+/// `actions`) for `replace_at_path` / `insert_at_path` / `remove_at_path`
+/// because `StageId` paths are root-relative. See the task description for the
+/// recursion-correctness rationale.
+#[component]
+pub(crate) fn Pipeline(
+    /// `(mode, InputAddress)` key for the mapping. Named `mapping_key` to
+    /// avoid collision with Dioxus's reserved `key` prop.
+    mapping_key: MappingKey,
+    /// This pipeline's local action slice (used for rendering and `StageId`
+    /// derivation only).
+    actions: Vec<Action>,
+    /// Mapping's outermost actions vec, threaded unchanged through every
+    /// recursion. Bodies use this for tree mutators; local `actions` is
+    /// rendering-only.
+    root_actions: Vec<Action>,
+    /// `StageId` prefix segments from ancestor pipelines. Empty at the outer
+    /// mount; Conditional recursion (Task 26a) appends branch segments.
+    path_prefix: Vec<StageIdSegment>,
+    /// Indent depth (0 = outer pipeline; +1 per Conditional branch hop).
+    depth: u8,
+) -> Element {
+    if actions.is_empty() {
+        return rsx! {
+            div { class: "if-pipeline if-pipeline--empty",
+                button {
+                    r#type: "button",
+                    class: "if-pipeline__add-first",
+                    // onclick wired in Task 28: opens the categorized add
+                    // palette anchored to this button.
+                    "+ Add first stage"
+                }
             }
-            _ => panic!("outer wrapper should remain Conditional"),
-        }
+        };
     }
 
-    #[test]
-    fn replace_at_path_invalid_path_returns_none() {
-        // Out-of-range index: must return None, not panic, in BOTH debug
-        // and release. Callers depend on this to skip the edit + skip
-        // push_edit (no phantom undo entries).
-        let actions = vec![Action::Invert];
-        let path = StageId(vec![StageIdSegment::Index(99)]);
-        assert!(replace_at_path(&actions, &path, Action::Invert).is_none());
+    let path_prefix_for_iter = path_prefix.clone();
+    let key_for_iter = mapping_key.clone();
+    let root_for_iter = root_actions.clone();
 
-        // Empty path.
-        let path = StageId(vec![]);
-        assert!(replace_at_path(&actions, &path, Action::Invert).is_none());
-
-        // Path starts with a branch segment.
-        let path = StageId(vec![StageIdSegment::IfTrue]);
-        assert!(replace_at_path(&actions, &path, Action::Invert).is_none());
-
-        // Branch segment after a non-Conditional action.
-        let path = StageId(vec![StageIdSegment::Index(0), StageIdSegment::IfTrue]);
-        assert!(replace_at_path(&actions, &path, Action::Invert).is_none());
-    }
-
-    #[test]
-    fn insert_at_path_outer_appends() {
-        let actions = vec![Action::Invert];
-        let path = StageId(vec![StageIdSegment::Index(1)]);
-        let new = insert_at_path(&actions, &path, Action::Invert).expect("valid path");
-        assert_eq!(new.len(), 2);
-    }
-
-    #[test]
-    fn insert_at_path_outer_inserts_at_index() {
-        let actions = vec![Action::Invert];
-        let path = StageId(vec![StageIdSegment::Index(0)]);
-        let new = insert_at_path(
-            &actions,
-            &path,
-            Action::MergeAxis {
-                second_input: synth_addr(),
-                operation: MergeOp::Average,
-            },
-        )
-        .expect("valid path");
-        assert_eq!(new.len(), 2);
-        assert!(matches!(new[0], Action::MergeAxis { .. }));
-        assert!(matches!(new[1], Action::Invert));
-    }
-
-    #[test]
-    fn insert_at_path_into_if_false_creates_branch() {
-        let actions = vec![Action::Conditional {
-            condition: Condition::ButtonPressed {
-                input: synth_addr(),
-            },
-            if_true: vec![],
-            if_false: None,
-        }];
-        let path = StageId(vec![
-            StageIdSegment::Index(0),
-            StageIdSegment::IfFalse,
-            StageIdSegment::Index(0),
-        ]);
-        let new = insert_at_path(&actions, &path, Action::Invert).expect("valid path");
-        match &new[0] {
-            Action::Conditional { if_false, .. } => {
-                assert_eq!(if_false.as_ref().map(Vec::len), Some(1));
+    rsx! {
+        ol { class: "if-pipeline",
+            for (i, action) in actions.iter().enumerate() {
+                {
+                    let mut path = path_prefix_for_iter.clone();
+                    path.push(StageIdSegment::Index(i));
+                    let stage_id = StageId(path);
+                    rsx! {
+                        Stage {
+                            key: "{i}",
+                            stage_id,
+                            mapping_key: key_for_iter.clone(),
+                            action: action.clone(),
+                            root_actions: root_for_iter.clone(),
+                            depth,
+                        }
+                    }
+                }
             }
-            _ => panic!("expected Conditional"),
-        }
-    }
-
-    #[test]
-    fn remove_at_path_outer_drops_action() {
-        let actions = vec![Action::Invert, Action::Invert];
-        let path = StageId(vec![StageIdSegment::Index(0)]);
-        let new = remove_at_path(&actions, &path).expect("valid path");
-        assert_eq!(new.len(), 1);
-    }
-
-    #[test]
-    fn remove_at_path_last_in_if_false_collapses_to_none() {
-        let actions = vec![Action::Conditional {
-            condition: Condition::ButtonPressed {
-                input: synth_addr(),
-            },
-            if_true: vec![],
-            if_false: Some(vec![Action::Invert]),
-        }];
-        let path = StageId(vec![
-            StageIdSegment::Index(0),
-            StageIdSegment::IfFalse,
-            StageIdSegment::Index(0),
-        ]);
-        let new = remove_at_path(&actions, &path).expect("valid path");
-        match &new[0] {
-            Action::Conditional { if_false, .. } => {
-                assert!(
-                    if_false.is_none(),
-                    "empty if_false branch must collapse to None"
-                );
+            li { class: "if-pipeline__add-end",
+                button {
+                    r#type: "button",
+                    class: "if-pipeline__add-button",
+                    // onclick wired in Task 28: opens add palette.
+                    "+"
+                }
             }
-            _ => panic!("expected Conditional"),
         }
-    }
-
-    #[test]
-    fn insert_remove_invalid_paths_return_none() {
-        // Same contract as replace_at_path: callers depend on None
-        // (NOT panic in release) so they can skip the edit + skip push_edit.
-        let actions = vec![Action::Invert];
-
-        // Empty path.
-        assert!(insert_at_path(&actions, &StageId(vec![]), Action::Invert).is_none());
-        assert!(remove_at_path(&actions, &StageId(vec![])).is_none());
-
-        // Path starts with branch segment.
-        assert!(
-            insert_at_path(
-                &actions,
-                &StageId(vec![StageIdSegment::IfTrue]),
-                Action::Invert
-            )
-            .is_none()
-        );
-        assert!(remove_at_path(&actions, &StageId(vec![StageIdSegment::IfTrue])).is_none());
-
-        // Out-of-range index for remove_at_path.
-        assert!(remove_at_path(&actions, &StageId(vec![StageIdSegment::Index(99)])).is_none());
-
-        // Branch segment after a non-Conditional action.
-        let path = StageId(vec![
-            StageIdSegment::Index(0),
-            StageIdSegment::IfTrue,
-            StageIdSegment::Index(0),
-        ]);
-        assert!(insert_at_path(&actions, &path, Action::Invert).is_none());
-        assert!(remove_at_path(&actions, &path).is_none());
     }
 }

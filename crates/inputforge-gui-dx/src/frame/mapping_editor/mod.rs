@@ -27,6 +27,7 @@ use inactive_hint::InactiveHint;
 use input_field::InputField;
 use live_readout::LiveReadout;
 use name_field::NameField;
+use pipeline::Pipeline;
 use undo_recap::UndoRecap;
 
 use std::collections::{HashMap, HashSet};
@@ -95,12 +96,17 @@ pub(crate) fn MappingEditor() -> Element {
                         }
                         LiveReadout {
                             primary: input.clone(),
-                            actions: actions_clone,
+                            actions: actions_clone.clone(),
+                        }
+                        Pipeline {
+                            mapping_key: (mode.clone(), input.clone()),
+                            actions: actions_clone.clone(),
+                            root_actions: actions_clone.clone(),
+                            path_prefix: vec![],
+                            depth: 0,
                         }
                         InactiveHint {}
                         UndoRecap { mapping_key: (mode, input) }
-                        // Remaining sections (pipeline) land in subsequent
-                        // tasks.
                     }
                 }
             } else {
