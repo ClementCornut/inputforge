@@ -10,10 +10,12 @@
 )]
 
 mod empty_state;
+mod engine_offline_banner;
 pub(crate) mod pipeline;
 pub(crate) mod undo_log;
 
 pub(crate) use empty_state::EmptyState;
+use engine_offline_banner::EngineOfflineBanner;
 
 use std::collections::{HashMap, HashSet};
 
@@ -45,6 +47,7 @@ pub(crate) fn MappingEditor() -> Element {
     rsx! {
         Stylesheet { href: MAPPING_EDITOR_CSS }
         div { class: "if-editor",
+            EngineOfflineBanner {}
             if !has_selection {
                 EmptyState {}
             } else {

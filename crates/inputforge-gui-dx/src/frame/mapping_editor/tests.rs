@@ -9,7 +9,7 @@ use dioxus_ssr::render;
 use parking_lot::RwLock;
 
 use inputforge_core::settings::AppSettings;
-use inputforge_core::state::AppState;
+use inputforge_core::state::{AppState, EngineStatus};
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
 use crate::frame::mapping_editor::{EditorState, MappingEditor, use_editor_state_provider};
@@ -139,5 +139,58 @@ fn editor_state_provider_mounts_and_reads_via_use_context() {
     assert!(
         html.contains("ok"),
         "child must render with both contexts available; got: {html}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Task 13: engine-offline banner
+// ---------------------------------------------------------------------------
+
+#[test]
+fn engine_offline_banner_visible_when_status_is_stopped() {
+    #[allow(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn h() -> Element {
+        let (cmd_tx, _) = mpsc::channel();
+        let raw = RawHandles {
+            state: Arc::new(RwLock::new(AppState::new())),
+            commands: cmd_tx,
+            settings: Arc::new(AppSettings::default()),
+        };
+        use_context_provider(|| raw.clone());
+        let meta = use_signal(|| MetaSnapshot {
+            engine_status: EngineStatus::Stopped,
+            profile_name: Some("P".to_owned()),
+            modes: vec!["Default".to_owned()],
+            startup_mode: Some("Default".to_owned()),
+            ..MetaSnapshot::default()
+        });
+        let config = use_signal(ConfigSnapshot::default);
+        let live = use_signal(LiveSnapshot::default);
+        let ctx = AppContext {
+            state: Arc::clone(&raw.state),
+            commands: raw.commands.clone(),
+            settings: Arc::clone(&raw.settings),
+            meta,
+            config,
+            live,
+        };
+        use_context_provider(|| ctx);
+        let view = use_view_state_provider(meta);
+        use_context_provider(|| view);
+        use_live_capture_provider();
+        use_editor_state_provider();
+        let toast_state = use_signal(ToastState::default);
+        use_context_provider(|| ToastQueue { state: toast_state });
+        rsx! { MappingEditor {} }
+    }
+    let mut vdom = VirtualDom::new(h);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("Engine offline"),
+        "expected offline banner copy, got: {html}"
     );
 }
