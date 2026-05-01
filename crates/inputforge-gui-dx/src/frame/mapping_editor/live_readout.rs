@@ -154,9 +154,13 @@ fn ReadoutRow(label: String, display: AxisDisplay) -> Element {
 // ---------------------------------------------------------------------------
 
 /// Thin display value carried through the readout component tree.
+///
+/// `value` is normalized to the polarity's natural domain:
+/// - `Bipolar`: `[-1.0, 1.0]`, where 0 is centered.
+/// - `Unipolar`: `[0.0, 1.0]`, where 0 is idle and 1 is fully pressed.
 #[derive(Clone, Copy, PartialEq)]
 struct AxisDisplay {
-    /// Normalized value in [-1.0, 1.0].
+    /// Normalized value in the polarity's natural domain.
     value: f64,
     polarity: AxisPolarity,
 }
@@ -165,6 +169,12 @@ struct AxisDisplay {
 ///
 /// Falls back to `(0.0, Bipolar)` when the device or axis index is not
 /// present in the snapshot (e.g. engine offline or non-axis input).
+///
+/// Hardware reports both bipolar and unipolar axes in the bipolar-encoded
+/// range `[-1.0, 1.0]`. For unipolar axes (pedals, throttles, brakes) we
+/// remap to the natural `[0.0, 1.0]` domain so a Thrustmaster pedal idle
+/// reads `0.00` (not `-1.00`) and the unipolar bar fill grows monotonically
+/// with press depth.
 fn read_axis_display(
     addr: &InputAddress,
     live: &LiveSnapshot,
@@ -177,12 +187,17 @@ fn read_axis_display(
         };
     };
     let dev_idx = cfg.devices.iter().position(|d| d.info.id == addr.device);
-    if let Some(di) = dev_idx {
-        if let Some(dev_inputs) = live.device_inputs.get(di) {
-            if let Some(&(value, polarity)) = dev_inputs.axes.get(usize::from(index)) {
-                return AxisDisplay { value, polarity };
-            }
-        }
+    if let Some(di) = dev_idx
+        && let Some(dev_inputs) = live.device_inputs.get(di)
+        && let Some(&(raw, polarity)) = dev_inputs.axes.get(usize::from(index))
+    {
+        let value = match polarity {
+            AxisPolarity::Bipolar => raw,
+            // Remap [-1, 1] to [0, 1]: midpoint of `raw` and 1.0 hits 0
+            // at raw=-1, 0.5 at raw=0, and 1 at raw=1.
+            AxisPolarity::Unipolar => f64::midpoint(raw, 1.0),
+        };
+        return AxisDisplay { value, polarity };
     }
     AxisDisplay {
         value: 0.0,
