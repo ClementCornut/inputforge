@@ -25,6 +25,22 @@ mod tests;
 
 pub(crate) use stage::Stage;
 
+/// Render a [`StageId`] as a dot-separated string of path segments.
+///
+/// Used by both `stage.rs` (for `data-stage-id` attributes) and
+/// `stage_header.rs` (for `aria-controls` IDs). Centralised here so both
+/// modules share one definition.
+pub(super) fn format_stage_id(id: &StageId) -> String {
+    id.0.iter()
+        .map(|seg| match seg {
+            StageIdSegment::Index(i) => format!("{i}"),
+            StageIdSegment::IfTrue => "T".to_owned(),
+            StageIdSegment::IfFalse => "F".to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
 use dioxus::prelude::*;
 
 use inputforge_core::action::Action;

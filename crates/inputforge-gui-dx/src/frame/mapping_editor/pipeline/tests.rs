@@ -15,10 +15,14 @@ use parking_lot::RwLock;
 
 use inputforge_core::action::{Action, Condition, Mapping};
 use inputforge_core::mode::ModeTree;
+use inputforge_core::processing::DeadzoneConfig;
 use inputforge_core::profile::Profile;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, EngineStatus};
-use inputforge_core::types::{AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, MergeOp};
+use inputforge_core::types::{
+    AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, KeyCombo, KeyModifier, MergeOp,
+    OutputAddress, OutputId, VJoyAxis,
+};
 use std::collections::HashMap;
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
@@ -418,4 +422,91 @@ fn pipeline_empty_branch_renders_add_first_stage_affordance() {
         html.contains("Add first stage"),
         "empty pipeline must show louder add affordance: {html}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Task 21: stage_title_for / stage_summary_for unit tests
+// ---------------------------------------------------------------------------
+
+use crate::frame::mapping_editor::pipeline::stage::{stage_summary_for, stage_title_for};
+
+/// Build a minimal [`ConfigSnapshot`] containing a single device named "Stick".
+fn synth_cfg() -> ConfigSnapshot {
+    ConfigSnapshot {
+        devices: vec![inputforge_core::state::DeviceState {
+            info: DeviceInfo {
+                id: DeviceId("dev-1".to_owned()),
+                name: "Stick".to_owned(),
+                axes: 2,
+                buttons: 4,
+                hats: 0,
+                instance_path: None,
+                axis_polarities: vec![AxisPolarity::Bipolar; 2],
+            },
+            connected: true,
+        }],
+        ..ConfigSnapshot::default()
+    }
+}
+
+#[test]
+fn title_for_each_variant() {
+    assert_eq!(stage_title_for(&Action::Invert), "Invert");
+    assert_eq!(
+        stage_title_for(&Action::Deadzone {
+            config: DeadzoneConfig::default()
+        }),
+        "Deadzone"
+    );
+    assert_eq!(
+        stage_title_for(&Action::MapToVJoy {
+            output: OutputAddress {
+                device: 1,
+                output: OutputId::Axis { id: VJoyAxis::X }
+            }
+        }),
+        "Map to vJoy"
+    );
+    assert_eq!(
+        stage_title_for(&Action::MergeAxis {
+            second_input: synth_addr(),
+            operation: MergeOp::Average,
+        }),
+        "Merge axis"
+    );
+}
+
+#[test]
+fn summary_invert_is_empty() {
+    let s = stage_summary_for(&Action::Invert, &synth_cfg());
+    assert_eq!(s, "");
+}
+
+#[test]
+fn summary_merge_axis_lists_op_and_secondary() {
+    let s = stage_summary_for(
+        &Action::MergeAxis {
+            second_input: synth_addr(),
+            operation: MergeOp::Average,
+        },
+        &synth_cfg(),
+    );
+    assert!(s.contains("Average"), "expected op in summary: {s}");
+    assert!(s.contains("Stick"), "expected device in summary: {s}");
+}
+
+#[test]
+fn summary_map_to_keyboard_renders_combo() {
+    let s = stage_summary_for(
+        &Action::MapToKeyboard {
+            key: KeyCombo {
+                key: "Q".to_owned(),
+                modifiers: vec![KeyModifier::Ctrl, KeyModifier::Shift],
+            },
+        },
+        &synth_cfg(),
+    );
+    assert!(s.contains("Ctrl"), "missing Ctrl in: {s}");
+    assert!(s.contains("Shift"), "missing Shift in: {s}");
+    assert!(s.contains('Q'), "missing key in: {s}");
 }

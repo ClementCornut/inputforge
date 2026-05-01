@@ -35,7 +35,7 @@ pub(crate) fn StageHeader(
     let editor = use_context::<EditorState>();
     let mut expanded_set = editor.expanded_stages;
     let stage_id_for_click = stage_id.clone();
-    let controls_id = format!("if-stage-body-{}", format_stage_id(&stage_id));
+    let controls_id = format!("if-stage-body-{}", super::format_stage_id(&stage_id));
 
     let onclick = move |_evt: MouseEvent| {
         let mut set = expanded_set.write();
@@ -60,16 +60,4 @@ pub(crate) fn StageHeader(
             }
         }
     }
-}
-
-fn format_stage_id(id: &StageId) -> String {
-    use crate::frame::mapping_editor::undo_log::StageIdSegment;
-    id.0.iter()
-        .map(|seg| match seg {
-            StageIdSegment::Index(i) => format!("{i}"),
-            StageIdSegment::IfTrue => "T".to_owned(),
-            StageIdSegment::IfFalse => "F".to_owned(),
-        })
-        .collect::<Vec<_>>()
-        .join(".")
 }

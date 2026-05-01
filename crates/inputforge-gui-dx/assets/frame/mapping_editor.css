@@ -305,6 +305,7 @@
     background: var(--color-stage-tint-control);
 }
 
+/* grid: fixed 32px chevron slot + collapsing summary column */
 .if-stage__header {
     width: 100%;
     display: grid;
