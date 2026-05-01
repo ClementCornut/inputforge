@@ -537,7 +537,6 @@
 
 .if-pipeline__add-end {
     list-style: none;
-    text-align: center;
 }
 
 .if-stage {
@@ -669,45 +668,61 @@
 /* Task 28: categorized add palette */
 
 .if-add-palette {
-    /* inline-block: anchor for absolutely-positioned menu */
-    display: inline-block;
+    /* Block: full-width slot for the trigger; relative anchors the
+       absolutely-positioned dropdown menu. */
+    display: block;
     position: relative;
 }
 
-/* End-of-pipeline `+`: compact, neutral, only carries weight on hover. */
+/* End-of-pipeline trigger: full-width quiet "next slot" row. Same
+   dashed-violet family as the louder empty-state placeholder, but at
+   roughly half the alpha so it reads as "quietly clickable" rather
+   than "shouting empty drop zone". Hover brings border + bg + color
+   up to the louder intensity, so the affordance is always discoverable
+   on intent without dominating the pipeline at rest. Hit target is
+   the full row (~28px tall) instead of an 8x14px glyph. */
 .if-add-palette__trigger {
-    background: transparent;
-    border: 0;
-    padding: 0;
-    color: var(--color-border-strong);
-    font-family: var(--font-mono);
-    font-size: 14px;
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 28px;
+    background: rgba(154, 120, 214, 0.03);
+    border: 1px dashed rgba(184, 155, 234, 0.20);
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: var(--color-text-muted);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
     line-height: 1;
     cursor: pointer;
+    transition:
+        background var(--duration-fast) var(--easing-fast),
+        border-color var(--duration-fast) var(--easing-fast),
+        color var(--duration-fast) var(--easing-fast);
 }
 
 .if-add-palette__trigger:hover {
+    background: rgba(154, 120, 214, 0.06);
+    border-color: rgba(184, 155, 234, 0.40);
     color: var(--color-control-badge-text);
 }
 
 .if-add-palette__trigger:focus-visible {
     outline: 2px solid var(--color-border-focus);
     outline-offset: 2px;
-    border-radius: 2px;
 }
 
-/* Empty-pipeline placeholder: louder dashed-violet card so the user
-   sees that the pipeline is empty and clickable. */
+/* Empty-pipeline placeholder: louder version of the same family. Larger
+   padding so the empty card has more presence; intensity matches what
+   the compact trigger reaches on hover. */
 .if-add-palette__trigger--louder {
-    width: 100%;
     background: rgba(154, 120, 214, 0.06);
-    border: 1px dashed rgba(184, 155, 234, 0.40);
-    border-radius: 6px;
-    padding: 8px 12px;
+    border-color: rgba(184, 155, 234, 0.40);
+    padding: 10px 12px;
     color: var(--color-control-badge-text);
-    font-family: var(--font-sans);
-    font-size: 12px;
-    font-weight: 500;
     line-height: 1.45;
 }
 

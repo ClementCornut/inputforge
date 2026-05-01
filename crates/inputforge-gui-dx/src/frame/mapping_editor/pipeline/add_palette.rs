@@ -32,6 +32,7 @@ use inputforge_core::types::{
     DeviceId, InputAddress, InputId, KeyCombo, MergeOp, OutputAddress, OutputId, VJoyAxis,
 };
 
+use crate::components::Icon;
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
@@ -39,6 +40,7 @@ use crate::frame::mapping_editor::pipeline::insert_at_path;
 use crate::frame::mapping_editor::undo_log::{
     LabelArgs, StageId, StageIdSegment, UndoKind, format_undo_label,
 };
+use crate::icons::{Icon as IconKind, IconSize};
 
 use inputforge_core::action::ModeChangeStrategy;
 
@@ -295,26 +297,36 @@ pub(crate) fn AddPalette(
         }
     };
 
-    // Button label and class modifier depend on louder / compact mode.
-    // The `--louder` modifier paints the empty-pipeline placeholder as a
-    // full-width dashed-violet card; the bare class is the inline `+` used
-    // at the end of a non-empty pipeline.
-    let (button_label, trigger_class) = if louder {
-        (
-            "+ Add first stage",
-            "if-add-palette__trigger if-add-palette__trigger--louder",
-        )
+    // Class modifier depends on louder / compact mode. Both variants
+    // share the dashed-violet "next slot" treatment (defined in CSS);
+    // `--louder` raises the alpha to make the empty-pipeline placeholder
+    // shout. Compact stays quiet, then matches the louder intensity on
+    // hover so the affordance is discoverable without dominating the
+    // pipeline at rest.
+    let trigger_class = if louder {
+        "if-add-palette__trigger if-add-palette__trigger--louder"
     } else {
-        ("+", "if-add-palette__trigger")
+        "if-add-palette__trigger"
     };
 
     rsx! {
         div { class: "if-add-palette",
-            button {
-                r#type: "button",
-                class: "{trigger_class}",
-                onclick: move |_| open.set(!open()),
-                "{button_label}"
+            if louder {
+                button {
+                    r#type: "button",
+                    class: "{trigger_class}",
+                    onclick: move |_| open.set(!open()),
+                    Icon { name: IconKind::Plus, size: IconSize::Sm }
+                    "Add first stage"
+                }
+            } else {
+                button {
+                    r#type: "button",
+                    class: "{trigger_class}",
+                    "aria-label": "Add stage",
+                    onclick: move |_| open.set(!open()),
+                    Icon { name: IconKind::Plus, size: IconSize::Sm }
+                }
             }
             if open() {
                 div { class: "if-add-palette__menu",
