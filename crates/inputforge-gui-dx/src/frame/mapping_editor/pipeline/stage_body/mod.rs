@@ -1,45 +1,75 @@
 // Rust guideline compliant 2026-05-01
 
-//! Stage body dispatcher and per-variant body components.
-//!
-//! Task 20 ships only `header_right_slot`, the helper that returns the
-//! Element rendered inside the `StageHeader`'s 32x32 chevron slot.
-//! Default for all F9-owned variants: chevron-down SVG. F10/F11/F14
-//! override their variants' branch in this helper to inject a preview
-//! thumbnail. Body dispatcher and per-variant components land in Task 22+.
-
-#![allow(
-    dead_code,
-    reason = "header_right_slot consumed by stage.rs; body dispatcher lands in Task 22+"
-)]
+//! Variant-body dispatcher. Each `Action` variant has its own body
+//! component; this module dispatches based on the variant. F10/F11/F14
+//! replace only their variant's branch in `StageBody` and
+//! `header_right_slot()`: the dispatcher itself, `StageHeader`, and the
+//! `EditorState` provider are invariant.
 
 use dioxus::prelude::*;
 
 use inputforge_core::action::Action;
 
-/// Returns the Element rendered inside the stage header's 32x32 chevron
-/// slot. For all Task-20 variants the default is a chevron-down SVG that
-/// rotates to indicate collapsed state. F10/F11/F14 will override specific
-/// variant branches to inject a preview thumbnail.
-pub(crate) fn header_right_slot(_action: &Action, expanded: bool) -> Element {
-    let class = if expanded {
-        "if-stage__chevron"
-    } else {
-        "if-stage__chevron if-stage__chevron--collapsed"
-    };
+use crate::frame::MappingKey;
+use crate::frame::mapping_editor::undo_log::StageId;
+
+mod invert;
+// MapToVJoy, MapToKeyboard, MergeAxis, Conditional bodies land in tasks 23-26b.
+// Placeholders for ResponseCurve, Deadzone, ChangeMode land in task 27.
+
+#[component]
+pub(crate) fn StageBody(
+    mapping_key: MappingKey,
+    stage_id: StageId,
+    action: Action,
+    /// The mapping's outermost actions vec, threaded unchanged through
+    /// every recursion. Bodies use this for tree mutators because `StageId`
+    /// paths are root-relative. See Task 20 / Task 11.
+    root_actions: Vec<Action>,
+) -> Element {
+    match &action {
+        Action::Invert => rsx! { invert::InvertBody {} },
+        // Stub for other variants until tasks 23+.
+        _ => rsx! { div { class: "if-stage__body-stub", "(body coming soon)" } },
+    }
+}
+
+/// Per-variant `right_slot` for `StageHeader`. Called from `Stage::render`.
+/// F9-owned variants all return the default chevron-down SVG (the visual
+/// affordance for expand/collapse). F10/F11/F14 override their variants
+/// here to return their 28x14 preview thumbnail. Per spec lines 325-326,
+/// the `IconButton`'s 32x32 hit area, `aria-expanded`, and `aria-controls`
+/// remain invariant: only the visual content of the slot changes.
+#[allow(
+    clippy::match_same_arms,
+    reason = "Named arms are the F10/F11/F14 override seam (spec lines 325-326). \
+              Each will return a preview thumbnail when those tasks land; \
+              collapsing into wildcard would erase the seam."
+)]
+pub(crate) fn header_right_slot(action: &Action, _expanded: bool) -> Element {
+    match action {
+        // F10 will override (preview = curve thumbnail):
+        Action::ResponseCurve { .. } => default_chevron(),
+        // F11 will override (preview = deadzone visualization):
+        Action::Deadzone { .. } => default_chevron(),
+        // F14 will override (preview = mode badge):
+        Action::ChangeMode { .. } => default_chevron(),
+        // F9-owned variants: chevron only.
+        _ => default_chevron(),
+    }
+}
+
+fn default_chevron() -> Element {
     rsx! {
+        // Chevron-down SVG; rotation is CSS-driven via `aria-expanded`.
         svg {
-            class: "{class}",
-            width: "12",
-            height: "12",
-            view_box: "0 0 12 12",
+            xmlns: "http://www.w3.org/2000/svg",
+            width: "16",
+            height: "16",
+            view_box: "0 0 16 16",
+            fill: "currentColor",
             "aria-hidden": "true",
-            path {
-                d: "M2 4 L6 8 L10 4",
-                stroke: "currentColor",
-                stroke_width: "1.5",
-                fill: "none",
-            }
+            path { d: "M3.5 5.5L8 10l4.5-4.5z" }
         }
     }
 }

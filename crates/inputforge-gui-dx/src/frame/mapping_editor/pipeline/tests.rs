@@ -325,11 +325,17 @@ fn build_state(actions: Vec<Action>) -> (AppState, InputAddress) {
 struct HarnessProps {
     state: Arc<RwLock<AppState>>,
     addr: InputAddress,
+    /// Stage IDs to pre-expand in `EditorState` before rendering. Used by tests
+    /// that assert on body content (Task 22+).
+    #[props(default)]
+    pre_expanded_stages: Vec<StageId>,
 }
 
 impl PartialEq for HarnessProps {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.state, &other.state) && self.addr == other.addr
+        Arc::ptr_eq(&self.state, &other.state)
+            && self.addr == other.addr
+            && self.pre_expanded_stages == other.pre_expanded_stages
     }
 }
 
@@ -338,7 +344,11 @@ impl PartialEq for HarnessProps {
     reason = "Dioxus components are PascalCase by convention"
 )]
 fn HarnessComponent(props: HarnessProps) -> Element {
-    let HarnessProps { state, addr } = props;
+    let HarnessProps {
+        state,
+        addr,
+        pre_expanded_stages,
+    } = props;
 
     let (cmd_tx, _) = mpsc::channel();
     let raw = RawHandles {
@@ -377,18 +387,30 @@ fn HarnessComponent(props: HarnessProps) -> Element {
         .replace(("Default".to_owned(), addr));
     use_context_provider(|| view);
     use_live_capture_provider();
-    use_editor_state_provider();
+    let editor = use_editor_state_provider();
+    for stage_id in pre_expanded_stages {
+        editor.expanded_stages.clone().write().insert(stage_id);
+    }
     let toast_state = use_signal(ToastState::default);
     use_context_provider(|| ToastQueue { state: toast_state });
     rsx! { MappingEditor {} }
 }
 
 fn render_with(state: AppState, addr: InputAddress) -> String {
+    render_with_expanded(state, addr, vec![])
+}
+
+fn render_with_expanded(
+    state: AppState,
+    addr: InputAddress,
+    pre_expanded_stages: Vec<StageId>,
+) -> String {
     let mut vdom = VirtualDom::new_with_props(
         HarnessComponent,
         HarnessProps {
             state: Arc::new(RwLock::new(state)),
             addr,
+            pre_expanded_stages,
         },
     );
     vdom.rebuild_in_place();
@@ -523,4 +545,19 @@ fn summary_deadzone_reports_inner_band_width_and_outer_saturation_width() {
     let s = stage_summary_for(&Action::Deadzone { config: cfg }, &synth_cfg());
     assert!(s.contains("inner 20%"), "expected inner 20% in: {s}");
     assert!(s.contains("outer 15%"), "expected outer 15% in: {s}");
+}
+
+// ---------------------------------------------------------------------------
+// Task 22: Stage body dispatcher + Invert body
+// ---------------------------------------------------------------------------
+
+#[test]
+fn invert_stage_expanded_renders_descriptive_caption() {
+    let (state, addr) = build_state(vec![Action::Invert]);
+    let pre_expanded = vec![StageId(vec![StageIdSegment::Index(0)])];
+    let html = render_with_expanded(state, addr, pre_expanded);
+    assert!(
+        html.contains("Inverts the input value"),
+        "expected Invert descriptive caption in body: {html}"
+    );
 }

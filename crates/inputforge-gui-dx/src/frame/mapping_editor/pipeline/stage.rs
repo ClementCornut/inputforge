@@ -66,8 +66,12 @@ pub(crate) fn Stage(
                 div {
                     id: "{body_id}",
                     class: "if-stage__body",
-                    // Body dispatcher lands in Task 22.
-                    div { class: "if-stage__body-placeholder", "(body)" }
+                    stage_body::StageBody {
+                        mapping_key: mapping_key.clone(),
+                        stage_id: stage_id.clone(),
+                        action: action.clone(),
+                        root_actions: root_actions.clone(),
+                    }
                 }
             }
         }
@@ -266,9 +270,8 @@ fn device_label<'a>(cfg: &'a ConfigSnapshot, id: &'a inputforge_core::types::Dev
         .map_or(id.0.as_str(), |d| d.info.name.as_str())
 }
 
-/// Suppress unused-variable warning for `depth` and `mapping_key` until
-/// Task 26a and Task 22 consume them respectively.
+/// Suppress unused-variable warning for `depth` until Task 26a
+/// wires Conditional recursion depth-gating.
 const _: () = {
     fn _assert_depth_used(_d: u8) {}
-    fn _assert_mk_used(_k: &MappingKey) {}
 };
