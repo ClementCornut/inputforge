@@ -5,9 +5,13 @@
 //! # Controls
 //!
 //! Four modifier checkboxes (Ctrl, Alt, Shift, Win) and a free-text key
-//! field allow the user to specify a full [`KeyCombo`]. Changes commit on
-//! every `oninput` event for the text field and on every `onchange` for the
-//! checkboxes.
+//! field allow the user to specify a full [`KeyCombo`]. The modifier
+//! checkboxes dispatch on every `onchange` (each toggle is one click, so
+//! one dispatch per click). The key field follows Task 15's commit-on-blur
+//! pattern: `oninput` only updates the local `Signal`, and the dispatch
+//! happens once on `onblur` (or when the user presses Enter, which
+//! programmatically blurs the input). This avoids flooding the engine
+//! channel and undo log with one entry per keystroke.
 //!
 //! # Live capture
 //!
@@ -49,7 +53,7 @@ use inputforge_core::action::{Action, Mapping};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{KeyCombo, KeyModifier};
 
-use crate::components::{Checkbox, TextInput};
+use crate::components::Checkbox;
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
@@ -252,18 +256,36 @@ pub(crate) fn MapToKeyboardBody(
         );
     };
 
-    // --- Key text field handler ---
-    let mapping_key_key = mapping_key.clone();
-    let stage_id_key = stage_id.clone();
-    let root_actions_key = root_actions.clone();
-    let before_key = before_mapping.clone();
-    let current_name_key = current_name.clone();
-    let cmd_tx_key = ctx.commands.clone();
-    let mut undo_log_key = editor.undo_log;
+    // --- Key text field handlers ---
+    //
+    // Per the F9 plan (lines 5340-5352) and Task 15's NameField pattern, the
+    // key field commits on `onblur`, NOT on every `oninput` keystroke. The
+    // `oninput` handler only updates the local working copy so the textbox
+    // stays controlled; the actual `dispatch_keyboard` runs once when the
+    // user moves focus away (or presses Enter, which programmatically blurs
+    // the input via the same path NameField uses).
+    let oninput = move |evt: FormEvent| {
+        local_key.set(evt.value());
+    };
 
-    let on_key_input = move |evt: FormEvent| {
-        let new_key_str = evt.value();
-        local_key.set(new_key_str.clone());
+    let mapping_key_blur = mapping_key.clone();
+    let stage_id_blur = stage_id.clone();
+    let root_actions_blur = root_actions.clone();
+    let before_blur = before_mapping.clone();
+    let current_name_blur = current_name.clone();
+    let cmd_tx_blur = ctx.commands.clone();
+    let mut undo_log_blur = editor.undo_log;
+    // Remember the key value at mount so blur with no actual change is a no-op.
+    let initial_key_blur = combo.key.clone();
+
+    let onblur = move |_evt: FocusEvent| {
+        let new_key_str = local_key.peek().trim().to_owned();
+        // Skip the dispatch when the field is empty or unchanged. The
+        // malformed-hint write at the top of the function still flags the
+        // empty-key state on the next render so the user gets a visual cue.
+        if new_key_str.is_empty() || new_key_str == initial_key_blur {
+            return;
+        }
         let new_combo = build_combo_from_key(
             new_key_str,
             *local_ctrl.peek(),
@@ -274,14 +296,29 @@ pub(crate) fn MapToKeyboardBody(
         dispatch_keyboard(
             new_combo,
             "key",
-            &mapping_key_key,
-            &stage_id_key,
-            &root_actions_key,
-            &before_key,
-            current_name_key.clone(),
-            &cmd_tx_key,
-            &mut undo_log_key,
+            &mapping_key_blur,
+            &stage_id_blur,
+            &root_actions_blur,
+            &before_blur,
+            current_name_blur.clone(),
+            &cmd_tx_blur,
+            &mut undo_log_blur,
         );
+    };
+
+    // Enter key behaves like blur: programmatically blur the active input so
+    // the canonical commit path (`onblur`) runs exactly once. Mirrors
+    // NameField's onkeydown handler (Task 15).
+    let onkeydown = move |evt: KeyboardEvent| {
+        if evt.key() == Key::Enter {
+            evt.prevent_default();
+            let _ = document::eval(
+                r"
+                const el = document.activeElement;
+                if (el && el instanceof HTMLInputElement) { el.blur(); }
+                ",
+            );
+        }
     };
 
     // `ReadSignal` conversions for the Checkbox `checked` prop.
@@ -289,9 +326,13 @@ pub(crate) fn MapToKeyboardBody(
     let alt_ro: ReadSignal<bool> = local_alt.into();
     let shift_ro: ReadSignal<bool> = local_shift.into();
     let win_ro: ReadSignal<bool> = local_win.into();
-    let key_ro: ReadSignal<String> = local_key.into();
 
     let invalid_field = local_key.read().trim().is_empty();
+    let key_class = if invalid_field {
+        "if-text-input if-text-input--md if-text-input--invalid"
+    } else {
+        "if-text-input if-text-input--md"
+    };
 
     rsx! {
         div { class: "if-stage__body-keyboard",
@@ -329,14 +370,27 @@ pub(crate) fn MapToKeyboardBody(
                     }
                 }
             }
-            // Key text field
+            // Key text field. Uses a raw `<input>` (not `TextInput`) because
+            // the F2 `TextInput` component does not currently expose `onblur`
+            // or `onkeydown` props, both of which are required for the
+            // commit-on-blur dispatch pattern (see Task 15's NameField).
+            // Class strings mirror what `TextInput` would emit so the styling
+            // stays consistent across forms.
             div { class: "if-stage__body-field",
                 label { class: "if-stage__body-label", "Key" }
-                TextInput {
-                    value: key_ro,
-                    invalid: invalid_field,
-                    placeholder: "e.g. Q, F1, Space".to_owned(),
-                    oninput: on_key_input,
+                input {
+                    r#type: "text",
+                    class: "{key_class}",
+                    value: "{local_key}",
+                    placeholder: "e.g. Q, F1, Space",
+                    // Use binding shorthand here. The compiler's
+                    // `unused_qualifications` lint flags `oninput: oninput`
+                    // style (because the macro expands to a redundant
+                    // path), so we name the closures to match the prop
+                    // names: `oninput`, `onblur`, `onkeydown`.
+                    oninput,
+                    onblur,
+                    onkeydown,
                 }
             }
         }
