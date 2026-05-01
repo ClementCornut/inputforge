@@ -309,7 +309,15 @@ pub(crate) fn MergeAxisBody(
     };
 
     // --- Build Select value and options ---
-    let op_value: Signal<String> = use_signal(|| op_to_str(operation).to_owned());
+    // Sync the Select's local Signal to the prop on every render.
+    // `use_signal` is initialized once per component instance, so without
+    // this peek-and-set the dropdown would keep displaying the original
+    // operation after a SetMapping echo updated the prop.
+    let op_str = op_to_str(operation).to_owned();
+    let mut op_value: Signal<String> = use_signal(|| op_str.clone());
+    if *op_value.peek() != op_str {
+        op_value.set(op_str);
+    }
     let op_options: Vec<(String, String)> = ALL_OPS
         .iter()
         .map(|&op| {

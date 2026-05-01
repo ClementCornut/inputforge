@@ -46,6 +46,39 @@ pub(super) fn format_stage_id(id: &StageId) -> String {
         .join(".")
 }
 
+/// Returns `true` if `stage_id` is invalidated by a structural mutation
+/// at index `mutation_index` inside `parent_path`'s branch.
+///
+/// A path is invalidated when it sits in the same branch as the mutation
+/// AND its index at the mutation level is at-or-after `mutation_index`.
+/// Strict-ancestor paths, paths in other branches, and earlier-sibling
+/// paths are NOT invalidated and should be preserved across the mutation.
+///
+/// Used by every dispatch site that performs an insert / remove / move:
+/// instead of clearing the entire `expanded_stages` and `malformed_hints`
+/// caches (which collapses ancestors and unrelated siblings), retain only
+/// the paths that survived the index shift. This is what keeps the parent
+/// `Conditional` expanded after adding a stage to one of its branches.
+pub(super) fn path_invalidated_by_mutation(
+    stage_id: &StageId,
+    parent_path: &[StageIdSegment],
+    mutation_index: usize,
+) -> bool {
+    let parent_len = parent_path.len();
+    if stage_id.0.len() <= parent_len {
+        return false;
+    }
+    if stage_id.0[..parent_len] != *parent_path {
+        return false;
+    }
+    match stage_id.0[parent_len] {
+        StageIdSegment::Index(idx) => idx >= mutation_index,
+        // Branch segment (IfTrue / IfFalse): different sub-branch from
+        // the mutation, which targets an Index position. Preserve.
+        _ => false,
+    }
+}
+
 use dioxus::prelude::*;
 
 use inputforge_core::action::Action;

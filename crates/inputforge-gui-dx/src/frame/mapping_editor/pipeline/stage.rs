@@ -24,7 +24,9 @@ use crate::frame::MappingKey;
 use crate::frame::mapping_editor::pipeline::dnd::validate_pipeline_drop;
 use crate::frame::mapping_editor::pipeline::stage_body;
 use crate::frame::mapping_editor::pipeline::stage_header::StageHeader;
-use crate::frame::mapping_editor::pipeline::{at_path, insert_at_path, remove_at_path};
+use crate::frame::mapping_editor::pipeline::{
+    at_path, insert_at_path, path_invalidated_by_mutation, remove_at_path,
+};
 use crate::frame::mapping_editor::undo_log::{
     LabelArgs, StageId, StageIdSegment, UndoKind, format_undo_label,
 };
@@ -311,9 +313,32 @@ pub(crate) fn Stage(
                 .write()
                 .push_edit(key_for_drop.clone(), before, UndoKind::StageReorder, label);
 
-            // Clear positional caches (Task 11 structural-mutation invariant).
-            expanded_stages.write().clear();
-            malformed_hints.write().clear();
+            // Drag-reorder shifts indices in the source branch (from
+            // src_local_index) and in the target branch (from `to`). When
+            // src and target share a parent, the affected range is
+            // [min(src, to), ...]. Invalidate only paths in those affected
+            // ranges; ancestors and unrelated branches keep their expanded
+            // state, so the parent Conditional / outer pipeline does not
+            // collapse on a drop.
+            let src_parent_segs = src_parent_path.0.clone();
+            let tgt_parent_segs = parent_path_for_drop.0.clone();
+            let same_branch = src_parent_segs == tgt_parent_segs;
+            let invalidate_src_from = if same_branch {
+                src_local_index.min(to)
+            } else {
+                src_local_index
+            };
+            let invalidate_tgt_from = if same_branch {
+                src_local_index.min(to)
+            } else {
+                to
+            };
+            let invalidated = |p: &StageId| {
+                path_invalidated_by_mutation(p, &src_parent_segs, invalidate_src_from)
+                    || path_invalidated_by_mutation(p, &tgt_parent_segs, invalidate_tgt_from)
+            };
+            expanded_stages.write().retain(|p| !invalidated(p));
+            malformed_hints.write().retain(|p, _| !invalidated(p));
 
             // Write AT live-region announcement.
             live_writer.set(format!(

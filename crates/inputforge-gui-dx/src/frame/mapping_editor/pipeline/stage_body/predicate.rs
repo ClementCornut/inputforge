@@ -413,7 +413,15 @@ pub(crate) fn PredicateEditor(
     ];
 
     let current_kind = condition_kind(&condition).to_owned();
-    let kind_signal: Signal<String> = use_signal(move || current_kind);
+    // Sync the Select's local Signal to the prop on every render.
+    // `use_signal` returns persistent state per component instance, so its
+    // initializer runs only once; without this peek-and-set the Select
+    // would keep displaying the kind from the first render even after
+    // `condition` is rebuilt with a different variant.
+    let mut kind_signal: Signal<String> = use_signal(|| current_kind.clone());
+    if *kind_signal.peek() != current_kind {
+        kind_signal.set(current_kind);
+    }
 
     // Capture clones for the kind-change handler.
     let mk_kind = mapping_key.clone();

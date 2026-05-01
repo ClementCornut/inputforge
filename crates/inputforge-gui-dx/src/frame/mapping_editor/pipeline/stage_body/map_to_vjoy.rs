@@ -156,10 +156,15 @@ pub(crate) fn MapToVJoyBody(
         })
         .collect();
 
-    // Current device value for the Select.
-    // `Signal<String>` satisfies `ReadSignal<String>` via the Into impl used
-    // by Dioxus prop conversion; we store as Signal and pass directly.
-    let device_value_str: Signal<String> = use_signal(|| output.device.to_string());
+    // Current device value for the Select. Sync the local Signal to the
+    // prop on every render: `use_signal` is initialized once per component
+    // instance, so without this peek-and-set the dropdown would keep
+    // displaying the original device after a SetMapping echo.
+    let device_str = output.device.to_string();
+    let mut device_value_str: Signal<String> = use_signal(|| device_str.clone());
+    if *device_value_str.peek() != device_str {
+        device_value_str.set(device_str);
+    }
 
     // --- Build output picker options ---
     // If the device exists in the snapshot, list its outputs; otherwise fall
@@ -196,8 +201,13 @@ pub(crate) fn MapToVJoyBody(
         vec![(key, label)]
     };
 
-    // Current output value for the Select.
-    let output_value_str: Signal<String> = use_signal(|| output_id_key(&output.output));
+    // Current output value for the Select. Same prop-sync rationale as
+    // device_value_str above.
+    let output_str = output_id_key(&output.output);
+    let mut output_value_str: Signal<String> = use_signal(|| output_str.clone());
+    if *output_value_str.peek() != output_str {
+        output_value_str.set(output_str);
+    }
 
     // --- Shared dispatch helper (captures by value via closures) ---
 

@@ -36,7 +36,7 @@ use crate::components::Icon;
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::insert_at_path;
+use crate::frame::mapping_editor::pipeline::{insert_at_path, path_invalidated_by_mutation};
 use crate::frame::mapping_editor::undo_log::{
     LabelArgs, StageId, StageIdSegment, UndoKind, format_undo_label,
 };
@@ -287,9 +287,19 @@ pub(crate) fn AddPalette(
                 .write()
                 .push_edit(key.clone(), before, UndoKind::StageAdd, label);
 
-            // Amendment 4: clear positional caches, then re-expand new stage.
-            expanded.write().clear();
-            malformed.write().clear();
+            // Amendment 4: invalidate only paths whose indices shifted from
+            // the insert (paths in the same branch at-or-after the insert
+            // point). Strict ancestors and unrelated branches survive, so
+            // the parent Conditional / outer pipeline keeps its expanded
+            // state. Then re-expand the freshly-inserted stage.
+            let parent_path = insert_path.0[..insert_path.0.len() - 1].to_vec();
+            let insert_idx = insert_len;
+            expanded
+                .write()
+                .retain(|p| !path_invalidated_by_mutation(p, &parent_path, insert_idx));
+            malformed
+                .write()
+                .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, insert_idx));
             expanded.write().insert(insert_path);
 
             // Close the menu.

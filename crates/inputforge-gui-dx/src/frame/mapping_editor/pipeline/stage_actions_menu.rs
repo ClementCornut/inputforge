@@ -21,7 +21,9 @@ use inputforge_core::engine::EngineCommand;
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::pipeline::stage::stage_title_for;
-use crate::frame::mapping_editor::pipeline::{remove_at_path, replace_at_path};
+use crate::frame::mapping_editor::pipeline::{
+    path_invalidated_by_mutation, remove_at_path, replace_at_path,
+};
 use crate::frame::mapping_editor::undo_log::{
     LabelArgs, StageId, StageIdSegment, UndoKind, format_undo_label,
 };
@@ -249,9 +251,16 @@ pub(crate) fn StageActionsMenu(
                 .write()
                 .push_edit(key.clone(), before, UndoKind::StageReorder, label);
 
-            // Clear positional caches (Task 11 structural-mutation invariant).
-            expanded.write().clear();
-            malformed.write().clear();
+            // Reorder swaps current_idx with current_idx - 1; invalidate
+            // only paths in the same branch at the lower of the two indices
+            // and beyond. Ancestors and earlier siblings survive.
+            let invalidate_from = current_idx - 1;
+            expanded
+                .write()
+                .retain(|p| !path_invalidated_by_mutation(p, &parent_path, invalidate_from));
+            malformed
+                .write()
+                .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, invalidate_from));
 
             stage_menu.set(None);
         }
@@ -343,9 +352,15 @@ pub(crate) fn StageActionsMenu(
                 .write()
                 .push_edit(key.clone(), before, UndoKind::StageReorder, label);
 
-            // Clear positional caches (Task 11 structural-mutation invariant).
-            expanded.write().clear();
-            malformed.write().clear();
+            // Reorder swaps current_idx with current_idx + 1; invalidate
+            // only paths in the same branch at current_idx and beyond.
+            // Ancestors and earlier siblings survive.
+            expanded
+                .write()
+                .retain(|p| !path_invalidated_by_mutation(p, &parent_path, current_idx));
+            malformed
+                .write()
+                .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, current_idx));
 
             stage_menu.set(None);
         }
@@ -415,9 +430,16 @@ pub(crate) fn StageActionsMenu(
                 .write()
                 .push_edit(key.clone(), before, UndoKind::StageRemove, label);
 
-            // Clear positional caches (Task 11 structural-mutation invariant).
-            expanded.write().clear();
-            malformed.write().clear();
+            // Delete removes stage at current_idx and shifts subsequent
+            // siblings up; invalidate paths in the same branch at-or-after
+            // current_idx. Ancestors survive, so the parent Conditional
+            // keeps its expanded state.
+            expanded
+                .write()
+                .retain(|p| !path_invalidated_by_mutation(p, &parent_path, current_idx));
+            malformed
+                .write()
+                .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, current_idx));
 
             stage_menu.set(None);
         }
