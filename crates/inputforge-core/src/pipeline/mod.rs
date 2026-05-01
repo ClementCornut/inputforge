@@ -10,7 +10,7 @@ pub use merge::merge_axes;
 
 use crate::action::{Action, ModeChangeStrategy};
 use crate::processing::invert_axis;
-use crate::types::{HatDirection, InputAddress, InputValue, KeyCombo, OutputAddress};
+use crate::types::{HatDirection, InputAddress, InputId, InputValue, KeyCombo, OutputAddress};
 
 /// Threshold above which a button's `current_value` is considered pressed.
 ///
@@ -160,13 +160,80 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
     }
 }
 
+/// Re-run a partial action pipeline against a snapshot and return the
+/// projected `InputValue` at `stop_at`.
+///
+/// `stop_at = 0` returns the unprocessed input read from `state.input_cache`
+/// at `primary`. `stop_at >= actions.len()` runs the full pipeline.
+///
+/// Read-only; never dispatches commands. Used by F10's live-tracking dot
+/// (and F9's live-readout OUT bar) without duplicating pipeline evaluation
+/// in the GUI.
+#[must_use]
+pub fn evaluate_actions_through(
+    actions: &[Action],
+    state: &crate::state::AppState,
+    primary: &InputAddress,
+    stop_at: usize,
+) -> InputValue {
+    let stop = stop_at.min(actions.len());
+
+    // Discriminate variant from the address; read via the InputCache trait.
+    // Returns the cache's default for missing entries (axis: 0.0, button: false,
+    // hat: HatDirection::Center) — same convention as direct trait reads.
+    let input_value = match &primary.input {
+        InputId::Axis { .. } => InputValue::Axis {
+            value: crate::types::AxisValue::new(state.input_cache.get_axis(primary)),
+        },
+        InputId::Button { .. } => InputValue::Button {
+            pressed: state.input_cache.get_button(primary),
+        },
+        InputId::Hat { .. } => InputValue::Hat {
+            direction: state.input_cache.get_hat(primary),
+        },
+    };
+
+    let current_value: f64 = match &input_value {
+        InputValue::Axis { value } => value.value(),
+        InputValue::Button { pressed } => {
+            if *pressed {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        InputValue::Hat { .. } => 0.0,
+    };
+
+    let mut ctx = PipelineContext {
+        current_value,
+        input_value: input_value.clone(),
+        outputs: Vec::new(),
+        input_cache: &state.input_cache,
+    };
+
+    execute_pipeline(&actions[..stop], &mut ctx);
+
+    match input_value {
+        InputValue::Axis { .. } => InputValue::Axis {
+            value: crate::types::AxisValue::new(ctx.current_value),
+        },
+        InputValue::Button { .. } => InputValue::Button {
+            pressed: ctx.current_value > BUTTON_PRESS_THRESHOLD,
+        },
+        // Hats: pipeline evaluation does not modify direction; the cached
+        // direction reads through unchanged.
+        InputValue::Hat { direction } => InputValue::Hat { direction },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::test_helpers::{MockCache, button_input_address};
     use super::*;
     use crate::action::Condition;
     use crate::processing::{DeadzoneConfig, ResponseCurve};
-    use crate::types::{AxisValue, DeviceId, InputId, KeyModifier, MergeOp, OutputId, VJoyAxis};
+    use crate::types::{AxisValue, DeviceId, KeyModifier, MergeOp, OutputId, VJoyAxis};
 
     const TOLERANCE: f64 = 1e-6;
 
@@ -780,5 +847,189 @@ mod tests {
         let actions = [Action::MapToKeyboard { key }];
         execute_pipeline(&actions, &mut ctx);
         assert!(ctx.outputs.is_empty());
+    }
+
+    // -- evaluate_actions_through ---------------------------------------------
+
+    use crate::state::AppState;
+
+    fn axis_input_address() -> InputAddress {
+        InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        }
+    }
+
+    fn hat_input_address() -> InputAddress {
+        InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Hat { index: 0 },
+        }
+    }
+
+    #[test]
+    fn evaluate_actions_through_zero_returns_input_untouched() {
+        let mut state = AppState::new();
+        let addr = axis_input_address();
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+            },
+        );
+
+        let actions = [Action::Invert];
+        let out = evaluate_actions_through(&actions, &state, &addr, 0);
+
+        match out {
+            InputValue::Axis { value } => {
+                assert!((value.value() - 0.5).abs() < TOLERANCE);
+            }
+            other => panic!("expected Axis, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn evaluate_actions_through_full_runs_entire_pipeline() {
+        let mut state = AppState::new();
+        let addr = axis_input_address();
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+            },
+        );
+
+        let actions = [Action::Invert];
+        let out = evaluate_actions_through(&actions, &state, &addr, actions.len());
+
+        match out {
+            InputValue::Axis { value } => {
+                assert!((value.value() - (-0.5)).abs() < TOLERANCE);
+            }
+            other => panic!("expected Axis, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn evaluate_actions_through_partial_runs_subset() {
+        let mut state = AppState::new();
+        let addr = axis_input_address();
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+            },
+        );
+
+        // Two Inverts cancel; stop_at=1 runs only the first.
+        let actions = [Action::Invert, Action::Invert];
+        let out = evaluate_actions_through(&actions, &state, &addr, 1);
+        match out {
+            InputValue::Axis { value } => {
+                assert!((value.value() - (-0.5)).abs() < TOLERANCE);
+            }
+            other => panic!("expected Axis, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn evaluate_actions_through_stop_at_overflow_clamps() {
+        let mut state = AppState::new();
+        let addr = axis_input_address();
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+            },
+        );
+
+        let actions = [Action::Invert];
+        // stop_at = 99 with 1 action; clamps to 1.
+        let out = evaluate_actions_through(&actions, &state, &addr, 99);
+        match out {
+            InputValue::Axis { value } => {
+                assert!((value.value() - (-0.5)).abs() < TOLERANCE);
+            }
+            other => panic!("expected Axis, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn evaluate_actions_through_button_pipeline() {
+        let mut state = AppState::new();
+        let addr = button_input_address();
+        state
+            .input_cache
+            .update(&addr, &InputValue::Button { pressed: true });
+
+        let actions = [Action::Invert];
+        let out = evaluate_actions_through(&actions, &state, &addr, 1);
+        match out {
+            InputValue::Button { pressed } => assert!(!pressed, "Invert should flip true to false"),
+            other => panic!("expected Button, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn evaluate_actions_through_unknown_input_returns_zero_axis() {
+        // Defensive: if the address is missing from the cache, the helper
+        // synthesizes an Axis(0.0) baseline (same convention used by
+        // InputCache trait readers).
+        let state = AppState::new();
+        let addr = axis_input_address();
+        let actions: [Action; 0] = [];
+        let out = evaluate_actions_through(&actions, &state, &addr, 0);
+        match out {
+            InputValue::Axis { value } => {
+                assert!(value.value().abs() < TOLERANCE);
+            }
+            other => panic!("expected Axis, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn evaluate_actions_through_hat_pipeline_passes_direction_through() {
+        // Hats: ctx.current_value is meaningless; the helper preserves the
+        // original direction read from input_cache regardless of stop_at.
+        let mut state = AppState::new();
+        let addr = hat_input_address();
+        state.input_cache.update(
+            &addr,
+            &InputValue::Hat {
+                direction: HatDirection::NE,
+            },
+        );
+
+        let actions: [Action; 0] = [];
+        let out = evaluate_actions_through(&actions, &state, &addr, 0);
+        match out {
+            InputValue::Hat { direction } => assert_eq!(direction, HatDirection::NE),
+            other => panic!("expected Hat, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn evaluate_actions_through_partial_one_before_end_runs_subset() {
+        // Boundary: stop_at = actions.len() - 1 must run all but the last action.
+        // Distinct from the existing partial test (which uses stop_at = 1 with len 2).
+        let mut state = AppState::new();
+        let addr = axis_input_address();
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+            },
+        );
+
+        // Three Inverts; stop_at = 2 leaves one un-applied -> result inverted twice (= 0.5).
+        let actions = [Action::Invert, Action::Invert, Action::Invert];
+        let out = evaluate_actions_through(&actions, &state, &addr, actions.len() - 1);
+        match out {
+            InputValue::Axis { value } => {
+                assert!((value.value() - 0.5).abs() < TOLERANCE);
+            }
+            other => panic!("expected Axis, got {other:?}"),
+        }
     }
 }
