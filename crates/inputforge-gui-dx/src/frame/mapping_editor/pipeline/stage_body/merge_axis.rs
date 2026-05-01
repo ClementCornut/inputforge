@@ -50,7 +50,7 @@ use inputforge_core::action::{Action, Mapping};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{InputAddress, MergeOp};
 
-use crate::components::{Button, ButtonSize, ButtonVariant, Select};
+use crate::components::Select;
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
@@ -85,6 +85,12 @@ const ALL_OPS: [MergeOp; 3] = [MergeOp::Bidirectional, MergeOp::Average, MergeOp
 /// `MergeAxis` body: operation picker and secondary-input source label with
 /// rebind button.
 #[component]
+#[allow(
+    unused_qualifications,
+    reason = "Dioxus 0.7 RSX macro emits redundant `dioxus_elements::*` qualifications \
+              on per-element event listeners (raw <button onclick>). Mirrors the \
+              suppression used in header.rs and mapping_list/row.rs."
+)]
 pub(crate) fn MergeAxisBody(
     /// `(mode, InputAddress)` key for the mapping being edited. Named
     /// `mapping_key` to avoid collision with Dioxus's reserved `key` prop.
@@ -347,11 +353,11 @@ pub(crate) fn MergeAxisBody(
             }
             div { class: "if-stage__body-field",
                 label { class: "if-stage__body-label", "Secondary input" }
-                div { class: "if-stage__body-field-value",
-                    span { class: "if-stage__body-field-text", "{secondary_label}" }
-                    Button {
-                        variant: ButtonVariant::Ghost,
-                        size: ButtonSize::Sm,
+                div { class: "if-rebind-composite",
+                    span { class: "if-rebind-composite__label", "{secondary_label}" }
+                    button {
+                        class: "if-rebind-composite__action",
+                        r#type: "button",
                         onclick: on_rebind,
                         "rebind"
                     }

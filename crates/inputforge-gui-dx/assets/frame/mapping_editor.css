@@ -165,30 +165,45 @@
     color: var(--color-text-subtle);
 }
 
-/* Rebind listening indicator. Shown in the subtitle row while the
- * header's `is_armed_consumer` flag is true, mirroring the AddInline
- * pad's listening cue but inlined as text + dot rather than a chip box.
+/* Rebind composite: bordered cluster wrapping a value (source label or
+ * listening cue) and an inline rebind / cancel action. The cluster owns
+ * the chrome (border, bg, radius) so the action button can be plain
+ * mono text and still read as a real button, since the entire cluster
+ * reads as one form control with value | action. Used in the editor
+ * header subtitle and in the MergeAxis Secondary input row.
  *
- * The chip box pattern from `mapping_list.css` (`.if-add-inline__chip
- * --listening`) anchors a slot that flips between empty + dot and
- * filled + captured-input identifier. Rebind has no Captured-but-not
- * committed phase (capture commits immediately on input), so there is
- * no slot to anchor; a bare dot + text reads cleaner here. The dot
- * uses the same 6x6 size, the same `--color-live` color, and the same
+ * Listening state inverts the border color and replaces the value text
+ * with a pulse-dot cue. The dot reuses --color-live and the
  * `if-add-pulse-dot` keyframes (defined in `mapping_list.css`) so the
- * cue's meaning stays consistent across create-mapping and rebind.
+ * cue's meaning stays consistent with the AddInline create-mapping cue.
  */
-.if-editor__rebind-listening {
+
+.if-rebind-composite {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-sunken);
+    overflow: hidden;
     font-family: var(--font-mono);
     font-size: 12px;
     line-height: 18px;
 }
 
-.if-editor__rebind-listening::before {
+.if-rebind-composite__label {
+    padding: 4px 10px;
+    color: var(--color-text);
+}
+
+.if-rebind-composite__listening {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    color: var(--color-control-badge-text);
+}
+
+.if-rebind-composite__listening::before {
     content: "";
     width: 6px;
     height: 6px;
@@ -198,10 +213,44 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .if-editor__rebind-listening::before {
+    .if-rebind-composite__listening::before {
         animation: none;
         opacity: 0.85;
     }
+}
+
+.if-rebind-composite__action {
+    appearance: none;
+    border: 0;
+    border-left: 1px solid var(--color-border);
+    background: transparent;
+    padding: 4px 10px;
+    color: var(--color-text-muted);
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    cursor: pointer;
+    transition:
+        background var(--duration-fast) var(--easing-fast),
+        color var(--duration-fast) var(--easing-fast);
+}
+
+.if-rebind-composite__action:hover {
+    background: var(--color-bg-elevated);
+    color: var(--color-text);
+}
+
+.if-rebind-composite__action:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: -2px;
+}
+
+.if-rebind-composite--listening {
+    border-color: var(--color-control-badge-text);
+}
+
+.if-rebind-composite--listening .if-rebind-composite__action {
+    border-left-color: var(--color-control-badge-text);
 }
 
 /* Stage-body form layout: 2-column grid (label, control). Each body
@@ -232,22 +281,6 @@
 
 .if-stage__body-label {
     font-family: var(--font-sans);
-    font-size: 12px;
-    color: var(--color-text-muted);
-}
-
-/* Right-side composite for fields whose value is text + action (e.g.
-   MergeAxis secondary input: source label + rebind button). Plain inline
-   cluster; the parent grid row owns vertical rhythm. */
-
-.if-stage__body-field-value {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.if-stage__body-field-text {
-    font-family: var(--font-mono);
     font-size: 12px;
     color: var(--color-text-muted);
 }

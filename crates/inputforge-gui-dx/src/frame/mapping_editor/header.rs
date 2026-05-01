@@ -27,7 +27,6 @@ use inputforge_core::action::{Action, Mapping};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{InputAddress, OutputAddress, OutputId, VJoyAxis};
 
-use crate::components::{Button, ButtonSize, ButtonVariant};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
@@ -364,26 +363,30 @@ pub(crate) fn Header(
                 }
             }
             div { class: "if-editor__subtitle",
-                span { class: "if-editor__subtitle-source", "{src}" }
                 if *is_armed_consumer.read() {
-                    span {
-                        class: "if-editor__rebind-listening",
-                        role: "status",
-                        "aria-live": "polite",
-                        "Press an input\u{2026}"
-                    }
-                    Button {
-                        variant: ButtonVariant::Ghost,
-                        size: ButtonSize::Sm,
-                        onclick: on_cancel_rebind,
-                        "Cancel"
+                    div { class: "if-rebind-composite if-rebind-composite--listening",
+                        span {
+                            class: "if-rebind-composite__listening",
+                            role: "status",
+                            "aria-live": "polite",
+                            "Press an input\u{2026}"
+                        }
+                        button {
+                            class: "if-rebind-composite__action",
+                            r#type: "button",
+                            onclick: on_cancel_rebind,
+                            "Cancel"
+                        }
                     }
                 } else {
-                    Button {
-                        variant: ButtonVariant::Ghost,
-                        size: ButtonSize::Sm,
-                        onclick: on_rebind,
-                        "rebind"
+                    div { class: "if-rebind-composite",
+                        span { class: "if-rebind-composite__label", "{src}" }
+                        button {
+                            class: "if-rebind-composite__action",
+                            r#type: "button",
+                            onclick: on_rebind,
+                            "rebind"
+                        }
                     }
                 }
                 if let Some(out) = output_label {
