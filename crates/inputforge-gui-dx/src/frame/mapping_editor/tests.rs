@@ -68,31 +68,36 @@ fn seeded_profile_with_one_mapping(actions: Vec<Action>) -> AppState {
     state
 }
 
-// Thread-local carrier: stores the `(AppState, InputAddress)` pair that the
-// harness component consumes on the first (and only) Dioxus render.
-//
-// `VirtualDom::new` requires a bare `fn() -> Element` function pointer, so
-// closures that capture state cannot be passed directly. The thread-local
-// is set immediately before `VirtualDom::new` and cleared inside the
-// component body after the first read, preventing cross-test leakage.
-thread_local! {
-    static HARNESS_STATE: std::cell::RefCell<Option<(AppState, InputAddress)>> =
-        const { std::cell::RefCell::new(None) };
+/// Props for the harness component.
+///
+/// `AppState` is not `Clone`/`PartialEq`, so it is wrapped in
+/// `Arc<RwLock<_>>` at the prop boundary. `PartialEq` compares by pointer
+/// equality, which is sufficient for tests since each test allocates a fresh
+/// `Arc` and Dioxus only re-renders on prop change (irrelevant in SSR).
+#[derive(Clone, Props)]
+struct HarnessProps {
+    state: Arc<RwLock<AppState>>,
+    addr: InputAddress,
 }
 
-/// Bare `fn` that `VirtualDom::new` accepts; reads state from `HARNESS_STATE`.
-///
-/// See [`harness_with`] for the public entry point.
-fn harness_with_component() -> Element {
-    let (state, addr) = HARNESS_STATE.with(|cell| {
-        cell.borrow_mut()
-            .take()
-            .expect("HARNESS_STATE must be set before VirtualDom::new")
-    });
+impl PartialEq for HarnessProps {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.state, &other.state) && self.addr == other.addr
+    }
+}
+
+/// Harness component: composes the full provider stack and pre-selects the
+/// mapping at `props.addr` under mode "Default".
+#[allow(
+    non_snake_case,
+    reason = "Dioxus components are PascalCase by convention"
+)]
+fn HarnessComponent(props: HarnessProps) -> Element {
+    let HarnessProps { state, addr } = props;
 
     let (cmd_tx, _) = mpsc::channel();
     let raw = RawHandles {
-        state: Arc::new(RwLock::new(state)),
+        state,
         commands: cmd_tx,
         settings: Arc::new(AppSettings::default()),
     };
@@ -133,13 +138,17 @@ fn harness_with_component() -> Element {
     rsx! { MappingEditor {} }
 }
 
-/// Seed `HARNESS_STATE` and return the `VirtualDom` ready to render with
-/// the given `AppState` and pre-selected `addr` (mode "Default").
+/// Build a `VirtualDom` rendering `MappingEditor` with `state` plus
+/// `addr` pre-selected under mode "Default". Uses
+/// `VirtualDom::new_with_props`, so no thread-local carrier is needed.
 fn harness_with(state: AppState, addr: InputAddress) -> VirtualDom {
-    HARNESS_STATE.with(|cell| {
-        *cell.borrow_mut() = Some((state, addr));
-    });
-    VirtualDom::new(harness_with_component)
+    VirtualDom::new_with_props(
+        HarnessComponent,
+        HarnessProps {
+            state: Arc::new(RwLock::new(state)),
+            addr,
+        },
+    )
 }
 
 // ---------------------------------------------------------------------------
