@@ -12,12 +12,14 @@
 mod empty_state;
 mod engine_offline_banner;
 mod header;
+mod name_field;
 pub(crate) mod pipeline;
 pub(crate) mod undo_log;
 
 pub(crate) use empty_state::EmptyState;
 use engine_offline_banner::EngineOfflineBanner;
 use header::Header;
+use name_field::NameField;
 
 use std::collections::{HashMap, HashSet};
 
@@ -36,9 +38,9 @@ const MAPPING_EDITOR_CSS: Asset = asset!("/assets/frame/mapping_editor.css");
 
 /// Top-level mapping editor orchestrator mounted in `if-layout__center`.
 ///
-/// Renders the empty-state CTA when no mapping is selected. When a mapping
-/// is selected, renders the header (h2 + subtitle); remaining frame sections
-/// land in subsequent tasks.
+/// Renders a shared shell (`Stylesheet` + `EngineOfflineBanner`) and then
+/// either the selected-mapping sections (header, name field, and future
+/// sections) or the empty-state CTA when no mapping is selected.
 #[component]
 pub(crate) fn MappingEditor() -> Element {
     tracing::trace!(target: "frame::render", region = "mapping_editor");
@@ -48,29 +50,41 @@ pub(crate) fn MappingEditor() -> Element {
 
     let view_state_for_render: Option<MappingKey> = view.selected_mapping.read().clone();
 
-    if let Some((mode, input)) = view_state_for_render {
-        let mapping_name = ctx
-            .config
-            .read()
-            .mappings
-            .iter()
-            .find(|m| m.input == input && m.mode == mode)
-            .and_then(|m| m.name.clone())
-            .unwrap_or_else(|| "Untitled mapping".to_owned());
-        rsx! {
-            Stylesheet { href: MAPPING_EDITOR_CSS }
-            div { class: "if-editor",
-                EngineOfflineBanner {}
-                Header { name: mapping_name, input }
-                // Remaining sections (name field, live readout, pipeline, footer)
-                // land in subsequent tasks.
-            }
-        }
-    } else {
-        rsx! {
-            Stylesheet { href: MAPPING_EDITOR_CSS }
-            div { class: "if-editor",
-                EngineOfflineBanner {}
+    // Hoist the stylesheet and offline banner above the if/else split so
+    // both branches render under a shared shell. This prevents the
+    // duplication from compounding as Tasks 16-19 add more sections.
+    rsx! {
+        Stylesheet { href: MAPPING_EDITOR_CSS }
+        div { class: "if-editor",
+            EngineOfflineBanner {}
+            if let Some((mode, input)) = view_state_for_render {
+                {
+                    let mapping_name = ctx
+                        .config
+                        .read()
+                        .mappings
+                        .iter()
+                        .find(|m| m.input == input && m.mode == mode)
+                        .and_then(|m| m.name.clone())
+                        .unwrap_or_else(|| "Untitled mapping".to_owned());
+                    let actions_clone = ctx
+                        .config
+                        .read()
+                        .selected_mapping_actions
+                        .clone()
+                        .unwrap_or_default();
+                    rsx! {
+                        Header { name: mapping_name.clone(), input: input.clone() }
+                        NameField {
+                            initial: mapping_name,
+                            mapping_key: (mode, input),
+                            actions: actions_clone,
+                        }
+                        // Remaining sections (live readout, pipeline, footer)
+                        // land in subsequent tasks.
+                    }
+                }
+            } else {
                 EmptyState {}
             }
         }

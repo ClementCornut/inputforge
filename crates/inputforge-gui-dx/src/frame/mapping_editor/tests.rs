@@ -8,14 +8,143 @@ use dioxus::prelude::*;
 use dioxus_ssr::render;
 use parking_lot::RwLock;
 
+use inputforge_core::action::{Action, Mapping};
+use inputforge_core::mode::ModeTree;
+use inputforge_core::profile::Profile;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, EngineStatus};
+use inputforge_core::types::{AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId};
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
 use crate::frame::mapping_editor::{EditorState, MappingEditor, use_editor_state_provider};
 use crate::frame::view_state::use_view_state_provider;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::toast::{ToastQueue, ToastState};
+
+// ---------------------------------------------------------------------------
+// Shared test harness helpers
+// ---------------------------------------------------------------------------
+
+/// Build an `AppState` seeded with a single "Yaw" mapping on axis 0 of
+/// device "dev-1" (mode "Default"), with the supplied `actions`.
+///
+/// The device is registered with 2 axes / 4 buttons / 0 hats so that
+/// `source_label::format` can produce a human-readable subtitle.
+fn seeded_profile_with_one_mapping(actions: Vec<Action>) -> AppState {
+    use std::collections::HashMap;
+    let map = HashMap::from([("Default".to_owned(), vec![])]);
+    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let mappings = vec![Mapping {
+        input: addr,
+        mode: "Default".to_owned(),
+        name: Some("Yaw".to_owned()),
+        actions,
+    }];
+    let profile = Profile::new(
+        "P".to_owned(),
+        vec![],
+        modes,
+        mappings,
+        vec![],
+        "Default".to_owned(),
+    );
+    let mut state = AppState::with_profile(profile);
+    state.devices.push(inputforge_core::state::DeviceState {
+        info: DeviceInfo {
+            id: DeviceId("dev-1".to_owned()),
+            name: "Stick".to_owned(),
+            axes: 2,
+            buttons: 4,
+            hats: 0,
+            instance_path: None,
+            axis_polarities: vec![AxisPolarity::Bipolar; 2],
+        },
+        connected: true,
+    });
+    state
+}
+
+// Thread-local carrier: stores the `(AppState, InputAddress)` pair that the
+// harness component consumes on the first (and only) Dioxus render.
+//
+// `VirtualDom::new` requires a bare `fn() -> Element` function pointer, so
+// closures that capture state cannot be passed directly. The thread-local
+// is set immediately before `VirtualDom::new` and cleared inside the
+// component body after the first read, preventing cross-test leakage.
+thread_local! {
+    static HARNESS_STATE: std::cell::RefCell<Option<(AppState, InputAddress)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Bare `fn` that `VirtualDom::new` accepts; reads state from `HARNESS_STATE`.
+///
+/// See [`harness_with`] for the public entry point.
+fn harness_with_component() -> Element {
+    let (state, addr) = HARNESS_STATE.with(|cell| {
+        cell.borrow_mut()
+            .take()
+            .expect("HARNESS_STATE must be set before VirtualDom::new")
+    });
+
+    let (cmd_tx, _) = mpsc::channel();
+    let raw = RawHandles {
+        state: Arc::new(RwLock::new(state)),
+        commands: cmd_tx,
+        settings: Arc::new(AppSettings::default()),
+    };
+    use_context_provider(|| raw.clone());
+
+    let selection: crate::frame::MappingKey = ("Default".to_owned(), addr.clone());
+    let snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
+    let meta = use_signal(|| MetaSnapshot {
+        engine_status: EngineStatus::Running,
+        profile_name: Some("P".to_owned()),
+        modes: vec!["Default".to_owned()],
+        startup_mode: Some("Default".to_owned()),
+        current_mode: "Default".to_owned(),
+        ..MetaSnapshot::default()
+    });
+    let config = use_signal(|| snap);
+    let live = use_signal(LiveSnapshot::default);
+    let ctx = AppContext {
+        state: Arc::clone(&raw.state),
+        commands: raw.commands.clone(),
+        settings: Arc::clone(&raw.settings),
+        meta,
+        config,
+        live,
+    };
+    use_context_provider(|| ctx);
+
+    let view = use_view_state_provider(meta);
+    view.selected_mapping
+        .clone()
+        .write()
+        .replace(("Default".to_owned(), addr));
+    use_context_provider(|| view);
+    use_live_capture_provider();
+    use_editor_state_provider();
+    let toast_state = use_signal(ToastState::default);
+    use_context_provider(|| ToastQueue { state: toast_state });
+    rsx! { MappingEditor {} }
+}
+
+/// Seed `HARNESS_STATE` and return the `VirtualDom` ready to render with
+/// the given `AppState` and pre-selected `addr` (mode "Default").
+fn harness_with(state: AppState, addr: InputAddress) -> VirtualDom {
+    HARNESS_STATE.with(|cell| {
+        *cell.borrow_mut() = Some((state, addr));
+    });
+    VirtualDom::new(harness_with_component)
+}
+
+// ---------------------------------------------------------------------------
+// Basic smoke test
+// ---------------------------------------------------------------------------
 
 /// Compose all required providers and render `MappingEditor` in SSR.
 ///
@@ -201,105 +330,20 @@ fn engine_offline_banner_visible_when_status_is_stopped() {
 
 #[test]
 fn editor_header_shows_name_as_h2() {
-    use inputforge_core::action::{Action, Mapping};
-    use inputforge_core::mode::ModeTree;
-    use inputforge_core::profile::Profile;
-    use inputforge_core::state::AppState;
-    use inputforge_core::types::{
-        AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, OutputAddress, OutputId,
-        VJoyAxis,
+    use inputforge_core::types::{OutputAddress, OutputId, VJoyAxis};
+
+    let addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
     };
-    use std::collections::HashMap;
-
-    #[allow(
-        non_snake_case,
-        reason = "Dioxus components are PascalCase by convention"
-    )]
-    fn TestComponent() -> Element {
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
-        let addr = InputAddress {
-            device: DeviceId("dev-1".to_owned()),
-            input: InputId::Axis { index: 0 },
-        };
-        let actions = vec![Action::MapToVJoy {
-            output: OutputAddress {
-                device: 1,
-                output: OutputId::Axis { id: VJoyAxis::X },
-            },
-        }];
-        let mappings = vec![Mapping {
-            input: addr.clone(),
-            mode: "Default".to_owned(),
-            name: Some("Yaw".to_owned()),
-            actions,
-        }];
-        let profile = Profile::new(
-            "P".to_owned(),
-            vec![],
-            modes,
-            mappings,
-            vec![],
-            "Default".to_owned(),
-        );
-        let mut state = AppState::with_profile(profile);
-        state.devices.push(inputforge_core::state::DeviceState {
-            info: DeviceInfo {
-                id: DeviceId("dev-1".to_owned()),
-                name: "Stick".to_owned(),
-                axes: 2,
-                buttons: 4,
-                hats: 0,
-                instance_path: None,
-                axis_polarities: vec![AxisPolarity::Bipolar; 2],
-            },
-            connected: true,
-        });
-
-        let (cmd_tx, _) = mpsc::channel();
-        let raw = RawHandles {
-            state: Arc::new(RwLock::new(state)),
-            commands: cmd_tx,
-            settings: Arc::new(AppSettings::default()),
-        };
-        use_context_provider(|| raw.clone());
-
-        let selection: crate::frame::MappingKey = ("Default".to_owned(), addr.clone());
-        let snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
-        let meta = use_signal(|| MetaSnapshot {
-            engine_status: inputforge_core::state::EngineStatus::Running,
-            profile_name: Some("P".to_owned()),
-            modes: vec!["Default".to_owned()],
-            startup_mode: Some("Default".to_owned()),
-            current_mode: "Default".to_owned(),
-            ..MetaSnapshot::default()
-        });
-        let config = use_signal(|| snap);
-        let live = use_signal(LiveSnapshot::default);
-        let ctx = AppContext {
-            state: Arc::clone(&raw.state),
-            commands: raw.commands.clone(),
-            settings: Arc::clone(&raw.settings),
-            meta,
-            config,
-            live,
-        };
-        use_context_provider(|| ctx);
-
-        let view = use_view_state_provider(meta);
-        view.selected_mapping
-            .clone()
-            .write()
-            .replace(("Default".to_owned(), addr));
-        use_context_provider(|| view);
-        use_live_capture_provider();
-        use_editor_state_provider();
-        let toast_state = use_signal(ToastState::default);
-        use_context_provider(|| ToastQueue { state: toast_state });
-        rsx! { MappingEditor {} }
-    }
-
-    let mut vdom = VirtualDom::new(TestComponent);
+    let actions = vec![Action::MapToVJoy {
+        output: OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        },
+    }];
+    let state = seeded_profile_with_one_mapping(actions);
+    let mut vdom = harness_with(state, addr);
     vdom.rebuild_in_place();
     let html = render(&vdom);
     assert!(html.contains("<h2"), "expected h2 element: {html}");
@@ -313,96 +357,12 @@ fn editor_header_shows_name_as_h2() {
 
 #[test]
 fn editor_header_omits_output_when_no_map_to_vjoy() {
-    use inputforge_core::action::{Action, Mapping};
-    use inputforge_core::mode::ModeTree;
-    use inputforge_core::profile::Profile;
-    use inputforge_core::state::AppState;
-    use inputforge_core::types::{AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId};
-    use std::collections::HashMap;
-
-    #[allow(
-        non_snake_case,
-        reason = "Dioxus components are PascalCase by convention"
-    )]
-    fn TestComponent() -> Element {
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
-        let addr = InputAddress {
-            device: DeviceId("dev-1".to_owned()),
-            input: InputId::Axis { index: 0 },
-        };
-        let mappings = vec![Mapping {
-            input: addr.clone(),
-            mode: "Default".to_owned(),
-            name: Some("Yaw".to_owned()),
-            actions: vec![Action::Invert],
-        }];
-        let profile = Profile::new(
-            "P".to_owned(),
-            vec![],
-            modes,
-            mappings,
-            vec![],
-            "Default".to_owned(),
-        );
-        let mut state = AppState::with_profile(profile);
-        state.devices.push(inputforge_core::state::DeviceState {
-            info: DeviceInfo {
-                id: DeviceId("dev-1".to_owned()),
-                name: "Stick".to_owned(),
-                axes: 2,
-                buttons: 4,
-                hats: 0,
-                instance_path: None,
-                axis_polarities: vec![AxisPolarity::Bipolar; 2],
-            },
-            connected: true,
-        });
-
-        let (cmd_tx, _) = mpsc::channel();
-        let raw = RawHandles {
-            state: Arc::new(RwLock::new(state)),
-            commands: cmd_tx,
-            settings: Arc::new(AppSettings::default()),
-        };
-        use_context_provider(|| raw.clone());
-
-        let selection: crate::frame::MappingKey = ("Default".to_owned(), addr.clone());
-        let snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
-        let meta = use_signal(|| MetaSnapshot {
-            engine_status: inputforge_core::state::EngineStatus::Running,
-            profile_name: Some("P".to_owned()),
-            modes: vec!["Default".to_owned()],
-            startup_mode: Some("Default".to_owned()),
-            current_mode: "Default".to_owned(),
-            ..MetaSnapshot::default()
-        });
-        let config = use_signal(|| snap);
-        let live = use_signal(LiveSnapshot::default);
-        let ctx = AppContext {
-            state: Arc::clone(&raw.state),
-            commands: raw.commands.clone(),
-            settings: Arc::clone(&raw.settings),
-            meta,
-            config,
-            live,
-        };
-        use_context_provider(|| ctx);
-
-        let view = use_view_state_provider(meta);
-        view.selected_mapping
-            .clone()
-            .write()
-            .replace(("Default".to_owned(), addr));
-        use_context_provider(|| view);
-        use_live_capture_provider();
-        use_editor_state_provider();
-        let toast_state = use_signal(ToastState::default);
-        use_context_provider(|| ToastQueue { state: toast_state });
-        rsx! { MappingEditor {} }
-    }
-
-    let mut vdom = VirtualDom::new(TestComponent);
+    let addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let state = seeded_profile_with_one_mapping(vec![Action::Invert]);
+    let mut vdom = harness_with(state, addr);
     vdom.rebuild_in_place();
     let html = render(&vdom);
     // No arrow because no MapToVJoy.
@@ -410,4 +370,25 @@ fn editor_header_omits_output_when_no_map_to_vjoy() {
         !html.contains('\u{2192}') && !html.contains("&rarr;") && !html.contains("&#8594;"),
         "expected no arrow when no MapToVJoy: {html}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Task 15: name field with commit-on-blur
+// ---------------------------------------------------------------------------
+
+#[test]
+fn editor_name_field_renders_input_with_current_value() {
+    let addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let state = seeded_profile_with_one_mapping(vec![Action::Invert]);
+    let mut vdom = harness_with(state, addr);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("data-editor-focus"),
+        "name input should carry data-editor-focus marker (used by F8 keyboard nav): {html}"
+    );
+    assert!(html.contains("value=\"Yaw\""));
 }

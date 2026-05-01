@@ -109,3 +109,27 @@
     color: var(--color-text-muted);
     overflow-wrap: anywhere;
 }
+
+/* Task 15: name field */
+
+.if-editor__name-field {
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.if-editor__name-input {
+    width: 100%;
+    max-width: 480px;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    padding: 6px 8px;
+    background: var(--color-bg-sunken);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    color: var(--color-text);
+}
+
+.if-editor__name-input:focus {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
