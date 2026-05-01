@@ -228,3 +228,20 @@
         transition: none;
     }
 }
+
+/* Task 19: undo recap footer */
+
+.if-editor__footer {
+    padding: 6px 16px;
+    border-top: 1px solid var(--color-border);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--color-text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.if-editor__footer-label {
+    color: var(--color-text);
+}

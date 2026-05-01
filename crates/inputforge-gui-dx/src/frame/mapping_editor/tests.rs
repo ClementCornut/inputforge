@@ -439,6 +439,112 @@ fn editor_name_field_renders_input_with_current_value() {
 }
 
 // ---------------------------------------------------------------------------
+// Task 19: undo recap footer
+// ---------------------------------------------------------------------------
+
+#[test]
+fn editor_undo_recap_shows_label_and_kbd_hint() {
+    use inputforge_core::action::Mapping as CoreMapping;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    use crate::frame::mapping_editor::undo_log::UndoKind;
+
+    // Harness component that seeds one undo entry before rendering.
+    #[allow(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn UndoHarness(props: HarnessProps) -> Element {
+        let HarnessProps { state, addr, .. } = props;
+
+        let (cmd_tx, _) = mpsc::channel();
+        let raw = RawHandles {
+            state,
+            commands: cmd_tx,
+            settings: Arc::new(AppSettings::default()),
+        };
+        use_context_provider(|| raw.clone());
+
+        let selection: crate::frame::MappingKey = ("Default".to_owned(), addr.clone());
+        let snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
+        let meta = use_signal(|| MetaSnapshot {
+            engine_status: EngineStatus::Running,
+            profile_name: Some("P".to_owned()),
+            modes: vec!["Default".to_owned()],
+            startup_mode: Some("Default".to_owned()),
+            current_mode: "Default".to_owned(),
+            ..MetaSnapshot::default()
+        });
+        let config = use_signal(|| snap);
+        let live = use_signal(LiveSnapshot::default);
+        let ctx = AppContext {
+            state: Arc::clone(&raw.state),
+            commands: raw.commands.clone(),
+            settings: Arc::clone(&raw.settings),
+            meta,
+            config,
+            live,
+        };
+        use_context_provider(|| ctx);
+
+        let view = use_view_state_provider(meta);
+        view.selected_mapping
+            .clone()
+            .write()
+            .replace(("Default".to_owned(), addr.clone()));
+        use_context_provider(|| view);
+        use_live_capture_provider();
+
+        // Install EditorState and immediately seed one undo entry so that
+        // UndoRecap has a label to display.
+        let mut editor = use_editor_state_provider();
+        let mapping_key: crate::frame::MappingKey = ("Default".to_owned(), addr.clone());
+        let before = CoreMapping {
+            input: addr,
+            mode: "Default".to_owned(),
+            name: Some("X".to_owned()),
+            actions: vec![],
+        };
+        editor.undo_log.write().push_edit(
+            mapping_key,
+            before,
+            UndoKind::Rename,
+            "rename: 'X' -> 'Yaw'".to_owned(),
+        );
+
+        let toast_state = use_signal(ToastState::default);
+        use_context_provider(|| ToastQueue { state: toast_state });
+        rsx! { MappingEditor {} }
+    }
+
+    let addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let state = seeded_profile_with_one_mapping(vec![Action::Invert]);
+    let mut vdom = VirtualDom::new_with_props(
+        UndoHarness,
+        HarnessProps {
+            state: Arc::new(RwLock::new(state)),
+            addr,
+            current_mode: None,
+        },
+    );
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(
+        html.contains("rename:"),
+        "expected undo label in footer; got: {html}"
+    );
+    // U+2303 CONTROL (the up-caret glyph used for Ctrl) followed by Z.
+    assert!(
+        html.contains('\u{2303}'),
+        "expected control-glyph (U+2303) in kbd hint; got: {html}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Task 16: input field with rebind action arming LiveCapture
 // ---------------------------------------------------------------------------
 

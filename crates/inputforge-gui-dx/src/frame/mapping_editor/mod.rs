@@ -18,6 +18,7 @@ mod live_readout;
 mod name_field;
 pub(crate) mod pipeline;
 pub(crate) mod undo_log;
+mod undo_recap;
 
 pub(crate) use empty_state::EmptyState;
 use engine_offline_banner::EngineOfflineBanner;
@@ -26,6 +27,7 @@ use inactive_hint::InactiveHint;
 use input_field::InputField;
 use live_readout::LiveReadout;
 use name_field::NameField;
+use undo_recap::UndoRecap;
 
 use std::collections::{HashMap, HashSet};
 
@@ -87,17 +89,18 @@ pub(crate) fn MappingEditor() -> Element {
                             actions: actions_clone.clone(),
                         }
                         InputField {
-                            mapping_key: (mode, input.clone()),
+                            mapping_key: (mode.clone(), input.clone()),
                             actions: actions_clone.clone(),
                             name: Some(mapping_name),
                         }
                         LiveReadout {
-                            primary: input,
+                            primary: input.clone(),
                             actions: actions_clone,
                         }
                         InactiveHint {}
-                        // Remaining sections (pipeline, footer) land in
-                        // subsequent tasks.
+                        UndoRecap { mapping_key: (mode, input) }
+                        // Remaining sections (pipeline) land in subsequent
+                        // tasks.
                     }
                 }
             } else {
