@@ -14,6 +14,7 @@ mod engine_offline_banner;
 mod header;
 mod inactive_hint;
 mod input_field;
+pub(crate) mod keyboard;
 mod live_readout;
 mod name_field;
 pub(crate) mod pipeline;
@@ -68,6 +69,11 @@ pub(crate) fn MappingEditor() -> Element {
     // is Clone but not Copy (StageId is Vec-backed, not Copy).
     let sortable_for_live = sortable.clone();
     use_context_provider(|| sortable);
+
+    // Mount the editor-scoped keyboard listener unconditionally (Dioxus hook
+    // rules require all hooks to run every render). The listener internally
+    // guards against re-installation on subsequent renders.
+    keyboard::use_kb_listener();
 
     let view_state_for_render: Option<MappingKey> = view.selected_mapping.read().clone();
 
