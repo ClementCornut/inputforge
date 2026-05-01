@@ -16,6 +16,7 @@
               reachability check loses some pub(crate) items here."
 )]
 
+mod add_palette;
 mod stage;
 pub(crate) mod stage_body;
 mod stage_header;
@@ -23,6 +24,7 @@ mod stage_header;
 #[cfg(test)]
 mod tests;
 
+use add_palette::AddPalette;
 pub(crate) use stage::Stage;
 
 /// Render a [`StageId`] as a dot-separated string of path segments.
@@ -296,12 +298,12 @@ pub(crate) fn Pipeline(
     if actions.is_empty() {
         return rsx! {
             div { class: "if-pipeline if-pipeline--empty",
-                button {
-                    r#type: "button",
-                    class: "if-pipeline__add-first",
-                    // onclick wired in Task 28: opens the categorized add
-                    // palette anchored to this button.
-                    "+ Add first stage"
+                AddPalette {
+                    mapping_key: mapping_key.clone(),
+                    path_prefix: path_prefix.clone(),
+                    target_len: 0,
+                    root_actions: root_actions.clone(),
+                    louder: true,
                 }
             }
         };
@@ -310,6 +312,7 @@ pub(crate) fn Pipeline(
     let path_prefix_for_iter = path_prefix.clone();
     let key_for_iter = mapping_key.clone();
     let root_for_iter = root_actions.clone();
+    let actions_len = actions.len();
 
     rsx! {
         ol { class: "if-pipeline",
@@ -331,11 +334,12 @@ pub(crate) fn Pipeline(
                 }
             }
             li { class: "if-pipeline__add-end",
-                button {
-                    r#type: "button",
-                    class: "if-pipeline__add-button",
-                    // onclick wired in Task 28: opens add palette.
-                    "+"
+                AddPalette {
+                    mapping_key: mapping_key.clone(),
+                    path_prefix: path_prefix.clone(),
+                    target_len: actions_len,
+                    root_actions: root_actions.clone(),
+                    louder: false,
                 }
             }
         }

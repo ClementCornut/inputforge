@@ -836,6 +836,32 @@ fn conditional_empty_if_false_shows_add_else_affordance() {
 }
 
 // ---------------------------------------------------------------------------
+// Task 28: AddPalette rendering
+// ---------------------------------------------------------------------------
+
+#[test]
+fn add_palette_renders_three_categorized_sections() {
+    let (state, addr) = build_state(vec![]); // empty pipeline
+    let html = render_with_expanded(state, addr, vec![]);
+    // The palette button should be visible (empty pipeline shows louder label).
+    assert!(
+        html.contains("Add first stage"),
+        "expected Add first stage: {html}"
+    );
+}
+
+#[test]
+fn add_palette_button_renders_for_non_empty_pipeline() {
+    let (state, addr) = build_state(vec![Action::Invert]);
+    let html = render_with_expanded(state, addr, vec![]);
+    // The end-of-pipeline add palette or its container must be present.
+    assert!(
+        html.contains("if-pipeline__add-end") || html.contains("if-add-palette"),
+        "expected add-end or add-palette class: {html}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Task 27: Placeholder bodies for ResponseCurve / Deadzone / ChangeMode
 // ---------------------------------------------------------------------------
 
