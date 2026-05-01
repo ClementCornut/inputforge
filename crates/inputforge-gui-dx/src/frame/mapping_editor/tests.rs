@@ -74,15 +74,25 @@ fn seeded_profile_with_one_mapping(actions: Vec<Action>) -> AppState {
 /// `Arc<RwLock<_>>` at the prop boundary. `PartialEq` compares by pointer
 /// equality, which is sufficient for tests since each test allocates a fresh
 /// `Arc` and Dioxus only re-renders on prop change (irrelevant in SSR).
+///
+/// `current_mode` overrides the `MetaSnapshot::current_mode` field; when
+/// `None` it defaults to `"Default"` (matching the editing mode). Task 18
+/// needs `"Combat"` to drive the inactive-hint path.
 #[derive(Clone, Props)]
 struct HarnessProps {
     state: Arc<RwLock<AppState>>,
     addr: InputAddress,
+    /// Runtime mode reported by the engine. Defaults to `"Default"` when
+    /// absent so existing tests that do not set this field are unaffected.
+    #[props(default)]
+    current_mode: Option<String>,
 }
 
 impl PartialEq for HarnessProps {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.state, &other.state) && self.addr == other.addr
+        Arc::ptr_eq(&self.state, &other.state)
+            && self.addr == other.addr
+            && self.current_mode == other.current_mode
     }
 }
 
@@ -93,7 +103,13 @@ impl PartialEq for HarnessProps {
     reason = "Dioxus components are PascalCase by convention"
 )]
 fn HarnessComponent(props: HarnessProps) -> Element {
-    let HarnessProps { state, addr } = props;
+    let HarnessProps {
+        state,
+        addr,
+        current_mode,
+    } = props;
+
+    let runtime_mode = current_mode.unwrap_or_else(|| "Default".to_owned());
 
     let (cmd_tx, _) = mpsc::channel();
     let raw = RawHandles {
@@ -108,9 +124,9 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     let meta = use_signal(|| MetaSnapshot {
         engine_status: EngineStatus::Running,
         profile_name: Some("P".to_owned()),
-        modes: vec!["Default".to_owned()],
+        modes: vec!["Default".to_owned(), "Combat".to_owned()],
         startup_mode: Some("Default".to_owned()),
-        current_mode: "Default".to_owned(),
+        current_mode: runtime_mode,
         ..MetaSnapshot::default()
     });
     let config = use_signal(|| snap);
@@ -147,6 +163,26 @@ fn harness_with(state: AppState, addr: InputAddress) -> VirtualDom {
         HarnessProps {
             state: Arc::new(RwLock::new(state)),
             addr,
+            current_mode: None,
+        },
+    )
+}
+
+/// Build a `VirtualDom` with a diverging runtime mode.
+///
+/// The editing mode stays `"Default"` (the mapping's mode); the engine
+/// reports `current_mode` as something different. Used by Task 18's test.
+fn harness_with_current_mode(
+    state: AppState,
+    addr: InputAddress,
+    current_mode: &str,
+) -> VirtualDom {
+    VirtualDom::new_with_props(
+        HarnessComponent,
+        HarnessProps {
+            state: Arc::new(RwLock::new(state)),
+            addr,
+            current_mode: Some(current_mode.to_owned()),
         },
     )
 }
@@ -484,5 +520,33 @@ fn editor_live_readout_renders_out_when_map_to_vjoy_present() {
     assert!(
         html.contains("OUT"),
         "OUT row should render with MapToVJoy: {html}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Task 18: inactive-runtime hint banner
+// ---------------------------------------------------------------------------
+
+/// When the engine is Running but its current mode differs from the mapping's
+/// editing mode, `InactiveHint` must render the mode-mismatch copy.
+///
+/// Harness: engine Running, `current_mode = "Combat"`, mapping in mode `"Default"`.
+#[test]
+fn editor_inactive_hint_visible_when_modes_diverge() {
+    let addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let state = seeded_profile_with_one_mapping(vec![Action::Invert]);
+    let mut vdom = harness_with_current_mode(state, addr, "Combat");
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("Engine is in"),
+        "expected inactive-hint prefix copy; got: {html}"
+    );
+    assert!(
+        html.contains("Mapping fires only in"),
+        "expected inactive-hint suffix copy; got: {html}"
     );
 }

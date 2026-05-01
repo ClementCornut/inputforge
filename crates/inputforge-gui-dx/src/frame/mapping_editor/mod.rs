@@ -12,6 +12,7 @@
 mod empty_state;
 mod engine_offline_banner;
 mod header;
+mod inactive_hint;
 mod input_field;
 mod live_readout;
 mod name_field;
@@ -21,6 +22,7 @@ pub(crate) mod undo_log;
 pub(crate) use empty_state::EmptyState;
 use engine_offline_banner::EngineOfflineBanner;
 use header::Header;
+use inactive_hint::InactiveHint;
 use input_field::InputField;
 use live_readout::LiveReadout;
 use name_field::NameField;
@@ -93,6 +95,7 @@ pub(crate) fn MappingEditor() -> Element {
                             primary: input,
                             actions: actions_clone,
                         }
+                        InactiveHint {}
                         // Remaining sections (pipeline, footer) land in
                         // subsequent tasks.
                     }
