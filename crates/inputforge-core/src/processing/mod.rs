@@ -4,11 +4,13 @@ pub mod calibration;
 pub mod curves;
 pub mod deadzone;
 pub mod inversion;
+pub mod polarity;
 
 pub use calibration::Calibration;
 pub use curves::{BezierSegment, ResponseCurve, bezier_x, bezier_y};
 pub use deadzone::DeadzoneConfig;
 pub use inversion::{invert_axis, invert_button};
+pub use polarity::into_natural_domain;
 
 /// Linearly interpolate `value` from the range [`in_min`, `in_max`] to [`out_min`, `out_max`].
 ///
