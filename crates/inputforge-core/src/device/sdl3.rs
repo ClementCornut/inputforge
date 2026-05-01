@@ -38,16 +38,21 @@ pub struct Sdl3Input {
     open_devices: HashMap<u32, OpenDevice>,
     /// Buffered hotplug events to be drained by the caller.
     hotplug_buffer: Vec<HotplugEvent>,
-    /// Axes whose polarity has been classified from a real hardware
-    /// event.  Key is `(instance_id, axis_index)`.  Once an axis is in
-    /// this set its polarity is final and won't be re-evaluated.
+    /// Axes whose polarity has been classified.  Key is
+    /// `(instance_id, axis_index)`.  Inserted by either the lazy
+    /// classifier in [`Self::dispatch_sdl_event`] (on the first real
+    /// `JoyAxisMotion`) or [`Self::deferred_reprobe_polarities`] (on
+    /// every re-probe pass).  Once present, the lazy classifier
+    /// short-circuits its polarity-update branch so re-probe's
+    /// resting-state classification is never overridden by a
+    /// mid-press first event.
     classified_axes: HashSet<(u32, u8)>,
-    /// Axes for which a synthetic initial-state event has already been
-    /// emitted by [`Self::deferred_reprobe_polarities`].  Without this
-    /// gate, the cache would only be populated for axes the user has
-    /// actually moved, leaving merged-axis pipelines reading the wrong
-    /// resting value for any unmoved unipolar pedal.
-    synthesized_axes: HashSet<(u32, u8)>,
+    /// Axes for which a real `JoyAxisMotion` event has been observed.
+    /// Used to gate the deferred re-probe's synthetic-event emission:
+    /// once a real event has populated the input cache, re-probe
+    /// stops emitting synthetic events for that axis to avoid
+    /// overwriting actual user input with a stale re-read.
+    real_event_seen: HashSet<(u32, u8)>,
     /// Number of poll cycles elapsed.  Used to trigger a deferred
     /// polarity re-probe after SDL3 has had time to populate hardware
     /// axis values via `DirectInput`.
@@ -95,7 +100,7 @@ impl Sdl3Input {
             open_devices: HashMap::new(),
             hotplug_buffer: Vec::new(),
             classified_axes: HashSet::new(),
-            synthesized_axes: HashSet::new(),
+            real_event_seen: HashSet::new(),
             poll_count: 0,
             _not_send: PhantomData,
         };
@@ -198,21 +203,26 @@ impl Sdl3Input {
                     device.info.axis_polarities[idx] = polarity;
                     changed = true;
                 }
-                // Synthetic initial-state event + classification lock:
-                // one-shot per axis. The deferred re-probe is the
-                // authoritative classifier because it reads SDL's
-                // resting-state value directly. Inserting into
-                // `classified_axes` here prevents the lazy classifier
-                // (which fires on the first `JoyAxisMotion` event) from
+                // Synthetic initial-state event + classification lock.
+                //
+                // Emitted on every re-probe pass for axes that have
+                // not yet seen a real `JoyAxisMotion`.  Re-emission is
+                // load-bearing: on Windows DirectInput the first
+                // re-probe pass (poll_count = 100, ~100 ms after
+                // device open) frequently runs before DirectInput has
+                // populated the joystick state, so
+                // `SDL_GetJoystickAxis` returns 0 and the synthetic
+                // event captures the wrong polarity / value.
+                // Subsequent passes correct the cache once DI populates.
+                //
+                // The classification lock is one-shot: inserting into
+                // `classified_axes` prevents the lazy classifier (in
+                // `dispatch_sdl_event`'s `JoyAxisMotion` arm) from
                 // overriding the resting-state classification with a
-                // mid-press value: a user pressing a unipolar pedal at
-                // half-throw on first move would otherwise flip
-                // polarity from Unipolar (resting at -1) to Bipolar
-                // (current value 0 > UNIPOLAR_INITIAL_STATE_THRESHOLD).
+                // mid-press first-event value.
                 let axis_idx_u8 = u8::try_from(axis_idx).unwrap_or(u8::MAX);
                 let key = (instance_id_raw, axis_idx_u8);
-                if !self.synthesized_axes.contains(&key) && !self.classified_axes.contains(&key) {
-                    self.synthesized_axes.insert(key);
+                if !self.real_event_seen.contains(&key) {
                     self.classified_axes.insert(key);
                     out.push(InputEvent {
                         source: InputAddress {
@@ -238,7 +248,7 @@ impl Sdl3Input {
     fn handle_device_removed(&mut self, instance_id: u32) {
         if let Some(removed) = self.open_devices.remove(&instance_id) {
             self.classified_axes.retain(|&(id, _)| id != instance_id);
-            self.synthesized_axes.retain(|&(id, _)| id != instance_id);
+            self.real_event_seen.retain(|&(id, _)| id != instance_id);
             self.hotplug_buffer
                 .push(HotplugEvent::Disconnected(removed.device_id));
         }
@@ -266,7 +276,10 @@ impl Sdl3Input {
                     // Lazy polarity classification: on the first event
                     // for each axis, check the raw value to determine
                     // if it's a unipolar axis (pedal/trigger resting
-                    // at −32 768).
+                    // at −32 768).  No-op when the deferred re-probe
+                    // has already classified this axis (the
+                    // resting-state classification is more reliable
+                    // than a mid-press first event).
                     let key = (which, axis_idx);
                     if self.classified_axes.insert(key) {
                         let polarity = if value < UNIPOLAR_INITIAL_STATE_THRESHOLD {
@@ -290,6 +303,13 @@ impl Sdl3Input {
                                 .push(HotplugEvent::Connected(device.info.clone()));
                         }
                     }
+                    // Mark this axis as having received a real event so
+                    // the deferred re-probe stops emitting synthetic
+                    // initial-state events for it.  Subsequent
+                    // `JoyAxisMotion`s for this axis flow through this
+                    // arm normally; the cache holds whatever value the
+                    // user last produced.
+                    self.real_event_seen.insert(key);
                     let polarity = device
                         .info
                         .axis_polarities
