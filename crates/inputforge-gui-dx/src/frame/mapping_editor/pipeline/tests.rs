@@ -1354,3 +1354,96 @@ fn malformed_merge_axis_with_secondary_equal_primary_shows_error_class() {
         "expected malformed hint text in summary slot: {html}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Task 39: Conditional branch SSR coverage (AC #11)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn conditional_with_empty_if_false_renders_both_branches() {
+    // Build a Conditional whose `if_true` holds one Invert and whose
+    // `if_false` is `None`. The test expands the Conditional stage so the
+    // body (and therefore the if_true sub-pipeline) is rendered, then
+    // verifies:
+    //   - the "if true branch" aria-label appears (branch div renders)
+    //   - the "Add else branch" affordance appears in place of an if_false div
+    //
+    // When `if_false` is `None` the component renders an "Add else branch"
+    // button instead of a branch container, so "if false branch" must NOT
+    // appear as an aria-label.
+    let btn_addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Button { index: 0 },
+    };
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed {
+            input: btn_addr.clone(),
+        },
+        if_true: vec![Action::Invert],
+        if_false: None,
+    }];
+    // The seeded mapping uses an Axis input; the Conditional predicate uses a
+    // Button input -- these are independent addresses and both are valid.
+    let (state, _) = build_state(actions);
+    let axis_addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let html = render_with_expanded(
+        state,
+        axis_addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+    );
+
+    assert!(
+        html.contains("if true branch"),
+        "expected aria-label 'if true branch': {html}"
+    );
+    assert!(
+        html.contains("Add else branch"),
+        "expected louder add-else-branch affordance for empty if_false: {html}"
+    );
+    // When if_false is None, no branch container with "if false branch" label
+    // is rendered -- only the add-else button appears.
+    assert!(
+        !html.contains("if false branch"),
+        "if_false=None must not render an 'if false branch' container: {html}"
+    );
+}
+
+#[test]
+fn conditional_with_empty_if_true_renders_branch_with_add_first_stage() {
+    // Build a Conditional whose `if_true` is empty and `if_false` holds one
+    // Invert. The test expands the Conditional and verifies that the empty
+    // `if_true` branch shows the standard "Add first stage" affordance.
+    let btn_addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Button { index: 0 },
+    };
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed {
+            input: btn_addr.clone(),
+        },
+        if_true: vec![],
+        if_false: Some(vec![Action::Invert]),
+    }];
+    let (state, _) = build_state(actions);
+    let axis_addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let html = render_with_expanded(
+        state,
+        axis_addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+    );
+
+    assert!(
+        html.contains("if true branch"),
+        "expected aria-label 'if true branch': {html}"
+    );
+    assert!(
+        html.contains("Add first stage"),
+        "empty if_true must show standard add affordance: {html}"
+    );
+}
