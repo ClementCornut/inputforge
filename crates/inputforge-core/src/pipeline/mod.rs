@@ -139,6 +139,10 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                 second_input,
                 operation,
             } => {
+                // Polarity is destructured but unused here: Task 2 of the
+                // f9 follow-up plan switches `merge_axes` to a
+                // polarity-aware signature so `Maximum` can compare in
+                // natural domain. Until then, behavior is unchanged.
                 let (second, _second_polarity) = ctx.input_cache.get_axis(second_input);
                 ctx.current_value = merge_axes(ctx.current_value, second, *operation);
             }

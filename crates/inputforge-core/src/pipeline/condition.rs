@@ -11,6 +11,12 @@ pub fn evaluate_condition(condition: &Condition, cache: &dyn InputCache) -> bool
         Condition::ButtonPressed { input } => cache.get_button(input),
         Condition::ButtonReleased { input } => !cache.get_button(input),
         Condition::AxisInRange { input, min, max } => {
+            // Range thresholds are interpreted in the bipolar-encoded
+            // [-1, 1] domain, regardless of the input's polarity. A
+            // unipolar pedal at idle (encoded -1) compared against
+            // `min: 0.0, max: 1.0` evaluates as out-of-range, which
+            // matches existing F1-F9 condition semantics. Polarity is
+            // intentionally unused.
             let (value, _polarity) = cache.get_axis(input);
             value >= *min && value <= *max
         }

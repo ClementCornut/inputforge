@@ -169,17 +169,19 @@ impl LiveSnapshot {
                                 device: did.clone(),
                                 input: InputId::Axis { index: i },
                             };
-                            // Prefer device-side polarity (from
-                            // axis_polarities, which updates on re-probe);
-                            // fall back to the cache's polarity tag if the
-                            // device entry is missing.
-                            let (value, cache_polarity) = s.input_cache.get_axis(&addr);
+                            // Polarity source: device.info.axis_polarities
+                            // (the lazy-classification table updated on
+                            // re-probe). Fall back to Bipolar when the
+                            // device entry is short, matching pre-Task-1
+                            // behavior. The cache's polarity tag is
+                            // unused here intentionally.
+                            let (value, _cache_polarity) = s.input_cache.get_axis(&addr);
                             let pol = device
                                 .info
                                 .axis_polarities
                                 .get(usize::from(i))
                                 .copied()
-                                .unwrap_or(cache_polarity);
+                                .unwrap_or_default();
                             (value, pol)
                         })
                         .collect(),

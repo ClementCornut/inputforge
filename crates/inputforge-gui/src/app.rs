@@ -433,15 +433,17 @@ fn snapshot_device_inputs(
                 device: device_id.clone(),
                 input: InputId::Axis { index: i },
             };
-            // Prefer device-side polarity (updated on re-probe); fall
-            // back to cache-tagged polarity if the device entry is short.
-            let (value, cache_polarity) = guard.input_cache.get_axis(&addr);
+            // Polarity source: device.info.axis_polarities (the
+            // lazy-classification table updated on re-probe). Fall back
+            // to Bipolar when the device entry is short, matching
+            // pre-Task-1 behavior.
+            let (value, _cache_polarity) = guard.input_cache.get_axis(&addr);
             let polarity = device
                 .info
                 .axis_polarities
                 .get(usize::from(i))
                 .copied()
-                .unwrap_or(cache_polarity);
+                .unwrap_or_default();
             (value, polarity)
         })
         .collect();
