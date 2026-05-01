@@ -9,9 +9,11 @@
 //! anchors the rebind affordance next to the source label so that source
 //! and its action live as one unit.
 //!
-//! Display state: `<h2>` wrapped in a `Tooltip`. `tabindex="0"` and
-//! `data-editor-focus="true"` so the F8 keyboard nav lands here.
-//! `Key::F2` and right-click both arm the rename editor.
+//! Display state: bare `<h2>` with `tabindex="0"` and `data-editor-focus`
+//! so the F8 keyboard nav lands here. `Key::F2` and right-click both arm
+//! the rename editor. Long names truncate via CSS `text-overflow: ellipsis`;
+//! the user reads the full name by entering rename mode (the inline editor
+//! scrolls horizontally).
 //!
 //! Edit state: `<input type="text">` styled to inherit h2 typography
 //! (20px / 600 / Inter, line-height 28px) so the swap is visually
@@ -25,12 +27,13 @@ use inputforge_core::action::{Action, Mapping};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{InputAddress, OutputAddress, OutputId, VJoyAxis};
 
-use crate::components::{Button, ButtonSize, ButtonVariant, Tooltip, TooltipPlacement};
+use crate::components::{Button, ButtonSize, ButtonVariant};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, UndoKind, format_undo_label};
 use crate::frame::mapping_list::source_label;
+use crate::frame::view_state::ViewState;
 use crate::patterns::live_capture::{CaptureFilter, LiveCapture};
 
 #[component]
@@ -54,6 +57,7 @@ pub(crate) fn Header(
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
     let capture = use_context::<LiveCapture>();
+    let view = use_context::<ViewState>();
 
     // Local UI state.
     let mut armed: Signal<bool> = use_signal(|| false);
@@ -64,10 +68,15 @@ pub(crate) fn Header(
     let mut is_armed_consumer: Signal<bool> = use_signal(|| false);
 
     // Cancel any in-flight rebind capture when the user switches mappings.
-    let mapping_key_for_cancel = mapping_key.clone();
+    //
+    // Subscribe to `view.selected_mapping` (the change source) so the effect
+    // re-fires when the user picks a different mapping in the rail. Use
+    // `peek()` for `is_armed_consumer` so arming the flag in `on_rebind`
+    // does NOT trigger this effect to cancel itself.
+    let selected_for_cancel = view.selected_mapping;
     use_effect(move || {
-        let _key = mapping_key_for_cancel.clone();
-        if *is_armed_consumer.read() {
+        let _selected = selected_for_cancel.read();
+        if *is_armed_consumer.peek() {
             capture.cancel.call(());
             is_armed_consumer.set(false);
         }
@@ -75,6 +84,10 @@ pub(crate) fn Header(
 
     // Rebind capture handler: on a fresh `captured` value while we are the
     // armed consumer, dispatch `SetMapping` then push a `Rebind` undo entry.
+    //
+    // Subscribe to `capture.captured` (the change source). Read
+    // `is_armed_consumer` via `peek()` so the dispatch path's
+    // `is_armed_consumer.set(false)` cleanup does not retrigger the effect.
     let mapping_key_for_capture = mapping_key.clone();
     let actions_for_capture = actions.clone();
     let name_for_capture = Some(name.clone());
@@ -84,7 +97,7 @@ pub(crate) fn Header(
 
     use_effect(move || {
         let captured_addr = capture.captured.read().clone();
-        if !*is_armed_consumer.read() {
+        if !*is_armed_consumer.peek() {
             return;
         }
         let Some(new_addr) = captured_addr else {
@@ -302,18 +315,14 @@ pub(crate) fn Header(
                     },
                 }
             } else {
-                Tooltip {
-                    content: name.clone(),
-                    placement: TooltipPlacement::Bottom,
-                    h2 {
-                        class: "if-editor__title",
-                        tabindex: "0",
-                        "data-editor-focus": "true",
-                        "aria-label": "Mapping name. Press F2 or right-click to rename.",
-                        onkeydown: on_h2_keydown,
-                        oncontextmenu: on_h2_contextmenu,
-                        "{name}"
-                    }
+                h2 {
+                    class: "if-editor__title",
+                    tabindex: "0",
+                    "data-editor-focus": "true",
+                    "aria-label": "Mapping name. Press F2 or right-click to rename.",
+                    onkeydown: on_h2_keydown,
+                    oncontextmenu: on_h2_contextmenu,
+                    "{name}"
                 }
             }
             div { class: "if-editor__subtitle",

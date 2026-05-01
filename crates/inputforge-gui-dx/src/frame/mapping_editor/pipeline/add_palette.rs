@@ -295,14 +295,24 @@ pub(crate) fn AddPalette(
         }
     };
 
-    // Button label depending on louder/compact mode.
-    let button_label = if louder { "+ Add first stage" } else { "+" };
+    // Button label and class modifier depend on louder / compact mode.
+    // The `--louder` modifier paints the empty-pipeline placeholder as a
+    // full-width dashed-violet card; the bare class is the inline `+` used
+    // at the end of a non-empty pipeline.
+    let (button_label, trigger_class) = if louder {
+        (
+            "+ Add first stage",
+            "if-add-palette__trigger if-add-palette__trigger--louder",
+        )
+    } else {
+        ("+", "if-add-palette__trigger")
+    };
 
     rsx! {
         div { class: "if-add-palette",
             button {
                 r#type: "button",
-                class: "if-add-palette__trigger",
+                class: "{trigger_class}",
                 onclick: move |_| open.set(!open()),
                 "{button_label}"
             }
