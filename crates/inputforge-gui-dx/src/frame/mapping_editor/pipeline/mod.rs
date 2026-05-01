@@ -111,6 +111,130 @@ pub(crate) fn replace_at_path(
     walk(actions, &path.0, replacement)
 }
 
+/// Insert `new_action` at `path`. The terminal segment must be an
+/// `Index` indicating the insertion point; existing actions at that
+/// index and beyond shift right. Indexes past the end append.
+///
+/// Returns `None` for invalid paths (empty, starts with branch, branch
+/// segment after non-`Conditional`). Callers MUST skip the edit and skip
+/// `push_edit` on `None` to avoid phantom undo entries.
+///
+/// # Structural-mutation invariant
+///
+/// When called from an `EditorState` mutator the caller MUST clear
+/// `editor_state.expanded_stages` and `editor_state.malformed_hints`
+/// AFTER dispatching the new actions. `StageId` paths are positional;
+/// inserting a stage invalidates every cached path at or after the
+/// mutation point. (Enforced by a test in Task 22.)
+#[must_use]
+pub(crate) fn insert_at_path(
+    actions: &[Action],
+    path: &StageId,
+    new_action: Action,
+) -> Option<Vec<Action>> {
+    fn walk(
+        actions: &[Action],
+        path: &[StageIdSegment],
+        new_action: Action,
+    ) -> Option<Vec<Action>> {
+        let mut out = actions.to_vec();
+        let (head, tail) = path.split_first()?;
+        match head {
+            StageIdSegment::Index(i) => {
+                if tail.is_empty() {
+                    let pos = (*i).min(out.len());
+                    out.insert(pos, new_action);
+                    Some(out)
+                } else {
+                    let target = out.get_mut(*i)?;
+                    let Action::Conditional {
+                        if_true, if_false, ..
+                    } = target
+                    else {
+                        return None;
+                    };
+                    let (branch_seg, rest) = tail.split_first()?;
+                    match branch_seg {
+                        StageIdSegment::IfTrue => {
+                            *if_true = walk(if_true.as_slice(), rest, new_action)?;
+                        }
+                        StageIdSegment::IfFalse => {
+                            let current = if_false.clone().unwrap_or_default();
+                            let new = walk(&current, rest, new_action)?;
+                            *if_false = if new.is_empty() { None } else { Some(new) };
+                        }
+                        StageIdSegment::Index(_) => return None,
+                    }
+                    Some(out)
+                }
+            }
+            // StageId must always start with an Index segment.
+            StageIdSegment::IfTrue | StageIdSegment::IfFalse => None,
+        }
+    }
+    walk(actions, &path.0, new_action)
+}
+
+/// Remove the action at `path`. If the removal empties an `if_false`
+/// branch, the branch collapses back to `None` (the engine's
+/// "do nothing" shape). `if_true` always stays as a `Vec`, possibly
+/// empty.
+///
+/// Returns `None` for invalid paths (empty, starts with branch,
+/// out-of-range terminal index, branch segment after non-`Conditional`).
+/// Callers MUST skip the edit and skip `push_edit` on `None` to avoid
+/// phantom undo entries.
+///
+/// # Structural-mutation invariant
+///
+/// When called from an `EditorState` mutator the caller MUST clear
+/// `editor_state.expanded_stages` and `editor_state.malformed_hints`
+/// AFTER dispatching the new actions. `StageId` paths are positional;
+/// removing a stage invalidates every cached path at or after the
+/// mutation point. (Enforced by a test in Task 22.)
+#[must_use]
+pub(crate) fn remove_at_path(actions: &[Action], path: &StageId) -> Option<Vec<Action>> {
+    fn walk(actions: &[Action], path: &[StageIdSegment]) -> Option<Vec<Action>> {
+        let mut out = actions.to_vec();
+        let (head, tail) = path.split_first()?;
+        match head {
+            StageIdSegment::Index(i) => {
+                if tail.is_empty() {
+                    if *i >= out.len() {
+                        return None;
+                    }
+                    out.remove(*i);
+                    Some(out)
+                } else {
+                    let target = out.get_mut(*i)?;
+                    let Action::Conditional {
+                        if_true, if_false, ..
+                    } = target
+                    else {
+                        return None;
+                    };
+                    let (branch_seg, rest) = tail.split_first()?;
+                    match branch_seg {
+                        StageIdSegment::IfTrue => {
+                            *if_true = walk(if_true.as_slice(), rest)?;
+                        }
+                        StageIdSegment::IfFalse => {
+                            let branch = if_false.as_ref()?;
+                            let new = walk(branch, rest)?;
+                            *if_false = if new.is_empty() { None } else { Some(new) };
+                        }
+                        StageIdSegment::Index(_) => return None,
+                    }
+                    Some(out)
+                }
+            }
+            // StageId must always start with an Index segment.
+            StageIdSegment::IfTrue | StageIdSegment::IfFalse => None,
+        }
+    }
+    walk(actions, &path.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,5 +357,122 @@ mod tests {
         // Branch segment after a non-Conditional action.
         let path = StageId(vec![StageIdSegment::Index(0), StageIdSegment::IfTrue]);
         assert!(replace_at_path(&actions, &path, Action::Invert).is_none());
+    }
+
+    #[test]
+    fn insert_at_path_outer_appends() {
+        let actions = vec![Action::Invert];
+        let path = StageId(vec![StageIdSegment::Index(1)]);
+        let new = insert_at_path(&actions, &path, Action::Invert).expect("valid path");
+        assert_eq!(new.len(), 2);
+    }
+
+    #[test]
+    fn insert_at_path_outer_inserts_at_index() {
+        let actions = vec![Action::Invert];
+        let path = StageId(vec![StageIdSegment::Index(0)]);
+        let new = insert_at_path(
+            &actions,
+            &path,
+            Action::MergeAxis {
+                second_input: synth_addr(),
+                operation: MergeOp::Average,
+            },
+        )
+        .expect("valid path");
+        assert_eq!(new.len(), 2);
+        assert!(matches!(new[0], Action::MergeAxis { .. }));
+        assert!(matches!(new[1], Action::Invert));
+    }
+
+    #[test]
+    fn insert_at_path_into_if_false_creates_branch() {
+        let actions = vec![Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: synth_addr(),
+            },
+            if_true: vec![],
+            if_false: None,
+        }];
+        let path = StageId(vec![
+            StageIdSegment::Index(0),
+            StageIdSegment::IfFalse,
+            StageIdSegment::Index(0),
+        ]);
+        let new = insert_at_path(&actions, &path, Action::Invert).expect("valid path");
+        match &new[0] {
+            Action::Conditional { if_false, .. } => {
+                assert_eq!(if_false.as_ref().map(Vec::len), Some(1));
+            }
+            _ => panic!("expected Conditional"),
+        }
+    }
+
+    #[test]
+    fn remove_at_path_outer_drops_action() {
+        let actions = vec![Action::Invert, Action::Invert];
+        let path = StageId(vec![StageIdSegment::Index(0)]);
+        let new = remove_at_path(&actions, &path).expect("valid path");
+        assert_eq!(new.len(), 1);
+    }
+
+    #[test]
+    fn remove_at_path_last_in_if_false_collapses_to_none() {
+        let actions = vec![Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: synth_addr(),
+            },
+            if_true: vec![],
+            if_false: Some(vec![Action::Invert]),
+        }];
+        let path = StageId(vec![
+            StageIdSegment::Index(0),
+            StageIdSegment::IfFalse,
+            StageIdSegment::Index(0),
+        ]);
+        let new = remove_at_path(&actions, &path).expect("valid path");
+        match &new[0] {
+            Action::Conditional { if_false, .. } => {
+                assert!(
+                    if_false.is_none(),
+                    "empty if_false branch must collapse to None"
+                );
+            }
+            _ => panic!("expected Conditional"),
+        }
+    }
+
+    #[test]
+    fn insert_remove_invalid_paths_return_none() {
+        // Same contract as replace_at_path: callers depend on None
+        // (NOT panic in release) so they can skip the edit + skip push_edit.
+        let actions = vec![Action::Invert];
+
+        // Empty path.
+        assert!(insert_at_path(&actions, &StageId(vec![]), Action::Invert).is_none());
+        assert!(remove_at_path(&actions, &StageId(vec![])).is_none());
+
+        // Path starts with branch segment.
+        assert!(
+            insert_at_path(
+                &actions,
+                &StageId(vec![StageIdSegment::IfTrue]),
+                Action::Invert
+            )
+            .is_none()
+        );
+        assert!(remove_at_path(&actions, &StageId(vec![StageIdSegment::IfTrue])).is_none());
+
+        // Out-of-range index for remove_at_path.
+        assert!(remove_at_path(&actions, &StageId(vec![StageIdSegment::Index(99)])).is_none());
+
+        // Branch segment after a non-Conditional action.
+        let path = StageId(vec![
+            StageIdSegment::Index(0),
+            StageIdSegment::IfTrue,
+            StageIdSegment::Index(0),
+        ]);
+        assert!(insert_at_path(&actions, &path, Action::Invert).is_none());
+        assert!(remove_at_path(&actions, &path).is_none());
     }
 }
