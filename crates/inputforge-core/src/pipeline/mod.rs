@@ -176,8 +176,8 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
             } => {
                 if evaluate_condition(condition, ctx.input_cache) {
                     execute_pipeline(if_true, ctx);
-                } else if let Some(false_actions) = if_false {
-                    execute_pipeline(false_actions, ctx);
+                } else {
+                    execute_pipeline(if_false, ctx);
                 }
             }
         }
@@ -514,9 +514,9 @@ mod tests {
                     output: test_output(),
                 },
             ],
-            if_false: Some(vec![Action::MapToVJoy {
+            if_false: vec![Action::MapToVJoy {
                 output: test_output(),
-            }]),
+            }],
         }];
         execute_pipeline(&actions, &mut ctx);
         if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
@@ -543,9 +543,9 @@ mod tests {
                     output: test_output(),
                 },
             ],
-            if_false: Some(vec![Action::MapToVJoy {
+            if_false: vec![Action::MapToVJoy {
                 output: test_output(),
-            }]),
+            }],
         }];
         execute_pipeline(&actions, &mut ctx);
         if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
@@ -569,7 +569,7 @@ mod tests {
             if_true: vec![Action::MapToVJoy {
                 output: test_output(),
             }],
-            if_false: None,
+            if_false: Vec::new(),
         }];
         execute_pipeline(&actions, &mut ctx);
         assert!(ctx.outputs.is_empty());

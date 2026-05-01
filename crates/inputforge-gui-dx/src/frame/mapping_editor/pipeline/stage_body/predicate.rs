@@ -179,7 +179,7 @@ fn commit_condition(
     stage_id: &StageId,
     root_actions: Vec<Action>,
     if_true: Vec<Action>,
-    if_false: Option<Vec<Action>>,
+    if_false: Vec<Action>,
     cmd_tx: &mpsc::Sender<EngineCommand>,
     cfg: Signal<ConfigSnapshot>,
     mut editor: EditorState,
@@ -335,7 +335,7 @@ pub(crate) fn PredicateEditor(
     /// `if_true` branch forwarded unchanged into `commit_condition`.
     if_true: Vec<Action>,
     /// `if_false` branch forwarded unchanged into `commit_condition`.
-    if_false: Option<Vec<Action>>,
+    if_false: Vec<Action>,
     /// Full root-level actions vec, threaded unchanged per the Task 20 rule.
     root_actions: Vec<Action>,
 ) -> Element {

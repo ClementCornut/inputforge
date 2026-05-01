@@ -652,19 +652,6 @@
     margin-bottom: 4px;
 }
 
-.if-stage__add-else-branch {
-    width: 100%;
-    background: rgba(154, 120, 214, 0.06);
-    border: 1px dashed rgba(184, 155, 234, 0.40);
-    border-radius: 6px;
-    padding: 8px 12px;
-    color: var(--color-control-badge-text);
-    font-family: var(--font-sans);
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-}
-
 /* Task 28: categorized add palette */
 
 .if-add-palette {

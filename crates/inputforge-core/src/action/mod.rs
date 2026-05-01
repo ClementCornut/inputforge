@@ -50,8 +50,14 @@ pub enum Action {
     },
     Conditional {
         condition: Condition,
+        #[serde(default)]
         if_true: Vec<Action>,
-        if_false: Option<Vec<Action>>,
+        /// Both branches are always present. An empty vec encodes "do nothing
+        /// when the condition is false" (semantically identical to the legacy
+        /// `None` form). `#[serde(default)]` keeps backward compatibility with
+        /// pre-2026-05-02 profiles that omit the field.
+        #[serde(default)]
+        if_false: Vec<Action>,
     },
 }
 
@@ -112,9 +118,9 @@ mod tests {
                 input: test_input_address(),
             },
             if_true: vec![Action::Invert],
-            if_false: Some(vec![Action::MapToVJoy {
+            if_false: vec![Action::MapToVJoy {
                 output: test_output_address(),
-            }]),
+            }],
         };
         let json = serde_json::to_string(&action).unwrap();
         assert!(json.contains("\"type\":\"conditional\""));

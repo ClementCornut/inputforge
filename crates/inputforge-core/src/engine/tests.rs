@@ -628,7 +628,7 @@ fn tick_release_pops_temporary_mode_before_mapping() {
                     mode: "Shift".to_owned(),
                 },
             }],
-            if_false: None,
+            if_false: Vec::new(),
         }],
     };
     let profile = make_profile(shift_mode_tree(), vec![mapping]);

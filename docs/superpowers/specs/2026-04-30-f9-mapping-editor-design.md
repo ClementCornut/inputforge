@@ -334,25 +334,27 @@ Per the approved `editor-consolidated.html` mockup, with polish-pass adjustments
 
 ### Conditional stage body
 
-**Engine shape (verified in `crates/inputforge-core/src/action/mod.rs:51-55`):**
+**Engine shape (`crates/inputforge-core/src/action/mod.rs`):**
 
 ```rust
 Action::Conditional {
     condition: Condition,
-    if_true: Vec<Action>,            // mandatory
-    if_false: Option<Vec<Action>>,   // optional
+    if_true: Vec<Action>,
+    if_false: Vec<Action>,           // amended 2026-05-02: was Option<Vec<Action>>
 }
 ```
 
-`if_true` is mandatory and always present. `if_false` is optional; `None` means "do nothing on the false branch". The branch UIs never disappear; only their contents change.
+Both branches are always present. An empty `Vec` on either branch encodes "do nothing". The branch UIs never disappear; only their contents change.
+
+**Amendment 2026-05-02:** `if_false` was originally `Option<Vec<Action>>` with a corresponding "Add else branch" UI affordance to flip from `None` to `Some(vec![])`. Two bugs surfaced (the affordance closed the stage's collapse state on add, and there was no remove-else path back to `None`), and the option was semantically equivalent to an empty `Vec` since both branches evaluate identically. Changed `if_false` to a non-optional `Vec<Action>` with `#[serde(default)]` for backward compatibility with pre-2026-05-02 profiles, deleted the "Add else branch" button + handler + CSS rule, and now render the standard `+ Add first stage` placeholder inside an empty `if_false` branch (same affordance as any other empty pipeline). Symmetric with `if_true`.
 
 Body layout, top to bottom:
 
 1. **Predicate editor.** Condition kind picker (F2 `Select` with options `ButtonPressed`, `ButtonReleased`, `AxisInRange`, `HatDirection`, `All`, `Any`, `Not`). Operand fields render based on the selected kind. For input-bearing kinds: an Input field row mirroring the editor's main Input field (source label + rebind button). For `AxisInRange`: input row plus min/max numeric inputs. For `HatDirection`: input row plus a multi-select for direction set. For `All`, `Any`: a nested list of sub-conditions, each rendered as a card with a kind picker, recursively. For `Not`: a single nested condition card.
 
-2. **`if true` branch.** Indented 16 px. Header: `if true` 11 px mono uppercase caption in `--color-control-badge-text`. Body: nested ordered list of stages (recursive; the same `<Pipeline>` component used by the outer pipeline). Empty branch shows `+ Add first stage` louder affordance per choice 16. Non-empty branch shows tiny `+` at the end. Round-trip: emptying `if_true` leaves an empty `Vec<Action>` (the field is mandatory, never set to `None`). The branch UI continues to render with the louder add-affordance.
+2. **`if true` branch.** Indented 16 px. Header: `if true` 11 px mono uppercase caption in `--color-control-badge-text`. Body: nested ordered list of stages (recursive; the same `<Pipeline>` component used by the outer pipeline). Empty branch shows `+ Add first stage` louder affordance per choice 16. Non-empty branch shows tiny `+` at the end.
 
-3. **`if false` branch.** Same structure as `if true`. Always rendered. Round-trip: when `if_false` is `None` (engine default), F9 surfaces an empty branch with `+ Add first stage`. When the user adds a first stage, the editor sets `if_false: Some(vec![...])`. When the user deletes the last stage in `if_false`, the editor sets `if_false: None` (reset to "do nothing"). The branch UI never disappears; only its content does.
+3. **`if false` branch.** Same structure as `if true`, including the empty-branch `+ Add first stage` placeholder. Always rendered.
 
 Nested Conditional stages can be added inside a branch like any other action; F9's recursion handles arbitrary depth up to `MAX_CONDITION_DEPTH = 32` (engine constant). The visual layout indents an additional 16 px per nesting level. **Default ship behaviour:** render through depth 32 with linear 16 px indent. The "(N more levels)" placeholder for branches deeper than 5 is deferred polish; impeccable:layout in implementation phase will validate the default or revise.
 
@@ -496,7 +498,7 @@ Three tiers, mirroring F8's pattern.
 - Label-format convention enforced: each `UndoKind` produces the documented label shape.
 - `selected_mapping_actions` projection in `ConfigSnapshot::from_state`: present when selection matches a mapping, None otherwise.
 - Conditional condition editor's predicate-validation passes through `validate_depth`.
-- Conditional `if_true` empty round-trip leaves `Vec::new()`; `if_false` empty round-trip sets `None`. (Verifies the engine-shape asymmetry.)
+- Conditional `if_true` and `if_false` empty round-trips both leave `Vec::new()` (amended 2026-05-02; previously `if_false` round-tripped to `None`).
 - MergeAxis with cleared `second_input` produces a malformed-state Mapping (used by the malformed-action visual treatment).
 - `evaluate_actions_through(actions, state, 0)` returns the input untouched; `stop_at = actions.len()` returns the full pipeline output.
 
@@ -508,7 +510,7 @@ Three tiers, mirroring F8's pattern.
 - Editor with `editing_mode != runtime_mode`: inactive-runtime banner appears with the tighter copy.
 - Engine offline (mocked channel disconnect): banner appears.
 - Conditional with both branches non-empty: nested ordered lists render in correct DOM order with the right indents.
-- Conditional with empty `if_false`: branch label appears, "+ Add first stage" affordance appears, no nested list.
+- Conditional with empty `if_false`: branch label and the standard `+ Add first stage` affordance appear (same as any other empty pipeline; the legacy "Add else branch" button was removed 2026-05-02).
 - Stage with malformed action (MergeAxis with `second_input.device.0 == ""`): title color flips to error, summary slot reads fix hint.
 - Stage summary text re-renders in place when the user edits a body parameter (live-binding per choice 12).
 - Footer recap text rebinds after Ctrl+Z. Redo stack clears on a fresh edit.

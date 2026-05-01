@@ -413,10 +413,8 @@ fn first_map_to_vjoy_label(actions: &[Action]) -> Option<String> {
                     if let Some(found) = walk(if_true) {
                         return Some(found);
                     }
-                    if let Some(branch) = if_false.as_deref() {
-                        if let Some(found) = walk(branch) {
-                            return Some(found);
-                        }
+                    if let Some(found) = walk(if_false) {
+                        return Some(found);
                     }
                 }
                 _ => {}

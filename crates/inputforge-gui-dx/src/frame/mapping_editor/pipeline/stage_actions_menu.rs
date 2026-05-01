@@ -83,7 +83,7 @@ fn slice_at_parent<'a>(root: &'a [Action], parent_path: &[StageIdSegment]) -> Op
             },
             StageIdSegment::IfFalse => match staged? {
                 Action::Conditional { if_false, .. } => {
-                    cursor = if_false.as_deref()?;
+                    cursor = if_false.as_slice();
                     staged = None;
                 }
                 _ => return None,

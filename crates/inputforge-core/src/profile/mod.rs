@@ -503,10 +503,8 @@ fn check_cycle_rename(action: &Action, from: &str, to: &str) -> Result<()> {
             for a in if_true {
                 check_cycle_rename(a, from, to)?;
             }
-            if let Some(branch) = if_false {
-                for a in branch {
-                    check_cycle_rename(a, from, to)?;
-                }
+            for a in if_false {
+                check_cycle_rename(a, from, to)?;
             }
             Ok(())
         }
@@ -557,10 +555,8 @@ fn rewrite_mode_in_action(action: &mut Action, from: &str, to: &str) -> bool {
             for a in if_true {
                 changed |= rewrite_mode_in_action(a, from, to);
             }
-            if let Some(branch) = if_false {
-                for a in branch {
-                    changed |= rewrite_mode_in_action(a, from, to);
-                }
+            for a in if_false {
+                changed |= rewrite_mode_in_action(a, from, to);
             }
             changed
         }
@@ -878,12 +874,12 @@ type = "invert"
                             modifiers: vec![KeyModifier::Ctrl],
                         },
                     }],
-                    if_false: Some(vec![Action::MapToKeyboard {
+                    if_false: vec![Action::MapToKeyboard {
                         key: KeyCombo {
                             key: "F1".to_owned(),
                             modifiers: vec![],
                         },
-                    }]),
+                    }],
                 }],
             }],
             vec![],
@@ -1454,11 +1450,11 @@ enabled = true
                             mode: "Combat".to_owned(),
                         },
                     }],
-                    if_false: Some(vec![Action::ChangeMode {
+                    if_false: vec![Action::ChangeMode {
                         strategy: ModeChangeStrategy::Temporary {
                             mode: "Combat".to_owned(),
                         },
-                    }]),
+                    }],
                 }],
             }],
             vec![],

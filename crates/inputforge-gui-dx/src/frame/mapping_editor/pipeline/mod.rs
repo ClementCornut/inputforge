@@ -74,10 +74,7 @@ pub(crate) fn at_path<'a>(actions: &'a [Action], path: &StageId) -> Option<&'a A
                 _ => return None,
             },
             StageIdSegment::IfFalse => match peek? {
-                Action::Conditional { if_false, .. } => match if_false.as_deref() {
-                    Some(branch) => cursor = branch,
-                    None => return None,
-                },
+                Action::Conditional { if_false, .. } => cursor = if_false.as_slice(),
                 _ => return None,
             },
         }
@@ -128,9 +125,8 @@ pub(crate) fn replace_at_path(
                             *if_true = new;
                         }
                         StageIdSegment::IfFalse => {
-                            let current = if_false.clone()?;
-                            let new = walk(&current, rest, replacement)?;
-                            *if_false = if new.is_empty() { None } else { Some(new) };
+                            let new = walk(if_false.as_slice(), rest, replacement)?;
+                            *if_false = new;
                         }
                         StageIdSegment::Index(_) => return None,
                     }
@@ -192,9 +188,8 @@ pub(crate) fn insert_at_path(
                             *if_true = walk(if_true.as_slice(), rest, new_action)?;
                         }
                         StageIdSegment::IfFalse => {
-                            let current = if_false.clone().unwrap_or_default();
-                            let new = walk(&current, rest, new_action)?;
-                            *if_false = if new.is_empty() { None } else { Some(new) };
+                            let new = walk(if_false.as_slice(), rest, new_action)?;
+                            *if_false = new;
                         }
                         StageIdSegment::Index(_) => return None,
                     }
@@ -208,10 +203,8 @@ pub(crate) fn insert_at_path(
     walk(actions, &path.0, new_action)
 }
 
-/// Remove the action at `path`. If the removal empties an `if_false`
-/// branch, the branch collapses back to `None` (the engine's
-/// "do nothing" shape). `if_true` always stays as a `Vec`, possibly
-/// empty.
+/// Remove the action at `path`. Both branches stay as `Vec`s, possibly
+/// empty: an empty `if_false` is the engine's "do nothing" shape.
 ///
 /// Returns `None` for invalid paths (empty, starts with branch,
 /// out-of-range terminal index, branch segment after non-`Conditional`).
@@ -252,9 +245,8 @@ pub(crate) fn remove_at_path(actions: &[Action], path: &StageId) -> Option<Vec<A
                             *if_true = walk(if_true.as_slice(), rest)?;
                         }
                         StageIdSegment::IfFalse => {
-                            let branch = if_false.as_ref()?;
-                            let new = walk(branch, rest)?;
-                            *if_false = if new.is_empty() { None } else { Some(new) };
+                            let new = walk(if_false.as_slice(), rest)?;
+                            *if_false = new;
                         }
                         StageIdSegment::Index(_) => return None,
                     }

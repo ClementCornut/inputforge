@@ -63,7 +63,7 @@ fn at_path_into_if_true_branch() {
             input: synth_addr(),
         },
         if_true: vec![Action::Invert],
-        if_false: None,
+        if_false: Vec::new(),
     }];
     let path = StageId(vec![
         StageIdSegment::Index(0),
@@ -80,7 +80,7 @@ fn at_path_into_missing_if_false_returns_none() {
             input: synth_addr(),
         },
         if_true: vec![],
-        if_false: None,
+        if_false: Vec::new(),
     }];
     let path = StageId(vec![
         StageIdSegment::Index(0),
@@ -113,7 +113,7 @@ fn replace_at_path_inside_if_true_swaps_action() {
             input: synth_addr(),
         },
         if_true: vec![Action::Invert],
-        if_false: None,
+        if_false: Vec::new(),
     }];
     let path = StageId(vec![
         StageIdSegment::Index(0),
@@ -192,7 +192,7 @@ fn insert_at_path_into_if_false_creates_branch() {
             input: synth_addr(),
         },
         if_true: vec![],
-        if_false: None,
+        if_false: Vec::new(),
     }];
     let path = StageId(vec![
         StageIdSegment::Index(0),
@@ -202,7 +202,7 @@ fn insert_at_path_into_if_false_creates_branch() {
     let new = insert_at_path(&actions, &path, Action::Invert).expect("valid path");
     match &new[0] {
         Action::Conditional { if_false, .. } => {
-            assert_eq!(if_false.as_ref().map(Vec::len), Some(1));
+            assert_eq!(if_false.len(), 1);
         }
         _ => panic!("expected Conditional"),
     }
@@ -217,13 +217,13 @@ fn remove_at_path_outer_drops_action() {
 }
 
 #[test]
-fn remove_at_path_last_in_if_false_collapses_to_none() {
+fn remove_at_path_last_in_if_false_leaves_empty_branch() {
     let actions = vec![Action::Conditional {
         condition: Condition::ButtonPressed {
             input: synth_addr(),
         },
         if_true: vec![],
-        if_false: Some(vec![Action::Invert]),
+        if_false: vec![Action::Invert],
     }];
     let path = StageId(vec![
         StageIdSegment::Index(0),
@@ -234,8 +234,8 @@ fn remove_at_path_last_in_if_false_collapses_to_none() {
     match &new[0] {
         Action::Conditional { if_false, .. } => {
             assert!(
-                if_false.is_none(),
-                "empty if_false branch must collapse to None"
+                if_false.is_empty(),
+                "removing the last action must leave an empty if_false branch"
             );
         }
         _ => panic!("expected Conditional"),
@@ -778,7 +778,7 @@ fn predicate_editor_renders_kind_picker_with_seven_options() {
             input: primary.clone(),
         },
         if_true: vec![],
-        if_false: None,
+        if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
     let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
@@ -814,7 +814,7 @@ fn predicate_axis_in_range_renders_min_max_inputs() {
             max: 0.5,
         },
         if_true: vec![],
-        if_false: None,
+        if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
     let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
@@ -844,7 +844,7 @@ fn predicate_all_recursive_renders_nested_predicate_editors() {
             ],
         },
         if_true: vec![],
-        if_false: None,
+        if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
     let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
@@ -870,7 +870,7 @@ fn conditional_body_renders_branches_with_correct_aria_labels() {
             input: primary.clone(),
         },
         if_true: vec![Action::Invert],
-        if_false: Some(vec![Action::Invert]),
+        if_false: vec![Action::Invert],
     }];
     let (state, addr) = build_state(actions);
     let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
@@ -881,27 +881,6 @@ fn conditional_body_renders_branches_with_correct_aria_labels() {
     assert!(
         html.contains("if false branch"),
         "expected if-false aria-label: {html}"
-    );
-}
-
-#[test]
-fn conditional_empty_if_false_shows_add_else_affordance() {
-    let primary = InputAddress {
-        device: DeviceId("dev-1".to_owned()),
-        input: InputId::Button { index: 0 },
-    };
-    let actions = vec![Action::Conditional {
-        condition: Condition::ButtonPressed {
-            input: primary.clone(),
-        },
-        if_true: vec![],
-        if_false: None,
-    }];
-    let (state, addr) = build_state(actions);
-    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
-    assert!(
-        html.contains("Add else branch"),
-        "expected else-branch affordance: {html}"
     );
 }
 
@@ -959,21 +938,21 @@ fn conditional_three_deep_renders_all_branches() {
             input: primary.clone(),
         },
         if_true: vec![Action::Invert],
-        if_false: None,
+        if_false: Vec::new(),
     };
     let middle = Action::Conditional {
         condition: Condition::ButtonPressed {
             input: primary.clone(),
         },
         if_true: vec![inner],
-        if_false: None,
+        if_false: Vec::new(),
     };
     let outer = Action::Conditional {
         condition: Condition::ButtonPressed {
             input: primary.clone(),
         },
         if_true: vec![middle],
-        if_false: None,
+        if_false: Vec::new(),
     };
     let (state, addr) = build_state(vec![outer]);
     let html = render_with_expanded(
@@ -1156,7 +1135,7 @@ fn dnd_can_move_stage_from_outer_into_conditional_if_true() {
                 input: primary.clone(),
             },
             if_true: vec![],
-            if_false: None,
+            if_false: Vec::new(),
         },
         Action::Invert,
     ];
@@ -1361,16 +1340,11 @@ fn malformed_merge_axis_with_secondary_equal_primary_shows_error_class() {
 
 #[test]
 fn conditional_with_empty_if_false_renders_both_branches() {
-    // Build a Conditional whose `if_true` holds one Invert and whose
-    // `if_false` is `None`. The test expands the Conditional stage so the
-    // body (and therefore the if_true sub-pipeline) is rendered, then
-    // verifies:
-    //   - the "if true branch" aria-label appears (branch div renders)
-    //   - the "Add else branch" affordance appears in place of an if_false div
-    //
-    // When `if_false` is `None` the component renders an "Add else branch"
-    // button instead of a branch container, so "if false branch" must NOT
-    // appear as an aria-label.
+    // Both branches are always rendered as branch containers, regardless of
+    // emptiness. An empty `if_false` shows the standard "Add first stage"
+    // placeholder inside its branch container, same affordance as any other
+    // empty pipeline. (The legacy "Add else branch" button was removed
+    // 2026-05-02 along with the `Option<Vec<Action>>` indirection.)
     let btn_addr = InputAddress {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Button { index: 0 },
@@ -1380,10 +1354,8 @@ fn conditional_with_empty_if_false_renders_both_branches() {
             input: btn_addr.clone(),
         },
         if_true: vec![Action::Invert],
-        if_false: None,
+        if_false: Vec::new(),
     }];
-    // The seeded mapping uses an Axis input; the Conditional predicate uses a
-    // Button input -- these are independent addresses and both are valid.
     let (state, _) = build_state(actions);
     let axis_addr = InputAddress {
         device: DeviceId("dev-1".to_owned()),
@@ -1400,14 +1372,8 @@ fn conditional_with_empty_if_false_renders_both_branches() {
         "expected aria-label 'if true branch': {html}"
     );
     assert!(
-        html.contains("Add else branch"),
-        "expected louder add-else-branch affordance for empty if_false: {html}"
-    );
-    // When if_false is None, no branch container with "if false branch" label
-    // is rendered -- only the add-else button appears.
-    assert!(
-        !html.contains("if false branch"),
-        "if_false=None must not render an 'if false branch' container: {html}"
+        html.contains("if false branch"),
+        "expected aria-label 'if false branch' even with an empty branch: {html}"
     );
 }
 
@@ -1425,7 +1391,7 @@ fn conditional_with_empty_if_true_renders_branch_with_add_first_stage() {
             input: btn_addr.clone(),
         },
         if_true: vec![],
-        if_false: Some(vec![Action::Invert]),
+        if_false: vec![Action::Invert],
     }];
     let (state, _) = build_state(actions);
     let axis_addr = InputAddress {

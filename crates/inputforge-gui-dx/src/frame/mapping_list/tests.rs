@@ -769,7 +769,7 @@ fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
                         },
                     },
                     if_true: vec![],
-                    if_false: None,
+                    if_false: Vec::new(),
                 }],
             },
             Mapping {

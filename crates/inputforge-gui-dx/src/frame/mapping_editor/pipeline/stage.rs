@@ -75,10 +75,7 @@ fn parent_pipeline_len(root_actions: &[Action], parent_pipeline_path: &StageId) 
             },
             StageIdSegment::IfFalse => match last_action {
                 Some(Action::Conditional { if_false, .. }) => {
-                    let Some(branch) = if_false.as_deref() else {
-                        return 0;
-                    };
-                    cursor = branch;
+                    cursor = if_false.as_slice();
                 }
                 _ => return 0,
             },

@@ -106,7 +106,7 @@ fn default_conditional() -> Action {
             },
         },
         if_true: vec![],
-        if_false: None,
+        if_false: Vec::new(),
     }
 }
 

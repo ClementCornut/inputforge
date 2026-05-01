@@ -248,7 +248,7 @@ fn show_conditional(
     ui: &mut egui::Ui,
     condition: &mut inputforge_core::action::Condition,
     if_true: &mut [Action],
-    if_false: &mut Option<Vec<Action>>,
+    if_false: &mut [Action],
     colors: &ThemeColors,
 ) -> bool {
     description(
@@ -271,12 +271,10 @@ fn show_conditional(
     ui.label(
         egui::RichText::new(format!("If true: {} action(s)", if_true.len())).color(colors.text_dim),
     );
-    if let Some(false_branch) = if_false {
-        ui.label(
-            egui::RichText::new(format!("If false: {} action(s)", false_branch.len()))
-                .color(colors.text_dim),
-        );
-    }
+    ui.label(
+        egui::RichText::new(format!("If false: {} action(s)", if_false.len()))
+            .color(colors.text_dim),
+    );
 
     // Full recursive editing deferred to a future iteration.
     false

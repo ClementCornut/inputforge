@@ -265,9 +265,7 @@ fn walk_actions(actions: &[inputforge_core::action::Action], out: &mut GlyphFlag
                     }
                 }
                 walk_actions(if_true, out);
-                if let Some(branch) = if_false.as_deref() {
-                    walk_actions(branch, out);
-                }
+                walk_actions(if_false, out);
             }
             _ => {}
         }
@@ -777,7 +775,7 @@ mod tests {
                     input: predicate.clone(),
                 },
                 if_true: vec![],
-                if_false: None,
+                if_false: Vec::new(),
             }],
         }];
 
@@ -837,7 +835,7 @@ mod tests {
                         input: predicate.clone(),
                     },
                     if_true: vec![],
-                    if_false: None,
+                    if_false: Vec::new(),
                 },
             ],
         }];
@@ -894,7 +892,7 @@ mod tests {
             actions: vec![Action::Conditional {
                 condition: nested_condition,
                 if_true: vec![],
-                if_false: None,
+                if_false: Vec::new(),
             }],
         }];
 
@@ -951,7 +949,7 @@ mod tests {
                     second_input: secondary.clone(),
                     operation: MergeOp::Average,
                 }],
-                if_false: None,
+                if_false: Vec::new(),
             }],
         }];
 

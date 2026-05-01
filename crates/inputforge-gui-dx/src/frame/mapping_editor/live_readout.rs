@@ -368,9 +368,7 @@ fn first_map_to_vjoy_output(actions: &[Action]) -> Option<OutputAddress> {
                 if let Some(o) = first_map_to_vjoy_output(if_true) {
                     return Some(o);
                 }
-                if let Some(branch) = if_false.as_deref()
-                    && let Some(o) = first_map_to_vjoy_output(branch)
-                {
+                if let Some(o) = first_map_to_vjoy_output(if_false) {
                     return Some(o);
                 }
             }
@@ -625,7 +623,7 @@ mod tests {
                 second_input: axis_addr(1),
                 operation: MergeOp::Bidirectional,
             }],
-            if_false: None,
+            if_false: Vec::new(),
         }];
         assert!(find_merge_context(&actions).is_none());
     }
