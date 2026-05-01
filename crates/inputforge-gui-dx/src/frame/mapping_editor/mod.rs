@@ -13,6 +13,7 @@ mod empty_state;
 mod engine_offline_banner;
 mod header;
 mod input_field;
+mod live_readout;
 mod name_field;
 pub(crate) mod pipeline;
 pub(crate) mod undo_log;
@@ -21,6 +22,7 @@ pub(crate) use empty_state::EmptyState;
 use engine_offline_banner::EngineOfflineBanner;
 use header::Header;
 use input_field::InputField;
+use live_readout::LiveReadout;
 use name_field::NameField;
 
 use std::collections::{HashMap, HashSet};
@@ -83,12 +85,16 @@ pub(crate) fn MappingEditor() -> Element {
                             actions: actions_clone.clone(),
                         }
                         InputField {
-                            mapping_key: (mode, input),
-                            actions: actions_clone,
+                            mapping_key: (mode, input.clone()),
+                            actions: actions_clone.clone(),
                             name: Some(mapping_name),
                         }
-                        // Remaining sections (live readout, pipeline, footer)
-                        // land in subsequent tasks.
+                        LiveReadout {
+                            primary: input,
+                            actions: actions_clone,
+                        }
+                        // Remaining sections (pipeline, footer) land in
+                        // subsequent tasks.
                     }
                 }
             } else {

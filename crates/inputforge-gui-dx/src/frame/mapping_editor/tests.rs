@@ -425,3 +425,64 @@ fn editor_input_field_renders_source_label_and_rebind_button() {
         "expected rebind button; got: {html}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Task 17: live readout (IN/OUT bars + merge layout)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn editor_live_readout_renders_in_row() {
+    let addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let state = seeded_profile_with_one_mapping(vec![Action::Invert]);
+    let mut vdom = harness_with(state, addr);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-editor__readout-label"),
+        "expected readout label cell; got: {html}"
+    );
+    assert!(
+        html.contains(">IN<") || html.contains(">IN "),
+        "IN row label; got: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_omits_out_when_no_map_to_vjoy() {
+    let addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let state = seeded_profile_with_one_mapping(vec![Action::Invert]);
+    let mut vdom = harness_with(state, addr);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(!html.contains(">OUT<"), "OUT row must be hidden: {html}");
+}
+
+#[test]
+fn editor_live_readout_renders_out_when_map_to_vjoy_present() {
+    use inputforge_core::types::{OutputAddress, OutputId, VJoyAxis};
+
+    let addr = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let actions = vec![Action::MapToVJoy {
+        output: OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        },
+    }];
+    let state = seeded_profile_with_one_mapping(actions);
+    let mut vdom = harness_with(state, addr);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("OUT"),
+        "OUT row should render with MapToVJoy: {html}"
+    );
+}

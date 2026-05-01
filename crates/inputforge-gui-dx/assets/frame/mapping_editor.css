@@ -149,3 +149,62 @@
     font-size: 12px;
     color: var(--color-text-muted);
 }
+
+/* Task 17: live readout (IN/OUT bars + merge layout) */
+
+.if-editor__readout {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.if-editor__readout-row {
+    display: grid;
+    grid-template-columns: 60px 1fr 60px;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 0;
+}
+
+.if-editor__readout-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: 500;
+    color: var(--color-text-subtle);
+}
+
+.if-editor__readout-bar {
+    position: relative;
+    height: 8px;
+    background: var(--color-bg-sunken);
+    border-radius: 2px;
+}
+
+.if-editor__readout-fill {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    background: var(--color-live);
+    border-radius: 2px;
+}
+
+.if-editor__readout-pct {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--color-text);
+}
+
+.if-editor__readout-divider {
+    border-top: 1px solid var(--color-border-strong);
+    margin: 4px 0;
+}
+
+.if-editor__readout-divider-dashed {
+    border-top: 1px dashed var(--color-border-strong);
+    margin: 4px 0;
+}
