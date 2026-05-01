@@ -9,6 +9,7 @@
               clippy's reachability check loses some pub(crate) items here."
 )]
 
+pub(crate) mod pipeline;
 pub(crate) mod undo_log;
 
 use std::collections::{HashMap, HashSet};
