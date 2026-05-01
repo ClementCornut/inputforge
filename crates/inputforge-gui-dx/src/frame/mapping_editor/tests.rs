@@ -819,6 +819,62 @@ fn editor_live_readout_bidirectional_uu_idle_renders_centered_bipolar_in() {
     );
 }
 
+/// Rudder UU Bidirectional, one pedal half-pressed: the user-reported
+/// bug case. Encoded inputs (0, -1); natural (0.5, 0); diff = 0.5.
+/// Merged IN row inherits Bipolar polarity and reads `+0.50`. Bar
+/// grows rightward to half its half-width: `width: 25%`, anchored at
+/// the 50% midline.
+///
+/// Pre-fix the encoded subtraction returned 1.0, rendering `+1.00`
+/// (full bar) when only one pedal was at half-press.
+#[test]
+fn editor_live_readout_bidirectional_uu_half_press_renders_half_deflection() {
+    use inputforge_core::types::MergeOp;
+
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let secondary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 1 },
+    };
+    let actions = vec![Action::MergeAxis {
+        second_input: secondary,
+        operation: MergeOp::Bidirectional,
+    }];
+    let state = seeded_profile_with_polarities_and_axes(
+        actions,
+        vec![AxisPolarity::Unipolar, AxisPolarity::Unipolar],
+        &[
+            (0, 0.0, AxisPolarity::Unipolar),
+            (1, -1.0, AxisPolarity::Unipolar),
+        ],
+    );
+    let live = live_snapshot_with_axes(vec![
+        (0.0, AxisPolarity::Unipolar),
+        (-1.0, AxisPolarity::Unipolar),
+    ]);
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    // Merged IN reads bipolar +0.50, NOT +1.00.
+    assert!(
+        html.contains("+0.50"),
+        "expected merged IN +0.50 for half-press Bidirectional; got: {html}"
+    );
+    assert!(
+        !html.contains("+1.00"),
+        "merged IN must not render +1.00 for half-press; got: {html}"
+    );
+    // Bipolar bar grows from 50% midline rightward; visual maximum is
+    // half the container, so 50% deflection -> width: 25%.
+    assert!(
+        html.contains("left: 50%; right: auto; width: 25%"),
+        "expected merged IN bar at half-deflection (width: 25%, 50% anchor); got: {html}"
+    );
+}
+
 /// Average of two unipolar pedals at idle (encoded -1, -1).
 /// Expected: IN row inherits Unipolar polarity (per truth table); the
 /// natural-domain remap turns encoded -1 into displayed 0.00 with no

@@ -6,11 +6,10 @@ use crate::types::{AxisPolarity, MergeOp};
 /// Merge two axis values using the specified operation.
 ///
 /// Inputs are bipolar-encoded `[-1, 1]` regardless of natural polarity.
-/// Polarity hints are consumed by the `Maximum` arm to compare the
-/// inputs in their natural domain so a half-pressed unipolar pedal
-/// (encoded `0`) wins over an idle unipolar pedal (encoded `-1`).
-/// The other arms ignore polarity because their math gives the right
-/// result in the encoded domain for every polarity combination.
+/// `Bidirectional` and `Maximum` consume each input's polarity to do
+/// their math in the natural domain, then return a bipolar-encoded
+/// result. `Average` is self-correcting under the encoded->natural
+/// remap the GUI applies downstream and ignores polarity.
 ///
 /// The return value stays bipolar-encoded so downstream pipeline
 /// actions (curves, deadzone, `MapToVJoy`) continue to operate without
@@ -24,7 +23,17 @@ pub fn merge_axes(
     second_polarity: AxisPolarity,
 ) -> f64 {
     match operation {
-        MergeOp::Bidirectional => (first - second).clamp(-1.0, 1.0),
+        MergeOp::Bidirectional => {
+            // Subtract in natural domain. Encoded subtraction over
+            // unipolar inputs scales by 2x (encoded = 2*natural - 1, so
+            // diff_encoded = 2*diff_natural), which spuriously maxes out
+            // the bar when one pedal is half-pressed and the other idle.
+            // Pre-remap each input to its natural domain so the diff
+            // matches user intent.
+            let first_natural = into_natural_domain(first, first_polarity);
+            let second_natural = into_natural_domain(second, second_polarity);
+            (first_natural - second_natural).clamp(-1.0, 1.0)
+        }
         MergeOp::Average => f64::midpoint(first, second).clamp(-1.0, 1.0),
         MergeOp::Maximum => {
             // Compare in natural domain so a half-pressed unipolar pedal
@@ -238,18 +247,55 @@ mod tests {
         );
     }
 
-    // -- Bidirectional and Average: polarity is ignored, math unchanged -------
+    // -- Bidirectional: natural-domain subtraction ---------------------------
 
     #[test]
-    fn bidirectional_unchanged_for_unipolar_pair() {
-        // Two unipolar pedals at idle (encoded -1, -1):
-        // (-1) - (-1) = 0. Bipolar-encoded center, natural rudder rest.
+    fn bidirectional_unipolar_pair_at_idle_centers() {
+        // Two unipolar pedals at idle (encoded -1, -1; natural 0, 0):
+        // diff = 0. Bipolar-encoded center, natural rudder rest.
         assert!(merge_axes(-1.0, -1.0, MergeOp::Bidirectional, UU.0, UU.1).abs() < TOLERANCE);
     }
 
     #[test]
-    fn bidirectional_unchanged_for_mixed_polarity() {
-        // Encoded math identical regardless of polarity hints.
+    fn bidirectional_unipolar_one_pedal_half_pressed_gives_half_deflection() {
+        // The user-reported bug: half-press one pedal, idle the other.
+        // Encoded (0, -1); natural (0.5, 0); diff = 0.5. Pre-fix the
+        // encoded math returned 1.0 (full deflection) for half-press.
+        assert!(
+            (merge_axes(0.0, -1.0, MergeOp::Bidirectional, UU.0, UU.1) - 0.5).abs() < TOLERANCE
+        );
+    }
+
+    #[test]
+    fn bidirectional_unipolar_one_pedal_full_press_gives_full_deflection() {
+        // Encoded (1, -1); natural (1, 0); diff = 1. Same as the
+        // pre-fix encoded result thanks to the clamp; this test pins
+        // the extreme so a future regression is caught.
+        assert!(
+            (merge_axes(1.0, -1.0, MergeOp::Bidirectional, UU.0, UU.1) - 1.0).abs() < TOLERANCE
+        );
+    }
+
+    #[test]
+    fn bidirectional_unipolar_both_half_pressed_centers() {
+        // Encoded (0, 0); natural (0.5, 0.5); diff = 0. Both pedals
+        // pressed equally produces the rudder-center value, regardless
+        // of how far down they are.
+        assert!(merge_axes(0.0, 0.0, MergeOp::Bidirectional, UU.0, UU.1).abs() < TOLERANCE);
+    }
+
+    #[test]
+    fn bidirectional_natural_domain_for_mixed_polarity() {
+        // The pre-fix `bidirectional_unchanged_for_mixed_polarity` test
+        // asserted that all four polarity combos of (0.5, 0.2) yielded
+        // the same encoded result (0.3). That was the bug: encoded
+        // subtraction over unipolar inputs scales by 2x, so polarity
+        // must change the result. Pin the correct natural-domain
+        // behavior across all four combos.
+        //
+        // Inputs: encoded (0.5, 0.2). Natural map per polarity:
+        //   Bipolar:  natural == encoded.
+        //   Unipolar: natural = (encoded + 1) / 2 = midpoint(encoded, 1).
         let bb = merge_axes(0.5, 0.2, MergeOp::Bidirectional, BB.0, BB.1);
         let ub = merge_axes(
             0.5,
@@ -266,11 +312,42 @@ mod tests {
             AxisPolarity::Unipolar,
         );
         let uu = merge_axes(0.5, 0.2, MergeOp::Bidirectional, UU.0, UU.1);
-        assert!((bb - 0.3).abs() < TOLERANCE);
-        assert!((ub - 0.3).abs() < TOLERANCE);
-        assert!((bu - 0.3).abs() < TOLERANCE);
-        assert!((uu - 0.3).abs() < TOLERANCE);
+        // BB: 0.5 - 0.2 = 0.3.
+        assert!((bb - 0.3).abs() < TOLERANCE, "bb expected 0.3, got {bb}");
+        // UB: natural(0.5) Unipolar = 0.75, natural(0.2) Bipolar = 0.2;
+        // diff = 0.55.
+        assert!((ub - 0.55).abs() < TOLERANCE, "ub expected 0.55, got {ub}");
+        // BU: natural(0.5) Bipolar = 0.5, natural(0.2) Unipolar = 0.6;
+        // diff = -0.1.
+        assert!(
+            (bu - (-0.1)).abs() < TOLERANCE,
+            "bu expected -0.1, got {bu}"
+        );
+        // UU: natural(0.5) = 0.75, natural(0.2) = 0.6; diff = 0.15.
+        assert!((uu - 0.15).abs() < TOLERANCE, "uu expected 0.15, got {uu}");
     }
+
+    #[test]
+    fn bidirectional_mixed_bipolar_center_plus_unipolar_idle_centers() {
+        // Bipolar primary at center (encoded 0, natural 0) + unipolar
+        // secondary at idle (encoded -1, natural 0). Pre-fix returned
+        // encoded 0 - (-1) = 1 (full deflection), spuriously claiming
+        // input where there was none. Natural diff is 0 (centered).
+        assert!(
+            merge_axes(
+                0.0,
+                -1.0,
+                MergeOp::Bidirectional,
+                AxisPolarity::Bipolar,
+                AxisPolarity::Unipolar
+            )
+            .abs()
+                < TOLERANCE
+        );
+    }
+
+    // -- Average: encoded math is self-correcting via the GUI's natural
+    // domain remap, so polarity is ignored in the merge_axes computation.
 
     #[test]
     fn average_unchanged_for_unipolar_pair() {
