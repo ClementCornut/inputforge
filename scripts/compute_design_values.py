@@ -1,6 +1,6 @@
 """Compute OKLCH from hex, WCAG contrast ratios, and find new text-subtle.
 
-Self-contained — no third-party deps. Outputs a JSON blob to stdout
+Self-contained: no third-party deps. Outputs a JSON blob to stdout
 that the design-doc edits consume.
 """
 
@@ -198,7 +198,7 @@ for fg_name, bg_name in status_pairs:
     result["contrast"][f"{fg_name} on {bg_name}"] = round(ratio, 2)
 
 
-# Category badge contrast — hue itself on 14% tint of hue mixed into bg-elevated
+# Category badge contrast: hue itself on 14% tint of hue mixed into bg-elevated
 for cat in ("processing", "output", "control"):
     composited = color_mix(HEX[cat], HEX["bg_elevated"], 0.14)
     ratio = contrast_ratio(HEX[cat], composited)

@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn replace_at_path_invalid_path_returns_none() {
-        // Out-of-range index — must return None, not panic, in BOTH debug
+        // Out-of-range index: must return None, not panic, in BOTH debug
         // and release. Callers depend on this to skip the edit + skip
         // push_edit (no phantom undo entries).
         let actions = vec![Action::Invert];

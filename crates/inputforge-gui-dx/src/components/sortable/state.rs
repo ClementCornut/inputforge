@@ -26,7 +26,7 @@ pub struct DropTarget {
     pub index: usize,
     /// Discriminator of the hovered row's group. Required because group-
     /// local `index` values are not unique across groups (e.g., Axes idx
-    /// 0 and Buttons idx 0 both exist) — a single `index` filter would
+    /// 0 and Buttons idx 0 both exist): a single `index` filter would
     /// paint the indicator on every row whose subgroup-index matches,
     /// across groups. Consumers must filter on `(index, group)` together.
     pub group: u32,

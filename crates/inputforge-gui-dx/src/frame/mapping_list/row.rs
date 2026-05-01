@@ -127,7 +127,7 @@ pub(crate) fn Row(
             .read()
             .is_some_and(|src_group| src_group == group_id);
     let drop_marker = sortable.drop_target.read();
-    // Match on `(index, group)` together — group-local indices are not
+    // Match on `(index, group)` together: group-local indices are not
     // unique across groups (Axes idx 0 and Buttons idx 0 both exist). A
     // filter on `index` alone would paint the indicator on every row
     // whose subgroup-index matches, regardless of group.

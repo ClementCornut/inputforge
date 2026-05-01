@@ -1,4 +1,4 @@
-/* Sortable primitive — DnD affordances. Tokens-only.
+/* Sortable primitive: DnD affordances. Tokens-only.
  *
  * Behaves on top of the consumer's row container; the consumer applies
  * the modifier classes (.if-sortable--dragging, .if-sortable--drop-before,
@@ -18,7 +18,7 @@
  *   `padding-left: calc(var(--space-3) + 10px)`)
  */
 
-/* Drag handle — 6-dot grip, hover-only.
+/* Drag handle: 6-dot grip, hover-only.
  *
  * `pointer-events: none` at rest keeps the leftmost row strip click-to-
  * select; on hover it switches to `auto` so the handle can catch the

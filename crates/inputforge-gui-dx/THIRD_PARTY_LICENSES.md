@@ -2,7 +2,7 @@
 
 This crate bundles assets governed by upstream licenses. They are reproduced below in summary; see `THIRD_PARTY_LICENSES_FULL/` (if present) or the upstream sources for full text.
 
-## Phosphor Icons — MIT License
+## Phosphor Icons: MIT License
 
 Copyright (c) 2020 Phosphor Icons
 
@@ -14,7 +14,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 
 Source: https://github.com/phosphor-icons/core
 
-## Inter — SIL Open Font License 1.1
+## Inter: SIL Open Font License 1.1
 
 Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
 
@@ -26,7 +26,7 @@ https://openfontlicense.org
 
 Source: https://github.com/rsms/inter
 
-## JetBrains Mono — SIL Open Font License 1.1
+## JetBrains Mono: SIL Open Font License 1.1
 
 Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 

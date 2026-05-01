@@ -129,7 +129,7 @@
         "displayName": "Control Badge Text",
         "hex": "#B89BEA",
         "canonical": "oklch(0.745 0.115 300.5)",
-        "comment": "The legibility-tuned text color for control badges. Canonical control violet (#9A78D6) cannot clear AA against its own 14% tint (3.7x); this brighter ramp step does (5.5x). Badge text only — borders, fills, and chip surfaces still use canonical control."
+        "comment": "The legibility-tuned text color for control badges. Canonical control violet (#9A78D6) cannot clear AA against its own 14% tint (3.7x); this brighter ramp step does (5.5x). Badge text only: borders, fills, and chip surfaces still use canonical control."
       },
       "bg": {
         "role": "neutral",
@@ -190,7 +190,7 @@
       "headline": { "displayName": "Headline", "purpose": "Screen headings inside the shell." },
       "title": { "displayName": "Title", "purpose": "Section headings, panel titles, dialog title." },
       "emphasized-body": { "displayName": "Emphasized Body", "purpose": "Button labels, card titles, dialog description. The 16/600 step between title and body." },
-      "body": { "displayName": "Body", "purpose": "Default inputs, default labels, default prose. Cap at 65–75ch where prose runs." },
+      "body": { "displayName": "Body", "purpose": "Default inputs, default labels, default prose. Cap at 65-75ch where prose runs." },
       "label": { "displayName": "Label", "purpose": "Helper text, badges, dense cells, status-bar text. Adjacent to a caption at 11/400, the +500 weight delta carries the hierarchy." },
       "caption": { "displayName": "Caption", "purpose": "Tabular captions, tick labels, kbd chips. The smallest legitimate text." },
       "mono": { "displayName": "Mono", "purpose": "Live numerics: number-input fields, axis readouts, calibration thresholds, count badges." }
@@ -303,7 +303,7 @@
       "Color used as signal, never as garnish.",
       "Inter with deliberate OpenType (tnum, ss03, cv11).",
       "Cockpit-brisk motion. easing-fast (ease-out-expo) for <=180ms hover/focus/press; easing-standard (slight initial dwell) for >=240ms container enter/exit. No bounce, no elastic, no overshoot.",
-      "Inline-first editing surfaces. The cure for the JoystickGremlin Tk anti-reference is editing in place — Dialog is reserved for dirty-state, destructive, and OS-owned modals only."
+      "Inline-first editing surfaces. The cure for the JoystickGremlin Tk anti-reference is editing in place. Dialog is reserved for dirty-state, destructive, and OS-owned modals only."
     ],
     "rules": [
       { "name": "The One Action Color Rule", "body": "HUD Cyan-Blue is the only action color in the system. There is no second action color. There is no accent color.", "section": "colors" },
@@ -311,14 +311,14 @@
       { "name": "The No Pure Black, No Pure White Rule", "body": "All neutrals are tinted toward the navy hue. #000 and #fff are forbidden anywhere in component CSS.", "section": "colors" },
       { "name": "The Tabular Figures Rule", "body": "Numeric values that line up in a column use font-feature-settings 'tnum' 1.", "section": "typography" },
       { "name": "The Mono For Live Numerics Rule", "body": "JetBrainsMono is reserved for inputs and readouts whose value the engine actually owns. UI labels and prose stay Inter. Mono is not a stylistic choice; it is a precision affordance.", "section": "typography" },
-      { "name": "The 65ch Rule", "body": "Any prose longer than two lines is capped at 65–75ch.", "section": "typography" },
+      { "name": "The 65ch Rule", "body": "Any prose longer than two lines is capped at 65-75ch.", "section": "typography" },
       { "name": "The Cards Don't Float Rule", "body": "A Card uses shadow-2 (stamped) or shadow-0 (flat). It never uses shadow-3.", "section": "elevation" },
       { "name": "The Real Float Rule", "body": "shadow-3 is permitted only on a surface that genuinely floats above the canvas: a menu list, a tooltip bubble, a dialog panel, a toast item.", "section": "elevation" },
       { "name": "The Glassmorphism Exception Rule", "body": "Tooltips are the single permitted use of backdrop-filter: blur(). Nothing else gets backdrop-filter.", "section": "elevation" },
       { "name": "The Sub-Pixel Curve Rule", "body": "easing-standard has a tiny ease-in (Y at P1 = 0.08). At >=240ms it reads as the panel settling on its detent. At <=180ms it reads as latency between the user's gesture and the response. For hover/focus/press transitions, use easing-fast.", "section": "motion" },
       { "name": "The No Bounce Rule", "body": "No bounce, no elastic, no overshoot. easing-fast and easing-standard are the entire vocabulary. If a component spec calls for spring physics, the spec is wrong.", "section": "motion" },
       { "name": "The Inline-First Rule", "body": "If a property has a single editable value, it is edited where it is displayed. The dialog opening on click is the canonical Tk failure; the system rejects it as a default. A dialog is justified only when this rule has been actively considered and rejected for a stated reason.", "section": "surfaces" },
-      { "name": "The No Modal-On-Modal Rule", "body": "A Dialog never opens another Dialog. If a confirmation is needed inside a flow already inside a Dialog, the flow itself is too deep — flatten it to an in-shell surface.", "section": "surfaces" }
+      { "name": "The No Modal-On-Modal Rule", "body": "A Dialog never opens another Dialog. If a confirmation is needed inside a flow already inside a Dialog, the flow itself is too deep: flatten it to an in-shell surface.", "section": "surfaces" }
     ],
     "dos": [
       "Do layer surfaces by luminance plus a 1px hairline. Never by drop shadow.",
@@ -332,14 +332,14 @@
     ],
     "donts": [
       "Don't use #000 or #fff anywhere. All neutrals tint toward the navy hue.",
-      "Don't add side-stripe borders (border-left or border-right greater than 1px) to cards, list items, callouts, or panels. The Toast accent stripe is the one documented exception — it is the peripheral-vision channel for an ambient corner-of-viewport surface. Other surfaces sit in the foveal field and have no peripheral-channel argument; the rule does not extend.",
+      "Don't add side-stripe borders (border-left or border-right greater than 1px) to cards, list items, callouts, or panels. The Toast accent stripe is the one documented exception: it is the peripheral-vision channel for an ambient corner-of-viewport surface. Other surfaces sit in the foveal field and have no peripheral-channel argument; the rule does not extend.",
       "Don't apply gradient text (background-clip: text plus a gradient).",
       "Don't use backdrop-filter outside of Tooltip.",
       "Don't float Cards with soft drop shadows.",
       "Don't let category hues compete with status hues.",
       "Don't add bounce, elastic, or overshoot to motion. easing-fast for <=180ms transitions, easing-standard for >=240ms container enter/exit.",
       "Don't render a caption (11/400) and a label (12/500) at the same weight when they sit adjacent. Weight contrast is what carries the hierarchy in the dense range.",
-      "Don't use big number cards, soft pastel shadows, friendly empty-state illustrations, marketing-style stat tiles, or 'Welcome back' greetings. Empty states use Display-typography numerics or instrument-style 'no signal' framings — never SVG illustrations.",
+      "Don't use big number cards, soft pastel shadows, friendly empty-state illustrations, marketing-style stat tiles, or 'Welcome back' greetings. Empty states use Display-typography numerics or instrument-style 'no signal' framings; never SVG illustrations.",
       "Don't use cyan glows, RGB edge lighting, gradient angles, or 'esports' type.",
       "Don't use grey system-default forms, modal-after-modal flows, dialog-soup confirmation chains, or Tk-era widget chrome.",
       "Don't wrap every region in a Card.",

@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     fn undo_kind_variants_present() {
-        // Compile-time presence check — exhaustive match ensures no variant
+        // Compile-time presence check: exhaustive match ensures no variant
         // is silently removed by a later refactor.
         let _ = UndoKind::StageEdit;
         let _ = UndoKind::StageAdd;

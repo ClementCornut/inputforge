@@ -148,7 +148,7 @@ where
     });
 
     let ondragleave = EventHandler::new(move |_evt: Event<DragData>| {
-        // Match on `(index, group)` — `index` alone is not unique across
+        // Match on `(index, group)`: `index` alone is not unique across
         // groups, so a leave on Axes row 1 should not clear an indicator
         // that's currently on Buttons row 1. Clears valid AND invalid
         // indicators: there is no longer an auto-clear timer for

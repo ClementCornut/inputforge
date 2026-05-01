@@ -3,8 +3,8 @@
 //! Editor header: h2 mapping name + subtitle line.
 //!
 //! Renders the mapping name as an `<h2>` (wrapped in a tooltip that shows
-//! the full name on hover, per spec line 36), and a JetBrains Mono subtitle
-//! line reading `<source-label>` when no `MapToVJoy` action is present, or
+//! the full name on hover, per spec line 36), and a monospace subtitle line
+//! reading `<source-label>` when no `MapToVJoy` action is present, or
 //! `<source-label>  →  <output-label>` when one is found (DFS pre-order
 //! through `Conditional` branches).
 

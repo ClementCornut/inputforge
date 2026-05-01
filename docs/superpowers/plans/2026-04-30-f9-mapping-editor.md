@@ -8,7 +8,7 @@
 
 **Architecture:** Engine-side first, one new pure helper `inputforge_core::pipeline::evaluate_actions_through(actions: &[Action], state: &AppState, addr: &InputAddress, stop_at: usize) -> InputValue` that re-runs a partial pipeline without crossing the engine command channel (the `addr` argument is the mapping's primary `InputAddress`, used to seed the pipeline's input read from `state.input_cache` via the `InputCache` trait's typed accessors). State plumbing follows: a `MappingKey = (String, InputAddress)` type alias on `view_state.rs` reused everywhere; `ConfigSnapshot` extended with `selected_mapping_actions` and `selected_mapping_key`; the polling task feeds `view.selected_mapping.peek()` into `ConfigSnapshot::from_state`. Design-system tokens land next, three `--color-stage-tint-*` tokens mixed from the existing category colors. Then the `EditorState` provider with `UndoLog` data shapes (`UndoEntry`, `UndoKind`, `MappingHistory`) plus `push_edit` / `undo` / `redo` covered by pure unit tests before any rendering. Editor renders inside-out: empty state and engine-offline banner first (smallest surface, immediate visual signal), then frame sections (header, name field, input field, live readout, inactive hint, undo recap footer), then the pipeline component shell, then stage skeleton (header + chevron + body container), then the variant-body dispatcher with five F9-owned bodies (Invert, MapToVJoy, MapToKeyboard, MergeAxis, Conditional) plus three placeholder bodies (ResponseCurve, Deadzone, ChangeMode). Pipeline interactions land last: add palette, right-click action menu, drag-and-drop reorder, malformed-stage treatment, keyboard shortcuts (Ctrl+Z / Shift+Z / Y with focus filtering, Alt+Up/Down stage move). External-edit reconciliation and SSR component tests close the plan.
 
-**Tech Stack:** Rust 2024 edition · `inputforge-core` (engine, action, pipeline, profile, state) · `inputforge-gui-dx` (Dioxus 0.7, dioxus-desktop, F2 component primitives `IconButton` / `Tooltip` / `MenuRoot`, F4 `DirtyConfirmDialog` for profile-flip undo log clear, F8 `LiveCapture` primitive, F8 `components/sortable` primitive — generic-G upgrade lands in Task 30a) · `parking_lot::RwLock` over `AppState` · `std::sync::mpsc` for `EngineCommand` dispatch · `tracing` for engine + GUI events.
+**Tech Stack:** Rust 2024 edition · `inputforge-core` (engine, action, pipeline, profile, state) · `inputforge-gui-dx` (Dioxus 0.7, dioxus-desktop, F2 component primitives `IconButton` / `Tooltip` / `MenuRoot`, F4 `DirtyConfirmDialog` for profile-flip undo log clear, F8 `LiveCapture` primitive, F8 `components/sortable` primitive: generic-G upgrade lands in Task 30a) · `parking_lot::RwLock` over `AppState` · `std::sync::mpsc` for `EngineCommand` dispatch · `tracing` for engine + GUI events.
 
 **Spec:** [`docs/superpowers/specs/2026-04-30-f9-mapping-editor-design.md`](../specs/2026-04-30-f9-mapping-editor-design.md).
 
@@ -78,7 +78,7 @@ crates/inputforge-gui-dx/assets/frame/mapping_editor.css
 - `crates/inputforge-gui-dx/src/app.rs`, install `EditorState` via `use_context_provider` (sibling of `LiveCapture`)
 - `crates/inputforge-gui-dx/src/bridge.rs`, polling task reads `view.selected_mapping.peek()` and threads it into `ConfigSnapshot::from_state`
 - `crates/inputforge-gui-dx/assets/tokens/colors.css`, adds `--color-stage-tint-{processing,output,control}` tokens
-- `crates/inputforge-gui-dx/src/components/sortable/state.rs`, generic-G upgrade — `SortableState<G>`, `DropTarget<G>`, `use_sortable_state<G>()` (Task 30a)
+- `crates/inputforge-gui-dx/src/components/sortable/state.rs`, generic-G upgrade: `SortableState<G>`, `DropTarget<G>`, `use_sortable_state<G>()` (Task 30a)
 - `crates/inputforge-gui-dx/src/components/sortable/handle.rs`, `SortableHandle<G>` (Task 30a)
 - `crates/inputforge-gui-dx/src/components/sortable/item.rs`, `SortableItemConfig<G, F>`, `validate_drop: Option<fn(&G, &G) -> bool>`, `use_sortable_item<G, F>` (Task 30a)
 - `crates/inputforge-gui-dx/src/components/sortable/live_region.rs`, `SortableLiveRegion<G>` if needed (Task 30a)
@@ -329,7 +329,7 @@ pub fn evaluate_actions_through(
 
     // Discriminate variant from the address; read via the InputCache trait.
     // Returns the cache's default for missing entries (axis: 0.0, button: false,
-    // hat: HatDirection::Centered) — same convention as direct trait reads.
+    // hat: HatDirection::Centered): same convention as direct trait reads.
     let input_value = match &primary.input {
         InputId::Axis { .. } => InputValue::Axis {
             value: crate::types::AxisValue::new(state.input_cache.get_axis(primary)),
@@ -1369,13 +1369,13 @@ pub(crate) struct EditorState {
     /// `DirtyConfirmDialog::onsave` callback.
     pub undo_log: Signal<UndoLog>,
     /// Stage IDs that are currently expanded. Resets on selection change
-    /// AND on every structural mutation (insert/remove) — see Task 11.
+    /// AND on every structural mutation (insert/remove): see Task 11.
     pub expanded_stages: Signal<HashSet<StageId>>,
     /// Right-click menu state (anchor + target stage).
     pub stage_menu: Signal<Option<StageMenuState>>,
     /// Per-stage validation hints surfaced in the stage header summary
     /// slot per spec lines 587-589. Bodies write on render; the stage
-    /// header reads. Cleared on every structural mutation — see Task 11.
+    /// header reads. Cleared on every structural mutation: see Task 11.
     pub malformed_hints: Signal<HashMap<StageId, String>>,
     /// External-edit reconciliation token. Incremented by the polling
     /// task (bridge.rs) on every external snapshot change. Bodies
@@ -1707,7 +1707,7 @@ mod tests {
 
     #[test]
     fn replace_at_path_invalid_path_returns_none() {
-        // Out-of-range index — must return None, not panic, in BOTH debug
+        // Out-of-range index: must return None, not panic, in BOTH debug
         // and release. Callers depend on this to skip the edit + skip
         // push_edit (no phantom undo entries).
         let actions = vec![Action::Invert];
@@ -2820,7 +2820,7 @@ pub(crate) fn NameField(
             actions: actions_for_blur.clone(),
         };
         // Dispatch FIRST. If the engine is offline (channel disconnected), do
-        // NOT push an undo entry — otherwise the user accumulates phantom
+        // NOT push an undo entry: otherwise the user accumulates phantom
         // entries that, when popped via Ctrl+Z, would dispatch SetMapping
         // commands the engine cannot receive. The engine-offline banner
         // (Task 13) is already informing the user.
@@ -3037,9 +3037,9 @@ pub(crate) fn InputField(
         let captured = capture.captured.read().clone();
         // Only react when WE armed the capture and the captured address has
         // arrived. This guards against:
-        //   (a) other consumers' captures (MergeAxis secondary picker) —
+        //   (a) other consumers' captures (MergeAxis secondary picker):
         //       their armed flag is false on this Signal, so we skip;
-        //   (b) self-firing after `set(None)` below — `is_armed_consumer`
+        //   (b) self-firing after `set(None)` below: `is_armed_consumer`
         //       is false after the first dispatch, so we skip.
         if !*is_armed_consumer.peek() {
             return;
@@ -3081,7 +3081,7 @@ pub(crate) fn InputField(
         undo_log
             .write()
             .push_edit(key_for_eff.clone(), before, UndoKind::Rebind, label);
-        // Disarm BEFORE clearing captured — otherwise the cleared signal
+        // Disarm BEFORE clearing captured: otherwise the cleared signal
         // re-runs the effect with `captured=None` and we'd skip via the
         // None guard, but we keep the order explicit for clarity.
         is_armed_consumer.set(false);
@@ -3154,20 +3154,20 @@ git commit -m "feat(mapping_editor): input field with rebind action arming LiveC
 Two-row grid (label column, bar column, percentage column). Live-green fill, bipolar anchors at 50%, unipolar at 0%. OUT row hidden when no `MapToVJoy`. Merge mappings render `IN 1` + `IN 2` + dashed divider + merged `IN`.
 
 **Divider direction (per spec lines 42, 417):**
-- **Merge case:** rows `IN 1`, `IN 2`, **dashed** divider (`--readout-divider-dashed`), merged `IN`, then `OUT` (NO extra divider before OUT in merge case — the merged `IN` already plays the role the dashed divider plays in the non-merge case).
+- **Merge case:** rows `IN 1`, `IN 2`, **dashed** divider (`--readout-divider-dashed`), merged `IN`, then `OUT` (NO extra divider before OUT in merge case: the merged `IN` already plays the role the dashed divider plays in the non-merge case).
 - **Non-merge case:** row `IN`, **dashed** divider, `OUT`.
 
 The plan's CSS class names (`__readout-divider` for solid vs `__readout-divider-dashed` for dashed) match this; previous drafts inverted the usage. Use `__readout-divider-dashed` in both spots that render a divider.
 
 **Value sources (per Q2 decision: F9 wires `evaluate_actions_through`):**
 - `IN` (raw): direct read from `live.device_inputs[..].axes[..]`. Same as current implementation.
-- `IN 1`, `IN 2`: same — direct reads of the primary and secondary input addresses.
+- `IN 1`, `IN 2`: same: direct reads of the primary and secondary input addresses.
 - **merged `IN`:** `evaluate_actions_through(&actions, &state, &primary, idx_of_merge + 1)` where `idx_of_merge` is the position of the first `MergeAxis` in `actions`. Run-locks `ctx.state` briefly via `parking_lot::RwLockReadGuard` (read-only).
 - **OUT:** `evaluate_actions_through(&actions, &state, &primary, actions.len())`. Same lock pattern.
 
-This wires F9 into the helper end-to-end and exercises Task 1's contract from the GUI side. AC #29 mandates the helper exists; spec line 188 says F10/F11 consume it from their bodies — F9 also consumes it here for the live readout (NO requirement to defer, no spec amendment needed).
+This wires F9 into the helper end-to-end and exercises Task 1's contract from the GUI side. AC #29 mandates the helper exists; spec line 188 says F10/F11 consume it from their bodies: F9 also consumes it here for the live readout (NO requirement to defer, no spec amendment needed).
 
-**Known limitation (not a blocker):** merge detection (`first_merge_secondary` walk) only finds top-level `MergeAxis`. `MergeAxis` nested inside a `Conditional` does not surface as a "merge mapping" for layout purposes — the readout falls back to the non-merge layout. F9 ships this limitation explicitly; the spec's "merge mapping" definition (line 42) presumes top-level placement.
+**Known limitation (not a blocker):** merge detection (`first_merge_secondary` walk) only finds top-level `MergeAxis`. `MergeAxis` nested inside a `Conditional` does not surface as a "merge mapping" for layout purposes: the readout falls back to the non-merge layout. F9 ships this limitation explicitly; the spec's "merge mapping" definition (line 42) presumes top-level placement.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout.rs`
@@ -3301,7 +3301,7 @@ pub(crate) fn LiveReadout(
                     value: merged_in_value.unwrap_or(primary_value),
                 }
                 // No extra divider before OUT in merge case (per spec line 417:
-                // "Output row appears after the merged row" — no divider).
+                // "Output row appears after the merged row": no divider).
                 if let Some(out) = out_value {
                     ReadoutRow { label: "OUT".to_owned(), value: out }
                 }
@@ -3502,7 +3502,7 @@ git commit -m "feat(mapping_editor): live readout with IN/OUT bars + merge layou
 
 ### Task 18: Inactive-runtime hint banner
 
-Tinted card with no side stripe. Visible only when `editing_mode != current_mode` (the `MetaSnapshot.current_mode` field is the engine's runtime mode) **AND** the engine is `Online` (engine-offline subsumes mode-mismatch — see Task 13's banner-precedence rule). Copy: `Engine is in <runtime>. Mapping fires only in <editing>.` (matches the post-amendment spec line 44 + F5 spec line 626). Renders between live readout and pipeline.
+Tinted card with no side stripe. Visible only when `editing_mode != current_mode` (the `MetaSnapshot.current_mode` field is the engine's runtime mode) **AND** the engine is `Online` (engine-offline subsumes mode-mismatch: see Task 13's banner-precedence rule). Copy: `Engine is in <runtime>. Mapping fires only in <editing>.` (matches the post-amendment spec line 44 + F5 spec line 626). Renders between live readout and pipeline.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/frame/mapping_editor/inactive_hint.rs`
@@ -3814,7 +3814,7 @@ git commit -m "feat(mapping_editor): undo recap footer with kbd hint"
 
 Component that takes a `&[Action]` slice, an outer `StageId` prefix, and renders an ordered list of `<Stage>` components. F8's empty-pipeline (mapping with `actions: vec![]`) shows the louder `+ Add first stage` affordance (placeholder for Task 28's add palette).
 
-**`root_actions` threading (load-bearing for Conditional recursion).** `Pipeline` recurses into Conditional sub-pipelines (Task 26a). At any recursion depth, `actions` is the *branch's* vec, but every `StageId` is *root-relative*. Calling `replace_at_path` / `insert_at_path` / `remove_at_path` from a body deep in the tree must therefore receive the *root* mapping's actions vec, NOT the local branch slice. Pipeline + Stage props carry both: `actions: Vec<Action>` (this pipeline's local slice, used for rendering and StageId derivation) and `root_actions: Vec<Action>` (the mapping's outermost actions vec, threaded unchanged through every recursion). Bodies use `root_actions` for tree mutators and `actions` for nothing — they receive their own action via the dispatcher's per-variant prop. The "outer_actions" naming used in earlier drafts is renamed to `root_actions` plan-wide to prevent the recursion bug where bodies inside Conditional branches dispatch root-relative paths against branch-local slices.
+**`root_actions` threading (load-bearing for Conditional recursion).** `Pipeline` recurses into Conditional sub-pipelines (Task 26a). At any recursion depth, `actions` is the *branch's* vec, but every `StageId` is *root-relative*. Calling `replace_at_path` / `insert_at_path` / `remove_at_path` from a body deep in the tree must therefore receive the *root* mapping's actions vec, NOT the local branch slice. Pipeline + Stage props carry both: `actions: Vec<Action>` (this pipeline's local slice, used for rendering and StageId derivation) and `root_actions: Vec<Action>` (the mapping's outermost actions vec, threaded unchanged through every recursion). Bodies use `root_actions` for tree mutators and `actions` for nothing: they receive their own action via the dispatcher's per-variant prop. The "outer_actions" naming used in earlier drafts is renamed to `root_actions` plan-wide to prevent the recursion bug where bodies inside Conditional branches dispatch root-relative paths against branch-local slices.
 
 **`right_slot: Element` prop on `StageHeader` (spec lines 325-326, 586).** The stage header exposes a `right_slot: Element` prop. Default = chevron-down SVG. F10/F11 may pass a 28x14 inline SVG preview thumbnail; the IconButton's 32x32 hit area, `aria-expanded`, and `aria-controls` are invariant. Preview thumbnails render *inside* the IconButton's 32x32 box. The variant dispatcher (Task 22) computes the right-slot per body via a `header_right_slot()` helper and passes it to StageHeader. F10/F11/F14 implementations override `header_right_slot()` for their variants without touching the dispatcher or StageHeader.
 
@@ -4015,7 +4015,7 @@ pub(crate) fn Pipeline(
                 button {
                     r#type: "button",
                     class: "if-pipeline__add-first",
-                    // onclick wired in Task 28 — opens the categorized add
+                    // onclick wired in Task 28: opens the categorized add
                     // palette anchored to this button. Empty leaves a
                     // visible TODO when the editor renders standalone
                     // before Task 28 lands.
@@ -4052,7 +4052,7 @@ pub(crate) fn Pipeline(
                 button {
                     r#type: "button",
                     class: "if-pipeline__add-button",
-                    // onclick wired in Task 28 — opens add palette.
+                    // onclick wired in Task 28: opens add palette.
                     "+"
                 }
             }
@@ -4714,7 +4714,7 @@ Replace `pipeline/stage_body/mod.rs`:
 //! Variant-body dispatcher. Each `Action` variant has its own body
 //! component; this module dispatches based on the variant. F10/F11/F14
 //! replace only their variant's branch in `StageBody` and
-//! `header_right_slot()` — the dispatcher itself, `StageHeader`, and the
+//! `header_right_slot()`: the dispatcher itself, `StageHeader`, and the
 //! `EditorState` provider are invariant.
 
 use dioxus::prelude::*;
@@ -4750,7 +4750,7 @@ pub(crate) fn StageBody(
 /// affordance for expand/collapse). F10/F11/F14 override their variants
 /// here to return their 28x14 preview thumbnail. Per spec lines 325-326,
 /// the IconButton's 32x32 hit area, `aria-expanded`, and `aria-controls`
-/// remain invariant — only the visual content of the slot changes.
+/// remain invariant: only the visual content of the slot changes.
 pub(crate) fn header_right_slot(action: &Action, _expanded: bool) -> Element {
     match action {
         // F10 will override (preview = curve thumbnail):
@@ -4832,10 +4832,10 @@ git commit -m "feat(pipeline): variant-body dispatcher with Invert body"
 
 **Amendments (apply before drafting code):**
 1. Body must write malformed-hint per spec lines 587-589 when device or output index is out of range. After resolving the current device/output, if `cfg.vjoy_devices.iter().find(|d| d.id == output.device).is_none()` OR if the output index is out of range for that device's axis/button/hat count, write `editor_state.malformed_hints.write().insert(stage_id.clone(), "vJoy device {N} not configured".to_owned())` (or analogous for axis/button/hat). On every render where the body is valid, emit `editor_state.malformed_hints.write().remove(&stage_id)` so stale hints clear.
-2. **`name` source-of-truth.** When dispatching `EngineCommand::SetMapping` after a body edit, read the current name from the snapshot: `let name = ctx.config.read().mapping_names.get(&key).cloned();` and pass that as `name`. `name: None` means "no explicit name" in `EngineCommand::SetMapping`'s contract — preserving the user-set name requires an explicit `Some(name)`.
+2. **`name` source-of-truth.** When dispatching `EngineCommand::SetMapping` after a body edit, read the current name from the snapshot: `let name = ctx.config.read().mapping_names.get(&key).cloned();` and pass that as `name`. `name: None` means "no explicit name" in `EngineCommand::SetMapping`'s contract: preserving the user-set name requires an explicit `Some(name)`.
 3. Replace `outer_actions` references with `root_actions`. All `replace_at_path(&root_actions, &stage_id, ...)` calls.
 4. Subscribe to `editor_state.external_edit_reset` via `use_effect`: when the token advances, re-derive any local Signals from the action's current fields. Required by Task 33.
-5. Skip `push_edit` if `cmd_tx.send(...)` returns `Err` (engine offline) — same pattern as Task 15. No phantom undo entries.
+5. Skip `push_edit` if `cmd_tx.send(...)` returns `Err` (engine offline): same pattern as Task 15. No phantom undo entries.
 
 ### Original Task 23 body:
 
@@ -4846,7 +4846,7 @@ Two stacked F2 `Select`s: device picker and axis/button picker. Selection change
 - Create: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/map_to_vjoy.rs`
 - Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/mod.rs`
 
-- [ ] **Step 1: Write the failing test** — append to `pipeline/tests.rs`:
+- [ ] **Step 1: Write the failing test**: append to `pipeline/tests.rs`:
 
 ```rust
 #[test]
@@ -4942,7 +4942,7 @@ fn map_to_vjoy_body_renders_device_and_axis_pickers() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails** — Expected: FAIL.
+- [ ] **Step 2: Run test to verify it fails**: Expected: FAIL.
 
 - [ ] **Step 3: Implement `MapToVJoyBody`**
 
@@ -5157,7 +5157,7 @@ fn push_and_dispatch(
 }
 ```
 
-The F2 `Select` API may differ from `SelectOption` — adapt to whatever the actual primitive expects (check `crates/inputforge-gui-dx/src/components/select.rs`). The `name: None` shortcut on `SetMapping` may need to be replaced with the current name peeked from `cfg.mapping_names` to avoid clearing user-set names; if so, mirror F8's pattern (look at the Duplicate flow in `mapping_list/mod.rs`).
+The F2 `Select` API may differ from `SelectOption`: adapt to whatever the actual primitive expects (check `crates/inputforge-gui-dx/src/components/select.rs`). The `name: None` shortcut on `SetMapping` may need to be replaced with the current name peeked from `cfg.mapping_names` to avoid clearing user-set names; if so, mirror F8's pattern (look at the Duplicate flow in `mapping_list/mod.rs`).
 
 Wire `mod map_to_vjoy;` into `stage_body/mod.rs` and dispatch:
 
@@ -5190,7 +5190,7 @@ git commit -m "feat(pipeline): MapToVJoy body with device + output pickers"
 
 **Amendments (apply before drafting code):**
 1. Wire F8's `LiveCapture::KeysOnly` capture for the binding field via the consumer-flag pattern from Task 16. Local `is_armed_consumer: Signal<bool>` flag; on click "capture", set flag + `cap.start.call(CaptureFilter::KeysOnly)`; in `use_effect` reading `cap.captured`, only react if `*is_armed_consumer.peek() == true`. (Verify `CaptureFilter::KeysOnly` exists at `crates/inputforge-gui-dx/src/patterns/live_capture/mod.rs`; if missing, file a tiny F2/F8 enabler PR and gate this task.)
-2. Plain TextInput is acceptable as a *fallback* (typing the key string), but the LiveCapture path is canonical. Either both paths or capture-only — do NOT ship capture-less.
+2. Plain TextInput is acceptable as a *fallback* (typing the key string), but the LiveCapture path is canonical. Either both paths or capture-only: do NOT ship capture-less.
 3. Malformed-hint write per spec lines 587-589 for invalid combos (empty `key` field, modifier-only without a base key).
 4. Same `name` source-of-truth fix as Task 23.
 5. Use `root_actions` for `replace_at_path` calls.
@@ -5683,7 +5683,7 @@ Action::MergeAxis { second_input, operation } => rsx! {
 },
 ```
 
-- [ ] **Step 4: Run tests** — Expected: PASS.
+- [ ] **Step 4: Run tests**: Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -5696,7 +5696,7 @@ git commit -m "feat(pipeline): MergeAxis body with op picker + secondary capture
 
 ### Task 26a: Conditional shell + branches + recursion
 
-Conditional body's structural shell: render `if_true` as a nested `Pipeline` (recursive), render `if_false` as either a louder "Add else branch" affordance (when `None`) or another nested `Pipeline` (when `Some`). Predicate editing lands separately in Task 26b. Both nested Pipelines receive `root_actions` unchanged (NOT the branch slice — see Task 20's threading rule). Sub-pipelines support drag-and-drop and add-palette via the same component tree (Task 30 + Task 28 add cross-branch DnD support automatically because StageId paths are root-relative).
+Conditional body's structural shell: render `if_true` as a nested `Pipeline` (recursive), render `if_false` as either a louder "Add else branch" affordance (when `None`) or another nested `Pipeline` (when `Some`). Predicate editing lands separately in Task 26b. Both nested Pipelines receive `root_actions` unchanged (NOT the branch slice: see Task 20's threading rule). Sub-pipelines support drag-and-drop and add-palette via the same component tree (Task 30 + Task 28 add cross-branch DnD support automatically because StageId paths are root-relative).
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/conditional.rs`
@@ -5813,7 +5813,7 @@ pub(crate) fn ConditionalBody(
                     button {
                         r#type: "button",
                         class: "if-stage__add-else-branch",
-                        // onclick wires up in Task 26a Step 4 below — calls
+                        // onclick wires up in Task 26a Step 4 below: calls
                         // replace_at_path to set if_false = Some(vec![]).
                         "+ Add else branch"
                     }
@@ -5870,7 +5870,7 @@ Action::Conditional { condition, if_true, if_false } => rsx! {
 },
 ```
 
-- [ ] **Step 5: Run tests** — Expected: PASS.
+- [ ] **Step 5: Run tests**: Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
@@ -6199,7 +6199,7 @@ fn condition_primary_input(c: &Condition) -> InputAddress {
 #[component]
 fn InputRow(input: InputAddress) -> Element {
     // Source label + rebind button arming LiveCapture::Any (or ButtonsOnly /
-    // AxesOnly / HatsOnly depending on context — Task 26b will narrow). Use
+    // AxesOnly / HatsOnly depending on context: Task 26b will narrow). Use
     // the consumer-flag pattern from Task 16. Body changes commit via the
     // outer PredicateEditor's dispatch_new_condition closure.
     rsx! { /* mirror of editor's InputField */ }
@@ -6219,7 +6219,7 @@ CSS additions:
 }
 ```
 
-- [ ] **Step 4: Run tests** — Expected: PASS.
+- [ ] **Step 4: Run tests**: Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -6244,7 +6244,7 @@ Three sibling bodies that render the **single-string spec caption** `F10 / F11 /
 #[test]
 fn placeholder_bodies_show_spec_caption() {
     // Action::ResponseCurve / Deadzone / ChangeMode each render
-    // "F10 / F11 / F14 owns this body" — single string per spec line 300.
+    // "F10 / F11 / F14 owns this body": single string per spec line 300.
 }
 ```
 
@@ -6276,7 +6276,7 @@ pub(crate) fn ChangeModePlaceholder() -> Element {
 
 Wire dispatcher arms.
 
-- [ ] **Step 3: Run tests** — PASS.
+- [ ] **Step 3: Run tests**: PASS.
 
 - [ ] **Step 4: Commit**
 
@@ -6292,11 +6292,11 @@ git commit -m "feat(pipeline): placeholder bodies for ResponseCurve/Deadzone/Cha
 Click `+` button at the end of any pipeline (or `+ Add first stage` on an empty branch) opens an F2 `MenuRoot` with three sections (Processing, Output, Control). Click an item to append a default-configured action. Dispatches `SetMapping` with `insert_at_path` and pushes a `StageAdd` undo entry.
 
 **Amendments:**
-1. **CSS token consolidation:** the palette section accents must use `--color-stage-tint-{processing,output,control}` from Task 5 (NOT `--color-processing` / `--color-output`). Earlier draft inconsistency — replace any references to the non-prefixed tokens.
+1. **CSS token consolidation:** the palette section accents must use `--color-stage-tint-{processing,output,control}` from Task 5 (NOT `--color-processing` / `--color-output`). Earlier draft inconsistency: replace any references to the non-prefixed tokens.
 2. **Wire empty-pipeline button onclick.** Task 20 left `+ Add first stage` (line ~3996) and the end-of-pipeline `+` (line ~4029) as bare buttons. This task connects both `onclick` handlers to open the palette.
 3. **`name` source-of-truth:** read current name from `cfg.mapping_names.get(&key).cloned()` and pass as `Some(name)` in the SetMapping dispatch after add. Same fix as Tasks 23-25.
 4. **Pass `root_actions`** to `insert_at_path`. After successful insert, clear `editor_state.expanded_stages.write().clear()` AND `editor_state.malformed_hints.write().clear()` per Task 11's structural-mutation invariant. After clear, re-insert just the new stage's StageId into `expanded_stages` so the freshly-added stage opens expanded (UX nicety).
-5. Skip `push_edit` if `cmd_tx.send(...)` returns `Err` — engine offline guard.
+5. Skip `push_edit` if `cmd_tx.send(...)` returns `Err`: engine offline guard.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/add_palette.rs`
@@ -6555,7 +6555,7 @@ li { class: "if-pipeline__add-end",
 
 `outer_actions_for_palette` is the entire mapping's action vector at the outer pipeline (read once from `cfg.selected_mapping_actions` at `MappingEditor` render time and passed down through `Pipeline` props for use by all add palettes regardless of recursion depth).
 
-- [ ] **Step 3: Run tests** — Expected: PASS.
+- [ ] **Step 3: Run tests**: Expected: PASS.
 
 - [ ] **Step 4: Commit**
 
@@ -6570,7 +6570,7 @@ git commit -m "feat(pipeline): add palette with categorized action picker"
 
 Right-click on a stage header opens an F2 `MenuRoot`-style menu with Insert before, Insert after, Move up, Move down, Duplicate, Delete. Move up/down disabled at boundaries. Shift+F10 keyboard equivalent. Insert before/after open the same `AddPalette` anchored to the stage. Delete dispatches `RemoveMapping` (if the stage is the only stage and `MapToVJoy`) or `SetMapping` with the stage removed.
 
-**MenuRoot positioning (F2 limitation).** F2 `MenuRoot` (`crates/inputforge-gui-dx/src/components/menu/mod.rs:26-40`) does NOT expose anchor coordinates — its positioning is CSS-driven relative to its parent. Right-click positioning at cursor coordinates therefore requires an absolute-positioned wrapper element holding the MenuRoot:
+**MenuRoot positioning (F2 limitation).** F2 `MenuRoot` (`crates/inputforge-gui-dx/src/components/menu/mod.rs:26-40`) does NOT expose anchor coordinates: its positioning is CSS-driven relative to its parent. Right-click positioning at cursor coordinates therefore requires an absolute-positioned wrapper element holding the MenuRoot:
 
 ```rust
 // In StageActionsMenu component:
@@ -6594,13 +6594,13 @@ if let Some(menu_state) = stage_menu.read().clone() {
 }
 ```
 
-**Escape and focus restore.** When the menu opens, capture `document.activeElement` into a Signal. On Escape: close menu (set `stage_menu` to `None`) AND restore focus to the captured element via `document::eval`. Per AC #21's "Esc on a focused stage is a no-op when capture is not armed" — this gives Escape a sensible behavior when the menu is open.
+**Escape and focus restore.** When the menu opens, capture `document.activeElement` into a Signal. On Escape: close menu (set `stage_menu` to `None`) AND restore focus to the captured element via `document::eval`. Per AC #21's "Esc on a focused stage is a no-op when capture is not armed": this gives Escape a sensible behavior when the menu is open.
 
 **Shift+F10.** Keyboard equivalent for right-click. Per AC #21 + spec line 391. Lives in Task 31's `decide` matcher: when focused element has `data-stage-id`, Shift+F10 reads the stage's bounding rect and writes `{ stage_id, x: rect.left, y: rect.bottom }` into `editor.stage_menu`. Cross-reference Task 31.
 
 **Items shipped in F9 (subset of full list above).** Move up, Move down, Delete. Insert-before / Insert-after / Duplicate **deferred** (open palette is the canonical add path; insert-before/after duplicate that flow without unique value). Land them in F-future if user feedback flags missing.
 
-**Structural-mutation contract.** Move up/down (reorder), Delete (remove) — both call `replace_at_path`/`remove_at_path` on `root_actions`. After dispatch, clear `editor_state.expanded_stages.write().clear()` and `editor_state.malformed_hints.write().clear()` per Task 11's invariant.
+**Structural-mutation contract.** Move up/down (reorder), Delete (remove): both call `replace_at_path`/`remove_at_path` on `root_actions`. After dispatch, clear `editor_state.expanded_stages.write().clear()` and `editor_state.malformed_hints.write().clear()` per Task 11's invariant.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_actions_menu.rs`
@@ -6624,7 +6624,7 @@ The right-click handler on `Stage` calls `editor.stage_menu.set(Some(StageMenuSt
 
 Mount `StageActionsMenu` once at the top of `MappingEditor` (sibling of `Pipeline`).
 
-- [ ] **Step 3: Run tests** — Expected: PASS.
+- [ ] **Step 3: Run tests**: Expected: PASS.
 
 - [ ] **Step 4: Commit**
 
@@ -6637,14 +6637,14 @@ git commit -m "feat(pipeline): right-click stage actions menu"
 
 ### Task 30: Drag-and-drop reorder (via `components/sortable`, generic-G upgrade)
 
-F9 reuses the existing F8 `components/sortable` primitive (`crates/inputforge-gui-dx/src/components/sortable/`) instead of rolling its own DnD. The sortable already provides cursor-Y midpoint hit-detection, drop indicators (`Before`/`After`), an AT live-region, the `event.data_transfer().set_data("text/html", "")` Firefox/WebView2 incantation, and the `resolve_drop_index` helper — all in pure Rust, with zero document-level JS.
+F9 reuses the existing F8 `components/sortable` primitive (`crates/inputforge-gui-dx/src/components/sortable/`) instead of rolling its own DnD. The sortable already provides cursor-Y midpoint hit-detection, drop indicators (`Before`/`After`), an AT live-region, the `event.data_transfer().set_data("text/html", "")` Firefox/WebView2 incantation, and the `resolve_drop_index` helper: all in pure Rust, with zero document-level JS.
 
 **One blocker for cross-pipeline DnD (AC #28):** the sortable's group discriminator is `u32` (flat). F9 needs to identify which `Pipeline` instance a row lives in by its parent `StageId` path (root `[]`, branch `[Index(2), IfTrue]`, etc.) so that a drop into a Conditional branch addresses the correct nested pipeline. **Solution:** generalize the sortable to a generic `G: 'static + Clone + PartialEq` group type. F8 keeps its current behavior by specifying `G = u32`; F9 uses `G = StageId` (or a thin `PipelinePath` newtype).
 
 This task therefore has TWO sub-tasks:
 
 - **Task 30a:** Generic-G upgrade to `components/sortable` + F8 migration (small; backward-compatible behavior).
-- **Task 30b:** F9 wiring — mount one shared `SortableState<StageId>` in the editor, attach `use_sortable_item` per stage, dispatch reorder via `remove_at_path` + `insert_at_path` on `root_actions`.
+- **Task 30b:** F9 wiring: mount one shared `SortableState<StageId>` in the editor, attach `use_sortable_item` per stage, dispatch reorder via `remove_at_path` + `insert_at_path` on `root_actions`.
 
 **Why the upgrade is safe for F8:**
 - F8's `frame/mapping_list/mod.rs:103` calls `use_sortable_state()` once → becomes `use_sortable_state::<u32>()` (turbofish) or `use_sortable_state::<GroupKind>()` (cleaner; drops `group_to_u32`).
@@ -6653,7 +6653,7 @@ This task therefore has TWO sub-tasks:
 
 ---
 
-### Task 30a: Sortable primitive — generic-G upgrade + F8 migration
+### Task 30a: Sortable primitive: generic-G upgrade + F8 migration
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/components/sortable/state.rs`
@@ -6748,7 +6748,7 @@ Inside, `drag_group.set(Some(group))` clones implicitly via `Some(group)` move; 
 
 - [ ] **Step 4: Update `live_region.rs` if needed**
 
-`SortableLiveRegion` only reads `state.live_announcement`. Either parameterize as `SortableLiveRegion<G>`, or — since `G` doesn't affect this component — leave it with `state: SortableState<G>` propagated as a generic param. Trivial change.
+`SortableLiveRegion` only reads `state.live_announcement`. Either parameterize as `SortableLiveRegion<G>`, or: since `G` doesn't affect this component: leave it with `state: SortableState<G>` propagated as a generic param. Trivial change.
 
 - [ ] **Step 5: Migrate F8 callers**
 
@@ -6783,7 +6783,7 @@ cargo test -p inputforge-gui-dx --lib frame::mapping_list
 cargo test -p inputforge-gui-dx --lib components::sortable
 ```
 
-Expected: PASS — F8's existing behavior is preserved.
+Expected: PASS: F8's existing behavior is preserved.
 
 - [ ] **Step 7: Commit**
 
@@ -6794,12 +6794,12 @@ git commit -m "refactor(sortable): make group discriminator generic over G: Clon
 
 ---
 
-### Task 30b: F9 wiring — pipeline DnD via the generic sortable
+### Task 30b: F9 wiring: pipeline DnD via the generic sortable
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/dnd.rs` (only `is_descendant` lives here now; the sortable owns drag/drop event handling)
 - Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/mod.rs` (mount `SortableState<StageId>` in context)
-- Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/mod.rs` (Pipeline knows its own `path_prefix` — that becomes the sortable's `group`)
+- Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/mod.rs` (Pipeline knows its own `path_prefix`: that becomes the sortable's `group`)
 - Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage.rs` (`use_sortable_item`, `SortableHandle`)
 - Modify: `crates/inputforge-gui-dx/assets/frame/mapping_editor.css` (drag-handle hover styling matches F8's `.if-sortable-handle`; drop indicator class names align with sortable's `.if-sortable--drop-before` / `--drop-after` / `--drop-invalid`)
 
@@ -6877,7 +6877,7 @@ fn dnd_can_move_stage_from_outer_into_conditional_if_true() {
 use crate::frame::mapping_editor::undo_log::StageId;
 
 /// Strict path-prefix check. A drop is rejected if the source `ancestor`
-/// path is a strict prefix of the target `candidate` path — moving a
+/// path is a strict prefix of the target `candidate` path: moving a
 /// Conditional into one of its own descendant branches would create a
 /// cycle in the action tree. Pure; no allocation.
 #[must_use]
@@ -7030,9 +7030,9 @@ Place near the chevron / `right_slot` in the header (CSS-driven hover reveal).
 
 - [ ] **Step 6: CSS reuse**
 
-The sortable's existing CSS at `crates/inputforge-gui-dx/assets/components/sortable.css` provides `.if-sortable--drop-before`, `--drop-after`, `--drop-invalid`, `.if-sortable-handle`. Stage cards in `.if-stage` reuse those classes by composing them with the existing `if-stage` styles. Add to `mapping_editor.css` only if F9 needs to override the indicator color or position offsets for the stage layout — the default sortable visuals should suffice.
+The sortable's existing CSS at `crates/inputforge-gui-dx/assets/components/sortable.css` provides `.if-sortable--drop-before`, `--drop-after`, `--drop-invalid`, `.if-sortable-handle`. Stage cards in `.if-stage` reuse those classes by composing them with the existing `if-stage` styles. Add to `mapping_editor.css` only if F9 needs to override the indicator color or position offsets for the stage layout: the default sortable visuals should suffice.
 
-- [ ] **Step 7: Run tests** — Expected: PASS for `is_descendant` tests; the cross-pipeline integration test passes via `at_path` / `remove_at_path` / `insert_at_path`. SSR coverage of the actual DnD flow is impractical (drag events have no SSR); land manual smoke-testing this path under Task 41 (AC #28).
+- [ ] **Step 7: Run tests**: Expected: PASS for `is_descendant` tests; the cross-pipeline integration test passes via `at_path` / `remove_at_path` / `insert_at_path`. SSR coverage of the actual DnD flow is impractical (drag events have no SSR); land manual smoke-testing this path under Task 41 (AC #28).
 
 - [ ] **Step 8: Commit**
 
@@ -7051,10 +7051,10 @@ Window-level keydown listener (architecturally modelled on F8's pure `handle_key
 
 **This task expands beyond undo/redo** to cover the full keyboard surface per spec line 393 + AC #21:
 
-- `Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y` — undo / redo / redo (Windows convention)
-- `Alt+Up` / `Alt+Down` — reorder focused stage within its current pipeline (sibling swap). Targets the focused element's `data-stage-id` attribute.
-- `Shift+F10` — open right-click menu at the focused stage's bounding rect (cross-reference Task 29).
-- `Alt+Left` / `Alt+Right` — **deferred** per spec line 393 ("an open question, evaluate during impeccable:harden").
+- `Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`: undo / redo / redo (Windows convention)
+- `Alt+Up` / `Alt+Down`: reorder focused stage within its current pipeline (sibling swap). Targets the focused element's `data-stage-id` attribute.
+- `Shift+F10`: open right-click menu at the focused stage's bounding rect (cross-reference Task 29).
+- `Alt+Left` / `Alt+Right`: **deferred** per spec line 393 ("an open question, evaluate during impeccable:harden").
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/frame/mapping_editor/keyboard.rs`
@@ -7216,7 +7216,7 @@ Rust side calls `decide(key, ctrl, shift, alt, target)` then dispatches the inte
 - `StageMoveUp` / `StageMoveDown` → read focused stage's `data-stage-id`, parse to `StageId`, compute target index (sibling ±1), call `remove_at_path` + `insert_at_path` on `root_actions`, dispatch `SetMapping`. After this structural mutation, clear `editor.expanded_stages.write().clear()` and `editor.malformed_hints.write().clear()` (Task 11 invariant).
 - `StageMenuOpen` → read focused stage's bounding rect, write `editor.stage_menu.set(Some(StageMenuState { stage, x: rect.left, y: rect.bottom }))`.
 
-The handler MUST `evt.prevent_default()` only for intents that fire (Undo/Redo/StageMove/StageMenuOpen). For `PassThrough`, do nothing — let the event reach native handlers (browser textfield undo, etc.).
+The handler MUST `evt.prevent_default()` only for intents that fire (Undo/Redo/StageMove/StageMenuOpen). For `PassThrough`, do nothing: let the event reach native handlers (browser textfield undo, etc.).
 
 **Note on JS round-trip latency.** `document::eval` is async; on a fast Ctrl+Z, the user could continue typing before the focus-target classification round-trips. The pure-fn `decide` test does not exercise this. F9 ships the handler with this acknowledged latency; if user feedback flags missed inputs, switch to a synchronous classification (capture focus state on `keydown` via inline JS, decide synchronously without an async hop).
 
@@ -7236,7 +7236,7 @@ git commit -m "feat(mapping_editor): editor-scoped Ctrl+Z/Shift+Z/Y handler"
 
 ### Task 32: Profile-flip undo log clear (via F4 DirtyConfirmDialog)
 
-Per **AC #26** ("Editing-mode flip preserves log; only profile flip clears (via F4)"), the undo log clears ONLY on profile flip, ONLY through F4's existing `DirtyConfirmDialog`. There is **no `ProfileFlipped` event** in the engine (verified — see `crates/inputforge-core/src/engine/run.rs`); profile changes propagate via `ConfigSnapshot.profile_name` from the polling task. F4's `DirtyConfirmDialog` (`crates/inputforge-gui-dx/src/patterns/dirty_confirm.rs:52-117`) is reusable across features, NOT F4-monolithic.
+Per **AC #26** ("Editing-mode flip preserves log; only profile flip clears (via F4)"), the undo log clears ONLY on profile flip, ONLY through F4's existing `DirtyConfirmDialog`. There is **no `ProfileFlipped` event** in the engine (verified: see `crates/inputforge-core/src/engine/run.rs`); profile changes propagate via `ConfigSnapshot.profile_name` from the polling task. F4's `DirtyConfirmDialog` (`crates/inputforge-gui-dx/src/patterns/dirty_confirm.rs:52-117`) is reusable across features, NOT F4-monolithic.
 
 **Approach (replaces the prior `use_effect`-on-profile-name draft):** When the user attempts a profile flip AND any `MappingHistory` has non-empty stacks, open `DirtyConfirmDialog`. `onsave` callback clears all undo logs THEN completes the profile flip. `oncancel` aborts. When all stacks are empty, the profile flip proceeds without dialog.
 
@@ -7306,7 +7306,7 @@ let on_profile_select = move |new_profile: String| {
         pending_profile.set(Some(new_profile));
         dirty_dialog_open.set(true);
     } else {
-        // No pending changes — flip directly.
+        // No pending changes: flip directly.
         cmd_tx.send(EngineCommand::SetProfile { name: new_profile }).ok();
     }
 };
@@ -7318,7 +7318,7 @@ DirtyConfirmDialog {
     message: Some("Switching profile clears the per-mapping undo stack. Continue?".to_owned()),
     save_label: Some("Switch profile".to_owned()),
     onsave: move |_| {
-        // Clear THEN flip — synchronous order.
+        // Clear THEN flip: synchronous order.
         editor.undo_log.write().clear_all();
         if let Some(name) = pending_profile.read().clone() {
             let _ = cmd_tx.send(EngineCommand::SetProfile { name });
@@ -7333,7 +7333,7 @@ DirtyConfirmDialog {
 }
 ```
 
-- [ ] **Step 3: Run tests** — PASS.
+- [ ] **Step 3: Run tests**: PASS.
 
 - [ ] **Step 4: Commit**
 
@@ -7351,10 +7351,10 @@ When `ConfigSnapshot.selected_mapping_actions` changes externally and no body fi
 **Mechanism: `external_edit_reset: Signal<u64>` token.** Already declared on `EditorState` (Task 9). The polling task increments the token whenever it detects an external change to `selected_mapping_actions`. Each body subscribes via `use_effect` reading the token and re-derives local Signals on advance.
 
 **Reset suppression set (focus-aware):**
-- `document.activeElement` matches `[data-body-field]` (every input/select/checkbox inside a stage body must carry this attribute — Tasks 23, 24, 25, 26b enforce)
+- `document.activeElement` matches `[data-body-field]` (every input/select/checkbox inside a stage body must carry this attribute: Tasks 23, 24, 25, 26b enforce)
 - OR `document.activeElement` matches the editor name field (`.if-editor__name-input`)
 - OR `editor.stage_menu.read().is_some()` (right-click menu open)
-- OR drag is active (`Signal<Option<StageId>>` on `EditorState` for DnD source — wire in Task 30)
+- OR drag is active (`Signal<Option<StageId>>` on `EditorState` for DnD source: wire in Task 30)
 - OR LiveCapture is armed (`*capture.active.read() == true`)
 
 When any condition holds, increment the token but ALSO set a `pending_external_reset: Signal<bool>` on EditorState; bodies see the token advance, check the suppression conditions in their own scope, and defer their local reset. On blur of the suppressing element (e.g., name field), bodies check the pending flag and process the deferred reset.
@@ -7410,7 +7410,7 @@ pub(crate) fn ExternalEditReconciler() -> Element {
                 // External edit detected. Surface toast immediately per AC #27.
                 toast.push_warning("Mapping was edited externally");
 
-                // Advance the reset token — bodies decide locally whether
+                // Advance the reset token: bodies decide locally whether
                 // to reset now or defer.
                 external_edit_reset.with_mut(|n| *n = n.wrapping_add(1));
 
@@ -7451,7 +7451,7 @@ fn is_reset_suppressed() -> bool {
 
 Mount as a sibling of `Pipeline` inside `MappingEditor`.
 
-- [ ] **Step 3: Cross-task amendments — body reset subscription**
+- [ ] **Step 3: Cross-task amendments: body reset subscription**
 
 Tasks 22 (Invert), 23 (MapToVJoy), 24 (MapToKeyboard), 25 (MergeAxis), 26a (Conditional), 26b (Predicate) each MUST add a `use_effect` reading `editor.external_edit_reset`:
 
@@ -7468,11 +7468,11 @@ use_effect(move || {
 });
 ```
 
-(For F9, most bodies have no local working copy — they read all values from props and dispatch on every change. The `MergeAxis` and `MapToKeyboard` bodies, plus the predicate editor's nested condition cards, may have local state — those reset here.)
+(For F9, most bodies have no local working copy: they read all values from props and dispatch on every change. The `MergeAxis` and `MapToKeyboard` bodies, plus the predicate editor's nested condition cards, may have local state: those reset here.)
 
 - [ ] **Step 4: Increment the token from the polling task**
 
-In `bridge.rs`, after the `ConfigSnapshot::from_state` rebuild, compare the new `selected_mapping_actions` to the previous tick's. If diverged AND the change came from outside the editor (heuristic: not in the last-N `EngineCommand::SetMapping` dispatch trail), increment `editor.external_edit_reset`. Easier-to-implement path: rely entirely on the reconciler's `use_effect` (Step 2) — it already detects divergence by comparing `selected_mapping_actions` to its own `last_seen` shadow. In that case, this Step 4 collapses to a no-op.
+In `bridge.rs`, after the `ConfigSnapshot::from_state` rebuild, compare the new `selected_mapping_actions` to the previous tick's. If diverged AND the change came from outside the editor (heuristic: not in the last-N `EngineCommand::SetMapping` dispatch trail), increment `editor.external_edit_reset`. Easier-to-implement path: rely entirely on the reconciler's `use_effect` (Step 2): it already detects divergence by comparing `selected_mapping_actions` to its own `last_seen` shadow. In that case, this Step 4 collapses to a no-op.
 
 - [ ] **Step 5: Run tests**
 
@@ -7526,9 +7526,9 @@ use_effect(move || {
 });
 ```
 
-The render path's `if let Some((mode, input)) = view_state_for_render` branch becomes purely view-only — no mutation. When `sel == None`, the empty-state branch renders normally.
+The render path's `if let Some((mode, input)) = view_state_for_render` branch becomes purely view-only: no mutation. When `sel == None`, the empty-state branch renders normally.
 
-- [ ] **Step 3: Run tests** — PASS.
+- [ ] **Step 3: Run tests**: PASS.
 
 - [ ] **Step 4: Commit**
 
@@ -7594,7 +7594,7 @@ CSS:
 .if-stage__title--error { color: var(--color-error); }
 ```
 
-- [ ] **Step 3: Run tests** — PASS.
+- [ ] **Step 3: Run tests**: PASS.
 
 - [ ] **Step 4: Commit**
 
@@ -7623,14 +7623,14 @@ Grep "transition:|animation:" pattern in this file.
 Enumerate EVERY hit. For each, confirm one of: (a) explicit `@media (prefers-reduced-motion: reduce) { ... }` override that disables it; (b) the transition is acceptable under reduced motion (e.g., zero-duration intentionally); (c) move the rule into a default-disabled wrapper.
 
 Initial known list (tasks that introduced each):
-- `.if-stage__chevron` — 180 ms ease-out (Task 20)
-- `.if-editor__inactive-hint` — 150 ms opacity fade (Task 18)
-- `.if-stage__drag-handle` — 100 ms opacity (Task 30)
-- `.if-pipeline__add-first` hover — Task 20 (review the actual file for any additional hover/focus animations Tasks 22-30 added)
+- `.if-stage__chevron`: 180 ms ease-out (Task 20)
+- `.if-editor__inactive-hint`: 150 ms opacity fade (Task 18)
+- `.if-stage__drag-handle`: 100 ms opacity (Task 30)
+- `.if-pipeline__add-first` hover: Task 20 (review the actual file for any additional hover/focus animations Tasks 22-30 added)
 - Any palette open/close animations from Task 28
 - DnD drop indicator pulse from Task 30
 
-**Do not memorize this list.** The grep is the source of truth — Tasks 22-30 may have added rules not listed here.
+**Do not memorize this list.** The grep is the source of truth: Tasks 22-30 may have added rules not listed here.
 
 - [ ] **Step 2: Append missing reduced-motion rules**
 
@@ -7659,7 +7659,7 @@ git commit -m "polish(mapping_editor): consolidate reduced-motion overrides"
 
 Update line 177 of `docs/superpowers/specs/2026-04-27-f5-architecture-ia-redesign-design.md` to match the F9-tightened copy.
 
-**Cross-reference Task 18 (inactive-runtime hint banner) before committing.** The plan amendment process pinned Task 18's rendered copy to `Engine is in *<runtime>*. Mapping fires only in *<editing>*.` (verified in the Phase 1 exploration). After landing the F5 spec amendment here, re-read Task 18's component code and confirm the rendered string matches verbatim — letter, italic markers, and trailing period. Any drift between Task 18's render and Task 37's spec amendment ships an inconsistent feature.
+**Cross-reference Task 18 (inactive-runtime hint banner) before committing.** The plan amendment process pinned Task 18's rendered copy to `Engine is in *<runtime>*. Mapping fires only in *<editing>*.` (verified in the Phase 1 exploration). After landing the F5 spec amendment here, re-read Task 18's component code and confirm the rendered string matches verbatim: letter, italic markers, and trailing period. Any drift between Task 18's render and Task 37's spec amendment ships an inconsistent feature.
 
 **Files:**
 - Modify: `docs/superpowers/specs/2026-04-27-f5-architecture-ia-redesign-design.md`
@@ -7748,7 +7748,7 @@ fn four_stage_pipeline_renders_all_categories_and_summaries() {
     assert!(stages[0].value().attr("class").unwrap_or("").contains("is-processing"));
     assert!(stages[0].html().contains("Deadzone"));
 
-    // Stage 1: Response curve (is-processing) — symmetric=false, 3 points.
+    // Stage 1: Response curve (is-processing): symmetric=false, 3 points.
     assert!(stages[1].value().attr("class").unwrap_or("").contains("is-processing"));
     assert!(stages[1].html().contains("Response curve"));
     assert!(stages[1].html().contains("3 points"));
@@ -7765,7 +7765,7 @@ fn four_stage_pipeline_renders_all_categories_and_summaries() {
 }
 ```
 
-- [ ] **Step 2: Run** — PASS.
+- [ ] **Step 2: Run**: PASS.
 
 - [ ] **Step 3: Commit**
 
@@ -7805,7 +7805,7 @@ fn conditional_with_empty_if_false_renders_both_branches() {
     assert!(html.contains("if true branch"));
     assert!(html.contains("if false branch"));
     // The empty if_false branch shows the "Add else branch" louder affordance
-    // (NOT "+ Add first stage" — that's for empty pipelines; an unset
+    // (NOT "+ Add first stage": that's for empty pipelines; an unset
     // if_false renders the dedicated branch-creation button per Task 26a).
     assert!(html.contains("Add else branch"));
 }
@@ -7832,7 +7832,7 @@ fn conditional_with_empty_if_true_renders_branch_with_add_first_stage() {
 }
 ```
 
-- [ ] **Step 2: Run** — PASS.
+- [ ] **Step 2: Run**: PASS.
 
 - [ ] **Step 3: Commit**
 
@@ -7860,7 +7860,7 @@ dx build -p inputforge-app --no-default-features --features gui-dioxus
 dx build -p inputforge-app --features gui-egui
 ```
 
-- [ ] **Step 2: Fix any issues** — common categories: dead-code warnings (most are already suppressed via `#[allow(dead_code)]` attributes added in earlier tasks), `unused_qualifications` from Dioxus's RSX macro on event listeners (suppress with `#[allow(unused_qualifications)]` per the F8 pattern).
+- [ ] **Step 2: Fix any issues**: common categories: dead-code warnings (most are already suppressed via `#[allow(dead_code)]` attributes added in earlier tasks), `unused_qualifications` from Dioxus's RSX macro on event listeners (suppress with `#[allow(unused_qualifications)]` per the F8 pattern).
 
 - [ ] **Step 3: Commit any fixes**
 
@@ -7873,7 +7873,7 @@ git commit -m "chore(mapping_editor): clippy/build sweep"
 
 ### Task 41: Manual smoke run (28 F9-owned acceptance criteria)
 
-Launch the GUI and walk every F9-owned AC with concrete pass/fail. AC #29 (F10's live-tracking dot consumes `evaluate_actions_through`) is **out of F9 scope** — verified by `cargo test -p inputforge-core --lib pipeline::tests::evaluate_actions_through` from Task 1, not by manual smoke. **No deferral escape hatch.** Failure on any item below blocks merge — file an issue AND fix before reattempting.
+Launch the GUI and walk every F9-owned AC with concrete pass/fail. AC #29 (F10's live-tracking dot consumes `evaluate_actions_through`) is **out of F9 scope**: verified by `cargo test -p inputforge-core --lib pipeline::tests::evaluate_actions_through` from Task 1, not by manual smoke. **No deferral escape hatch.** Failure on any item below blocks merge: file an issue AND fix before reattempting.
 
 - [ ] **Step 1: Launch**
 
@@ -7883,7 +7883,7 @@ dx run -p inputforge-app --no-default-features --features gui-dioxus
 
 - [ ] **Step 2: Walk all 28 F9-owned acceptance criteria**
 
-For each item: do X, observe Y. If Y does not match, the test FAILS — fix and re-run, do not defer.
+For each item: do X, observe Y. If Y does not match, the test FAILS: fix and re-run, do not defer.
 
 | AC# | Action (do X) | Observation (observe Y) |
 |-----|---------------|-------------------------|
@@ -7897,13 +7897,13 @@ For each item: do X, observe Y. If Y does not match, the test FAILS — fix and 
 | 7   | Select a mapping with `MergeAxis` as first action; move both axes | Live readout shows `IN 1` row, `IN 2` row, dashed divider, merged `IN` row, then `OUT` row (NO extra divider before OUT) |
 | 8   | Switch to a runtime mode different from the editing mode | Inactive-runtime hint card visible with copy `Engine is in *<runtime>*. Mapping fires only in *<editing>*.` (italic markers visible) |
 | 9   | Open a mapping with mixed processing/output/control stages | All stages visible with category-tinted backgrounds at the spec-pinned percentages (`--color-stage-tint-{processing,output,control}`) |
-| 10  | Click a stage's chevron | Stage expands; click again — collapses; SPACE / ENTER on focused stage chevron also toggle |
+| 10  | Click a stage's chevron | Stage expands; click again: collapses; SPACE / ENTER on focused stage chevron also toggle |
 | 11  | Add a `Conditional` action with empty `if_false` | "Add else branch" louder affordance visible in the if-false section (NOT "+ Add first stage") |
 | 12  | Inside `MergeAxis` body, change op picker AND click `rebind` for secondary input | Op picker commits on change; rebind arms `LiveCapture::AxesOnly`; pressing an axis rebinds the secondary input; summary updates to `<op> with <new label>` |
 | 13a | Right-click on a stage header | Menu opens at cursor with Move up, Move down, Delete (Move up disabled at index 0) |
 | 13b | Same scenario via Shift+F10 with stage focused | Menu opens at the stage's bounding rect |
 | 13c | With a stage being dragged | Drop indicator (2 px `--color-border-focus`) appears between target stages |
-| 14  | Click `+` at the end of a pipeline | Add palette opens with three sections (Processing, Output, Control); click an item — appended action appears in the pipeline; new stage opens expanded |
+| 14  | Click `+` at the end of a pipeline | Add palette opens with three sections (Processing, Output, Control); click an item: appended action appears in the pipeline; new stage opens expanded |
 | 15a | Make an edit, press `Ctrl+Z` | Edit reverts; undo recap footer updates |
 | 15b | Press `Ctrl+Shift+Z` | Edit re-applies (redo) |
 | 15c | Press `Ctrl+Y` (Windows convention) | Edit re-applies (redo) |
@@ -7911,7 +7911,7 @@ For each item: do X, observe Y. If Y does not match, the test FAILS — fix and 
 | 16  | View editor footer | Shows `<change-summary> · <kbd>⌃Z</kbd> to undo`; NO engine-status dot |
 | 17  | Configure a stage with invalid params (e.g., `MergeAxis` with empty secondary) | Stage title turns `--color-error`; summary slot shows the fix hint (e.g., `Secondary input must differ from primary`) |
 | 18  | Stop the engine | Engine-offline banner visible above editor; copy `Engine offline. Edits not applied.`; `Restart engine` button visible; edits remain locally responsive (commit-on-blur dispatches but engine ignores until restored) |
-| 19  | Delete the selected mapping from another tab/file | Editor silently reverts to empty state (NO toast — per AC #19) |
+| 19  | Delete the selected mapping from another tab/file | Editor silently reverts to empty state (NO toast: per AC #19) |
 | 20a | Make an edit (non-empty undo stack), then attempt profile flip | F4 `DirtyConfirmDialog` opens with "Discard editor undo log?" |
 | 20b | Click "Switch profile" in dialog | Undo log clears, profile flips |
 | 20c | Click "Cancel" in dialog | Both preserved (undo log AND current profile) |
@@ -7923,11 +7923,11 @@ For each item: do X, observe Y. If Y does not match, the test FAILS — fix and 
 | 23a | Click chevron with normal motion | Chevron rotates over 180 ms ease-out |
 | 23b | Enable OS reduced-motion, click chevron | Rotation is instant; live readout bars are always instant; engine-offline banner fade is instant |
 | 24  | Visually inspect ALL bar fills | Every bar uses live-green (`--color-live`); output-gold appears ONLY in stage-tint context, NOT in bar fills |
-| 25  | Make 51 edits to a single mapping, count undo entries via repeated Ctrl+Z | Stack stops at 50 entries (FIFO eviction visible — oldest edits unrecoverable) |
+| 25  | Make 51 edits to a single mapping, count undo entries via repeated Ctrl+Z | Stack stops at 50 entries (FIFO eviction visible: oldest edits unrecoverable) |
 | 26a | Switch editing mode (NOT profile) | Undo log preserved across the switch |
 | 26b | Profile flip with non-empty stack | Undo log clears (via F4 dialog from AC #20) |
-| 27a | Edit mapping externally while name field has focus | Toast `Mapping was edited externally` appears immediately; reset deferred — local name still showing |
-| 27b | Blur the name field after the toast | Reset fires — local name reverts to engine state |
+| 27a | Edit mapping externally while name field has focus | Toast `Mapping was edited externally` appears immediately; reset deferred: local name still showing |
+| 27b | Blur the name field after the toast | Reset fires: local name reverts to engine state |
 | 28a | Drag a stage from outer pipeline into a Conditional `if_true` branch | Stage moves; `if_true` now contains the dragged stage; outer pipeline shorter |
 | 28b | Drag a Conditional onto its own descendant | Cycle rejected: 200 ms `--color-error` drop indicator; no state change |
 
@@ -7953,7 +7953,7 @@ Spec coverage walked end-to-end during plan drafting:
 - F5 spec amendment lands in Task 37
 - F10/F11/F14 handoff (right-slot API, malformed-hint contract, undo dispatch convention): scaffolded in Tasks 6, 9, 22, 35
 
-No placeholders detected on the second pass; every code block has actual code or pure-stub fall-throughs (Task 26's predicate editor body is named "Predicate editor" as a placeholder caption — F9 owns the wider Conditional structure but the predicate editor specifics are a fill-in-detail item, not a TBD; the spec's choice 14 only commits the recursive structure and the `kind picker plus operand fields` pattern). Type-consistency check: `MappingKey`, `StageId`, `UndoKind`, `LabelArgs` all keep their names across tasks 6 → 41.
+No placeholders detected on the second pass; every code block has actual code or pure-stub fall-throughs (Task 26's predicate editor body is named "Predicate editor" as a placeholder caption: F9 owns the wider Conditional structure but the predicate editor specifics are a fill-in-detail item, not a TBD; the spec's choice 14 only commits the recursive structure and the `kind picker plus operand fields` pattern). Type-consistency check: `MappingKey`, `StageId`, `UndoKind`, `LabelArgs` all keep their names across tasks 6 → 41.
 
 ---
 

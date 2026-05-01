@@ -180,7 +180,7 @@ pub fn evaluate_actions_through(
 
     // Discriminate variant from the address; read via the InputCache trait.
     // Returns the cache's default for missing entries (axis: 0.0, button: false,
-    // hat: HatDirection::Center) — same convention as direct trait reads.
+    // hat: HatDirection::Center): same convention as direct trait reads.
     let input_value = match &primary.input {
         InputId::Axis { .. } => InputValue::Axis {
             value: crate::types::AxisValue::new(state.input_cache.get_axis(primary)),
