@@ -811,6 +811,12 @@ fn editor_live_readout_bidirectional_uu_idle_renders_centered_bipolar_in() {
         html.contains(">IN 2<") || html.contains(">IN 2 "),
         "expected IN 2 row label; got: {html}"
     );
+    // Bipolar bars at center: width 0%, anchored at the 50% midline.
+    // The merged-IN row at idle should hit this exact style.
+    assert!(
+        html.contains("left: 50%; right: auto; width: 0%"),
+        "expected merged IN bar centered (0% width, 50% anchor); got: {html}"
+    );
 }
 
 /// Average of two unipolar pedals at idle (encoded -1, -1).
@@ -969,8 +975,7 @@ fn editor_live_readout_average_bb_renders_bipolar_unchanged() {
 /// the OUT row should show natural 0.00 (empty bar), not raw -1.00.
 #[test]
 fn editor_live_readout_unipolar_primary_no_merge_out_inherits_unipolar() {
-    use inputforge_core::types::{MergeOp, OutputAddress, OutputId, VJoyAxis};
-    let _ = MergeOp::Bidirectional; // avoid an unused-import warning if the test is reorganized
+    use inputforge_core::types::{OutputAddress, OutputId, VJoyAxis};
 
     let primary = InputAddress {
         device: DeviceId("dev-1".to_owned()),

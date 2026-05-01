@@ -498,4 +498,22 @@ mod tests {
         assert_eq!(ctx.op, MergeOp::Bidirectional);
         assert_eq!(ctx.secondary, axis_addr(1));
     }
+
+    #[test]
+    fn find_merge_context_skips_conditional_nested_merge() {
+        use inputforge_core::action::Condition;
+        // A merge nested inside a Conditional branch is intentionally
+        // ignored; the merge layout only triggers for top-level merges.
+        let actions = vec![Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: axis_addr(2),
+            },
+            if_true: vec![Action::MergeAxis {
+                second_input: axis_addr(1),
+                operation: MergeOp::Bidirectional,
+            }],
+            if_false: None,
+        }];
+        assert!(find_merge_context(&actions).is_none());
+    }
 }
