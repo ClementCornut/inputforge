@@ -618,3 +618,31 @@ fn map_to_vjoy_body() {
         "expected axis option in output picker: {html}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Task 24: MapToKeyboard body (modifier toggles + key field)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn map_to_keyboard_body_renders_modifier_toggles_and_key_field() {
+    let actions = vec![Action::MapToKeyboard {
+        key: KeyCombo {
+            key: "Q".to_owned(),
+            modifiers: vec![KeyModifier::Ctrl],
+        },
+    }];
+    let (state, addr) = build_state(actions);
+    let pre_expanded = vec![StageId(vec![StageIdSegment::Index(0)])];
+    let html = render_with_expanded(state, addr, pre_expanded);
+
+    // The body must render modifier labels.
+    assert!(
+        html.contains("Ctrl"),
+        "expected Ctrl modifier toggle in body: {html}"
+    );
+    // The key text field must be present (TextInput renders an <input type="text">).
+    assert!(
+        html.contains("Key") || html.contains(r#"type="text""#),
+        "expected Key field in body: {html}"
+    );
+}
