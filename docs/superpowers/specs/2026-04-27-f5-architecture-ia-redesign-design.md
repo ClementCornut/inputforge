@@ -174,7 +174,7 @@ Always-present surface. When no mapping selected, shows empty state ("Select a m
 - **Input field**, readonly source path, with `[change]` action that opens a live-capture picker.
 - **Live readout**, for each source input touched by the mapping, a row: source label + axis bar + percentage. For merge mappings, two source rows + a merged-result row separated by a dashed divider. Output row when applicable.
 - **Pipeline graph**, chain of stages, plus indented branches under any Conditional. Stages use category colors (curve / deadzone in processing teal; merge / vJoy in output gold; conditional in control violet). Click a stage to expand its editor inline (curve editor in F10, deadzone editor in F11; merge stage shows operation picker + secondary input picker; conditional stage shows condition editor + nested branches).
-- **Inactive-in-runtime hint**, when the editing tab differs from the engine's current runtime mode, a one-line hint below the live readout: *"Inactive in current runtime mode. Engine is in Combat; this mapping fires only in Landing."* Live input values still display; output is greyed.
+- **Inactive-in-runtime hint**: rendered when `editing_mode != runtime_mode`. Copy is fixed: "Engine is in *&lt;runtime&gt;*. Mapping fires only in *&lt;editing&gt;*."
 - **Undo / redo affordance**, keyboard (`Ctrl+Z` / `Ctrl+Shift+Z`) primary; small undo-recap line in the editor footer ("Last change: deadzone outer 12% → 14%").
 
 No Save / Discard buttons. No dirty marker on the mapping. Edits commit live.
