@@ -64,6 +64,13 @@ pub(crate) struct ConfigSnapshot {
     pub mapped_inputs: HashSet<InputAddress>,
     pub mapping_names: HashMap<InputAddress, String>,
     pub mappings: Vec<MappingSummary>,
+    /// Cloned `Vec<Action>` for the currently-selected mapping, if any.
+    /// Cheap because only one mapping's actions are cloned per tick.
+    pub selected_mapping_actions: Option<Vec<inputforge_core::action::Action>>,
+    /// The (mode, input) key recorded at the same tick. Allows the editor
+    /// to detect cross-window conflicts: selection still refers to a key
+    /// that the engine no longer holds.
+    pub selected_mapping_key: Option<crate::frame::MappingKey>,
 }
 
 /// One row's worth of state for the F8 mapping list. Populated by
@@ -278,10 +285,11 @@ fn first_input_predicate(condition: &inputforge_core::action::Condition) -> Opti
 }
 
 impl ConfigSnapshot {
-    pub(crate) fn from_state(s: &AppState) -> Self {
+    pub(crate) fn from_state(s: &AppState, selection: Option<&crate::frame::MappingKey>) -> Self {
         let mut mapped_inputs = HashSet::new();
         let mut mapping_names = HashMap::new();
         let mut mappings = Vec::new();
+        let mut selected_mapping_actions: Option<Vec<inputforge_core::action::Action>> = None;
         if let Some(profile) = &s.active_profile {
             for mapping in profile.mappings() {
                 mapped_inputs.insert(mapping.input.clone());
@@ -294,6 +302,11 @@ impl ConfigSnapshot {
                     name: mapping.name.clone(),
                     glyphs: derive_glyphs(&mapping.actions),
                 });
+                if let Some((sel_mode, sel_input)) = selection {
+                    if mapping.mode == *sel_mode && mapping.input == *sel_input {
+                        selected_mapping_actions = Some(mapping.actions.clone());
+                    }
+                }
             }
         }
         Self {
@@ -302,6 +315,8 @@ impl ConfigSnapshot {
             mapped_inputs,
             mapping_names,
             mappings,
+            selected_mapping_actions,
+            selected_mapping_key: selection.cloned(),
         }
     }
 }
@@ -402,7 +417,7 @@ mod tests {
             hat_count: 0,
         });
 
-        let cfg = ConfigSnapshot::from_state(&state);
+        let cfg = ConfigSnapshot::from_state(&state, None);
         assert_eq!(cfg.devices.len(), 1);
         assert_eq!(cfg.devices[0].info.name, "Throttle");
         assert_eq!(cfg.virtual_devices.len(), 1);
@@ -414,7 +429,7 @@ mod tests {
     #[test]
     fn live_from_state_handles_empty_config() {
         let state = AppState::new();
-        let cfg = ConfigSnapshot::from_state(&state);
+        let cfg = ConfigSnapshot::from_state(&state, None);
         let live = LiveSnapshot::from_state(&state, &cfg);
         assert!(live.device_inputs.is_empty());
         assert!(live.output_values.is_empty());
@@ -477,7 +492,7 @@ mod tests {
         state.output_cache.set_button(1, 1, true);
         state.output_cache.set_hat(1, 0, HatDirection::SE);
 
-        let cfg = ConfigSnapshot::from_state(&state);
+        let cfg = ConfigSnapshot::from_state(&state, None);
         let live = LiveSnapshot::from_state(&state, &cfg);
 
         assert_eq!(live.device_inputs.len(), 1);
@@ -540,7 +555,7 @@ mod tests {
         );
         let state = AppState::with_profile(profile);
 
-        let cfg = ConfigSnapshot::from_state(&state);
+        let cfg = ConfigSnapshot::from_state(&state, None);
         assert_eq!(cfg.mapped_inputs.len(), 2);
         assert!(cfg.mapped_inputs.contains(&addr_named));
         assert!(cfg.mapped_inputs.contains(&addr_unnamed));
@@ -580,7 +595,7 @@ mod tests {
         });
 
         let meta = MetaSnapshot::from_state(&s);
-        let cfg = ConfigSnapshot::from_state(&s);
+        let cfg = ConfigSnapshot::from_state(&s, None);
 
         // The exact six snapshot fields the placeholder shell surfaces consume:
         assert_eq!(meta.engine_status, EngineStatus::Running);
@@ -670,7 +685,7 @@ mod tests {
             "Default".to_owned(),
         );
         let state = AppState::with_profile(profile);
-        let cfg = ConfigSnapshot::from_state(&state);
+        let cfg = ConfigSnapshot::from_state(&state, None);
 
         assert_eq!(cfg.mappings.len(), 1);
         let s = &cfg.mappings[0];
@@ -719,7 +734,7 @@ mod tests {
             "Default".to_owned(),
         );
         let state = AppState::with_profile(profile);
-        let cfg = ConfigSnapshot::from_state(&state);
+        let cfg = ConfigSnapshot::from_state(&state, None);
 
         let s = &cfg.mappings[0];
         assert_eq!(s.glyphs.merge_secondary.as_ref(), Some(&secondary));
@@ -767,7 +782,7 @@ mod tests {
             "Default".to_owned(),
         );
         let state = AppState::with_profile(profile);
-        let cfg = ConfigSnapshot::from_state(&state);
+        let cfg = ConfigSnapshot::from_state(&state, None);
 
         let s = &cfg.mappings[0];
         assert!(s.glyphs.merge_secondary.is_none());
@@ -828,7 +843,7 @@ mod tests {
             "Default".to_owned(),
         );
         let state = AppState::with_profile(profile);
-        let cfg = ConfigSnapshot::from_state(&state);
+        let cfg = ConfigSnapshot::from_state(&state, None);
 
         let s = &cfg.mappings[0];
         assert_eq!(s.glyphs.merge_secondary.as_ref(), Some(&secondary));
@@ -884,7 +899,7 @@ mod tests {
             "Default".to_owned(),
         );
         let state = AppState::with_profile(profile);
-        let cfg = ConfigSnapshot::from_state(&state);
+        let cfg = ConfigSnapshot::from_state(&state, None);
 
         let s = &cfg.mappings[0];
         assert!(
@@ -941,7 +956,7 @@ mod tests {
             "Default".to_owned(),
         );
         let state = AppState::with_profile(profile);
-        let cfg = ConfigSnapshot::from_state(&state);
+        let cfg = ConfigSnapshot::from_state(&state, None);
 
         let s = &cfg.mappings[0];
         assert_eq!(
@@ -949,5 +964,70 @@ mod tests {
             Some(&secondary),
             "walker must descend into Conditional.if_true to find MergeAxis"
         );
+    }
+
+    #[test]
+    fn config_from_state_with_selection_clones_actions() {
+        use inputforge_core::action::{Action, Mapping};
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::types::{DeviceId, InputId};
+
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+
+        let addr = InputAddress {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        };
+        let mappings = vec![Mapping {
+            input: addr.clone(),
+            mode: "Default".to_owned(),
+            name: Some("Fire".to_owned()),
+            actions: vec![Action::Invert],
+        }];
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+
+        let sel = Some(("Default".to_owned(), addr.clone()));
+        let cfg = ConfigSnapshot::from_state(&state, sel.as_ref());
+
+        assert_eq!(cfg.selected_mapping_actions.as_ref().map(Vec::len), Some(1));
+        assert_eq!(
+            cfg.selected_mapping_key.as_ref(),
+            Some(&("Default".to_owned(), addr.clone()))
+        );
+    }
+
+    #[test]
+    fn config_from_state_without_selection_actions_none() {
+        let state = AppState::new();
+        let cfg = ConfigSnapshot::from_state(&state, None);
+        assert!(cfg.selected_mapping_actions.is_none());
+        assert!(cfg.selected_mapping_key.is_none());
+    }
+
+    #[test]
+    fn config_from_state_with_stale_selection_actions_none_key_present() {
+        use inputforge_core::types::{DeviceId, InputId};
+
+        let app = AppState::new();
+        let stale_sel = Some((
+            "Default".to_owned(),
+            InputAddress {
+                device: DeviceId("nonexistent".to_owned()),
+                input: InputId::Button { index: 99 },
+            },
+        ));
+        let cfg = ConfigSnapshot::from_state(&app, stale_sel.as_ref());
+        assert!(cfg.selected_mapping_actions.is_none());
+        assert_eq!(cfg.selected_mapping_key, stale_sel);
     }
 }

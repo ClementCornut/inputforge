@@ -25,7 +25,7 @@ pub(crate) fn spawn_polling_task(ctx: AppContext) {
             };
 
             let meta = MetaSnapshot::from_state(&guard);
-            let config = ConfigSnapshot::from_state(&guard);
+            let config = ConfigSnapshot::from_state(&guard, None);
             let live = LiveSnapshot::from_state(&guard, &config);
             // Release the read lock before calling Signal::set; reactive re-reads of
             // ctx.state from subscribers must not contend with the held guard.
