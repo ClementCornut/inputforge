@@ -17,6 +17,7 @@
 )]
 
 mod add_palette;
+pub(crate) mod dnd;
 mod stage;
 mod stage_actions_menu;
 pub(crate) mod stage_body;
@@ -311,6 +312,10 @@ pub(crate) fn Pipeline(
         };
     }
 
+    // The parent pipeline path for the sortable group is the path_prefix
+    // interpreted as a StageId. Each Stage uses this as its sortable group
+    // discriminator so cross-pipeline drops are rejected by the validator.
+    let parent_pipeline_path = StageId(path_prefix.clone());
     let path_prefix_for_iter = path_prefix.clone();
     let key_for_iter = mapping_key.clone();
     let root_for_iter = root_actions.clone();
@@ -330,6 +335,7 @@ pub(crate) fn Pipeline(
                             mapping_key: key_for_iter.clone(),
                             action: action.clone(),
                             root_actions: root_for_iter.clone(),
+                            parent_pipeline_path: parent_pipeline_path.clone(),
                             depth,
                         }
                     }

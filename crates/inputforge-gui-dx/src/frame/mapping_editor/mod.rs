@@ -34,6 +34,7 @@ use std::collections::{HashMap, HashSet};
 
 use dioxus::prelude::*;
 
+use crate::components::sortable::{SortableLiveRegion, SortableState, use_sortable_state};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::undo_log::{StageId, UndoLog};
@@ -57,6 +58,17 @@ pub(crate) fn MappingEditor() -> Element {
     let view = use_context::<ViewState>();
     let _editor = use_context::<EditorState>();
 
+    // One shared sortable state for the entire editor. Mounted unconditionally
+    // (Dioxus hook rules) so the signals exist regardless of whether a mapping
+    // is selected. Provided as context so Stage components can read it without
+    // prop-drilling through Pipeline. The live region is rendered once inside
+    // the editor shell for AT a11y.
+    let sortable: SortableState<StageId> = use_sortable_state::<StageId>();
+    // Clone before moving into the provider closure; SortableState<StageId>
+    // is Clone but not Copy (StageId is Vec-backed, not Copy).
+    let sortable_for_live = sortable.clone();
+    use_context_provider(|| sortable);
+
     let view_state_for_render: Option<MappingKey> = view.selected_mapping.read().clone();
 
     // Hoist the stylesheet and offline banner above the if/else split so
@@ -66,6 +78,7 @@ pub(crate) fn MappingEditor() -> Element {
         Stylesheet { href: MAPPING_EDITOR_CSS }
         div { class: "if-editor",
             EngineOfflineBanner {}
+            SortableLiveRegion { state: sortable_for_live }
             if let Some((mode, input)) = view_state_for_render {
                 {
                     let mapping_name = ctx

@@ -4,22 +4,104 @@
 //!
 //! Renders one action as a collapsible card. Category tint is applied via
 //! BEM modifier classes (`is-processing`, `is-output`, `is-control`).
-//! The body region is a placeholder until Task 22 wires the dispatcher.
+//! The drag handle (6-dot grip) is rendered in the stage header area and
+//! wires `ondragstart` via `SortableHandle`.
+
+use std::rc::Rc;
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Condition, ModeChangeStrategy};
+use inputforge_core::action::{Action, Condition, Mapping, ModeChangeStrategy};
+use inputforge_core::engine::EngineCommand;
 use inputforge_core::processing::ResponseCurve;
 use inputforge_core::types::{KeyCombo, KeyModifier, OutputAddress, OutputId, VJoyAxis};
 
+use crate::components::sortable::{
+    SortableHandle, SortableItemConfig, SortableSide, SortableState, use_sortable_item,
+};
 use crate::context::ConfigSnapshot;
 use crate::frame::MappingKey;
+use crate::frame::mapping_editor::pipeline::dnd::validate_pipeline_drop;
 use crate::frame::mapping_editor::pipeline::stage_body;
 use crate::frame::mapping_editor::pipeline::stage_header::StageHeader;
-use crate::frame::mapping_editor::undo_log::StageId;
+use crate::frame::mapping_editor::pipeline::{at_path, insert_at_path, remove_at_path};
+use crate::frame::mapping_editor::undo_log::{
+    LabelArgs, StageId, StageIdSegment, UndoKind, format_undo_label,
+};
 use crate::frame::mapping_editor::{EditorState, StageMenuState};
 
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
+
+/// Derive the group-local index of a stage within its parent pipeline.
+///
+/// The last segment of a well-formed `StageId` is always `Index(i)`. Returns
+/// `0` as a safe fallback when the path is malformed (empty or ends with a
+/// branch segment); callers must handle this gracefully.
+fn local_index_of(stage_id: &StageId) -> usize {
+    match stage_id.0.last() {
+        Some(StageIdSegment::Index(i)) => *i,
+        _ => 0,
+    }
+}
+
+/// Walk `root_actions` to the slice addressed by `parent_pipeline_path` and
+/// return its length. Returns the length of `root_actions` itself when
+/// `parent_pipeline_path` is empty (the stage lives in the outer pipeline).
+///
+/// Returns `0` on an invalid path so callers degrade gracefully rather than
+/// panic. The validator in `validate_pipeline_drop` prevents mis-directed
+/// drops in the common case, so this fallback is a last resort only.
+fn parent_pipeline_len(root_actions: &[Action], parent_pipeline_path: &StageId) -> usize {
+    if parent_pipeline_path.0.is_empty() {
+        return root_actions.len();
+    }
+    // The parent_pipeline_path segments describe the path from root down to the
+    // branch that contains this stage. The path always ends with a branch
+    // segment (IfTrue / IfFalse), not an Index, because Pipeline strips the
+    // terminal Index when constructing path_prefix.
+    let mut cursor: &[Action] = root_actions;
+    let mut last_action: Option<&Action> = None;
+    for seg in &parent_pipeline_path.0 {
+        match seg {
+            StageIdSegment::Index(i) => {
+                let Some(a) = cursor.get(*i) else { return 0 };
+                last_action = Some(a);
+            }
+            StageIdSegment::IfTrue => match last_action {
+                Some(Action::Conditional { if_true, .. }) => cursor = if_true.as_slice(),
+                _ => return 0,
+            },
+            StageIdSegment::IfFalse => match last_action {
+                Some(Action::Conditional { if_false, .. }) => {
+                    let Some(branch) = if_false.as_deref() else {
+                        return 0;
+                    };
+                    cursor = branch;
+                }
+                _ => return 0,
+            },
+        }
+    }
+    cursor.len()
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 #[component]
+#[allow(
+    clippy::too_many_lines,
+    reason = "Stage integrates header, body, context-menu, and DnD in one component \
+              by design; splitting would require threading many more props."
+)]
+#[allow(
+    unused_qualifications,
+    reason = "Dioxus 0.7 RSX macro emits redundant `dioxus_elements::*` qualifications \
+              on per-element event listeners with bound closures."
+)]
 pub(crate) fn Stage(
     stage_id: StageId,
     /// `(mode, InputAddress)` key for the mapping being edited. Named
@@ -30,12 +112,19 @@ pub(crate) fn Stage(
     /// recursion. Bodies use this for tree mutators because `StageId`
     /// paths are root-relative. See `Pipeline` doc for rationale.
     root_actions: Vec<Action>,
+    /// The `StageId` of the parent pipeline (i.e., `path_prefix` from
+    /// `Pipeline`). Used as the sortable group discriminator so that only
+    /// stages within the same pipeline can be reordered together.
+    parent_pipeline_path: StageId,
     depth: u8,
 ) -> Element {
     let editor = use_context::<EditorState>();
     let expanded = editor.expanded_stages.read().contains(&stage_id);
     let ctx = use_context::<crate::context::AppContext>();
     let cfg = ctx.config.read().clone();
+
+    // Read the shared sortable state installed by MappingEditor.
+    let sortable = use_context::<SortableState<StageId>>();
 
     let category_class = match &action {
         Action::ResponseCurve { .. } | Action::Deadzone { .. } | Action::Invert => "is-processing",
@@ -45,14 +134,56 @@ pub(crate) fn Stage(
         Action::ChangeMode { .. } | Action::Conditional { .. } => "is-control",
     };
 
-    let class = format!("if-stage {category_class}");
+    // Derive the group-local index and parent pipeline length for the sortable
+    // primitive. Both are O(n) but bounded by pipeline depth, not total stages.
+    let local_index = local_index_of(&stage_id);
+    let group_len = parent_pipeline_len(&root_actions, &parent_pipeline_path);
+
+    // Determine drag-source and drop-indicator classes. The sortable group
+    // discriminator is the full parent_pipeline_path, so group comparison is
+    // by StageId equality (Vec<StageIdSegment> PartialEq).
+    let is_drag_source = sortable
+        .drag_from
+        .read()
+        .is_some_and(|src_idx| src_idx == local_index)
+        && sortable
+            .drag_group
+            .read()
+            .as_ref()
+            .is_some_and(|src_group| src_group == &parent_pipeline_path);
+    let drop_marker = sortable.drop_target.read();
+    let (drop_before, drop_after, drop_invalid) = drop_marker
+        .as_ref()
+        .filter(|d| d.index == local_index && d.group == parent_pipeline_path)
+        .map_or((false, false, false), |d| match (d.side, d.invalid) {
+            (SortableSide::Before, false) => (true, false, false),
+            (SortableSide::After, false) => (false, true, false),
+            (SortableSide::Before, true) => (true, false, true),
+            (SortableSide::After, true) => (false, true, true),
+        });
+    drop(drop_marker);
+
+    let mut base_class = format!("if-stage {category_class}");
+    if is_drag_source {
+        base_class.push_str(" if-sortable--dragging");
+    }
+    if drop_before {
+        base_class.push_str(" if-sortable--drop-before");
+    }
+    if drop_after {
+        base_class.push_str(" if-sortable--drop-after");
+    }
+    if drop_invalid {
+        base_class.push_str(" if-sortable--drop-invalid");
+    }
+
     let title = stage_title_for(&action).to_owned();
     let summary = stage_summary_for(&action, &cfg);
     let right_slot = stage_body::header_right_slot(&action, expanded);
     let body_id = format!("if-stage-body-{}", super::format_stage_id(&stage_id));
 
-    // Build the context-menu handler. The closure captures the `stage_id`
-    // and writes the cursor coordinates + target id into `EditorState::stage_menu`.
+    // Context-menu handler: writes cursor coordinates + target stage id into
+    // `EditorState::stage_menu`.
     let oncontextmenu = {
         let stage_id = stage_id.clone();
         let mut stage_menu = editor.stage_menu;
@@ -68,11 +199,146 @@ pub(crate) fn Stage(
         }
     };
 
+    // Element ref for the cursor-Y midpoint computation in ondragover.
+    let mut item_ref: Signal<Option<Rc<MountedData>>> = use_signal(|| None);
+
+    // Capture everything the on_drop closure needs before building the config.
+    // SortableState<StageId> is Clone but not Copy (StageId is Vec-backed).
+    // Retain a separate clone for the SortableHandle in the rsx! block below.
+    let sortable_for_handle = sortable.clone();
+    let key_for_drop = mapping_key.clone();
+    let root_for_drop = root_actions.clone();
+    let cfg_sig = ctx.config;
+    let mut undo_log = editor.undo_log;
+    let mut expanded_stages = editor.expanded_stages;
+    let mut malformed_hints = editor.malformed_hints;
+    let mut live_writer = sortable.live_announcement;
+    let drag_from_for_drop = sortable.drag_from;
+    let drag_group_for_drop = sortable.drag_group;
+    let cmd_tx = ctx.commands.clone();
+    let parent_path_for_drop = parent_pipeline_path.clone();
+    let stage_id_for_drop = stage_id.clone();
+
+    let handlers = use_sortable_item(SortableItemConfig {
+        state: sortable,
+        index: local_index,
+        group: parent_pipeline_path.clone(),
+        group_len,
+        item_ref,
+        // Reject cross-pipeline drops (different parent paths) AND cycle drops
+        // (dragging a Conditional into one of its own descendants).
+        validate_drop: Some(validate_pipeline_drop),
+        on_drop: move |to: usize, _side: SortableSide| {
+            // `drag_from` holds the source's group-local index; still populated
+            // when this closure runs (the primitive clears it after we return).
+            let Some(src_local_index) = *drag_from_for_drop.peek() else {
+                return;
+            };
+            // `drag_group` holds the source's parent pipeline path.
+            let Some(src_parent_path) = drag_group_for_drop.peek().clone() else {
+                return;
+            };
+
+            // Reconstruct the source's full StageId.
+            let mut src_segs = src_parent_path.0.clone();
+            src_segs.push(StageIdSegment::Index(src_local_index));
+            let src_id = StageId(src_segs);
+
+            // Reconstruct the target's full StageId.
+            let mut tgt_segs = parent_path_for_drop.0.clone();
+            tgt_segs.push(StageIdSegment::Index(to));
+            let tgt_id = StageId(tgt_segs);
+
+            // Fetch the dragged action from the current tree.
+            let Some(dragged) = at_path(&root_for_drop, &src_id).cloned() else {
+                return;
+            };
+
+            // Remove the source then insert at the target. Both helpers return
+            // None on invalid paths; bail to avoid a phantom undo entry.
+            let Some(after_remove) = remove_at_path(&root_for_drop, &src_id) else {
+                return;
+            };
+            let Some(new_actions) = insert_at_path(&after_remove, &tgt_id, dragged) else {
+                return;
+            };
+
+            // Build the before-Mapping snapshot using the live config name.
+            let cfg_read = cfg_sig.read();
+            let current_name = cfg_read.mapping_names.get(&key_for_drop.1).cloned();
+            drop(cfg_read);
+
+            let before = Mapping {
+                input: key_for_drop.1.clone(),
+                mode: key_for_drop.0.clone(),
+                name: current_name.clone(),
+                actions: root_for_drop.clone(),
+            };
+
+            // Dispatch SetMapping first; return on channel error.
+            if cmd_tx
+                .send(EngineCommand::SetMapping {
+                    input: key_for_drop.1.clone(),
+                    mode: key_for_drop.0.clone(),
+                    name: current_name,
+                    actions: new_actions,
+                })
+                .is_err()
+            {
+                tracing::warn!(
+                    target: "f9::mapping_editor",
+                    action = "stage_dnd_drop_offline",
+                    "stage DnD drop dropped: engine channel disconnected"
+                );
+                return;
+            }
+
+            // Derive a friendly stage name for the undo label.
+            let stage_name =
+                at_path(&root_for_drop, &stage_id_for_drop).map_or("stage", stage_title_for);
+            let label = format_undo_label(
+                UndoKind::StageReorder,
+                LabelArgs {
+                    stage_name: Some(stage_name),
+                    from_to: Some((src_local_index, to)),
+                    ..LabelArgs::default()
+                },
+            );
+            undo_log
+                .write()
+                .push_edit(key_for_drop.clone(), before, UndoKind::StageReorder, label);
+
+            // Clear positional caches (Task 11 structural-mutation invariant).
+            expanded_stages.write().clear();
+            malformed_hints.write().clear();
+
+            // Write AT live-region announcement.
+            live_writer.set(format!(
+                "Stage moved from position {} to {}",
+                src_local_index + 1,
+                to + 1
+            ));
+        },
+    });
+
     rsx! {
         li {
-            class: "{class}",
+            class: "{base_class}",
             "data-stage-id": "{super::format_stage_id(&stage_id)}",
             oncontextmenu,
+            ondragover: handlers.ondragover,
+            ondragleave: handlers.ondragleave,
+            ondragend: handlers.ondragend,
+            ondrop: handlers.ondrop,
+            onmounted: move |evt: MountedEvent| {
+                item_ref.set(Some(evt.data()));
+            },
+            SortableHandle {
+                state: sortable_for_handle,
+                index: local_index,
+                group: parent_pipeline_path.clone(),
+                group_len,
+            }
             StageHeader {
                 stage_id: stage_id.clone(),
                 title,
@@ -287,9 +553,3 @@ fn device_label<'a>(cfg: &'a ConfigSnapshot, id: &'a inputforge_core::types::Dev
         .find(|d| &d.info.id == id)
         .map_or(id.0.as_str(), |d| d.info.name.as_str())
 }
-
-/// Suppress unused-variable warning for `depth` until Task 26a
-/// wires Conditional recursion depth-gating.
-const _: () = {
-    fn _assert_depth_used(_d: u8) {}
-};

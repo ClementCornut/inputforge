@@ -1060,3 +1060,109 @@ fn stage_menu_disables_move_down_at_last_position() {
         "Move down at last index must be aria-disabled: {html}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Task 30b: DnD cycle-prevention unit tests + cross-pipeline integration test
+// ---------------------------------------------------------------------------
+
+use crate::frame::mapping_editor::pipeline::dnd::{is_descendant, validate_pipeline_drop};
+
+#[test]
+fn dnd_descendant_detection_rejects_self_descent() {
+    // A Conditional at index 0 must be detected as an ancestor of any stage
+    // nested within its own branches.
+    let ancestor = StageId(vec![StageIdSegment::Index(0)]);
+    let candidate = StageId(vec![
+        StageIdSegment::Index(0),
+        StageIdSegment::IfTrue,
+        StageIdSegment::Index(0),
+    ]);
+    assert!(
+        is_descendant(&ancestor, &candidate),
+        "stage nested inside its own if_true branch must be detected as descendant"
+    );
+}
+
+#[test]
+fn dnd_descendant_detection_allows_unrelated_path() {
+    // Two sibling stages at the outer pipeline level share no prefix relation.
+    let ancestor = StageId(vec![StageIdSegment::Index(0)]);
+    let candidate = StageId(vec![StageIdSegment::Index(1)]);
+    assert!(
+        !is_descendant(&ancestor, &candidate),
+        "unrelated sibling must not be detected as descendant"
+    );
+}
+
+#[test]
+fn dnd_descendant_detection_allows_self_drop_to_outer_pipeline() {
+    // Dragging a stage to a sibling slot at the same depth must be allowed.
+    let ancestor = StageId(vec![StageIdSegment::Index(2)]);
+    let candidate = StageId(vec![StageIdSegment::Index(5)]);
+    assert!(
+        !is_descendant(&ancestor, &candidate),
+        "sibling at same depth must not be detected as descendant"
+    );
+}
+
+#[test]
+fn dnd_can_move_stage_from_outer_into_conditional_if_true() {
+    // Integration: move Action::Invert (at outer index 1) into the if_true
+    // branch of the Conditional at outer index 0. The resulting tree must have
+    // one outer stage (the Conditional) with one inner stage (Invert).
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Button { index: 0 },
+    };
+    let actions = vec![
+        Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: primary.clone(),
+            },
+            if_true: vec![],
+            if_false: None,
+        },
+        Action::Invert,
+    ];
+
+    // Source: outer index 1 (the Invert).
+    let drag_id = StageId(vec![StageIdSegment::Index(1)]);
+    // Target: inside if_true of the Conditional, at index 0.
+    let drop_id = StageId(vec![
+        StageIdSegment::Index(0),
+        StageIdSegment::IfTrue,
+        StageIdSegment::Index(0),
+    ]);
+
+    // The cycle validator must allow this move (source is NOT an ancestor of target).
+    assert!(
+        validate_pipeline_drop(&drag_id, &drop_id),
+        "moving an outer stage into a Conditional's if_true branch must be allowed"
+    );
+
+    let dragged = at_path(&actions, &drag_id)
+        .cloned()
+        .expect("drag_id must resolve");
+    let after_remove = remove_at_path(&actions, &drag_id).expect("remove must succeed");
+    let result = insert_at_path(&after_remove, &drop_id, dragged).expect("insert must succeed");
+
+    match &result[0] {
+        Action::Conditional { if_true, .. } => {
+            assert_eq!(
+                if_true.len(),
+                1,
+                "if_true must contain the moved Invert stage"
+            );
+            assert!(
+                matches!(if_true[0], Action::Invert),
+                "moved stage must be Invert"
+            );
+        }
+        _ => panic!("outer stage 0 must remain Conditional after move"),
+    }
+    assert_eq!(
+        result.len(),
+        1,
+        "outer pipeline must have exactly one stage after the Invert is moved inside"
+    );
+}
