@@ -52,7 +52,7 @@ use inputforge_core::action::{Action, Condition, Mapping};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{HatDirection, InputAddress};
 
-use crate::components::{Button, ButtonSize, ButtonVariant, NumberInput, Select};
+use crate::components::{NumberInput, Select};
 use crate::context::{AppContext, ConfigSnapshot};
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
@@ -241,13 +241,19 @@ fn commit_condition(
 // PredicateInputRow -- shared source-label + rebind button sub-component.
 // ---------------------------------------------------------------------------
 
-/// Source label + ghost "rebind" button for the `input` field of a condition.
+/// Source label + rebind action for the `input` field of a condition.
 ///
-/// Follows the consumer-flag pattern from `MergeAxisBody`: `is_armed_consumer`
+/// Renders the shared `if-rebind-composite` cluster (same primitive used by
+/// the editor header subtitle and the `MergeAxis` Secondary input row) so the
+/// rebind affordance reads identically across all three call sites. Follows
+/// the consumer-flag pattern from `MergeAxisBody`: `is_armed_consumer`
 /// ensures only the component that armed `LiveCapture` reacts when it fires.
-/// On capture, calls `on_input_change` with the new `InputAddress` so the
-/// parent `PredicateEditor` can rebuild and dispatch.
 #[component]
+#[allow(
+    unused_qualifications,
+    reason = "Dioxus 0.7 RSX macro emits redundant `dioxus_elements::*` qualifications \
+              on per-element event listeners with bound closures."
+)]
 fn PredicateInputRow(
     /// The current input address displayed as a source label.
     input: InputAddress,
@@ -283,6 +289,24 @@ fn PredicateInputRow(
         on_input_change.call(new_addr);
     });
 
+    // External-cancel watcher: when capture goes inactive without producing
+    // a captured value (F8's document-level Esc listener, or another
+    // consumer claiming capture), reset our consumer flag so the listening
+    // composite collapses back to the default state. Mirrors the equivalent
+    // watcher in `header.rs`.
+    use_effect(move || {
+        if *capture.active.read() {
+            return;
+        }
+        if !*is_armed_consumer.peek() {
+            return;
+        }
+        if capture.captured.peek().is_some() {
+            return;
+        }
+        is_armed_consumer.set(false);
+    });
+
     let source = source_label::format(&input, &ctx.config.read());
 
     let on_rebind = move |_: MouseEvent| {
@@ -292,14 +316,38 @@ fn PredicateInputRow(
         capture.start.call(CaptureFilter::Any);
     };
 
+    let on_cancel = move |_: MouseEvent| {
+        capture.cancel.call(());
+        is_armed_consumer.set(false);
+    };
+
     rsx! {
         div { class: "if-predicate__input-row",
-            span { class: "if-predicate__input-label", "{source}" }
-            Button {
-                variant: ButtonVariant::Ghost,
-                size: ButtonSize::Sm,
-                onclick: on_rebind,
-                "rebind"
+            if *is_armed_consumer.read() {
+                div { class: "if-rebind-composite if-rebind-composite--listening",
+                    span {
+                        class: "if-rebind-composite__listening",
+                        role: "status",
+                        "aria-live": "polite",
+                        "Press an input\u{2026}"
+                    }
+                    button {
+                        class: "if-rebind-composite__action",
+                        r#type: "button",
+                        onclick: on_cancel,
+                        "Cancel"
+                    }
+                }
+            } else {
+                div { class: "if-rebind-composite",
+                    span { class: "if-rebind-composite__label", "{source}" }
+                    button {
+                        class: "if-rebind-composite__action",
+                        r#type: "button",
+                        onclick: on_rebind,
+                        "rebind"
+                    }
+                }
             }
         }
     }
