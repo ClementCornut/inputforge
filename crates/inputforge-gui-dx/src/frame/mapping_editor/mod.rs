@@ -14,10 +14,8 @@ mod engine_offline_banner;
 mod external_edit;
 mod header;
 mod inactive_hint;
-mod input_field;
 pub(crate) mod keyboard;
 mod live_readout;
-mod name_field;
 pub(crate) mod pipeline;
 pub(crate) mod undo_log;
 mod undo_recap;
@@ -27,9 +25,7 @@ use engine_offline_banner::EngineOfflineBanner;
 use external_edit::ExternalEditReconciler;
 use header::Header;
 use inactive_hint::InactiveHint;
-use input_field::InputField;
 use live_readout::LiveReadout;
-use name_field::NameField;
 use pipeline::{Pipeline, StageActionsMenu};
 use undo_recap::UndoRecap;
 
@@ -177,16 +173,11 @@ pub(crate) fn MappingEditor() -> Element {
                         .clone()
                         .unwrap_or_default();
                     rsx! {
-                        Header { name: mapping_name.clone(), input: input.clone() }
-                        NameField {
-                            initial: mapping_name.clone(),
+                        Header {
+                            name: mapping_name,
+                            input: input.clone(),
                             mapping_key: (mode.clone(), input.clone()),
                             actions: actions_clone.clone(),
-                        }
-                        InputField {
-                            mapping_key: (mode.clone(), input.clone()),
-                            actions: actions_clone.clone(),
-                            name: Some(mapping_name),
                         }
                         LiveReadout {
                             primary: input.clone(),

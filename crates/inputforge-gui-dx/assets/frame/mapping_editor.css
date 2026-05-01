@@ -80,7 +80,15 @@
     cursor: pointer;
 }
 
-/* Task 14: editor header */
+/* Editor header.
+ *
+ * The header collapses what F9 originally split across three sections
+ * (Header, Name field, Input field) into one identity block: title + a
+ * subtitle row that anchors the rebind button next to the source label.
+ * Inline-First Rule from DESIGN.md §6: the h2 itself is the rename entry
+ * point (F2 / right-click), and the inline editor inherits h2 typography
+ * so the swap is visually invisible.
+ */
 
 .if-editor__header {
     display: flex;
@@ -102,7 +110,38 @@
     white-space: nowrap;
 }
 
+.if-editor__title:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* Inline rename editor. Inherits the h2 visual size + weight so the
+   swap from display to edit produces no layout jitter. */
+.if-editor__title-input {
+    width: 100%;
+    font-family: var(--font-sans);
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 28px;
+    margin: 0;
+    padding: 0;
+    color: var(--color-text);
+    background: transparent;
+    border: 0;
+}
+
+.if-editor__title-input:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
 .if-editor__subtitle {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
     font-family: var(--font-mono);
     font-size: 12px;
     line-height: 18px;
@@ -110,31 +149,21 @@
     overflow-wrap: anywhere;
 }
 
-/* Task 15: name field */
-
-.if-editor__name-field {
-    padding: 8px 16px;
-    border-bottom: 1px solid var(--color-border);
+.if-editor__subtitle-source,
+.if-editor__subtitle-output {
+    /* The two label spans inherit subtitle typography; declared so they
+       carry overflow-wrap when device names exceed the column width. */
+    overflow-wrap: anywhere;
 }
 
-.if-editor__name-input {
-    width: 100%;
-    max-width: 480px;
-    font-family: var(--font-sans);
-    font-size: 14px;
-    padding: 6px 8px;
-    background: var(--color-bg-sunken);
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-    color: var(--color-text);
+.if-editor__subtitle-arrow {
+    color: var(--color-text-subtle);
 }
 
-.if-editor__name-input:focus {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 2px;
-}
-
-/* Task 16: input field (read-only source label + ghost rebind button) */
+/* Source-address row used by the MergeAxis secondary picker (mirrors the
+   editor's main input field). Kept here because MergeAxis body still
+   composes the same source-label + rebind-button shape; the editor's own
+   input field was folded into the header's subtitle row. */
 
 .if-editor__input-field {
     display: flex;

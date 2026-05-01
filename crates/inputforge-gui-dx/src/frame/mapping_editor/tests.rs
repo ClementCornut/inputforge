@@ -423,11 +423,14 @@ fn editor_header_omits_output_when_no_map_to_vjoy() {
 }
 
 // ---------------------------------------------------------------------------
-// Task 15: name field with commit-on-blur
+// Header inline-rename: display state hosts the F8 focus marker on the h2.
 // ---------------------------------------------------------------------------
 
+/// The header's display-mode h2 carries the F8 `data-editor-focus` marker
+/// and its current name; the inline rename input only mounts after F2 /
+/// right-click swaps the h2 for the editable input.
 #[test]
-fn editor_name_field_renders_input_with_current_value() {
+fn editor_header_h2_carries_focus_marker_and_name() {
     let addr = InputAddress {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
@@ -437,10 +440,26 @@ fn editor_name_field_renders_input_with_current_value() {
     vdom.rebuild_in_place();
     let html = render(&vdom);
     assert!(
-        html.contains("data-editor-focus"),
-        "name input should carry data-editor-focus marker (used by F8 keyboard nav): {html}"
+        html.contains("<h2"),
+        "expected h2 element in display mode: {html}"
     );
-    assert!(html.contains("value=\"Yaw\""));
+    assert!(
+        html.contains("data-editor-focus"),
+        "h2 should carry data-editor-focus marker (F8 keyboard nav target): {html}"
+    );
+    assert!(
+        html.contains("Yaw"),
+        "h2 must render the current mapping name: {html}"
+    );
+    assert!(
+        html.contains("tabindex=\"0\""),
+        "h2 must be keyboard-focusable: {html}"
+    );
+    // No inline editor mounts on first paint.
+    assert!(
+        !html.contains("if-editor__title-input"),
+        "title input must not be present in display mode: {html}"
+    );
 }
 
 // ---------------------------------------------------------------------------
