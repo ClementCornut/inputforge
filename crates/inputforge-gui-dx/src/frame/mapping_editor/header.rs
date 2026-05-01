@@ -279,6 +279,24 @@ pub(crate) fn Header(
         local_name.set(evt.value());
     };
 
+    // External-cancel watcher: when `cap.active` flips false while we were
+    // armed and nothing was captured, reset `is_armed_consumer` so the
+    // listening UI clears. Triggered by F8's document-level Esc listener
+    // or by another consumer claiming capture. Mirrors the equivalent
+    // watcher in `mapping_list/add_inline.rs`.
+    use_effect(move || {
+        if *capture.active.read() {
+            return;
+        }
+        if !*is_armed_consumer.peek() {
+            return;
+        }
+        if capture.captured.peek().is_some() {
+            return;
+        }
+        is_armed_consumer.set(false);
+    });
+
     // Rebind button: arm `LiveCapture::Any`. Set the consumer flag BEFORE
     // calling start so the captured-signal effect cannot fire before the
     // flag is true (effects run synchronously in SSR and on the next
@@ -286,6 +304,14 @@ pub(crate) fn Header(
     let on_rebind = move |_: MouseEvent| {
         is_armed_consumer.set(true);
         capture.start.call(CaptureFilter::Any);
+    };
+
+    // Cancel button (visible only while armed): drop the capture and clear
+    // our consumer flag. Esc is handled by F8's own listener; this is the
+    // mouse path.
+    let on_cancel_rebind = move |_: MouseEvent| {
+        capture.cancel.call(());
+        is_armed_consumer.set(false);
     };
 
     rsx! {
@@ -327,11 +353,26 @@ pub(crate) fn Header(
             }
             div { class: "if-editor__subtitle",
                 span { class: "if-editor__subtitle-source", "{src}" }
-                Button {
-                    variant: ButtonVariant::Ghost,
-                    size: ButtonSize::Sm,
-                    onclick: on_rebind,
-                    "rebind"
+                if *is_armed_consumer.read() {
+                    span {
+                        class: "if-editor__rebind-listening",
+                        role: "status",
+                        "aria-live": "polite",
+                        "Press an input\u{2026}"
+                    }
+                    Button {
+                        variant: ButtonVariant::Ghost,
+                        size: ButtonSize::Sm,
+                        onclick: on_cancel_rebind,
+                        "Cancel"
+                    }
+                } else {
+                    Button {
+                        variant: ButtonVariant::Ghost,
+                        size: ButtonSize::Sm,
+                        onclick: on_rebind,
+                        "rebind"
+                    }
                 }
                 if let Some(out) = output_label {
                     span { class: "if-editor__subtitle-arrow",

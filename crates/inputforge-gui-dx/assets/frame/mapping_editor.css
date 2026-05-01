@@ -160,6 +160,45 @@
     color: var(--color-text-subtle);
 }
 
+/* Rebind listening indicator. Shown in the subtitle row while the
+ * header's `is_armed_consumer` flag is true, mirroring the AddInline
+ * pad's listening cue but inlined as text + dot rather than a chip box.
+ *
+ * The chip box pattern from `mapping_list.css` (`.if-add-inline__chip
+ * --listening`) anchors a slot that flips between empty + dot and
+ * filled + captured-input identifier. Rebind has no Captured-but-not
+ * committed phase (capture commits immediately on input), so there is
+ * no slot to anchor; a bare dot + text reads cleaner here. The dot
+ * uses the same 6x6 size, the same `--color-live` color, and the same
+ * `if-add-pulse-dot` keyframes (defined in `mapping_list.css`) so the
+ * cue's meaning stays consistent across create-mapping and rebind.
+ */
+.if-editor__rebind-listening {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.if-editor__rebind-listening::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-live);
+    animation: if-add-pulse-dot 1100ms ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .if-editor__rebind-listening::before {
+        animation: none;
+        opacity: 0.85;
+    }
+}
+
 /* Source-address row used by the MergeAxis secondary picker (mirrors the
    editor's main input field). Kept here because MergeAxis body still
    composes the same source-label + rebind-button shape; the editor's own
