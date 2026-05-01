@@ -2,6 +2,7 @@
 
 mod banner;
 mod layout;
+mod mapping_editor;
 mod mapping_list;
 mod panel_slot;
 mod status_bar;
