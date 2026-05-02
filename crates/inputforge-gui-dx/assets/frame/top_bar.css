@@ -441,101 +441,13 @@
 .if-mode-tab__marker--natural { color: var(--color-live); }
 .if-mode-tab__marker--forced  { color: var(--color-warning); }
 
-/* The menu backdrop is a pointer-event sink positioned beneath the
-   floating list. The component-level `.if-menu__backdrop` rule in
-   `assets/components/menu.css` is intentionally distinct: that one
-   relies on the menu's local stacking context (z-index: 1000 on
-   `.if-menu__items`), while the mode-tabs context menu is hand-rolled
-   and lifts its own pair to z-index 100/101. Cross-primitive
-   consolidation is a follow-up; the duplication is documented here.
-   Tokenization: transparent background, backdrop is invisible by
-   contract, only the click sink matters. */
-.if-menu__backdrop {
-    position: fixed;
-    inset: 0;
-    background: transparent;
-    z-index: 100;
-}
-
-/* Mode-tab context menu, a floating cockpit overlay panel.
-   Vocabulary: `border-strong` outline + `--shadow-3` (the genuine
-   floating-overlay shadow tier per elevation.css) + `--shadow-1` inset
-   top highlight (chamfer), same idiom dialog.css uses for its panel.
-   The 12rem min-width is a documented structural literal, keeps the
-   menu wide enough to fit the longest action label ("Set as default")
-   without per-locale recalculation. Internal padding hugs the items
-   so the structural border reads as the panel edge. */
+/* Mode-tab context menu, AnchoredMenu consumer. Surface, items, and
+   backdrop come from the shared primitive (.if-menu__list,
+   .if-menu__item, .if-menu__backdrop--anchored). The 12rem min-width
+   here documents the structural constraint that the longest action
+   label ("Set as default") fits without per-locale recalculation. */
 .if-modetab-context-menu {
-    list-style: none;
-    margin: 0;
-    padding: var(--space-1) 0;
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-md);
-    box-shadow:
-        var(--shadow-3),
-        var(--shadow-1);
     min-width: 12rem;
-    z-index: 101;
-}
-
-.if-modetab-context-menu li {
-    margin: 0;
-    padding: 0;
-}
-
-/* Menu items follow the canonical `.if-menu__item` convention from
-   components/menu.css: full-width row, transparent background, inherit
-   typography from the panel. Tracking 0.01em matches the mode-tab and
-   .if-tab base, the menu reads as part of the same instrument family
-   rather than as a foreign overlay. Color/background transition on the
-   synchronous fast lane (state changes follow input events). */
-.if-modetab-context-menu button {
-    /* block: each menu item is a row in the menu's column flow and must
-       fill the panel's content width. flex on the row would shrink-wrap
-       to text width even with width:100% (because the row is the flex
-       container's only child and would shrink to its intrinsic content
-       on cross-axis), breaking the click-target rectangle. */
-    display: block;
-    width: 100%;
-    text-align: left;
-    background: transparent;
-    border: 0;
-    padding: var(--space-2) var(--space-3);
-    color: var(--color-text);
-    font: inherit;
-    font-weight: var(--weight-medium);
-    letter-spacing: 0.01em;
-    cursor: pointer;
-    transition:
-        color var(--duration-fast) var(--easing-fast),
-        background-color var(--duration-fast) var(--easing-fast);
-}
-
-/* Hover/focus uses `--color-border`, the menu-hover convention 32b
-   established for `.if-tools-cluster__button` and that
-   `.if-menu__item:hover` uses in components/menu.css. `--color-bg`
-   would be darker than the menu surface itself (bg-elevated is
-   lighter than bg) and read as a hole instead of a highlight. */
-.if-modetab-context-menu button:hover:not([aria-disabled="true"]),
-.if-modetab-context-menu button:focus-visible {
-    background: var(--color-border);
-    outline: none;
-}
-
-/* Disabled-item contrast: subtle text + 0.5 opacity matches the
-   `.if-menu__item:disabled` convention. Communicates "available but
-   inactive" without making the row invisible, disabled items still
-   need to be readable for AT users and to explain the structure of
-   the menu (Activate/Rename/Delete/Set as default) at a glance. The
-   transition is suppressed so the disabled state doesn't animate
-   color on hover (UX anti-pattern, same idiom 32b applied to
-   .if-tools-cluster__button[disabled]). */
-.if-modetab-context-menu button[aria-disabled="true"] {
-    color: var(--color-text-subtle);
-    opacity: 0.5;
-    cursor: not-allowed;
-    transition: none;
 }
 
 /* Tail `+` add-tab, inherits the .if-mode-tab base (muted text that
