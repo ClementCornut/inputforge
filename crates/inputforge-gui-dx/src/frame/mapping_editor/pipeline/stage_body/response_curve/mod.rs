@@ -10,6 +10,7 @@
 )]
 
 pub(crate) mod mutation;
+pub(crate) mod state;
 
 /// Curve interpolation variant. Mirrors the engine's `ResponseCurve` discriminant
 /// but is owned by the GUI layer so the toolbar can operate independently of the
