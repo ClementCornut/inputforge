@@ -292,6 +292,11 @@ fn advance_focus(
         return None;
     }
     let len = anchors.len();
+    // Short-circuit: ShiftTab from index 0 (or from no focus) releases focus
+    // to the browser rather than trapping the user at the first anchor.
+    if backward && current.is_none_or(|i| i == 0) {
+        return None;
+    }
     let start = current.map_or(0, |i| if backward { i.saturating_sub(1) } else { i + 1 });
     let order: Vec<usize> = if backward {
         (0..len).rev().collect()
@@ -579,5 +584,20 @@ mod tests {
         let (_, _, outcome, _) =
             handle_key(state, &curve, KeyInput::ArrowRight { shift: false }, 1500);
         assert!(matches!(outcome, Some(KeyOutcome::PushUndo { .. })));
+    }
+
+    #[test]
+    fn shift_tab_from_first_anchor_releases_focus() {
+        // Mirror of `tab_advances_focus_no_wrap` for the backward direction:
+        // ShiftTab on the leftmost anchor must return None so the browser
+        // advances focus past the plot. Without this guard the user is
+        // trapped at index 0.
+        let (curve, mut state) = seed();
+        state.focused_point = Some(0);
+        let (next, _, _, _) = handle_key(state, &curve, KeyInput::ShiftTab, 0);
+        assert_eq!(
+            next.focused_point, None,
+            "ShiftTab on first anchor releases focus"
+        );
     }
 }
