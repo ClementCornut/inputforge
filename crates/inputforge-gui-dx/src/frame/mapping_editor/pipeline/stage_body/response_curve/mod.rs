@@ -73,6 +73,31 @@ const CURVE_SAMPLE_COUNT: usize = 200;
 // mount `Stylesheet { ... }` in this body's `rsx!`. The theme module is
 // the single owner of `<link rel="stylesheet">` mounts.
 
+/// Build a stable DOM id for a `ResponseCurveBody`'s plot wrapper.
+///
+/// `MountedData::get_client_rect()` does not return a working rect on the
+/// Dioxus 0.7 desktop target (the same limitation noted in
+/// `top_bar/mode_tabs/mod.rs:179`). `on_mounted` instead calls
+/// `document::eval` with `getBoundingClientRect()`, so the wrapper div needs
+/// a unique id selectable from JS. The id is derived from `stage_id` so each
+/// curve body on screen queries its own rect even when multiple stages of
+/// the same kind are mounted (e.g. a top-level curve plus one inside a
+/// Conditional branch).
+fn stage_id_dom_id(stage_id: &StageId) -> String {
+    use std::fmt::Write as _;
+    let mut s = String::from("if-curve-plot");
+    for seg in &stage_id.0 {
+        match seg {
+            StageIdSegment::Index(n) => {
+                let _ = write!(s, "-i{n}");
+            }
+            StageIdSegment::IfTrue => s.push_str("-t"),
+            StageIdSegment::IfFalse => s.push_str("-f"),
+        }
+    }
+    s
+}
+
 /// Project the curve stored at `stage_id` from the current root `actions`.
 ///
 /// Falls back to `fallback` when projection fails (e.g., transient mid-edit
@@ -268,20 +293,33 @@ pub(crate) fn ResponseCurveBody(
     let cmd_tx = ctx.commands.clone();
 
     // `onmounted` fires after the wrapper div is first inserted into the DOM.
-    // `get_client_rect()` is async on Dioxus 0.7; we `spawn` the await and
-    // write the result into `plot_rect` signal for subsequent pointer events.
-    let on_mounted = move |evt: MountedEvent| {
-        let data = evt.data();
+    // `MountedData::get_client_rect()` returns Err on the Dioxus 0.7 desktop
+    // target (see `top_bar/mode_tabs/mod.rs:179` for the established pattern).
+    // Use `document::eval` with `getBoundingClientRect()` instead. The wrapper
+    // div is given a stage-id-derived DOM id so the JS query targets the
+    // right element when multiple curve bodies are mounted simultaneously.
+    let plot_dom_id = stage_id_dom_id(&stage_id);
+    let plot_dom_id_for_mount = plot_dom_id.clone();
+    let on_mounted = move |_evt: MountedEvent| {
+        let id = plot_dom_id_for_mount.clone();
         spawn(async move {
-            if let Ok(rect) = data.get_client_rect().await {
-                plot_rect.set(Some(interaction::PlotRect {
-                    x: rect.origin.x,
-                    y: rect.origin.y,
-                    // Use the smaller dimension so anchor hit-zones are not
-                    // stretched if the wrapper is momentarily non-square
-                    // during a resize event.
-                    size: rect.size.width.min(rect.size.height),
-                }));
+            let mut handle = document::eval(&format!(
+                "const el = document.getElementById('{id}');\n\
+                 if (!el) {{ dioxus.send([-1.0, -1.0, -1.0, -1.0]); return; }}\n\
+                 const r = el.getBoundingClientRect();\n\
+                 dioxus.send([r.left, r.top, r.width, r.height]);"
+            ));
+            if let Ok([x, y, w, h]) = handle.recv::<[f64; 4]>().await {
+                if w > 0.0 && h > 0.0 {
+                    plot_rect.set(Some(interaction::PlotRect {
+                        x,
+                        y,
+                        // Use the smaller dimension so anchor hit-zones are not
+                        // stretched if the wrapper is momentarily non-square
+                        // during a resize event.
+                        size: w.min(h),
+                    }));
+                }
             }
         });
     };
@@ -687,6 +725,7 @@ pub(crate) fn ResponseCurveBody(
             // primary announcement when the user tabs in.
             div {
                 class: "if-curve__plot-frame",
+                id: "{plot_dom_id}",
                 tabindex: "0",
                 "aria-label": "response curve",
                 "data-hovered": "{hovered_attr}",
