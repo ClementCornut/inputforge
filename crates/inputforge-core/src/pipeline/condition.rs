@@ -351,4 +351,43 @@ mod tests {
         };
         assert!(evaluate_condition(&cond, &cache));
     }
+
+    #[test]
+    fn all_with_unbound_leaf_is_false() {
+        // An `All` combinator must collapse to `false` when any leaf has an
+        // Unbound input, even if the other leaves are satisfied. The leaf-
+        // Unbound short-circuit propagates through `All` via the existing
+        // `iter().all(...)` semantics; this test locks in that propagation.
+        let mut cache = MockCache::new();
+        let btn = button_input_address();
+        cache.buttons.insert(btn.clone(), true);
+        let cond = Condition::All {
+            conditions: vec![
+                Condition::ButtonPressed { input: btn },
+                Condition::ButtonPressed {
+                    input: InputAddress::Unbound,
+                },
+            ],
+        };
+        assert!(!evaluate_condition(&cond, &cache));
+    }
+
+    #[test]
+    fn any_with_unbound_leaf_falls_through_to_bound() {
+        // An `Any` combinator with an Unbound leaf falls through to the bound
+        // leaves; if any of those is satisfied, the result is `true`. The
+        // Unbound leaf neither short-circuits nor poisons the disjunction.
+        let mut cache = MockCache::new();
+        let btn = button_input_address();
+        cache.buttons.insert(btn.clone(), true);
+        let cond = Condition::Any {
+            conditions: vec![
+                Condition::ButtonPressed {
+                    input: InputAddress::Unbound,
+                },
+                Condition::ButtonPressed { input: btn },
+            ],
+        };
+        assert!(evaluate_condition(&cond, &cache));
+    }
 }
