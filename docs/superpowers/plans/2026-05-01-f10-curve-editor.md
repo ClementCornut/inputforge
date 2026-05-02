@@ -4,11 +4,11 @@
 
 **Goal:** Replace F9's placeholder body and chevron for `Action::ResponseCurve` with a Dioxus curve editor that ports the existing egui widget's logic verbatim onto an SVG plot, ships a 28x14 stage-header thumbnail, and adds a toolbar (type / symmetric / reset) plus keyboard a11y, live-input tracking, and undo per F9's dispatcher contract.
 
-**Architecture:** A self-contained submodule `pipeline/stage_body/response_curve/` with three layers: (1) pure logic ported from `crates/inputforge-gui/src/widgets/curve_editor/` (mutation, symmetry) plus new pure handlers (interaction, keyboard); (2) SVG rendering helpers reading CSS custom properties; (3) the `ResponseCurveBody` Dioxus component that threads `EditorState` + `ConfigSnapshot` + `LiveSnapshot` and dispatches `EngineCommand::SetMapping` paired with `UndoLog::push_edit`. One new engine helper (`sample_curve_path`) lives in `inputforge_core::processing::curves`. F9 ownership is narrow: F10 modifies F9's `stage_body/mod.rs` dispatcher arms (`Action::ResponseCurve` in `StageBody` and the per-arm header right slot), adds one `mod response_curve;` declaration, and lifts F9's `StageHeader` IconButton aria-label to accept a per-arm override.
+**Architecture:** A self-contained submodule `pipeline/stage_body/response_curve/` with three layers: (1) pure logic ported from the archived egui curve editor (see "Reference source" below) plus new pure handlers (interaction, keyboard); (2) SVG rendering helpers reading CSS custom properties; (3) the `ResponseCurveBody` Dioxus component that threads `EditorState` + `ConfigSnapshot` + `LiveSnapshot` and dispatches `EngineCommand::SetMapping` paired with `UndoLog::push_edit`. One new engine helper (`sample_curve_path`) lives in `inputforge_core::processing::curves`. F9 ownership is narrow: F10 modifies F9's `stage_body/mod.rs` dispatcher arms (`Action::ResponseCurve` in `StageBody` and the per-arm header right slot), adds one `mod response_curve;` declaration, and adds a new `aria_label_override: Option<String>` prop on F9's `StageHeader` (`pipeline/stage_header.rs`) so the ResponseCurve arm can override the accessible name on the underlying `<button>`.
 
 **Tech Stack:** Rust, Dioxus 0.7 (rsx!, signals, use_effect, use_context), Dioxus SSR for tests, inline SVG (no canvas, no third-party plot crate), CSS custom properties. Engine port uses `inputforge_core::processing::curves::{ResponseCurve, BezierSegment}`.
 
-**Reference source (port):** `crates/inputforge-gui/src/widgets/curve_editor/{mod,mutation,symmetry,interaction,rendering}.rs`. The egui port's `[output, input]` swap (in `interaction.rs`, `rendering.rs`, `mod.rs::rebuild_cache`) is NOT reintroduced; the SVG `<g transform="scale(1, -1)">` flips y at render time only.
+**Reference source (port):** the egui crate `crates/inputforge-gui/` was deleted in commit `2271256`. A read-only worktree has been created at `E:\Git\Perso\inputforge-egui-ref` (detached at commit `af44e57`, the parent of the deletion). The five port-source files live at `E:\Git\Perso\inputforge-egui-ref\crates\inputforge-gui\src\widgets\curve_editor\{mod,mutation,symmetry,interaction,rendering}.rs`. Read those files directly when this plan says "see egui mutation.rs:..." or similar. The egui port plotted output on the visual X axis and input on the visual Y axis (see `mod.rs::rebuild_cache`, `mod.rs::extract_control_points`, and `rendering.rs` for the `[output, input]` ordering). The SVG port reverses this convention: input on X, output on Y, with `<g transform="scale(1, -1)">` applied so positive output points up. Engine-native `(input, output)` ordering flows through every pure handler unchanged; the swap that lived in the egui interaction/rendering layer is not needed and is not reintroduced.
 
 **Spec:** `docs/superpowers/specs/2026-05-01-f10-curve-editor-design.md` (read this before each task).
 
@@ -19,7 +19,7 @@
 | File | Responsibility |
 |---|---|
 | `crates/inputforge-core/src/processing/curves.rs` | Add `sample_curve_path(curve, samples) -> Vec<(f64, f64)>` (engine-native `(input, output)`). Existing functions untouched. |
-| `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/mod.rs` | `ResponseCurveBody` component, `header_summary(curve) -> String`, `header_thumbnail(curve) -> Element`, `RESPONSE_CURVE_CSS` asset, glow `<defs>`. |
+| `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/mod.rs` | `ResponseCurveBody` component, `header_thumbnail(curve) -> Element`, glow `<defs>`. The accessible-name string for the header override is built from F9's existing `pipeline::stage::stage_summary_for(action, cfg)` (no new `header_summary` helper). |
 | `.../response_curve/state.rs` | `BodyState`, `DragInProgress`, `extract_anchors(curve) -> Vec<(f64, f64)>`. Pure types. |
 | `.../response_curve/mutation.rs` | Port of egui `mutation.rs` + `symmetry.rs::apply_symmetry`. `PlotPoint` → `(f64, f64)`. |
 | `.../response_curve/interaction.rs` | Pure pointer-event handlers + screen-to-viewBox conversion + nearest-anchor lookup. |
@@ -30,7 +30,9 @@
 | `.../response_curve/tests.rs` | SSR mount tests; pure-fn tests live next to their module via `#[cfg(test)] mod tests`. |
 | `crates/inputforge-gui-dx/assets/frame/response_curve.css` | `.if-curve*` classes + `.if-curve` token block + reduced-motion rule. |
 | `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/mod.rs` | Modify (after F9 ships this file with placeholder arms): replace `Action::ResponseCurve` arms in `StageBody` and the per-arm header right slot. |
-| `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/header.rs` (or wherever F9's `StageHeader` lives) | Modify: extend F9's `StageHeader` IconButton to accept an optional `aria_label_override: Option<String>` prop so the ResponseCurve arm can pass `Toggle stage body. Curve: <header_summary>`. |
+| `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_header.rs` | Modify: F9's `StageHeader` is a plain `<button class="if-stage__header">` (not an `IconButton`) with `aria-expanded` and `aria-controls` only. Add a new `aria_label_override: Option<String>` prop and emit `aria-label="{s}"` on that button when `Some`. The ResponseCurve arm passes `Toggle stage body. Curve: {stage_summary_for(action, cfg)}`. |
+
+**Asset registration note (Task 17):** Stylesheet assets are mounted centrally in `crates/inputforge-gui-dx/src/theme/mod.rs` (see lines 10-44 + 63-98 for the existing pattern). Register `RESPONSE_CURVE_CSS` there alongside the other frame stylesheets, NOT inside `response_curve/mod.rs`.
 
 ---
 
@@ -41,7 +43,7 @@ Defined once in `response_curve/mod.rs` (or local to consumers):
 - `CURVE_SAMPLE_COUNT: usize = 200`
 - `THUMBNAIL_SAMPLE_COUNT: usize = 30`
 - `HIT_RADIUS_PX: f64 = 10.0`
-- `MIN_X_GAP: f64 = 0.001` (mirrors egui `mod.rs:37`)
+- `MIN_X_GAP: f64 = 0.001` (mirrors egui-ref `mod.rs:37`; see `E:\Git\Perso\inputforge-egui-ref\crates\inputforge-gui\src\widgets\curve_editor\mod.rs:37`)
 - `KEY_NUDGE_STEP: f64 = 0.01`
 - `KEY_NUDGE_STEP_LARGE: f64 = 0.10`
 - `KEY_COALESCE_WINDOW_MS: u64 = 250`
@@ -173,13 +175,17 @@ pub fn sample_curve_path(curve: &ResponseCurve, samples: usize) -> Vec<(f64, f64
 }
 ```
 
-Also re-export the new fn from `crates/inputforge-core/src/processing/mod.rs`. Modify line 9 to:
+Also re-export the new fn from `crates/inputforge-core/src/processing/mod.rs`. The current re-export is at line 10:
+
+```rust
+pub use curves::{BezierSegment, ResponseCurve, bezier_x, bezier_y};
+```
+
+Add `sample_curve_path` to the list:
 
 ```rust
 pub use curves::{BezierSegment, ResponseCurve, bezier_x, bezier_y, sample_curve_path};
 ```
-
-(Spot-check before editing: read `processing/mod.rs` line 9 first. If `bezier_x` and `bezier_y` are already re-exported, only add `sample_curve_path` to the existing list rather than rewriting the whole line.)
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -197,7 +203,11 @@ git commit -m "feat(curves): sample_curve_path engine-native helper for F10 rend
 
 ### Task 2: Scaffold `response_curve` submodule + port `mutation.rs`
 
-Create the new submodule directory under `pipeline/stage_body/` and port the egui `mutation.rs` verbatim, replacing every `egui_plot::PlotPoint` with a `(f64, f64)` tuple. The egui `mutation.rs` is already engine-native `(input, output)`; no swap needs unwinding. F9's dispatcher arm for `ResponseCurve` is left at the placeholder caption until Task 16.
+Create the new submodule directory under `pipeline/stage_body/` and port the egui `mutation.rs` from the egui-ref worktree at `E:\Git\Perso\inputforge-egui-ref\crates\inputforge-gui\src\widgets\curve_editor\mutation.rs`, replacing every `egui_plot::PlotPoint` with a `(f64, f64)` tuple and changing `pub(super)` to `pub(crate)`. The egui `mutation.rs` data layout is already engine-native `(input, output)`; no swap needs unwinding. The port is structural rather than line-for-line: a few field-by-field assignments (`seg.start.0 = ...; seg.start.1 = ...`) in the egui source are rewritten as tuple assignments (`seg.start = (..., ...)`) for readability. F9's dispatcher arm for `ResponseCurve` is left at the placeholder caption until Task 16.
+
+The egui file exposes seven `pub(super)` fns (verified at `E:\Git\Perso\inputforge-egui-ref\crates\inputforge-gui\src\widgets\curve_editor\mutation.rs:24, 82, 246, 264, 328, 383, 466`): `adjacent_x_bounds`, `update_point_in_curve`, `reconstruct_curve`, `default_identity_curve`, `convert_curve_type`, `add_control_point`, `remove_control_point`. All seven move over.
+
+**Plan amendment:** `reconstruct_curve` is promoted from `Option<ResponseCurve>` to `Result<ResponseCurve, String>` so Task 6's invalid-drag path can write the validator's actual error to `EditorState.malformed_hints`. The `Some(curve) => Ok(curve)` / `None => Err(...)` mapping is mechanical; the call sites in this submodule must adopt the new return type.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/mod.rs`
@@ -410,19 +420,19 @@ Run again. Expected: FAIL because `adjacent_x_bounds` etc. still don't exist.
 
 - [ ] **Step 3: Port `mutation.rs` verbatim with `PlotPoint -> (f64, f64)`**
 
-Replace the placeholder `mutation.rs` with the port. Mechanical changes from `crates/inputforge-gui/src/widgets/curve_editor/mutation.rs`:
+Replace the placeholder `mutation.rs` with the port. Mechanical changes from `E:\Git\Perso\inputforge-egui-ref\crates\inputforge-gui\src\widgets\curve_editor\mutation.rs` (the egui-ref worktree at the parent of the egui-deletion commit):
 
 - Drop `use egui_plot::PlotPoint;` and the `super::CurveType` / `super::MIN_X_GAP` imports.
 - Use `super::CurveType` (now lives in the F10 `mod.rs`) and a local `const MIN_X_GAP: f64 = 0.001;`.
 - `update_point_in_curve(curve, index, new_pos: PlotPoint, bounds)` becomes `update_point_in_curve(curve, index, new_pos: (f64, f64), bounds)`. Replace `new_pos.x` with `new_pos.0`, `new_pos.y` with `new_pos.1`.
 - `add_control_point(curve, pos: PlotPoint)` becomes `add_control_point(curve, pos: (f64, f64))`. Replace `pos.x` with `pos.0`, `pos.y` with `pos.1`.
-- Visibility: change `pub(super)` to `pub(crate)` on all five top-level fns (they cross sibling-module boundaries).
+- Visibility: change `pub(super)` to `pub(crate)` on all seven top-level fns (`adjacent_x_bounds`, `update_point_in_curve`, `reconstruct_curve`, `default_identity_curve`, `convert_curve_type`, `add_control_point`, `remove_control_point`); they cross sibling-module boundaries.
 
 The full body to write:
 
 ```rust
 //! Curve mutation operations, ported verbatim from
-//! `crates/inputforge-gui/src/widgets/curve_editor/mutation.rs`.
+//! `E:\Git\Perso\inputforge-egui-ref\crates\inputforge-gui\src\widgets\curve_editor\mutation.rs`.
 //!
 //! Mechanical surface change: `egui_plot::PlotPoint` becomes `(f64, f64)`.
 //! The egui implementation is already engine-native `(input, output)`, so
@@ -1110,6 +1120,31 @@ mod tests {
         assert!((anchors[1].0 - (-1.0 / 3.0)).abs() < 1e-9);
         assert!((anchors[2].0 - (1.0 / 3.0)).abs() < 1e-9);
     }
+
+    #[test]
+    fn clamp_focus_after_external_edit_clamps_down() {
+        let mut s = BodyState::default();
+        s.focused_point = Some(4);
+        let next = clamp_focus_after_external_edit(s, 3);
+        assert_eq!(next.focused_point, Some(2));
+        assert!(next.pre_drag_curve.is_none());
+    }
+
+    #[test]
+    fn clamp_focus_after_external_edit_clears_when_empty() {
+        let mut s = BodyState::default();
+        s.focused_point = Some(0);
+        let next = clamp_focus_after_external_edit(s, 0);
+        assert_eq!(next.focused_point, None);
+    }
+
+    #[test]
+    fn clamp_focus_after_external_edit_noop_in_range() {
+        let mut s = BodyState::default();
+        s.focused_point = Some(1);
+        let next = clamp_focus_after_external_edit(s, 5);
+        assert_eq!(next.focused_point, Some(1));
+    }
 }
 ```
 
@@ -1142,6 +1177,27 @@ pub(crate) struct BodyState {
     /// Flat list of draggable points; mutation.rs index space.
     pub cached_anchors: Vec<(f64, f64)>,
     pub cache_dirty: bool,
+    /// Timestamp (ms since component mount) of the last keyboard nudge.
+    /// Drives Task 7's 250 ms same-key coalesce window for undo merging.
+    pub last_nudge_at_ms: Option<u64>,
+    /// Key kind of the last nudge, used together with `last_nudge_at_ms`
+    /// to decide whether the next nudge merges into the existing undo
+    /// entry or pushes a fresh one.
+    pub last_nudge_key: Option<NudgeKey>,
+}
+
+/// Discriminator for the in-flight keyboard nudge streak. See
+/// `keyboard.rs::handle_key` for the merge policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NudgeKey {
+    Up,
+    Down,
+    Left,
+    Right,
+    UpLarge,
+    DownLarge,
+    LeftLarge,
+    RightLarge,
 }
 
 // Manual `Default` so `cache_dirty` defaults to `true`. The Task 4 test
@@ -1158,8 +1214,27 @@ impl Default for BodyState {
             cached_path: Vec::new(),
             cached_anchors: Vec::new(),
             cache_dirty: true,
+            last_nudge_at_ms: None,
+            last_nudge_key: None,
         }
     }
+}
+
+/// Defensive clamp run by the body's main `use_effect` when the projected
+/// curve from the live config has fewer anchors than `focused_point` indexed.
+/// Originally Task 15 (external-edit reconciliation effect); the standalone
+/// effect is gone (`c9e7853` deleted `EditorState.external_edit_reset`),
+/// but the clamp survives as a safety net inside the cache rebuild path.
+#[must_use]
+pub(crate) fn clamp_focus_after_external_edit(state: BodyState, new_anchor_count: usize) -> BodyState {
+    let mut s = state;
+    s.pre_drag_curve = None;
+    s.focused_point = match s.focused_point {
+        Some(_) if new_anchor_count == 0 => None,
+        Some(i) => Some(i.min(new_anchor_count - 1)),
+        None => None,
+    };
+    s
 }
 
 #[derive(Debug, Clone)]
@@ -1212,125 +1287,31 @@ git commit -m "feat(response_curve): BodyState + extract_anchors helper"
 
 ---
 
-### Task 5: `header_summary` helper
+### Task 5: REUSE F9's existing `format_response_curve_summary`
 
-Per the spec, F9's default summary (`5 points` / `5 points · symmetric`) is refined to prepend the curve kind: `linear · 5pt`, `spline · 5pt · sym`, `bezier · 2seg`, `bezier · 2seg · sym`. Pure fn so the F9 stage header can call it from a `match` arm.
+F9 already ships a curve summary formatter at `pipeline/stage.rs:388-406`, returning `Linear · 5 pts`, `Spline · 5 pts · sym`, `Bezier · 1 seg`, `Bezier · 2 seg · sym`, etc. (capitalization landed in commit `35a3a9d`). It is wired into `stage_summary_for` at `pipeline/stage.rs:264`, which already populates `if-stage__summary` for every variant including `ResponseCurve`. F10 has no reason to invent a second formatter with different abbreviations or casing.
 
-**Files:**
-- Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/mod.rs`
+This task originally added a `header_summary` helper inside `response_curve/mod.rs`. That helper is removed.
 
-- [ ] **Step 1: Write the failing tests**
+**Files:** none modified at this step. `pipeline::stage::stage_summary_for(action, cfg)` is reused in Task 16's `aria_label_override` wiring (the only place the F10 plan needed a per-curve summary string).
 
-Append a test module to `response_curve/mod.rs`:
+- [ ] **Step 1: Verify F9's formatter is exported for cross-module reuse**
 
-```rust
-#[cfg(test)]
-mod summary_tests {
-    use super::*;
-    use inputforge_core::processing::curves::{BezierSegment, ResponseCurve};
+Read `pipeline/stage.rs:388-406` and confirm `format_response_curve_summary` is reachable through `stage_summary_for` (it is, via the `Action::ResponseCurve { curve }` arm in `stage_summary_for`). If `stage_summary_for` is `pub(crate)` (which it should be, since `StageHeader` already calls it), no change is needed. If it is private, promote to `pub(crate)`.
 
-    #[test]
-    fn linear_asymmetric_summary() {
-        let c = ResponseCurve::piecewise_linear(
-            vec![(-1.0, -1.0), (-0.5, -0.5), (0.0, 0.0), (0.5, 0.5), (1.0, 1.0)],
-            false,
-        )
-        .unwrap();
-        assert_eq!(header_summary(&c), "linear \u{00b7} 5pt");
-    }
+- [ ] **Step 2: Spot-check capitalization expectations in the spec**
 
-    #[test]
-    fn spline_symmetric_summary() {
-        let c = ResponseCurve::cubic_spline(
-            vec![(-1.0, -1.0), (-0.5, -0.5), (0.0, 0.0), (0.5, 0.5), (1.0, 1.0)],
-            true,
-        )
-        .unwrap();
-        assert_eq!(header_summary(&c), "spline \u{00b7} 5pt \u{00b7} sym");
-    }
+Spec line 322 (or thereabouts) historically read `linear · 5pt`. Cross-check against the spec and, if the spec still uses the old lowercase style, either update the spec to match F9's `Linear · 5 pts` or note the divergence. Flag for the user if not obvious.
 
-    #[test]
-    fn bezier_two_seg_asymmetric_summary() {
-        let c = ResponseCurve::cubic_bezier(
-            vec![
-                BezierSegment {
-                    start: (-1.0, -1.0),
-                    control1: (-0.5, -0.5),
-                    control2: (-0.25, -0.25),
-                    end: (0.0, 0.0),
-                },
-                BezierSegment {
-                    start: (0.0, 0.0),
-                    control1: (0.25, 0.25),
-                    control2: (0.5, 0.5),
-                    end: (1.0, 1.0),
-                },
-            ],
-            false,
-        )
-        .unwrap();
-        assert_eq!(header_summary(&c), "bezier \u{00b7} 2seg");
-    }
-}
-```
+- [ ] **Step 3: No commit**
 
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `cargo test -p inputforge-gui-dx --lib response_curve::summary_tests`
-Expected: FAIL, `header_summary` undefined.
-
-- [ ] **Step 3: Implement `header_summary`**
-
-Append to `response_curve/mod.rs` above the test block:
-
-```rust
-use inputforge_core::processing::curves::ResponseCurve;
-
-const MIDDLE_DOT: &str = "\u{00b7}";
-
-/// Per-stage header summary for `Action::ResponseCurve`. F9's default
-/// (`5 points` / `5 points · symmetric`) is replaced with a curve-kind
-/// prefix for at-a-glance distinction in stacked stages.
-#[must_use]
-pub(crate) fn header_summary(curve: &ResponseCurve) -> String {
-    let (kind, count_label) = match curve {
-        ResponseCurve::PiecewiseLinear { points, .. } => ("linear", format!("{}pt", points.len())),
-        ResponseCurve::CubicSpline { points, .. } => ("spline", format!("{}pt", points.len())),
-        ResponseCurve::CubicBezier { segments, .. } => {
-            ("bezier", format!("{}seg", segments.len()))
-        }
-    };
-    let symmetric = matches!(
-        curve,
-        ResponseCurve::PiecewiseLinear { symmetric: true, .. }
-            | ResponseCurve::CubicSpline { symmetric: true, .. }
-            | ResponseCurve::CubicBezier { symmetric: true, .. }
-    );
-    if symmetric {
-        format!("{kind} {MIDDLE_DOT} {count_label} {MIDDLE_DOT} sym")
-    } else {
-        format!("{kind} {MIDDLE_DOT} {count_label}")
-    }
-}
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cargo test -p inputforge-gui-dx --lib response_curve::summary_tests`
-Expected: PASS, all 3 cases.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/mod.rs
-git commit -m "feat(response_curve): header_summary helper for F10 stage header"
-```
+Nothing is added or changed by this task on its own. Tasks 11 and 16 reuse `stage_summary_for` directly.
 
 ---
 
 ### Task 6: `interaction.rs`, pure pointer handlers
 
-Pure helpers that take `(BodyState, ResponseCurve, Event-as-data)` and return `(BodyState', Option<ResponseCurve'>, ChangedFlag)`. No Dioxus types: handlers receive a viewport-relative cursor position and the SVG's bounding rect; the body component projects the actual `PointerEvent` to those primitives before calling. This mirrors F8's `keyboard::handle_key` pattern.
+Pure helpers that take `(BodyState, ResponseCurve, Event-as-data)` and return `(BodyState', HandlerOutcome)` where `HandlerOutcome` carries the proposed curve and any validator error so the host body can write `EditorState.malformed_hints` directly. No Dioxus types: handlers receive a viewport-relative cursor position and the SVG's bounding rect; the body component projects the actual `PointerEvent` to those primitives before calling. This follows F8's pure-routing convention (e.g. `mapping_list/keyboard.rs::handle_key`); F10 adds drag state and validator error reporting that have no F8 precedent.
 
 **Files:**
 - Create: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/interaction.rs`
@@ -1346,7 +1327,7 @@ mod tests {
     use super::*;
     use inputforge_core::processing::curves::ResponseCurve;
     use crate::frame::mapping_editor::pipeline::stage_body::response_curve::state::{
-        extract_anchors, BodyState,
+        extract_anchors, BodyState, DragInProgress,
     };
 
     fn seed_curve() -> ResponseCurve {
@@ -1495,7 +1476,7 @@ mod tests {
         };
         let mut state = BodyState::default();
         state.cached_anchors = extract_anchors(&curve);
-        state.dragging = Some(super::DragInProgress { point_index: 1, bounds: (-1.0, 1.0) });
+        state.dragging = Some(DragInProgress { point_index: 1, bounds: (-1.0, 1.0) });
         state.pre_drag_curve = Some(curve.clone());
         let (next, committed, _) = handle_pointer_up(state, &dragged);
         assert!(next.dragging.is_none());
@@ -1516,12 +1497,16 @@ mod tests {
         };
         let mut state = BodyState::default();
         state.cached_anchors = extract_anchors(&curve);
-        state.dragging = Some(super::DragInProgress { point_index: 1, bounds: (-1.0, 1.0) });
+        state.dragging = Some(DragInProgress { point_index: 1, bounds: (-1.0, 1.0) });
         state.pre_drag_curve = Some(curve.clone());
         let (next, committed, _) = handle_pointer_up(state, &dragged);
         assert!(next.dragging.is_none());
-        assert!(committed.is_none(), "invalid curve must not commit");
-        assert!(next.malformed_hint.is_some(), "validator error string surfaces");
+        // `committed` is `Result<ResponseCurve, String>`. On invalid curves
+        // the handler returns Err with the validator's actual message; the
+        // host body writes this to EditorState.malformed_hints[stage_id].
+        // The handler does NOT carry per-body validator state.
+        let err = committed.expect_err("invalid curve must not commit");
+        assert!(!err.is_empty(), "validator error string surfaces");
     }
 
     #[test]
@@ -1562,11 +1547,17 @@ mod tests {
     }
 
     #[test]
-    fn interaction_never_introduces_output_input_swap() {
+    fn interaction_uses_engine_native_coordinates() {
         // Regression: dragging the center anchor right by a known amount
-        // produces a curve whose middle point's x increased, NOT y.
-        // (If the egui port's PlotPoint::new(visual_pos.y, visual_pos.x)
-        // swap was reintroduced, x and y would be swapped here.)
+        // produces a curve whose middle point's x increased, NOT y. The
+        // SVG port plots input on X and output on Y, so engine-native
+        // (input, output) tuples flow through unchanged. The egui code
+        // plotted output on X and input on Y (see egui-ref interaction.rs:73-74,
+        // 99-100 for `PlotPoint::new(visual_pos.y, visual_pos.x)`); that swap
+        // was correct for the egui visual axes and is NOT a defect that this
+        // test guards against. This test guards against accidentally porting
+        // that visual-axis-swap logic into the SVG layer where it does not
+        // belong.
         let curve = ResponseCurve::piecewise_linear(
             vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
             false,
@@ -1711,25 +1702,31 @@ pub(crate) fn handle_pointer_move(
     (state, None, false)
 }
 
+/// Pointer-up returns `Result<ResponseCurve, String>` so the host can
+/// write the validator's actual error to `EditorState.malformed_hints`.
+/// On Ok the body dispatches `SetMapping` with the new curve; on Err the
+/// body writes the error string into `malformed_hints[stage_id]`, restores
+/// from `pre_drag_curve`, and skips dispatch entirely.
 pub(crate) fn handle_pointer_up(
     mut state: BodyState,
     working_curve: &ResponseCurve,
-) -> HandlerOut {
+) -> (BodyState, Result<ResponseCurve, String>, bool) {
     if state.dragging.is_none() {
-        return (state, None, false);
+        return (state, Err(String::new()), false);
     }
     state.dragging = None;
     state.cache_dirty = true;
-    if let Some(valid) = mutation::reconstruct_curve(working_curve) {
-        state.pre_drag_curve = None;
-        state.malformed_hint = None;
-        (state, Some(valid), true)
-    } else {
-        // Revert: the host should restore from `pre_drag_curve` and
-        // surface the validator error.
-        let revert = state.pre_drag_curve.take();
-        state.malformed_hint = Some("curve validation failed (overlap or non-monotonic x)".to_owned());
-        (state, revert, false)
+    match mutation::reconstruct_curve(working_curve) {
+        Ok(valid) => {
+            state.pre_drag_curve = None;
+            (state, Ok(valid), true)
+        }
+        Err(err) => {
+            // Revert: the host should restore from `pre_drag_curve` and
+            // write `err` into `EditorState.malformed_hints[stage_id]`.
+            let _revert = state.pre_drag_curve.take();
+            (state, Err(err), false)
+        }
     }
 }
 
@@ -1771,7 +1768,7 @@ pub(crate) fn handle_context_menu(
 }
 ```
 
-Add a `malformed_hint: Option<String>` field to `BodyState` (in `state.rs`) so handlers can surface validator errors without touching `EditorState`. Update the `BodyState::default` test in Task 4 if it needs an extra field assertion.
+Do NOT add a `malformed_hint` field to `BodyState`. The validator error flows out through `handle_pointer_up`'s `Result<ResponseCurve, String>` return; the host body unwraps the `Err` and writes `editor.malformed_hints.write().insert(stage_id.clone(), err)`. Spec lines 134 and 248 mandate that hint plumbing land in `EditorState.malformed_hints` (the `Signal<HashMap<StageId, String>>` at `mapping_editor/mod.rs:233`); a parallel `BodyState` field would silently de-sync from the spec contract.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1819,7 +1816,9 @@ mod tests {
     }
 
     #[test]
-    fn tab_advances_focus_with_wrap() {
+    fn tab_advances_focus_no_wrap() {
+        // F10 keyboard does NOT wrap at the end of the anchor list; Tab
+        // returns None so the browser advances focus past the plot.
         let (curve, state) = seed();
         let (next, _, _, _) = handle_key(state, &curve, KeyInput::Tab, 0);
         assert_eq!(next.focused_point, Some(2));
@@ -2108,6 +2107,27 @@ impl KeyInput {
 }
 
 /// Tells the host how to record this key event in the undo log.
+///
+/// The `UndoLog` API at `mapping_editor/undo_log.rs:95-113` exposes only
+/// `push_edit(key, before, kind, label)`; there is no `merge_with_top` /
+/// `update_top` operation. `MergeUndo` therefore relies on the following
+/// host-side contract:
+///
+/// 1. On the FIRST key in a coalesce streak (`PushUndo`), the host
+///    captures `mapping_before = mapping_at(actions_root, mapping_key)`
+///    and calls `dispatch_curve_edit(...)`, which internally calls
+///    `undo_log.push_edit(key, mapping_before, StageEdit, label)`.
+/// 2. On every SUBSEQUENT key in the same streak (`MergeUndo`), the host
+///    calls `dispatch_curve_edit_no_undo(...)`, which dispatches
+///    `EngineCommand::SetMapping` to the engine but does NOT touch the
+///    undo log. The first entry's `mapping_before` already captures the
+///    pre-streak state, so undo restores correctly.
+/// 3. Redo replays the first nudge's `SetMapping` only (not the streak
+///    total). Accepted as a deliberate UX simplification.
+///
+/// The 250 ms coalesce window is owned by `handle_key`; the host does not
+/// need to track timing. The host MUST treat `MergeUndo` as "skip the
+/// undo write but still dispatch the engine command".
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum KeyOutcome {
     PushUndo { label: String },
@@ -2449,7 +2469,6 @@ pub(crate) fn render_plot(
     rsx! {
         svg {
             class: "if-curve__plot",
-            xmlns: "http://www.w3.org/2000/svg",
             view_box: "-1.05 -1.05 2.1 2.1",
             preserve_aspect_ratio: "xMidYMid meet",
             // aria-label lives on the focusable wrapper <div> (Task 12),
@@ -2836,7 +2855,6 @@ pub(crate) fn header_thumbnail(curve: &ResponseCurve) -> Element {
     rsx! {
         svg {
             class: "if-curve__thumbnail",
-            xmlns: "http://www.w3.org/2000/svg",
             width: "28",
             height: "14",
             view_box: "-1.05 -1.05 2.1 2.1",
@@ -2950,7 +2968,7 @@ fn toolbar_type_change_emits_set_mapping() {
     // by manual smoke tests + the keyboard/pointer pure-fn suites.
     let mapping_key = (
         "Default".to_owned(),
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev".to_owned()),
             input: InputId::Axis { index: 0 },
         },
@@ -3054,7 +3072,7 @@ pub(crate) fn Toolbar(
             return;
         }
         let Some(new) = mutation::convert_curve_type(&curve_for_type, target) else { return };
-        let name = config_signal.read().mapping_names.get(&key_for_type).cloned();
+        let name = config_signal.read().mapping_names.get(&key_for_type.1).cloned();
         dispatch_curve_edit(
             &actions_for_type,
             &stage_for_type,
@@ -3085,7 +3103,7 @@ pub(crate) fn Toolbar(
             return;
         }
         let Some(new) = mutation::apply_symmetry(&curve_for_sym, new_state) else { return };
-        let name = config_signal.read().mapping_names.get(&key_for_sym).cloned();
+        let name = config_signal.read().mapping_names.get(&key_for_sym.1).cloned();
         dispatch_curve_edit(
             &actions_for_sym,
             &stage_for_sym,
@@ -3108,7 +3126,7 @@ pub(crate) fn Toolbar(
         if new == curve_for_reset {
             return;
         }
-        let name = config_signal.read().mapping_names.get(&key_for_reset).cloned();
+        let name = config_signal.read().mapping_names.get(&key_for_reset.1).cloned();
         dispatch_curve_edit(
             &actions_for_reset,
             &stage_for_reset,
@@ -3121,8 +3139,6 @@ pub(crate) fn Toolbar(
         );
     };
 
-    let symmetric_signal = use_signal(|| symmetric);
-
     rsx! {
         div { class: "if-curve__toolbar",
             Tabs {
@@ -3134,8 +3150,11 @@ pub(crate) fn Toolbar(
                 ],
                 onchange: on_type_change,
             }
+            // `Switch::checked: ReadSignal<bool>` (see components/switch.rs:7).
+            // The `bool` prop value is coerced through `IntoReadSignal`; no
+            // wrapping `use_signal` is needed.
             Switch {
-                checked: symmetric_signal,
+                checked: symmetric,
                 onchange: on_symmetric_change,
                 label: Some("Symmetric".to_owned()),
             }
@@ -3221,7 +3240,7 @@ git commit -m "feat(response_curve): toolbar with type tabs, symmetric switch, r
 
 Mount the body, allocate the `Signal<BodyState>`, derive `cached_path` and `cached_anchors` whenever the projected curve changes, and render the toolbar + plot. Live-input projection lands in Task 14; pointer events in Task 12; keyboard in Task 13. This task just renders a static, correct plot.
 
-The body reads the live curve from `ConfigSnapshot.selected_mapping_actions` (a context-provided signal) rather than from a `root_actions` prop. The signal subscription makes cache rebuild reactive: editing actions through any other surface (the input field, the name field, undo replay) re-fires the body's `use_effect`. The `curve` prop is a one-way init seed only; the live source is the signal.
+The body takes a `root_actions: Vec<Action>` prop matching every other body in `pipeline/stage_body/mod.rs:34-78` (this prop seeds the initial render; F9's dispatcher passes the same value into every body). For LIVE projection (so cache rebuild stays reactive to undo replay, external edits, or sibling-stage edits), the body reads `ConfigSnapshot.selected_mapping_actions` from context inside its `use_effect`. The `curve` prop is similarly a one-way init seed; the live curve comes from `project_stage_curve(actions, stage_id, &curve)` where `actions` is the `Option<Vec<Action>>` from context, unwrapped to `&[]` when absent.
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/mod.rs`
@@ -3272,16 +3291,18 @@ fn body_renders_static_plot_with_summary_and_anchors() {
         let stage_id = StageId(vec![StageIdSegment::Index(0)]);
         let key = (
             "Default".to_owned(),
-            InputAddress {
+            InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
                 input: InputId::Axis { index: 0 },
             },
         );
+        let root_actions = vec![Action::ResponseCurve { curve: curve.clone() }];
         rsx! {
             ResponseCurveBody {
                 mapping_key: key,
                 stage_id,
                 curve,
+                root_actions,
             }
         }
     }
@@ -3321,11 +3342,10 @@ use self::state::{extract_anchors, BodyState};
 
 const CURVE_SAMPLE_COUNT: usize = 200;
 
-#[allow(
-    dead_code,
-    reason = "asset constant is consumed by Stylesheet { href: RESPONSE_CURVE_CSS } and rsx! is opaque to clippy"
-)]
-const RESPONSE_CURVE_CSS: Asset = asset!("/assets/frame/response_curve.css");
+// `RESPONSE_CURVE_CSS` is registered centrally in `crates/inputforge-gui-dx/src/theme/mod.rs`
+// alongside the other frame stylesheets (see lines 10-44 + 63-98 there for the pattern).
+// Do NOT declare a per-component `Asset` here, and do NOT mount `Stylesheet { ... }`
+// in this body's `rsx!`. Theme is the single owner of `<link rel="stylesheet">` mounts.
 
 /// Project the curve at `stage_id` from the current root `actions`.
 /// Falls back to the prop seed when projection fails (transient mid-edit
@@ -3342,6 +3362,10 @@ pub(crate) fn ResponseCurveBody(
     mapping_key: MappingKey,
     stage_id: StageId,
     curve: ResponseCurve,
+    /// Outermost actions vec for the mapping, threaded by F9's StageBody.
+    /// Used as the initial-render seed; the live source is the context
+    /// signal `ConfigSnapshot.selected_mapping_actions` (Option<Vec<Action>>).
+    root_actions: Vec<Action>,
 ) -> Element {
     let ctx = use_context::<AppContext>();
     let config_signal = ctx.config;
@@ -3351,16 +3375,15 @@ pub(crate) fn ResponseCurveBody(
     // any change to `selected_mapping_actions` (own dispatch, undo
     // replay, external edit) re-fires this effect and the cache stays
     // in sync. Capturing only the prop `curve` would freeze the cache
-    // at first-render values.
+    // at first-render values. `selected_mapping_actions` is `Option<Vec<Action>>`;
+    // unwrap to `&[]` when absent (transient between mapping selection
+    // and config push).
     let curve_seed = curve.clone();
     let stage_id_for_effect = stage_id.clone();
     use_effect(move || {
         let cfg = config_signal.read();
-        let live_curve = project_stage_curve(
-            &cfg.selected_mapping_actions,
-            &stage_id_for_effect,
-            &curve_seed,
-        );
+        let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
+        let live_curve = project_stage_curve(actions, &stage_id_for_effect, &curve_seed);
         let path = sample_curve_path(&live_curve, CURVE_SAMPLE_COUNT);
         let anchors = extract_anchors(&live_curve);
         body.with_mut(|b| {
@@ -3380,24 +3403,31 @@ pub(crate) fn ResponseCurveBody(
     });
 
     // Each render: re-project the curve from the live config so toolbar
-    // and render_plot see the freshest data. The prop `curve` is a
-    // first-render seed only.
-    let cfg = config_signal.read();
-    let live_curve = project_stage_curve(&cfg.selected_mapping_actions, &stage_id, &curve);
-    let root_actions = cfg.selected_mapping_actions.clone();
-    drop(cfg);
+    // and render_plot see the freshest data. The prop `curve` and
+    // `root_actions` are first-render seeds only. Clone the snapshot so
+    // the read guard is dropped before we re-read for `stage_summary_for`.
+    let cfg = config_signal.read().clone();
+    let live_actions = cfg
+        .selected_mapping_actions
+        .clone()
+        .unwrap_or_else(|| root_actions.clone());
+    let live_curve = project_stage_curve(&live_actions, &stage_id, &curve);
 
     let body_read = body.read();
-    let summary = header_summary(&live_curve);
+    // F9's existing summary (`Linear · 5 pts · sym` style) reused verbatim;
+    // see `pipeline::stage::stage_summary_for` and `format_response_curve_summary`.
+    let summary = pipeline::stage::stage_summary_for(
+        &Action::ResponseCurve { curve: live_curve.clone() },
+        &cfg,
+    );
 
     rsx! {
-        Stylesheet { href: RESPONSE_CURVE_CSS }
         div { class: "if-curve",
             "data-summary": "{summary}",
             toolbar::Toolbar {
                 curve: live_curve.clone(),
                 stage_id: stage_id.clone(),
-                root_actions: root_actions.clone(),
+                root_actions: live_actions.clone(),
                 mapping_key: mapping_key.clone(),
             }
             // Live value is None at this scaffolding step; Task 14 wires it.
@@ -3504,18 +3534,24 @@ Add the handlers. Inside `on_pointer_down`, call `evt.set_pointer_capture()` (Di
 ```rust
 let on_pointer_down = move |evt: PointerEvent| {
     let Some((cursor, rect)) = project_event(&evt) else { return };
-    let live_curve = project_stage_curve(
-        &config_signal.read().selected_mapping_actions,
-        &stage_id_for_evt,
-        &curve,
-    );
+    let cfg = config_signal.read();
+    let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
+    let live_curve = project_stage_curve(actions, &stage_id_for_evt, &curve);
+    drop(cfg);
     let prev = body.peek().clone();
     let (next, _, _) = interaction::handle_pointer_down(prev, &live_curve, cursor, &rect);
     if next.dragging.is_some() {
-        // Spot-check: confirm the exact API is `evt.set_pointer_capture()`
-        // vs `evt.target().set_pointer_capture(pointer_id)` against
-        // `components/sortable/item.rs`. Without capture, drags exiting
-        // the SVG drop their pointermove/pointerup stream.
+        // Pointer-capture API path: zero existing usages of
+        // `set_pointer_capture` in the repo. Spot-check Dioxus 0.7
+        // PointerEvent (`dioxus-html-0.7.6/src/events/pointer.rs`) before
+        // committing this code: the call may be `evt.set_pointer_capture()`,
+        // `evt.data().set_pointer_capture()`, or via the underlying
+        // web_sys::PointerEvent through `evt.try_as_web_event()`. Without
+        // capture, drags that exit the SVG drop their pointermove /
+        // pointerup stream and the user gets a stuck drag. If capture is
+        // not exposed on the synthetic event, the wrapper `<div>` keeps
+        // receiving move/up events as long as the cursor stays inside the
+        // wrapper rect, which is enough for the common case.
         let _ = evt.set_pointer_capture();
     }
     body.set(next);
@@ -3523,12 +3559,14 @@ let on_pointer_down = move |evt: PointerEvent| {
 let on_pointer_move = move |evt: PointerEvent| { /* project + handle_pointer_move; write back via body.set() */ };
 let on_pointer_up = move |evt: PointerEvent| {
     /* call handle_pointer_up; on success dispatch via:
-       let name = config_signal.read().mapping_names.get(&mapping_key_for_evt).cloned();
-       let actions = config_signal.read().selected_mapping_actions.clone();
+       let cfg = config_signal.read();
+       let name = cfg.mapping_names.get(&mapping_key_for_evt.1).cloned();
+       let actions = cfg.selected_mapping_actions.clone().unwrap_or_default();
+       drop(cfg);
        toolbar::dispatch_curve_edit(&actions, &stage_id_for_evt, valid_curve,
            &mapping_key_for_evt, name, &cmd_tx, &mut undo_log, "curve: drag".to_owned());
-       on validation failure write malformed_hints[stage_id] and skip dispatch.
-       Always release pointer capture: let _ = evt.release_pointer_capture(); */
+       on validation failure write editor.malformed_hints.write().insert(stage_id, err)
+       and skip dispatch. Always release pointer capture: let _ = evt.release_pointer_capture(); */
 };
 let on_double_click = move |evt: MouseEvent| { /* add point + dispatch with label `curve: add point at (x.xx, y.yy)` */ };
 let on_context_menu = move |evt: MouseEvent| {
@@ -3670,13 +3708,12 @@ let on_key = move |evt: KeyboardEvent| {
     // Re-project curve and root actions from the live config so the
     // handler sees the freshest state (no stale prop closures).
     let cfg = config_signal.read();
-    let live_curve = project_stage_curve(
-        &cfg.selected_mapping_actions,
-        &stage_id_for_key,
-        &curve,
-    );
-    let actions = cfg.selected_mapping_actions.clone();
-    let name = cfg.mapping_names.get(&mapping_key_for_key).cloned();
+    let actions: Vec<Action> = cfg
+        .selected_mapping_actions
+        .clone()
+        .unwrap_or_default();
+    let live_curve = project_stage_curve(&actions, &stage_id_for_key, &curve);
+    let name = cfg.mapping_names.get(&mapping_key_for_key.1).cloned();
     drop(cfg);
 
     let (next_state, new_curve, outcome, _changed) =
@@ -3778,7 +3815,7 @@ git commit -m "feat(response_curve): keyboard wiring with same-key 250ms undo co
 
 ### Task 14: Live tracking dot (top-level stages only)
 
-Project the live input value through `evaluate_actions_through(actions, &state, &addr, stage_index)` for stages whose `stage_id` is exactly one `StageIdSegment::Index(n)`. Connectivity check via `state.devices`. Pass the resulting `Some(input)` into `rendering::render_plot`.
+Project the live input value through `evaluate_actions_through(actions, &state, &addr, stop_at)` for stages whose `stage_id` is exactly one `StageIdSegment::Index(n)` AND whose mapping key is bound to a real device (`InputAddress::Bound`). Connectivity check via `state.devices`. Pass the resulting `Some(input)` into `rendering::render_plot`.
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/mod.rs`
@@ -3827,17 +3864,19 @@ use crate::frame::mapping_editor::undo_log::StageIdSegment;
 let live_value: Option<f64> = (|| {
     // Gate on top-level stage only.
     let segs = &stage_id.0;
-    let stage_index = match segs.as_slice() {
+    let stop_at = match segs.as_slice() {
         [StageIdSegment::Index(n)] => *n,
         _ => return None,
     };
+    // Gate on bound input. `Unbound` mappings have no device to read.
+    let device_id = mapping_key.1.device()?;
     let _ = ctx.live.read(); // subscribe to ~60Hz polling tick
     let state_guard = ctx.state.try_read()?;
     // Connectivity check.
     let device_present = state_guard
         .devices
         .iter()
-        .any(|d| d.info.id == mapping_key.1.device && d.connected);
+        .any(|d| &d.info.id == device_id && d.connected);
     if !device_present {
         return None;
     }
@@ -3848,7 +3887,7 @@ let live_value: Option<f64> = (|| {
         &actions,
         &state_guard,
         &mapping_key.1,
-        stage_index,
+        stop_at,
     );
     drop(state_guard);
     match value {
@@ -3876,108 +3915,26 @@ git commit -m "feat(response_curve): live tracking dot via evaluate_actions_thro
 
 ---
 
-### Task 15: External-edit reconciliation effect
+### Task 15: REMOVED
 
-Subscribe to `EditorState.external_edit_reset`. When the token advances, rebuild caches, blank `pre_drag_curve`, clamp `focused_point` to the new anchor count, and (per spec) drop external curve updates while a drag is in flight.
+The original Task 15 wired a `use_effect` keyed on `EditorState.external_edit_reset` to coordinate cache rebuild and focus clamp on external edits. That signal was removed from `EditorState` in commit `c9e7853` ("refactor(mapping-editor): drop external-edit reconciler, descope ac 27"). There is no token to subscribe to.
 
-**Files:**
-- Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/mod.rs`
+The defensive `clamp_focus_after_external_edit` pure helper survives but moves into Task 4 (`state.rs`), where its three unit tests (clamp down, clamp away when empty, no-op when in range) belong with the other `BodyState` mutators. The body's main `use_effect` from Task 11, which already re-fires when `config_signal` changes, can call the helper inline if the projected anchor count drops below `focused_point`. No new effect is needed.
 
-- [ ] **Step 1: Write the failing test**
-
-```rust
-#[test]
-fn external_edit_reset_clamps_focus_and_clears_pre_drag() {
-    // Mount body with curve = 5-point linear, set focused_point = Some(4).
-    // Re-render with curve = 3-point linear (external edit).
-    // Assert: post-render body.focused_point.unwrap() == 2 (clamped).
-    // Pure-fn invariant verified via direct call to a clamp helper.
-}
-```
-
-Best to extract the clamp into a pure helper inside `state.rs` and unit-test it there rather than fight an SSR-only re-render harness. The helper is clamp-only; cache rebuild is owned by the body's main `use_effect` (Task 11) which already re-fires when the config signal changes:
-
-```rust
-#[must_use]
-pub(crate) fn clamp_focus_after_external_edit(state: BodyState, new_anchor_count: usize) -> BodyState {
-    let mut s = state;
-    s.pre_drag_curve = None;
-    s.focused_point = match s.focused_point {
-        Some(_) if new_anchor_count == 0 => None,
-        Some(i) => Some(i.min(new_anchor_count - 1)),
-        None => None,
-    };
-    s
-}
-```
-
-Add three tests in `state.rs::tests` (clamp down, clamp away when empty, no-op when in range).
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `cargo test -p inputforge-gui-dx --lib response_curve::state::tests::clamp_focus_after_external_edit`
-Expected: FAIL, fn not yet defined.
-
-- [ ] **Step 3: Implement the helper + body wiring**
-
-Add `clamp_focus_after_external_edit` (pure fn) to `state.rs`. In `ResponseCurveBody`, add a `use_effect` keyed on `editor.external_edit_reset`:
-
-```rust
-let reset_token = editor.external_edit_reset;
-let stage_id_for_reset = stage_id.clone();
-let curve_seed_for_reset = curve.clone();
-use_effect(move || {
-    let _ = reset_token.read();
-    let dragging = body.peek().dragging.is_some();
-    if dragging {
-        // Drop external update; local clone wins until pointer-up.
-        return;
-    }
-    // Project the fresh curve from the live config (NOT the prop seed).
-    let cfg = config_signal.read();
-    let live = project_stage_curve(
-        &cfg.selected_mapping_actions,
-        &stage_id_for_reset,
-        &curve_seed_for_reset,
-    );
-    let count = extract_anchors(&live).len();
-    body.with_mut(|s| {
-        let next = state::clamp_focus_after_external_edit(s.clone(), count);
-        *s = next;
-        // Cache rebuild is owned by Task 11's main use_effect, which
-        // also re-fires on config_signal change. We do not duplicate
-        // the path/anchors writes here.
-    });
-});
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cargo test -p inputforge-gui-dx --lib response_curve::state::tests::clamp_focus_after_external_edit`
-Expected: PASS, all 3 cases.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve
-git commit -m "feat(response_curve): external-edit reconciliation (focus clamp, drop during drag)"
-```
+Skip this task. Numbering is preserved so commit references and reviews stay aligned.
 
 ---
 
 ### Task 16: F9 dispatcher integration
 
-Replace the `Action::ResponseCurve` branches in `pipeline/stage_body/mod.rs` (both `StageBody` and the per-arm header right slot), and lift F9's `StageHeader` IconButton aria-label to accept a per-arm override so the ResponseCurve arm can pass `Toggle stage body. Curve: <header_summary>`.
+Replace the `Action::ResponseCurve` branches in `pipeline/stage_body/mod.rs` (both `StageBody` and `header_right_slot`), and add an optional `aria_label_override: Option<String>` prop on F9's `StageHeader` so the ResponseCurve arm can override the accessible name on the existing `<button>`.
 
-**Prerequisite:** F9 must have shipped `pipeline/stage_body/mod.rs` with a `StageBody` component and a per-arm header right slot (function or match site) that both currently dispatch `Action::ResponseCurve` to a placeholder. Confirm before starting:
-```
-Glob: crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/mod.rs
-```
-If the file does not exist, halt and escalate to F9. Tasks 1-15 and 17 are additive and may proceed concurrently with F9.
+**Prerequisite:** F9 has shipped. The current placeholder lives at `pipeline/stage_body/placeholders.rs::ResponseCurvePlaceholder` and is dispatched from `pipeline/stage_body/mod.rs:96` (and the matching `header_right_slot` arm at `mod.rs:117` returns the default chevron). `StageHeader` lives at `pipeline/stage_header.rs`.
 
 **Files:**
-- Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/mod.rs`
-- Modify: F9's `StageHeader` (path TBD, likely `pipeline/stage_body/header.rs` or `pipeline/stage_body/mod.rs`) to add an optional `aria_label_override: Option<String>` prop.
+- Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/mod.rs` (replace the two `ResponseCurve` arms; add `mod response_curve;` declaration; remove the now-unused `placeholders::ResponseCurvePlaceholder` re-export if Tasks 11-15 are all landed).
+- Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_header.rs` (add the new `aria_label_override` prop and wire it onto the existing `<button>`).
+- Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/placeholders.rs` (delete the `ResponseCurvePlaceholder` component now that it has no caller).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3989,14 +3946,16 @@ fn response_curve_stage_expanded_renders_f10_body_not_placeholder() {
     // Mount Pipeline with [Action::ResponseCurve { curve: identity }],
     // pre-expand stage 0.
     // Assert html contains "if-curve" (F10 root) AND does NOT contain
-    // "(body coming soon)" placeholder.
+    // "F10 / F11 / F14 owns this body" (current placeholder caption from
+    // pipeline/stage_body/placeholders.rs:12).
 }
 
 #[test]
 fn response_curve_header_right_slot_emits_thumbnail_not_chevron() {
     // Same harness as above but check the collapsed header.
     // Assert html contains "if-curve__thumbnail" AND does NOT contain
-    // the default chevron path "M3.5 5.5L8 10l4.5-4.5z".
+    // the default chevron class "if-stage__chevron" (the shared Phosphor
+    // icon used by every other variant; see pipeline/stage_body/mod.rs::default_chevron).
 }
 ```
 
@@ -4007,9 +3966,9 @@ Expected: FAIL, F9's stub still in place.
 
 - [ ] **Step 3: Replace the dispatcher arms**
 
-In `pipeline/stage_body/mod.rs`, modify the existing `match` blocks:
+In `pipeline/stage_body/mod.rs`, modify the two existing `Action::ResponseCurve { .. }` arms (currently at `mod.rs:96` in `StageBody` and `mod.rs:117` in `header_right_slot`):
 
-`StageBody`:
+`StageBody` (replaces `placeholders::ResponseCurvePlaceholder {}` at `mod.rs:96`):
 
 ```rust
 Action::ResponseCurve { curve } => rsx! {
@@ -4017,32 +3976,43 @@ Action::ResponseCurve { curve } => rsx! {
         mapping_key: mapping_key.clone(),
         stage_id: stage_id.clone(),
         curve: curve.clone(),
+        root_actions: root_actions.clone(),
     }
 },
 ```
 
-(`root_actions` is no longer a prop, the body reads it from `ConfigSnapshot.selected_mapping_actions` via context. See Task 11.)
+(F10 follows the same `root_actions: Vec<Action>` prop convention used by every other body in this dispatcher; see `mod.rs:34-78`. The body still uses `ConfigSnapshot.selected_mapping_actions` via context for the LIVE projection in its `use_effect`, but takes the prop for the initial mount.)
 
-`header_right_slot` (or whatever F9 named the per-arm header right slot):
+`header_right_slot` (replaces `default_chevron(expanded)` at `mod.rs:117`):
 
 ```rust
 Action::ResponseCurve { curve } => response_curve::thumbnail::header_thumbnail(curve),
 ```
 
-If the F9 stage header has a per-variant `header_summary` injection point (per spec), wire `Action::ResponseCurve { curve } => response_curve::header_summary(curve)` there too. If it does not, leave the F9 default summary in place and the F10-specific summary string only appears via the IconButton's aria-label (Step 4 below) and the body's `data-summary` attribute. Add a follow-up note to extend F9 with a per-arm header summary.
+Spec does not give the F9 stage header a per-variant `header_summary` injection point, and F9's `pipeline::stage::stage_summary_for(action, cfg)` already returns `"Linear · 5 pts · sym"`-style output that `StageHeader` renders into `if-stage__summary`. F10 reuses that summary verbatim; no override is added at the summary level. The variant-specific accessible-name override happens at the `aria-label` level only (Step 4).
 
-- [ ] **Step 4: Wire dynamic aria-label on the StageHeader IconButton**
+- [ ] **Step 4: Add aria_label_override prop on `StageHeader`**
 
-Modify F9's `StageHeader` (read its current shape first; the IconButton's aria-label is currently hard-coded to `"Toggle stage body"`) to accept an optional `aria_label_override: Option<String>` prop. When `Some(s)`, use `s`; otherwise keep the default. Then, from the `Action::ResponseCurve` dispatcher arm in `StageBody`, pass:
+Modify `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_header.rs:23-77`. Today `StageHeader` is a plain `<button class="if-stage__header">` that emits `aria-expanded` and `aria-controls` only; there is NO `aria-label` to "lift". Add a new prop:
+
+```rust
+#[component]
+pub(crate) fn StageHeader(
+    /* existing props */
+    #[props(default)] aria_label_override: Option<String>,
+) -> Element { ... }
+```
+
+When `Some(s)`, emit `aria-label: "{s}"` on the existing `<button>` (additive to `aria-expanded` / `aria-controls`); when `None`, omit the attribute entirely. Then, from the `Action::ResponseCurve` dispatcher arm in `StageBody`, pass:
 
 ```rust
 aria_label_override: Some(format!(
     "Toggle stage body. Curve: {}",
-    response_curve::header_summary(curve),
+    pipeline::stage::stage_summary_for(action, cfg.read().deref()),
 )),
 ```
 
-For other Action variants pass `None`. Spec line 331 specifies this exact format string. The F10 plan's preamble explicitly lists this StageHeader edit as part of F10's narrow F9-touchpoint scope.
+For every other Action variant the prop defaults to `None`. The format string is fixed by spec; the summary content is whatever `stage_summary_for` returns for that variant (so SR users hear the same human-readable curve summary that sighted users see in `if-stage__summary`).
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -4195,15 +4165,11 @@ Create `crates/inputforge-gui-dx/assets/frame/response_curve.css`:
   fill: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .if-curve * {
-    transition-duration: 0ms !important;
-    animation-duration: 0ms !important;
-  }
-}
 ```
 
 `vector-effect: non-scaling-stroke` keeps stroke widths visually stable as the SVG scales. The unitless `font-size: 0.075` on `.if-curve__tick-label` is intentional: SVG resolves unitless lengths in user (viewBox) units, so the label renders at ~8.6 px when the plot is 240 px wide. A `0.075px` value would resolve to 0.075 device pixels and render as zero or a single black pixel.
+
+No `@media (prefers-reduced-motion)` block is needed if every transition or animation in this stylesheet uses the global `--duration-*` tokens: `assets/tokens/motion.css:46-52` already collapses those tokens to `0ms` under the OS preference. If a transform-based animation (e.g. anchor pulse) has its own `@keyframes` rule, gate that specific rule with `@media (prefers-reduced-motion: reduce) { ... animation: none; }`, mirroring the pattern in `assets/frame/mapping_editor.css:218`. Do NOT blanket-override `transition-duration`/`animation-duration` on `.if-curve *`; that double-counts the token reset.
 
 If a token referenced above (`--space-3`, `--color-live`, `--font-mono`, etc.) has a different name in the existing token sheets, fix the reference inline by reading `crates/inputforge-gui-dx/assets/tokens/*.css`. Do NOT add new tokens.
 
@@ -4227,21 +4193,23 @@ git commit -m "feat(response_curve): instrument-grade plot styles with reduced-m
 - [ ] **Step 1: Build sweep**
 
 ```
-cargo build -p inputforge-gui-dx --no-default-features --features gui-dioxus
-cargo clippy -p inputforge-gui-dx --no-default-features --features gui-dioxus --all-targets -- -D warnings
+cargo build -p inputforge-gui-dx
+cargo clippy -p inputforge-gui-dx --all-targets -- -D warnings
 cargo test -p inputforge-core --lib processing::curves
 cargo test -p inputforge-gui-dx --lib response_curve
 cargo test -p inputforge-gui-dx --lib pipeline::tests::response_curve
 ```
 
-All four expected: PASS.
+(The `gui-dioxus` feature flag was removed when the egui crate was deleted; `inputforge-gui-dx` and `inputforge-app` define no features today. The pre-commit hook runs `cargo clippy --all-targets -- -D warnings` flag-free; mirror that here.)
+
+All five expected: PASS.
 
 - [ ] **Step 2: Manual smoke (Windows + WebView2 CDP at 9222)**
 
 Launch the dioxus app:
 
 ```
-dx run -p inputforge-app --no-default-features --features gui-dioxus
+dx run -p inputforge-app
 ```
 
 Walk through the spec's interaction matrix. Record observed vs. expected for each row:
@@ -4277,7 +4245,7 @@ After all 18 tasks:
 
 - [ ] All spec sections covered: curve types (Q1), thumbnail right slot (Q2), instrument-grade visual floor (Q3), deferred extras recorded (Q4), toolbar layout (Q5), keyboard, live tracking, validation, edge cases.
 - [ ] No `// TODO`, no placeholders, no `unimplemented!()` in shipping code (test stubs explicitly call `unimplemented!()` only inside test harness scaffolds that the task expects the implementer to fill in: those tasks must replace them before "PASS").
-- [ ] Type consistency: every `dispatch_curve_edit` call uses the same `(actions_before, stage_id, new_curve, mapping_key, name, cmd_tx, undo_log, label)` signature, and every `dispatch_curve_edit_no_undo` call uses `(actions_before, stage_id, new_curve, mapping_key, name, cmd_tx)`. The `name` parameter is resolved at the call site via `ctx.config.read().mapping_names.get(mapping_key).cloned()` (mirrors F9 amendment #2).
+- [ ] Type consistency: every `dispatch_curve_edit` call uses the same `(actions_before, stage_id, new_curve, mapping_key, name, cmd_tx, undo_log, label)` signature, and every `dispatch_curve_edit_no_undo` call uses `(actions_before, stage_id, new_curve, mapping_key, name, cmd_tx)`. The `name` parameter is resolved at the call site via `ctx.config.read().mapping_names.get(&mapping_key.1).cloned()` (mirrors F9: `mapping_names` is keyed by the `InputAddress`, not by the full `(profile, address)` tuple, see `crates/inputforge-gui-dx/src/context.rs:65`).
 - [ ] No swap-back to egui's `[output, input]` layout: `interaction.rs` sees engine-native `(input, output)` only; the engine-native invariant test in Task 6 enforces this.
 - [ ] CSS tokens are all defined in existing `assets/tokens/*.css`; no new global tokens added.
 - [ ] F9 dispatcher modifications are limited in scope: `Action::ResponseCurve` arms in `StageBody` and the per-arm header right slot, plus `StageHeader` extended with `aria_label_override: Option<String>`. Task 16's prerequisite gate confirmed before starting.
@@ -4288,7 +4256,7 @@ After all 18 tasks:
 - [ ] `font-size: 0.075px` does not appear in `response_curve.css`; tick labels use unitless `font-size: 0.075` (viewBox-relative).
 - [ ] Switch onchange uses `evt.data().checked()`; no `evt.value() == "true" \|\| evt.value() == "on"` fallback.
 - [ ] Tab/ShiftTab keys do NOT call `evt.prevent_default()`, so the browser advances focus past the plot at wrap.
-- [ ] Body's `use_effect` for cache rebuild reads `config_signal.read()` inside the closure so the effect re-fires on prop or external-edit changes; does NOT depend solely on the `curve` prop (which is a one-way init seed).
+- [ ] Body's `use_effect` for cache rebuild reads `config_signal.read()` inside the closure so the effect re-fires whenever an external edit lands in the live config; does NOT depend solely on the `curve` prop (which is a one-way init seed). The `external_edit_reset` token referenced by the original plan was deleted in commit `c9e7853` and is not used.
 - [ ] `set_pointer_capture` is called on `pointerdown` when a drag actually starts; released on `pointerup`.
 
 ---
