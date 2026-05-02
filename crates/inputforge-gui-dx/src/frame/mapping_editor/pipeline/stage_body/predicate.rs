@@ -322,12 +322,14 @@ fn PredicateInputRow(
     let source = source_label::format(&input, &ctx.config.read());
 
     // Compose the rebind-composite class once so both the idle and listening
-    // branches stay in lockstep. The `--unbound` modifier is what styles the
-    // placeholder label (and the listening cue, by inheritance) muted/italic
-    // so the user sees at a glance that the field is empty rather than
-    // mistaking the placeholder for a real binding. Applying it to both
-    // branches prevents class flicker if the user opens, then cancels,
-    // a rebind on an Unbound row.
+    // branches stay in lockstep. The `--unbound` modifier styles the
+    // `__label` span muted/italic so the user sees at a glance that the
+    // field is empty rather than mistaking the placeholder for a real
+    // binding. Carry `--unbound` on both branches so the class doesn't
+    // flicker when the user toggles rebind on an Unbound row. Today the
+    // CSS rule only styles `__label` (idle branch), so the modifier is
+    // inert in the listening state, but keeping it here means a future
+    // rule keyed on `--unbound .__listening` would Just Work.
     let composite_class = if input.is_unbound() {
         "if-rebind-composite if-rebind-composite--unbound"
     } else {

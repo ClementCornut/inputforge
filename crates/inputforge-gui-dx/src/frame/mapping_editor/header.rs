@@ -181,6 +181,26 @@ pub(crate) fn Header(
         .and_then(|a| first_map_to_vjoy_label(a));
     drop(cfg);
 
+    // Compose the rebind-composite class so the placeholder label renders
+    // muted/italic when the primary input is `Unbound`. Mapping primaries
+    // are operationally rare to be `Unbound` (only via hand-edited profile
+    // or a legacy migration walker), but when it does happen we want the
+    // header to read consistently with the predicate / merge-axis call
+    // sites of `if-rebind-composite`. Mirrors the same pattern used in
+    // `PredicateInputRow`: applied to both the idle and listening branches
+    // so the class doesn't flicker if the user opens, then cancels, a
+    // rebind on an Unbound row.
+    let composite_class = if input.is_unbound() {
+        "if-rebind-composite if-rebind-composite--unbound"
+    } else {
+        "if-rebind-composite"
+    };
+    let listening_class = if input.is_unbound() {
+        "if-rebind-composite if-rebind-composite--listening if-rebind-composite--unbound"
+    } else {
+        "if-rebind-composite if-rebind-composite--listening"
+    };
+
     // ----- Display-mode handlers (h2) -----
 
     let name_for_arm_kb = name.clone();
@@ -364,7 +384,7 @@ pub(crate) fn Header(
             }
             div { class: "if-editor__subtitle",
                 if *is_armed_consumer.read() {
-                    div { class: "if-rebind-composite if-rebind-composite--listening",
+                    div { class: "{listening_class}",
                         span {
                             class: "if-rebind-composite__listening",
                             role: "status",
@@ -379,7 +399,7 @@ pub(crate) fn Header(
                         }
                     }
                 } else {
-                    div { class: "if-rebind-composite",
+                    div { class: "{composite_class}",
                         span { class: "if-rebind-composite__label", "{src}" }
                         button {
                             class: "if-rebind-composite__action",

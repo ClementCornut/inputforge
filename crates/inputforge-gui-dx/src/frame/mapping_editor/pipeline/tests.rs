@@ -1679,3 +1679,62 @@ fn merge_axis_body_unbound_secondary_renders_unbound_modifier() {
         "Unbound label text missing: {html}"
     );
 }
+
+#[test]
+fn merge_axis_body_bound_secondary_omits_unbound_modifier() {
+    // Negative guard: a Bound secondary input must NOT carry the unbound
+    // modifier, otherwise the muted/italic placeholder treatment would
+    // bleed onto every MergeAxis row.
+    let actions = vec![Action::MergeAxis {
+        second_input: InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 1 },
+        },
+        operation: MergeOp::Average,
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+
+    assert!(
+        !html.contains("if-rebind-composite--unbound"),
+        "bound secondary must not carry unbound modifier: {html}"
+    );
+}
+
+#[test]
+fn header_subtitle_unbound_primary_renders_unbound_modifier() {
+    // When the mapping's primary input is Unbound (operationally rare, but
+    // representable since Task 4: e.g. a hand-edited profile or a future
+    // legacy-migration walker), the header subtitle's rebind composite
+    // must carry the `if-rebind-composite--unbound` modifier so the
+    // `Unbound` placeholder reads consistently with the predicate /
+    // merge-axis call sites.
+    let map = HashMap::from([("Default".to_owned(), vec![])]);
+    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let unbound = InputAddress::Unbound;
+    let mappings = vec![Mapping {
+        input: unbound.clone(),
+        mode: "Default".to_owned(),
+        name: Some("Yaw".to_owned()),
+        actions: vec![],
+    }];
+    let profile = Profile::new(
+        "P".to_owned(),
+        vec![],
+        modes,
+        mappings,
+        vec![],
+        "Default".to_owned(),
+    );
+    let state = AppState::with_profile(profile);
+    let html = render_with(state, unbound);
+
+    assert!(
+        html.contains("if-rebind-composite--unbound"),
+        "unbound modifier missing on header subtitle composite: {html}"
+    );
+    assert!(
+        html.contains(">Unbound<"),
+        "Unbound label text missing in header subtitle: {html}"
+    );
+}
