@@ -1,10 +1,12 @@
-// Rust guideline compliant 2026-05-01
+// Rust guideline compliant 2026-05-02
 
 //! Right-click stage actions menu (Move up / Move down / Delete).
 //!
-//! Anchored at cursor coordinates via a `position: fixed` wrapper because
-//! the F2 `MenuRoot` does not expose anchor coordinates. See Task 29 for
-//! the full design rationale.
+//! Built on the shared `AnchoredMenu` primitive (`crate::components::menu`),
+//! which owns the backdrop, cursor-anchored positioning, and keyboard /
+//! focus handling. This module supplies the three action handlers, the
+//! disabled-state derivation, and the `on_close` callback that clears
+//! `EditorState::stage_menu`.
 //!
 //! # Structural-mutation contract
 //!
@@ -18,6 +20,7 @@ use dioxus::prelude::*;
 use inputforge_core::action::{Action, Mapping};
 use inputforge_core::engine::EngineCommand;
 
+use crate::components::{AnchoredMenu, CloseReason, MenuAnchor, MenuItem};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::pipeline::stage::stage_title_for;
@@ -112,11 +115,6 @@ fn make_stage_id(parent_path: &[StageIdSegment], idx: usize) -> StageId {
 /// `Some`, positions a small context menu at the stored cursor coordinates
 /// with three items: Move up, Move down, Delete.
 #[component]
-#[expect(
-    unused_qualifications,
-    reason = "Dioxus 0.7 RSX macro emits redundant `dioxus_elements::*` qualifications \
-              on per-element event listeners with bound closures."
-)]
 pub(crate) fn StageActionsMenu(
     /// `(mode, InputAddress)` key for the mapping being edited.
     /// Named `mapping_key` to avoid collision with Dioxus's reserved `key` prop.
@@ -138,9 +136,16 @@ pub(crate) fn StageActionsMenu(
 
     let stage_id = menu.stage.clone();
     let Some((parent_path, current_idx)) = split_stage_path(&stage_id) else {
-        // Malformed path: close and bail.
-        let mut stage_menu = editor.stage_menu;
-        stage_menu.set(None);
+        // Malformed path: bail; render nothing. The parent's stage_menu
+        // signal stays Some until the user clicks outside, which will
+        // route through the AnchoredMenu's backdrop on the NEXT render.
+        // In practice this is unreachable (split_stage_path only fails
+        // on empty / non-Index paths, which the caller never produces).
+        tracing::warn!(
+            target: "f9::mapping_editor",
+            action = "stage_menu_malformed_path",
+            "stage menu opened with malformed StageId"
+        );
         return rsx! {};
     };
 
@@ -176,7 +181,6 @@ pub(crate) fn StageActionsMenu(
         let cmd_tx = ctx.commands.clone();
         let cfg_sig = ctx.config;
         let mut undo_log = editor.undo_log;
-        let mut stage_menu = editor.stage_menu;
         let mut expanded = editor.expanded_stages;
         let mut malformed = editor.malformed_hints;
 
@@ -235,7 +239,6 @@ pub(crate) fn StageActionsMenu(
                     action = "stage_move_up_drop_offline",
                     "stage move-up dropped: engine channel disconnected"
                 );
-                stage_menu.set(None);
                 return;
             }
 
@@ -261,8 +264,6 @@ pub(crate) fn StageActionsMenu(
             malformed
                 .write()
                 .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, invalidate_from));
-
-            stage_menu.set(None);
         }
     };
 
@@ -278,7 +279,6 @@ pub(crate) fn StageActionsMenu(
         let cmd_tx = ctx.commands.clone();
         let cfg_sig = ctx.config;
         let mut undo_log = editor.undo_log;
-        let mut stage_menu = editor.stage_menu;
         let mut expanded = editor.expanded_stages;
         let mut malformed = editor.malformed_hints;
 
@@ -336,7 +336,6 @@ pub(crate) fn StageActionsMenu(
                     action = "stage_move_down_drop_offline",
                     "stage move-down dropped: engine channel disconnected"
                 );
-                stage_menu.set(None);
                 return;
             }
 
@@ -361,8 +360,6 @@ pub(crate) fn StageActionsMenu(
             malformed
                 .write()
                 .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, current_idx));
-
-            stage_menu.set(None);
         }
     };
 
@@ -377,14 +374,12 @@ pub(crate) fn StageActionsMenu(
         let cmd_tx = ctx.commands.clone();
         let cfg_sig = ctx.config;
         let mut undo_log = editor.undo_log;
-        let mut stage_menu = editor.stage_menu;
         let mut expanded = editor.expanded_stages;
         let mut malformed = editor.malformed_hints;
 
         move |_: MouseEvent| {
             let Some(new_actions) = remove_at_path(&root, &stage_id) else {
                 // Invalid path: skip the edit + skip phantom undo entry.
-                stage_menu.set(None);
                 return;
             };
 
@@ -414,7 +409,6 @@ pub(crate) fn StageActionsMenu(
                     action = "stage_delete_drop_offline",
                     "stage delete dropped: engine channel disconnected"
                 );
-                stage_menu.set(None);
                 return;
             }
 
@@ -440,18 +434,16 @@ pub(crate) fn StageActionsMenu(
             malformed
                 .write()
                 .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, current_idx));
-
-            stage_menu.set(None);
         }
     };
 
     // ---------------------------------------------------------------------------
-    // Close-on-backdrop handler
+    // on_close handler
     // ---------------------------------------------------------------------------
 
-    let on_backdrop = {
+    let on_close = {
         let mut stage_menu = editor.stage_menu;
-        move |_: MouseEvent| {
+        move |_reason: CloseReason| {
             stage_menu.set(None);
         }
     };
@@ -460,52 +452,30 @@ pub(crate) fn StageActionsMenu(
     // Render
     // ---------------------------------------------------------------------------
 
-    // `position: fixed` anchors the menu at cursor coordinates regardless of
-    // scroll position. z-index 100 lifts it above all editor content (pipeline
-    // cards are unstyled stack order; add-palette uses z-index 5).
-    let anchor_style = format!(
-        "position: fixed; left: {}px; top: {}px; z-index: 100;",
-        menu.x, menu.y
-    );
+    let anchor = MenuAnchor {
+        x: menu.x,
+        y: menu.y,
+    };
 
     rsx! {
-        // Full-viewport transparent backdrop dismisses the menu on outside click.
-        div {
-            class: "if-stage-menu__backdrop",
-            "aria-hidden": "true",
-            onclick: on_backdrop,
-        }
-        div {
-            class: "if-stage-menu-anchor",
-            style: "{anchor_style}",
-            div {
-                class: "if-stage-menu",
-                role: "menu",
-                button {
-                    r#type: "button",
-                    role: "menuitem",
-                    class: "if-stage-menu__item",
-                    "aria-disabled": "{move_up_disabled}",
-                    disabled: move_up_disabled,
-                    onclick: on_move_up,
-                    "Move up"
-                }
-                button {
-                    r#type: "button",
-                    role: "menuitem",
-                    class: "if-stage-menu__item",
-                    "aria-disabled": "{move_down_disabled}",
-                    disabled: move_down_disabled,
-                    onclick: on_move_down,
-                    "Move down"
-                }
-                button {
-                    r#type: "button",
-                    role: "menuitem",
-                    class: "if-stage-menu__item if-stage-menu__item--danger",
-                    onclick: on_delete,
-                    "Delete"
-                }
+        AnchoredMenu {
+            open: Some(anchor),
+            on_close,
+            class: "if-stage-menu".to_owned(),
+            MenuItem {
+                disabled: move_up_disabled,
+                onclick: on_move_up,
+                "Move up"
+            }
+            MenuItem {
+                disabled: move_down_disabled,
+                onclick: on_move_down,
+                "Move down"
+            }
+            MenuItem {
+                class: "if-stage-menu__item--danger".to_owned(),
+                onclick: on_delete,
+                "Delete"
             }
         }
     }
