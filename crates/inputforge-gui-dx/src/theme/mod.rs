@@ -43,6 +43,8 @@ const STATUS_BAR_CSS: Asset = asset!("/assets/components/status-bar.css");
 const SORTABLE_CSS: Asset = asset!("/assets/components/sortable.css");
 const TOAST_CSS: Asset = asset!("/assets/toast/toast.css");
 
+const RESPONSE_CURVE_CSS: Asset = asset!("/assets/frame/response_curve.css");
+
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
     // @font-face rules need manganis-bundled asset URLs interpolated at
@@ -93,6 +95,9 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: TABS_CSS }
         Stylesheet { href: STATUS_BAR_CSS }
         Stylesheet { href: SORTABLE_CSS }
+
+        // Frame stylesheets (editor panels, curve editor, etc.).
+        Stylesheet { href: RESPONSE_CURVE_CSS }
 
         // Toast overlay, last so its z-index cascade wins.
         Stylesheet { href: TOAST_CSS }

@@ -1,0 +1,120 @@
+.if-curve {
+  --color-curve-plot-bg: var(--color-bg-sunken);
+  --color-curve-grid-micro: rgba(255, 255, 255, 0.025);
+  --color-curve-grid-major: rgba(255, 255, 255, 0.06);
+  --color-curve-identity: var(--color-text-subtle);
+  --color-curve-stroke: var(--color-primary);
+  --color-curve-handle: rgb(from var(--color-primary) r g b / 0.40);
+  --color-curve-anchor-fill: var(--color-text);
+  --color-curve-anchor-stroke: var(--color-curve-plot-bg);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  width: 100%;
+}
+
+.if-curve__toolbar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.if-curve__plot-frame {
+  display: flex;
+  position: relative;
+  width: clamp(240px, 100%, 480px);
+  aspect-ratio: 1 / 1;
+  cursor: default;
+  outline: none;
+}
+.if-curve__plot-frame:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+.if-curve__plot-frame[data-hovered="true"] { cursor: pointer; }
+.if-curve__plot-frame[data-dragging="true"] { cursor: grabbing; }
+
+.if-curve__plot {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.if-curve__bg { fill: var(--color-curve-plot-bg); }
+.if-curve__grid-micro { stroke: var(--color-curve-grid-micro); stroke-width: 0.005; vector-effect: non-scaling-stroke; }
+.if-curve__grid-major { stroke: var(--color-curve-grid-major); stroke-width: 0.01; vector-effect: non-scaling-stroke; }
+.if-curve__identity {
+  stroke: var(--color-curve-identity);
+  stroke-width: 0.01;
+  stroke-dasharray: 0.02 0.05;
+  vector-effect: non-scaling-stroke;
+  fill: none;
+}
+.if-curve__handle-line {
+  stroke: var(--color-curve-handle);
+  stroke-width: 0.012;
+  stroke-dasharray: 0.02 0.04;
+  vector-effect: non-scaling-stroke;
+}
+.if-curve__path {
+  stroke: var(--color-curve-stroke);
+  stroke-width: 0.025;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: url(#if-curve-glow);
+  vector-effect: non-scaling-stroke;
+  fill: none;
+}
+.if-curve__anchor {
+  fill: var(--color-curve-anchor-fill);
+  stroke: var(--color-curve-anchor-stroke);
+  stroke-width: 0.012;
+  vector-effect: non-scaling-stroke;
+}
+.if-curve__handle-marker { fill: var(--color-curve-handle); }
+.if-curve__hover-ring {
+  stroke: var(--color-border-focus);
+  stroke-width: 0.018;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.55;
+}
+.if-curve__drag-halo {
+  fill: var(--color-border-focus);
+  opacity: 0.30;
+}
+.if-curve__focus-ring {
+  stroke: var(--color-border-focus);
+  stroke-width: 0.018;
+  stroke-dasharray: 0.02 0.02;
+  vector-effect: non-scaling-stroke;
+}
+.if-curve__live-guide {
+  stroke: var(--color-live);
+  stroke-width: 0.005;
+  stroke-dasharray: 0.02 0.03;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.5;
+}
+.if-curve__live-dot-halo { fill: var(--color-live); opacity: 0.18; }
+.if-curve__live-dot {
+  fill: var(--color-live);
+  filter: url(#if-curve-glow);
+}
+.if-curve__tick-label {
+  font-family: var(--font-mono);
+  /* Unitless font-size inside SVG = user units (viewBox-relative).
+     `0.075px` would resolve to 0.075 device pixels (sub-pixel, often
+     floored to 0); `0.075` user units render as ~8.6 px at 240 px
+     plot size (0.075 * 240 / 2.1). */
+  font-size: 0.075;
+  fill: var(--color-text-subtle);
+}
+.if-curve__thumbnail {
+  width: 28px;
+  height: 14px;
+  color: var(--color-curve-stroke, var(--color-primary));
+  fill: none;
+}
