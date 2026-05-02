@@ -304,9 +304,10 @@ pub(crate) fn ResponseCurveBody(
         let id = plot_dom_id_for_mount.clone();
         spawn(async move {
             let mut handle = document::eval(&format!(
-                "const el = document.getElementById('{id}');\n\
+                "var el = document.getElementById('{id}');\n\
                  if (!el) {{ dioxus.send([-1.0, -1.0, -1.0, -1.0]); return; }}\n\
-                 const r = el.getBoundingClientRect();\n\
+                 var r = el.getBoundingClientRect();\n\
+                 el.setAttribute('data-eval-rect', r.left+','+r.top+','+r.width+','+r.height);\n\
                  dioxus.send([r.left, r.top, r.width, r.height]);"
             ));
             if let Ok([x, y, w, h]) = handle.recv::<[f64; 4]>().await {
@@ -324,12 +325,22 @@ pub(crate) fn ResponseCurveBody(
         });
     };
 
-    // Helper: project a Dioxus PointerEvent to `(cursor, PlotRect)`.
+    // Helper: project a Dioxus MouseEvent to `(cursor, PlotRect)`.
+    //
+    // Switched from `PointerData` to `MouseData`: Dioxus 0.7 desktop does not
+    // route `pointerdown`/`pointermove`/`pointerup` synthetic events through
+    // its delegated dispatcher (the wrapper div's `data-dioxus-id` is
+    // registered, but the JS bridge only forwards mouse-family events on the
+    // desktop target). Native `pointerdown` still fires at the document level
+    // (verified via DOM `addEventListener` probe), but Dioxus's Rust handler
+    // never runs. Mouse events work for the desktop / WebView2 target; touch
+    // and pen are out of scope for the instrument.
+    //
     // Returns `None` while the rect cache is unpopulated (before first mount
     // completes). The closure is a `move` closure; `plot_rect` is captured by
     // copy (Signal is Copy).
     let project_event =
-        move |evt: &Event<PointerData>| -> Option<((f64, f64), interaction::PlotRect)> {
+        move |evt: &Event<MouseData>| -> Option<((f64, f64), interaction::PlotRect)> {
             let rect = (*plot_rect.peek())?;
             let cur = evt.client_coordinates();
             Some(((cur.x, cur.y), rect))
@@ -356,7 +367,7 @@ pub(crate) fn ResponseCurveBody(
     let mapping_key_for_down = mapping_key_for_evt.clone();
     let stage_id_for_down = stage_id_for_evt.clone();
     let config_for_down = config_signal;
-    let on_pointer_down = move |evt: PointerEvent| {
+    let on_pointer_down = move |evt: MouseEvent| {
         let Some((cursor, rect)) = project_event(&evt) else {
             return;
         };
@@ -387,7 +398,7 @@ pub(crate) fn ResponseCurveBody(
     let curve_for_move = curve.clone();
     let stage_id_for_move = stage_id_for_evt.clone();
     let config_for_move = config_signal;
-    let on_pointer_move = move |evt: PointerEvent| {
+    let on_pointer_move = move |evt: MouseEvent| {
         let Some((cursor, rect)) = project_event(&evt) else {
             return;
         };
@@ -421,7 +432,7 @@ pub(crate) fn ResponseCurveBody(
     let stage_id_for_up = stage_id_for_evt.clone();
     let config_for_up = config_signal;
     let cmd_tx_for_up = cmd_tx.clone();
-    let on_pointer_up = move |_evt: PointerEvent| {
+    let on_pointer_up = move |_evt: MouseEvent| {
         let prev = body.peek().clone();
         // If no drag was active, early-exit (stray pointer-up from outside a drag).
         if prev.dragging.is_none() {
@@ -701,6 +712,7 @@ pub(crate) fn ResponseCurveBody(
     let dragging_attr = body_snapshot.dragging.is_some().to_string();
     let hovered_attr = body_snapshot.hovered_point.is_some().to_string();
     drop(body_snapshot);
+    let rect_attr = plot_rect.read().is_some().to_string();
 
     // Reuse F9's existing summary formatter ("Linear 5 pts sym" style).
     let summary = stage_summary_for(
@@ -730,9 +742,10 @@ pub(crate) fn ResponseCurveBody(
                 "aria-label": "response curve",
                 "data-hovered": "{hovered_attr}",
                 "data-dragging": "{dragging_attr}",
-                onpointerdown: on_pointer_down,
-                onpointermove: on_pointer_move,
-                onpointerup: on_pointer_up,
+                "data-rect-set": "{rect_attr}",
+                onmousedown: on_pointer_down,
+                onmousemove: on_pointer_move,
+                onmouseup: on_pointer_up,
                 ondoubleclick: on_double_click,
                 oncontextmenu: on_context_menu,
                 onmounted: on_mounted,
