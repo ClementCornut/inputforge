@@ -351,11 +351,21 @@ pub fn MenuItems(
         });
     });
 
+    let close = state.close;
     let target_id_for_keydown = menu_id.clone();
     let onkeydown = move |evt: KeyboardEvent| {
         let action = match evt.key() {
             Key::Escape => {
-                open_signal.set(false);
+                close.call(CloseReason::Escape);
+                return;
+            }
+            Key::Tab => {
+                // Do NOT prevent_default; let the browser advance focus to
+                // the next focusable element. CloseReason::Tab signals the
+                // parent's intent (irrelevant for MenuRoot which discards
+                // the reason, but keeps the contract consistent with
+                // AnchoredMenu, where Tab close skips trigger re-focus).
+                close.call(CloseReason::Tab);
                 return;
             }
             Key::ArrowDown => FocusAction::Next,
