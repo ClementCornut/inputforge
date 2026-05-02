@@ -89,8 +89,8 @@ fn default_merge_axis() -> Action {
     // Seed the secondary slot as `Unbound` so the row renders the explicit
     // `Unbound` placeholder until the user picks an input. The previous
     // sentinel `Bound { device: DeviceId(""), input: Axis { index: 0 } }`
-    // silently rendered as `X` (or `Btn 1` for buttons) and looked like a
-    // real binding the user had not chosen.
+    // silently rendered as `X` and looked like a real binding the user had
+    // not chosen.
     Action::MergeAxis {
         second_input: InputAddress::Unbound,
         operation: MergeOp::Average,

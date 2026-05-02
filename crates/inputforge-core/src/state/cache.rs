@@ -67,6 +67,9 @@ impl InputCacheStore {
     pub fn evict_device(&mut self, device: &DeviceId) {
         // Unbound addresses (no device) are kept; only Bound entries whose
         // device matches are evicted.
+        // `Unbound` cannot reach the cache today (events come from real devices,
+        // which always emit `Bound` sources via Backend::poll), but `is_none_or`
+        // documents the keep-on-no-device behaviour explicitly should that change.
         self.values
             .retain(|addr, _| addr.device().is_none_or(|d| d != device));
     }

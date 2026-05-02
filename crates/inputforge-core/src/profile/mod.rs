@@ -27,7 +27,7 @@ enum InputGroup {
 fn group_of_input(addr: &InputAddress) -> InputGroup {
     let input = addr
         .input_id()
-        .expect("invariant: group_of_input is only called on bound mapping primaries");
+        .expect("invariant: mapping primaries are always Bound (set_mapping / add_inline / F8 capture); group_of_input only called on Profile::mappings entries");
     match input {
         InputId::Axis { .. } => InputGroup::Axis,
         InputId::Button { .. } => InputGroup::Button,

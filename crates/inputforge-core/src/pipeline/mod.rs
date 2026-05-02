@@ -196,10 +196,12 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
 ///
 /// # Panics
 ///
-/// Panics if `primary` is `InputAddress::Unbound`. Pipeline primaries are
-/// always `Bound` by construction: the profile validator rejects mappings
-/// whose primary input is unbound, so reaching this call site with an
-/// unbound primary indicates a programming error upstream.
+/// Panics if `primary` is `InputAddress::Unbound`. This is a logical
+/// invariant: mapping primaries are constructed only via `set_mapping`,
+/// `add_inline`, and F8 capture, all of which build `Bound` addresses.
+/// A panic here indicates either a hand-edited profile that wired
+/// `unbound = true` into a mapping primary, or a future construction
+/// path that bypasses the operational invariant.
 #[must_use]
 pub fn evaluate_actions_through(
     actions: &[Action],
@@ -215,7 +217,7 @@ pub fn evaluate_actions_through(
     // trait reads.
     let input_value = match primary
         .input_id()
-        .expect("invariant: pipeline primary is always bound (validator rejects unbound primaries)")
+        .expect("invariant: mapping primaries are always Bound (set_mapping / add_inline / F8 capture); an Unbound primary indicates a malformed loaded profile or a new construction path bypassing the invariant")
     {
         InputId::Axis { .. } => {
             let (raw, polarity) = state.input_cache.get_axis(primary);

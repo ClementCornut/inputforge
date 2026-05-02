@@ -11,7 +11,9 @@ use dioxus::prelude::*;
 
 use inputforge_core::action::{Action, Condition, ModeChangeStrategy};
 use inputforge_core::processing::ResponseCurve;
-use inputforge_core::types::{KeyCombo, KeyModifier, OutputAddress, OutputId, VJoyAxis};
+use inputforge_core::types::{
+    InputAddress, KeyCombo, KeyModifier, OutputAddress, OutputId, VJoyAxis,
+};
 
 use crate::components::sortable::{SortableHandle, SortableState};
 use crate::context::ConfigSnapshot;
@@ -375,10 +377,7 @@ fn format_condition(condition: &Condition, cfg: &ConfigSnapshot) -> String {
 
 /// Resolve a predicate's input address to a device-name label, falling back to
 /// the literal `"Unbound"` when the predicate has no binding selected yet.
-fn predicate_device_label<'a>(
-    cfg: &'a ConfigSnapshot,
-    addr: &'a inputforge_core::types::InputAddress,
-) -> &'a str {
+fn predicate_device_label<'a>(cfg: &'a ConfigSnapshot, addr: &'a InputAddress) -> &'a str {
     match addr.device() {
         Some(id) => device_label(cfg, id),
         None => "Unbound",
