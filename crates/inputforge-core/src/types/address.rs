@@ -1,14 +1,99 @@
 // Rust guideline compliant 2026-03-02
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::device::DeviceId;
 
-/// Fully qualified address of a physical input (device + input).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct InputAddress {
-    pub device: DeviceId,
-    pub input: InputId,
+/// Fully qualified address of a physical input.
+///
+/// `Bound` is the normal case (a real device + input). `Unbound` is the
+/// explicit "no binding selected yet" state used by stages added from the
+/// palette before the user has chosen an input. Previously this was encoded
+/// as a sentinel `Bound { device: DeviceId(""), input: ... }` which silently
+/// rendered as `Btn 1` and confused users; the enum makes the state explicit
+/// at the type level.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum InputAddress {
+    Bound { device: DeviceId, input: InputId },
+    Unbound,
+}
+
+impl InputAddress {
+    /// Returns `true` when this address has no binding selected yet.
+    #[must_use]
+    pub const fn is_unbound(&self) -> bool {
+        matches!(self, Self::Unbound)
+    }
+
+    /// Returns `true` when this address points at a real device + input.
+    #[must_use]
+    pub const fn is_bound(&self) -> bool {
+        matches!(self, Self::Bound { .. })
+    }
+
+    /// Returns the bound device, or `None` if the address is `Unbound`.
+    #[must_use]
+    pub const fn device(&self) -> Option<&DeviceId> {
+        match self {
+            Self::Bound { device, .. } => Some(device),
+            Self::Unbound => None,
+        }
+    }
+
+    /// Returns the bound input, or `None` if the address is `Unbound`.
+    #[must_use]
+    pub const fn input_id(&self) -> Option<&InputId> {
+        match self {
+            Self::Bound { input, .. } => Some(input),
+            Self::Unbound => None,
+        }
+    }
+}
+
+// Helper structs for serialise. Cannot collapse to an enum because the
+// untagged-enum-of-tables would silently match the wrong arm on round-trip.
+#[derive(Serialize)]
+struct BoundOnTheWire<'a> {
+    device: &'a DeviceId,
+    input: &'a InputId,
+}
+
+#[derive(Serialize)]
+struct UnboundOnTheWire {
+    // Always serialised as `true`; the deserializer rejects `false` to
+    // prevent a silent round-trip into `Unbound`.
+    unbound: bool,
+}
+
+impl Serialize for InputAddress {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Bound { device, input } => BoundOnTheWire { device, input }.serialize(ser),
+            Self::Unbound => UnboundOnTheWire { unbound: true }.serialize(ser),
+        }
+    }
+}
+
+// Intermediate enum for deserialise; the two variants share zero fields,
+// so the untagged disambiguation is unambiguous.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum InputAddressOnTheWire {
+    Unbound { unbound: bool },
+    Bound { device: DeviceId, input: InputId },
+}
+
+impl<'de> Deserialize<'de> for InputAddress {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        match InputAddressOnTheWire::deserialize(de)? {
+            InputAddressOnTheWire::Unbound { unbound: true } => Ok(Self::Unbound),
+            InputAddressOnTheWire::Unbound { unbound: false } => Err(serde::de::Error::custom(
+                "InputAddress: `unbound = false` is not a valid encoding; \
+                 use the bound shape instead",
+            )),
+            InputAddressOnTheWire::Bound { device, input } => Ok(Self::Bound { device, input }),
+        }
+    }
 }
 
 /// Identifies a specific input on a device.
@@ -87,7 +172,7 @@ mod tests {
 
     #[test]
     fn input_address_serde_roundtrip() {
-        let addr = InputAddress {
+        let addr = InputAddress::Bound {
             device: DeviceId("guid-001".to_owned()),
             input: InputId::Axis { index: 2 },
         };
@@ -109,5 +194,83 @@ mod tests {
             VJoyAxis::Slider1,
         ];
         assert_eq!(axes.len(), 8);
+    }
+
+    #[test]
+    fn input_address_bound_toml_roundtrip() {
+        let addr = InputAddress::Bound {
+            device: DeviceId("guid-001".to_owned()),
+            input: InputId::Axis { index: 2 },
+        };
+        let toml_str = toml::to_string(&addr).unwrap();
+        assert!(toml_str.contains("device = \"guid-001\""));
+        assert!(
+            !toml_str.contains("unbound"),
+            "Bound must not emit `unbound`"
+        );
+        let back: InputAddress = toml::from_str(&toml_str).unwrap();
+        assert_eq!(addr, back);
+    }
+
+    #[test]
+    fn input_address_unbound_toml_roundtrip() {
+        let addr = InputAddress::Unbound;
+        let toml_str = toml::to_string(&addr).unwrap();
+        assert_eq!(toml_str.trim(), "unbound = true");
+        let back: InputAddress = toml::from_str(&toml_str).unwrap();
+        assert_eq!(back, InputAddress::Unbound);
+    }
+
+    #[test]
+    fn input_address_unbound_json_roundtrip() {
+        let addr = InputAddress::Unbound;
+        let j = serde_json::to_string(&addr).unwrap();
+        assert_eq!(j, r#"{"unbound":true}"#);
+        let back: InputAddress = serde_json::from_str(&j).unwrap();
+        assert_eq!(back, InputAddress::Unbound);
+    }
+
+    #[test]
+    fn input_address_legacy_bound_format_still_parses() {
+        // A profile saved before this refactor.
+        let legacy = r#"{"device":"guid-001","input":{"type":"button","index":3}}"#;
+        let addr: InputAddress = serde_json::from_str(legacy).unwrap();
+        assert!(matches!(addr, InputAddress::Bound { .. }));
+    }
+
+    #[test]
+    fn input_address_legacy_empty_device_still_parses_as_bound() {
+        // The pre-migration profile shape. Task 8's walker turns this into
+        // Unbound; here we lock in that the deserializer alone produces Bound
+        // (with empty device).
+        let legacy = r#"{"device":"","input":{"type":"button","index":0}}"#;
+        let addr: InputAddress = serde_json::from_str(legacy).unwrap();
+        let InputAddress::Bound { device, .. } = addr else {
+            panic!("expected Bound");
+        };
+        assert!(device.0.is_empty());
+    }
+
+    #[test]
+    fn input_address_unbound_false_is_rejected() {
+        // The serializer never emits `unbound = false`. A deserializer that
+        // accepted it would round-trip incorrectly. Lock in rejection.
+        let toml_str = "unbound = false";
+        let result: Result<InputAddress, _> = toml::from_str(toml_str);
+        assert!(result.is_err(), "unbound = false must be rejected");
+    }
+
+    #[test]
+    fn input_address_helpers() {
+        let bound = InputAddress::Bound {
+            device: DeviceId("d".to_owned()),
+            input: InputId::Button { index: 0 },
+        };
+        assert!(bound.is_bound() && !bound.is_unbound());
+        assert!(bound.device().is_some() && bound.input_id().is_some());
+
+        let unbound = InputAddress::Unbound;
+        assert!(unbound.is_unbound() && !unbound.is_bound());
+        assert!(unbound.device().is_none() && unbound.input_id().is_none());
     }
 }
