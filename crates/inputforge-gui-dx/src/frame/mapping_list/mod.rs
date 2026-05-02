@@ -159,8 +159,20 @@ pub(crate) fn MappingList() -> Element {
         let ctx_kb = ctx_for_kb.clone();
 
         spawn(async move {
+            // The keydown listener is installed in CAPTURE phase at window
+            // level (third arg `true`), so it fires before any element-level
+            // handler regardless of focus. That is intentional for the rail
+            // shortcuts (Up/Down to nav rows, Cmd+F to focus filter, Esc to
+            // clear filter, Enter to focus the editor) but conflicts with
+            // any open menu surface, whose own onkeydown also navigates with
+            // arrow keys. The early return on `[role="menu"]` defers to the
+            // menu when one is mounted (covers MenuItems, AnchoredMenu, and
+            // the legacy `.if-row-menu` in this file); the menu's own
+            // element-level onkeydown is unaffected because we do not call
+            // stopPropagation, we just opt this listener out.
             let mut handle = document::eval(
                 "const h = (ev) => {\n\
+                   if (document.querySelector('[role=\"menu\"]')) return;\n\
                    const meta = ev.metaKey ? 1 : 0;\n\
                    const ctrl = ev.ctrlKey ? 1 : 0;\n\
                    const alt  = ev.altKey  ? 1 : 0;\n\
