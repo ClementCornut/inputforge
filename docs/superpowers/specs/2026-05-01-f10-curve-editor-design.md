@@ -319,12 +319,12 @@ F9 default: `5 points · symmetric` / `5 points`. F10 refines to prepend the cur
 
 | Curve | Summary |
 |---|---|
-| `PiecewiseLinear`, asymmetric, 5 points | `linear · 5pt` |
-| `CubicSpline`, symmetric, 5 points | `spline · 5pt · sym` |
-| `CubicBezier`, asymmetric, 2 segments | `bezier · 2seg` |
-| `CubicBezier`, symmetric, 2 segments | `bezier · 2seg · sym` |
+| `PiecewiseLinear`, asymmetric, 5 points | `Linear · 5 pts` |
+| `CubicSpline`, symmetric, 5 points | `Spline · 5 pts · sym` |
+| `CubicBezier`, asymmetric, 2 segments | `Bezier · 2 seg` |
+| `CubicBezier`, symmetric, 2 segments | `Bezier · 2 seg · sym` |
 
-`2seg` for bezier reads more naturally than `8pt` (a 2-segment bezier exposes 8 control points but the user thinks in segments).
+`seg` for bezier reads more naturally than `pts` (a 2-segment bezier exposes 8 control points but the user thinks in segments). F10 reuses F9's existing `format_response_curve_summary` (capitalized, "pts") rather than introducing a second formatter.
 
 ### Stage header thumbnail
 
