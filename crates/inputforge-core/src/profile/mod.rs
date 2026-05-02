@@ -9,7 +9,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::action::{Action, Mapping};
+use crate::action::{Action, Condition, Mapping};
 use crate::error::{EngineError, Result};
 use crate::mode::ModeTree;
 use crate::types::{InputAddress, InputId};
@@ -429,7 +429,12 @@ impl Profile {
     }
 
     /// Validate and convert from the raw TOML representation.
-    fn from_raw(raw: ProfileRaw) -> Result<Self> {
+    fn from_raw(mut raw: ProfileRaw) -> Result<Self> {
+        // Auto-heal legacy empty-device sentinel addresses written before
+        // the `Bound | Unbound` split. Runs before validation so the rest
+        // of `from_raw` sees the migrated state, not the legacy sentinel.
+        migrate_legacy_addresses(&mut raw.mappings);
+
         // Validate startup_mode exists in the mode tree.
         if !raw.modes.contains(&raw.profile.startup_mode) {
             return Err(EngineError::InvalidConfig {
@@ -567,10 +572,71 @@ fn rewrite_mode_in_action(action: &mut Action, from: &str, to: &str) -> bool {
     }
 }
 
+/// Walk every action tree in `mappings` and replace any
+/// `InputAddress::Bound { device, .. }` whose `device.0.is_empty()` with
+/// `InputAddress::Unbound`. Used at profile-load time to auto-heal the
+/// legacy sentinel encoding produced before the `Bound | Unbound` split.
+///
+/// Only fires on legacy on-disk profiles. New profiles serialise the
+/// `unbound = true` shape natively and never produce empty-device entries.
+///
+/// Mapping primaries are deliberately NOT migrated: every code path that
+/// inserts a mapping (`set_mapping` / `add_inline` / F8 capture) already
+/// sets `Bound`, and `group_of_input`'s `expect` relies on
+/// `input.input_id()` being `Some`. If a hand-edited profile carries an
+/// empty device on a mapping's primary, that is a pre-existing pathology
+/// outside this migration's scope.
+fn migrate_legacy_addresses(mappings: &mut [Mapping]) {
+    for mapping in mappings {
+        walk_actions(&mut mapping.actions);
+    }
+}
+
+fn walk_actions(actions: &mut [Action]) {
+    for action in actions {
+        match action {
+            Action::MergeAxis { second_input, .. } => migrate_addr(second_input),
+            Action::Conditional {
+                condition,
+                if_true,
+                if_false,
+            } => {
+                walk_condition(condition);
+                walk_actions(if_true);
+                walk_actions(if_false);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn walk_condition(c: &mut Condition) {
+    match c {
+        Condition::ButtonPressed { input }
+        | Condition::ButtonReleased { input }
+        | Condition::AxisInRange { input, .. }
+        | Condition::HatDirection { input, .. } => migrate_addr(input),
+        Condition::All { conditions } | Condition::Any { conditions } => {
+            for c in conditions {
+                walk_condition(c);
+            }
+        }
+        Condition::Not { condition } => walk_condition(condition),
+    }
+}
+
+fn migrate_addr(addr: &mut InputAddress) {
+    if let InputAddress::Bound { device, .. } = addr
+        && device.0.is_empty()
+    {
+        *addr = InputAddress::Unbound;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::{Condition, ModeChangeStrategy};
+    use crate::action::ModeChangeStrategy;
     use crate::processing::DeadzoneConfig;
     use crate::types::{
         DeviceId, KeyCombo, KeyModifier, MergeOp, OutputAddress, OutputId, VJoyAxis,
@@ -1767,5 +1833,101 @@ enabled = true
         let toml_str = profile.to_toml().unwrap();
         let back = Profile::from_toml(&toml_str).unwrap();
         assert_eq!(profile.mappings(), back.mappings());
+    }
+
+    // --- Legacy empty-device migration ---
+
+    #[test]
+    fn legacy_sentinel_address_migrates_to_unbound() {
+        // A pre-migration profile encoded as TOML. The Conditional action's
+        // predicate input uses the legacy `device = ""` sentinel that earlier
+        // versions wrote when the user added a Conditional from the palette
+        // without binding an input. The post-deserialise walker must coerce
+        // this to InputAddress::Unbound so the data model honestly reflects
+        // "no binding selected yet".
+        let toml_str = r#"
+[profile]
+id = "550e8400-e29b-41d4-a716-446655440000"
+name = "test"
+startup_mode = "Default"
+
+[modes]
+Default = []
+
+[[mappings]]
+mode = "Default"
+[mappings.input]
+device = "dev-1"
+[mappings.input.input]
+type = "button"
+index = 0
+
+[[mappings.actions]]
+type = "conditional"
+if_true = []
+if_false = []
+[mappings.actions.condition]
+type = "button_pressed"
+[mappings.actions.condition.input]
+device = ""
+[mappings.actions.condition.input.input]
+type = "button"
+index = 0
+"#;
+
+        let profile = Profile::from_toml(toml_str).expect("must parse");
+        let action = &profile.mappings()[0].actions[0];
+        let Action::Conditional { condition, .. } = action else {
+            panic!("expected Conditional, got {action:?}");
+        };
+        let Condition::ButtonPressed { input } = condition else {
+            panic!("expected ButtonPressed, got {condition:?}");
+        };
+        assert_eq!(
+            *input,
+            InputAddress::Unbound,
+            "legacy empty-device must migrate to Unbound after load"
+        );
+    }
+
+    #[test]
+    fn legacy_sentinel_merge_axis_secondary_migrates_to_unbound() {
+        let toml_str = r#"
+[profile]
+id = "550e8400-e29b-41d4-a716-446655440001"
+name = "test-merge"
+startup_mode = "Default"
+
+[modes]
+Default = []
+
+[[mappings]]
+mode = "Default"
+[mappings.input]
+device = "dev-1"
+[mappings.input.input]
+type = "axis"
+index = 0
+
+[[mappings.actions]]
+type = "merge_axis"
+operation = "Average"
+[mappings.actions.second_input]
+device = ""
+[mappings.actions.second_input.input]
+type = "axis"
+index = 0
+"#;
+
+        let profile = Profile::from_toml(toml_str).expect("must parse");
+        let action = &profile.mappings()[0].actions[0];
+        let Action::MergeAxis { second_input, .. } = action else {
+            panic!("expected MergeAxis, got {action:?}");
+        };
+        assert_eq!(
+            *second_input,
+            InputAddress::Unbound,
+            "legacy empty-device merge_axis secondary must migrate to Unbound after load"
+        );
     }
 }
