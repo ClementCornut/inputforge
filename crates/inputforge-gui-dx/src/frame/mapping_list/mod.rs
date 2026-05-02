@@ -36,7 +36,7 @@ use dioxus::prelude::*;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::InputAddress;
 
-use crate::components::sortable::{SortableLiveRegion, use_sortable_state};
+use crate::components::sortable::{SortableGap, SortableLiveRegion, use_sortable_state};
 use crate::components::{InputSize, TextInput};
 use crate::context::{AppContext, MappingSummary};
 use crate::frame::mapping_list::add_inline::AddInline;
@@ -44,7 +44,7 @@ use crate::frame::mapping_list::empty::{EmptyZeroFilterResults, EmptyZeroMapping
 use crate::frame::mapping_list::filter::matches_filter;
 use crate::frame::mapping_list::group::{GroupKind, group_of};
 use crate::frame::mapping_list::keyboard::{Intent, Key, ReorderDir, State, handle_key};
-use crate::frame::mapping_list::row::Row;
+use crate::frame::mapping_list::row::{Row, group_to_u32};
 
 /// Format the AT live-region phrase for a successful reorder. Shared
 /// between the keyboard handler, the context menu items, and the row's
@@ -344,6 +344,17 @@ pub(crate) fn MappingList() -> Element {
         };
     }
 
+    // Capture the per-render values that the gap drop handler needs.
+    // Cloned/copied once here so the per-group filter_map closure can
+    // move owned copies into each handler without borrowing back into
+    // the render scope.
+    let cmd_for_drop = ctx.commands.clone();
+    let config_for_drop = ctx.config;
+    let drag_from_for_drop = sortable.drag_from;
+    let live_writer_for_drop = sortable.live_announcement;
+    let mode_for_drop = editing.read().clone();
+    let filter_active = !query.trim().is_empty();
+
     let group_iter = GroupKind::ordered().into_iter().filter_map(|group| {
         let group_rows: Vec<MappingSummary> = rows
             .iter()
@@ -353,28 +364,113 @@ pub(crate) fn MappingList() -> Element {
         if group_rows.is_empty() {
             return None;
         }
+        let group_id = group_to_u32(group);
+        let group_len = group_rows.len();
+
+        // One drop handler per group, threaded into every gap in that
+        // group. The handler reads `drag_from` to resolve the source's
+        // group-local subpos at drop time, converts the gap_index (pre-
+        // remove slot) to the engine's post-remove `target_index_in_
+        // group`, dispatches `ReorderMapping`, and writes the AT live
+        // announcement.
+        let cmd_tx = cmd_for_drop.clone();
+        let mode_handler = mode_for_drop.clone();
+        let mut live_writer = live_writer_for_drop;
+        let drop_handler = EventHandler::new(move |gap_index: usize| {
+            let Some(src_subpos) = *drag_from_for_drop.peek() else {
+                return;
+            };
+            // Convert pre-remove gap index to post-remove insertion slot.
+            let to = if src_subpos < gap_index {
+                gap_index - 1
+            } else {
+                gap_index
+            };
+            let src_input = {
+                let cfg = config_for_drop.read();
+                cfg.mappings
+                    .iter()
+                    .filter(|m| m.mode == mode_handler && group_of(&m.input) == group)
+                    .nth(src_subpos)
+                    .map(|m| m.input.clone())
+            };
+            let Some(src_input) = src_input else {
+                return;
+            };
+            tracing::info!(
+                target: "f8::mapping_list",
+                action = "reorder_drop",
+                source = ?src_input,
+                mode = %mode_handler,
+                gap_index,
+                to,
+                "dispatch ReorderMapping",
+            );
+            let _ = cmd_tx.send(EngineCommand::ReorderMapping {
+                input: src_input,
+                mode: mode_handler.clone(),
+                target_index_in_group: to,
+            });
+            // The engine clamps `target_index_in_group` to group_len-1;
+            // mirror that here so the announcement reflects the actual
+            // landed position rather than the user's pre-clamp intent.
+            let landed_subpos = to.min(group_len.saturating_sub(1));
+            live_writer.set(format_reorder_announcement(landed_subpos, group_len, group));
+        });
+
+        // Pre-render the row+gap pairs into a Vec so the rsx! `for` loop
+        // walks one stream of children per row instead of needing nested
+        // rsx fragments inside the iteration body.
+        let row_items: Vec<(usize, MappingSummary, bool)> = group_rows
+            .into_iter()
+            .enumerate()
+            .map(|(i, row)| {
+                let is_active = view
+                    .selected_mapping
+                    .read()
+                    .as_ref()
+                    .is_some_and(|(m, x)| m == &row.mode && x == &row.input);
+                (i, row, is_active)
+            })
+            .collect();
+
+        // Bind the validator with an explicit type so Dioxus's prop
+        // SuperInto accepts it as `Option<fn(&u32, &u32) -> bool>` (the
+        // unique closure type wouldn't coerce through the macro's
+        // generated trait bound).
+        let rail_validator: Option<fn(&u32, &u32) -> bool> = Some(|s, t| s == t);
         Some(rsx! {
             div { class: "if-rail__group",
                 div { class: "if-rail__group-header", {group.header()} }
-                for row in group_rows {
+                SortableGap {
+                    key: "gap-{group_id}-0",
+                    state: sortable,
+                    gap_index: 0_usize,
+                    group: group_id,
+                    validate_drop: rail_validator,
+                    on_drop: drop_handler,
+                }
+                for (i, row, is_active) in row_items {
                     {
-                        let is_active = view
-                            .selected_mapping
-                            .read()
-                            .as_ref()
-                            .is_some_and(|(m, i)| m == &row.mode && i == &row.input);
                         let mut menu_setter = menu_open;
                         rsx! {
                             Row {
                                 key: "{row.input:?}-{row.mode}",
                                 summary: row.clone(),
-                                is_active: is_active,
-                                renaming: renaming,
-                                sortable: sortable,
-                                filter_active: !query.trim().is_empty(),
+                                is_active,
+                                renaming,
+                                sortable,
+                                filter_active,
                                 on_open_menu: move |(input, x, y): (InputAddress, f64, f64)| {
                                     menu_setter.set(Some((input, x, y)));
                                 },
+                            }
+                            SortableGap {
+                                state: sortable,
+                                gap_index: i + 1,
+                                group: group_id,
+                                validate_drop: rail_validator,
+                                on_drop: drop_handler,
                             }
                         }
                     }

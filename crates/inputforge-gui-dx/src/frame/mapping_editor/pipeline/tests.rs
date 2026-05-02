@@ -1183,6 +1183,187 @@ fn dnd_can_move_stage_from_outer_into_conditional_if_true() {
 }
 
 // ---------------------------------------------------------------------------
+// Gap-model DnD: post-remove slot conversion + drop dispatch
+// ---------------------------------------------------------------------------
+
+use crate::frame::mapping_editor::pipeline::dnd::gap_to_post_remove_slot;
+
+#[test]
+fn dnd_gap_drop_dispatches_correct_target_index() {
+    // Drag stage 0 in [Invert, Deadzone, MergeAxis], drop in gap 2
+    // (between Deadzone and MergeAxis). Result must be
+    // [Deadzone, Invert, MergeAxis] -- the source's removal at index 0
+    // shifts every later index left, so the gap-2 drop lands at the
+    // post-remove slot 1.
+    let second_input = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 1 },
+    };
+    let actions = vec![
+        Action::Invert,
+        Action::Deadzone {
+            config: DeadzoneConfig::default(),
+        },
+        Action::MergeAxis {
+            second_input,
+            operation: MergeOp::Average,
+        },
+    ];
+
+    let parent_path = StageId(Vec::new());
+    let src_local_index: usize = 0;
+    let gap_index: usize = 2;
+
+    let post_remove_to =
+        gap_to_post_remove_slot(&parent_path, &parent_path, src_local_index, gap_index);
+    assert_eq!(
+        post_remove_to, 1,
+        "same-branch downward drop must subtract one for the source removal shift"
+    );
+
+    let src_id = StageId(vec![StageIdSegment::Index(src_local_index)]);
+    let tgt_id = StageId(vec![StageIdSegment::Index(post_remove_to)]);
+    let dragged = at_path(&actions, &src_id)
+        .cloned()
+        .expect("source resolves");
+    let after_remove = remove_at_path(&actions, &src_id).expect("remove succeeds");
+    let result = insert_at_path(&after_remove, &tgt_id, dragged).expect("insert succeeds");
+
+    assert_eq!(result.len(), 3, "stage count is preserved");
+    assert!(matches!(result[0], Action::Deadzone { .. }));
+    assert!(matches!(result[1], Action::Invert));
+    assert!(matches!(result[2], Action::MergeAxis { .. }));
+}
+
+#[test]
+fn dnd_gap_drop_cross_pipeline_no_shift() {
+    // Drag a stage from the outer pipeline into a Conditional's if_true
+    // branch. Cross-branch drops do not shift indices because the
+    // source's removal happens in a different branch from the insert.
+    let primary = InputAddress {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Button { index: 0 },
+    };
+    let actions = vec![
+        Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: primary.clone(),
+            },
+            if_true: vec![Action::Deadzone {
+                config: DeadzoneConfig::default(),
+            }],
+            if_false: Vec::new(),
+        },
+        Action::Invert,
+    ];
+
+    let src_parent = StageId(Vec::new());
+    let tgt_parent = StageId(vec![StageIdSegment::Index(0), StageIdSegment::IfTrue]);
+    let src_local_index: usize = 1;
+    let gap_index: usize = 0; // before the existing Deadzone in if_true
+
+    // Cross-branch: gap_index passes through unchanged.
+    let post_remove_to =
+        gap_to_post_remove_slot(&src_parent, &tgt_parent, src_local_index, gap_index);
+    assert_eq!(post_remove_to, 0, "cross-branch drops do not shift indices");
+
+    let src_id = StageId(vec![StageIdSegment::Index(src_local_index)]);
+    let mut tgt_segs = tgt_parent.0.clone();
+    tgt_segs.push(StageIdSegment::Index(post_remove_to));
+    let tgt_id = StageId(tgt_segs);
+
+    let dragged = at_path(&actions, &src_id)
+        .cloned()
+        .expect("source resolves");
+    let after_remove = remove_at_path(&actions, &src_id).expect("remove succeeds");
+    let result = insert_at_path(&after_remove, &tgt_id, dragged).expect("insert succeeds");
+
+    match &result[0] {
+        Action::Conditional { if_true, .. } => {
+            assert_eq!(if_true.len(), 2, "if_true now contains both stages");
+            assert!(
+                matches!(if_true[0], Action::Invert),
+                "Invert lands at index 0"
+            );
+            assert!(matches!(if_true[1], Action::Deadzone { .. }));
+        }
+        _ => panic!("outer stage 0 must remain Conditional"),
+    }
+    assert_eq!(result.len(), 1, "outer pipeline shrinks to one stage");
+}
+
+#[test]
+fn dnd_source_adjacent_gap_is_noop() {
+    // Source-adjacent gaps (gap_index == src_local_index OR
+    // gap_index == src_local_index + 1) are silently suppressed by
+    // `SortableGap`. As a math check, even if the suppression were
+    // removed and the same-branch conversion were applied, the
+    // resulting post-remove insertion would round-trip the source to
+    // its original slot. This test is the regression gate for that
+    // mathematical property: a no-op must remain a no-op.
+    let actions = vec![
+        Action::Invert,
+        Action::Deadzone {
+            config: DeadzoneConfig::default(),
+        },
+        Action::Invert,
+    ];
+    let parent_path = StageId(Vec::new());
+    let src_local_index: usize = 1;
+
+    for gap_index in [src_local_index, src_local_index + 1] {
+        let post_remove_to =
+            gap_to_post_remove_slot(&parent_path, &parent_path, src_local_index, gap_index);
+        let src_id = StageId(vec![StageIdSegment::Index(src_local_index)]);
+        let tgt_id = StageId(vec![StageIdSegment::Index(post_remove_to)]);
+
+        let dragged = at_path(&actions, &src_id)
+            .cloned()
+            .expect("source resolves");
+        let after_remove = remove_at_path(&actions, &src_id).expect("remove succeeds");
+        let result = insert_at_path(&after_remove, &tgt_id, dragged).expect("insert succeeds");
+
+        assert_eq!(
+            result.len(),
+            actions.len(),
+            "no-op preserves stage count for gap_index {gap_index}"
+        );
+        assert!(
+            matches!(result[1], Action::Deadzone { .. }),
+            "source returns to its original slot for gap_index {gap_index}"
+        );
+    }
+}
+
+#[test]
+fn dnd_invalid_validator_blocks_drop() {
+    // Drag a Conditional onto a gap inside its own if_true branch. The
+    // validator must reject the drop because the source's path is a
+    // strict prefix of the target's parent path (cycle).
+    let src_id = StageId(vec![StageIdSegment::Index(0)]);
+    let tgt_parent = StageId(vec![StageIdSegment::Index(0), StageIdSegment::IfTrue]);
+
+    // Validator receives parent paths in production: source's stage path
+    // (the dragged Conditional's full id) and target gap's parent path
+    // (the if_true branch). The validator's defensive policy rejects
+    // when the source is a strict prefix of the target's group path.
+    assert!(
+        !validate_pipeline_drop(&src_id, &tgt_parent),
+        "dropping a Conditional into its own if_true branch must be rejected"
+    );
+
+    // A drop the validator allows: dragging a sibling at the outer level
+    // to another outer-level slot. Same parent (outer), no prefix
+    // relationship between source path and target group.
+    let sibling_src = StageId(vec![StageIdSegment::Index(1)]);
+    let outer_parent = StageId(Vec::new());
+    assert!(
+        validate_pipeline_drop(&sibling_src, &outer_parent),
+        "same-pipeline reorder must be allowed"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Task 38: four-stage pipeline SSR coverage (AC #9)
 // ---------------------------------------------------------------------------
 

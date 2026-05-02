@@ -1,19 +1,25 @@
-//! Reusable sortable list primitive. Wraps the F8 mapping-list DnD
-//! plumbing into a handful of drop-in pieces:
+//! Reusable sortable list primitive.
+//!
+//! Gap-drop-zone model: each list of N rows has N+1 explicit gap
+//! elements (one before each row plus one trailing gap after the last
+//! row). Each gap is a drop target with a single integer identity
+//! (`gap_index`) that IS the destination slot. Rows own only the drag
+//! source (the 6-dot grip + dragstart) and the dragging-source
+//! modifier; rows do not own drop handling.
+//!
+//! Composition:
 //!
 //! * `use_sortable_state` -- one `SortableState` bundle per list
-//! * `use_sortable_item` -- per-row event handlers
-//! * `SortableHandle` -- the 6-dot grip with `ondragstart`
+//! * `SortableHandle` -- the 6-dot grip with `ondragstart`, mounted
+//!   inside each row
+//! * `SortableGap` -- inter-row drop zone with synchronous
+//!   ondragover / ondragleave / ondragend / ondrop, mounted between
+//!   rows + leading + trailing per group
 //! * `SortableLiveRegion` -- visually-hidden `aria-live="polite"` mount
 //!
-//! See `docs/superpowers/specs/2026-04-30-f8-mapping-list-design.md`
-//! and the matching Phase A plan for the design rationale + behavior
-//! contract. Behavior is preserved end-to-end from the F8
-//! implementation, with one critical fix: the
-//! `event.data_transfer().set_data("text/html", "")` incantation in
-//! `SortableHandle.ondragstart` replaces the previous JS
-//! `document::eval` bootstrap (Firefox/WebView2 require this for native
-//! HTML5 drag-and-drop to actually start).
+//! The `event.data_transfer().set_data("text/html", "")` incantation in
+//! `SortableHandle.ondragstart` is required for Firefox / WebView2 to
+//! actually start a native HTML5 drag operation.
 //!
 //! CSS lives in `/assets/components/sortable.css` and is mounted
 //! alongside the rest of the design-system stylesheets in
@@ -24,12 +30,12 @@
     reason = "Module doc references DnD as a domain term, not as code."
 )]
 
+mod gap;
 mod handle;
-mod item;
 mod live_region;
 mod state;
 
+pub use gap::SortableGap;
 pub use handle::SortableHandle;
-pub use item::{SortableItemConfig, SortableItemHandlers, use_sortable_item};
 pub use live_region::SortableLiveRegion;
-pub use state::{DropTarget, SortableSide, SortableState, resolve_drop_index, use_sortable_state};
+pub use state::{DropTarget, SortableState, use_sortable_state};

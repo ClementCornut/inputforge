@@ -40,6 +40,7 @@ pub fn SortableHandle<G: 'static + Clone + PartialEq>(
 ) -> Element {
     let mut drag_from = state.drag_from;
     let mut drag_group = state.drag_group;
+    let mut drop_target = state.drop_target;
 
     let ondragstart = move |evt: Event<DragData>| {
         // Firefox/WebView2 fix: the source's dataTransfer must carry
@@ -55,6 +56,24 @@ pub fn SortableHandle<G: 'static + Clone + PartialEq>(
         drag_group.set(Some(group.clone()));
     };
 
+    // The browser fires `dragend` on the drag source regardless of where
+    // the drop landed (gap, row, empty space, off-window, Esc-cancelled).
+    // Gaps own their own ondragend for the case where the cursor IS on a
+    // gap at the moment of release, but anything else (drop on a row,
+    // drop in the gap between groups, drop in empty page area, drag
+    // cancelled) wouldn't trigger any gap's handler. Without this
+    // source-side fallback the dragging modifier (`if-sortable--
+    // dragging`, opacity 0.4) sticks until the next dragstart. Clear
+    // every shared signal here so the source-side state is the single
+    // authoritative reset.
+    let ondragend = move |_evt: Event<DragData>| {
+        drag_from.set(None);
+        drag_group.set(None);
+        if drop_target.peek().is_some() {
+            drop_target.set(None);
+        }
+    };
+
     let draggable_str = if draggable { "true" } else { "false" };
 
     rsx! {
@@ -62,6 +81,7 @@ pub fn SortableHandle<G: 'static + Clone + PartialEq>(
             class: "if-sortable-handle",
             draggable: "{draggable_str}",
             ondragstart,
+            ondragend,
             "aria-hidden": "true",
             // 6-dot grip, 2x3 grid, 10x16 viewBox. Lifted verbatim from
             // F8's mapping_list/row.rs handle markup.

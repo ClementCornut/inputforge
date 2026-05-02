@@ -7968,5 +7968,39 @@ No placeholders detected on the second pass; every code block has actual code or
 **Which approach?**
 
 
+---
+
+## Postscript (2026-05-02): Sortable primitive migrated to gap model
+
+The sortable primitive used by both F8 (mapping list rail) and F9 (editor pipeline) was migrated from the row-half (`Before` / `After`) drop-target model to an explicit gap-drop-zone model. The change touches the primitive's API and the wiring in both consumers; the sections of this plan that reference the old API names below are kept for archival fidelity but do not match the current code.
+
+**API delta:**
+
+- `SortableSide` enum, `resolve_drop_index` helper, `use_sortable_item` hook, `SortableItemConfig`, and `SortableItemHandlers` are deleted.
+- New `SortableGap<G>` component owns inter-row drop handling. Each list of `N` rows renders `N + 1` gaps (one before each row plus one trailing). The gap's `gap_index` IS the destination slot.
+- `DropTarget<G>` shape: `{ gap_index, group, invalid }` (was `{ index, group, side, invalid }`).
+- `on_drop` signature: `EventHandler<usize>` (was `Fn(usize, SortableSide)`). Both consumers ignored the side parameter, so removing it is a strict cleanup.
+- New helper `gap_to_post_remove_slot` in `pipeline/dnd.rs` converts the gap's pre-remove slot to the post-remove insertion index used by `insert_at_path`.
+
+**Bug fixes the migration delivered:**
+
+1. Two-bars-per-seam between pipeline stages (the 8 px flex gap put the After-bar on row N's bottom edge and the Before-bar on row N+1's top edge, visible as two distinct drop zones for one logical destination).
+2. Async race in `use_sortable_item.ondragover` (synchronous cursor read, async rect read; consecutive events resolved out of order, `ondrop` trusted stale `drop_target.side`).
+3. Self-drop ambiguity compounded by 0.4 opacity dimming on the source row.
+
+**CSS contract:**
+
+- `.if-sortable--drop-before` / `.if-sortable--drop-after` / `.if-sortable--drop-invalid` are gone. Replaced by `.if-sortable-gap`, `.if-sortable-gap--target` (valid bar in `--color-border-focus`), and `.if-sortable-gap--target-invalid` (diagonal-stripe pattern in `--color-error`, the stripe pattern satisfies DESIGN.md sec.8 "color is never the sole channel").
+- Pipeline gap height is 16 px constant (`.if-pipeline > .if-sortable-gap`). Rail gap height is 8 px constant (`.if-rail__group .if-sortable-gap`).
+- `.if-pipeline { gap: 0 }` (was 8 px); the `SortableGap` `<li>` elements own the inter-stage spacing now.
+
+**Tests added:**
+
+- `is_source_adjacent` unit tests in `components/sortable/gap.rs`.
+- `dnd_gap_drop_dispatches_correct_target_index`, `dnd_gap_drop_cross_pipeline_no_shift`, `dnd_source_adjacent_gap_is_noop`, `dnd_invalid_validator_blocks_drop` in `mapping_editor/pipeline/tests.rs`.
+
+**Plan / spec audit:**
+
+The F9 spec's §"Stage drag-and-drop" prose ("a 2 px horizontal accent bar in `--color-border-focus` renders between the target stages") is already gap-compatible and needs no edit. The F8 spec has no row-half references. This postscript is the only doc change.
 </content>
 </invoke>

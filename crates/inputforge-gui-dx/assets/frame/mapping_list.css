@@ -71,11 +71,17 @@
     background: var(--color-border);
 }
 
-/* DnD chrome (drag handle, dragging dim, insertion bars) lives in the
+/* DnD chrome (drag handle, dragging dim, drop-target bar) lives in the
    reusable sortable primitive at `assets/components/sortable.css`. The
    row keeps the 10 px left-padding gutter (above) so the handle has a
    place to sit, and the consumer applies the primitive's modifier
-   classes via the shared `SortableState`. */
+   classes via the shared `SortableState`. Drop targets are explicit
+   gap elements rendered between rows; this rail picks 8 px per gap to
+   match the spacing-token scale (`--space-2`) and give a comfortable
+   mouse hit zone without loosening density. */
+.if-rail__group .if-sortable-gap {
+    height: var(--space-2);
+}
 
 .if-row.is-active {
     background: color-mix(in srgb, var(--color-primary) 18%, transparent);

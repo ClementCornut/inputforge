@@ -524,7 +524,11 @@
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    /* Inter-stage spacing is owned by the `SortableGap` `<li>` elements
+       between every pair of stages (plus a leading and trailing gap),
+       not by the flex `gap`. The gap is the drop target; setting flex
+       `gap: 0` lets the gap's CSS `height` define the visual rhythm. */
+    gap: 0;
 }
 
 .if-pipeline--empty {
@@ -535,10 +539,32 @@
     list-style: none;
 }
 
+/* Pipeline drop-zone height. Sized larger than the rail's gap (8 px)
+   because pipeline stages are visually heftier and the user is mostly
+   reordering with deliberation rather than browsing. 16 px is constant
+   at rest and during drag, so no layout shift; the bar fades in inside
+   the gap when the cursor enters during a drag. */
+.if-pipeline > .if-sortable-gap {
+    height: 16px;
+}
+
 .if-stage {
+    /* `position: relative` anchors the absolutely-positioned
+       `.if-sortable-handle` (and the `.if-sortable--drop-before/after`
+       insertion bars) to the stage box rather than a higher ancestor. */
+    position: relative;
     border: 1px solid var(--color-border);
     border-radius: 6px;
     overflow: hidden;
+}
+
+/* Anchor the drag handle vertically against the header strip rather than
+   the whole expanded stage. The header is roughly 32px tall (8px padding
+   + 16px line-height + 8px padding); centering on its midpoint keeps the
+   handle aligned with the title even when the stage body is open and the
+   stage box is several hundred px tall. */
+.if-stage > .if-sortable-handle {
+    top: 16px;
 }
 
 .if-stage.is-processing {
@@ -553,14 +579,18 @@
     background: var(--color-stage-tint-control);
 }
 
-/* grid: fixed 32px chevron slot + collapsing summary column */
+/* grid: fixed 32px chevron slot + collapsing summary column.
+   The 22px left padding (12px gutter + 10px handle visual width) reserves
+   space for the hover-only `.if-sortable-handle` so the title doesn't
+   overlap the grip. The padding holds at rest too so the layout stays
+   stable when the handle reveals on hover. */
 .if-stage__header {
     width: 100%;
     display: grid;
     grid-template-columns: 1fr auto 32px;
     align-items: center;
     gap: 12px;
-    padding: 8px 12px;
+    padding: 8px 12px 8px 22px;
     background: transparent;
     border: none;
     cursor: pointer;

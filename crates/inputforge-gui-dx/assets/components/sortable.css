@@ -1,21 +1,21 @@
 /* Sortable primitive: DnD affordances. Tokens-only.
  *
- * Behaves on top of the consumer's row container; the consumer applies
- * the modifier classes (.if-sortable--dragging, .if-sortable--drop-before,
- * .if-sortable--drop-after, .if-sortable--drop-invalid) based on the
- * shared SortableState.
+ * Gap-drop-zone model. The primitive exposes three CSS surfaces:
  *
- * Phase A coupling note: the hover-reveal rule below targets
- * `.if-row:hover .if-sortable-handle` rather than just `:hover` on the
- * handle's own parent. This couples the primitive to the F8 consumer's
- * `.if-row` class name; F9 will need to either rename or generalize
- * this rule (e.g. via a CSS variable, a `:has()` selector, or a
- * consumer-supplied utility class). Out-of-scope for Phase A.
+ *   .if-sortable-handle     - the 6-dot grip rendered inside each row
+ *   .if-sortable--dragging  - applied to the source row while a drag is
+ *                              in flight (consumer adds it on the row)
+ *   .if-sortable-gap        - inter-row drop zone, one before each row
+ *                              plus one trailing per group
  *
- * The consumer's row container is also responsible for:
- * - `position: relative` (insertion bars use absolute positioning)
- * - reserving left padding for the handle (the F8 consumer uses
- *   `padding-left: calc(var(--space-3) + 10px)`)
+ * Hover-reveal is consumer-agnostic via `:has()`: any container holding
+ * `.if-sortable-handle` as a direct child reveals the handle on hover.
+ *
+ * Consumers are responsible for placing one `SortableGap` between every
+ * pair of rows (and one before the first / after the last). The gap's
+ * height is consumer-controlled via a height rule scoped to the
+ * consumer's class (e.g. `.if-pipeline > .if-sortable-gap { height:
+ * 16px }`). The bar inside the gap is painted by the primitive.
  */
 
 /* Drag handle: 6-dot grip, hover-only.
@@ -39,9 +39,10 @@
     transition: opacity var(--duration-fast) var(--easing-fast);
 }
 
-/* Phase A coupling: hover trigger keyed off the F8 consumer's row class.
-   F9 will need to rename or generalize this when adopting the primitive. */
-.if-row:hover .if-sortable-handle {
+/* Consumer-agnostic hover trigger: matches any container that holds the
+   handle as a direct child (F8 mapping-list rows, F9 editor stages, any
+   future list). */
+:has(> .if-sortable-handle):hover > .if-sortable-handle {
     opacity: 1;
     pointer-events: auto;
 }
@@ -57,34 +58,61 @@
     transition: opacity var(--duration-fast) var(--easing-fast);
 }
 
-/* Drop-target indicator. 2px bar painted on the appropriate edge
-   (`::before` above, `::after` below). Token: `--color-border-focus` is
-   the transient drop-target token (separate from `--color-primary`
-   which is reserved for persistent action indicators per
-   DESIGN.md §2). The `--drop-invalid` modifier swaps the bar to
-   `--color-error` for cross-group rejection (paints for 200ms then the
-   row clears the modifier). */
-.if-sortable--drop-before::before,
-.if-sortable--drop-after::after {
+/* Inter-row gap: container for the drop-target bar. Height is set by
+   the consumer (rail vs pipeline) so density rules stay consumer-side.
+   `position: relative` anchors the absolutely-positioned bar; `list-
+   style: none` keeps the gap visually clean inside an `<ol>`. */
+.if-sortable-gap {
+    position: relative;
+    list-style: none;
+    pointer-events: auto;
+}
+
+/* Drop-target bar. A 2px line painted via `::after`, transparent at
+   rest, opaque while the consumer's drop_target points at this gap.
+   Token: `--color-border-focus` is the transient drop-target token
+   (separate from `--color-primary` which is reserved for persistent
+   action indicators per DESIGN.md sec.2). */
+.if-sortable-gap::after {
     content: "";
     position: absolute;
     left: 0;
     right: 0;
+    top: 50%;
+    transform: translateY(-50%);
     height: 2px;
+    background: transparent;
+    opacity: 0;
     pointer-events: none;
-    background: var(--color-border-focus);
     transition: opacity var(--duration-fast) var(--easing-fast);
 }
 
-.if-sortable--drop-before::before {
-    top: -1px;
+/* Valid drop target: solid focus-cyan bar. */
+.if-sortable-gap--target::after {
+    background: var(--color-border-focus);
+    opacity: 1;
 }
 
-.if-sortable--drop-after::after {
-    bottom: -1px;
+/* Invalid drop target: diagonal stripe in --color-error so the "no
+   entry" state reads beyond color alone (DESIGN.md sec.8: status is
+   never the sole channel via color). The stripe period stays small
+   relative to the 2px bar so it reads as a pattern even at this
+   thinness. */
+.if-sortable-gap--target-invalid::after {
+    background: repeating-linear-gradient(
+        45deg,
+        var(--color-error),
+        var(--color-error) 4px,
+        transparent 4px,
+        transparent 8px
+    );
+    opacity: 1;
 }
 
-.if-sortable--drop-invalid::before,
-.if-sortable--drop-invalid::after {
-    background: var(--color-error);
+@media (prefers-reduced-motion: reduce) {
+    .if-sortable-handle,
+    .if-sortable--dragging,
+    .if-sortable-gap::after {
+        transition: none;
+    }
 }

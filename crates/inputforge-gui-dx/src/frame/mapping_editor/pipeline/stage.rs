@@ -7,29 +7,18 @@
 //! The drag handle (6-dot grip) is rendered in the stage header area and
 //! wires `ondragstart` via `SortableHandle`.
 
-use std::rc::Rc;
-
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Condition, Mapping, ModeChangeStrategy};
-use inputforge_core::engine::EngineCommand;
+use inputforge_core::action::{Action, Condition, ModeChangeStrategy};
 use inputforge_core::processing::ResponseCurve;
 use inputforge_core::types::{KeyCombo, KeyModifier, OutputAddress, OutputId, VJoyAxis};
 
-use crate::components::sortable::{
-    SortableHandle, SortableItemConfig, SortableSide, SortableState, use_sortable_item,
-};
+use crate::components::sortable::{SortableHandle, SortableState};
 use crate::context::ConfigSnapshot;
 use crate::frame::MappingKey;
-use crate::frame::mapping_editor::pipeline::dnd::validate_pipeline_drop;
 use crate::frame::mapping_editor::pipeline::stage_body;
 use crate::frame::mapping_editor::pipeline::stage_header::StageHeader;
-use crate::frame::mapping_editor::pipeline::{
-    at_path, insert_at_path, path_invalidated_by_mutation, remove_at_path,
-};
-use crate::frame::mapping_editor::undo_log::{
-    LabelArgs, StageId, StageIdSegment, UndoKind, format_undo_label,
-};
+use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
 use crate::frame::mapping_editor::{EditorState, StageMenuState};
 
 // ---------------------------------------------------------------------------
@@ -138,9 +127,11 @@ pub(crate) fn Stage(
     let local_index = local_index_of(&stage_id);
     let group_len = parent_pipeline_len(&root_actions, &parent_pipeline_path);
 
-    // Determine drag-source and drop-indicator classes. The sortable group
-    // discriminator is the full parent_pipeline_path, so group comparison is
-    // by StageId equality (Vec<StageIdSegment> PartialEq).
+    // Drag-source modifier. The sortable group discriminator is the full
+    // parent_pipeline_path, so group comparison is by StageId equality
+    // (Vec<StageIdSegment> PartialEq). Drop-target painting lives on the
+    // inter-stage gaps in the gap-drop-zone primitive, not on stages
+    // themselves.
     let is_drag_source = sortable
         .drag_from
         .read()
@@ -150,30 +141,10 @@ pub(crate) fn Stage(
             .read()
             .as_ref()
             .is_some_and(|src_group| src_group == &parent_pipeline_path);
-    let drop_marker = sortable.drop_target.read();
-    let (drop_before, drop_after, drop_invalid) = drop_marker
-        .as_ref()
-        .filter(|d| d.index == local_index && d.group == parent_pipeline_path)
-        .map_or((false, false, false), |d| match (d.side, d.invalid) {
-            (SortableSide::Before, false) => (true, false, false),
-            (SortableSide::After, false) => (false, true, false),
-            (SortableSide::Before, true) => (true, false, true),
-            (SortableSide::After, true) => (false, true, true),
-        });
-    drop(drop_marker);
 
     let mut base_class = format!("if-stage {category_class}");
     if is_drag_source {
         base_class.push_str(" if-sortable--dragging");
-    }
-    if drop_before {
-        base_class.push_str(" if-sortable--drop-before");
-    }
-    if drop_after {
-        base_class.push_str(" if-sortable--drop-after");
-    }
-    if drop_invalid {
-        base_class.push_str(" if-sortable--drop-invalid");
     }
 
     // Task 35: look up any validation hint written by the body for this stage.
@@ -204,165 +175,13 @@ pub(crate) fn Stage(
         }
     };
 
-    // Element ref for the cursor-Y midpoint computation in ondragover.
-    let mut item_ref: Signal<Option<Rc<MountedData>>> = use_signal(|| None);
-
-    // Capture everything the on_drop closure needs before building the config.
-    // SortableState<StageId> is Clone but not Copy (StageId is Vec-backed).
-    // Retain a separate clone for the SortableHandle in the rsx! block below.
-    let sortable_for_handle = sortable.clone();
-    let key_for_drop = mapping_key.clone();
-    let root_for_drop = root_actions.clone();
-    let cfg_sig = ctx.config;
-    let mut undo_log = editor.undo_log;
-    let mut expanded_stages = editor.expanded_stages;
-    let mut malformed_hints = editor.malformed_hints;
-    let mut live_writer = sortable.live_announcement;
-    let drag_from_for_drop = sortable.drag_from;
-    let drag_group_for_drop = sortable.drag_group;
-    let cmd_tx = ctx.commands.clone();
-    let parent_path_for_drop = parent_pipeline_path.clone();
-    let stage_id_for_drop = stage_id.clone();
-
-    let handlers = use_sortable_item(SortableItemConfig {
-        state: sortable,
-        index: local_index,
-        group: parent_pipeline_path.clone(),
-        group_len,
-        item_ref,
-        // Reject cross-pipeline drops (different parent paths) AND cycle drops
-        // (dragging a Conditional into one of its own descendants).
-        validate_drop: Some(validate_pipeline_drop),
-        on_drop: move |to: usize, _side: SortableSide| {
-            // `drag_from` holds the source's group-local index; still populated
-            // when this closure runs (the primitive clears it after we return).
-            let Some(src_local_index) = *drag_from_for_drop.peek() else {
-                return;
-            };
-            // `drag_group` holds the source's parent pipeline path.
-            let Some(src_parent_path) = drag_group_for_drop.peek().clone() else {
-                return;
-            };
-
-            // Reconstruct the source's full StageId.
-            let mut src_segs = src_parent_path.0.clone();
-            src_segs.push(StageIdSegment::Index(src_local_index));
-            let src_id = StageId(src_segs);
-
-            // Reconstruct the target's full StageId.
-            let mut tgt_segs = parent_path_for_drop.0.clone();
-            tgt_segs.push(StageIdSegment::Index(to));
-            let tgt_id = StageId(tgt_segs);
-
-            // Fetch the dragged action from the current tree.
-            let Some(dragged) = at_path(&root_for_drop, &src_id).cloned() else {
-                return;
-            };
-
-            // Remove the source then insert at the target. Both helpers return
-            // None on invalid paths; bail to avoid a phantom undo entry.
-            let Some(after_remove) = remove_at_path(&root_for_drop, &src_id) else {
-                return;
-            };
-            let Some(new_actions) = insert_at_path(&after_remove, &tgt_id, dragged) else {
-                return;
-            };
-
-            // Build the before-Mapping snapshot using the live config name.
-            let cfg_read = cfg_sig.read();
-            let current_name = cfg_read.mapping_names.get(&key_for_drop.1).cloned();
-            drop(cfg_read);
-
-            let before = Mapping {
-                input: key_for_drop.1.clone(),
-                mode: key_for_drop.0.clone(),
-                name: current_name.clone(),
-                actions: root_for_drop.clone(),
-            };
-
-            // Dispatch SetMapping first; return on channel error.
-            if cmd_tx
-                .send(EngineCommand::SetMapping {
-                    input: key_for_drop.1.clone(),
-                    mode: key_for_drop.0.clone(),
-                    name: current_name,
-                    actions: new_actions,
-                })
-                .is_err()
-            {
-                tracing::warn!(
-                    target: "f9::mapping_editor",
-                    action = "stage_dnd_drop_offline",
-                    "stage DnD drop dropped: engine channel disconnected"
-                );
-                return;
-            }
-
-            // Derive a friendly stage name for the undo label.
-            let stage_name =
-                at_path(&root_for_drop, &stage_id_for_drop).map_or("stage", stage_title_for);
-            let label = format_undo_label(
-                UndoKind::StageReorder,
-                LabelArgs {
-                    stage_name: Some(stage_name),
-                    from_to: Some((src_local_index, to)),
-                    ..LabelArgs::default()
-                },
-            );
-            undo_log
-                .write()
-                .push_edit(key_for_drop.clone(), before, UndoKind::StageReorder, label);
-
-            // Drag-reorder shifts indices in the source branch (from
-            // src_local_index) and in the target branch (from `to`). When
-            // src and target share a parent, the affected range is
-            // [min(src, to), ...]. Invalidate only paths in those affected
-            // ranges; ancestors and unrelated branches keep their expanded
-            // state, so the parent Conditional / outer pipeline does not
-            // collapse on a drop.
-            let src_parent_segs = src_parent_path.0.clone();
-            let tgt_parent_segs = parent_path_for_drop.0.clone();
-            let same_branch = src_parent_segs == tgt_parent_segs;
-            let invalidate_src_from = if same_branch {
-                src_local_index.min(to)
-            } else {
-                src_local_index
-            };
-            let invalidate_tgt_from = if same_branch {
-                src_local_index.min(to)
-            } else {
-                to
-            };
-            let invalidated = |p: &StageId| {
-                path_invalidated_by_mutation(p, &src_parent_segs, invalidate_src_from)
-                    || path_invalidated_by_mutation(p, &tgt_parent_segs, invalidate_tgt_from)
-            };
-            expanded_stages.write().retain(|p| !invalidated(p));
-            malformed_hints.write().retain(|p, _| !invalidated(p));
-
-            // Write AT live-region announcement.
-            live_writer.set(format!(
-                "Stage moved from position {} to {}",
-                src_local_index + 1,
-                to + 1
-            ));
-        },
-    });
-
     rsx! {
         li {
             class: "{base_class}",
             "data-stage-id": "{super::format_stage_id(&stage_id)}",
             oncontextmenu,
-            ondragover: handlers.ondragover,
-            ondragleave: handlers.ondragleave,
-            ondragend: handlers.ondragend,
-            ondrop: handlers.ondrop,
-            onmounted: move |evt: MountedEvent| {
-                item_ref.set(Some(evt.data()));
-            },
             SortableHandle {
-                state: sortable_for_handle,
+                state: sortable,
                 index: local_index,
                 group: parent_pipeline_path.clone(),
                 group_len,

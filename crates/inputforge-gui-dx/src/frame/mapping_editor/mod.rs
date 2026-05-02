@@ -64,9 +64,10 @@ pub(crate) fn MappingEditor() -> Element {
     // prop-drilling through Pipeline. The live region is rendered once inside
     // the editor shell for AT a11y.
     let sortable: SortableState<StageId> = use_sortable_state::<StageId>();
-    // Clone before moving into the provider closure; SortableState<StageId>
-    // is Clone but not Copy (StageId is Vec-backed, not Copy).
-    let sortable_for_live = sortable.clone();
+    // SortableState is `Copy` regardless of `G` (every field is a
+    // `Signal`, which is `Copy` unconditionally), so the bundle is
+    // freely shared with the live-region mount and the context.
+    let sortable_for_live = sortable;
     use_context_provider(|| sortable);
 
     // Mount the editor-scoped keyboard listener unconditionally (Dioxus hook
