@@ -158,6 +158,18 @@ pub(crate) fn Stage(
     let title = stage_title_for(&action).to_owned();
     let summary = malformed_hint.unwrap_or_else(|| stage_summary_for(&action, &cfg));
     let right_slot = stage_body::header_right_slot(&action, expanded);
+    // Provide a richer accessible name for the ResponseCurve header so screen
+    // reader users hear the curve summary alongside the toggle affordance.
+    // All other variants omit the override (None) and rely on the implicit
+    // accessible name derived from the button's visible children.
+    let aria_label_override: Option<String> = if let Action::ResponseCurve { .. } = &action {
+        Some(format!(
+            "Toggle stage body. Curve: {}",
+            stage_summary_for(&action, &cfg),
+        ))
+    } else {
+        None
+    };
     let body_id = format!("if-stage-body-{}", super::format_stage_id(&stage_id));
 
     // Context-menu handler: writes cursor coordinates + target stage id into
@@ -195,6 +207,7 @@ pub(crate) fn Stage(
                 expanded,
                 is_malformed,
                 right_slot,
+                aria_label_override,
             }
             if expanded {
                 div {

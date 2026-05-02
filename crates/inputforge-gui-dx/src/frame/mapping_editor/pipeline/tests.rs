@@ -953,6 +953,7 @@ fn add_palette_button_renders_for_non_empty_pipeline() {
 
 #[test]
 fn placeholder_bodies_show_spec_caption() {
+    // ResponseCurve no longer uses a placeholder; verify Deadzone still does.
     let actions = vec![Action::Deadzone {
         config: DeadzoneConfig::default(),
     }];
@@ -961,6 +962,59 @@ fn placeholder_bodies_show_spec_caption() {
     assert!(
         html.contains("F10 / F11 / F14 owns this body"),
         "expected placeholder caption: {html}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Task 16: F9 dispatcher integration (ResponseCurve body + thumbnail)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn response_curve_stage_expanded_renders_f10_body_not_placeholder() {
+    // Mount Pipeline with [Action::ResponseCurve { curve: identity }],
+    // pre-expand stage 0.
+    // Assert html contains "if-curve" (F10 root class) AND does NOT contain
+    // "F10 / F11 / F14 owns this body" (former placeholder caption).
+    let actions = vec![Action::ResponseCurve {
+        curve: inputforge_core::processing::ResponseCurve::PiecewiseLinear {
+            points: vec![(-1.0, -1.0), (1.0, 1.0)],
+            symmetric: false,
+        },
+    }];
+    let (state, addr) = build_state(actions);
+    let pre_expanded = vec![StageId(vec![StageIdSegment::Index(0)])];
+    let html = render_with_expanded(state, addr, pre_expanded);
+    assert!(
+        html.contains("if-curve"),
+        "expected F10 body root class 'if-curve' in expanded stage: {html}"
+    );
+    assert!(
+        !html.contains("F10 / F11 / F14 owns this body"),
+        "placeholder caption must not appear after F10 body lands: {html}"
+    );
+}
+
+#[test]
+fn response_curve_header_right_slot_emits_thumbnail_not_chevron() {
+    // Mount Pipeline with the same identity curve, collapsed (no pre-expand).
+    // Assert html contains "if-curve__thumbnail" AND does NOT contain
+    // the default chevron class "if-stage__chevron".
+    let actions = vec![Action::ResponseCurve {
+        curve: inputforge_core::processing::ResponseCurve::PiecewiseLinear {
+            points: vec![(-1.0, -1.0), (1.0, 1.0)],
+            symmetric: false,
+        },
+    }];
+    let (state, addr) = build_state(actions);
+    // Do NOT pre-expand; the collapsed header renders only the right-slot thumbnail.
+    let html = render_with(state, addr);
+    assert!(
+        html.contains("if-curve__thumbnail"),
+        "expected thumbnail class 'if-curve__thumbnail' in collapsed header: {html}"
+    );
+    assert!(
+        !html.contains("if-stage__chevron"),
+        "default chevron must not appear in ResponseCurve header after F10 lands: {html}"
     );
 }
 

@@ -37,6 +37,14 @@ pub(crate) fn StageHeader(
     /// `stage_body::header_right_slot`). F10/F11 override with a preview
     /// thumbnail.
     right_slot: Element,
+    /// When `Some(s)`, emits `aria-label="{s}"` on the header `<button>`,
+    /// providing a variant-specific accessible name that supplements the
+    /// default implicit label derived from the button's text content.
+    /// `None` (the default for all non-F10 variants) omits the attribute
+    /// entirely so the browser derives the accessible name from the button's
+    /// visible children (title + summary).
+    #[props(default)]
+    aria_label_override: Option<String>,
 ) -> Element {
     let editor = use_context::<EditorState>();
     let mut expanded_set = editor.expanded_stages;
@@ -64,6 +72,7 @@ pub(crate) fn StageHeader(
             class: "if-stage__header",
             "aria-expanded": if expanded { "true" } else { "false" },
             "aria-controls": "{controls_id}",
+            "aria-label": aria_label_override,
             onclick,
             div { class: "{title_class}", "{title}" }
             div { class: "if-stage__summary", "{summary}" }

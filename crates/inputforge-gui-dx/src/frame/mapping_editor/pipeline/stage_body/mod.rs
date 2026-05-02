@@ -94,7 +94,14 @@ pub(crate) fn StageBody(
                 .unwrap_or(u8::MAX),
             }
         },
-        Action::ResponseCurve { .. } => rsx! { placeholders::ResponseCurvePlaceholder {} },
+        Action::ResponseCurve { curve } => rsx! {
+            response_curve::ResponseCurveBody {
+                mapping_key: mapping_key.clone(),
+                stage_id: stage_id.clone(),
+                curve: curve.clone(),
+                root_actions: root_actions.clone(),
+            }
+        },
         Action::Deadzone { .. } => rsx! { placeholders::DeadzonePlaceholder {} },
         Action::ChangeMode { .. } => rsx! { placeholders::ChangeModePlaceholder {} },
     }
@@ -114,8 +121,8 @@ pub(crate) fn StageBody(
 )]
 pub(crate) fn header_right_slot(action: &Action, expanded: bool) -> Element {
     match action {
-        // F10 will override (preview = curve thumbnail):
-        Action::ResponseCurve { .. } => default_chevron(expanded),
+        // F10: thumbnail replaces the default chevron.
+        Action::ResponseCurve { curve } => response_curve::thumbnail::header_thumbnail(curve),
         // F11 will override (preview = deadzone visualization):
         Action::Deadzone { .. } => default_chevron(expanded),
         // F14 will override (preview = mode badge):
