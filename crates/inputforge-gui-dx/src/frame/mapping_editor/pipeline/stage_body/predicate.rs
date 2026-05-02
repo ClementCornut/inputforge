@@ -73,6 +73,16 @@ const KIND_ALL: &str = "All";
 const KIND_ANY: &str = "Any";
 const KIND_NOT: &str = "Not";
 
+/// Malformed-hint message shown when a leaf predicate's `input` is
+/// [`InputAddress::Unbound`].
+///
+/// Surfaced by [`PredicateEditor`] for every leaf kind
+/// (`ButtonPressed` / `ButtonReleased` / `AxisInRange` / `HatDirection`).
+/// Takes priority over per-kind hints (inverted axis range, empty hat
+/// directions) because no other validation is meaningful when there is no
+/// input bound yet.
+const HINT_PREDICATE_UNBOUND: &str = "Bind an input to complete this condition";
+
 /// Convert a `Condition` reference to its stable kind string.
 fn condition_kind(c: &Condition) -> &'static str {
     match c {
@@ -488,6 +498,25 @@ pub(crate) fn PredicateEditor(
         // ButtonPressed / ButtonReleased: source-label + rebind button.
         // ---------------------------------------------------------------
         Condition::ButtonPressed { input } | Condition::ButtonReleased { input } => {
+            // Task 9: malformed-hint write / clear on every render. These
+            // two leaf kinds have no per-kind validation hint of their own,
+            // so the only condition that can flip the hint is the input
+            // being `Unbound`. Render-time write so SSR observes it.
+            //
+            // REACTIVE-LOOP CONCERN (Task 40): the write value is derived
+            // solely from the `input` prop, which does not originate from
+            // malformed_hints, so no loop forms.
+            {
+                let mut malformed_hints = editor.malformed_hints;
+                if input.is_unbound() {
+                    malformed_hints
+                        .write()
+                        .insert(stage_id.clone(), HINT_PREDICATE_UNBOUND.to_owned());
+                } else {
+                    malformed_hints.write().remove(&stage_id);
+                }
+            }
+
             let input_clone = input.clone();
             let mk = mapping_key.clone();
             let sid = stage_id.clone();
@@ -540,26 +569,36 @@ pub(crate) fn PredicateEditor(
             let mut min_sig: Signal<f64> = use_signal(move || min_val);
             let mut max_sig: Signal<f64> = use_signal(move || max_val);
 
-            // Amendment 5: malformed hint when min > max.
+            // Task 9 + Amendment 5: malformed-hint write / clear on every
+            // render. Priority: Unbound > inverted-range. The hint is
+            // written during the render phase (matching `MapToVJoyBody` and
+            // `MapToKeyboardBody`) so SSR observes it and the user sees the
+            // guidance the same frame the condition becomes invalid.
+            //
             // REACTIVE-LOOP CONCERN (Task 40): both branches call
             // malformed_hints.write(), dirtying the Signal. No loop forms
-            // because the effect subscribes to min_sig/max_sig (not to
-            // malformed_hints itself), so dirtying malformed_hints does not
-            // re-trigger this effect. A read-then-compare guard would be more
+            // because the write value is derived from the `input` prop and
+            // local min/max signals, none of which originate from
+            // malformed_hints. A read-then-compare guard would be more
             // explicit but is not required for correctness here.
-            let sid_hint = stage_id.clone();
-            let mut malformed_hints = editor.malformed_hints;
-            use_effect(move || {
-                let lo = *min_sig.read();
-                let hi = *max_sig.read();
-                if lo > hi {
+            {
+                let mut malformed_hints = editor.malformed_hints;
+                if input.is_unbound() {
                     malformed_hints
                         .write()
-                        .insert(sid_hint.clone(), "min must not exceed max".to_owned());
+                        .insert(stage_id.clone(), HINT_PREDICATE_UNBOUND.to_owned());
                 } else {
-                    malformed_hints.write().remove(&sid_hint);
+                    let lo = *min_sig.read();
+                    let hi = *max_sig.read();
+                    if lo > hi {
+                        malformed_hints
+                            .write()
+                            .insert(stage_id.clone(), "min must not exceed max".to_owned());
+                    } else {
+                        malformed_hints.write().remove(&stage_id);
+                    }
                 }
-            });
+            }
 
             // Clones for the PredicateInputRow rebind callback.
             let mk_in = mapping_key.clone();
@@ -686,26 +725,33 @@ pub(crate) fn PredicateEditor(
             let input_addr = input.clone();
             let dirs = directions.clone();
 
-            // Amendment 5: malformed hint when directions is empty.
+            // Task 9 + Amendment 5: malformed-hint write / clear on every
+            // render. Priority: Unbound > empty-directions. The hint is
+            // written during the render phase (matching `MapToVJoyBody` and
+            // `MapToKeyboardBody`) so SSR observes it and the user sees the
+            // guidance the same frame the condition becomes invalid.
+            //
             // REACTIVE-LOOP CONCERN (Task 40): both branches call
             // malformed_hints.write(), dirtying the Signal. No loop forms
-            // because the effect captures dirs_hint by value (a plain Vec,
-            // not a Signal read), so dirtying malformed_hints does not
-            // re-trigger this effect. A read-then-compare guard would be more
+            // because the write value is derived from the `input` prop and
+            // the `directions` Vec value, neither of which originates from
+            // malformed_hints. A read-then-compare guard would be more
             // explicit but is not required for correctness here.
-            let sid_hint = stage_id.clone();
-            let dirs_hint = dirs.clone();
-            let mut malformed_hints = editor.malformed_hints;
-            use_effect(move || {
-                if dirs_hint.is_empty() {
+            {
+                let mut malformed_hints = editor.malformed_hints;
+                if input.is_unbound() {
+                    malformed_hints
+                        .write()
+                        .insert(stage_id.clone(), HINT_PREDICATE_UNBOUND.to_owned());
+                } else if dirs.is_empty() {
                     malformed_hints.write().insert(
-                        sid_hint.clone(),
+                        stage_id.clone(),
                         "at least one direction must be selected".to_owned(),
                     );
                 } else {
-                    malformed_hints.write().remove(&sid_hint);
+                    malformed_hints.write().remove(&stage_id);
                 }
-            });
+            }
 
             // Clones for the rebind callback.
             let mk_in = mapping_key.clone();

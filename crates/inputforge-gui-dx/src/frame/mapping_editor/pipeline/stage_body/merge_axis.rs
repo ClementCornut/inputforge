@@ -52,6 +52,15 @@ use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, forma
 use crate::frame::mapping_list::source_label;
 use crate::patterns::live_capture::{CaptureFilter, LiveCapture};
 
+/// Malformed-hint message shown when the [`MergeAxisBody`] secondary input
+/// is [`InputAddress::Unbound`].
+///
+/// Surfaced by [`MergeAxisBody`] as the highest-priority hint for the
+/// stage. Pre-empts the existing "Secondary input must differ from primary"
+/// hint because no other validation is meaningful when no secondary input
+/// is bound yet.
+const HINT_MERGE_UNBOUND: &str = "Bind a secondary input to complete this merge";
+
 /// Convert a [`MergeOp`] to its stable string key used as the Select value.
 const fn op_to_str(op: MergeOp) -> &'static str {
     match op {
@@ -107,32 +116,32 @@ pub(crate) fn MergeAxisBody(
     // capture; cleared when capture arrives or is cancelled.
     let mut is_armed_consumer: Signal<bool> = use_signal(|| false);
 
-    // Amendment 1: malformed-hint write / clear on every render.
-    // When secondary == primary, the merge is a no-op and the stage is
-    // flagged as malformed per spec lines 587-589.
+    // Task 9 + Amendment 1: malformed-hint write / clear on every render.
+    // Priority: Unbound > secondary-equals-primary. Written during the
+    // render phase (matching `MapToVJoyBody` / `MapToKeyboardBody`) so SSR
+    // observes the hint and the user sees the guidance the same frame the
+    // condition becomes invalid.
     //
     // REACTIVE-LOOP CONCERN (Task 40): both branches call malformed.write(),
-    // which marks the Signal dirty and could re-trigger effects that read
-    // malformed_hints. In practice this is safe because use_effect captures
-    // the hint values at call time (secondary_for_hint / primary_addr are
-    // plain values, not Signal reads), so the effect does not re-subscribe
-    // to malformed_hints and therefore cannot form a loop. A read-then-compare
-    // guard would be more explicit but is not required for correctness here.
-    let primary_addr = mapping_key.1.clone();
-    let secondary_for_hint = second_input.clone();
-    let stage_id_for_hint = stage_id.clone();
-    let mut malformed = editor.malformed_hints;
-    use_effect(move || {
-        let mut map = malformed.write();
-        if secondary_for_hint == primary_addr {
-            map.insert(
-                stage_id_for_hint.clone(),
+    // marking the Signal dirty. No loop forms because the write value is
+    // derived from the `second_input` and `mapping_key.1` props, neither of
+    // which originates from malformed_hints. A read-then-compare guard
+    // would be more explicit but is not required for correctness here.
+    {
+        let mut malformed = editor.malformed_hints;
+        if second_input.is_unbound() {
+            malformed
+                .write()
+                .insert(stage_id.clone(), HINT_MERGE_UNBOUND.to_owned());
+        } else if second_input == mapping_key.1 {
+            malformed.write().insert(
+                stage_id.clone(),
                 "Secondary input must differ from primary".to_owned(),
             );
         } else {
-            map.remove(&stage_id_for_hint);
+            malformed.write().remove(&stage_id);
         }
-    });
+    }
 
     // --- Capture-and-commit for secondary input ---
     // When a LiveCapture fires and we are armed, dispatch SetMapping with

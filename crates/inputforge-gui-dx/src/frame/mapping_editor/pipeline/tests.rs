@@ -464,6 +464,43 @@ fn render_with_full(
     render(&vdom)
 }
 
+/// Render helper that runs an extra `render_immediate` pass after the
+/// initial rebuild, allowing render-phase signal writes from a child
+/// (e.g. `editor.malformed_hints` writes inside a `stage_body` component)
+/// to propagate back to the parent `Stage` component that reads the same
+/// signal. Without this second pass the `Stage` reads the signal before
+/// the child has had a chance to write, and the rendered HTML reflects
+/// the pre-write state.
+///
+/// Used by Task 9's malformed-hint SSR tests where the unbound /
+/// per-kind hint must appear in the stage summary slot.
+fn render_with_expanded_settled(
+    state: AppState,
+    addr: InputAddress,
+    pre_expanded_stages: Vec<StageId>,
+) -> String {
+    let mut vdom = VirtualDom::new_with_props(
+        HarnessComponent,
+        HarnessProps {
+            state: Arc::new(RwLock::new(state)),
+            addr,
+            pre_expanded_stages,
+            virtual_devices: vec![],
+            pre_stage_menu: None,
+            pre_malformed_hints: HashMap::new(),
+        },
+    );
+    vdom.rebuild_in_place();
+    // Second pass: pick up dirty scopes flagged by the child's render-phase
+    // writes to `editor.malformed_hints`. Dioxus marks the parent dirty
+    // when a child writes to a Signal the parent has subscribed to via
+    // `.read()`, but `rebuild_in_place` only runs one pass, so the parent
+    // (`Stage`) ends up rendering the pre-write summary unless we drive a
+    // second render explicitly.
+    vdom.render_immediate(&mut dioxus::core::NoOpMutations);
+    render(&vdom)
+}
+
 /// Render helper that pre-seeds `EditorState::malformed_hints`. Used by
 /// Task 35's SSR test: body `use_effect` blocks do not fire during SSR, so
 /// we inject the hint directly and verify the visual treatment appears.
@@ -1736,5 +1773,122 @@ fn header_subtitle_unbound_primary_renders_unbound_modifier() {
     assert!(
         html.contains(">Unbound<"),
         "Unbound label text missing in header subtitle: {html}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Task 9: Unbound predicate / merge-axis inputs surface a malformed-hint
+//
+// When a leaf predicate input or `MergeAxis` secondary is `Unbound`, the
+// stage's malformed-hint must guide the user to bind an input. The Unbound
+// state has the highest priority: it pre-empts the per-kind hints (empty
+// hat-direction set, inverted axis range, secondary equals primary).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn predicate_button_pressed_unbound_surfaces_malformed_hint() {
+    // ButtonPressed leaves had no per-kind validation hint before Task 9.
+    // With an Unbound input the stage must now show the bind-an-input
+    // guidance in the summary slot.
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed {
+            input: InputAddress::Unbound,
+        },
+        if_true: vec![],
+        if_false: Vec::new(),
+    }];
+    let (state, addr) = build_state(actions);
+    let html =
+        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+
+    assert!(
+        html.contains("Bind an input to complete this condition"),
+        "expected unbound predicate hint, got: {html}"
+    );
+}
+
+#[test]
+fn predicate_button_released_unbound_surfaces_malformed_hint() {
+    // ButtonReleased mirrors ButtonPressed: no per-kind hint before Task 9,
+    // Unbound now triggers the bind-an-input guidance.
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonReleased {
+            input: InputAddress::Unbound,
+        },
+        if_true: vec![],
+        if_false: Vec::new(),
+    }];
+    let (state, addr) = build_state(actions);
+    let html =
+        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+
+    assert!(
+        html.contains("Bind an input to complete this condition"),
+        "expected unbound predicate hint, got: {html}"
+    );
+}
+
+#[test]
+fn predicate_axis_in_range_unbound_pre_empts_inverted_range_hint() {
+    // AxisInRange has an existing per-kind hint when min > max ("min must
+    // not exceed max"). With Unbound, the bind-an-input hint takes priority
+    // even though the range is also inverted.
+    let actions = vec![Action::Conditional {
+        condition: Condition::AxisInRange {
+            input: InputAddress::Unbound,
+            min: 1.0,
+            max: -1.0,
+        },
+        if_true: vec![],
+        if_false: Vec::new(),
+    }];
+    let (state, addr) = build_state(actions);
+    let html =
+        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+
+    assert!(
+        html.contains("Bind an input to complete this condition"),
+        "expected unbound predicate hint to win over inverted-range hint, got: {html}"
+    );
+}
+
+#[test]
+fn predicate_hat_direction_unbound_pre_empts_empty_directions_hint() {
+    // HatDirection has an existing per-kind hint when directions is empty
+    // ("at least one direction must be selected"). With Unbound, the
+    // bind-an-input hint takes priority even when directions is also empty.
+    let actions = vec![Action::Conditional {
+        condition: Condition::HatDirection {
+            input: InputAddress::Unbound,
+            directions: vec![],
+        },
+        if_true: vec![],
+        if_false: Vec::new(),
+    }];
+    let (state, addr) = build_state(actions);
+    let html =
+        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+
+    assert!(
+        html.contains("Bind an input to complete this condition"),
+        "expected unbound predicate hint to win over empty-directions hint, got: {html}"
+    );
+}
+
+#[test]
+fn merge_axis_unbound_secondary_surfaces_malformed_hint() {
+    // MergeAxis with an Unbound secondary input must surface the merge-
+    // specific bind-a-secondary-input hint.
+    let actions = vec![Action::MergeAxis {
+        second_input: InputAddress::Unbound,
+        operation: MergeOp::Average,
+    }];
+    let (state, addr) = build_state(actions);
+    let html =
+        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+
+    assert!(
+        html.contains("Bind a secondary input to complete this merge"),
+        "expected unbound secondary hint, got: {html}"
     );
 }
