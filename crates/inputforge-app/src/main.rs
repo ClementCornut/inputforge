@@ -2,15 +2,8 @@
 
 //! `InputForge`, desktop application entry point.
 //!
-//! Wires together the engine thread, system tray icon, and optional GUI
-//! window. The engine runs on a dedicated thread (`SDL3` is `!Send`), while
-//! the main thread owns the tray icon and optionally hosts an `eframe` GUI.
-
-#[cfg(all(feature = "gui-egui", feature = "gui-dioxus"))]
-compile_error!("features `gui-egui` and `gui-dioxus` are mutually exclusive");
-
-#[cfg(not(any(feature = "gui-egui", feature = "gui-dioxus")))]
-compile_error!("one of `gui-egui` or `gui-dioxus` must be enabled");
+//! Wires together the engine thread, system tray icon, and the Dioxus GUI
+//! window. The engine runs on a dedicated thread (`SDL3` is `!Send`).
 
 mod cli;
 mod tray;
@@ -31,17 +24,10 @@ use inputforge_core::profile::Profile;
 use inputforge_core::profile::manager::ensure_default_profile;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::AppState;
-#[cfg(feature = "gui-egui")]
-use inputforge_core::state::EngineStatus;
 
 use crate::cli::Cli;
 use crate::tray::AppTray;
-#[cfg(feature = "gui-egui")]
-use crate::tray::TrayAction;
 
-#[cfg(feature = "gui-egui")]
-use inputforge_gui::launch_gui;
-#[cfg(feature = "gui-dioxus")]
 use inputforge_gui_dx::launch_gui;
 
 #[global_allocator]
@@ -123,10 +109,6 @@ fn main() -> Result<()> {
     // Create the system tray icon (always visible).
     let tray = AppTray::new(Arc::clone(&state))?;
 
-    // GUI launch, Shape A: cfg-split because the Dioxus and egui lifecycles
-    // diverge. The egui flow is byte-identical to today.
-
-    #[cfg(feature = "gui-dioxus")]
     {
         if let Err(e) = launch_gui(
             Arc::clone(&state),
@@ -141,30 +123,6 @@ fn main() -> Result<()> {
         // through to shutdown, no run_tray_loop, no drain_stale_gui_events,
         // no quit_requested flag. The window-hides-on-X behavior is owned
         // by Dioxus via WindowCloseBehaviour::WindowHides set in launch_gui.
-    }
-
-    #[cfg(feature = "gui-egui")]
-    {
-        let mut quit_requested = false;
-        if !cli.start_minimized {
-            for action in launch_gui_blocking(&tray, &state, &cmd_tx, &settings) {
-                match action {
-                    TrayAction::Quit => quit_requested = true,
-                    TrayAction::ToggleActivation => {
-                        let status = state.read().engine_status;
-                        let cmd = match status {
-                            EngineStatus::Running => EngineCommand::Deactivate,
-                            EngineStatus::Paused | EngineStatus::Stopped => EngineCommand::Activate,
-                        };
-                        let _ = cmd_tx.send(cmd);
-                    }
-                    TrayAction::ShowGui => {} // already drained, satisfy exhaustiveness
-                }
-            }
-        }
-        if !quit_requested {
-            run_tray_loop(&tray, &state, &cmd_tx, &settings);
-        }
     }
 
     // Graceful shutdown.
@@ -235,151 +193,6 @@ fn run_engine_inner(
     );
     engine.run()?;
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// GUI lifecycle
-// ---------------------------------------------------------------------------
-
-/// Launch the eframe GUI, blocking until the user closes the window.
-///
-/// After the window closes, stale `ShowGui` menu events are discarded
-/// and any other pending actions (`Quit`, `ToggleActivation`) are
-/// returned for the caller to process.
-#[cfg(feature = "gui-egui")]
-fn launch_gui_blocking(
-    tray: &AppTray,
-    state: &Arc<RwLock<AppState>>,
-    cmd_tx: &mpsc::Sender<EngineCommand>,
-    settings: &AppSettings,
-) -> Vec<TrayAction> {
-    let gui_state = Arc::clone(state);
-    let gui_tx = cmd_tx.clone();
-    let menu_ids = tray.menu_item_ids();
-
-    if let Err(e) = launch_gui(gui_state, gui_tx, menu_ids, settings.clone(), false) {
-        // start_minimized: false, main.rs gates the egui startup launch
-        // from cli.start_minimized itself; once we're in launch_gui_blocking,
-        // we always want the window visible. Parameter exists only for
-        // signature parity with the Dioxus crate (deletes at F16).
-        tracing::error!(%e, "GUI exited with error");
-    }
-
-    let mut pending = Vec::new();
-
-    // Check if the GUI closed because of a tray Quit click.
-    {
-        let mut guard = state.write();
-        if guard.quit_requested {
-            pending.push(TrayAction::Quit);
-            guard.quit_requested = false;
-        }
-    }
-
-    // Drain any events that arrived between the last update() and window close.
-    pending.extend(drain_stale_gui_events(tray));
-    pending
-}
-
-/// Drain queued menu events, discarding stale `ShowGui` clicks.
-///
-/// While eframe owns the message pump, tray menu clicks accumulate in
-/// the `MenuEvent` channel. `ShowGui` events are meaningless (the GUI
-/// just closed), but `Quit` and `ToggleActivation` are legitimate user
-/// actions that the caller should honor.
-#[cfg(feature = "gui-egui")]
-fn drain_stale_gui_events(tray: &AppTray) -> Vec<TrayAction> {
-    let mut pending = Vec::new();
-    while let Some(action) = tray.poll_event() {
-        if action != TrayAction::ShowGui {
-            pending.push(action);
-        }
-    }
-    pending
-}
-
-// ---------------------------------------------------------------------------
-// Tray event loop
-// ---------------------------------------------------------------------------
-
-/// Run the Win32 message pump for tray icon events.
-///
-/// Blocks on `GetMessageW` (zero CPU when idle). Processes tray menu
-/// actions until the user selects Quit.
-#[cfg(feature = "gui-egui")]
-#[expect(
-    unsafe_code,
-    reason = "Win32 GetMessageW / TranslateMessage / DispatchMessageW for tray icon message pump"
-)]
-fn run_tray_loop(
-    tray: &AppTray,
-    state: &Arc<RwLock<AppState>>,
-    cmd_tx: &mpsc::Sender<EngineCommand>,
-    settings: &AppSettings,
-) {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, GetMessageW, MSG, TranslateMessage,
-    };
-
-    loop {
-        tray.refresh_toggle_label();
-
-        // Block until a Windows message arrives. Tray menu clicks,
-        // system messages, and WM_QUIT all wake this call.
-        let mut msg = MSG::default();
-
-        // SAFETY: `GetMessageW` is a standard Win32 blocking call.
-        // Passing `None` for hwnd processes messages for all windows
-        // owned by this thread (including the tray icon's hidden window).
-        let ret = unsafe { GetMessageW(&raw mut msg, None, 0, 0) };
-        if ret.0 <= 0 {
-            // WM_QUIT received or error, exit the loop.
-            break;
-        }
-        // SAFETY: `TranslateMessage` and `DispatchMessageW` are standard
-        // Win32 message dispatch calls operating on a valid `MSG` that
-        // was populated by `GetMessageW` above.
-        let _ = unsafe { TranslateMessage(&raw const msg) };
-        // SAFETY: See comment above.
-        unsafe { DispatchMessageW(&raw const msg) };
-
-        // Process all queued tray menu events after each message pump cycle.
-        while let Some(action) = tray.poll_event() {
-            match action {
-                TrayAction::ShowGui => {
-                    let deferred = launch_gui_blocking(tray, state, cmd_tx, settings);
-                    tray.refresh_toggle_label();
-                    for deferred_action in deferred {
-                        match deferred_action {
-                            TrayAction::Quit => return,
-                            TrayAction::ToggleActivation => {
-                                let status = state.read().engine_status;
-                                let cmd = match status {
-                                    EngineStatus::Running => EngineCommand::Deactivate,
-                                    EngineStatus::Paused | EngineStatus::Stopped => {
-                                        EngineCommand::Activate
-                                    }
-                                };
-                                let _ = cmd_tx.send(cmd);
-                                tray.refresh_toggle_label();
-                            }
-                            TrayAction::ShowGui => {}
-                        }
-                    }
-                }
-                TrayAction::ToggleActivation => {
-                    let status = state.read().engine_status;
-                    let cmd = match status {
-                        EngineStatus::Running => EngineCommand::Deactivate,
-                        EngineStatus::Paused | EngineStatus::Stopped => EngineCommand::Activate,
-                    };
-                    let _ = cmd_tx.send(cmd);
-                    tray.refresh_toggle_label();
-                }
-                TrayAction::Quit => return,
-            }
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

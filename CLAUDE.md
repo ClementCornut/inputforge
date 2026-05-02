@@ -5,12 +5,11 @@
 Launch the Dioxus GUI with:
 
 ```
-dx run -p inputforge-app --no-default-features --features gui-dioxus
+dx run -p inputforge-app
 ```
 
 (Use `dx run`, not `cargo run`; the dioxus CLI handles asset bundling and
-hot-reload that plain cargo skips. `--no-default-features` disables the egui
-backend so the dioxus backend is the sole GUI target.)
+hot-reload that plain cargo skips.)
 
 While that command is running in a debug build on Windows, the embedded
 WebView2 exposes the Chrome DevTools Protocol on `http://127.0.0.1:9222`. The

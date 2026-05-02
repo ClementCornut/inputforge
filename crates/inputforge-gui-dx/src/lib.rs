@@ -61,17 +61,13 @@ pub(crate) struct LaunchParams {
 ///
 /// # Errors
 ///
-/// Currently always returns `Ok(())`. The `Result` return type exists for
-/// signature parity with `inputforge_gui::launch_gui`, enabling `cfg`-gated
-/// dispatch in `inputforge-app::main`. Future tasks may surface engine or
-/// runtime initialization failures via this `Result`.
+/// Currently always returns `Ok(())`. The `Result` return type is reserved
+/// for future tasks that may surface engine or runtime initialization
+/// failures.
 #[allow(
     clippy::needless_pass_by_value,
-    reason = "signature parity with inputforge_gui::launch_gui, main.rs dispatches \
-              both crates via a cfg-gated `use` line; changing to `&` here would \
-              break the call site when the egui crate is swapped in. `#[allow]` \
-              rather than `#[expect]` because the current body moves every arg, \
-              so the lint may not fire today; future body changes that borrow \
+    reason = "the body moves every argument into the Dioxus context, so the \
+              lint may not fire today; future body changes that borrow \
               instead of move must remain suppressed."
 )]
 pub fn launch_gui(

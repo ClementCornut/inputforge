@@ -9,30 +9,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use parking_lot::RwLock;
-#[cfg(feature = "gui-egui")]
-use tray_icon::menu::MenuEvent;
 use tray_icon::menu::{Menu, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 use inputforge_core::state::AppState;
-#[cfg(feature = "gui-egui")]
-use inputforge_core::state::EngineStatus;
-
-/// Actions that can be triggered from the tray context menu.
-///
-/// Only consumed by the egui lifecycle path; the Dioxus crate carries its
-/// own `tray::action::TrayAction` because muda events flow through Dioxus's
-/// `use_muda_event_handler` rather than this app-side `poll_event` loop.
-#[cfg(feature = "gui-egui")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TrayAction {
-    /// Open (or reopen) the GUI window.
-    ShowGui,
-    /// Toggle engine between active and inactive.
-    ToggleActivation,
-    /// Quit the application entirely.
-    Quit,
-}
 
 /// Manages the system tray icon and its context menu.
 pub(crate) struct AppTray {
@@ -85,28 +65,6 @@ impl AppTray {
         })
     }
 
-    /// Poll for a pending tray menu event.
-    ///
-    /// Returns `None` if no event is queued.
-    ///
-    /// Only used by the egui lifecycle path. Under `gui-dioxus`, muda events
-    /// are delivered directly to `use_muda_event_handler` inside the GUI
-    /// crate, bypassing this poll loop entirely.
-    #[cfg(feature = "gui-egui")]
-    pub(crate) fn poll_event(&self) -> Option<TrayAction> {
-        let event = MenuEvent::receiver().try_recv().ok()?;
-        if event.id == *self.show_item.id() {
-            return Some(TrayAction::ShowGui);
-        }
-        if event.id == *self.toggle_item.id() {
-            return Some(TrayAction::ToggleActivation);
-        }
-        if event.id == *self.quit_item.id() {
-            return Some(TrayAction::Quit);
-        }
-        None
-    }
-
     /// Return cloned menu item IDs for (show, toggle, quit).
     ///
     /// Used to pass IDs to the GUI so it can poll `MenuEvent` while open.
@@ -116,21 +74,6 @@ impl AppTray {
             self.toggle_item.id().clone(),
             self.quit_item.id().clone(),
         )
-    }
-
-    /// Update the toggle menu item text to match current engine status.
-    ///
-    /// Only used by the egui lifecycle path's `run_tray_loop`. Under
-    /// `gui-dioxus`, the toggle label is refreshed reactively from inside
-    /// the Dioxus app rather than from this app-side polling loop.
-    #[cfg(feature = "gui-egui")]
-    pub(crate) fn refresh_toggle_label(&self) {
-        let status = self.state.read().engine_status;
-        let label = match status {
-            EngineStatus::Running => "Deactivate",
-            EngineStatus::Paused | EngineStatus::Stopped => "Activate",
-        };
-        self.toggle_item.set_text(label);
     }
 }
 

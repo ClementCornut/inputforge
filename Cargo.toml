@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/inputforge-core", "crates/inputforge-gui", "crates/inputforge-gui-dx", "crates/inputforge-app"]
+members = ["crates/inputforge-core", "crates/inputforge-gui-dx", "crates/inputforge-app"]
 resolver = "2"
 
 [workspace.package]
@@ -77,15 +77,9 @@ muda = "0.17"
 dioxus = "0.7.6"
 dioxus-ssr = "0.7.6"
 scraper = "0.26.0"
-eframe = "0.33"
-egui = "0.33"
-egui_extras = { version = "0.33", features = ["image"] }
-egui_plot = "0.34"
-egui_kittest = { version = "0.33", features = ["wgpu", "snapshot"] }
 
 # Internal crates
 inputforge-core = { path = "crates/inputforge-core" }
-inputforge-gui = { path = "crates/inputforge-gui" }
 inputforge-gui-dx = { path = "crates/inputforge-gui-dx" }
 
 # Compiler lints (M-STATIC-VERIFICATION)
