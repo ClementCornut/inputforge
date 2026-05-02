@@ -1,7 +1,9 @@
 .if-curve {
   --color-curve-plot-bg: var(--color-bg-sunken);
-  --color-curve-grid-micro: rgba(255, 255, 255, 0.025);
-  --color-curve-grid-major: rgba(255, 255, 255, 0.06);
+  /* Navy-tinted micro/major grid (DESIGN.md "No Pure Black, No Pure White Rule"
+     applies even to translucent whites). Hue matches --color-bg-elevated. */
+  --color-curve-grid-micro: rgba(150, 165, 220, 0.06);
+  --color-curve-grid-major: rgba(150, 165, 220, 0.13);
   --color-curve-identity: var(--color-text-subtle);
   --color-curve-stroke: var(--color-primary);
   --color-curve-handle: rgb(from var(--color-primary) r g b / 0.40);
@@ -43,25 +45,31 @@
   height: 100%;
 }
 
+/* Stroke widths are in pixels (CSS unitless = px). Combined with
+   vector-effect: non-scaling-stroke this keeps stroke widths visually stable
+   at every plot size. The plan's original unitless decimals (0.005-0.025) were
+   sub-pixel and invisible; the values below are calibrated for the dense
+   "Evolved Glass Cockpit" instrument feel. */
 .if-curve__bg { fill: var(--color-curve-plot-bg); }
-.if-curve__grid-micro { stroke: var(--color-curve-grid-micro); stroke-width: 0.005; vector-effect: non-scaling-stroke; }
-.if-curve__grid-major { stroke: var(--color-curve-grid-major); stroke-width: 0.01; vector-effect: non-scaling-stroke; }
+.if-curve__grid-micro { stroke: var(--color-curve-grid-micro); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.if-curve__grid-major { stroke: var(--color-curve-grid-major); stroke-width: 1px; vector-effect: non-scaling-stroke; }
 .if-curve__identity {
   stroke: var(--color-curve-identity);
-  stroke-width: 0.01;
-  stroke-dasharray: 0.02 0.05;
+  stroke-width: 1px;
+  stroke-dasharray: 4 6;
   vector-effect: non-scaling-stroke;
   fill: none;
+  opacity: 0.5;
 }
 .if-curve__handle-line {
   stroke: var(--color-curve-handle);
-  stroke-width: 0.012;
-  stroke-dasharray: 0.02 0.04;
+  stroke-width: 1px;
+  stroke-dasharray: 3 4;
   vector-effect: non-scaling-stroke;
 }
 .if-curve__path {
   stroke: var(--color-curve-stroke);
-  stroke-width: 0.025;
+  stroke-width: 1.75px;
   stroke-linecap: round;
   stroke-linejoin: round;
   filter: url(#if-curve-glow);
@@ -71,13 +79,13 @@
 .if-curve__anchor {
   fill: var(--color-curve-anchor-fill);
   stroke: var(--color-curve-anchor-stroke);
-  stroke-width: 0.012;
+  stroke-width: 1.5px;
   vector-effect: non-scaling-stroke;
 }
 .if-curve__handle-marker { fill: var(--color-curve-handle); }
 .if-curve__hover-ring {
   stroke: var(--color-border-focus);
-  stroke-width: 0.018;
+  stroke-width: 2px;
   vector-effect: non-scaling-stroke;
   opacity: 0.55;
 }
@@ -87,14 +95,15 @@
 }
 .if-curve__focus-ring {
   stroke: var(--color-border-focus);
-  stroke-width: 0.018;
-  stroke-dasharray: 0.02 0.02;
+  stroke-width: 2px;
+  stroke-dasharray: 3 3;
   vector-effect: non-scaling-stroke;
+  fill: none;
 }
 .if-curve__live-guide {
   stroke: var(--color-live);
-  stroke-width: 0.005;
-  stroke-dasharray: 0.02 0.03;
+  stroke-width: 1px;
+  stroke-dasharray: 3 4;
   vector-effect: non-scaling-stroke;
   opacity: 0.5;
 }
@@ -105,11 +114,7 @@
 }
 .if-curve__tick-label {
   font-family: var(--font-mono);
-  /* Unitless font-size inside SVG = user units (viewBox-relative).
-     `0.075px` would resolve to 0.075 device pixels (sub-pixel, often
-     floored to 0); `0.075` user units render as ~8.6 px at 240 px
-     plot size (0.075 * 240 / 2.1). */
-  font-size: 0.075;
+  font-size: 11px;
   fill: var(--color-text-subtle);
 }
 .if-curve__thumbnail {
