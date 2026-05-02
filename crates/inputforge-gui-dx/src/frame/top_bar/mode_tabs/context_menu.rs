@@ -1,17 +1,15 @@
-//! Right-click / Shift+F10 menu for a mode tab. Hand-rolled floating list;
-//! does not consume F2 `MenuRoot`.
-//!
-//! The F2 `MenuRoot` is internally state-managed (no external `open` prop)
-//! and trigger-attached. Retrofitting it for a context menu would force two
-//! mental models into one component, so this menu is a hand-rolled floating
-//! list that reuses only the shared `focus_walker` helper.
+//! Right-click / Shift+F10 menu for a mode tab. Adopts the shared
+//! `AnchoredMenu` primitive for surface, backdrop, keyboard handling, and
+//! auto-focus on open.
 
 use dioxus::prelude::*;
 
 use inputforge_core::engine::EngineCommand;
 
-use crate::components::menu::{FocusAction, focus_menu_item};
+use crate::components::{AnchoredMenu, MenuAnchor, MenuItem};
 use crate::context::AppContext;
+
+pub(crate) use crate::components::CloseReason;
 
 /// Anchor coordinates for the menu (mouse position for right-click,
 /// originating tab's bounding rect for keyboard).
@@ -19,24 +17,6 @@ use crate::context::AppContext;
 pub(crate) struct AnchorRect {
     pub left: f64,
     pub bottom: f64,
-}
-
-/// Why the context menu closed. Lets the parent decide whether to
-/// re-focus the originating tab: `Escape` and `ClickOutside` should
-/// restore focus (the user dismissed without picking anything, so the
-/// tab is the natural focus target); `Tab` must NOT re-focus because
-/// the browser's own Tab traversal is moving focus to the next
-/// focusable element and re-focusing the tab fights that intent;
-/// `ItemActivated` re-focuses the tab as a default landing spot, for
-/// Rename / Delete the inline editor or dialog grabs focus immediately
-/// after via its own `onmounted`, so the tab focus is at most a one-
-/// tick stopover.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CloseReason {
-    Escape,
-    ClickOutside,
-    Tab,
-    ItemActivated,
 }
 
 /// Disabled-state inputs (computed by the parent from meta + tab name +
@@ -68,11 +48,11 @@ pub(crate) struct ContextMenuFlags {
 )]
 pub(crate) fn ModeTabContextMenu(
     tab_name: String,
-    /// Index of the open tab in the modes list. The menu's DOM `id` and
-    /// `aria-labelledby` target are derived from this integer so the
-    /// `document::eval` path in `focus_walker` is JS-string-safe even when
-    /// the mode name contains quotes, backslashes, or `'); alert(1); //`.
-    /// The mode name itself never reaches the DOM/JS layer.
+    /// Index of the open tab in the modes list. The menu's
+    /// `aria-labelledby` target is derived from this integer so the
+    /// referenced DOM id is JS-string-safe even when the mode name
+    /// contains quotes, backslashes, or `'); alert(1); //`. The mode name
+    /// itself never reaches the DOM/JS layer.
     tab_idx: usize,
     /// Source of truth for whether this menu is open. Carries the anchor
     /// coordinates so the menu can position itself.
@@ -92,206 +72,78 @@ pub(crate) fn ModeTabContextMenu(
     let cmd_activate = ctx.commands.clone();
     let cmd_default = ctx.commands.clone();
 
-    let menu_id = format!("mode-tab-menu-{tab_idx}");
-    let menu_id_for_keys = menu_id.clone();
-    let labelled_by = format!("mode-tab-{tab_idx}");
+    let labelled_by_owned = format!("mode-tab-{tab_idx}");
 
     let anchor = match open.read().as_ref() {
         Some((n, rect)) if n == &tab_name => *rect,
         _ => return rsx! {},
     };
 
-    let style = format!(
-        "position: fixed; top: {bot}px; left: {left}px;",
-        bot = anchor.bottom,
-        left = anchor.left
-    );
-
-    let close_name_for_backdrop = tab_name.clone();
-    let close_name_for_kb = tab_name.clone();
-    let close_name_tab_kb = tab_name.clone();
-    let close_name_for_activate = tab_name.clone();
-    let close_name_for_rename = tab_name.clone();
-    let close_name_for_delete = tab_name.clone();
-    let close_name_for_default = tab_name.clone();
     let activate_name = tab_name.clone();
     let rename_name = tab_name.clone();
     let delete_name = tab_name.clone();
     let default_name = tab_name.clone();
 
-    let backdrop_onclick = {
-        let mut open = open;
-        let on_close = on_close;
-        move |_| {
-            open.set(None);
-            on_close.call((close_name_for_backdrop.clone(), CloseReason::ClickOutside));
-        }
-    };
-
-    let menu_onkeydown = {
-        let mut open = open;
-        let on_close = on_close;
-        move |evt: KeyboardEvent| match evt.key() {
-            Key::Escape => {
-                evt.prevent_default();
-                open.set(None);
-                on_close.call((close_name_for_kb.clone(), CloseReason::Escape));
-            }
-            Key::ArrowDown => {
-                evt.prevent_default();
-                focus_menu_item(&menu_id_for_keys, FocusAction::Next);
-            }
-            Key::ArrowUp => {
-                evt.prevent_default();
-                focus_menu_item(&menu_id_for_keys, FocusAction::Prev);
-            }
-            Key::Home => {
-                evt.prevent_default();
-                focus_menu_item(&menu_id_for_keys, FocusAction::First);
-            }
-            Key::End => {
-                evt.prevent_default();
-                focus_menu_item(&menu_id_for_keys, FocusAction::Last);
-            }
-            Key::Tab => {
-                // Let focus leave the tablist entirely; close first so
-                // focus restoration target is not the menu. Do NOT
-                // prevent_default, the browser's natural Tab traversal
-                // moves focus to the next focusable element, and the
-                // parent's on_close handler skips re-focusing the tab
-                // for this reason (CloseReason::Tab).
-                open.set(None);
-                on_close.call((close_name_tab_kb.clone(), CloseReason::Tab));
-            }
-            _ => {}
-        }
-    };
-
-    let activate_onmounted = move |evt: MountedEvent| {
-        spawn(async move {
-            let _ = evt.data().set_focus(true).await;
+    let activate_onclick = move |_| {
+        let _ = cmd_activate.send(EngineCommand::ForceMode {
+            mode: activate_name.clone(),
         });
-    };
-    let activate_onclick = {
-        let mut open = open;
-        let on_close = on_close;
-        move |_| {
-            if flags.activate_disabled {
-                return;
-            }
-            let _ = cmd_activate.send(EngineCommand::ForceMode {
-                mode: activate_name.clone(),
-            });
-            open.set(None);
-            on_close.call((close_name_for_activate.clone(), CloseReason::ItemActivated));
-        }
     };
 
     let rename_onclick = {
-        let mut open = open;
-        let on_close = on_close;
         let on_rename = on_rename;
         move |_| {
-            if flags.rename_disabled {
-                return;
-            }
             on_rename.call(rename_name.clone());
-            open.set(None);
-            on_close.call((close_name_for_rename.clone(), CloseReason::ItemActivated));
         }
     };
 
     let delete_onclick = {
-        let mut open = open;
-        let on_close = on_close;
         let on_delete = on_delete;
         move |_| {
-            if flags.delete_disabled {
-                return;
-            }
             on_delete.call(delete_name.clone());
-            open.set(None);
-            on_close.call((close_name_for_delete.clone(), CloseReason::ItemActivated));
         }
     };
 
-    let default_onclick = {
-        let mut open = open;
-        let on_close = on_close;
-        move |_| {
-            if flags.set_default_disabled {
-                return;
-            }
-            let _ = cmd_default.send(EngineCommand::SetDefaultMode {
-                name: default_name.clone(),
-            });
-            open.set(None);
-            on_close.call((close_name_for_default.clone(), CloseReason::ItemActivated));
-        }
+    let default_onclick = move |_| {
+        let _ = cmd_default.send(EngineCommand::SetDefaultMode {
+            name: default_name.clone(),
+        });
+    };
+
+    let anchor = MenuAnchor {
+        x: anchor.left,
+        y: anchor.bottom,
     };
 
     rsx! {
-        // Backdrop catches clicks outside the menu and dismisses it.
-        // aria-hidden so AT only sees the menu itself, not the overlay.
-        div {
-            class: "if-menu__backdrop",
-            "aria-hidden": "true",
-            onclick: backdrop_onclick,
-        }
-        ul {
-            class: "if-modetab-context-menu",
-            id: "{menu_id}",
-            role: "menu",
-            "aria-labelledby": "{labelled_by}",
-            tabindex: "-1",
-            style: "{style}",
-            onkeydown: menu_onkeydown,
-
-            // Activate. onmounted on the first non-disabled item moves
-            // focus into the menu when it opens.
-            li { role: "none",
-                button {
-                    r#type: "button",
-                    role: "menuitem",
-                    tabindex: "-1",
-                    "aria-disabled": "{flags.activate_disabled}",
-                    onmounted: activate_onmounted,
-                    onclick: activate_onclick,
-                    "Activate"
-                }
+        AnchoredMenu {
+            open: Some(anchor),
+            on_close: move |reason: CloseReason| {
+                let mut open = open;
+                open.set(None);
+                on_close.call((tab_name.clone(), reason));
+            },
+            aria_labelledby: labelled_by_owned,
+            class: "if-modetab-context-menu".to_owned(),
+            MenuItem {
+                disabled: flags.activate_disabled,
+                onclick: activate_onclick,
+                "Activate"
             }
-
-            li { role: "none",
-                button {
-                    r#type: "button",
-                    role: "menuitem",
-                    tabindex: "-1",
-                    "aria-disabled": "{flags.rename_disabled}",
-                    onclick: rename_onclick,
-                    "Rename"
-                }
+            MenuItem {
+                disabled: flags.rename_disabled,
+                onclick: rename_onclick,
+                "Rename"
             }
-
-            li { role: "none",
-                button {
-                    r#type: "button",
-                    role: "menuitem",
-                    tabindex: "-1",
-                    "aria-disabled": "{flags.delete_disabled}",
-                    onclick: delete_onclick,
-                    "Delete"
-                }
+            MenuItem {
+                disabled: flags.delete_disabled,
+                onclick: delete_onclick,
+                "Delete"
             }
-
-            li { role: "none",
-                button {
-                    r#type: "button",
-                    role: "menuitem",
-                    tabindex: "-1",
-                    "aria-disabled": "{flags.set_default_disabled}",
-                    onclick: default_onclick,
-                    "Set as default"
-                }
+            MenuItem {
+                disabled: flags.set_default_disabled,
+                onclick: default_onclick,
+                "Set as default"
             }
         }
     }

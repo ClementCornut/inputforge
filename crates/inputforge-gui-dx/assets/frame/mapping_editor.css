@@ -689,22 +689,22 @@
     margin-bottom: 4px;
 }
 
-/* Task 28: categorized add palette */
+/* Task 28: categorized add palette. Now built on the shared MenuRoot
+   primitive (components/menu); local rules style only the trigger
+   surface (dashed-violet next-slot treatment) and the section / item
+   chrome inside the menu list. Open-state, backdrop, ESC, arrow-key
+   navigation, ARIA, and centered-anchor positioning come from the
+   primitive. */
 
-.if-add-palette {
-    /* Block: full-width slot for the trigger; relative anchors the
-       absolutely-positioned dropdown menu. */
-    display: block;
-    position: relative;
-}
+/* The MenuRoot wrapper carries `if-add-palette if-menu--block`; the
+   if-menu--block modifier (defined in components/menu.css) flips
+   .if-menu from inline-flex to block so the trigger row fills its
+   parent column. No additional positioning rule is needed here. */
 
-/* End-of-pipeline trigger: full-width "next slot" row. Same
-   dashed-violet family as the louder empty-state placeholder, including
-   the violet text color, so the two read as the same control at
-   different volumes rather than two different controls. Compact sits
-   at roughly half the dashed-border alpha so it stays quiet at rest;
-   hover brings border + bg up to the louder intensity. Hit target is
-   the full row (~28px tall) instead of an 8x14px glyph. */
+/* End-of-pipeline trigger: full-width "next slot" row. Same dashed-
+   violet family as the louder empty-state placeholder. unstyled=true
+   on MenuTrigger means we own the surface entirely; the .if-menu__trigger
+   defaults are skipped. */
 .if-add-palette__trigger {
     width: 100%;
     display: inline-flex;
@@ -737,10 +737,6 @@
     outline-offset: 2px;
 }
 
-/* Empty-pipeline placeholder: louder version of the same family. Same
-   violet text color as the compact trigger; distinguished only by
-   higher dashed-border + bg alpha and larger padding so the empty
-   card has more presence than the inline next-slot trigger. */
 .if-add-palette__trigger--louder {
     background: rgba(154, 120, 214, 0.06);
     border-color: rgba(184, 155, 234, 0.40);
@@ -753,14 +749,11 @@
     border-color: rgba(184, 155, 234, 0.60);
 }
 
+/* Menu list: extends .if-menu__list with palette-specific min-width.
+   `MenuItems.class` now lands DIRECTLY on `.if-menu__list` (the visible
+   chrome layer); the old absolutely-positioned `.if-menu__items` wrapper
+   is gone post-popper-refactor. Both classes coexist on the same element. */
 .if-add-palette__menu {
-    position: absolute;
-    z-index: 5;
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    padding: 4px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     min-width: 180px;
 }
 
@@ -801,68 +794,25 @@
     color: var(--color-control-badge-text);
 }
 
+/* Per-item modifier: tightens MenuItem's default padding to keep the
+   palette dense. The base .if-menu__item supplies hover bg, focus ring,
+   and disabled state. Equal-specificity override wins by source order
+   because MAPPING_EDITOR_CSS is loaded after MENU_CSS (theme/mod.rs). */
 .if-add-palette__item {
-    width: 100%;
-    text-align: left;
-    background: transparent;
-    border: none;
     padding: 4px 8px;
-    font-family: var(--font-sans);
     font-size: 12px;
-    color: var(--color-text);
-    cursor: pointer;
-    border-radius: 4px;
 }
 
-.if-add-palette__item:hover {
-    background: var(--color-bg-sunken);
-}
-
-/* Task 29: right-click stage actions menu */
-
-/* Full-viewport transparent backdrop catches outside clicks to dismiss
-   the menu. z-index 99 sits just below the menu (100) but above all
-   editor content. */
-.if-stage-menu__backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 99;
-    background: transparent;
-}
-
-.if-stage-menu {
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    padding: 4px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    min-width: 140px;
-    display: flex;
-    flex-direction: column;
-}
-
-.if-stage-menu__item {
-    width: 100%;
-    text-align: left;
-    background: transparent;
-    border: none;
-    padding: 4px 8px;
-    font-family: var(--font-sans);
-    font-size: 12px;
-    color: var(--color-text);
-    cursor: pointer;
-    border-radius: 4px;
-}
-
-.if-stage-menu__item:hover:not([disabled]) {
-    background: var(--color-bg-sunken);
-}
-
-.if-stage-menu__item[disabled] {
-    color: var(--color-text-muted);
-    cursor: not-allowed;
-}
+/* Task 29: right-click stage actions menu. Built on AnchoredMenu
+   (components/menu); local rules style the danger item only. The
+   menu's surface, backdrop, positioning, and keyboard handling all
+   come from the shared primitive. The `class: "if-stage-menu"` on
+   the AnchoredMenu invocation is a no-op pass-through (no rule
+   matches it today); kept on the Rust side so future palette tuning
+   has a hook to land on. */
 
 .if-stage-menu__item--danger {
-    color: var(--color-error, #f25555);
+    /* Hex fallback protects against silent invisible-text in any
+       partially-loaded theme where --color-error is undefined. */
+    color: var(--color-error, #F25555);
 }

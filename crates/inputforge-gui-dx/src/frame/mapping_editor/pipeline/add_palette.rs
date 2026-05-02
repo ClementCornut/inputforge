@@ -30,7 +30,7 @@ use inputforge_core::engine::EngineCommand;
 use inputforge_core::processing::{DeadzoneConfig, ResponseCurve};
 use inputforge_core::types::{InputAddress, KeyCombo, MergeOp, OutputAddress, OutputId, VJoyAxis};
 
-use crate::components::Icon;
+use crate::components::{Anchor, Icon, MenuItem, MenuItems, MenuRoot, MenuTrigger};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
@@ -178,11 +178,6 @@ const CONTROL_ITEMS: &[PaletteItem] = &[
 /// three-section menu; clicking an item inserts a default-configured action at
 /// `[path_prefix.., Index(target_len)]` and closes the menu.
 #[component]
-#[expect(
-    unused_qualifications,
-    reason = "Dioxus 0.7 RSX macro emits redundant `dioxus_elements::*` qualifications \
-              on per-element event listeners with bound closures."
-)]
 pub(crate) fn AddPalette(
     /// `(mode, InputAddress)` key for the mapping. Named `mapping_key` to
     /// avoid collision with Dioxus's reserved `key` prop.
@@ -202,17 +197,13 @@ pub(crate) fn AddPalette(
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
 
-    // Local open/close state for the dropdown menu.
-    let mut open = use_signal(|| false);
-
-    // Build the StageId for the new stage (path_prefix + Index(target_len)).
-    // Cloned here for use inside closures below.
     let path_prefix_clone = path_prefix.clone();
     let mapping_key_clone = mapping_key.clone();
     let root_actions_clone = root_actions.clone();
 
     // Shared do_insert closure factory. Returns a MouseEvent handler that
-    // inserts `action` at the target position.
+    // inserts `action` at the target position. Menu auto-closes via
+    // MenuItem; this closure no longer touches an open signal.
     let make_insert_handler = move |action: Action| {
         let key = mapping_key_clone.clone();
         let prefix = path_prefix_clone.clone();
@@ -222,28 +213,21 @@ pub(crate) fn AddPalette(
         let mut undo_log = editor.undo_log;
         let mut expanded = editor.expanded_stages;
         let mut malformed = editor.malformed_hints;
-        let mut open_sig = open;
         let insert_len = target_len;
 
         move |_: MouseEvent| {
-            // Build the insertion path.
             let mut path_segs = prefix.clone();
             path_segs.push(StageIdSegment::Index(insert_len));
             let insert_path = StageId(path_segs);
 
-            // Call insert_at_path against root_actions.
             let Some(new_actions) = insert_at_path(&root, &insert_path, action.clone()) else {
-                // Invalid path: skip edit and phantom undo entry.
-                open_sig.set(false);
                 return;
             };
 
-            // Amendment 3: read current name from snapshot.
             let cfg = cfg_sig.read();
             let current_name = cfg.mapping_names.get(&key.1).cloned();
             drop(cfg);
 
-            // Build before-Mapping snapshot.
             let before = Mapping {
                 input: key.1.clone(),
                 mode: key.0.clone(),
@@ -251,10 +235,8 @@ pub(crate) fn AddPalette(
                 actions: root.clone(),
             };
 
-            // Derive stage title for the undo label.
             let stage_title = action_palette_label(&action);
 
-            // Amendment 5: dispatch first; push undo only on success.
             if cmd_tx
                 .send(EngineCommand::SetMapping {
                     input: key.1.clone(),
@@ -269,11 +251,9 @@ pub(crate) fn AddPalette(
                     action = "add_palette_drop_offline",
                     "stage add dropped: engine channel disconnected"
                 );
-                open_sig.set(false);
                 return;
             }
 
-            // Push StageAdd undo entry.
             let label = format_undo_label(
                 UndoKind::StageAdd,
                 LabelArgs {
@@ -286,11 +266,6 @@ pub(crate) fn AddPalette(
                 .write()
                 .push_edit(key.clone(), before, UndoKind::StageAdd, label);
 
-            // Amendment 4: invalidate only paths whose indices shifted from
-            // the insert (paths in the same branch at-or-after the insert
-            // point). Strict ancestors and unrelated branches survive, so
-            // the parent Conditional / outer pipeline keeps its expanded
-            // state. Then re-expand the freshly-inserted stage.
             let parent_path = insert_path.0[..insert_path.0.len() - 1].to_vec();
             let insert_idx = insert_len;
             expanded
@@ -300,79 +275,63 @@ pub(crate) fn AddPalette(
                 .write()
                 .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, insert_idx));
             expanded.write().insert(insert_path);
-
-            // Close the menu.
-            open_sig.set(false);
         }
     };
 
-    // Class modifier depends on louder / compact mode. Both variants
-    // share the dashed-violet "next slot" treatment (defined in CSS);
-    // `--louder` raises the alpha to make the empty-pipeline placeholder
-    // shout. Compact stays quiet, then matches the louder intensity on
-    // hover so the affordance is discoverable without dominating the
-    // pipeline at rest.
     let trigger_class = if louder {
         "if-add-palette__trigger if-add-palette__trigger--louder"
     } else {
         "if-add-palette__trigger"
     };
 
+    let compact_aria_label = if louder {
+        None
+    } else {
+        // Icon-only trigger: must carry an accessible name. WCAG 2.1 SC 4.1.2.
+        Some("Add stage".to_owned())
+    };
+
     rsx! {
-        div { class: "if-add-palette",
-            if louder {
-                button {
-                    r#type: "button",
-                    class: "{trigger_class}",
-                    onclick: move |_| open.set(!open()),
+        MenuRoot { class: "if-add-palette if-menu--block".to_owned(),
+            MenuTrigger {
+                class: trigger_class.to_owned(),
+                unstyled: true,
+                aria_label: compact_aria_label,
+                if louder {
                     Icon { name: IconKind::Plus, size: IconSize::Sm }
                     "Add first stage"
-                }
-            } else {
-                button {
-                    r#type: "button",
-                    class: "{trigger_class}",
-                    "aria-label": "Add stage",
-                    onclick: move |_| open.set(!open()),
+                } else {
                     Icon { name: IconKind::Plus, size: IconSize::Sm }
                 }
             }
-            if open() {
-                div { class: "if-add-palette__menu",
-                    // --- Processing section ---
-                    div { class: "if-add-palette__section is-processing",
-                        div { class: "if-add-palette__section-title", "Processing" }
-                        for item in PROCESSING_ITEMS {
-                            button {
-                                r#type: "button",
-                                class: "if-add-palette__item",
-                                onclick: make_insert_handler((item.make)()),
-                                "{item.label}"
-                            }
+            MenuItems { class: "if-add-palette__menu".to_owned(), anchor: Anchor::Center,
+                div { class: "if-add-palette__section is-processing",
+                    div { class: "if-add-palette__section-title", "Processing" }
+                    for item in PROCESSING_ITEMS {
+                        MenuItem {
+                            class: "if-add-palette__item".to_owned(),
+                            onclick: make_insert_handler((item.make)()),
+                            "{item.label}"
                         }
                     }
-                    // --- Output section ---
-                    div { class: "if-add-palette__section is-output",
-                        div { class: "if-add-palette__section-title", "Output" }
-                        for item in OUTPUT_ITEMS {
-                            button {
-                                r#type: "button",
-                                class: "if-add-palette__item",
-                                onclick: make_insert_handler((item.make)()),
-                                "{item.label}"
-                            }
+                }
+                div { class: "if-add-palette__section is-output",
+                    div { class: "if-add-palette__section-title", "Output" }
+                    for item in OUTPUT_ITEMS {
+                        MenuItem {
+                            class: "if-add-palette__item".to_owned(),
+                            onclick: make_insert_handler((item.make)()),
+                            "{item.label}"
                         }
                     }
-                    // --- Control section ---
-                    div { class: "if-add-palette__section is-control",
-                        div { class: "if-add-palette__section-title", "Control" }
-                        for item in CONTROL_ITEMS {
-                            button {
-                                r#type: "button",
-                                class: "if-add-palette__item",
-                                onclick: make_insert_handler((item.make)()),
-                                "{item.label}"
-                            }
+                }
+                div { class: "if-add-palette__section is-control",
+                    div { class: "if-add-palette__section-title", "Control" }
+                    for item in CONTROL_ITEMS {
+                        MenuItem {
+                            class: "if-add-palette__item".to_owned(),
+                            onclick: make_insert_handler((item.make)()),
+                            "{item.label}"
                         }
                     }
                 }
