@@ -12,6 +12,10 @@ use super::device::DeviceId;
 /// as a sentinel `Bound { device: DeviceId(""), input: ... }` which silently
 /// rendered as `Btn 1` and confused users; the enum makes the state explicit
 /// at the type level.
+///
+/// Note: deliberately does NOT implement `Default`. Choosing between
+/// `Bound`-with-placeholder and `Unbound` would re-introduce the original
+/// silent-default bug in a different shape; call sites must be explicit.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InputAddress {
     Bound { device: DeviceId, input: InputId },
@@ -74,23 +78,35 @@ impl Serialize for InputAddress {
     }
 }
 
-// Intermediate enum for deserialise; the two variants share zero fields,
-// so the untagged disambiguation is unambiguous.
+// Intermediate types for deserialise. The `Unbound` arm wraps a struct with
+// `deny_unknown_fields` so that mixed-shape input (e.g.
+// `{ unbound = true, device = "x", input = {...} }`) is rejected by the
+// `Unbound` arm and falls through to the `Bound` arm. Without this, the
+// untagged enum would silently match `Unbound` on any input containing the
+// `unbound` key and drop the binding fields.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UnboundFields {
+    unbound: bool,
+}
+
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum InputAddressOnTheWire {
-    Unbound { unbound: bool },
+    Unbound(UnboundFields),
     Bound { device: DeviceId, input: InputId },
 }
 
 impl<'de> Deserialize<'de> for InputAddress {
     fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         match InputAddressOnTheWire::deserialize(de)? {
-            InputAddressOnTheWire::Unbound { unbound: true } => Ok(Self::Unbound),
-            InputAddressOnTheWire::Unbound { unbound: false } => Err(serde::de::Error::custom(
-                "InputAddress: `unbound = false` is not a valid encoding; \
-                 use the bound shape instead",
-            )),
+            InputAddressOnTheWire::Unbound(UnboundFields { unbound: true }) => Ok(Self::Unbound),
+            InputAddressOnTheWire::Unbound(UnboundFields { unbound: false }) => {
+                Err(serde::de::Error::custom(
+                    "InputAddress: `unbound = false` is not a valid encoding; \
+                     use the bound shape instead",
+                ))
+            }
             InputAddressOnTheWire::Bound { device, input } => Ok(Self::Bound { device, input }),
         }
     }
@@ -171,13 +187,17 @@ mod tests {
     }
 
     #[test]
-    fn input_address_serde_roundtrip() {
+    fn input_address_bound_json_roundtrip() {
         let addr = InputAddress::Bound {
             device: DeviceId("guid-001".to_owned()),
             input: InputId::Axis { index: 2 },
         };
-        let json = serde_json::to_string(&addr).unwrap();
-        let back: InputAddress = serde_json::from_str(&json).unwrap();
+        let j = serde_json::to_string(&addr).unwrap();
+        assert_eq!(
+            j,
+            r#"{"device":"guid-001","input":{"type":"axis","index":2}}"#
+        );
+        let back: InputAddress = serde_json::from_str(&j).unwrap();
         assert_eq!(addr, back);
     }
 
@@ -272,5 +292,19 @@ mod tests {
         let unbound = InputAddress::Unbound;
         assert!(unbound.is_unbound() && !unbound.is_bound());
         assert!(unbound.device().is_none() && unbound.input_id().is_none());
+    }
+
+    #[test]
+    fn input_address_unbound_with_bound_fields_does_not_silently_drop_them() {
+        // A mixed-shape input that includes both `unbound = true` and a
+        // `device` / `input` block. The deserializer must not silently
+        // pick `Unbound` and drop the binding; it should fall through to
+        // the `Bound` arm.
+        let mixed = r#"{"unbound":true,"device":"guid-001","input":{"type":"button","index":0}}"#;
+        let addr: InputAddress = serde_json::from_str(mixed).unwrap();
+        assert!(
+            matches!(addr, InputAddress::Bound { .. }),
+            "mixed-shape input must not be silently swallowed as Unbound, got {addr:?}"
+        );
     }
 }
