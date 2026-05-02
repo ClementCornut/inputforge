@@ -15,6 +15,7 @@ pub(crate) mod mutation;
 pub(crate) mod rendering;
 pub(crate) mod state;
 pub(crate) mod thumbnail;
+pub(crate) mod toolbar;
 
 #[cfg(test)]
 mod tests;

@@ -146,3 +146,93 @@ fn header_thumbnail_emits_svg_with_polyline_for_each_curve_kind() {
         );
     }
 }
+
+// `cmd_tx` is NOT a prop. The harness seeds it via `AppContext` per the
+// `HarnessComponent` pattern in `frame/mapping_editor/tests.rs:82-168`.
+// This avoids the `Sender: !PartialEq` problem entirely.
+#[derive(Clone, Props, PartialEq)]
+struct ToolbarHarnessProps {
+    curve: ResponseCurve,
+    stage_id: crate::frame::mapping_editor::undo_log::StageId,
+    root_actions: Vec<inputforge_core::action::Action>,
+    mapping_key: crate::frame::MappingKey,
+}
+
+#[component]
+fn ToolbarHarness(props: ToolbarHarnessProps) -> Element {
+    use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
+    use crate::frame::mapping_editor::pipeline::stage_body::response_curve::toolbar::Toolbar;
+    use inputforge_core::settings::AppSettings;
+    use inputforge_core::state::AppState;
+    use parking_lot::RwLock;
+    use std::sync::{Arc, mpsc};
+    let (cmd_tx, _rx) = mpsc::channel();
+    let raw = RawHandles {
+        state: Arc::new(RwLock::new(AppState::new())),
+        commands: cmd_tx,
+        settings: Arc::new(AppSettings::default()),
+    };
+    use_context_provider(|| raw.clone());
+    let meta = use_signal(MetaSnapshot::default);
+    let config = use_signal(ConfigSnapshot::default);
+    let live = use_signal(LiveSnapshot::default);
+    let ctx = AppContext {
+        state: Arc::clone(&raw.state),
+        commands: raw.commands.clone(),
+        settings: Arc::clone(&raw.settings),
+        meta,
+        config,
+        live,
+    };
+    use_context_provider(|| ctx);
+    crate::frame::mapping_editor::use_editor_state_provider();
+    rsx! {
+        Toolbar {
+            curve: props.curve,
+            stage_id: props.stage_id,
+            root_actions: props.root_actions,
+            mapping_key: props.mapping_key,
+        }
+    }
+}
+
+#[test]
+fn toolbar_type_change_emits_set_mapping() {
+    use inputforge_core::action::Action;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    let curve =
+        ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false).unwrap();
+    let actions = vec![Action::ResponseCurve {
+        curve: curve.clone(),
+    }];
+
+    // SSR mount only verifies static markup. Click simulation is covered
+    // by manual smoke tests + the keyboard/pointer pure-fn suites.
+    let mapping_key = (
+        "Default".to_owned(),
+        InputAddress::Bound {
+            device: DeviceId("dev".to_owned()),
+            input: InputId::Axis { index: 0 },
+        },
+    );
+    let stage_id = crate::frame::mapping_editor::undo_log::StageId(vec![
+        crate::frame::mapping_editor::undo_log::StageIdSegment::Index(0),
+    ]);
+    let mut vdom = VirtualDom::new_with_props(
+        ToolbarHarness,
+        ToolbarHarnessProps {
+            curve: curve.clone(),
+            stage_id,
+            root_actions: actions,
+            mapping_key,
+        },
+    );
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(html.contains("Linear"), "Linear tab missing: {html}");
+    assert!(html.contains("Spline"));
+    assert!(html.contains("Bezier"));
+    assert!(html.contains("if-switch"), "symmetric switch missing");
+    assert!(html.contains("Reset"));
+}
