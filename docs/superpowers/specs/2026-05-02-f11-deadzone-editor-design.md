@@ -121,7 +121,26 @@ crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/
 └── deadzone/                              (F11, consumes instruments::*)
 ```
 
-**Extraction rules.** Each helper in `instruments/` is moved from F10 verbatim; no logic change, no signature change unless required by genericity (e.g., `dispatch_stage_edit` accepts `Action` instead of `Action::ResponseCurve`). F10's existing tests must pass byte-identical after the move. F10's `mod.rs`, `keyboard.rs`, `toolbar.rs`, and `state.rs` are amended to import from `instruments::*` instead of carrying the implementations inline.
+**`mount_mouse_bridge` signature.** Each editor builds a per-instrument dispatch closure that captures its `Signal<BodyState>`, `Signal<ConfigSnapshot>`, mapping_key, stage_id, undo_log, malformed_hints, and engine cmd_tx; the shared helper signature is intentionally narrow:
+
+```rust
+pub fn mount_mouse_bridge(
+    plot_dom_id: &str,
+    dispatch_fn: impl Fn(BridgeEvent) + 'static,
+) -> EventHandler<MountedEvent>
+```
+
+The shared module owns: `BridgeEvent` (kind + viewBox-projected position + plot rect), `BRIDGE_JS_TEMPLATE` (the JS string), the `on_mounted` factory that injects the template via `document::eval` and forwards parsed messages to `dispatch_fn`, and the listener-cleanup logic from commit `55ed19c`. F10's existing `dispatch_bridge_event` (10-parameter helper at `mod.rs:284`) becomes the body of F10's per-instrument closure passed as `dispatch_fn`; F11 writes its own equivalent against `BodyState`'s deadzone-shaped fields. This is the principled boundary between "shared infrastructure" and "per-editor state".
+
+**Extraction rules.** Each helper in `instruments/` is moved from F10 with documented mechanical edits:
+
+- `compute_live_value` renames to `compute_live_axis_value` (clarity now that it's shared); F10's call site updates to the new name.
+- `dispatch_curve_edit` and `dispatch_curve_edit_no_undo` generalize to `dispatch_stage_edit` / `dispatch_stage_edit_no_undo` accepting `Action` instead of `Action::ResponseCurve`; F10's call sites pass `Action::ResponseCurve { ... }` explicitly.
+- `last_nudge_at_ms` and `last_nudge_key` collapse into a `NudgeCoalesce` struct in `instruments::nudge_coalesce`; F10's `BodyState` embeds the struct instead of carrying the two fields directly. The merge-vs-push decision moves to `NudgeCoalesce::should_merge(now_ms, key) -> bool`.
+- The SVG glow filter ID renames `if-curve-glow` to `if-instr-glow` in `<defs>`, in `response_curve.css`, and in the new `instruments::INSTR_GLOW_STDDEV: f64 = 0.012` constant.
+- The bridge helpers (`BridgeEvent`, `BRIDGE_JS_TEMPLATE`, `dispatch_bridge_event`, `stage_id_dom_id`, `on_mounted` factory) move to `instruments::bridge`; F10's call sites import from there.
+
+F10's existing tests are updated mechanically to reference the new symbol names and assert against the `NudgeCoalesce` struct shape. **Behavior is unchanged by construction:** dispatch payloads, undo entries, coalesce timing, and rendered SVG are identical pre- and post-extraction. F10's `mod.rs`, `keyboard.rs`, `toolbar.rs`, and `state.rs` are amended to import from `instruments::*` instead of carrying the implementations inline. The refactor task ships F10 and F11 changes in a single PR.
 
 **What is explicitly NOT extracted** (deferred until a third instrument forces it):
 
@@ -232,19 +251,23 @@ Single `<svg>` with `viewBox="-1.05 -1.05 2.1 2.1"` and `preserveAspectRatio="xM
 |---|---|---|---|
 | 1 | Background `<rect>` filling the viewBox | `.if-deadzone__bg` | `fill: var(--color-bg-sunken)` |
 | 2 | Zone bands (Q1 = D1), 5 vertical `<rect>`s under `<g transform="scale(1,-1)">` | `.if-deadzone__zone--sat`, `--ramp`, `--dead` | Sat: `fill: var(--color-error); opacity: 0.12`. Ramp: `fill: var(--color-primary); opacity: 0.06`. Dead: `fill: var(--color-text-subtle); opacity: 0.10`. X bounds derived from `(low, center_low, center_high, high)` per render. |
-| 3 | Major grid (lines at ±0.5 on both axes) | `.if-deadzone__grid-major` | `stroke: var(--instr-grid-major)`, 1px, `vector-effect: non-scaling-stroke` |
+| 3 | Major grid (vertical and horizontal lines at `-0.75, -0.5, -0.25, 0.25, 0.5, 0.75` on both axes; origin excluded, owned by layer 4) | `.if-deadzone__grid-major` | `stroke: var(--instr-grid-major)`, 1px, `vector-effect: non-scaling-stroke` |
 | 4 | Axis cross (x=0 and y=0) | `.if-deadzone__axis-cross` | `stroke: var(--instr-axis-cross)`, 1px, `vector-effect: non-scaling-stroke` |
 | 5 | Identity reference `<line>` from (-1,-1) to (1,1) | `.if-deadzone__identity` | `stroke: var(--instr-identity-stroke)`, 1px, `stroke-dasharray: 4 6`, `opacity: 0.55`, `fill: none`, `vector-effect: non-scaling-stroke` |
 | 6 | Deadzone curve `<polyline>`, 6 points: `(-1, -1)`, `(low, -1)`, `(center_low, 0)`, `(center_high, 0)`, `(high, 1)`, `(1, 1)` | `.if-deadzone__path` | `stroke: var(--color-deadzone-curve)`, 1.75px, `stroke-linejoin: round`, `filter: url(#if-instr-glow)`, `vector-effect: non-scaling-stroke`, `fill: none` |
-| 7 | Handle markers, 4 `<circle r="0.04">` at the four kinks: `(low, -1)`, `(center_low, 0)`, `(center_high, 0)`, `(high, 1)` | `.if-deadzone__handle` | `fill: var(--color-deadzone-handle-fill)`, `stroke: var(--color-deadzone-handle-stroke)`, 1px |
+| 7 | Handle markers, 4 `<circle r="0.022">` at the four kinks: `(low, -1)`, `(center_low, 0)`, `(center_high, 0)`, `(high, 1)` | `.if-deadzone__handle` | `fill: var(--color-deadzone-handle-fill)`, `stroke: var(--color-deadzone-handle-stroke)`, 1px. Hit-test still uses `HIT_RADIUS_PX = 10.0` from `instruments::interaction` (per F10 `interaction.rs:85`), so click targets stay generous regardless of visual size. |
 | 8 | Hover ring (only if `hovered_handle.is_some()`) | `.if-deadzone__hover-ring` | `<circle r="0.085">`, no fill, `stroke: var(--color-border-focus)`, 1.5px, opacity 0.55 |
 | 9 | Drag halo (only if `dragging.is_some()`) | `.if-deadzone__drag-halo` | `<circle r="0.07">`, `fill: var(--color-border-focus)`, opacity 0.30 |
 | 10 | Keyboard focus ring (only if `focused_handle.is_some()` AND host element matches `:focus-visible`) | `.if-deadzone__focus-ring` | `<circle r="0.105">`, no fill, dashed, `stroke: var(--color-border-focus)`, 1.5px, `stroke-dasharray: "2 2"` |
 | 11 | Live guide horizontal `<line>` at `y = output`, x from -1 to `input` | `.if-deadzone__live-guide` | `stroke: var(--color-live)`, 0.5px, `stroke-dasharray: 2 3`, opacity 0.5 |
-| 12 | Live guide vertical `<line>` at `x = input`, y from -1 (bottom) to `output` | `.if-deadzone__live-guide` | Same style as 11 |
+| 12 | Live guide vertical `<line>` at `x = input`, y from 0 to `output` (anchored at the axis cross so negative outputs run upward to the dot from below) | `.if-deadzone__live-guide` | Same style as 11. |
 | 13 | Live dot halo `<circle r="0.07">` | `.if-deadzone__live-dot-halo` | `fill: var(--color-live)`, opacity 0.18 |
 | 14 | Live dot core `<circle r="0.04">` | `.if-deadzone__live-dot` | `fill: var(--color-live)`, `filter: url(#if-instr-glow)` |
-| 15 (separate non-flipped `<g>`) | Tick labels (`-1`, `0`, `1` on each axis) | `.if-deadzone__tick-label` | JetBrains Mono 8px, `fill: var(--color-text-subtle)` |
+| 15 (separate non-flipped `<g>`) | Tick labels. X axis: `-1`, `-.5`, `0`, `.5`, `1` (5 labels at the major-grid half-integer positions). Y axis: `-1`, `0`, `1` (3 labels). | `.if-deadzone__tick-label` | JetBrains Mono, `fill: var(--color-text-subtle)`. X labels render below the plot (`y="1.04"`, `text-anchor="middle"`); y labels render inside the left edge (`x="-0.98"`, `text-anchor="start"`, `dominant-baseline="central"`). Mirrors F10 exactly per `rendering.rs:284-323`. |
+
+**Layer placement relative to the y-flip group.** Layer 1 (background) and layer 15 (tick labels) render at the SVG root, outside the `<g transform="scale(1, -1)">` group. Layers 2-14 render inside the flipped group. This mirrors F10's actual rendering at `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/rendering.rs:47-74`.
+
+**Vertical live guide divergence.** The vertical guide is a deliberate F10 divergence justified by deadzone bipolarity: anchoring at `y = 0` produces a symmetric reading for positive and negative outputs, where F10's response curve does not need this affordance because its identity diagonal already implies the output sign. The horizontal guide remains anchored at the left edge (`x = -1`) to match F10 verbatim.
 
 **Class scoping rule.** All CSS classes are component-scoped (`.if-deadzone__*` here, `.if-curve__*` in F10). Only **tokens** lift to the shared `assets/tokens/instruments.css` (the Q5 lift). Each component's CSS file declares its own classes that consume the shared tokens. This keeps each component's CSS self-contained while preventing token drift; lifting classes themselves at 2 uses would be premature abstraction.
 
@@ -294,7 +317,7 @@ New shared file `assets/tokens/instruments.css`:
 }
 ```
 
-`response_curve.css` is amended in the same PR: `--color-curve-grid-major` and `--color-curve-axis-cross` become references to `var(--instr-grid-major)` / `var(--instr-axis-cross)`. The `.if-curve` block keeps only its truly-curve-specific tokens (`--color-curve-stroke`, `--color-curve-handle`, `--color-curve-anchor-fill`, `--color-curve-anchor-stroke`).
+`response_curve.css` is amended in the same PR: `--color-curve-grid-major` and `--color-curve-axis-cross` become scoped references (`--color-curve-grid-major: var(--instr-grid-major);`) so existing selectors `.if-curve__grid-major { stroke: var(--color-curve-grid-major); }` are unchanged. The `.if-curve` block keeps only its truly-curve-specific tokens (`--color-curve-stroke`, `--color-curve-handle`, `--color-curve-anchor-fill`, `--color-curve-anchor-stroke`).
 
 **Zero new global tokens introduced.** Zone-band tints compose entirely from existing `--color-error`, `--color-primary`, `--color-text-subtle`, `--color-bg-sunken`, with opacity carrying the "12% / 6% / 10%" tint specification. Respects DESIGN.md "One Action Color Rule" (the deadzone curve and ramp band both use `--color-primary`, semantically aligned because both signal "input is being acted on") and the "Subordinate Categories Rule" (the saturated red is the genuine clipping signal, not decorative). DESIGN.md is not modified.
 
@@ -317,16 +340,31 @@ The live tracking dot has no CSS transition; it updates per polling frame, which
 
 ### Toolbar (Q2 = E1)
 
-Layout: a `<div class="if-deadzone__toolbar">` placed above the plot. Children left-to-right:
+Layout: a `<div class="if-deadzone__toolbar">` placed above the plot. Each numeric input is composed via the existing `Field` form-row wrapper (`crates/inputforge-gui-dx/src/components/field.rs`) wrapping an extended `NumberInput` (see "F2 coordination" below). Children left-to-right:
 
-- `<NumberInput label="Low" value={config.low()} min={-1.0} max={config.center_low() - 0.001} step={0.01} on_commit={...}/>`
-- `<NumberInput label="CL" value={config.center_low()} min={config.low() + 0.001} max={config.center_high()} step={0.01} on_commit={...}/>`
-- `<NumberInput label="CH" value={config.center_high()} min={config.center_low()} max={config.high() - 0.001} step={0.01} on_commit={...}/>`
-- `<NumberInput label="High" value={config.high()} min={config.center_high() + 0.001} max={1.0} step={0.01} on_commit={...}/>`
-- `<div class="if-deadzone__toolbar-spacer" />`
-- `<Button variant="ghost" on_click={...}>Reset</Button>`
+```
+Field { label: "Low".into(), for_id: Some("dz-low".into()), error: malformed_hint.clone(),
+    NumberInput {
+        id: Some("dz-low".into()),
+        value: low_signal,
+        min: -1.0,
+        max: config.center_low() - 0.001,
+        step: 0.01,
+        precision: Some(2),
+        oncommit: handle_low_commit,
+    }
+}
+```
 
-`min` / `max` come from the engine invariant (`low < center_low ≤ center_high < high`); the F2 `NumberInput` enforces them client-side, but every commit still goes through `DeadzoneConfig::new(...)` validation as the canonical gate. Number formatting: 2 decimals, signed (`-0.85`, `+0.10`), JetBrains Mono, `font-feature-settings: "tnum" 1`. F2 `NumberInput` already supports all of this.
+The `CL` / `CH` / `High` rows follow the same shape with their own `min` / `max` derived from the neighbour thresholds. After the four `Field` blocks: a `<div class="if-deadzone__toolbar-spacer" />` and the Reset button:
+
+```
+Button { variant: ButtonVariant::Secondary, size: ButtonSize::Sm, onclick: on_reset, "Reset" }
+```
+
+The Reset variant and size match F10's `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/toolbar.rs:194-197`.
+
+`min` / `max` come from the engine invariant (`low < center_low <= center_high < high`); `NumberInput`'s stepper buttons clamp to those bounds, but every commit still goes through `DeadzoneConfig::new(...)` validation as the canonical gate. Number formatting: 2 decimals via `precision: Some(2)`, JetBrains Mono with `font-feature-settings: "tnum" 1` from existing F2 styling.
 
 ---
 
@@ -340,7 +378,7 @@ All hit-tests run in screen space so the 10px radius is consistent across plot s
 
 | Event | Handler | Behavior |
 |---|---|---|
-| `onpointerdown` (primary button) | `handle_pointer_down` | Hit-test → if hit, set `dragging = Some(DragInProgress { handle, bounds })`, snapshot `pre_drag_config`, capture pointer. If miss, no-op. |
+| `onpointerdown` (primary button only; `event.button != 0` returns the input state unchanged) | `handle_pointer_down` | Hit-test, if hit, set `dragging = Some(DragInProgress { handle, bounds })`, snapshot `pre_drag_config`, capture pointer. If miss, no-op. Right-click on a handle never starts a drag and never dispatches. |
 | `onpointermove` | `handle_pointer_move` | While `dragging.is_some()`: convert cursor X to viewBox x, clamp to `bounds`, build candidate via `mutation::with_handle`, replace local working copy. **No dispatch.** Else: hit-test → update `hovered_handle`. |
 | `onpointerup` | `handle_pointer_up` | While `dragging.is_some()`: validate via `DeadzoneConfig::new`. Valid → dispatch + undo. Invalid → revert + write `malformed_hints[stage_id]`. Either way: clear `dragging`, `pre_drag_config`. |
 | `oncontextmenu` | (handled at wrapper level, calls `event.prevent_default()`) | Suppresses webview menu. F11 has no right-click semantics. |
@@ -360,7 +398,7 @@ The plot is `tabindex="0"`. On focus, `focused_handle` defaults to `Some(HandleI
 
 | Key | Action | Dispatch |
 |---|---|---|
-| `Tab` / `Shift+Tab` | Move `focused_handle` forward / backward through `[Low, CenterLow, CenterHigh, High]`. Wrap at end → release focus to next focusable element via browser default (no `prevent_default`). | No |
+| `Tab` / `Shift+Tab` | Move `focused_handle` forward / backward through `[Low, CenterLow, CenterHigh, High]`. Wrap at end, release focus to next focusable element via browser default (no `prevent_default`). On focus reentry into the plot, `focused_handle` retains its last value; if `None` (e.g., first focus), defaults to `Some(HandleId::Low)`. | No |
 | `ArrowLeft` / `ArrowRight` | Nudge focused handle's x by ∓0.01, clamped via `mutation::adjacent_bounds`. | Yes: `SetMapping` + undo per press, subject to 250ms same-`(stage_id, key)` coalesce via `instruments::nudge_coalesce` |
 | `Shift+Arrow*` | Nudge step = 0.10. | Yes, same coalesce |
 | `Home` / `End` | Focus first / last handle (`Low` / `High`). | No |
@@ -371,18 +409,18 @@ The plot is `tabindex="0"`. On focus, `focused_handle` defaults to `Some(HandleI
 
 ### Numeric input commits (in `toolbar.rs`)
 
-The four `NumberInput` fields commit on Enter or blur (F2 component default). Commit handler:
+The four `NumberInput` fields commit when the user finishes editing: Enter pressed (via the new `oncommit` prop, see "F2 coordination" below) or input loses focus. Free-typing fires the underlying `oninput` only and does not dispatch. Commit handler:
 
 1. Read all four current values (the changed field plus the other three from current `config`).
 2. Build candidate via `DeadzoneConfig::new(low, center_low, center_high, high)`.
-3. If `Ok`: dispatch `SetMapping` via `instruments::stage_dispatch::dispatch_stage_edit`, push undo entry with label `deadzone: <field> <old> -> <new>`. Clear `malformed_hints[stage_id]`.
-4. If `Err`: write `malformed_hints[stage_id]` with the validator's error string, do not dispatch. The field's underlying value reverts on next render (driven by `ConfigSnapshot`).
+3. If `Ok`: dispatch `SetMapping` via `instruments::stage_dispatch::dispatch_stage_edit`, push undo entry with label `deadzone: <field> <old> -> <new>`. Clear `malformed_hints[stage_id]` and the `Field`'s `error` slot.
+4. If `Err`: write `malformed_hints[stage_id]` with the validator's error string and mirror it into the affected `Field`'s `error` prop so the message renders inline next to the offending input. Do not dispatch. The field's underlying value reverts on next render (driven by `ConfigSnapshot`).
 
-The F2 `NumberInput` enforces `min` / `max` client-side per the props in the toolbar definition, so most invalid inputs are rejected before the commit handler runs. The handler exists to defend against edge cases (manual paste, focus race during external edit).
+The `NumberInput` stepper buttons clamp to `min` / `max` client-side, so stepper-driven inputs always commit valid candidates. Free-typed values can violate `min` / `max` (the native `<input type="number">` does not block them); the canonical `DeadzoneConfig::new` gate at step 2 catches those at commit time.
 
 ### Reset button (in `toolbar.rs`)
 
-Build `DeadzoneConfig::default()` (which is `low=-1.0, center_low=0.0, center_high=0.0, high=1.0` per `crates/inputforge-core/src/processing/deadzone.rs:55`). If equal to current config, no-op (no dispatch, no undo). Else dispatch + push undo with label `deadzone: reset`. Mirrors F10's Reset behavior.
+Build `DeadzoneConfig::default()` (which is `low=-1.0, center_low=0.0, center_high=0.0, high=1.0` per `crates/inputforge-core/src/processing/deadzone.rs:55`). If equal to current config (`PartialEq` on `DeadzoneConfig`; thresholds are bounded `f64` and the validator forbids NaN-producing inputs), no-op (no dispatch, no undo). Else dispatch + push undo with label `deadzone: reset`. Mirrors F10's Reset variant and size (`Secondary` / `Sm`) and behavior.
 
 ### Live tracking dot (Q6 punt)
 
@@ -394,7 +432,7 @@ Same gate as F10 v1: only render the dot when `stage_id.0 == [StageIdSegment::In
 3. If None (gate failed: button/hat input, missing/disconnected device, etc.) → skip.
 4. output = config.apply(input)
 5. Render horizontal guide from (-1, output) to (input, output),
-   vertical guide from (input, -1) to (input, output),
+   vertical guide from (input, 0) to (input, output) (anchored at the axis cross),
    dot at (input, output).
 ```
 
@@ -414,7 +452,7 @@ F11 keeps this verbatim; no change needed. The header reads at-a-glance against 
 
 ### Stage header thumbnail (Q3 = F1)
 
-Per Q3: a 28×14 inline SVG mini zone bar replaces F9's default chevron in the right-slot. Renders inside the F2 IconButton's invariant 32×32 hit area. `viewBox="0 0 28 14"` with default `preserveAspectRatio` (no aspect distortion needed; the bar IS rectangular). Five `<rect>` zones positioned from the four thresholds mapped from `[-1, 1]` to `[0, 28]`. Threshold marks as 0.4px white-with-50%-opacity vertical lines. No grid, no live marker, no interactivity. The IconButton's `aria-label` shifts from `"Toggle stage body"` (chevron) to `"Toggle stage body. Deadzone: inner X% · outer Y%"` so screen readers announce the toggle action.
+Per Q3: a 28×14 inline SVG mini zone bar replaces F9's default chevron in the right-slot. Renders inside the F2 IconButton's invariant 32×32 hit area (per F9 spec line 325-326, IconButton 32x32 hit area is invariant). `viewBox="0 0 28 14"` with default `preserveAspectRatio` (no aspect distortion needed; the bar IS rectangular). Five `<rect>` zones positioned from the four thresholds mapped from `[-1, 1]` to `[0, 28]`. Threshold marks as 0.4px white-with-50%-opacity vertical lines. No grid, no live marker, no interactivity. The IconButton's `aria-label` shifts from `"Toggle stage body"` (chevron) to `"Toggle stage body. Deadzone: inner X% · outer Y%"` so screen readers announce the toggle action.
 
 ---
 
@@ -422,12 +460,12 @@ Per Q3: a 28×14 inline SVG mini zone bar replaces F9's default chevron in the r
 
 ### Validation flow
 
-`DeadzoneConfig::new(low, center_low, center_high, high)` is the **single validation gate**. It enforces `low < center_low ≤ center_high < high` and returns `EngineError::InvalidConfig` with a descriptive `reason` string on failure (per `crates/inputforge-core/src/processing/deadzone.rs:67-89`). Called at every commit point: drag-end, numeric input commit, keyboard nudge release, Reset.
+`DeadzoneConfig::new(low, center_low, center_high, high)` is the **single validation gate**. It enforces `low < center_low <= center_high < high` and returns `EngineError::InvalidConfig` with a descriptive `reason` string on failure (per `crates/inputforge-core/src/processing/deadzone.rs:67-89`). Called at every commit point: drag-end, numeric input commit, keyboard nudge release, Reset.
 
 - **Validation passes:** clear `malformed_hints[stage_id]` if previously populated, dispatch `SetMapping`, push undo.
 - **Validation fails (drag):** revert `BodyState.dragging`-related state to `pre_drag_config`, write the engine error string to `malformed_hints[stage_id]`, **no dispatch**.
 - **Validation fails (numeric input commit):** the candidate `DeadzoneConfig` was built on a clone; `BodyState` was never mutated. Write the error to `malformed_hints[stage_id]`, no dispatch. The field's underlying value reverts on next render via `ConfigSnapshot`. `pre_drag_config` is the only snapshot field on `BodyState`; non-drag handlers do not need a sibling field.
-- **Validation fails (keyboard nudge):** same as numeric input; clone-only, no `BodyState` mutation. Write `malformed_hints`, no dispatch.
+- **Validation fails (keyboard nudge):** clone-only candidate; no `BodyState` mutation. If the candidate was produced by `mutation::with_handle` after `adjacent_bounds` clamping (the default path), the candidate equals the current config; the dispatch handler detects this no-op and skips both `SetMapping` and `push_edit`. `malformed_hints` is not written. If the candidate somehow bypassed clamping (defensive only; no current code path produces this), write the engine error to `malformed_hints[stage_id]` and skip dispatch.
 
 The drag path is the only one with explicit "revert" semantics because it's the only path that mutates a working copy; all other paths validate against a candidate clone with no `BodyState` side effect.
 
@@ -445,10 +483,11 @@ The drag path is the only one with explicit "revert" semantics because it's the 
 | Live signal address is a button or hat | `instruments::live_axis::compute_live_axis_value` returns `None`. No live dot, no guides. |
 | Device for the primary `InputAddress` missing or disconnected in `state.devices` | Same: returns `None`. No live dot, no guides. |
 | Drag a handle past its neighbor | `mutation::adjacent_bounds` clamps the X to `(neighbor + 0.001, ...)` or `(..., neighbor - 0.001)` before the candidate config is built. The drag never produces an invalid `DeadzoneConfig`; the cursor just stops moving the handle. |
-| Numeric input typed below `min` or above `max` | F2 `NumberInput` clamps client-side to the prop bounds before `on_commit` fires; the commit handler still validates as a defense-in-depth. |
+| Numeric input typed below `min` or above `max` | The native `<input type="number">` does not block free-typed out-of-bounds values; only stepper buttons clamp. `oncommit` fires with the typed value, and the canonical `DeadzoneConfig::new` gate rejects it. The error renders inline via `Field`'s `error` slot and in `malformed_hints[stage_id]`. |
 | Numeric input typed equal to a neighbor (e.g., `low == center_low`) | F2 `NumberInput`'s `max` is `center_low - 0.001`, so the client clamp prevents this. If it slips through (paste, programmatic set), `DeadzoneConfig::new` rejects with a clear message in `malformed_hints`. |
-| Numeric input typed equal to `center_low == center_high` (zero-width center) | This is **valid** per the engine invariant (`center_low ≤ center_high`, equality permitted). No special handling. |
-| User pastes `0,5` (comma decimal) into a NumberInput | F2 `NumberInput` parses with the locale-respecting parser; if it returns `None`, the field shows the previous value on blur. F11 sees no commit. |
+| Numeric input typed equal to `center_low == center_high` (zero-width center) | This is **valid** per the engine invariant (`center_low <= center_high`, equality permitted). No special handling. |
+| User pastes `0,5` (comma decimal) into a NumberInput | The browser's native `<input type="number">` parser ignores comma-decimal in en locales; `valueAsNumber` is `NaN` and `oncommit` is suppressed. F11 sees no commit. Locale-aware parsing is out of F11 scope. |
+| Body unmounted mid-drag (e.g., user collapses the stage while dragging) | The shared `instruments::bridge::mount_mouse_bridge` detaches its JS listener on Dioxus unmount; the active drag does not commit, `pre_drag_config` is dropped with the body, and a fresh mount starts a fresh `BodyState`. F11 inherits the listener-cleanup fix from commit `55ed19c` (originally landed on F10). |
 | Hover over the curve away from a handle | `hovered_handle = None`, no hover ring. Cursor stays `default` (per `data-hovered="false"`). |
 | Keyboard nudge would push handle past neighbor | `mutation::adjacent_bounds` clamps; the dispatched config equals the current one; the dispatch handler detects the no-op and skips both `SetMapping` and `push_edit`. |
 | Two `Deadzone` stages in the same pipeline both expanded | Each `DeadzoneBody` instance has its own `BodyState` Signal; live-dot, focus, and drag are independent per stage. |
@@ -480,6 +519,7 @@ These items the brainstorm surfaced and did not commit to F11's floor. Listed he
 | Deadzone presets / save-as-template | (no specific origin) | Future feature |
 | Sound feedback on snap or drag-end | (no specific origin) | Out of scope |
 | Number-field width tuning | Section "Toolbar" | `impeccable:layout` once the four fields render side-by-side at 1280px and at min-width 800px |
+| Reset button distinct `aria-label` ("Reset deadzone to default") | Section "Toolbar" | `impeccable:harden` |
 
 ---
 
@@ -498,7 +538,8 @@ TDD throughout, pure logic before render, mirroring F8 / F9 / F10.
 | F11 `keyboard.rs` | Pure-fn tests per key path: nudge ±0.01, nudge ±0.10, nudge clamped at neighbor, Escape during drag (revert), Escape with no drag (no-op), Enter / Delete / ArrowUp / ArrowDown (silent no-op), Tab order `Low → CL → CH → High`. Coalesce shape: same-key within 250ms returns `KeyOutcome::MergeUndo`; cross-key or past 250ms returns `KeyOutcome::PushUndo`. |
 | F11 `thumbnail.rs` | Snapshot equality on rendered SVG `rect` attributes for canonical configs: default (full range), aggressive (low=-0.5, high=0.5), zero-width-center (cl=ch=0.0), wide-dead (cl=-0.3, ch=0.3). Asserts byte-stability of the zone bar geometry. |
 | F11 `mod.rs` SSR | Mount `DeadzoneBody` via Dioxus `VirtualDom` + `dioxus_ssr::render`. Cases: default config renders 4 handles at expected viewBox positions; live-input absent → no live dot; live-input present → dot at expected `(input, output)` projection; malformed dispatch (forced via mock) → `malformed_hints[stage_id]` populated; pointer-up without down → no dispatch. Mirrors F10's SSR pattern. |
-| F11 `toolbar.rs` | SSR test: numeric input commit produces a `DeadzoneConfig::new` call → emits `EngineCommand::SetMapping`. Reset on default config produces no dispatch. Reset on non-default config produces `SetMapping` with `DeadzoneConfig::default()`. |
+| F11 `toolbar.rs` | SSR test: simulating Enter on a `NumberInput` produces a `DeadzoneConfig::new` call, emits `EngineCommand::SetMapping`, and updates `Field`'s `error` slot on validation failure. Reset on default config produces no dispatch. Reset on non-default config produces `SetMapping` with `DeadzoneConfig::default()`. |
+| F2 `NumberInput` (extension) | Two new pure-fn tests: `oncommit` fires on Enter with the post-clamp value; `oncommit` fires on blur with the post-clamp value. Existing `NumberInput` tests are unaffected (new prop is opt-in). |
 
 `egui_kittest` snapshot tests don't apply (the egui crate was deleted in commit `2271256`). F11 ships its own SSR + pure-fn tests; coverage is acceptably reduced. The pure-fn split makes the bulk of the logic exhaustively testable.
 
@@ -512,12 +553,30 @@ The `instruments/` Rust module + `assets/tokens/instruments.css` introduced by F
 - `mod.rs`: the JS bridge (`BridgeEvent`, `BRIDGE_JS_TEMPLATE`, `dispatch_bridge_event`, `stage_id_dom_id`, `on_mounted` factory) moves to `instruments::bridge`; F10 imports from there.
 - `state.rs` + `keyboard.rs`: the `last_nudge_at_ms` + `last_nudge_key` pair moves into a `NudgeCoalesce` struct in `instruments::nudge_coalesce`; F10's `BodyState` embeds the struct instead of carrying the two fields directly. The merge-vs-push decision moves to `NudgeCoalesce::should_merge(now_ms, key) -> bool`.
 - `toolbar.rs`: `dispatch_curve_edit` and `dispatch_curve_edit_no_undo` move to `instruments::stage_dispatch::dispatch_stage_edit` / `dispatch_stage_edit_no_undo`, generic over `Action` variant; F10's call sites pass `Action::ResponseCurve { ... }` explicitly where they previously implied it.
-- `response_curve.css`: `--color-curve-grid-major` and `--color-curve-axis-cross` references switch to `var(--instr-grid-major)` / `var(--instr-axis-cross)`; the `.if-curve` block keeps only its truly-curve-specific tokens (`--color-curve-stroke`, `--color-curve-handle`, `--color-curve-anchor-fill`, `--color-curve-anchor-stroke`).
+- `response_curve.css`: `--color-curve-grid-major` and `--color-curve-axis-cross` become scoped references (`--color-curve-grid-major: var(--instr-grid-major);`) so existing selectors `.if-curve__grid-major { stroke: var(--color-curve-grid-major); }` are unchanged. The `.if-curve` block keeps only its truly-curve-specific tokens (`--color-curve-stroke`, `--color-curve-handle`, `--color-curve-anchor-fill`, `--color-curve-anchor-stroke`).
 - `mod.rs` + `response_curve.css`: the SVG glow filter ID renames from `if-curve-glow` to `if-instr-glow`. The `<filter id>` in F10's `<defs>`, the `filter: url(...)` references in `response_curve.css`, and the Rust constant exposed as `instruments::INSTR_GLOW_STDDEV: f64 = 0.012` all align under the shared name.
 
 **Test impact.** F10's pure-fn tests on `mutation.rs`, `interaction.rs`, `keyboard.rs`, and `thumbnail.rs` are unaffected (no signature change). F10's SSR mount tests in `mod.rs` need mechanical updates where they assert the old function name (`compute_live_value` → `compute_live_axis_value`) or the old glow filter ID (`if-curve-glow` → `if-instr-glow`); behavior is unchanged. F10's dispatch tests (the two in `toolbar.rs`) update their import path. F10's `state.rs` test for `BodyState::default` updates to assert the embedded `NudgeCoalesce` field instead of the two prior fields.
 
 The shared visual language is enforced by tokens (`--instr-grid-major`, `--instr-axis-cross`, `--instr-identity-stroke`) and code (`instruments::INSTR_GLOW_STDDEV`). Drift between F10 and F11 is structurally impossible at the grid / axis / glow / identity layers. Each editor still owns its own curve / handle styling and category-specific tokens.
+
+---
+
+## F2 coordination (the smallest possible NumberInput extension)
+
+`NumberInput` (`crates/inputforge-gui-dx/src/components/number_input.rs`) today exposes `value`, `oninput`, `onstep`, `min`, `max`, `step`, `precision`, `disabled`, `id`, `size`. F11 lands one new prop on the same component:
+
+```rust
+/// Emits the post-parse, post-clamp value when the user finishes editing
+/// (Enter pressed or input loses focus). Free-typing fires `oninput` only.
+oncommit: Option<EventHandler<f64>>,
+```
+
+Internally the component attaches `onkeydown` (matching `Enter`, calls `prevent_default`) and `onfocusout` to its underlying `<input>`; both branches read the input's current value, parse via the browser's native `<input type="number">` `valueAsNumber`, clamp to `[min, max]`, and dispatch `oncommit` exactly once per commit. F11's toolbar is the only initial consumer; the prop is `Option`-typed so existing call sites are unaffected. No client-side locale parsing is added (matches today's behavior; locale support is out of F11 scope).
+
+Composition with the existing `Field` form-row wrapper (`crates/inputforge-gui-dx/src/components/field.rs`) provides labelling and error slots; F11 mirrors the malformed-hint state into Field's `error` prop so per-field errors render inline next to the affected input, in addition to F9's stage-header `malformed_hints` summary.
+
+**Test impact.** F2's existing `NumberInput` tests are unaffected (new prop is opt-in). F11 adds two `NumberInput` tests (also recorded in the testing strategy table): `oncommit` fires on Enter, `oncommit` fires on blur, both with the post-clamp value.
 
 ---
 
@@ -527,7 +586,7 @@ The shared visual language is enforced by tokens (`--instr-grid-major`, `--instr
 - **Live-input projection inside Conditional branches.** F11 v1 mirrors F10 v1: top-level stages only. The natural fix is a small extension to `evaluate_actions_through` (or a sibling helper in `inputforge-core`) that takes a `&StageId` and threads the seed through nested branches. F11 makes the same Open Question as F10; the lift, when it comes, lifts both editors at once.
 - **Asymmetric calibration interaction with deadzone.** A non-centered stick (where neutral output is at, say, +0.04 instead of 0) will see the deadzone's `[center_low, center_high]` band slightly off-center too. Calibration is supposed to handle this upstream (the calibrated value enters the pipeline already centered); F11 trusts that contract. If user reports surface "my deadzone is asymmetric on a calibrated stick", that's a calibration bug, not an F11 bug.
 - **Numeric input scroll-wheel behavior.** F2 `NumberInput` may or may not accept scroll-wheel-to-increment; F11 doesn't override either way. If the F2 behavior is "no scroll wheel", users get keyboard nudge as the precision affordance.
-- **Number field width.** Section "Toolbar" specified `--space-3` toolbar gap and `width: 56px` field. Specific width may need revisiting in `impeccable:layout` once the four fields render side-by-side at 1280px and at min-width 800px.
+- **Number field width.** Numeric input width is left unspecified; defaults to F2's `NumberInput` natural sizing. Specific width may need revisiting in `impeccable:layout` once the four fields render side-by-side at 1280px and at min-width 800px.
 
 ---
 
