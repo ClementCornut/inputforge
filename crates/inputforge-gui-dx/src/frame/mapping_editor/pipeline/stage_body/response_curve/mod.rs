@@ -10,6 +10,7 @@
 )]
 
 pub(crate) mod interaction;
+pub(crate) mod keyboard;
 pub(crate) mod mutation;
 pub(crate) mod state;
 

@@ -3,6 +3,8 @@
 
 use inputforge_core::processing::curves::ResponseCurve;
 
+use super::keyboard::KeyKind;
+
 /// Per-mounted-component state held in a `Signal<BodyState>` inside
 /// `ResponseCurveBody`. Pure data; no Signals.
 #[derive(Debug, Clone)]
@@ -24,21 +26,7 @@ pub(crate) struct BodyState {
     /// Key kind of the last nudge, used together with `last_nudge_at_ms`
     /// to decide whether the next nudge merges into the existing undo
     /// entry or pushes a fresh one.
-    pub last_nudge_key: Option<NudgeKey>,
-}
-
-/// Discriminator for the in-flight keyboard nudge streak. See
-/// `keyboard.rs::handle_key` for the merge policy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NudgeKey {
-    Up,
-    Down,
-    Left,
-    Right,
-    UpLarge,
-    DownLarge,
-    LeftLarge,
-    RightLarge,
+    pub last_nudge_key: Option<KeyKind>,
 }
 
 // Manual `Default` so `cache_dirty` defaults to `true`. The Task 4 test
