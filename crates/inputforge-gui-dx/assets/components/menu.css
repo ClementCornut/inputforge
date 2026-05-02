@@ -78,3 +78,13 @@
     left: auto;
     right: 0;
 }
+
+/* Anchored-menu backdrop: must escape any ancestor stacking context, so
+   z-index sits above all editor content but below the list (which gets
+   1001 inline, see AnchoredMenu render). The trigger-attached variant
+   relies on `.if-menu__items` z-index 1000 to lift its own backdrop;
+   anchored variants render the backdrop and list as siblings of <body>
+   children, so they need their own explicit z-index. */
+.if-menu__backdrop--anchored {
+    z-index: 1000;
+}

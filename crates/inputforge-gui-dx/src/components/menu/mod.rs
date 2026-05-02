@@ -62,6 +62,15 @@ pub enum Anchor {
     End,
 }
 
+/// Anchor coordinates for `AnchoredMenu`. Values are page-space pixels
+/// (the same coordinate system as `MouseEvent::page_coordinates`). The
+/// menu renders with `position: fixed` at these coordinates.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MenuAnchor {
+    pub x: f64,
+    pub y: f64,
+}
+
 #[component]
 pub fn MenuRoot(
     /// Class extension for the OUTER wrapper (`.if-menu`). Use for layout-flow
@@ -234,6 +243,189 @@ pub fn MenuItem(
             disabled,
             "aria-disabled": "{disabled}",
             onclick,
+            {children}
+        }
+    }
+}
+
+/// Cursor-anchored menu (right-click style). The parent owns an
+/// `Option<MenuAnchor>` signal: `None` = closed, `Some(coords)` = open at
+/// those coordinates. `on_close` fires whenever the menu wants to close
+/// (Escape, click-outside, Tab, item-activated); the parent decides what
+/// to do (typically: clear its anchor signal to None, possibly re-focus
+/// the originating element based on the `CloseReason`).
+///
+/// Inside, render `MenuItem`s as children; they auto-close via the same
+/// `MenuState` mechanism `MenuRoot` uses. The wrapper handles backdrop,
+/// keyboard navigation (Arrow keys, Home, End), Escape, Tab, and
+/// auto-focuses the first non-disabled item on open. Space and Enter
+/// activation on items works via native `<button>` semantics (each
+/// `MenuItem` is a `<button>`); the keydown handler does not need to
+/// handle them explicitly.
+///
+/// # Mount contract (auto-focus)
+///
+/// The parent MUST mount `AnchoredMenu` only when `open` is `Some(_)`
+/// and unmount it when `open` is `None`. The canonical pattern is a
+/// `let Some(coords) = anchor_signal.read().as_ref() else { return rsx! {}; };`
+/// gate at the parent that returns empty rsx when the anchor is `None`,
+/// so each open is a fresh mount. Auto-focus on open is driven by that
+/// mount transition: the internal `open_signal` is `true` for the entire
+/// lifetime of one mount, so the focus `use_effect` fires exactly once
+/// per mount. A consumer that mounts `AnchoredMenu` unconditionally and
+/// toggles its `open` prop between `None` and `Some` across renders is
+/// hook-order safe (hooks are still allocated before the early return),
+/// but auto-focus will only fire on the first open; subsequent re-opens
+/// will not re-focus the first item because `open_signal` never toggles.
+/// Tasks 4 to 6 consumers (`AddPalette`, `StageActionsMenu`,
+/// `ModeTabContextMenu`) all mount on demand under a parent
+/// `let Some(...)` gate and so satisfy the contract.
+///
+/// `aria_labelledby` is the DOM id of the element that named this menu
+/// (typically the originating right-click target). When `Some`, written
+/// to `aria-labelledby`; when `None`, the attribute is omitted entirely
+/// (an empty `aria-labelledby` would point to a nonexistent element and
+/// is invalid ARIA).
+#[component]
+#[expect(
+    unused_qualifications,
+    reason = "Dioxus 0.7 RSX macro emits redundant `dioxus_elements::*` qualifications \
+              on per-element event listeners with bound closures."
+)]
+pub fn AnchoredMenu(
+    /// Anchor coordinates and open-state, fused into one Option so an
+    /// open-with-no-coords state is unrepresentable.
+    open: Option<MenuAnchor>,
+    /// Fires when the menu wants to close, with the reason. The parent
+    /// must clear its anchor signal in response; otherwise the menu
+    /// stays rendered.
+    on_close: EventHandler<CloseReason>,
+    /// Optional id of the element that names this menu (written to
+    /// `aria-labelledby`). Pass the originating trigger's DOM id.
+    #[props(default)]
+    aria_labelledby: Option<String>,
+    /// Class extension for the inner LIST surface (`.if-menu__list`).
+    /// NOTE: this is the visible chrome layer, NOT a wrapper. `AnchoredMenu`
+    /// has no positioned outer wrapper because it applies `position: fixed`
+    /// directly on the list. This differs from `MenuItems.class` (which
+    /// targets the outer `.if-menu__items` wrapper) and from `MenuRoot.class`
+    /// (which targets the outer `.if-menu` wrapper). If you need wrapper-level
+    /// styling, lift it to a parent component.
+    #[props(default)]
+    class: Option<String>,
+    children: Element,
+) -> Element {
+    // Hooks must run in the same order on every render, so allocate them
+    // BEFORE the early-return below. This keeps hook-order safety
+    // independent of the parent's mount strategy: even if a future
+    // consumer mounted AnchoredMenu unconditionally and toggled `open`
+    // between None / Some across renders, the hook count would stay
+    // stable and not trip a hook-order panic. Note that hook-order
+    // safety is the only thing this ordering buys us: auto-focus on
+    // open is a separate contract, documented above, that REQUIRES the
+    // mount-on-open pattern (the always-true `open_signal` below never
+    // toggles, so `use_effect` would not re-fire on re-opens of an
+    // unconditionally-mounted instance).
+
+    // Allocate a stable menu id for this instance. Using a counter (not
+    // anchor coordinates) so the id is consistent across re-renders even
+    // if the anchor moves (the menu can be re-positioned without losing
+    // its identity for ARIA / focus walking).
+    let menu_id = use_signal(|| {
+        format!(
+            "if-menu-{}",
+            MENU_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+        )
+    });
+
+    // Mirror open-state into a Signal so MenuItem (which reads
+    // MenuState.open via context) sees a live signal. Stays `true` for
+    // the lifetime of this AnchoredMenu mount; AnchoredMenu's own
+    // visibility is gated by the parent's anchor signal (the
+    // `let Some(coords) = open` early return below), not by this Signal.
+    let open_signal = use_signal(|| true);
+    let close_handler = on_close;
+    let close = use_callback(move |reason: CloseReason| {
+        close_handler.call(reason);
+    });
+    let state = MenuState {
+        open: open_signal,
+        menu_id,
+        close,
+    };
+    use_context_provider(|| state);
+
+    let menu_id_str_for_focus = menu_id.read().clone();
+    use_effect(move || {
+        if *open_signal.read() {
+            focus_menu_item(&menu_id_str_for_focus, FocusAction::First);
+        }
+    });
+
+    let Some(coords) = open else {
+        return rsx! {};
+    };
+
+    let menu_id_str = menu_id.read().clone();
+    let menu_id_for_keys = menu_id_str.clone();
+
+    let onkeydown = move |evt: KeyboardEvent| match evt.key() {
+        Key::Escape => {
+            evt.prevent_default();
+            close.call(CloseReason::Escape);
+        }
+        Key::ArrowDown => {
+            evt.prevent_default();
+            focus_menu_item(&menu_id_for_keys, FocusAction::Next);
+        }
+        Key::ArrowUp => {
+            evt.prevent_default();
+            focus_menu_item(&menu_id_for_keys, FocusAction::Prev);
+        }
+        Key::Home => {
+            evt.prevent_default();
+            focus_menu_item(&menu_id_for_keys, FocusAction::First);
+        }
+        Key::End => {
+            evt.prevent_default();
+            focus_menu_item(&menu_id_for_keys, FocusAction::Last);
+        }
+        Key::Tab => {
+            // Do NOT prevent_default; let the browser advance focus
+            // to the next focusable element. CloseReason::Tab tells
+            // the parent to NOT re-focus the trigger so the user's
+            // Tab traversal is honoured.
+            close.call(CloseReason::Tab);
+        }
+        _ => {}
+    };
+
+    let backdrop_onclick = move |_| {
+        close.call(CloseReason::ClickOutside);
+    };
+
+    let combined = merge_class("if-menu__list", "", class.as_deref());
+    let style = format!(
+        "position: fixed; left: {}px; top: {}px; z-index: 1001;",
+        coords.x, coords.y
+    );
+
+    rsx! {
+        // Backdrop sits at z-index 1000, list at 1001. Both fixed so they
+        // escape any ancestor stacking context.
+        div {
+            class: "if-menu__backdrop if-menu__backdrop--anchored",
+            "aria-hidden": "true",
+            onclick: backdrop_onclick,
+        }
+        div {
+            class: "{combined}",
+            id: "{menu_id_str}",
+            role: "menu",
+            tabindex: "-1",
+            "aria-labelledby": aria_labelledby,
+            style: "{style}",
+            onkeydown,
             {children}
         }
     }
