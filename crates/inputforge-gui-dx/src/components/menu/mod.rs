@@ -43,6 +43,13 @@ struct MenuState {
     open: Signal<bool>,
     /// Stable DOM id for the items wrapper.
     menu_id: Signal<String>,
+    /// Stable DOM id for the trigger button. `MenuItems` reads this id at
+    /// open time to call `getBoundingClientRect()` on the trigger and
+    /// position the floating list relative to the viewport (so the menu
+    /// does not extend any ancestor's overflow box and is unaffected by
+    /// transformed containers). `AnchoredMenu` does not consume this; its
+    /// own `MenuAnchor` prop already supplies viewport coordinates.
+    trigger_id: Signal<String>,
     /// Close dispatcher. `MenuRoot` provides one that flips `open` to
     /// false and discards the reason; `AnchoredMenu` provides one that
     /// fires its `on_close` handler with the reason.
@@ -71,6 +78,24 @@ pub struct MenuAnchor {
     pub y: f64,
 }
 
+/// Trigger bounding rect captured for `MenuItems` floating positioning.
+/// All values are viewport-relative pixels (the coordinate system of
+/// `Element.getBoundingClientRect()`), so they feed straight into a
+/// `position: fixed` style.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct TriggerRect {
+    left: f64,
+    top: f64,
+    right: f64,
+    bottom: f64,
+}
+
+impl TriggerRect {
+    fn width(self) -> f64 {
+        self.right - self.left
+    }
+}
+
 #[component]
 pub fn MenuRoot(
     /// Class extension for the OUTER wrapper (`.if-menu`). Use for layout-flow
@@ -87,6 +112,10 @@ pub fn MenuRoot(
             MENU_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
         )
     });
+    // Derive a JS-string-safe trigger id from the same counter as menu_id,
+    // so `MenuItems` can call `document.getElementById(trigger_id)` to
+    // measure the trigger's viewport rect at open time.
+    let trigger_id = use_signal(|| format!("{}-trigger", menu_id.read()));
     let close = use_callback(move |_reason: CloseReason| {
         let mut o = open;
         o.set(false);
@@ -94,6 +123,7 @@ pub fn MenuRoot(
     let state = MenuState {
         open,
         menu_id,
+        trigger_id,
         close,
     };
     use_context_provider(|| state);
@@ -128,6 +158,7 @@ pub fn MenuTrigger(
         merge_class("if-menu__trigger", "", class.as_deref())
     };
     let menu_id = state.menu_id.read().clone();
+    let trigger_id = state.trigger_id.read().clone();
     let onclick = move |_| {
         let now = !*state.open.read();
         state.open.set(now);
@@ -135,6 +166,7 @@ pub fn MenuTrigger(
     rsx! {
         button {
             class: "{combined}",
+            id: "{trigger_id}",
             onclick,
             "aria-haspopup": "true",
             "aria-expanded": "{state.open.read()}",
@@ -146,18 +178,30 @@ pub fn MenuTrigger(
 }
 
 #[component]
+#[expect(
+    unused_qualifications,
+    reason = "Dioxus 0.7 RSX macro emits redundant `dioxus_elements::*` qualifications \
+              on per-element event listeners with bound closures."
+)]
 pub fn MenuItems(
-    /// Class extension for the OUTER positioned container (`.if-menu__items`),
-    /// NOT the visible list. The visible chrome (background, border, shadow,
-    /// `min-width`) lives on the inner `.if-menu__list`. If you need to
-    /// customise the list surface, use a descendant selector
-    /// (e.g. `.your-class .if-menu__list { ... }`) rather than expecting
-    /// `your-class` to land on the surface itself.
+    /// Class extension for the floating list surface (`.if-menu__list`).
+    /// Lands directly on the visible chrome layer; consumers can customise
+    /// the list by writing rules against `.your-class` (which is now a
+    /// peer of `.if-menu__list` on the same element). This differs from
+    /// pre-popper `MenuItems`, which routed `class` to a positioned
+    /// `.if-menu__items` wrapper that no longer exists; consumer CSS
+    /// previously written as `.your-class .if-menu__list { ... }` should
+    /// be flattened to `.your-class { ... }`.
     #[props(default)]
     class: Option<String>,
-    /// Horizontal alignment of the dropdown relative to its trigger.
-    /// Defaults to `Start` (the historical behaviour). `Center` and `End`
-    /// switch on CSS modifier classes that override the default `left: 0`.
+    /// Horizontal alignment of the floating list relative to its trigger.
+    /// `Start` aligns the list's left edge with the trigger's left edge;
+    /// `Center` centres the list under the trigger's horizontal midpoint;
+    /// `End` aligns the list's right edge with the trigger's right edge.
+    /// Centering and end-alignment are applied via inline `transform` on
+    /// the list element itself; this is safe because `MenuItems` no longer
+    /// nests `position: fixed` descendants under the list (the backdrop
+    /// is a sibling, so the list's transform can not reparent it).
     #[props(default)]
     anchor: Anchor,
     children: Element,
@@ -165,12 +209,44 @@ pub fn MenuItems(
     let state = use_context::<MenuState>();
     let mut open_signal = state.open;
     let menu_id = state.menu_id.read().clone();
-    let anchor_class = match anchor {
-        Anchor::Start => "",
-        Anchor::Center => "if-menu__items--center",
-        Anchor::End => "if-menu__items--end",
-    };
-    let combined = merge_class("if-menu__items", anchor_class, class.as_deref());
+    let trigger_id = state.trigger_id.read().clone();
+
+    // Captured viewport rect for the trigger button. Cleared on close so
+    // each open re-measures (the trigger may have moved due to layout
+    // changes between opens).
+    let mut trigger_rect: Signal<Option<TriggerRect>> = use_signal(|| None);
+
+    // Measure the trigger when the menu opens; clear the rect when it
+    // closes. The eval reads `getBoundingClientRect()` and pipes the four
+    // numbers back via `dioxus.send`. Until the rect arrives, the menu
+    // does not render (one-tick delay; the eval round-trip is sub-frame
+    // in practice). When `open` flips back to false we drop the rect so
+    // the next open starts from a clean slate.
+    use_effect(move || {
+        let is_open = *open_signal.read();
+        if is_open {
+            let target_id = trigger_id.clone();
+            spawn(async move {
+                let mut handle = document::eval(&format!(
+                    "var el = document.getElementById('{target_id}');\n\
+                     if (!el) {{ dioxus.send([0, 0, 0, 0]); return; }}\n\
+                     var r = el.getBoundingClientRect();\n\
+                     dioxus.send([r.left, r.top, r.right, r.bottom]);"
+                ));
+                if let Ok(value) = handle.recv::<[f64; 4]>().await {
+                    let [left, top, right, bottom] = value;
+                    trigger_rect.set(Some(TriggerRect {
+                        left,
+                        top,
+                        right,
+                        bottom,
+                    }));
+                }
+            });
+        } else {
+            trigger_rect.set(None);
+        }
+    });
 
     let target_id_for_keydown = menu_id.clone();
     let onkeydown = move |evt: KeyboardEvent| {
@@ -187,34 +263,67 @@ pub fn MenuItems(
         };
         focus_menu_item(&target_id_for_keydown, action);
     };
-    let onclick = move |_| {
+    let backdrop_onclick = move |_| {
         open_signal.set(false);
     };
 
-    // Auto-focus the first menuitem when the menu opens. use_effect tracks
-    // open_signal reads, so this fires on the false→true transition. The
-    // eval is queued post-render so the [hidden] flip is applied first.
+    // Auto-focus the first menuitem once the menu is mounted with a
+    // measured rect. Tracks both `open` and the rect signal so it fires
+    // exactly once per open: on the rect None -> Some transition that
+    // accompanies the menu becoming visible.
     let target_id_for_focus = menu_id.clone();
     use_effect(move || {
-        if *open_signal.read() {
+        let is_open = *open_signal.read();
+        let has_rect = trigger_rect.read().is_some();
+        if is_open && has_rect {
             focus_menu_item(&target_id_for_focus, FocusAction::First);
         }
     });
 
     let is_open = *open_signal.read();
+    let Some(rect) = (if is_open { *trigger_rect.read() } else { None }) else {
+        return rsx! {};
+    };
+
+    // Anchor-relative inline positioning. The list is positioned at a
+    // single point on the trigger's bottom edge and (for non-Start
+    // anchors) translated by a CSS percentage of its own width. Doing the
+    // centering on the list itself (not on a wrapper) is safe here
+    // because the backdrop is a SIBLING, not a descendant; the list's
+    // `transform` can not become a containing block for the backdrop.
+    let top_px = rect.bottom + 4.0;
+    let (left_px, transform) = match anchor {
+        Anchor::Start => (rect.left, ""),
+        Anchor::Center => (rect.left + rect.width() / 2.0, "translateX(-50%)"),
+        Anchor::End => (rect.right, "translateX(-100%)"),
+    };
+    let style = if transform.is_empty() {
+        format!("position: fixed; left: {left_px}px; top: {top_px}px; z-index: 1001;")
+    } else {
+        format!(
+            "position: fixed; left: {left_px}px; top: {top_px}px; z-index: 1001; transform: {transform};"
+        )
+    };
+
+    let combined = merge_class("if-menu__list", "", class.as_deref());
     rsx! {
+        // Backdrop: full-viewport pointer-event sink at z-index 1000.
+        // Renders BEFORE the list in document order so the list paints on
+        // top within the same z-index layer; any click outside the list
+        // hits the backdrop and closes the menu.
+        div {
+            class: "if-menu__backdrop",
+            "aria-hidden": "true",
+            onclick: backdrop_onclick,
+        }
         div {
             class: "{combined}",
             id: "{menu_id}",
             role: "menu",
             tabindex: "-1",
-            hidden: !is_open,
+            style: "{style}",
             onkeydown,
-            div {
-                class: "if-menu__backdrop",
-                onclick,
-            }
-            div { class: "if-menu__list", {children} }
+            {children}
         }
     }
 }
@@ -350,6 +459,11 @@ pub fn AnchoredMenu(
     // visibility is gated by the parent's anchor signal (the
     // `let Some(coords) = open` early return below), not by this Signal.
     let open_signal = use_signal(|| true);
+    // AnchoredMenu does not consume `MenuState.trigger_id` (its anchor
+    // arrives through the `open: Option<MenuAnchor>` prop), but the
+    // struct demands the field. Install an empty placeholder so child
+    // `MenuItem`s see a well-formed context.
+    let trigger_id = use_signal(String::new);
     let close_handler = on_close;
     let close = use_callback(move |reason: CloseReason| {
         close_handler.call(reason);
@@ -357,6 +471,7 @@ pub fn AnchoredMenu(
     let state = MenuState {
         open: open_signal,
         menu_id,
+        trigger_id,
         close,
     };
     use_context_provider(|| state);
@@ -417,10 +532,11 @@ pub fn AnchoredMenu(
     );
 
     rsx! {
-        // Backdrop sits at z-index 1000, list at 1001. Both fixed so they
-        // escape any ancestor stacking context.
+        // Backdrop sits at z-index 1000 (set on `.if-menu__backdrop`),
+        // list at z-index 1001 (inline). Both fixed so they escape any
+        // ancestor stacking context.
         div {
-            class: "if-menu__backdrop if-menu__backdrop--anchored",
+            class: "if-menu__backdrop",
             "aria-hidden": "true",
             onclick: backdrop_onclick,
         }

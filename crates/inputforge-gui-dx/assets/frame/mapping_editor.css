@@ -750,11 +750,10 @@
 }
 
 /* Menu list: extends .if-menu__list with palette-specific min-width.
-   `MenuItems.class` lands on `.if-menu__items` (the absolutely-positioned
-   outer wrapper), but the visible chrome (background, border, radius,
-   shadow, baseline `min-width: 160px`) lives on the inner `.if-menu__list`.
-   Use a descendant selector to target the actual surface. */
-.if-add-palette__menu .if-menu__list {
+   `MenuItems.class` now lands DIRECTLY on `.if-menu__list` (the visible
+   chrome layer); the old absolutely-positioned `.if-menu__items` wrapper
+   is gone post-popper-refactor. Both classes coexist on the same element. */
+.if-add-palette__menu {
     min-width: 180px;
 }
 
