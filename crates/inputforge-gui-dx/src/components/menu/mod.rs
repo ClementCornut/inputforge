@@ -390,11 +390,15 @@ pub fn MenuItems(
 
     // Pass-1 vs pass-2 inline style. Pass 1 keeps the menu invisible at
     // (0, 0) so the eval can measure it without the user seeing a flash.
-    // Pass 2 commits the computed placement.
+    // Pass 2 commits the computed placement and explicitly resets
+    // `visibility: visible`. The explicit reset matters: Dioxus 0.7
+    // diffs the `style` attribute by individual CSS properties, so a
+    // pass-2 string that omitted `visibility` would leave pass-1's
+    // `visibility: hidden` applied and the menu would never appear.
     let style = match *placement.read() {
         None => "position: fixed; left: 0; top: 0; visibility: hidden; z-index: 1001;".to_owned(),
         Some(p) => format!(
-            "position: fixed; left: {left}px; top: {top}px; z-index: 1001;",
+            "position: fixed; left: {left}px; top: {top}px; visibility: visible; z-index: 1001;",
             left = p.left,
             top = p.top,
         ),
