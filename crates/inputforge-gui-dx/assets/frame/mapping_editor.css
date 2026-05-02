@@ -256,6 +256,17 @@
     border-left-color: var(--color-control-badge-text);
 }
 
+/* Unbound placeholder treatment: when the rebind composite carries the
+   `--unbound` modifier (set by `PredicateInputRow` and `MergeAxisBody`
+   when their input is `InputAddress::Unbound`), tone the label down so the
+   placeholder text reads as "no value yet" instead of impersonating a real
+   binding. Italic + muted color keeps the label legible while making the
+   empty state visually distinct from a bound source label. */
+.if-rebind-composite--unbound .if-rebind-composite__label {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
 /* Stage-body form layout: 2-column grid (label, control). Each body
    container declares the grid; individual fields use `display: contents`
    so their label + control unwrap directly into the parent grid. The

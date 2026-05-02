@@ -1594,3 +1594,88 @@ fn conditional_with_empty_if_true_renders_branch_with_add_first_stage() {
         "empty if_true must show standard add affordance: {html}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Task 7: --unbound CSS modifier on the rebind composite
+//
+// When a leaf predicate or `MergeAxis` secondary input is `Unbound`, the
+// rebind composite must carry the `if-rebind-composite--unbound` modifier
+// so the placeholder label can be styled muted/italic. Previously the
+// `Unbound` placeholder rendered with the same styling as a real source
+// label, leaving the user no visual cue that the field was empty.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn predicate_input_row_unbound_renders_unbound_modifier() {
+    // Conditional whose predicate input is Unbound should render the
+    // `if-rebind-composite--unbound` modifier on the predicate's rebind
+    // composite, with the `Unbound` placeholder text inside the label and
+    // no trace of the legacy `Btn 1` sentinel that older builds produced
+    // for an empty-device address.
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed {
+            input: InputAddress::Unbound,
+        },
+        if_true: vec![],
+        if_false: Vec::new(),
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+
+    assert!(
+        html.contains("if-rebind-composite--unbound"),
+        "unbound modifier missing on predicate input row: {html}"
+    );
+    assert!(
+        html.contains(">Unbound<"),
+        "Unbound label text missing: {html}"
+    );
+    assert!(
+        !html.contains("Btn 1"),
+        "must not render the legacy Btn 1 sentinel: {html}"
+    );
+}
+
+#[test]
+fn predicate_input_row_bound_omits_unbound_modifier() {
+    // A normal Bound input must NOT carry the unbound modifier, otherwise
+    // every rebind composite would render muted.
+    let bound = InputAddress::Bound {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Button { index: 0 },
+    };
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed { input: bound },
+        if_true: vec![],
+        if_false: Vec::new(),
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+
+    assert!(
+        !html.contains("if-rebind-composite--unbound"),
+        "bound input must not carry unbound modifier: {html}"
+    );
+}
+
+#[test]
+fn merge_axis_body_unbound_secondary_renders_unbound_modifier() {
+    // MergeAxis stage with an Unbound secondary input must render the
+    // `if-rebind-composite--unbound` modifier on the secondary input's
+    // rebind composite, with the `Unbound` placeholder text in the label.
+    let actions = vec![Action::MergeAxis {
+        second_input: InputAddress::Unbound,
+        operation: MergeOp::Average,
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+
+    assert!(
+        html.contains("if-rebind-composite--unbound"),
+        "unbound modifier missing on merge_axis secondary input: {html}"
+    );
+    assert!(
+        html.contains(">Unbound<"),
+        "Unbound label text missing: {html}"
+    );
+}

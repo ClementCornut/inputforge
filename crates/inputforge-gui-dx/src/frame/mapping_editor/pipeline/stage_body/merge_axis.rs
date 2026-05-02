@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-05-01
+// Rust guideline compliant 2026-05-02
 
 //! `MergeAxis` body: operation picker + secondary input picker.
 //!
@@ -329,6 +329,17 @@ pub(crate) fn MergeAxisBody(
     // --- Secondary source label ---
     let secondary_label = source_label::format(&second_input, &ctx.config.read());
 
+    // Compose the rebind-composite class so the placeholder label renders
+    // muted/italic when the secondary input is `Unbound`. Without the
+    // modifier the `Unbound` placeholder reads with the same weight as a
+    // real source label, which obscures that the field has not been bound
+    // yet. Mirrors the same pattern used in `PredicateInputRow`.
+    let composite_class = if second_input.is_unbound() {
+        "if-rebind-composite if-rebind-composite--unbound"
+    } else {
+        "if-rebind-composite"
+    };
+
     rsx! {
         div { class: "if-stage__body-merge-axis",
             div { class: "if-stage__body-field",
@@ -341,7 +352,7 @@ pub(crate) fn MergeAxisBody(
             }
             div { class: "if-stage__body-field",
                 label { class: "if-stage__body-label", "Secondary input" }
-                div { class: "if-rebind-composite",
+                div { class: "{composite_class}",
                     span { class: "if-rebind-composite__label", "{secondary_label}" }
                     button {
                         class: "if-rebind-composite__action",

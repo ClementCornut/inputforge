@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-05-01
+// Rust guideline compliant 2026-05-02
 
 //! Predicate editor: kind picker + operand fields per spec line 349.
 //! Recursive for `All` / `Any` / `Not`.
@@ -321,6 +321,24 @@ fn PredicateInputRow(
 
     let source = source_label::format(&input, &ctx.config.read());
 
+    // Compose the rebind-composite class once so both the idle and listening
+    // branches stay in lockstep. The `--unbound` modifier is what styles the
+    // placeholder label (and the listening cue, by inheritance) muted/italic
+    // so the user sees at a glance that the field is empty rather than
+    // mistaking the placeholder for a real binding. Applying it to both
+    // branches prevents class flicker if the user opens, then cancels,
+    // a rebind on an Unbound row.
+    let composite_class = if input.is_unbound() {
+        "if-rebind-composite if-rebind-composite--unbound"
+    } else {
+        "if-rebind-composite"
+    };
+    let listening_class = if input.is_unbound() {
+        "if-rebind-composite if-rebind-composite--listening if-rebind-composite--unbound"
+    } else {
+        "if-rebind-composite if-rebind-composite--listening"
+    };
+
     let on_rebind = move |_: MouseEvent| {
         // Set the consumer flag before calling `start` so the captured effect
         // cannot fire before the flag is true.
@@ -336,7 +354,7 @@ fn PredicateInputRow(
     rsx! {
         div { class: "if-predicate__input-row",
             if *is_armed_consumer.read() {
-                div { class: "if-rebind-composite if-rebind-composite--listening",
+                div { class: "{listening_class}",
                     span {
                         class: "if-rebind-composite__listening",
                         role: "status",
@@ -351,7 +369,7 @@ fn PredicateInputRow(
                     }
                 }
             } else {
-                div { class: "if-rebind-composite",
+                div { class: "{composite_class}",
                     span { class: "if-rebind-composite__label", "{source}" }
                     button {
                         class: "if-rebind-composite__action",
