@@ -79,6 +79,11 @@ pub(crate) fn adjacent_x_bounds(curve: &ResponseCurve, index: usize) -> (f64, f6
 /// For symmetric piecewise/spline curves the mirror point is updated
 /// automatically. The center point of a symmetric odd-length curve is
 /// frozen and this function returns early without modifying the curve.
+///
+/// Bezier handle y is clamped to `[-1.0, 1.0]`, deviating from the egui
+/// reference where handles could roam outside the plot. The SVG renderer
+/// would clip them anyway; clamping here keeps drag interaction predictable
+/// at the viewBox edges.
 pub(crate) fn update_point_in_curve(
     curve: &mut ResponseCurve,
     index: usize,

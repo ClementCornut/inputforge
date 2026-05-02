@@ -26,17 +26,22 @@ pub(crate) struct PlotRect {
 /// coordinate system (`-1.05..1.05` square). The returned tuple is
 /// engine-native `(input, output)`: the SVG y-flip is applied here
 /// (output points up) so callers downstream see engine-native data.
+///
+/// Returns `None` when the plot rect is unmeasurable (`size <= 0.0`),
+/// which happens during the brief window between mount and the first
+/// `getBoundingClientRect()` capture. `(0.0, 0.0)` would be ambiguous
+/// with a real click at the plot origin, so the contract is explicit.
 #[must_use]
-pub(crate) fn screen_to_viewbox(cursor: (f64, f64), r: &PlotRect) -> (f64, f64) {
+pub(crate) fn screen_to_viewbox(cursor: (f64, f64), r: &PlotRect) -> Option<(f64, f64)> {
     if r.size <= 0.0 {
-        return (0.0, 0.0);
+        return None;
     }
     let nx = (cursor.0 - r.x) / r.size; // 0..1 left-to-right
     let ny = (cursor.1 - r.y) / r.size; // 0..1 top-to-bottom
     let input = -1.05 + nx * 2.1;
     // Top of plot is +output (1.05); bottom is -output (-1.05).
     let output = 1.05 - ny * 2.1;
-    (input, output)
+    Some((input, output))
 }
 
 /// Project a viewBox `(input, output)` tuple onto viewport pixel
@@ -122,7 +127,10 @@ pub(crate) fn handle_pointer_move(
     r: &PlotRect,
 ) -> HandlerOut {
     if let Some(drag) = state.dragging.clone() {
-        let p = screen_to_viewbox(cursor, r);
+        let Some(p) = screen_to_viewbox(cursor, r) else {
+            // Unmeasured rect: keep the drag alive but emit no curve update.
+            return (state, None, false);
+        };
         let mut local = curve.clone();
         mutation::update_point_in_curve(&mut local, drag.point_index, p, drag.bounds);
         state.cache_dirty = true;
@@ -182,7 +190,9 @@ pub(crate) fn handle_double_click(
     cursor: (f64, f64),
     r: &PlotRect,
 ) -> HandlerOut {
-    let p = screen_to_viewbox(cursor, r);
+    let Some(p) = screen_to_viewbox(cursor, r) else {
+        return (state, None, false);
+    };
     // Bounds gate: a double-click outside the plot would otherwise be
     // clamped by `add_control_point` to a boundary anchor at (-1, ?) or
     // (1, ?), which is surprising UX.
@@ -253,12 +263,22 @@ mod tests {
         // top-left of plot maps to (-1.05, -1.05) in viewBox; in engine
         // coords (input axis horizontal) that's (input=-1.05, output=+1.05)
         // because SVG-y is flipped at render time.
-        let p = screen_to_viewbox((10.0, 20.0), &r);
+        let p = screen_to_viewbox((10.0, 20.0), &r).unwrap();
         assert!((p.0 - (-1.05)).abs() < 1e-6);
         assert!((p.1 - 1.05).abs() < 1e-6);
         // Center of plot maps to (0, 0).
-        let p = screen_to_viewbox((10.0 + 120.0, 20.0 + 120.0), &r);
+        let p = screen_to_viewbox((10.0 + 120.0, 20.0 + 120.0), &r).unwrap();
         assert!(p.0.abs() < 1e-6 && p.1.abs() < 1e-6);
+    }
+
+    #[test]
+    fn screen_to_viewbox_returns_none_for_zero_rect() {
+        let r = PlotRect {
+            x: 0.0,
+            y: 0.0,
+            size: 0.0,
+        };
+        assert!(screen_to_viewbox((10.0, 20.0), &r).is_none());
     }
 
     #[test]

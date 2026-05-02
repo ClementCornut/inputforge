@@ -34,6 +34,12 @@
   aspect-ratio: 1 / 1;
   cursor: default;
   outline: none;
+  /* Drags occasionally pass over SVG <text> tick labels; without this the
+     browser starts a text selection on "0", ".5", "-1" etc. mid-drag. The
+     plot frame contains only the SVG (toolbar lives outside), so disabling
+     selection here is scoped to non-textual content. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 .if-curve__plot-frame:focus-visible {
   outline: 2px solid var(--color-border-focus);

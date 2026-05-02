@@ -3,12 +3,6 @@
 //! F10 response-curve body. See spec
 //! `docs/superpowers/specs/2026-05-01-f10-curve-editor-design.md`.
 
-#![allow(
-    dead_code,
-    reason = "submodules expose APIs consumed across F10 tasks; clippy's \
-              reachability check loses some pub(crate) items here."
-)]
-
 pub(crate) mod interaction;
 pub(crate) mod keyboard;
 pub(crate) mod mutation;
@@ -178,9 +172,20 @@ fn compute_live_value(
 /// each curve body's listeners scope to its own plot rect. A `dragging` flag
 /// keeps move/up firing when the cursor leaves the plot mid-drag (otherwise
 /// the user could lose the drag by exiting the plot bounds).
+///
+/// Listener-scoping rule: events that fire only inside the plot
+/// (`mousedown`, `dblclick`, `contextmenu`) attach to `plotEl`, so the browser
+/// auto-collects them when the wrapper div is removed from the DOM on
+/// component unmount. `mousemove` and `mouseup` MUST stay on `document` because
+/// the user can drag past the plot bounds; those two carry an explicit
+/// `getElementById(...)` null-check so a stale closure self-disables once its
+/// target element is gone. Without that guard, listeners would accumulate
+/// across mapping switches / stage collapse cycles and every doc-level mouse
+/// event would fan out to N stale closures.
 const BRIDGE_JS_TEMPLATE: &str = r"
     var plotEl = document.getElementById('__PLOT_ID__');
     if (!plotEl) return;
+    var plotId = '__PLOT_ID__';
     var dragging = false;
 
     // Re-read getBoundingClientRect on EVERY event. Caching the mount-time
@@ -207,33 +212,40 @@ const BRIDGE_JS_TEMPLATE: &str = r"
         return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
     };
 
-    document.addEventListener('mousedown', function(e) {
+    plotEl.addEventListener('mousedown', function(e) {
         if (e.button !== 0) return;
-        if (!inPlot(e)) return;
         dragging = true;
         sendEvt('down', e);
     });
 
     document.addEventListener('mousemove', function(e) {
+        if (!document.getElementById(plotId)) return;
         if (!dragging && !inPlot(e)) return;
         sendEvt('move', e);
     });
 
     document.addEventListener('mouseup', function(e) {
+        if (!document.getElementById(plotId)) return;
         if (e.button !== 0) return;
         if (!dragging) return;
         dragging = false;
         sendEvt('up', e);
     });
 
-    document.addEventListener('dblclick', function(e) {
-        if (!inPlot(e)) return;
+    plotEl.addEventListener('dblclick', function(e) {
         sendEvt('dbl', e);
     });
 
-    document.addEventListener('contextmenu', function(e) {
-        if (!inPlot(e)) return;
+    plotEl.addEventListener('contextmenu', function(e) {
         e.preventDefault();
+        // Right-click during a left-drag must not leave `dragging` stuck true.
+        // Synthesize an 'up' so dispatch_bridge_event runs handle_pointer_up
+        // (commits or reverts the drag); then deliver the 'ctx' for the
+        // remove-anchor path.
+        if (dragging) {
+            dragging = false;
+            sendEvt('up', e);
+        }
         sendEvt('ctx', e);
     });
 ";
@@ -378,8 +390,18 @@ fn dispatch_bridge_event(
                     next.cache_dirty = false;
                     match mutation::reconstruct_curve(&new_curve) {
                         Ok(valid) => {
-                            let vb = interaction::screen_to_viewbox((payload.x, payload.y), &rect);
-                            let label = format!("curve: add point at ({:.2}, {:.2})", vb.0, vb.1);
+                            // `rect` was already gated on `payload.rs > 0.0` at
+                            // the top of dispatch_bridge_event, so this branch
+                            // is reached only with a measured rect; fall back
+                            // to a coordless label if that ever changes.
+                            let label =
+                                match interaction::screen_to_viewbox((payload.x, payload.y), &rect)
+                                {
+                                    Some(vb) => {
+                                        format!("curve: add point at ({:.2}, {:.2})", vb.0, vb.1)
+                                    }
+                                    None => "curve: add point".to_owned(),
+                                };
                             let cfg2 = config_signal.read();
                             let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
                             drop(cfg2);
@@ -660,16 +682,13 @@ pub(crate) fn ResponseCurveBody(
         // `Instant::EPOCH` on either std or web_time, so we use a baseline
         // captured once at mount and compute elapsed time from it.
         //
-        // `as_millis()` returns `u128`; convert to `u64` with saturation.
-        // An overflow (component alive for >584 million years) saturates to
-        // `u64::MAX`, which won't match the 250 ms coalesce window, so it
-        // correctly pushes a new undo entry rather than merging.
-        let now_ms: u64 = u64::try_from(
-            std::time::Instant::now()
-                .saturating_duration_since(*time_baseline.peek())
-                .as_millis(),
-        )
-        .unwrap_or(u64::MAX);
+        // `as_millis()` is u128; cast to u64 saturates the unreachable
+        // >584-million-year arm. Even on wraparound the value would not
+        // collide with the 250 ms coalesce window for any real session.
+        #[allow(clippy::cast_possible_truncation, reason = "see comment")]
+        let now_ms = std::time::Instant::now()
+            .saturating_duration_since(*time_baseline.peek())
+            .as_millis() as u64;
 
         // Re-project curve and root actions from the live config so the handler
         // sees the freshest state (no stale prop closures). Drop the read guard
