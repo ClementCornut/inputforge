@@ -49,8 +49,7 @@ pub(crate) struct LaunchParams {
 }
 
 /// Launch the Dioxus Desktop GUI. Blocks the calling thread on the OS event
-/// loop (wry/tao underneath), matches the egui crate's `eframe::run_native`
-/// blocking semantics.
+/// loop (wry/tao underneath) until the user quits.
 ///
 /// `tray_menu_ids` flow through `LaunchParams::tray_menu_ids` into
 /// `app_root`, which calls `tray::install_event_handler(...)` from inside a
