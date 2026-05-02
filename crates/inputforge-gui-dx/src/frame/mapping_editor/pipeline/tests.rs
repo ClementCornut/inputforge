@@ -1518,27 +1518,24 @@ fn four_stage_pipeline_renders_all_categories_and_summaries() {
 
 #[test]
 fn malformed_merge_axis_with_secondary_equal_primary_shows_error_class() {
-    // Build a MergeAxis stage where secondary == primary. The body component
-    // writes "Secondary input must differ from primary" to malformed_hints via
-    // a use_effect, which does NOT fire during SSR. We pre-seed the hint
-    // directly so the Stage component sees it and applies the error-tint class.
+    // Build a MergeAxis stage where secondary == primary. After Task 9 the
+    // body component writes "Secondary input must differ from primary" to
+    // malformed_hints during the render phase (no longer via a `use_effect`,
+    // which would not fire during SSR), so the hint surfaces naturally on
+    // the second render pass without any pre-seeding. The settled render
+    // helper performs that second pass after the first-pass write has
+    // propagated.
     let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
-    let stage_id = StageId(vec![StageIdSegment::Index(0)]);
     let actions = vec![Action::MergeAxis {
         second_input: primary.clone(),
         operation: MergeOp::Average,
     }];
     let (state, addr) = build_state(actions);
-
-    let mut hints = HashMap::new();
-    hints.insert(
-        stage_id,
-        "Secondary input must differ from primary".to_owned(),
-    );
-    let html = render_with_malformed_hints(state, addr, hints);
+    let html =
+        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
 
     // The error-tint modifier class must appear on the title element.
     assert!(
@@ -1872,6 +1869,65 @@ fn predicate_hat_direction_unbound_pre_empts_empty_directions_hint() {
     assert!(
         html.contains("Bind an input to complete this condition"),
         "expected unbound predicate hint to win over empty-directions hint, got: {html}"
+    );
+}
+
+#[test]
+fn predicate_axis_in_range_bound_inverted_renders_min_max_hint() {
+    // Regression guard: the AxisInRange per-kind hint
+    // ("min must not exceed max") was never SSR-tested before Task 9
+    // converted the malformed-hint write from `use_effect` to a render-time
+    // write. With a Bound input + inverted range, the per-kind hint must
+    // still surface so the conversion has not silently broken it.
+    let primary = InputAddress::Bound {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let actions = vec![Action::Conditional {
+        condition: Condition::AxisInRange {
+            input: primary.clone(),
+            min: 1.0,
+            max: -1.0,
+        },
+        if_true: vec![],
+        if_false: Vec::new(),
+    }];
+    let (state, addr) = build_state(actions);
+    let html =
+        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+
+    assert!(
+        html.contains("min must not exceed max"),
+        "expected inverted-range hint, got: {html}"
+    );
+}
+
+#[test]
+fn predicate_hat_direction_bound_empty_renders_directions_hint() {
+    // Regression guard: symmetric to the AxisInRange case above. The
+    // HatDirection per-kind hint
+    // ("at least one direction must be selected") must still surface for a
+    // Bound input + empty directions after the Task 9 use_effect ->
+    // render-time-write conversion.
+    let primary = InputAddress::Bound {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Hat { index: 0 },
+    };
+    let actions = vec![Action::Conditional {
+        condition: Condition::HatDirection {
+            input: primary.clone(),
+            directions: vec![],
+        },
+        if_true: vec![],
+        if_false: Vec::new(),
+    }];
+    let (state, addr) = build_state(actions);
+    let html =
+        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+
+    assert!(
+        html.contains("at least one direction must be selected"),
+        "expected empty-directions hint, got: {html}"
     );
 }
 

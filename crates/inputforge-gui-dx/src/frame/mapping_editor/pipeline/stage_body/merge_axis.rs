@@ -20,12 +20,20 @@
 //! others see `false` and skip. This is the project-wide convention; deviating
 //! from it causes the self-fire bug documented in Task 16.
 //!
-//! # Malformed hints (Amendment 1)
+//! # Malformed hints (Amendment 1, Task 9)
 //!
-//! On every render via `use_effect`, the component checks whether
-//! `second_input == mapping_key.1` (secondary equals primary). When true it
-//! writes a hint to `editor.malformed_hints`; otherwise it clears the entry
-//! for this `stage_id`.
+//! At render time (NOT inside a `use_effect`, so SSR observes the write the
+//! same frame the condition becomes invalid), the component picks at most
+//! one hint to write into `editor.malformed_hints` for this `stage_id`,
+//! using the priority:
+//!
+//! 1. `second_input.is_unbound()` -- writes [`HINT_MERGE_UNBOUND`]
+//!    ("Bind a secondary input to complete this merge"). Top priority
+//!    because no other validation is meaningful when no secondary input
+//!    is bound yet.
+//! 2. `second_input == mapping_key.1` (secondary equals primary) --
+//!    writes "Secondary input must differ from primary".
+//! 3. Otherwise -- clears the entry for this `stage_id`.
 //!
 //! # Name preservation (Amendment 2)
 //!
