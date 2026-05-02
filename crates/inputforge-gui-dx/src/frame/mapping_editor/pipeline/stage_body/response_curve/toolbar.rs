@@ -204,6 +204,49 @@ fn kind_label(k: CurveType) -> &'static str {
     }
 }
 
+/// Dispatch a curve edit to the engine **without** recording an undo entry.
+///
+/// Used by the keyboard handler's same-key coalesce path (`MergeUndo`): the
+/// engine must receive the updated curve but the undo log must not receive a
+/// new entry. The first nudge of a coalesce burst already pushed an entry
+/// (via [`dispatch_curve_edit`]) whose `mapping_before` captures the
+/// pre-burst state, so `undo` restores correctly without the intermediate
+/// entries.
+///
+/// `name` is threaded through to preserve the user-set mapping name (mirrors
+/// the `dispatch_curve_edit` convention; see `name_field.rs:60-70`).
+pub(crate) fn dispatch_curve_edit_no_undo(
+    actions_before: &[Action],
+    stage_id: &StageId,
+    new_curve: ResponseCurve,
+    mapping_key: &MappingKey,
+    name: Option<String>,
+    cmd_tx: &Sender<EngineCommand>,
+) {
+    let Some(new_actions) = replace_at_path(
+        actions_before,
+        stage_id,
+        Action::ResponseCurve { curve: new_curve },
+    ) else {
+        return;
+    };
+    if cmd_tx
+        .send(EngineCommand::SetMapping {
+            input: mapping_key.1.clone(),
+            mode: mapping_key.0.clone(),
+            name,
+            actions: new_actions,
+        })
+        .is_err()
+    {
+        tracing::warn!(
+            target: "f10::response_curve",
+            action = "set_mapping_no_undo_drop_offline",
+            "dropped no-undo SetMapping command: receiver disconnected"
+        );
+    }
+}
+
 // `name` is resolved by the caller via
 // `ctx.config.read().mapping_names.get(mapping_key).cloned()`. Both the
 // undo `before` snapshot and the engine command must carry the same

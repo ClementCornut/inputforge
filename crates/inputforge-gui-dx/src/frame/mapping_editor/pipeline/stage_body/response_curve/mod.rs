@@ -137,6 +137,12 @@ pub(crate) fn ResponseCurveBody(
     // and failure paths).
     let mut working_curve: Signal<Option<ResponseCurve>> = use_signal(|| None);
 
+    // Captured once per mount so that `now_ms` inside `on_key` can be computed
+    // as `Instant::now().saturating_duration_since(*time_baseline.peek())`. The
+    // `web_time` crate is NOT used; `Instant::EPOCH` does not exist on either
+    // `std::time::Instant` or `web_time::Instant`.
+    let time_baseline = use_signal(std::time::Instant::now);
+
     // Cached bounding rect of the plot wrapper div, populated asynchronously
     // after mount. The first pointer event that fires before the rect is ready
     // is a silent no-op; subsequent events use the cached value.
@@ -471,6 +477,117 @@ pub(crate) fn ResponseCurveBody(
         body.set(next);
     };
 
+    // --- on_key ---
+    // Routes a normalized `KeyInput` through `keyboard::handle_key`, updates
+    // body state, and dispatches the resulting curve edit (if any) to the
+    // engine. Tab/ShiftTab do NOT call `prevent_default()` so the browser can
+    // advance focus past the plot at the list boundary; all other handled keys
+    // consume the event.
+    let mapping_key_for_key = mapping_key.clone();
+    let stage_id_for_key = stage_id.clone();
+    let cmd_tx_for_key = cmd_tx.clone();
+    let on_key = move |evt: KeyboardEvent| {
+        let key = match (evt.key(), evt.modifiers().shift()) {
+            (Key::Tab, true) => keyboard::KeyInput::ShiftTab,
+            (Key::Tab, false) => keyboard::KeyInput::Tab,
+            (Key::ArrowLeft, shift) => keyboard::KeyInput::ArrowLeft { shift },
+            (Key::ArrowRight, shift) => keyboard::KeyInput::ArrowRight { shift },
+            (Key::ArrowUp, shift) => keyboard::KeyInput::ArrowUp { shift },
+            (Key::ArrowDown, shift) => keyboard::KeyInput::ArrowDown { shift },
+            (Key::Home, _) => keyboard::KeyInput::Home,
+            (Key::End, _) => keyboard::KeyInput::End,
+            (Key::Enter, _) => keyboard::KeyInput::Enter,
+            (Key::Delete | Key::Backspace, _) => keyboard::KeyInput::Delete,
+            (Key::Escape, _) => keyboard::KeyInput::Escape,
+            _ => return,
+        };
+
+        // Tab/ShiftTab: do NOT prevent default. The browser handles focus
+        // wrap when the user reaches the end of the anchor list (the outer
+        // page should advance focus past the plot). All other keys are
+        // consumed locally.
+        if !matches!(key, keyboard::KeyInput::Tab | keyboard::KeyInput::ShiftTab) {
+            evt.prevent_default();
+        }
+
+        // `now_ms` is the milliseconds since component mount. Using
+        // `std::time::Instant` directly mirrors `live_capture`. There is no
+        // `Instant::EPOCH` on either std or web_time, so we use a baseline
+        // captured once at mount and compute elapsed time from it.
+        //
+        // `as_millis()` returns `u128`; convert to `u64` with saturation.
+        // An overflow (component alive for >584 million years) saturates to
+        // `u64::MAX`, which won't match the 250 ms coalesce window, so it
+        // correctly pushes a new undo entry rather than merging.
+        let now_ms: u64 = u64::try_from(
+            std::time::Instant::now()
+                .saturating_duration_since(*time_baseline.peek())
+                .as_millis(),
+        )
+        .unwrap_or(u64::MAX);
+
+        // Re-project curve and root actions from the live config so the handler
+        // sees the freshest state (no stale prop closures). Drop the read guard
+        // before dispatch_curve_edit acquires its own write on undo_log.
+        let cfg = config_signal.read();
+        let actions: Vec<Action> = cfg.selected_mapping_actions.clone().unwrap_or_default();
+        let live_curve = project_stage_curve(&actions, &stage_id_for_key, &curve);
+        let name = cfg.mapping_names.get(&mapping_key_for_key.1).cloned();
+        drop(cfg);
+
+        let (next_state, new_curve, outcome, _changed) =
+            keyboard::handle_key(body.peek().clone(), &live_curve, key, now_ms);
+        body.set(next_state);
+        let Some(new) = new_curve else { return };
+        match outcome {
+            Some(keyboard::KeyOutcome::PushUndo { label }) => {
+                toolbar::dispatch_curve_edit(
+                    &actions,
+                    &stage_id_for_key,
+                    new,
+                    &mapping_key_for_key,
+                    name,
+                    &cmd_tx_for_key,
+                    &mut undo_log,
+                    label,
+                );
+            }
+            Some(keyboard::KeyOutcome::MergeUndo) => {
+                // Same-key burst within 250 ms: dispatch the new curve to the
+                // engine but do NOT push a new undo entry. The first nudge of
+                // the burst already pushed an entry whose `mapping_before`
+                // captures the pre-burst state, so undo restores correctly.
+                // Redo replays the first nudge's SetMapping only; accepted as
+                // a deliberate UX simplification.
+                toolbar::dispatch_curve_edit_no_undo(
+                    &actions,
+                    &stage_id_for_key,
+                    new,
+                    &mapping_key_for_key,
+                    name,
+                    &cmd_tx_for_key,
+                );
+            }
+            None => {
+                // Escape revert: body-local only. The drag never dispatched,
+                // so the engine state is already correct; no dispatch is
+                // needed. (Pointer-up's revert path is analogous.)
+            }
+        }
+    };
+
+    // --- on_focus_out ---
+    // Reset the coalesce state when the plot wrapper loses focus so that the
+    // next nudge after refocus pushes a fresh undo entry rather than merging
+    // into a stale prior burst.
+    let mut body_for_focusout = body;
+    let on_focus_out = move |_| {
+        body_for_focusout.with_mut(|s| {
+            s.last_nudge_at_ms = None;
+            s.last_nudge_key = None;
+        });
+    };
+
     // Derive data-attribute values from the current body snapshot. These drive
     // CSS cursor rules (grab cursor during drag, pointer cursor on hover).
     let body_snapshot = body.read();
@@ -511,6 +628,8 @@ pub(crate) fn ResponseCurveBody(
                 ondoubleclick: on_double_click,
                 oncontextmenu: on_context_menu,
                 onmounted: on_mounted,
+                onkeydown: on_key,
+                onfocusout: on_focus_out,
                 { rendering::render_plot(&live_curve, &body.read(), None, 240.0) }
             }
         }
