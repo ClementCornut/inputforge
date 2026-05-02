@@ -9,6 +9,7 @@
               reachability check loses some pub(crate) items here."
 )]
 
+pub(crate) mod interaction;
 pub(crate) mod mutation;
 pub(crate) mod state;
 
