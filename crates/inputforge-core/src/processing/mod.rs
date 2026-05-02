@@ -7,7 +7,7 @@ pub mod inversion;
 pub mod polarity;
 
 pub use calibration::Calibration;
-pub use curves::{BezierSegment, ResponseCurve, bezier_x, bezier_y};
+pub use curves::{BezierSegment, ResponseCurve, bezier_x, bezier_y, sample_curve_path};
 pub use deadzone::DeadzoneConfig;
 pub use inversion::{invert_axis, invert_button};
 pub use polarity::into_natural_domain;

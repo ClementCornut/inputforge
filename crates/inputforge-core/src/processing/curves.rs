@@ -445,6 +445,63 @@ fn evaluate_cubic_bezier(segments: &[BezierSegment], input: f64) -> f64 {
     last.end.1
 }
 
+/// Sample a curve into `samples` evenly-spaced `(input, output)` tuples
+/// in engine-native ordering.
+///
+/// For `PiecewiseLinear` and `CubicSpline`, samples are taken evenly by
+/// input across `[-1, 1]`. For `CubicBezier`, samples are taken by the
+/// parameter `t` per segment (mirroring egui's `rebuild_cache`) so that
+/// non-monotonic `x(t)` regions render correctly.
+///
+/// Used by the F10 curve editor's polyline render and 28x14 thumbnail.
+/// `samples == 0` returns an empty `Vec`.
+///
+/// # Examples
+///
+/// ```
+/// use inputforge_core::processing::{ResponseCurve, sample_curve_path};
+///
+/// let curve = ResponseCurve::piecewise_linear(
+///     vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
+///     false,
+/// )
+/// .unwrap();
+/// let pts = sample_curve_path(&curve, 3);
+/// assert_eq!(pts.len(), 3);
+/// // Tuples are (input, output) in engine-native order.
+/// assert!((pts[0].0 - (-1.0)).abs() < 1e-9);
+/// assert!((pts[0].1 - (-1.0)).abs() < 1e-9);
+/// ```
+#[must_use]
+pub fn sample_curve_path(curve: &ResponseCurve, samples: usize) -> Vec<(f64, f64)> {
+    if samples == 0 {
+        return Vec::new();
+    }
+    if let ResponseCurve::CubicBezier { segments, .. } = curve {
+        let per_seg = (samples / segments.len().max(1)).max(2);
+        let mut out = Vec::with_capacity(per_seg * segments.len());
+        for seg in segments {
+            let last = (per_seg - 1).max(1);
+            for i in 0..per_seg {
+                let t = i as f64 / last as f64;
+                out.push((bezier_x(seg, t), bezier_y(seg, t)));
+            }
+        }
+        return out;
+    }
+    let mut out = Vec::with_capacity(samples);
+    if samples == 1 {
+        out.push((-1.0, curve.evaluate(-1.0)));
+        return out;
+    }
+    let step = 2.0 / (samples - 1) as f64;
+    for i in 0..samples {
+        let x = -1.0 + i as f64 * step;
+        out.push((x, curve.evaluate(x)));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -790,5 +847,68 @@ mod tests {
         let json = r#"{"kind":"piecewise_linear","points":[[0.0,0.0]],"symmetric":false}"#;
         let result: std::result::Result<ResponseCurve, _> = serde_json::from_str(json);
         result.unwrap_err();
+    }
+
+    // -- sample_curve_path ----------------------------------------------------
+
+    #[test]
+    fn sample_curve_path_piecewise_round_trips_identity() {
+        let curve =
+            ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false)
+                .unwrap();
+        let samples = sample_curve_path(&curve, 200);
+        assert_eq!(samples.len(), 200);
+        let tol = 1e-9;
+        assert!((samples[0].0 - (-1.0)).abs() < tol, "first input == -1");
+        assert!((samples[0].1 - (-1.0)).abs() < tol, "first output == -1");
+        let last = samples[199];
+        assert!((last.0 - 1.0).abs() < tol, "last input == 1");
+        assert!((last.1 - 1.0).abs() < tol, "last output == 1");
+        // Engine-native ordering: tuple is (input, output), NOT (output, input).
+        // For identity, midpoint should be ~ (0, 0).
+        let mid = samples[100];
+        assert!(mid.0.abs() < 0.02 && mid.1.abs() < 0.02);
+    }
+
+    #[test]
+    fn sample_curve_path_bezier_continuity() {
+        let seg_a = BezierSegment {
+            start: (-1.0, -1.0),
+            control1: (-2.0 / 3.0, -2.0 / 3.0),
+            control2: (-1.0 / 3.0, -1.0 / 3.0),
+            end: (0.0, 0.0),
+        };
+        let seg_b = BezierSegment {
+            start: (0.0, 0.0),
+            control1: (1.0 / 3.0, 1.0 / 3.0),
+            control2: (2.0 / 3.0, 2.0 / 3.0),
+            end: (1.0, 1.0),
+        };
+        let curve = ResponseCurve::cubic_bezier(vec![seg_a, seg_b], false).unwrap();
+        let samples = sample_curve_path(&curve, 200);
+        assert!(samples.len() >= 198 && samples.len() <= 200);
+        // No discontinuities greater than the local step size.
+        for w in samples.windows(2) {
+            let dy = (w[1].1 - w[0].1).abs();
+            assert!(dy < 0.1, "bezier sample jump too large: {dy}");
+        }
+    }
+
+    #[test]
+    fn sample_curve_path_engine_native_byte_order() {
+        // Regression: this helper must NOT swap to [output, input] like the
+        // egui port's rebuild_cache. Output tuples are (input, output).
+        let curve = ResponseCurve::piecewise_linear(vec![(-1.0, 1.0), (1.0, -1.0)], false).unwrap();
+        let samples = sample_curve_path(&curve, 3);
+        // For this inverted-identity curve, evaluate(-1) = 1 and evaluate(1) = -1.
+        // First tuple must be (-1, 1) NOT (1, -1).
+        assert!((samples[0].0 - (-1.0)).abs() < 1e-9);
+        assert!((samples[0].1 - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn sample_curve_path_zero_samples_returns_empty() {
+        let curve = ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (1.0, 1.0)], false).unwrap();
+        assert!(sample_curve_path(&curve, 0).is_empty());
     }
 }
