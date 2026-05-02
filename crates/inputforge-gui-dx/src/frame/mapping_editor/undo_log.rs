@@ -282,7 +282,7 @@ mod tests {
     fn synth_key() -> MappingKey {
         (
             "Default".to_owned(),
-            InputAddress {
+            InputAddress::Bound {
                 device: DeviceId("dev-1".to_owned()),
                 input: InputId::Button { index: 0 },
             },
@@ -442,7 +442,7 @@ mod tests {
         let key_a = synth_key();
         let key_b = (
             "Default".to_owned(),
-            InputAddress {
+            InputAddress::Bound {
                 device: DeviceId("dev-1".to_owned()),
                 input: InputId::Button { index: 1 },
             },
@@ -487,7 +487,7 @@ mod tests {
         let key_a = synth_key();
         let key_b = (
             "Default".to_owned(),
-            InputAddress {
+            InputAddress::Bound {
                 device: DeviceId("dev-1".to_owned()),
                 input: InputId::Button { index: 1 },
             },

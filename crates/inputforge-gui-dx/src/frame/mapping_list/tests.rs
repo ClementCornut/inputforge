@@ -67,7 +67,7 @@ fn row_renders_name_and_source_line() {
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         let summary = MappingSummary {
-            input: InputAddress {
+            input: InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
                 input: InputId::Button { index: 0 },
             },
@@ -105,7 +105,7 @@ fn row_active_class_when_selected() {
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         let summary = MappingSummary {
-            input: InputAddress {
+            input: InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
                 input: InputId::Button { index: 0 },
             },
@@ -144,18 +144,18 @@ fn row_glyphs_render_for_merge_and_conditional() {
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         let summary = MappingSummary {
-            input: InputAddress {
+            input: InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
                 input: InputId::Axis { index: 0 },
             },
             mode: "Default".to_owned(),
             name: Some("Throttle".to_owned()),
             glyphs: GlyphFlags {
-                merge_secondary: Some(InputAddress {
+                merge_secondary: Some(InputAddress::Bound {
                     device: DeviceId("dev".to_owned()),
                     input: InputId::Axis { index: 1 },
                 }),
-                first_input_predicate: Some(InputAddress {
+                first_input_predicate: Some(InputAddress::Bound {
                     device: DeviceId("dev".to_owned()),
                     input: InputId::Button { index: 3 },
                 }),
@@ -196,7 +196,7 @@ fn rename_inline_renders_input_with_initial_value() {
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         let summary = MappingSummary {
-            input: InputAddress {
+            input: InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
                 input: InputId::Button { index: 0 },
             },
@@ -231,7 +231,7 @@ fn row_swaps_in_rename_inline_when_renaming_matches_input() {
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         let summary = MappingSummary {
-            input: InputAddress {
+            input: InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
                 input: InputId::Button { index: 0 },
             },
@@ -282,7 +282,7 @@ fn row_renders_resting_when_renaming_is_none() {
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         let summary = MappingSummary {
-            input: InputAddress {
+            input: InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
                 input: InputId::Button { index: 0 },
             },
@@ -448,7 +448,7 @@ fn mapping_list_renders_axes_and_buttons_groups_in_order() {
         let mut mappings = vec![];
         for i in 0..3 {
             mappings.push(Mapping {
-                input: InputAddress {
+                input: InputAddress::Bound {
                     device: DeviceId("dev".to_owned()),
                     input: InputId::Axis { index: i },
                 },
@@ -463,7 +463,7 @@ fn mapping_list_renders_axes_and_buttons_groups_in_order() {
             });
         }
         mappings.push(Mapping {
-            input: InputAddress {
+            input: InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
                 input: InputId::Button { index: 0 },
             },
@@ -542,7 +542,7 @@ fn context_menu_renders_when_menu_open_is_set() {
         let map = HashMap::from([("Default".to_owned(), vec![])]);
         let modes = ModeTree::from_adjacency(&map).unwrap();
         let mappings = vec![Mapping {
-            input: InputAddress {
+            input: InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
                 input: InputId::Button { index: 0 },
             },
@@ -589,7 +589,7 @@ fn delete_dialog_renders_when_target_set() {
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         let target = MappingSummary {
-            input: InputAddress {
+            input: InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
                 input: InputId::Button { index: 0 },
             },
@@ -726,7 +726,7 @@ fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
 
         let mappings = vec![
             Mapping {
-                input: InputAddress {
+                input: InputAddress::Bound {
                     device: DeviceId("dev".to_owned()),
                     input: InputId::Axis { index: 0 },
                 },
@@ -740,14 +740,14 @@ fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
                 }],
             },
             Mapping {
-                input: InputAddress {
+                input: InputAddress::Bound {
                     device: DeviceId("dev".to_owned()),
                     input: InputId::Axis { index: 1 },
                 },
                 mode: "Default".to_owned(),
                 name: Some("Yaw".to_owned()),
                 actions: vec![Action::MergeAxis {
-                    second_input: InputAddress {
+                    second_input: InputAddress::Bound {
                         device: DeviceId("dev".to_owned()),
                         input: InputId::Axis { index: 2 },
                     },
@@ -755,7 +755,7 @@ fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
                 }],
             },
             Mapping {
-                input: InputAddress {
+                input: InputAddress::Bound {
                     device: DeviceId("dev".to_owned()),
                     input: InputId::Axis { index: 3 },
                 },
@@ -763,7 +763,7 @@ fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
                 name: Some("Pitch".to_owned()),
                 actions: vec![Action::Conditional {
                     condition: Condition::ButtonPressed {
-                        input: InputAddress {
+                        input: InputAddress::Bound {
                             device: DeviceId("dev".to_owned()),
                             input: InputId::Button { index: 5 },
                         },
@@ -773,7 +773,7 @@ fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
                 }],
             },
             Mapping {
-                input: InputAddress {
+                input: InputAddress::Bound {
                     device: DeviceId("dev".to_owned()),
                     input: InputId::Button { index: 0 },
                 },
@@ -840,7 +840,7 @@ fn active_row_carries_is_active_class_in_full_rail() {
     fn TestComponent() -> Element {
         let map = HashMap::from([("Default".to_owned(), vec![])]);
         let modes = ModeTree::from_adjacency(&map).unwrap();
-        let target_input = InputAddress {
+        let target_input = InputAddress::Bound {
             device: DeviceId("dev".to_owned()),
             input: InputId::Button { index: 0 },
         };
@@ -890,7 +890,7 @@ fn inline_rename_swaps_in_for_active_row() {
 
     fn TestComponent() -> Element {
         provide_minimal_contexts();
-        let target_input = InputAddress {
+        let target_input = InputAddress::Bound {
             device: DeviceId("dev".to_owned()),
             input: InputId::Button { index: 0 },
         };

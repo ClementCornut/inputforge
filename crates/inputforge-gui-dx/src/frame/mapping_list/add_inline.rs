@@ -424,7 +424,10 @@ pub(crate) fn AddInline(
             let (chip_label, device_label, kind_class): (String, String, &'static str) =
                 if let Some(addr) = &captured_addr {
                     let (device, input) = source_label::split_label(addr, &cfg);
-                    let kind = match addr.input {
+                    let kind = match addr
+                        .input_id()
+                        .expect("invariant: add_inline addr always bound (built from F8 capture)")
+                    {
                         InputId::Axis { .. } => "axis",
                         InputId::Button { .. } => "button",
                         InputId::Hat { .. } => "hat",

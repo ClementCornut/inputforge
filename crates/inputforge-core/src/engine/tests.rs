@@ -44,14 +44,14 @@ fn dev_id() -> DeviceId {
 }
 
 fn axis_addr(index: u8) -> InputAddress {
-    InputAddress {
+    InputAddress::Bound {
         device: dev_id(),
         input: InputId::Axis { index },
     }
 }
 
 fn button_addr(index: u8) -> InputAddress {
-    InputAddress {
+    InputAddress::Bound {
         device: dev_id(),
         input: InputId::Button { index },
     }
@@ -669,7 +669,7 @@ fn drop_flushes_output_without_panic() {
 // ---------------------------------------------------------------------------
 
 fn hat_addr(index: u8) -> InputAddress {
-    InputAddress {
+    InputAddress::Bound {
         device: dev_id(),
         input: InputId::Hat { index },
     }

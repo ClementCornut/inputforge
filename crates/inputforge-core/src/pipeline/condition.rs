@@ -43,7 +43,7 @@ mod tests {
     fn nested_condition_all() {
         let mut cache = MockCache::new();
         let btn_a = button_input_address();
-        let btn_b = InputAddress {
+        let btn_b = InputAddress::Bound {
             device: DeviceId("stick-1".to_owned()),
             input: InputId::Button { index: 1 },
         };
@@ -65,7 +65,7 @@ mod tests {
         let btn_a = button_input_address();
         cache.buttons.insert(btn_a.clone(), false);
 
-        let btn_b = InputAddress {
+        let btn_b = InputAddress::Bound {
             device: DeviceId("stick-1".to_owned()),
             input: InputId::Button { index: 1 },
         };
@@ -143,7 +143,7 @@ mod tests {
     // -- HatDirection ---------------------------------------------------------
 
     fn hat_input_address() -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("stick-1".to_owned()),
             input: InputId::Hat { index: 0 },
         }
@@ -214,7 +214,7 @@ mod tests {
     fn deeply_nested_all_any_not() {
         let mut cache = MockCache::new();
         let btn_a = button_input_address();
-        let btn_b = InputAddress {
+        let btn_b = InputAddress::Bound {
             device: DeviceId("stick-1".to_owned()),
             input: InputId::Button { index: 1 },
         };

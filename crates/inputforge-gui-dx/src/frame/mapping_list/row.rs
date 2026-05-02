@@ -60,7 +60,11 @@ pub(crate) fn Row(
         .is_some_and(|a| a == &summary.input);
 
     let (device_label, input_label) = source_label::split_label(&summary.input, &ctx.config.read());
-    let kind_class = match summary.input.input {
+    let kind_class = match summary
+        .input
+        .input_id()
+        .expect("invariant: mapping list row addr always bound (mapping primary)")
+    {
         InputId::Axis { .. } => "axis",
         InputId::Button { .. } => "button",
         InputId::Hat { .. } => "hat",

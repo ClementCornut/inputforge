@@ -193,6 +193,13 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
 /// Read-only; never dispatches commands. Used by F10's live-tracking dot
 /// (and F9's live-readout OUT bar) without duplicating pipeline evaluation
 /// in the GUI.
+///
+/// # Panics
+///
+/// Panics if `primary` is `InputAddress::Unbound`. Pipeline primaries are
+/// always `Bound` by construction: the profile validator rejects mappings
+/// whose primary input is unbound, so reaching this call site with an
+/// unbound primary indicates a programming error upstream.
 #[must_use]
 pub fn evaluate_actions_through(
     actions: &[Action],
@@ -206,7 +213,10 @@ pub fn evaluate_actions_through(
     // Returns the cache's default for missing entries (axis: 0.0 + Bipolar,
     // button: false, hat: HatDirection::Center): same convention as direct
     // trait reads.
-    let input_value = match &primary.input {
+    let input_value = match primary
+        .input_id()
+        .expect("invariant: pipeline primary is always bound (validator rejects unbound primaries)")
+    {
         InputId::Axis { .. } => {
             let (raw, polarity) = state.input_cache.get_axis(primary);
             InputValue::Axis {
@@ -580,7 +590,7 @@ mod tests {
     #[test]
     fn merge_axis_bidirectional() {
         let mut cache = MockCache::new();
-        let second_addr = InputAddress {
+        let second_addr = InputAddress::Bound {
             device: DeviceId("pedals".to_owned()),
             input: InputId::Axis { index: 1 },
         };
@@ -609,7 +619,7 @@ mod tests {
     #[test]
     fn merge_axis_average() {
         let mut cache = MockCache::new();
-        let second_addr = InputAddress {
+        let second_addr = InputAddress::Bound {
             device: DeviceId("pedals".to_owned()),
             input: InputId::Axis { index: 1 },
         };
@@ -638,7 +648,7 @@ mod tests {
     #[test]
     fn merge_axis_maximum() {
         let mut cache = MockCache::new();
-        let second_addr = InputAddress {
+        let second_addr = InputAddress::Bound {
             device: DeviceId("pedals".to_owned()),
             input: InputId::Axis { index: 1 },
         };
@@ -668,7 +678,7 @@ mod tests {
     #[test]
     fn merge_axis_maximum_first_larger_abs() {
         let mut cache = MockCache::new();
-        let second_addr = InputAddress {
+        let second_addr = InputAddress::Bound {
             device: DeviceId("pedals".to_owned()),
             input: InputId::Axis { index: 1 },
         };
@@ -820,7 +830,7 @@ mod tests {
         //   map to vJoy Rz axis
 
         let mut cache = MockCache::new();
-        let right_pedal = InputAddress {
+        let right_pedal = InputAddress::Bound {
             device: DeviceId("pedals".to_owned()),
             input: InputId::Axis { index: 1 },
         };
@@ -885,14 +895,14 @@ mod tests {
     use crate::state::AppState;
 
     fn axis_input_address() -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index: 0 },
         }
     }
 
     fn hat_input_address() -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Hat { index: 0 },
         }

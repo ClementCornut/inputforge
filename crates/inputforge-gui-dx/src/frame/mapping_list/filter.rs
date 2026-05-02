@@ -57,7 +57,7 @@ mod tests {
 
     fn row_named(name: &str, input: InputId) -> MappingSummary {
         MappingSummary {
-            input: InputAddress {
+            input: InputAddress::Bound {
                 device: DeviceId("tfm".to_owned()),
                 input,
             },
@@ -103,7 +103,7 @@ mod tests {
     fn unnamed_row_matches_on_source_only() {
         let cfg = cfg_with_device();
         let row = MappingSummary {
-            input: InputAddress {
+            input: InputAddress::Bound {
                 device: DeviceId("tfm".to_owned()),
                 input: InputId::Axis { index: 2 },
             },

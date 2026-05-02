@@ -244,7 +244,7 @@ mod tests {
     }
 
     fn _synthetic_addr() -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev".to_owned()),
             input: InputId::Button { index: 0 },
         }

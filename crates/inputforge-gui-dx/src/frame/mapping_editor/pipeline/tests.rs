@@ -39,7 +39,7 @@ use super::{at_path, insert_at_path, remove_at_path, replace_at_path};
 // ---------------------------------------------------------------------------
 
 fn synth_addr() -> InputAddress {
-    InputAddress {
+    InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Button { index: 0 },
     }
@@ -283,7 +283,7 @@ fn insert_remove_invalid_paths_return_none() {
 fn build_state(actions: Vec<Action>) -> (AppState, InputAddress) {
     let map = HashMap::from([("Default".to_owned(), vec![])]);
     let modes = ModeTree::from_adjacency(&map).unwrap();
-    let addr = InputAddress {
+    let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -724,7 +724,7 @@ fn map_to_keyboard_body_renders_modifier_toggles_and_key_field() {
 #[test]
 fn merge_axis_body_renders_op_picker_and_secondary_input() {
     let actions = vec![Action::MergeAxis {
-        second_input: InputAddress {
+        second_input: InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index: 1 },
         },
@@ -744,7 +744,7 @@ fn merge_axis_body_renders_op_picker_and_secondary_input() {
 
 #[test]
 fn merge_axis_body_writes_malformed_hint_when_secondary_equals_primary() {
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -769,7 +769,7 @@ fn merge_axis_body_writes_malformed_hint_when_secondary_equals_primary() {
 
 #[test]
 fn predicate_editor_renders_kind_picker_with_seven_options() {
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Button { index: 0 },
     };
@@ -803,7 +803,7 @@ fn predicate_editor_renders_kind_picker_with_seven_options() {
 
 #[test]
 fn predicate_axis_in_range_renders_min_max_inputs() {
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -828,7 +828,7 @@ fn predicate_axis_in_range_renders_min_max_inputs() {
 
 #[test]
 fn predicate_all_recursive_renders_nested_predicate_editors() {
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Button { index: 0 },
     };
@@ -861,7 +861,7 @@ fn predicate_all_recursive_renders_nested_predicate_editors() {
 
 #[test]
 fn conditional_body_renders_branches_with_correct_aria_labels() {
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Button { index: 0 },
     };
@@ -929,7 +929,7 @@ fn placeholder_bodies_show_spec_caption() {
 
 #[test]
 fn conditional_three_deep_renders_all_branches() {
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Button { index: 0 },
     };
@@ -1125,7 +1125,7 @@ fn dnd_can_move_stage_from_outer_into_conditional_if_true() {
     // Integration: move Action::Invert (at outer index 1) into the if_true
     // branch of the Conditional at outer index 0. The resulting tree must have
     // one outer stage (the Conditional) with one inner stage (Invert).
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Button { index: 0 },
     };
@@ -1195,7 +1195,7 @@ fn dnd_gap_drop_dispatches_correct_target_index() {
     // [Deadzone, Invert, MergeAxis] -- the source's removal at index 0
     // shifts every later index left, so the gap-2 drop lands at the
     // post-remove slot 1.
-    let second_input = InputAddress {
+    let second_input = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 1 },
     };
@@ -1240,7 +1240,7 @@ fn dnd_gap_drop_cross_pipeline_no_shift() {
     // Drag a stage from the outer pipeline into a Conditional's if_true
     // branch. Cross-branch drops do not shift indices because the
     // source's removal happens in a different branch from the insert.
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Button { index: 0 },
     };
@@ -1380,7 +1380,7 @@ fn four_stage_pipeline_renders_all_categories_and_summaries() {
     // without relying on substring-search position arithmetic.
     use scraper::{Html, Selector};
 
-    let second_input = InputAddress {
+    let second_input = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 1 },
     };
@@ -1485,7 +1485,7 @@ fn malformed_merge_axis_with_secondary_equal_primary_shows_error_class() {
     // writes "Secondary input must differ from primary" to malformed_hints via
     // a use_effect, which does NOT fire during SSR. We pre-seed the hint
     // directly so the Stage component sees it and applies the error-tint class.
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -1526,7 +1526,7 @@ fn conditional_with_empty_if_false_renders_both_branches() {
     // placeholder inside its branch container, same affordance as any other
     // empty pipeline. (The legacy "Add else branch" button was removed
     // 2026-05-02 along with the `Option<Vec<Action>>` indirection.)
-    let btn_addr = InputAddress {
+    let btn_addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Button { index: 0 },
     };
@@ -1538,7 +1538,7 @@ fn conditional_with_empty_if_false_renders_both_branches() {
         if_false: Vec::new(),
     }];
     let (state, _) = build_state(actions);
-    let axis_addr = InputAddress {
+    let axis_addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -1563,7 +1563,7 @@ fn conditional_with_empty_if_true_renders_branch_with_add_first_stage() {
     // Build a Conditional whose `if_true` is empty and `if_false` holds one
     // Invert. The test expands the Conditional and verifies that the empty
     // `if_true` branch shows the standard "Add first stage" affordance.
-    let btn_addr = InputAddress {
+    let btn_addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Button { index: 0 },
     };
@@ -1575,7 +1575,7 @@ fn conditional_with_empty_if_true_renders_branch_with_add_first_stage() {
         if_false: vec![Action::Invert],
     }];
     let (state, _) = build_state(actions);
-    let axis_addr = InputAddress {
+    let axis_addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };

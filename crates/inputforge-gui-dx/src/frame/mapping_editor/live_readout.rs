@@ -273,16 +273,19 @@ fn read_axis_display(
     live: &LiveSnapshot,
     cfg: &ConfigSnapshot,
 ) -> AxisDisplay {
-    let InputId::Axis { index } = addr.input else {
+    let Some(InputId::Axis { index }) = addr.input_id() else {
         return AxisDisplay {
             value: 0.0,
             polarity: AxisPolarity::Bipolar,
         };
     };
-    let dev_idx = cfg.devices.iter().position(|d| d.info.id == addr.device);
+    let dev_idx = cfg
+        .devices
+        .iter()
+        .position(|d| Some(&d.info.id) == addr.device());
     if let Some(di) = dev_idx
         && let Some(dev_inputs) = live.device_inputs.get(di)
-        && let Some(&(raw, polarity)) = dev_inputs.axes.get(usize::from(index))
+        && let Some(&(raw, polarity)) = dev_inputs.axes.get(usize::from(*index))
     {
         return AxisDisplay {
             value: into_natural_domain(raw, polarity),
@@ -583,7 +586,7 @@ mod tests {
 
     fn axis_addr(index: u8) -> InputAddress {
         use inputforge_core::types::DeviceId;
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index },
         }

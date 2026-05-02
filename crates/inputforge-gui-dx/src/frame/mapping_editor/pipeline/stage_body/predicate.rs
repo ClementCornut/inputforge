@@ -89,11 +89,14 @@ fn condition_kind(c: &Condition) -> &'static str {
 /// Build a default-shaped `Condition` for the given kind string, preserving
 /// the `input` address where applicable so a kind-switch does not lose the
 /// user's already-configured device/input.
+///
+/// When `prev_input` is `None`, the new leaf condition is seeded with
+/// `InputAddress::Unbound` so the row renders the explicit `Unbound`
+/// placeholder until the user picks an input. Previously a `Bound` sentinel
+/// (empty device + button 0) silently rendered as `Btn 1` and looked like a
+/// real binding the user had not chosen.
 fn default_condition_for_kind(kind: &str, prev_input: Option<InputAddress>) -> Condition {
-    let addr = prev_input.unwrap_or_else(|| InputAddress {
-        device: inputforge_core::types::DeviceId(String::new()),
-        input: inputforge_core::types::InputId::Button { index: 0 },
-    });
+    let addr = prev_input.unwrap_or(InputAddress::Unbound);
     match kind {
         KIND_BUTTON_PRESSED => Condition::ButtonPressed { input: addr },
         KIND_BUTTON_RELEASED => Condition::ButtonReleased { input: addr },
@@ -126,12 +129,21 @@ fn default_condition_for_kind(kind: &str, prev_input: Option<InputAddress>) -> C
 }
 
 /// Extract the `InputAddress` from any leaf condition, if present.
+///
+/// Returns `None` for both branch conditions (`All` / `Any` / `Not`) and for
+/// leaf conditions whose `input` is `Unbound`. The latter is intentional:
+/// `default_condition_for_kind` calls this to seed a new condition's input
+/// from the previous one, and propagating an `Unbound` sentinel back through
+/// would defeat the explicit `Unbound` default.
 fn condition_input(c: &Condition) -> Option<InputAddress> {
     match c {
         Condition::ButtonPressed { input }
         | Condition::ButtonReleased { input }
         | Condition::AxisInRange { input, .. }
-        | Condition::HatDirection { input, .. } => Some(input.clone()),
+        | Condition::HatDirection { input, .. } => match input {
+            InputAddress::Bound { .. } => Some(input.clone()),
+            InputAddress::Unbound => None,
+        },
         Condition::All { .. } | Condition::Any { .. } | Condition::Not { .. } => None,
     }
 }

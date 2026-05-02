@@ -26,7 +26,7 @@ mod tests {
     use crate::types::{DeviceId, InputId, OutputAddress, OutputId, VJoyAxis};
 
     fn test_input_address() -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: 0 },
         }

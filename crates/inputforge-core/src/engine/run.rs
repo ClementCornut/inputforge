@@ -961,9 +961,15 @@ fn resolve_input_value(event: &InputEvent, calibrations: &DeviceCalibrationStore
     match &event.value {
         InputValue::Axis { value, .. } => {
             let raw = value.value();
-            if let InputId::Axis { index } = &event.source.input {
+            // Invariant: events come from real device sources (sdl3 backend),
+            // which always emit `Bound` addresses; `Unbound` only originates
+            // from palette-seeded mapping primaries that never produce events.
+            let InputAddress::Bound { device, input } = &event.source else {
+                unreachable!("invariant: input event source always bound (sdl3 backend)");
+            };
+            if let InputId::Axis { index } = input {
                 calibrations
-                    .get(&event.source.device, *index)
+                    .get(device, *index)
                     .map_or(raw, |cal| cal.apply(raw))
             } else {
                 raw

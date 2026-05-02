@@ -65,7 +65,10 @@ impl InputCacheStore {
 
     /// Remove all cached values for inputs belonging to `device`.
     pub fn evict_device(&mut self, device: &DeviceId) {
-        self.values.retain(|addr, _| addr.device != *device);
+        // Unbound addresses (no device) are kept; only Bound entries whose
+        // device matches are evicted.
+        self.values
+            .retain(|addr, _| addr.device().is_none_or(|d| d != device));
     }
 
     /// Remove all cached values.
@@ -135,21 +138,21 @@ mod tests {
     use crate::types::{AxisValue, InputId};
 
     fn axis_address(index: u8) -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index },
         }
     }
 
     fn button_address(index: u8) -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index },
         }
     }
 
     fn hat_address(index: u8) -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Hat { index },
         }

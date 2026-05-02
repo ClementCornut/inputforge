@@ -18,7 +18,7 @@ pub(super) struct MockCache {
 
 /// Shared button input address for pipeline tests.
 pub(super) fn button_input_address() -> InputAddress {
-    InputAddress {
+    InputAddress::Bound {
         device: DeviceId("stick-1".to_owned()),
         input: InputId::Button { index: 0 },
     }
@@ -26,7 +26,7 @@ pub(super) fn button_input_address() -> InputAddress {
 
 /// Shared axis input address for pipeline tests.
 pub(super) fn axis_input_address() -> InputAddress {
-    InputAddress {
+    InputAddress::Bound {
         device: DeviceId("stick-1".to_owned()),
         input: InputId::Axis { index: 0 },
     }

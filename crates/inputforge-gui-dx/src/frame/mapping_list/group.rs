@@ -29,7 +29,10 @@ impl GroupKind {
 }
 
 pub(crate) fn group_of(addr: &InputAddress) -> GroupKind {
-    match addr.input {
+    let input = addr
+        .input_id()
+        .expect("invariant: mapping list group addr always bound (mapping primary)");
+    match input {
         InputId::Axis { .. } => GroupKind::Axes,
         InputId::Button { .. } => GroupKind::Buttons,
         InputId::Hat { .. } => GroupKind::Hats,
@@ -42,7 +45,7 @@ mod tests {
     use inputforge_core::types::DeviceId;
 
     fn addr(input: InputId) -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev".to_owned()),
             input,
         }

@@ -268,14 +268,17 @@ pub(crate) fn stage_summary_for(action: &Action, cfg: &ConfigSnapshot) -> String
         Action::MergeAxis {
             second_input,
             operation,
-        } => {
-            let device_name = cfg
-                .devices
-                .iter()
-                .find(|d| d.info.id == second_input.device)
-                .map_or_else(|| second_input.device.0.as_str(), |d| d.info.name.as_str());
-            format!("{operation:?} \u{00b7} {device_name}")
-        }
+        } => match second_input.device() {
+            Some(device_id) => {
+                let device_name = cfg
+                    .devices
+                    .iter()
+                    .find(|d| &d.info.id == device_id)
+                    .map_or_else(|| device_id.0.as_str(), |d| d.info.name.as_str());
+                format!("{operation:?} \u{00b7} {device_name}")
+            }
+            None => format!("{operation:?} \u{00b7} Unbound"),
+        },
 
         Action::ChangeMode { strategy } => format_mode_strategy(strategy),
 
@@ -344,15 +347,15 @@ fn format_mode_strategy(strategy: &ModeChangeStrategy) -> String {
 fn format_condition(condition: &Condition, cfg: &ConfigSnapshot) -> String {
     match condition {
         Condition::ButtonPressed { input } => {
-            let dev = device_label(cfg, &input.device);
+            let dev = predicate_device_label(cfg, input);
             format!("Button pressed \u{00b7} {dev}")
         }
         Condition::ButtonReleased { input } => {
-            let dev = device_label(cfg, &input.device);
+            let dev = predicate_device_label(cfg, input);
             format!("Button released \u{00b7} {dev}")
         }
         Condition::AxisInRange { input, min, max } => {
-            let dev = device_label(cfg, &input.device);
+            let dev = predicate_device_label(cfg, input);
             // Format directly from f64 with no fractional digits to avoid
             // lossy float-to-int casts.
             let min_pct = *min * 100.0;
@@ -360,13 +363,25 @@ fn format_condition(condition: &Condition, cfg: &ConfigSnapshot) -> String {
             format!("Axis {min_pct:.0}%\u{2013}{max_pct:.0}% \u{00b7} {dev}")
         }
         Condition::HatDirection { input, directions } => {
-            let dev = device_label(cfg, &input.device);
+            let dev = predicate_device_label(cfg, input);
             let dir_count = directions.len();
             format!("Hat ({dir_count} dir) \u{00b7} {dev}")
         }
         Condition::All { conditions } => format!("All ({} conditions)", conditions.len()),
         Condition::Any { conditions } => format!("Any ({} conditions)", conditions.len()),
         Condition::Not { .. } => "Not".to_owned(),
+    }
+}
+
+/// Resolve a predicate's input address to a device-name label, falling back to
+/// the literal `"Unbound"` when the predicate has no binding selected yet.
+fn predicate_device_label<'a>(
+    cfg: &'a ConfigSnapshot,
+    addr: &'a inputforge_core::types::InputAddress,
+) -> &'a str {
+    match addr.device() {
+        Some(id) => device_label(cfg, id),
+        None => "Unbound",
     }
 }
 

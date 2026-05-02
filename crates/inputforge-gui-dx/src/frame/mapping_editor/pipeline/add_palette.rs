@@ -28,9 +28,7 @@ use dioxus::prelude::*;
 use inputforge_core::action::{Action, Condition, Mapping};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::processing::{DeadzoneConfig, ResponseCurve};
-use inputforge_core::types::{
-    DeviceId, InputAddress, InputId, KeyCombo, MergeOp, OutputAddress, OutputId, VJoyAxis,
-};
+use inputforge_core::types::{InputAddress, KeyCombo, MergeOp, OutputAddress, OutputId, VJoyAxis};
 
 use crate::components::Icon;
 use crate::context::AppContext;
@@ -88,22 +86,23 @@ fn default_map_to_keyboard() -> Action {
 }
 
 fn default_merge_axis() -> Action {
+    // Seed the secondary slot as `Unbound` so the row renders the explicit
+    // `Unbound` placeholder until the user picks an input. The previous
+    // sentinel `Bound { device: DeviceId(""), input: Axis { index: 0 } }`
+    // silently rendered as `X` (or `Btn 1` for buttons) and looked like a
+    // real binding the user had not chosen.
     Action::MergeAxis {
-        second_input: InputAddress {
-            device: DeviceId(String::new()),
-            input: InputId::Axis { index: 0 },
-        },
+        second_input: InputAddress::Unbound,
         operation: MergeOp::Average,
     }
 }
 
 fn default_conditional() -> Action {
+    // Same Unbound-seed reasoning as `default_merge_axis`: a freshly added
+    // Conditional has no predicate input chosen yet.
     Action::Conditional {
         condition: Condition::ButtonPressed {
-            input: InputAddress {
-                device: DeviceId(String::new()),
-                input: InputId::Button { index: 0 },
-            },
+            input: InputAddress::Unbound,
         },
         if_true: vec![],
         if_false: Vec::new(),

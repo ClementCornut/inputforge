@@ -148,7 +148,7 @@ mod tests {
     use inputforge_core::types::{DeviceId, InputId};
 
     fn addr(id: u8) -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev".to_owned()),
             input: InputId::Button { index: id },
         }

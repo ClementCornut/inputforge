@@ -70,10 +70,10 @@ struct UnboundOnTheWire {
 }
 
 impl Serialize for InputAddress {
-    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            Self::Bound { device, input } => BoundOnTheWire { device, input }.serialize(ser),
-            Self::Unbound => UnboundOnTheWire { unbound: true }.serialize(ser),
+            Self::Bound { device, input } => BoundOnTheWire { device, input }.serialize(serializer),
+            Self::Unbound => UnboundOnTheWire { unbound: true }.serialize(serializer),
         }
     }
 }
@@ -98,8 +98,8 @@ enum InputAddressOnTheWire {
 }
 
 impl<'de> Deserialize<'de> for InputAddress {
-    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
-        match InputAddressOnTheWire::deserialize(de)? {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match InputAddressOnTheWire::deserialize(deserializer)? {
             InputAddressOnTheWire::Unbound(UnboundFields { unbound: true }) => Ok(Self::Unbound),
             InputAddressOnTheWire::Unbound(UnboundFields { unbound: false }) => {
                 Err(serde::de::Error::custom(

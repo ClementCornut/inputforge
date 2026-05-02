@@ -235,7 +235,7 @@ impl Sdl3Input {
                         self.classified_axes.insert(key);
                     }
                     out.push(InputEvent {
-                        source: InputAddress {
+                        source: InputAddress::Bound {
                             device: device.device_id.clone(),
                             input: InputId::Axis { index: axis_idx_u8 },
                         },
@@ -341,7 +341,7 @@ impl Sdl3Input {
                         .copied()
                         .unwrap_or_default();
                     out.push(InputEvent {
-                        source: InputAddress {
+                        source: InputAddress::Bound {
                             device: device.device_id.clone(),
                             input: InputId::Axis { index: axis_idx },
                         },
@@ -358,7 +358,7 @@ impl Sdl3Input {
             } => {
                 if let Some(device) = self.open_devices.get(&which) {
                     out.push(InputEvent {
-                        source: InputAddress {
+                        source: InputAddress::Bound {
                             device: device.device_id.clone(),
                             input: InputId::Button { index: button_idx },
                         },
@@ -372,7 +372,7 @@ impl Sdl3Input {
             } => {
                 if let Some(device) = self.open_devices.get(&which) {
                     out.push(InputEvent {
-                        source: InputAddress {
+                        source: InputAddress::Bound {
                             device: device.device_id.clone(),
                             input: InputId::Button { index: button_idx },
                         },
@@ -389,7 +389,7 @@ impl Sdl3Input {
             } => {
                 if let Some(device) = self.open_devices.get(&which) {
                     out.push(InputEvent {
-                        source: InputAddress {
+                        source: InputAddress::Bound {
                             device: device.device_id.clone(),
                             input: InputId::Hat { index: hat_idx },
                         },

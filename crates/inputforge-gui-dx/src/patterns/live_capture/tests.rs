@@ -9,14 +9,14 @@ use super::CaptureFilter;
 use super::machine::{AXIS_DEADBAND, CoreState, DEBOUNCE_MS, LiveCaptureCore};
 
 fn axis_addr(index: u8) -> InputAddress {
-    InputAddress {
+    InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index },
     }
 }
 
 fn button_addr(index: u8) -> InputAddress {
-    InputAddress {
+    InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Button { index },
     }

@@ -95,7 +95,7 @@ mod tests {
     use crate::types::{DeviceId, InputId};
 
     fn button_addr(index: u8) -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("stick-1".to_owned()),
             input: InputId::Button { index },
         }

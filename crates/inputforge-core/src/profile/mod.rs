@@ -25,7 +25,10 @@ enum InputGroup {
 }
 
 fn group_of_input(addr: &InputAddress) -> InputGroup {
-    match addr.input {
+    let input = addr
+        .input_id()
+        .expect("invariant: group_of_input is only called on bound mapping primaries");
+    match input {
         InputId::Axis { .. } => InputGroup::Axis,
         InputId::Button { .. } => InputGroup::Button,
         InputId::Hat { .. } => InputGroup::Hat,
@@ -588,7 +591,7 @@ mod tests {
     }
 
     fn test_input() -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index: 0 },
         }
@@ -855,7 +858,7 @@ type = "invert"
             vec![],
             modes,
             vec![Mapping {
-                input: InputAddress {
+                input: InputAddress::Bound {
                     device: DeviceId("dev-1".to_owned()),
                     input: InputId::Button { index: 0 },
                 },
@@ -863,7 +866,7 @@ type = "invert"
                 name: None,
                 actions: vec![Action::Conditional {
                     condition: Condition::ButtonPressed {
-                        input: InputAddress {
+                        input: InputAddress::Bound {
                             device: DeviceId("dev-1".to_owned()),
                             input: InputId::Button { index: 5 },
                         },
@@ -898,7 +901,7 @@ type = "invert"
             vec![],
             modes,
             vec![Mapping {
-                input: InputAddress {
+                input: InputAddress::Bound {
                     device: DeviceId("dev-1".to_owned()),
                     input: InputId::Button { index: 1 },
                 },
@@ -934,7 +937,7 @@ type = "invert"
                 name: None,
                 actions: vec![
                     Action::MergeAxis {
-                        second_input: InputAddress {
+                        second_input: InputAddress::Bound {
                             device: DeviceId("dev-1".to_owned()),
                             input: InputId::Axis { index: 1 },
                         },
@@ -1052,7 +1055,7 @@ enabled = true
         let profile = minimal_profile();
         assert!(profile.find_mapping(&test_input(), "NonExistent").is_none());
 
-        let other_input = InputAddress {
+        let other_input = InputAddress::Bound {
             device: DeviceId("other-dev".to_owned()),
             input: InputId::Axis { index: 0 },
         };
@@ -1062,7 +1065,7 @@ enabled = true
     #[test]
     fn set_mapping_creates_new() {
         let mut profile = minimal_profile();
-        let new_input = InputAddress {
+        let new_input = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: 5 },
         };
@@ -1112,7 +1115,7 @@ enabled = true
         // the empty action vector so it appears in the rail; F9 will fill
         // in actions later. Use `remove_mapping` for explicit deletion.
         let mut profile = minimal_profile();
-        let new_input = InputAddress {
+        let new_input = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: 7 },
         };
@@ -1178,7 +1181,7 @@ enabled = true
                     actions: vec![Action::Invert],
                 },
                 Mapping {
-                    input: InputAddress {
+                    input: InputAddress::Bound {
                         device: DeviceId("dev-1".to_owned()),
                         input: InputId::Button { index: 0 },
                     },
@@ -1489,7 +1492,7 @@ enabled = true
     fn remove_mapping_unknown_returns_false() {
         let mut profile = minimal_profile();
         assert!(!profile.mappings().is_empty(), "fixture invariant");
-        let target = InputAddress {
+        let target = InputAddress::Bound {
             device: DeviceId("nonexistent".to_owned()),
             input: InputId::Button { index: 99 },
         };
@@ -1521,19 +1524,19 @@ enabled = true
     // --- reorder_mapping_in_group ---
 
     fn input_axis(idx: u8) -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index: idx },
         }
     }
     fn input_button(idx: u8) -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: idx },
         }
     }
     fn input_hat(idx: u8) -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Hat { index: idx },
         }
@@ -1603,7 +1606,9 @@ enabled = true
         let axes_subpos: Vec<&InputAddress> = profile
             .mappings()
             .iter()
-            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Axis { .. }))
+            .filter(|m| {
+                m.mode == "Default" && matches!(m.input.input_id(), Some(InputId::Axis { .. }))
+            })
             .map(|m| &m.input)
             .collect();
         assert_eq!(
@@ -1621,7 +1626,9 @@ enabled = true
         let axes_in_default: Vec<&InputAddress> = profile
             .mappings()
             .iter()
-            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Axis { .. }))
+            .filter(|m| {
+                m.mode == "Default" && matches!(m.input.input_id(), Some(InputId::Axis { .. }))
+            })
             .map(|m| &m.input)
             .collect();
         assert_eq!(
@@ -1636,13 +1643,17 @@ enabled = true
         let axes_before: Vec<InputAddress> = profile
             .mappings()
             .iter()
-            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Axis { .. }))
+            .filter(|m| {
+                m.mode == "Default" && matches!(m.input.input_id(), Some(InputId::Axis { .. }))
+            })
             .map(|m| m.input.clone())
             .collect();
         let hats_before: Vec<InputAddress> = profile
             .mappings()
             .iter()
-            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Hat { .. }))
+            .filter(|m| {
+                m.mode == "Default" && matches!(m.input.input_id(), Some(InputId::Hat { .. }))
+            })
             .map(|m| m.input.clone())
             .collect();
 
@@ -1653,13 +1664,17 @@ enabled = true
         let axes_after: Vec<InputAddress> = profile
             .mappings()
             .iter()
-            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Axis { .. }))
+            .filter(|m| {
+                m.mode == "Default" && matches!(m.input.input_id(), Some(InputId::Axis { .. }))
+            })
             .map(|m| m.input.clone())
             .collect();
         let hats_after: Vec<InputAddress> = profile
             .mappings()
             .iter()
-            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Hat { .. }))
+            .filter(|m| {
+                m.mode == "Default" && matches!(m.input.input_id(), Some(InputId::Hat { .. }))
+            })
             .map(|m| m.input.clone())
             .collect();
         assert_eq!(axes_before, axes_after);
@@ -1668,7 +1683,9 @@ enabled = true
         let buttons_after: Vec<&InputAddress> = profile
             .mappings()
             .iter()
-            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Button { .. }))
+            .filter(|m| {
+                m.mode == "Default" && matches!(m.input.input_id(), Some(InputId::Button { .. }))
+            })
             .map(|m| &m.input)
             .collect();
         assert_eq!(buttons_after, vec![&input_button(1), &input_button(0)]);
@@ -1683,7 +1700,9 @@ enabled = true
         let axes_after: Vec<&InputAddress> = profile
             .mappings()
             .iter()
-            .filter(|m| m.mode == "Default" && matches!(m.input.input, InputId::Axis { .. }))
+            .filter(|m| {
+                m.mode == "Default" && matches!(m.input.input_id(), Some(InputId::Axis { .. }))
+            })
             .map(|m| &m.input)
             .collect();
         assert_eq!(

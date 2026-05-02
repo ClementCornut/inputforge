@@ -192,7 +192,7 @@ mod tests {
     fn remove_mapping_variant_debug_and_partialeq() {
         use crate::types::{DeviceId, InputId};
 
-        let input = InputAddress {
+        let input = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: 3 },
         };

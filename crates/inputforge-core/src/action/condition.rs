@@ -85,7 +85,7 @@ mod tests {
     use crate::types::{DeviceId, InputId};
 
     fn test_input_address() -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: 0 },
         }
@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn condition_axis_in_range_serde_roundtrip() {
         let cond = Condition::AxisInRange {
-            input: InputAddress {
+            input: InputAddress::Bound {
                 device: DeviceId("dev-1".to_owned()),
                 input: InputId::Axis { index: 0 },
             },
@@ -133,7 +133,7 @@ mod tests {
     #[test]
     fn condition_hat_direction_serde_roundtrip() {
         let cond = Condition::HatDirection {
-            input: InputAddress {
+            input: InputAddress::Bound {
                 device: DeviceId("dev-1".to_owned()),
                 input: InputId::Hat { index: 0 },
             },

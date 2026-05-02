@@ -93,7 +93,7 @@ mod tests {
 
     fn sample_event() -> InputEvent {
         InputEvent {
-            source: InputAddress {
+            source: InputAddress::Bound {
                 device: DeviceId("guid-001".to_owned()),
                 input: InputId::Button { index: 0 },
             },

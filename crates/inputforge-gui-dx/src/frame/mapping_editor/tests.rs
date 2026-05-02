@@ -34,7 +34,7 @@ fn seeded_profile_with_one_mapping(actions: Vec<Action>) -> AppState {
     use std::collections::HashMap;
     let map = HashMap::from([("Default".to_owned(), vec![])]);
     let modes = ModeTree::from_adjacency(&map).unwrap();
-    let addr = InputAddress {
+    let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -82,7 +82,7 @@ fn seeded_profile_with_polarities_and_axes(
     use std::collections::HashMap;
     let map = HashMap::from([("Default".to_owned(), vec![])]);
     let modes = ModeTree::from_adjacency(&map).unwrap();
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -116,7 +116,7 @@ fn seeded_profile_with_polarities_and_axes(
         connected: true,
     });
     for &(idx, value, polarity) in axis_values {
-        let addr = InputAddress {
+        let addr = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index: idx },
         };
@@ -479,7 +479,7 @@ fn engine_offline_banner_visible_when_status_is_stopped() {
 fn editor_header_shows_name_as_h2() {
     use inputforge_core::types::{OutputAddress, OutputId, VJoyAxis};
 
-    let addr = InputAddress {
+    let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -504,7 +504,7 @@ fn editor_header_shows_name_as_h2() {
 
 #[test]
 fn editor_header_omits_output_when_no_map_to_vjoy() {
-    let addr = InputAddress {
+    let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -528,7 +528,7 @@ fn editor_header_omits_output_when_no_map_to_vjoy() {
 /// right-click swaps the h2 for the editable input.
 #[test]
 fn editor_header_h2_carries_focus_marker_and_name() {
-    let addr = InputAddress {
+    let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -638,7 +638,7 @@ fn editor_undo_recap_shows_label_and_kbd_hint() {
         rsx! { MappingEditor {} }
     }
 
-    let addr = InputAddress {
+    let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -672,7 +672,7 @@ fn editor_undo_recap_shows_label_and_kbd_hint() {
 
 #[test]
 fn editor_input_field_renders_source_label_and_rebind_button() {
-    let addr = InputAddress {
+    let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -696,7 +696,7 @@ fn editor_input_field_renders_source_label_and_rebind_button() {
 
 #[test]
 fn editor_live_readout_renders_in_row() {
-    let addr = InputAddress {
+    let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -716,7 +716,7 @@ fn editor_live_readout_renders_in_row() {
 
 #[test]
 fn editor_live_readout_omits_out_when_no_map_to_vjoy() {
-    let addr = InputAddress {
+    let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -731,7 +731,7 @@ fn editor_live_readout_omits_out_when_no_map_to_vjoy() {
 fn editor_live_readout_renders_out_when_map_to_vjoy_present() {
     use inputforge_core::types::{OutputAddress, OutputId, VJoyAxis};
 
-    let addr = InputAddress {
+    let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -762,11 +762,11 @@ fn editor_live_readout_renders_out_when_map_to_vjoy_present() {
 fn editor_live_readout_bidirectional_uu_idle_renders_centered_bipolar_in() {
     use inputforge_core::types::MergeOp;
 
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
-    let secondary = InputAddress {
+    let secondary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 1 },
     };
@@ -820,11 +820,11 @@ fn editor_live_readout_bidirectional_uu_idle_renders_centered_bipolar_in() {
 fn editor_live_readout_bidirectional_uu_half_press_renders_half_deflection() {
     use inputforge_core::types::MergeOp;
 
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
-    let secondary = InputAddress {
+    let secondary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 1 },
     };
@@ -872,11 +872,11 @@ fn editor_live_readout_bidirectional_uu_half_press_renders_half_deflection() {
 fn editor_live_readout_average_uu_idle_renders_empty_unipolar_in() {
     use inputforge_core::types::MergeOp;
 
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
-    let secondary = InputAddress {
+    let secondary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 1 },
     };
@@ -924,11 +924,11 @@ fn editor_live_readout_average_uu_idle_renders_empty_unipolar_in() {
 fn editor_live_readout_average_uu_full_press_renders_full_unipolar_in() {
     use inputforge_core::types::MergeOp;
 
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
-    let secondary = InputAddress {
+    let secondary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 1 },
     };
@@ -968,11 +968,11 @@ fn editor_live_readout_average_uu_full_press_renders_full_unipolar_in() {
 fn editor_live_readout_average_bb_renders_bipolar_unchanged() {
     use inputforge_core::types::MergeOp;
 
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
-    let secondary = InputAddress {
+    let secondary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 1 },
     };
@@ -1022,7 +1022,7 @@ fn editor_live_readout_average_bb_renders_bipolar_unchanged() {
 fn editor_live_readout_unipolar_primary_no_merge_out_inherits_unipolar() {
     use inputforge_core::types::{OutputAddress, OutputId, VJoyAxis};
 
-    let primary = InputAddress {
+    let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };
@@ -1068,7 +1068,7 @@ fn editor_live_readout_unipolar_primary_no_merge_out_inherits_unipolar() {
 /// Harness: engine Running, `current_mode = "Combat"`, mapping in mode `"Default"`.
 #[test]
 fn editor_inactive_hint_visible_when_modes_diverge() {
-    let addr = InputAddress {
+    let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
     };

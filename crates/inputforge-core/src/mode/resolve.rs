@@ -55,7 +55,7 @@ mod tests {
     }
 
     fn test_input() -> InputAddress {
-        InputAddress {
+        InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index: 0 },
         }
@@ -129,7 +129,7 @@ mod tests {
     fn resolve_mapping_wrong_input() {
         let tree = test_tree();
         let input = test_input();
-        let other_input = InputAddress {
+        let other_input = InputAddress::Bound {
             device: DeviceId("dev-2".to_owned()),
             input: InputId::Button { index: 5 },
         };

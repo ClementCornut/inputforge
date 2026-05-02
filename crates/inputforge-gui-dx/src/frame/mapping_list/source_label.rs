@@ -9,10 +9,14 @@ use inputforge_core::types::{InputAddress, InputId};
 use crate::context::ConfigSnapshot;
 
 /// Standard HID usage-page ordering. Axes 0-7 map to the names below;
-/// higher indices fall back to `Ax {index}`. Ported from the legacy
-/// `inputforge-gui::panels::device_view::HID_AXIS_LABELS` so axis-name
-/// presentation stays consistent across the rewrite.
+/// higher indices fall back to `Ax {index}`. Mirrors the conventional HID
+/// usage-page names so axis presentation stays consistent across the GUI.
 const HID_AXIS_LABELS: [&str; 8] = ["X", "Y", "Z", "Rot X", "Rot Y", "Rot Z", "Sldr", "Dial"];
+
+/// Placeholder shown when the address has no binding selected yet
+/// (`InputAddress::Unbound`). Stages added from the palette display this
+/// instead of a misleading `Btn 1` sentinel until the user picks an input.
+const UNBOUND_PLACEHOLDER: &str = "Unbound";
 
 fn axis_label(index: u8) -> Cow<'static, str> {
     let i = usize::from(index);
@@ -28,22 +32,35 @@ fn axis_label(index: u8) -> Cow<'static, str> {
 /// - Connected device: `"<device.name> · <input-label>"`.
 /// - Missing device: `"<DeviceId> · <input-label>"`. Caller's CSS may
 ///   italicize via `.if-row__source--unknown` to flag the gap.
+/// - `Unbound`: returns the literal `"Unbound"` placeholder (no separator).
 pub(crate) fn format(addr: &InputAddress, cfg: &ConfigSnapshot) -> String {
-    let (device_label, input_label) = split_label(addr, cfg);
-    format!("{device_label} \u{00b7} {input_label}")
+    match addr {
+        InputAddress::Unbound => UNBOUND_PLACEHOLDER.to_owned(),
+        InputAddress::Bound { .. } => {
+            let (device_label, input_label) = split_label(addr, cfg);
+            format!("{device_label} \u{00b7} {input_label}")
+        }
+    }
 }
 
 /// Split form of `format`: returns `(device_label, input_label)` so callers
 /// can render the two cells separately. The captured-input chip in the F8
 /// `AddInline` pad uses this, the input identifier needs its own layout
 /// cell so it stays visible when the device name truncates.
+///
+/// For `Unbound` returns `("", "Unbound")` so the device cell collapses and
+/// the input cell carries the placeholder.
 pub(crate) fn split_label(addr: &InputAddress, cfg: &ConfigSnapshot) -> (String, String) {
-    let device_label = match cfg.devices.iter().find(|d| d.info.id == addr.device) {
-        Some(device) => device.info.name.clone(),
-        None => addr.device.0.clone(),
+    let (device, input) = match addr {
+        InputAddress::Bound { device, input } => (device, input),
+        InputAddress::Unbound => return (String::new(), UNBOUND_PLACEHOLDER.to_owned()),
     };
-    let input_label = match addr.input {
-        InputId::Axis { index } => axis_label(index).into_owned(),
+    let device_label = match cfg.devices.iter().find(|d| &d.info.id == device) {
+        Some(dev) => dev.info.name.clone(),
+        None => device.0.clone(),
+    };
+    let input_label = match input {
+        InputId::Axis { index } => axis_label(*index).into_owned(),
         InputId::Button { index } => format!("Btn {}", index + 1),
         InputId::Hat { index } => format!("Hat {index}"),
     };
@@ -78,7 +95,7 @@ mod tests {
     #[test]
     fn format_axis_uses_hid_label() {
         let cfg = cfg_with_device("TFM Throttle", "tfm");
-        let addr = InputAddress {
+        let addr = InputAddress::Bound {
             device: DeviceId("tfm".to_owned()),
             input: InputId::Axis { index: 2 },
         };
@@ -88,7 +105,7 @@ mod tests {
     #[test]
     fn format_axis_above_hid_range_falls_back() {
         let cfg = cfg_with_device("TFM Throttle", "tfm");
-        let addr = InputAddress {
+        let addr = InputAddress::Bound {
             device: DeviceId("tfm".to_owned()),
             input: InputId::Axis { index: 12 },
         };
@@ -98,7 +115,7 @@ mod tests {
     #[test]
     fn format_button_one_indexed() {
         let cfg = cfg_with_device("TFM Throttle", "tfm");
-        let addr = InputAddress {
+        let addr = InputAddress::Bound {
             device: DeviceId("tfm".to_owned()),
             input: InputId::Button { index: 3 },
         };
@@ -108,7 +125,7 @@ mod tests {
     #[test]
     fn format_hat_zero_indexed() {
         let cfg = cfg_with_device("TFM Throttle", "tfm");
-        let addr = InputAddress {
+        let addr = InputAddress::Bound {
             device: DeviceId("tfm".to_owned()),
             input: InputId::Hat { index: 0 },
         };
@@ -118,7 +135,7 @@ mod tests {
     #[test]
     fn format_missing_device_falls_back_to_device_id() {
         let cfg = ConfigSnapshot::default();
-        let addr = InputAddress {
+        let addr = InputAddress::Bound {
             device: DeviceId("tfm-disconnected".to_owned()),
             input: InputId::Button { index: 0 },
         };
@@ -128,7 +145,7 @@ mod tests {
     #[test]
     fn split_label_returns_device_and_input_separately() {
         let cfg = cfg_with_device("TFM Throttle", "tfm");
-        let addr = InputAddress {
+        let addr = InputAddress::Bound {
             device: DeviceId("tfm".to_owned()),
             input: InputId::Axis { index: 0 },
         };
@@ -140,7 +157,7 @@ mod tests {
     #[test]
     fn split_label_button_one_indexed() {
         let cfg = cfg_with_device("TFM Throttle", "tfm");
-        let addr = InputAddress {
+        let addr = InputAddress::Bound {
             device: DeviceId("tfm".to_owned()),
             input: InputId::Button { index: 3 },
         };
@@ -152,12 +169,29 @@ mod tests {
     #[test]
     fn split_label_missing_device_falls_back_to_id() {
         let cfg = ConfigSnapshot::default();
-        let addr = InputAddress {
+        let addr = InputAddress::Bound {
             device: DeviceId("ghost-dev".to_owned()),
             input: InputId::Hat { index: 0 },
         };
         let (device, input) = split_label(&addr, &cfg);
         assert_eq!(device, "ghost-dev");
         assert_eq!(input, "Hat 0");
+    }
+
+    #[test]
+    fn format_unbound_renders_placeholder() {
+        // Locks in the original `Btn 1` bug fix: palette-seeded stages must
+        // render the explicit `Unbound` placeholder rather than a misleading
+        // sentinel button label.
+        let cfg = ConfigSnapshot::default();
+        assert_eq!(format(&InputAddress::Unbound, &cfg), "Unbound");
+    }
+
+    #[test]
+    fn split_label_unbound_returns_empty_device_and_placeholder_input() {
+        let cfg = ConfigSnapshot::default();
+        let (device, input) = split_label(&InputAddress::Unbound, &cfg);
+        assert_eq!(device, "");
+        assert_eq!(input, "Unbound");
     }
 }

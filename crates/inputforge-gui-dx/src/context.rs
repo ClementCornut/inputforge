@@ -165,7 +165,7 @@ impl LiveSnapshot {
                 DeviceInputValues {
                     axes: (0..device.info.axes)
                         .map(|i| {
-                            let addr = InputAddress {
+                            let addr = InputAddress::Bound {
                                 device: did.clone(),
                                 input: InputId::Axis { index: i },
                             };
@@ -187,7 +187,7 @@ impl LiveSnapshot {
                         .collect(),
                     buttons: (0..device.info.buttons)
                         .map(|i| {
-                            let addr = InputAddress {
+                            let addr = InputAddress::Bound {
                                 device: did.clone(),
                                 input: InputId::Button { index: i },
                             };
@@ -196,7 +196,7 @@ impl LiveSnapshot {
                         .collect(),
                     hats: (0..device.info.hats)
                         .map(|i| {
-                            let addr = InputAddress {
+                            let addr = InputAddress::Bound {
                                 device: did.clone(),
                                 input: InputId::Hat { index: i },
                             };
@@ -468,7 +468,7 @@ mod tests {
         });
 
         state.input_cache.update(
-            &InputAddress {
+            &InputAddress::Bound {
                 device: did.clone(),
                 input: InputId::Axis { index: 0 },
             },
@@ -478,14 +478,14 @@ mod tests {
             },
         );
         state.input_cache.update(
-            &InputAddress {
+            &InputAddress::Bound {
                 device: did.clone(),
                 input: InputId::Button { index: 0 },
             },
             &InputValue::Button { pressed: true },
         );
         state.input_cache.update(
-            &InputAddress {
+            &InputAddress::Bound {
                 device: did,
                 input: InputId::Hat { index: 0 },
             },
@@ -527,11 +527,11 @@ mod tests {
         let modes = ModeTree::from_adjacency(&map).unwrap();
 
         let device_id = DeviceId("dev-1".to_owned());
-        let addr_named = InputAddress {
+        let addr_named = InputAddress::Bound {
             device: device_id.clone(),
             input: InputId::Button { index: 0 },
         };
-        let addr_unnamed = InputAddress {
+        let addr_unnamed = InputAddress::Bound {
             device: device_id,
             input: InputId::Button { index: 1 },
         };
@@ -671,7 +671,7 @@ mod tests {
         let map = HashMap::from([("Default".to_owned(), vec![])]);
         let modes = ModeTree::from_adjacency(&map).unwrap();
 
-        let addr = InputAddress {
+        let addr = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: 0 },
         };
@@ -712,11 +712,11 @@ mod tests {
         let map = HashMap::from([("Default".to_owned(), vec![])]);
         let modes = ModeTree::from_adjacency(&map).unwrap();
 
-        let primary = InputAddress {
+        let primary = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index: 0 },
         };
-        let secondary = InputAddress {
+        let secondary = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index: 1 },
         };
@@ -757,11 +757,11 @@ mod tests {
         let map = HashMap::from([("Default".to_owned(), vec![])]);
         let modes = ModeTree::from_adjacency(&map).unwrap();
 
-        let trigger = InputAddress {
+        let trigger = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: 0 },
         };
-        let predicate = InputAddress {
+        let predicate = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: 1 },
         };
@@ -808,15 +808,15 @@ mod tests {
         let map = HashMap::from([("Default".to_owned(), vec![])]);
         let modes = ModeTree::from_adjacency(&map).unwrap();
 
-        let primary = InputAddress {
+        let primary = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index: 0 },
         };
-        let secondary = InputAddress {
+        let secondary = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index: 1 },
         };
-        let predicate = InputAddress {
+        let predicate = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: 0 },
         };
@@ -866,11 +866,11 @@ mod tests {
         let map = HashMap::from([("Default".to_owned(), vec![])]);
         let modes = ModeTree::from_adjacency(&map).unwrap();
 
-        let trigger = InputAddress {
+        let trigger = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: 0 },
         };
-        let nested_predicate = InputAddress {
+        let nested_predicate = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: 5 },
         };
@@ -924,15 +924,15 @@ mod tests {
         let map = HashMap::from([("Default".to_owned(), vec![])]);
         let modes = ModeTree::from_adjacency(&map).unwrap();
 
-        let primary = InputAddress {
+        let primary = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index: 0 },
         };
-        let secondary = InputAddress {
+        let secondary = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Axis { index: 1 },
         };
-        let predicate = InputAddress {
+        let predicate = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: 0 },
         };
@@ -982,7 +982,7 @@ mod tests {
         let map = HashMap::from([("Default".to_owned(), vec![])]);
         let modes = ModeTree::from_adjacency(&map).unwrap();
 
-        let addr = InputAddress {
+        let addr = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
             input: InputId::Button { index: 0 },
         };
@@ -1027,7 +1027,7 @@ mod tests {
         let app = AppState::new();
         let stale_sel = Some((
             "Default".to_owned(),
-            InputAddress {
+            InputAddress::Bound {
                 device: DeviceId("nonexistent".to_owned()),
                 input: InputId::Button { index: 99 },
             },
