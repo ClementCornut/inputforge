@@ -52,8 +52,8 @@ pub(crate) fn render_plot(
             // Y-flipped layers.
             g {
                 transform: "scale(1, -1)",
-                {render_grid_micro()}
                 {render_grid_major()}
+                {render_axis_cross()}
                 {render_identity()}
                 if bezier_handles {
                     {render_bezier_handle_lines(curve)}
@@ -74,38 +74,10 @@ pub(crate) fn render_plot(
     }
 }
 
-fn render_grid_micro() -> Element {
-    let nodes = (1..20_i32)
-        .flat_map(|i| {
-            let v = -1.0 + f64::from(i) * 0.1;
-            let is_major =
-                (v - v.round()).abs() < 1e-9 || (v * 4.0 - (v * 4.0).round()).abs() < 1e-9;
-            if is_major {
-                return vec![];
-            }
-            vec![
-                rsx! {
-                    line {
-                        key: "vmicro-{i}",
-                        class: "if-curve__grid-micro",
-                        x1: "{v}", y1: "-1.0", x2: "{v}", y2: "1.0",
-                    }
-                },
-                rsx! {
-                    line {
-                        key: "hmicro-{i}",
-                        class: "if-curve__grid-micro",
-                        x1: "-1.0", y1: "{v}", x2: "1.0", y2: "{v}",
-                    }
-                },
-            ]
-        })
-        .collect::<Vec<_>>();
-    rsx! { g { {nodes.into_iter()} } }
-}
-
 fn render_grid_major() -> Element {
-    let majors = [-0.75_f64, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75];
+    // Origin (0.0) is excluded; render_axis_cross owns the x=0 and y=0
+    // lines with slightly stronger ink.
+    let majors = [-0.75_f64, -0.5, -0.25, 0.25, 0.5, 0.75];
     rsx! {
         g {
             for v in majors.iter().copied() {
@@ -118,6 +90,26 @@ fn render_grid_major() -> Element {
                     class: "if-curve__grid-major",
                     x1: "-1.0", y1: "{v}", x2: "1.0", y2: "{v}",
                 }
+            }
+        }
+    }
+}
+
+/// Single-line cross at the origin (x=0 and y=0). The bipolar response
+/// curve's origin is the most-referenced point: identity passes through it,
+/// dead-center sits there, symmetric curves mirror around it. A slightly
+/// stronger ink than the major grid earns its place by anchoring the eye
+/// without competing with the curve stroke.
+fn render_axis_cross() -> Element {
+    rsx! {
+        g {
+            line {
+                class: "if-curve__axis-cross",
+                x1: "0", y1: "-1.0", x2: "0", y2: "1.0",
+            }
+            line {
+                class: "if-curve__axis-cross",
+                x1: "-1.0", y1: "0", x2: "1.0", y2: "0",
             }
         }
     }

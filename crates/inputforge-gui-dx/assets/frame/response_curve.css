@@ -1,9 +1,12 @@
 .if-curve {
   --color-curve-plot-bg: var(--color-bg-sunken);
-  /* Navy-tinted micro/major grid (DESIGN.md "No Pure Black, No Pure White Rule"
-     applies even to translucent whites). Hue matches --color-bg-elevated. */
-  --color-curve-grid-micro: rgba(150, 165, 220, 0.06);
-  --color-curve-grid-major: rgba(150, 165, 220, 0.13);
+  /* Navy-tinted grid + axis cross (DESIGN.md "No Pure Black, No Pure White
+     Rule" applies even to translucent whites). Hue matches
+     --color-bg-elevated. The major grid (quarter-points only) is the sole
+     background-reference layer; the axis cross at the origin gets a touch
+     more ink because it is the most-referenced point on a bipolar curve. */
+  --color-curve-grid-major: rgba(150, 165, 220, 0.18);
+  --color-curve-axis-cross: rgba(150, 165, 220, 0.32);
   --color-curve-identity: var(--color-text-subtle);
   --color-curve-stroke: var(--color-primary);
   --color-curve-handle: rgb(from var(--color-primary) r g b / 0.40);
@@ -51,15 +54,15 @@
    sub-pixel and invisible; the values below are calibrated for the dense
    "Evolved Glass Cockpit" instrument feel. */
 .if-curve__bg { fill: var(--color-curve-plot-bg); }
-.if-curve__grid-micro { stroke: var(--color-curve-grid-micro); stroke-width: 1px; vector-effect: non-scaling-stroke; }
 .if-curve__grid-major { stroke: var(--color-curve-grid-major); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.if-curve__axis-cross { stroke: var(--color-curve-axis-cross); stroke-width: 1px; vector-effect: non-scaling-stroke; }
 .if-curve__identity {
   stroke: var(--color-curve-identity);
   stroke-width: 1px;
   stroke-dasharray: 4 6;
   vector-effect: non-scaling-stroke;
   fill: none;
-  opacity: 0.5;
+  opacity: 0.65;
 }
 .if-curve__handle-line {
   stroke: var(--color-curve-handle);
