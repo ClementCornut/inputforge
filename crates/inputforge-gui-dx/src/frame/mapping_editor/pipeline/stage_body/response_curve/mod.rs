@@ -164,6 +164,276 @@ fn compute_live_value(
     }
 }
 
+// ---------------------------------------------------------------------------
+// JS-bridge mouse-event capture
+// ---------------------------------------------------------------------------
+
+/// JavaScript installed by `on_mounted` via `document::eval`. Captures mouse
+/// events at the document level (where they fire reliably in `WebView2`) and
+/// forwards them to Rust as `BridgeEvent` JSON payloads. Coords are coerced to
+/// integers (`| 0`) to sidestep the float-vs-integer deserialization bug
+/// tracked in Dioxus issue #4706.
+///
+/// `__PLOT_ID__` is replaced with the wrapper div's stage-id-derived DOM id so
+/// each curve body's listeners scope to its own plot rect. A `dragging` flag
+/// keeps move/up firing when the cursor leaves the plot mid-drag (otherwise
+/// the user could lose the drag by exiting the plot bounds).
+const BRIDGE_JS_TEMPLATE: &str = r"
+    var plotEl = document.getElementById('__PLOT_ID__');
+    if (!plotEl) return;
+    var initialRect = plotEl.getBoundingClientRect();
+    dioxus.send({ kind: 'rect', l: initialRect.left, t: initialRect.top, w: initialRect.width, h: initialRect.height });
+
+    var dragging = false;
+
+    var inPlot = function(e) {
+        var r = plotEl.getBoundingClientRect();
+        return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    };
+
+    document.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return;
+        if (!inPlot(e)) return;
+        dragging = true;
+        dioxus.send({ kind: 'down', x: e.clientX | 0, y: e.clientY | 0 });
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!dragging && !inPlot(e)) return;
+        dioxus.send({ kind: 'move', x: e.clientX | 0, y: e.clientY | 0 });
+    });
+
+    document.addEventListener('mouseup', function(e) {
+        if (e.button !== 0) return;
+        if (!dragging) return;
+        dragging = false;
+        dioxus.send({ kind: 'up', x: e.clientX | 0, y: e.clientY | 0 });
+    });
+
+    document.addEventListener('dblclick', function(e) {
+        if (!inPlot(e)) return;
+        dioxus.send({ kind: 'dbl', x: e.clientX | 0, y: e.clientY | 0 });
+    });
+
+    document.addEventListener('contextmenu', function(e) {
+        if (!inPlot(e)) return;
+        e.preventDefault();
+        dioxus.send({ kind: 'ctx', x: e.clientX | 0, y: e.clientY | 0 });
+    });
+";
+
+/// Wire payload for the JS bridge. Field set is the union across event kinds;
+/// each handler reads only the fields it needs. Defaults keep deserialization
+/// permissive so a malformed message never crashes the dispatcher loop.
+#[derive(Debug, serde::Deserialize)]
+struct BridgeEvent {
+    kind: String,
+    #[serde(default)]
+    x: f64,
+    #[serde(default)]
+    y: f64,
+    #[serde(default)]
+    l: f64,
+    #[serde(default)]
+    t: f64,
+    #[serde(default)]
+    w: f64,
+    #[serde(default)]
+    h: f64,
+}
+
+/// Single-message dispatcher invoked by the eval loop in `on_mounted`. Routes
+/// each event kind through the existing pure handlers in `interaction.rs` and
+/// updates the body component's signals in place. All Signal<T> arguments are
+/// captured by `Copy`; the heavier values (`mapping_key`, `stage_id`, etc.) are
+/// borrowed because they live in the spawn task's stack across iterations.
+#[expect(
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    reason = "Body component shape; one big match arm per event kind keeps each handler local."
+)]
+fn dispatch_bridge_event(
+    payload: &BridgeEvent,
+    mut body: Signal<BodyState>,
+    mut plot_rect: Signal<Option<interaction::PlotRect>>,
+    mut working_curve: Signal<Option<ResponseCurve>>,
+    config_signal: Signal<crate::context::ConfigSnapshot>,
+    mut undo_log: Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
+    mut malformed_hints: Signal<std::collections::HashMap<StageId, String>>,
+    mapping_key: &MappingKey,
+    stage_id: &StageId,
+    curve_seed: &ResponseCurve,
+    cmd_tx: &std::sync::mpsc::Sender<inputforge_core::engine::EngineCommand>,
+) {
+    match payload.kind.as_str() {
+        "rect" => {
+            if payload.w > 0.0 && payload.h > 0.0 {
+                plot_rect.set(Some(interaction::PlotRect {
+                    x: payload.l,
+                    y: payload.t,
+                    size: payload.w.min(payload.h),
+                }));
+            }
+        }
+        "down" => {
+            let Some(rect) = *plot_rect.peek() else {
+                return;
+            };
+            let cfg = config_signal.read();
+            let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
+            let live = project_stage_curve(actions, stage_id, curve_seed);
+            drop(cfg);
+            let prev = body.peek().clone();
+            let (next, _, _) =
+                interaction::handle_pointer_down(prev, &live, (payload.x, payload.y), &rect);
+            if next.dragging.is_some() {
+                working_curve.set(Some(live));
+            }
+            body.set(next);
+        }
+        "move" => {
+            let Some(rect) = *plot_rect.peek() else {
+                return;
+            };
+            let cfg = config_signal.read();
+            let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
+            let live = project_stage_curve(actions, stage_id, curve_seed);
+            drop(cfg);
+            let prev = body.peek().clone();
+            let (mut next, new_curve_opt, _) =
+                interaction::handle_pointer_move(prev, &live, (payload.x, payload.y), &rect);
+            if let Some(new_curve) = new_curve_opt {
+                next.cached_path = sample_curve_path(&new_curve, CURVE_SAMPLE_COUNT);
+                next.cached_anchors = extract_anchors(&new_curve);
+                next.cache_dirty = false;
+                working_curve.set(Some(new_curve));
+            }
+            body.set(next);
+        }
+        "up" => {
+            let prev = body.peek().clone();
+            if prev.dragging.is_none() {
+                return;
+            }
+            let cfg = config_signal.read();
+            let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
+            let live = project_stage_curve(actions, stage_id, curve_seed);
+            let actions_snap = actions.to_vec();
+            drop(cfg);
+            let dragged = working_curve.peek().clone().unwrap_or_else(|| live.clone());
+            working_curve.set(None);
+            let (mut next, result, _) = interaction::handle_pointer_up(prev, &dragged);
+            match result {
+                Ok(valid) => {
+                    let cfg2 = config_signal.read();
+                    let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
+                    drop(cfg2);
+                    toolbar::dispatch_curve_edit(
+                        &actions_snap,
+                        stage_id,
+                        valid,
+                        mapping_key,
+                        name,
+                        cmd_tx,
+                        &mut undo_log,
+                        "curve: drag".to_owned(),
+                    );
+                    malformed_hints.write().remove(stage_id);
+                }
+                Err(err) if err.is_empty() => {}
+                Err(err) => {
+                    let _revert = next.pre_drag_curve.take();
+                    malformed_hints.write().insert(stage_id.clone(), err);
+                }
+            }
+            body.set(next);
+        }
+        "dbl" => {
+            let Some(rect) = *plot_rect.peek() else {
+                return;
+            };
+            let cfg = config_signal.read();
+            let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
+            let live = project_stage_curve(actions, stage_id, curve_seed);
+            let actions_snap = actions.to_vec();
+            drop(cfg);
+            let prev = body.peek().clone();
+            let (mut next, new_curve_opt, changed) =
+                interaction::handle_double_click(prev, &live, (payload.x, payload.y), &rect);
+            if changed {
+                if let Some(new_curve) = new_curve_opt {
+                    next.cached_path = sample_curve_path(&new_curve, CURVE_SAMPLE_COUNT);
+                    next.cached_anchors = extract_anchors(&new_curve);
+                    next.cache_dirty = false;
+                    match mutation::reconstruct_curve(&new_curve) {
+                        Ok(valid) => {
+                            let vb = interaction::screen_to_viewbox((payload.x, payload.y), &rect);
+                            let label = format!("curve: add point at ({:.2}, {:.2})", vb.0, vb.1);
+                            let cfg2 = config_signal.read();
+                            let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
+                            drop(cfg2);
+                            toolbar::dispatch_curve_edit(
+                                &actions_snap,
+                                stage_id,
+                                valid,
+                                mapping_key,
+                                name,
+                                cmd_tx,
+                                &mut undo_log,
+                                label,
+                            );
+                            malformed_hints.write().remove(stage_id);
+                        }
+                        Err(err) => {
+                            malformed_hints.write().insert(stage_id.clone(), err);
+                        }
+                    }
+                }
+            }
+            body.set(next);
+        }
+        "ctx" => {
+            let cfg = config_signal.read();
+            let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
+            let live = project_stage_curve(actions, stage_id, curve_seed);
+            let actions_snap = actions.to_vec();
+            drop(cfg);
+            let prev = body.peek().clone();
+            let (mut next, new_curve_opt, changed) = interaction::handle_context_menu(prev, &live);
+            if changed {
+                if let Some(new_curve) = new_curve_opt {
+                    next.cached_path = sample_curve_path(&new_curve, CURVE_SAMPLE_COUNT);
+                    next.cached_anchors = extract_anchors(&new_curve);
+                    next.cache_dirty = false;
+                    match mutation::reconstruct_curve(&new_curve) {
+                        Ok(valid) => {
+                            let cfg2 = config_signal.read();
+                            let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
+                            drop(cfg2);
+                            toolbar::dispatch_curve_edit(
+                                &actions_snap,
+                                stage_id,
+                                valid,
+                                mapping_key,
+                                name,
+                                cmd_tx,
+                                &mut undo_log,
+                                "curve: remove point".to_owned(),
+                            );
+                            malformed_hints.write().remove(stage_id);
+                        }
+                        Err(err) => {
+                            malformed_hints.write().insert(stage_id.clone(), err);
+                        }
+                    }
+                }
+            }
+            body.set(next);
+        }
+        _ => {}
+    }
+}
+
 /// Body component for a `ResponseCurve` pipeline stage.
 ///
 /// Renders the type-selector toolbar and the SVG plot with full pointer
@@ -193,7 +463,7 @@ pub(crate) fn ResponseCurveBody(
     let config_signal = ctx.config;
     let editor = use_context::<EditorState>();
     let mut undo_log = editor.undo_log;
-    let mut malformed_hints = editor.malformed_hints;
+    let malformed_hints = editor.malformed_hints;
 
     // Seed the cache immediately from the prop so the first SSR render
     // already contains the correct path and anchor data. The `use_effect`
@@ -212,7 +482,7 @@ pub(crate) fn ResponseCurveBody(
     // and `Some(c)` during a drag (updated on every `on_pointer_move` that
     // returns a new local curve). Reset to `None` on pointer-up (both success
     // and failure paths).
-    let mut working_curve: Signal<Option<ResponseCurve>> = use_signal(|| None);
+    let working_curve: Signal<Option<ResponseCurve>> = use_signal(|| None);
 
     // Captured once per mount so that `now_ms` inside `on_key` can be computed
     // as `Instant::now().saturating_duration_since(*time_baseline.peek())`. The
@@ -223,7 +493,7 @@ pub(crate) fn ResponseCurveBody(
     // Cached bounding rect of the plot wrapper div, populated asynchronously
     // after mount. The first pointer event that fires before the rect is ready
     // is a silent no-op; subsequent events use the cached value.
-    let mut plot_rect: Signal<Option<interaction::PlotRect>> = use_signal(|| None);
+    let plot_rect: Signal<Option<interaction::PlotRect>> = use_signal(|| None);
 
     // Reactivity: read the config signal inside the effect closure so any
     // change to `selected_mapping_actions` (own dispatch, undo replay, or
@@ -292,307 +562,59 @@ pub(crate) fn ResponseCurveBody(
     let stage_id_for_evt = stage_id.clone();
     let cmd_tx = ctx.commands.clone();
 
-    // `onmounted` fires after the wrapper div is first inserted into the DOM.
-    // `MountedData::get_client_rect()` returns Err on the Dioxus 0.7 desktop
-    // target (see `top_bar/mode_tabs/mod.rs:179` for the established pattern).
-    // Use `document::eval` with `getBoundingClientRect()` instead. The wrapper
-    // div is given a stage-id-derived DOM id so the JS query targets the
-    // right element when multiple curve bodies are mounted simultaneously.
+    // ----- JS-bridge mouse-event dispatch -----
+    //
+    // Background: Dioxus 0.7.6 desktop's delegated event dispatcher does NOT
+    // route mousedown / mousemove / mouseup / dblclick / contextmenu to handlers
+    // on a non-button `<div>`, even when the wrapper has `data-dioxus-id`
+    // registered. Native browser events fire (verified with document-level JS
+    // probes) but the Rust handler never runs. The most plausible upstream
+    // cause is the float-vs-integer payload deserialization bug tracked in
+    // Dioxus issue #4706 (Windows / WebView2 emits floating-point coords where
+    // the deserializer expects integers, silently dropping the event). `onclick`
+    // on `<button>` works because the button's payload format is simpler and
+    // round-trips correctly; complex mouse payloads do not.
+    //
+    // Workaround: install raw JS event listeners at the document level via
+    // `document::eval`, capture coords as integers (`| 0`), and stream them
+    // back through the eval `Channel` to a Rust dispatcher task that calls the
+    // existing pure handlers in `interaction.rs`. Bypasses the broken delegator
+    // entirely. `onkeydown` / `onfocusout` continue to work via the normal
+    // Dioxus path and remain on the wrapper div.
     let plot_dom_id = stage_id_dom_id(&stage_id);
     let plot_dom_id_for_mount = plot_dom_id.clone();
+    let curve_for_bridge = curve.clone();
+    let mapping_key_for_bridge = mapping_key_for_evt.clone();
+    let stage_id_for_bridge = stage_id_for_evt.clone();
+    let cmd_tx_for_bridge = cmd_tx.clone();
     let on_mounted = move |_evt: MountedEvent| {
         let id = plot_dom_id_for_mount.clone();
+        let curve_seed = curve_for_bridge.clone();
+        let mapping_key = mapping_key_for_bridge.clone();
+        let stage_id = stage_id_for_bridge.clone();
+        let cmd_tx = cmd_tx_for_bridge.clone();
         spawn(async move {
-            let mut handle = document::eval(&format!(
-                "var el = document.getElementById('{id}');\n\
-                 if (!el) {{ dioxus.send([-1.0, -1.0, -1.0, -1.0]); return; }}\n\
-                 var r = el.getBoundingClientRect();\n\
-                 el.setAttribute('data-eval-rect', r.left+','+r.top+','+r.width+','+r.height);\n\
-                 dioxus.send([r.left, r.top, r.width, r.height]);"
-            ));
-            if let Ok([x, y, w, h]) = handle.recv::<[f64; 4]>().await {
-                if w > 0.0 && h > 0.0 {
-                    plot_rect.set(Some(interaction::PlotRect {
-                        x,
-                        y,
-                        // Use the smaller dimension so anchor hit-zones are not
-                        // stretched if the wrapper is momentarily non-square
-                        // during a resize event.
-                        size: w.min(h),
-                    }));
-                }
+            let js = BRIDGE_JS_TEMPLATE.replace("__PLOT_ID__", &id);
+            let mut handle = document::eval(&js);
+            loop {
+                let Ok(payload) = handle.recv::<BridgeEvent>().await else {
+                    break;
+                };
+                dispatch_bridge_event(
+                    &payload,
+                    body,
+                    plot_rect,
+                    working_curve,
+                    config_signal,
+                    undo_log,
+                    malformed_hints,
+                    &mapping_key,
+                    &stage_id,
+                    &curve_seed,
+                    &cmd_tx,
+                );
             }
         });
-    };
-
-    // Helper: project a Dioxus MouseEvent to `(cursor, PlotRect)`.
-    //
-    // Switched from `PointerData` to `MouseData`: Dioxus 0.7 desktop does not
-    // route `pointerdown`/`pointermove`/`pointerup` synthetic events through
-    // its delegated dispatcher (the wrapper div's `data-dioxus-id` is
-    // registered, but the JS bridge only forwards mouse-family events on the
-    // desktop target). Native `pointerdown` still fires at the document level
-    // (verified via DOM `addEventListener` probe), but Dioxus's Rust handler
-    // never runs. Mouse events work for the desktop / WebView2 target; touch
-    // and pen are out of scope for the instrument.
-    //
-    // Returns `None` while the rect cache is unpopulated (before first mount
-    // completes). The closure is a `move` closure; `plot_rect` is captured by
-    // copy (Signal is Copy).
-    let project_event =
-        move |evt: &Event<MouseData>| -> Option<((f64, f64), interaction::PlotRect)> {
-            let rect = (*plot_rect.peek())?;
-            let cur = evt.client_coordinates();
-            Some(((cur.x, cur.y), rect))
-        };
-
-    // Helper: project a mouse cursor position to `(cursor, PlotRect)`.
-    // Used by on_double_click and on_context_menu which receive MouseEvent.
-    let project_mouse =
-        move |cur_x: f64, cur_y: f64| -> Option<((f64, f64), interaction::PlotRect)> {
-            let rect = (*plot_rect.peek())?;
-            Some(((cur_x, cur_y), rect))
-        };
-
-    // --- on_pointer_down ---
-    // Starts a drag when the cursor is within HIT_RADIUS_PX of an anchor.
-    //
-    // API note: `set_pointer_capture` is NOT exposed on Dioxus 0.7's
-    // `PointerData`. The web-only impl reaches it via `try_as_web_event()` +
-    // `web_sys::PointerEvent::set_pointer_capture`, which is unavailable on
-    // the desktop target. The wrapper div therefore continues to receive
-    // pointermove/pointerup only while the cursor stays inside it, which
-    // covers the common drag case.
-    let curve_for_down = curve.clone();
-    let mapping_key_for_down = mapping_key_for_evt.clone();
-    let stage_id_for_down = stage_id_for_evt.clone();
-    let config_for_down = config_signal;
-    let on_pointer_down = move |evt: MouseEvent| {
-        let Some((cursor, rect)) = project_event(&evt) else {
-            return;
-        };
-        let cfg = config_for_down.read();
-        let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
-        let live = project_stage_curve(actions, &stage_id_for_down, &curve_for_down);
-        drop(cfg);
-        let prev = body.peek().clone();
-        let (next, _new_curve, _changed) =
-            interaction::handle_pointer_down(prev, &live, cursor, &rect);
-        if next.dragging.is_some() {
-            // Initialize the working curve to the current live curve so
-            // pointer-up always has a valid value even if the first
-            // pointer-move event is missed.
-            working_curve.set(Some(live));
-        }
-        body.set(next);
-        // Both variables must be referenced so the closure captures them.
-        let _ = &mapping_key_for_down;
-    };
-
-    // --- on_pointer_move ---
-    // During a drag: applies the drag to a local curve clone, refreshes
-    // `cached_path` and `cached_anchors` so the plot redraws immediately with
-    // the in-flight geometry, and stores the new curve in `working_curve` for
-    // pointer-up to commit. No dispatch occurs during the drag.
-    // Outside a drag: updates `hovered_point` for cursor-change CSS.
-    let curve_for_move = curve.clone();
-    let stage_id_for_move = stage_id_for_evt.clone();
-    let config_for_move = config_signal;
-    let on_pointer_move = move |evt: MouseEvent| {
-        let Some((cursor, rect)) = project_event(&evt) else {
-            return;
-        };
-        let cfg = config_for_move.read();
-        let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
-        let live = project_stage_curve(actions, &stage_id_for_move, &curve_for_move);
-        drop(cfg);
-        let prev = body.peek().clone();
-        let (mut next, new_curve_opt, _changed) =
-            interaction::handle_pointer_move(prev, &live, cursor, &rect);
-        if let Some(new_curve) = new_curve_opt {
-            // Drag branch: refresh cached geometry so the SVG repaints
-            // with the dragged anchor position before the next commit.
-            let new_path = sample_curve_path(&new_curve, CURVE_SAMPLE_COUNT);
-            let new_anchors = extract_anchors(&new_curve);
-            next.cached_path = new_path;
-            next.cached_anchors = new_anchors;
-            next.cache_dirty = false;
-            working_curve.set(Some(new_curve));
-        }
-        body.set(next);
-    };
-
-    // --- on_pointer_up ---
-    // Commits the drag: validates the working curve, dispatches `SetMapping`
-    // on success, or writes the validator error to `malformed_hints` on
-    // failure. Always resets `working_curve` to `None` and clears the drag
-    // state on `body`.
-    let curve_for_up = curve.clone();
-    let mapping_key_for_up = mapping_key_for_evt.clone();
-    let stage_id_for_up = stage_id_for_evt.clone();
-    let config_for_up = config_signal;
-    let cmd_tx_for_up = cmd_tx.clone();
-    let on_pointer_up = move |_evt: MouseEvent| {
-        let prev = body.peek().clone();
-        // If no drag was active, early-exit (stray pointer-up from outside a drag).
-        if prev.dragging.is_none() {
-            return;
-        }
-        // The committed geometry is whatever the last pointer-move stored.
-        // Fall back to the live curve if working_curve was never updated
-        // (pointer-down then immediate pointer-up without any move).
-        let cfg = config_for_up.read();
-        let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
-        let live = project_stage_curve(actions, &stage_id_for_up, &curve_for_up);
-        let actions_snap = actions.to_vec();
-        drop(cfg);
-        let dragged = working_curve.peek().clone().unwrap_or_else(|| live.clone());
-        working_curve.set(None);
-
-        let (mut next, result, _changed) = interaction::handle_pointer_up(prev, &dragged);
-        match result {
-            Ok(valid_curve) => {
-                // Successful commit: dispatch and clear any stale hint.
-                let cfg2 = config_for_up.read();
-                let name = cfg2.mapping_names.get(&mapping_key_for_up.1).cloned();
-                drop(cfg2);
-                toolbar::dispatch_curve_edit(
-                    &actions_snap,
-                    &stage_id_for_up,
-                    valid_curve,
-                    &mapping_key_for_up,
-                    name,
-                    &cmd_tx_for_up,
-                    &mut undo_log,
-                    "curve: drag".to_owned(),
-                );
-                malformed_hints.write().remove(&stage_id_for_up);
-            }
-            Err(err) if err.is_empty() => {
-                // Sentinel from `handle_pointer_up` when no drag was active
-                // (belt-and-suspenders guard; the early-return above already
-                // handles this case before we call the handler).
-            }
-            Err(err) => {
-                // Validation failed. Write the error and skip dispatch.
-                // `next.pre_drag_curve` is still populated per Task 6's
-                // contract; take it to prevent it from leaking into the next
-                // drag cycle. The component re-renders from `config` (which
-                // still holds the pre-drag value because no dispatch landed),
-                // so no explicit curve-signal restoration is needed.
-                let _revert = next.pre_drag_curve.take();
-                malformed_hints.write().insert(stage_id_for_up.clone(), err);
-            }
-        }
-        body.set(next);
-    };
-
-    // --- on_double_click ---
-    // Adds a new control point at the clicked viewBox coordinate and dispatches.
-    let curve_for_dc = curve.clone();
-    let mapping_key_for_dc = mapping_key_for_evt.clone();
-    let stage_id_for_dc = stage_id_for_evt.clone();
-    let config_for_dc = config_signal;
-    let cmd_tx_for_dc = cmd_tx.clone();
-    let on_double_click = move |evt: MouseEvent| {
-        let cur = evt.client_coordinates();
-        let Some((cursor, rect)) = project_mouse(cur.x, cur.y) else {
-            return;
-        };
-        let cfg = config_for_dc.read();
-        let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
-        let live = project_stage_curve(actions, &stage_id_for_dc, &curve_for_dc);
-        let actions_snap = actions.to_vec();
-        drop(cfg);
-        let prev = body.peek().clone();
-        let (mut next, new_curve_opt, changed) =
-            interaction::handle_double_click(prev, &live, cursor, &rect);
-        if changed {
-            if let Some(new_curve) = new_curve_opt {
-                // Refresh cached geometry eagerly so the plot repaints with
-                // the new anchor before the config round-trip completes.
-                next.cached_path = sample_curve_path(&new_curve, CURVE_SAMPLE_COUNT);
-                next.cached_anchors = extract_anchors(&new_curve);
-                next.cache_dirty = false;
-                match mutation::reconstruct_curve(&new_curve) {
-                    Ok(valid_curve) => {
-                        let vb = interaction::screen_to_viewbox(cursor, &rect);
-                        let label = format!("curve: add point at ({:.2}, {:.2})", vb.0, vb.1);
-                        let cfg2 = config_for_dc.read();
-                        let name = cfg2.mapping_names.get(&mapping_key_for_dc.1).cloned();
-                        drop(cfg2);
-                        toolbar::dispatch_curve_edit(
-                            &actions_snap,
-                            &stage_id_for_dc,
-                            valid_curve,
-                            &mapping_key_for_dc,
-                            name,
-                            &cmd_tx_for_dc,
-                            &mut undo_log,
-                            label,
-                        );
-                        malformed_hints.write().remove(&stage_id_for_dc);
-                    }
-                    Err(err) => {
-                        malformed_hints.write().insert(stage_id_for_dc.clone(), err);
-                    }
-                }
-            }
-        }
-        body.set(next);
-    };
-
-    // --- on_context_menu ---
-    // Removes the currently hovered control point and dispatches.
-    //
-    // `evt.prevent_default()` suppresses the OS/browser context menu.
-    // On Dioxus 0.7 `prevent_default()` lives directly on `Event<T>`
-    // (dioxus-core-0.7.6/src/events.rs:172), so it works on any event type
-    // without an inner data accessor.
-    let curve_for_cm = curve.clone();
-    let mapping_key_for_cm = mapping_key_for_evt.clone();
-    let stage_id_for_cm = stage_id_for_evt.clone();
-    let config_for_cm = config_signal;
-    let cmd_tx_for_cm = cmd_tx.clone();
-    let on_context_menu = move |evt: MouseEvent| {
-        evt.prevent_default();
-        let cfg = config_for_cm.read();
-        let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
-        let live = project_stage_curve(actions, &stage_id_for_cm, &curve_for_cm);
-        let actions_snap = actions.to_vec();
-        drop(cfg);
-        let prev = body.peek().clone();
-        let (mut next, new_curve_opt, changed) = interaction::handle_context_menu(prev, &live);
-        if changed {
-            if let Some(new_curve) = new_curve_opt {
-                // Refresh cached geometry.
-                next.cached_path = sample_curve_path(&new_curve, CURVE_SAMPLE_COUNT);
-                next.cached_anchors = extract_anchors(&new_curve);
-                next.cache_dirty = false;
-                match mutation::reconstruct_curve(&new_curve) {
-                    Ok(valid_curve) => {
-                        let cfg2 = config_for_cm.read();
-                        let name = cfg2.mapping_names.get(&mapping_key_for_cm.1).cloned();
-                        drop(cfg2);
-                        toolbar::dispatch_curve_edit(
-                            &actions_snap,
-                            &stage_id_for_cm,
-                            valid_curve,
-                            &mapping_key_for_cm,
-                            name,
-                            &cmd_tx_for_cm,
-                            &mut undo_log,
-                            "curve: remove point".to_owned(),
-                        );
-                        malformed_hints.write().remove(&stage_id_for_cm);
-                    }
-                    Err(err) => {
-                        malformed_hints.write().insert(stage_id_for_cm.clone(), err);
-                    }
-                }
-            }
-        }
-        body.set(next);
     };
 
     // --- on_key ---
@@ -712,7 +734,6 @@ pub(crate) fn ResponseCurveBody(
     let dragging_attr = body_snapshot.dragging.is_some().to_string();
     let hovered_attr = body_snapshot.hovered_point.is_some().to_string();
     drop(body_snapshot);
-    let rect_attr = plot_rect.read().is_some().to_string();
 
     // Reuse F9's existing summary formatter ("Linear 5 pts sym" style).
     let summary = stage_summary_for(
@@ -731,10 +752,15 @@ pub(crate) fn ResponseCurveBody(
                 root_actions: live_actions.clone(),
                 mapping_key: mapping_key.clone(),
             }
-            // Focusable wrapper div owns the aria-label and all pointer
-            // events. The inner <svg> emits a <title> for screen readers that
-            // descend into SVG by default; the outer div's aria-label is the
-            // primary announcement when the user tabs in.
+            // Focusable wrapper div owns the aria-label, the keyboard handlers,
+            // and the JS-bridge mount point. Mouse-class events
+            // (mousedown / mousemove / mouseup / dblclick / contextmenu) are
+            // captured at the document level by JS listeners installed inside
+            // `on_mounted`'s `document::eval` and routed back to Rust through
+            // an event-channel; see the BRIDGE_JS_TEMPLATE / dispatch_bridge_event
+            // pair above. The wrapper does NOT register Dioxus rsx attributes
+            // for those events because the Dioxus 0.7 desktop dispatcher silently
+            // drops them on non-button elements.
             div {
                 class: "if-curve__plot-frame",
                 id: "{plot_dom_id}",
@@ -742,12 +768,6 @@ pub(crate) fn ResponseCurveBody(
                 "aria-label": "response curve",
                 "data-hovered": "{hovered_attr}",
                 "data-dragging": "{dragging_attr}",
-                "data-rect-set": "{rect_attr}",
-                onmousedown: on_pointer_down,
-                onmousemove: on_pointer_move,
-                onmouseup: on_pointer_up,
-                ondoubleclick: on_double_click,
-                oncontextmenu: on_context_menu,
                 onmounted: on_mounted,
                 onkeydown: on_key,
                 onfocusout: on_focus_out,
