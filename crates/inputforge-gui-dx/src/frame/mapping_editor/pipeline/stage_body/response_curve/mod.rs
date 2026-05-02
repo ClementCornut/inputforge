@@ -181,10 +181,26 @@ fn compute_live_value(
 const BRIDGE_JS_TEMPLATE: &str = r"
     var plotEl = document.getElementById('__PLOT_ID__');
     if (!plotEl) return;
-    var initialRect = plotEl.getBoundingClientRect();
-    dioxus.send({ kind: 'rect', l: initialRect.left, t: initialRect.top, w: initialRect.width, h: initialRect.height });
-
     var dragging = false;
+
+    // Re-read getBoundingClientRect on EVERY event. Caching the mount-time
+    // rect breaks as soon as the page scrolls, the toolbar layout shifts, or
+    // the window resizes; the viewBox coords Rust computes would be stale,
+    // and clicks would map to whatever offset the rect drifted to (the
+    // symptom: 'I can only place points in the bottom-left quarter'). The
+    // live rect (rl, rt, rs) is sent with every payload so dispatch_bridge_event
+    // builds a fresh PlotRect for each handler invocation.
+    var sendEvt = function(kind, e) {
+        var r = plotEl.getBoundingClientRect();
+        dioxus.send({
+            kind: kind,
+            x: e.clientX | 0,
+            y: e.clientY | 0,
+            rl: r.left,
+            rt: r.top,
+            rs: Math.min(r.width, r.height),
+        });
+    };
 
     var inPlot = function(e) {
         var r = plotEl.getBoundingClientRect();
@@ -195,35 +211,38 @@ const BRIDGE_JS_TEMPLATE: &str = r"
         if (e.button !== 0) return;
         if (!inPlot(e)) return;
         dragging = true;
-        dioxus.send({ kind: 'down', x: e.clientX | 0, y: e.clientY | 0 });
+        sendEvt('down', e);
     });
 
     document.addEventListener('mousemove', function(e) {
         if (!dragging && !inPlot(e)) return;
-        dioxus.send({ kind: 'move', x: e.clientX | 0, y: e.clientY | 0 });
+        sendEvt('move', e);
     });
 
     document.addEventListener('mouseup', function(e) {
         if (e.button !== 0) return;
         if (!dragging) return;
         dragging = false;
-        dioxus.send({ kind: 'up', x: e.clientX | 0, y: e.clientY | 0 });
+        sendEvt('up', e);
     });
 
     document.addEventListener('dblclick', function(e) {
         if (!inPlot(e)) return;
-        dioxus.send({ kind: 'dbl', x: e.clientX | 0, y: e.clientY | 0 });
+        sendEvt('dbl', e);
     });
 
     document.addEventListener('contextmenu', function(e) {
         if (!inPlot(e)) return;
         e.preventDefault();
-        dioxus.send({ kind: 'ctx', x: e.clientX | 0, y: e.clientY | 0 });
+        sendEvt('ctx', e);
     });
 ";
 
-/// Wire payload for the JS bridge. Field set is the union across event kinds;
-/// each handler reads only the fields it needs. Defaults keep deserialization
+/// Wire payload for the JS bridge. `x`/`y` are cursor viewport-CSS-pixel
+/// coords; `rl`/`rt`/`rs` are the plot wrapper's live `getBoundingClientRect`
+/// (left, top, smaller-of-width/height). Sending the live rect with every
+/// event prevents stale-rect drift from misprojecting the cursor when the page
+/// scrolls or the surrounding layout shifts. Defaults keep deserialization
 /// permissive so a malformed message never crashes the dispatcher loop.
 #[derive(Debug, serde::Deserialize)]
 struct BridgeEvent {
@@ -233,13 +252,11 @@ struct BridgeEvent {
     #[serde(default)]
     y: f64,
     #[serde(default)]
-    l: f64,
+    rl: f64,
     #[serde(default)]
-    t: f64,
+    rt: f64,
     #[serde(default)]
-    w: f64,
-    #[serde(default)]
-    h: f64,
+    rs: f64,
 }
 
 /// Single-message dispatcher invoked by the eval loop in `on_mounted`. Routes
@@ -255,7 +272,6 @@ struct BridgeEvent {
 fn dispatch_bridge_event(
     payload: &BridgeEvent,
     mut body: Signal<BodyState>,
-    mut plot_rect: Signal<Option<interaction::PlotRect>>,
     mut working_curve: Signal<Option<ResponseCurve>>,
     config_signal: Signal<crate::context::ConfigSnapshot>,
     mut undo_log: Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
@@ -265,20 +281,21 @@ fn dispatch_bridge_event(
     curve_seed: &ResponseCurve,
     cmd_tx: &std::sync::mpsc::Sender<inputforge_core::engine::EngineCommand>,
 ) {
+    // Build a fresh PlotRect from the live rect carried by every event payload.
+    // The rect is captured by the JS bridge per-event via getBoundingClientRect,
+    // so it stays accurate across page scroll, toolbar layout shifts, and any
+    // other reflow that would invalidate a mount-time cache.
+    if payload.rs <= 0.0 {
+        return;
+    }
+    let rect = interaction::PlotRect {
+        x: payload.rl,
+        y: payload.rt,
+        size: payload.rs,
+    };
+
     match payload.kind.as_str() {
-        "rect" => {
-            if payload.w > 0.0 && payload.h > 0.0 {
-                plot_rect.set(Some(interaction::PlotRect {
-                    x: payload.l,
-                    y: payload.t,
-                    size: payload.w.min(payload.h),
-                }));
-            }
-        }
         "down" => {
-            let Some(rect) = *plot_rect.peek() else {
-                return;
-            };
             let cfg = config_signal.read();
             let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
             let live = project_stage_curve(actions, stage_id, curve_seed);
@@ -292,9 +309,6 @@ fn dispatch_bridge_event(
             body.set(next);
         }
         "move" => {
-            let Some(rect) = *plot_rect.peek() else {
-                return;
-            };
             let cfg = config_signal.read();
             let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
             let live = project_stage_curve(actions, stage_id, curve_seed);
@@ -349,9 +363,6 @@ fn dispatch_bridge_event(
             body.set(next);
         }
         "dbl" => {
-            let Some(rect) = *plot_rect.peek() else {
-                return;
-            };
             let cfg = config_signal.read();
             let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
             let live = project_stage_curve(actions, stage_id, curve_seed);
@@ -490,11 +501,6 @@ pub(crate) fn ResponseCurveBody(
     // `std::time::Instant` or `web_time::Instant`.
     let time_baseline = use_signal(std::time::Instant::now);
 
-    // Cached bounding rect of the plot wrapper div, populated asynchronously
-    // after mount. The first pointer event that fires before the rect is ready
-    // is a silent no-op; subsequent events use the cached value.
-    let plot_rect: Signal<Option<interaction::PlotRect>> = use_signal(|| None);
-
     // Reactivity: read the config signal inside the effect closure so any
     // change to `selected_mapping_actions` (own dispatch, undo replay, or
     // external edit) re-fires this effect and keeps the cached path and
@@ -603,7 +609,6 @@ pub(crate) fn ResponseCurveBody(
                 dispatch_bridge_event(
                     &payload,
                     body,
-                    plot_rect,
                     working_curve,
                     config_signal,
                     undo_log,
