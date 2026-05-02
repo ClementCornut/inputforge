@@ -211,24 +211,22 @@ fn update_bezier_point(
 // Reconstruction + identity reset
 // ---------------------------------------------------------------------------
 
-/// Re-validates `curve` through the engine constructors and returns `Some`
-/// if it is well-formed, `None` if the engine rejects it.
+/// Re-validates `curve` through the engine constructors.
 ///
-/// Task 6 will promote this to `Result<ResponseCurve, String>` once the
-/// invalid-drag path needs to surface error text in `EditorState.malformed_hints`.
-#[must_use]
-pub(crate) fn reconstruct_curve(curve: &ResponseCurve) -> Option<ResponseCurve> {
+/// Returns the validator's error string when the curve is structurally invalid
+/// (e.g., duplicate x-values in a piecewise curve).
+pub(crate) fn reconstruct_curve(curve: &ResponseCurve) -> Result<ResponseCurve, String> {
     match curve {
         ResponseCurve::PiecewiseLinear { points, symmetric } => {
-            ResponseCurve::piecewise_linear(points.clone(), *symmetric).ok()
+            ResponseCurve::piecewise_linear(points.clone(), *symmetric).map_err(|e| e.to_string())
         }
         ResponseCurve::CubicSpline { points, symmetric } => {
-            ResponseCurve::cubic_spline(points.clone(), *symmetric).ok()
+            ResponseCurve::cubic_spline(points.clone(), *symmetric).map_err(|e| e.to_string())
         }
         ResponseCurve::CubicBezier {
             segments,
             symmetric,
-        } => ResponseCurve::cubic_bezier(segments.clone(), *symmetric).ok(),
+        } => ResponseCurve::cubic_bezier(segments.clone(), *symmetric).map_err(|e| e.to_string()),
     }
 }
 
@@ -688,8 +686,19 @@ mod tests {
     #[test]
     fn reconstruct_curve_returns_validated() {
         let curve = identity_piecewise();
-        let valid = reconstruct_curve(&curve);
-        assert!(valid.is_some());
+        reconstruct_curve(&curve).unwrap();
+    }
+
+    #[test]
+    fn reconstruct_curve_returns_error_for_duplicate_x() {
+        let invalid = ResponseCurve::PiecewiseLinear {
+            points: vec![(-1.0, -1.0), (0.0, 0.0), (0.0, 0.5), (1.0, 1.0)],
+            symmetric: false,
+        };
+        let result = reconstruct_curve(&invalid);
+        assert!(result.is_err(), "duplicate x must reject");
+        let err = result.unwrap_err();
+        assert!(!err.is_empty(), "error string must not be empty");
     }
 
     #[test]
