@@ -186,8 +186,12 @@ pub(crate) fn Toolbar(
                 onchange: on_symmetric_change,
                 label: Some("Symmetric".to_owned()),
             }
+            // Secondary (elevated-navy fill + strong border) so the button has
+            // resting affordance per DESIGN.md / Buttons. Ghost gives no
+            // resting border or fill and reads as a static label next to the
+            // checked Switch (same UX failure mode as the rebind button).
             Button {
-                variant: ButtonVariant::Ghost,
+                variant: ButtonVariant::Secondary,
                 size: ButtonSize::Sm,
                 onclick: on_reset,
                 "Reset"

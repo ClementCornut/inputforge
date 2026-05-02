@@ -180,12 +180,16 @@ fn render_anchors(curve: &ResponseCurve, state: &BodyState) -> Element {
     let bezier = matches!(curve, ResponseCurve::CubicBezier { .. });
     rsx! {
         g {
+            // Anchor radius 0.022 = 5px at 480px plot. Tighter than the
+            // plan's 0.04 (which read as "massive blobs" against the new
+            // 1.75px curve stroke). Hit-test still uses HIT_RADIUS_PX=10
+            // so click targets stay generous regardless of visual size.
             for (i, &(x, y)) in state.cached_anchors.iter().enumerate() {
                 if !(bezier && matches!(i % 4, 1 | 2)) {
                     circle {
                         key: "anchor-{i}",
                         class: "if-curve__anchor",
-                        cx: "{x}", cy: "{y}", r: "0.04",
+                        cx: "{x}", cy: "{y}", r: "0.022",
                     }
                 }
             }
@@ -201,13 +205,16 @@ fn render_handle_markers(curve: &ResponseCurve, state: &BodyState) -> Element {
     };
     rsx! {
         g {
+            // Handle marker 0.030 wide → 0.042 diagonal (≈9.6px at 480px plot).
+            // Slightly larger than the 0.022-radius anchors so handles read
+            // as discoverable hit targets without dominating the plot.
             for (i, &(x, y)) in state.cached_anchors.iter().enumerate() {
                 if matches!(i % 4, 1 | 2) {
                     rect {
                         key: "handle-{i}",
                         class: "if-curve__handle-marker",
-                        x: "{x - 0.022}", y: "{y - 0.022}",
-                        width: "0.044", height: "0.044",
+                        x: "{x - 0.015}", y: "{y - 0.015}",
+                        width: "0.030", height: "0.030",
                         transform: "rotate(45 {x} {y})",
                     }
                 }
