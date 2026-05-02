@@ -22,6 +22,7 @@ mod map_to_vjoy;
 mod merge_axis;
 mod placeholders;
 pub(crate) mod predicate;
+mod response_curve;
 
 #[component]
 pub(crate) fn StageBody(
