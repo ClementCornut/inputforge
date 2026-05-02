@@ -31,6 +31,15 @@
     border-radius: var(--radius-md);
     padding: var(--space-1);
     min-width: 160px;
+    /* Cap the list to the viewport (with the same 4px padding the popper
+       uses on each edge) and let internal overflow scroll. Defends against
+       menus taller than the viewport (no current consumer triggers this;
+       the four migrated menus have 3-8 items each) and against
+       AnchoredMenu's lack of flip-on-overflow when the cursor sits near
+       the viewport bottom. The 8px subtraction is VIEWPORT_PADDING * 2,
+       so the cap matches the popper's clamping policy. */
+    max-height: calc(100vh - 8px);
+    overflow-y: auto;
     /* --shadow-3 is reserved for floating overlays per the elevation system;
        --shadow-2 is the stamped-panel inset shadow used by Card. */
     box-shadow: var(--shadow-3);
