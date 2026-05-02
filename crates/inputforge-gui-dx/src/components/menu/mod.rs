@@ -231,6 +231,12 @@ pub fn MenuItem(
     let handler = onclick;
     let close = state.close;
     let onclick = move |evt: MouseEvent| {
+        // Synthetic clicks bypass the HTML `disabled` attribute, so guard
+        // explicitly: a disabled item must neither invoke its handler nor
+        // close the surrounding menu.
+        if disabled {
+            return;
+        }
         if let Some(h) = &handler {
             h.call(evt);
         }
