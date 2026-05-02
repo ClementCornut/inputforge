@@ -139,6 +139,15 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                 second_input,
                 operation,
             } => {
+                // Unbound secondary makes the merge a no-op; the primary
+                // axis value passes through unchanged. Spec: stages added
+                // from the palette before the user picks a secondary input
+                // must not silently merge with `cache.get_axis(Unbound)`
+                // (which conventionally returns 0.0). Companion to
+                // `evaluate_condition`'s Unbound short-circuit.
+                if second_input.is_unbound() {
+                    continue;
+                }
                 // Primary's polarity comes from the original input value;
                 // secondary's from the cache. `merge_axes` consumes both
                 // for the natural-domain `Maximum` comparison; the other
@@ -671,6 +680,34 @@ mod tests {
             assert!(
                 (*value - (-0.9)).abs() < TOLERANCE,
                 "expected -0.9, got {value}"
+            );
+        } else {
+            panic!("expected SetAxis");
+        }
+    }
+
+    #[test]
+    fn merge_axis_unbound_secondary_passes_primary_through() {
+        // An Unbound secondary makes MergeAxis a no-op; the primary value
+        // passes through unchanged. Spec: stages added from the palette
+        // before the user picks a secondary input must not silently merge
+        // with 0.0.
+        let cache = MockCache::new();
+        let mut ctx = axis_ctx(&cache, 0.42);
+        let actions = [
+            Action::MergeAxis {
+                second_input: InputAddress::Unbound,
+                operation: MergeOp::Average,
+            },
+            Action::MapToVJoy {
+                output: test_output(),
+            },
+        ];
+        execute_pipeline(&actions, &mut ctx);
+        if let PipelineOutput::SetAxis { value, .. } = &ctx.outputs[0] {
+            assert!(
+                (*value - 0.42).abs() < TOLERANCE,
+                "expected 0.42 (primary unchanged), got {value}"
             );
         } else {
             panic!("expected SetAxis");
