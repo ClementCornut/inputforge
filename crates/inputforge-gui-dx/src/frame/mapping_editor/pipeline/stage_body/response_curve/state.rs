@@ -7,7 +7,7 @@ use super::keyboard::KeyKind;
 
 /// Per-mounted-component state held in a `Signal<BodyState>` inside
 /// `ResponseCurveBody`. Pure data; no Signals.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct BodyState {
     pub dragging: Option<DragInProgress>,
     pub hovered_point: Option<usize>,
@@ -70,7 +70,7 @@ pub(crate) fn clamp_focus_after_external_edit(
 }
 
 /// In-flight drag operation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct DragInProgress {
     pub point_index: usize,
     pub bounds: (f64, f64),

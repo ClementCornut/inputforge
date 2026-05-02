@@ -12,7 +12,11 @@
 pub(crate) mod interaction;
 pub(crate) mod keyboard;
 pub(crate) mod mutation;
+pub(crate) mod rendering;
 pub(crate) mod state;
+
+#[cfg(test)]
+mod tests;
 
 /// Curve interpolation variant. Mirrors the engine's `ResponseCurve` discriminant
 /// but is owned by the GUI layer so the toolbar can operate independently of the

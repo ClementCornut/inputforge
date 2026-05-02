@@ -1,0 +1,317 @@
+// Rust guideline compliant 2026-05-02
+
+//! SVG rendering helpers for the F10 curve-editor body.
+//!
+//! All colors come from CSS custom properties on `.if-curve` (defined
+//! in `assets/frame/response_curve.css`); render fns emit class names
+//! only. The y-flip group ensures positive output points up; tick
+//! labels render outside the flip so text is not mirrored.
+
+use dioxus::prelude::*;
+
+use inputforge_core::processing::curves::ResponseCurve;
+
+use super::state::BodyState;
+
+/// 0.012 viewBox units; `≈ 1.4px` at 240px rendered size.
+const GLOW_STDDEV: &str = "0.012";
+
+/// Top-level plot. Composes the layered SVG and returns it as a single
+/// `Element`. Layer ordering matches the spec's stack table.
+pub(crate) fn render_plot(
+    curve: &ResponseCurve,
+    state: &BodyState,
+    live_value: Option<f64>,
+    plot_size_px: f64,
+) -> Element {
+    let bezier_handles = matches!(curve, ResponseCurve::CubicBezier { .. });
+    let live_output = live_value.map(|v| (v, curve.evaluate(v)));
+    let _ = plot_size_px; // size is owned by CSS via `aspect-ratio: 1 / 1`.
+    rsx! {
+        svg {
+            class: "if-curve__plot",
+            view_box: "-1.05 -1.05 2.1 2.1",
+            preserve_aspect_ratio: "xMidYMid meet",
+            // aria-label lives on the focusable wrapper <div> (Task 12),
+            // not on the inner <svg>. Inner <svg> exposes a <title> for
+            // screen readers that descend by default.
+            title { "response curve" }
+            // Filter defs.
+            defs {
+                filter {
+                    id: "if-curve-glow",
+                    x: "-50%", y: "-50%", width: "200%", height: "200%",
+                    feGaussianBlur { std_deviation: "{GLOW_STDDEV}" }
+                }
+            }
+            // Background.
+            rect {
+                class: "if-curve__bg",
+                x: "-1.05", y: "-1.05", width: "2.1", height: "2.1",
+            }
+            // Y-flipped layers.
+            g {
+                transform: "scale(1, -1)",
+                {render_grid_micro()}
+                {render_grid_major()}
+                {render_identity()}
+                if bezier_handles {
+                    {render_bezier_handle_lines(curve)}
+                }
+                {render_curve_path(state)}
+                {render_anchors(curve, state)}
+                {render_handle_markers(curve, state)}
+                {render_hover_ring(curve, state)}
+                {render_drag_halo(curve, state)}
+                {render_focus_ring(curve, state)}
+                if let Some((input, output)) = live_output {
+                    {render_live(input, output)}
+                }
+            }
+            // Tick labels: outside the flip so text is upright.
+            {render_tick_labels()}
+        }
+    }
+}
+
+fn render_grid_micro() -> Element {
+    let nodes = (1..20_i32)
+        .flat_map(|i| {
+            let v = -1.0 + f64::from(i) * 0.1;
+            let is_major =
+                (v - v.round()).abs() < 1e-9 || (v * 4.0 - (v * 4.0).round()).abs() < 1e-9;
+            if is_major {
+                return vec![];
+            }
+            vec![
+                rsx! {
+                    line {
+                        key: "vmicro-{i}",
+                        class: "if-curve__grid-micro",
+                        x1: "{v}", y1: "-1.0", x2: "{v}", y2: "1.0",
+                    }
+                },
+                rsx! {
+                    line {
+                        key: "hmicro-{i}",
+                        class: "if-curve__grid-micro",
+                        x1: "-1.0", y1: "{v}", x2: "1.0", y2: "{v}",
+                    }
+                },
+            ]
+        })
+        .collect::<Vec<_>>();
+    rsx! { g { {nodes.into_iter()} } }
+}
+
+fn render_grid_major() -> Element {
+    let majors = [-0.75_f64, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75];
+    rsx! {
+        g {
+            for v in majors.iter().copied() {
+                line {
+                    key: "vmaj-{v}",
+                    class: "if-curve__grid-major",
+                    x1: "{v}", y1: "-1.0", x2: "{v}", y2: "1.0",
+                }
+                line {
+                    class: "if-curve__grid-major",
+                    x1: "-1.0", y1: "{v}", x2: "1.0", y2: "{v}",
+                }
+            }
+        }
+    }
+}
+
+fn render_identity() -> Element {
+    rsx! {
+        line {
+            class: "if-curve__identity",
+            x1: "-1.0", y1: "-1.0", x2: "1.0", y2: "1.0",
+        }
+    }
+}
+
+fn render_bezier_handle_lines(curve: &ResponseCurve) -> Element {
+    let ResponseCurve::CubicBezier { segments, .. } = curve else {
+        return rsx! { g {} };
+    };
+    rsx! {
+        g {
+            for (i, seg) in segments.iter().enumerate() {
+                line {
+                    key: "h1-{i}",
+                    class: "if-curve__handle-line",
+                    x1: "{seg.start.0}", y1: "{seg.start.1}",
+                    x2: "{seg.control1.0}", y2: "{seg.control1.1}",
+                }
+                line {
+                    class: "if-curve__handle-line",
+                    x1: "{seg.control2.0}", y1: "{seg.control2.1}",
+                    x2: "{seg.end.0}", y2: "{seg.end.1}",
+                }
+            }
+        }
+    }
+}
+
+fn render_curve_path(state: &BodyState) -> Element {
+    // 4-decimal precision = 0.0001 viewBox units, well below the 0.025
+    // stroke width. Output is byte-stable across platforms (matters for
+    // SSR snapshot assertions) and ~6 KB shorter than `{x},{y}` at 200
+    // samples.
+    let points = state
+        .cached_path
+        .iter()
+        .map(|(x, y)| format!("{x:.4},{y:.4}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    rsx! {
+        polyline {
+            class: "if-curve__path",
+            points: "{points}",
+            fill: "none",
+        }
+    }
+}
+
+// Spec layer 7: anchors only.
+fn render_anchors(curve: &ResponseCurve, state: &BodyState) -> Element {
+    let bezier = matches!(curve, ResponseCurve::CubicBezier { .. });
+    rsx! {
+        g {
+            for (i, &(x, y)) in state.cached_anchors.iter().enumerate() {
+                if !(bezier && matches!(i % 4, 1 | 2)) {
+                    circle {
+                        key: "anchor-{i}",
+                        class: "if-curve__anchor",
+                        cx: "{x}", cy: "{y}", r: "0.04",
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Spec layer 8: bezier handle markers (diamonds), rendered AFTER
+// anchors so handle markers stack on top when they coincide.
+fn render_handle_markers(curve: &ResponseCurve, state: &BodyState) -> Element {
+    let ResponseCurve::CubicBezier { .. } = curve else {
+        return rsx! { g {} };
+    };
+    rsx! {
+        g {
+            for (i, &(x, y)) in state.cached_anchors.iter().enumerate() {
+                if matches!(i % 4, 1 | 2) {
+                    rect {
+                        key: "handle-{i}",
+                        class: "if-curve__handle-marker",
+                        x: "{x - 0.022}", y: "{y - 0.022}",
+                        width: "0.044", height: "0.044",
+                        transform: "rotate(45 {x} {y})",
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn render_hover_ring(_curve: &ResponseCurve, state: &BodyState) -> Element {
+    let Some(idx) = state.hovered_point else {
+        return rsx! { g {} };
+    };
+    let Some(&(x, y)) = state.cached_anchors.get(idx) else {
+        return rsx! { g {} };
+    };
+    rsx! {
+        circle {
+            class: "if-curve__hover-ring",
+            cx: "{x}", cy: "{y}", r: "0.085",
+            fill: "none",
+        }
+    }
+}
+
+fn render_drag_halo(_curve: &ResponseCurve, state: &BodyState) -> Element {
+    let Some(drag) = state.dragging.as_ref() else {
+        return rsx! { g {} };
+    };
+    let Some(&(x, y)) = state.cached_anchors.get(drag.point_index) else {
+        return rsx! { g {} };
+    };
+    rsx! {
+        circle {
+            class: "if-curve__drag-halo",
+            cx: "{x}", cy: "{y}", r: "0.07",
+        }
+    }
+}
+
+fn render_focus_ring(_curve: &ResponseCurve, state: &BodyState) -> Element {
+    let Some(idx) = state.focused_point else {
+        return rsx! { g {} };
+    };
+    let Some(&(x, y)) = state.cached_anchors.get(idx) else {
+        return rsx! { g {} };
+    };
+    rsx! {
+        circle {
+            class: "if-curve__focus-ring",
+            cx: "{x}", cy: "{y}", r: "0.105",
+            fill: "none",
+        }
+    }
+}
+
+fn render_live(input: f64, output: f64) -> Element {
+    rsx! {
+        g {
+            line {
+                class: "if-curve__live-guide",
+                x1: "-1.0", y1: "{output}", x2: "{input}", y2: "{output}",
+            }
+            circle {
+                class: "if-curve__live-dot-halo",
+                cx: "{input}", cy: "{output}", r: "0.07",
+            }
+            circle {
+                class: "if-curve__live-dot",
+                cx: "{input}", cy: "{output}", r: "0.04",
+            }
+        }
+    }
+}
+
+fn render_tick_labels() -> Element {
+    let xs = [
+        (-1.0_f64, "-1"),
+        (-0.5, "-.5"),
+        (0.0, "0"),
+        (0.5, ".5"),
+        (1.0, "1"),
+    ];
+    let ys = [(-1.0_f64, "-1"), (0.0, "0"), (1.0, "1")];
+    rsx! {
+        g {
+            class: "if-curve__ticks",
+            for (x, lbl) in xs.iter().copied() {
+                text {
+                    key: "tx-{x}",
+                    class: "if-curve__tick-label",
+                    x: "{x}", y: "1.04",
+                    text_anchor: "middle",
+                    "{lbl}"
+                }
+            }
+            for (y, lbl) in ys.iter().copied() {
+                text {
+                    key: "ty-{y}",
+                    class: "if-curve__tick-label",
+                    x: "-1.04", y: "{-y}",
+                    text_anchor: "end",
+                    "{lbl}"
+                }
+            }
+        }
+    }
+}
