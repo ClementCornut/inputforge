@@ -456,3 +456,183 @@ fn toolbar_type_change_emits_set_mapping() {
     assert!(html.contains("if-switch"), "symmetric switch missing");
     assert!(html.contains("Reset"));
 }
+
+// ---------------------------------------------------------------------------
+// Task 14: live tracking dot
+// ---------------------------------------------------------------------------
+
+/// A nested `stage_id` (more than one segment) must never render a live dot,
+/// regardless of engine state. The early-return on the top-level gate fires
+/// before any state read, so no device seeding is required.
+#[test]
+fn body_omits_live_dot_for_nested_stage() {
+    use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
+    use crate::frame::mapping_editor::pipeline::stage_body::response_curve::ResponseCurveBody;
+    use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
+    use inputforge_core::action::Action;
+    use inputforge_core::settings::AppSettings;
+    use inputforge_core::state::AppState;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+    use parking_lot::RwLock;
+    use std::sync::{Arc, mpsc};
+
+    fn h() -> Element {
+        let (cmd_tx, _rx) = mpsc::channel();
+        let raw = RawHandles {
+            state: Arc::new(RwLock::new(AppState::new())),
+            commands: cmd_tx,
+            settings: Arc::new(AppSettings::default()),
+        };
+        use_context_provider(|| raw.clone());
+        let meta = use_signal(MetaSnapshot::default);
+        let config = use_signal(ConfigSnapshot::default);
+        let live = use_signal(LiveSnapshot::default);
+        let ctx = AppContext {
+            state: Arc::clone(&raw.state),
+            commands: raw.commands.clone(),
+            settings: Arc::clone(&raw.settings),
+            meta,
+            config,
+            live,
+        };
+        use_context_provider(|| ctx);
+        crate::patterns::live_capture::use_live_capture_provider();
+        crate::frame::mapping_editor::use_editor_state_provider();
+
+        let curve =
+            ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false)
+                .unwrap();
+        // Nested stage_id: two segments. The live-projection gate must reject
+        // anything that is not exactly `[Index(n)]` and return None.
+        let stage_id = StageId(vec![
+            StageIdSegment::Index(0),
+            StageIdSegment::IfTrue,
+            StageIdSegment::Index(0),
+        ]);
+        let key = (
+            "Default".to_owned(),
+            InputAddress::Bound {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Axis { index: 0 },
+            },
+        );
+        let root_actions = vec![Action::ResponseCurve {
+            curve: curve.clone(),
+        }];
+        rsx! {
+            ResponseCurveBody {
+                mapping_key: key,
+                stage_id,
+                curve,
+                root_actions,
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(h);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        !html.contains("if-curve__live-dot"),
+        "nested stage must not render a live dot: {html}"
+    );
+}
+
+/// A top-level stage (`[Index(0)]`) bound to a connected device with a
+/// non-zero axis reading must render the live-dot SVG elements.
+///
+/// Seeding strategy: `fn h()` constructs the seeded `AppState` inline
+/// (connected device + axis 0 = 0.4) and passes the `Arc` into `AppContext`.
+/// No captures are needed: `VirtualDom::new` accepts `fn() -> Element`
+/// and all values are constructed locally inside `h`.
+#[test]
+fn body_renders_live_dot_for_top_level_stage_with_connected_device() {
+    fn h() -> Element {
+        use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
+        use crate::frame::mapping_editor::pipeline::stage_body::response_curve::ResponseCurveBody;
+        use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
+        use inputforge_core::action::Action;
+        use inputforge_core::settings::AppSettings;
+        use inputforge_core::state::{AppState, DeviceState};
+        use inputforge_core::types::{
+            AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, InputValue,
+        };
+        use parking_lot::RwLock;
+        use std::sync::{Arc, mpsc};
+
+        let device_id = DeviceId("gamepad-0".to_owned());
+        let addr = InputAddress::Bound {
+            device: device_id.clone(),
+            input: InputId::Axis { index: 0 },
+        };
+
+        // Seed AppState: connected device + axis 0 = 0.4 (non-zero so the
+        // live dot lands away from the identity line).
+        let mut state = AppState::new();
+        state.devices.push(DeviceState {
+            info: DeviceInfo {
+                id: device_id,
+                name: "Gamepad 0".to_owned(),
+                axes: 1,
+                buttons: 0,
+                hats: 0,
+                instance_path: None,
+                axis_polarities: vec![AxisPolarity::Bipolar],
+            },
+            connected: true,
+        });
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: inputforge_core::types::AxisValue::new(0.4),
+                polarity: AxisPolarity::Bipolar,
+            },
+        );
+
+        let (cmd_tx, _rx) = mpsc::channel();
+        let raw = RawHandles {
+            state: Arc::new(RwLock::new(state)),
+            commands: cmd_tx,
+            settings: Arc::new(AppSettings::default()),
+        };
+        use_context_provider(|| raw.clone());
+        let meta = use_signal(MetaSnapshot::default);
+        let config = use_signal(ConfigSnapshot::default);
+        let live = use_signal(LiveSnapshot::default);
+        let ctx = AppContext {
+            state: Arc::clone(&raw.state),
+            commands: raw.commands.clone(),
+            settings: Arc::clone(&raw.settings),
+            meta,
+            config,
+            live,
+        };
+        use_context_provider(|| ctx);
+        crate::patterns::live_capture::use_live_capture_provider();
+        crate::frame::mapping_editor::use_editor_state_provider();
+
+        let curve =
+            ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false)
+                .unwrap();
+        // Top-level stage: exactly one Index segment.
+        let stage_id = StageId(vec![StageIdSegment::Index(0)]);
+        let root_actions = vec![Action::ResponseCurve {
+            curve: curve.clone(),
+        }];
+        rsx! {
+            ResponseCurveBody {
+                mapping_key: ("Default".to_owned(), addr),
+                stage_id,
+                curve,
+                root_actions,
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(h);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-curve__live-dot"),
+        "top-level stage with connected device must render a live dot: {html}"
+    );
+}
