@@ -99,3 +99,50 @@ fn render_plot_with_live_value_emits_live_dot() {
         "live guide line must render"
     );
 }
+
+#[test]
+fn header_thumbnail_emits_svg_with_polyline_for_each_curve_kind() {
+    use crate::frame::mapping_editor::pipeline::stage_body::response_curve::thumbnail;
+    use inputforge_core::processing::curves::{BezierSegment, ResponseCurve};
+
+    let curves = [
+        ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false).unwrap(),
+        ResponseCurve::cubic_spline(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false).unwrap(),
+        ResponseCurve::cubic_bezier(
+            vec![BezierSegment {
+                start: (-1.0, -1.0),
+                control1: (-0.5, 0.5),
+                control2: (0.5, -0.5),
+                end: (1.0, 1.0),
+            }],
+            false,
+        )
+        .unwrap(),
+    ];
+    for c in curves {
+        // Reuse the same harness pattern as `RenderHarness` above:
+        // `#[derive(Clone, Props, PartialEq)]` + `#[component]`. A free
+        // fn `fn h(curve) -> Element` is NOT a valid Dioxus component
+        // and tuple props do not implement `Properties`.
+        #[derive(Clone, Props, PartialEq)]
+        struct ThumbHarnessProps {
+            curve: ResponseCurve,
+        }
+        #[component]
+        fn ThumbHarness(props: ThumbHarnessProps) -> Element {
+            thumbnail::header_thumbnail(&props.curve)
+        }
+        let mut vdom = VirtualDom::new_with_props(ThumbHarness, ThumbHarnessProps { curve: c });
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert!(
+            html.contains("if-curve__thumbnail"),
+            "thumbnail class missing: {html}"
+        );
+        assert!(html.contains("polyline"), "thumbnail polyline missing");
+        assert!(
+            html.contains("-1.05 -1.05 2.1 2.1"),
+            "viewBox values missing: {html}"
+        );
+    }
+}

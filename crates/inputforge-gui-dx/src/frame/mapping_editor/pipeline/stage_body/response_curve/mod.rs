@@ -14,6 +14,7 @@ pub(crate) mod keyboard;
 pub(crate) mod mutation;
 pub(crate) mod rendering;
 pub(crate) mod state;
+pub(crate) mod thumbnail;
 
 #[cfg(test)]
 mod tests;
