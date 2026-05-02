@@ -218,6 +218,85 @@ fn body_renders_static_plot_with_summary_and_anchors() {
     assert!(html.matches("if-curve__anchor").count() >= 3);
 }
 
+#[test]
+fn body_attaches_pointer_handlers_and_emits_data_attributes() {
+    // SSR cannot drive PointerEvent dispatch, so this is a static
+    // assertion: the wrapper div must carry the data-hovered / data-dragging
+    // attributes (consumed by CSS cursor rules) and the svg plot must render
+    // inside it.
+    use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
+    use crate::frame::mapping_editor::pipeline::stage_body::response_curve::ResponseCurveBody;
+    use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
+    use inputforge_core::action::Action;
+    use inputforge_core::settings::AppSettings;
+    use inputforge_core::state::AppState;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+    use parking_lot::RwLock;
+    use std::sync::{Arc, mpsc};
+
+    fn h() -> Element {
+        let (cmd_tx, _rx) = mpsc::channel();
+        let raw = RawHandles {
+            state: Arc::new(RwLock::new(AppState::new())),
+            commands: cmd_tx,
+            settings: Arc::new(AppSettings::default()),
+        };
+        use_context_provider(|| raw.clone());
+        let meta = use_signal(MetaSnapshot::default);
+        let config = use_signal(ConfigSnapshot::default);
+        let live = use_signal(LiveSnapshot::default);
+        let ctx = AppContext {
+            state: Arc::clone(&raw.state),
+            commands: raw.commands.clone(),
+            settings: Arc::clone(&raw.settings),
+            meta,
+            config,
+            live,
+        };
+        use_context_provider(|| ctx);
+        crate::patterns::live_capture::use_live_capture_provider();
+        crate::frame::mapping_editor::use_editor_state_provider();
+
+        let curve =
+            ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false)
+                .unwrap();
+        let stage_id = StageId(vec![StageIdSegment::Index(0)]);
+        let key = (
+            "Default".to_owned(),
+            InputAddress::Bound {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Axis { index: 0 },
+            },
+        );
+        let root_actions = vec![Action::ResponseCurve {
+            curve: curve.clone(),
+        }];
+        rsx! {
+            ResponseCurveBody {
+                mapping_key: key,
+                stage_id,
+                curve,
+                root_actions,
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(h);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    // The focusable wrapper div must carry both data attributes regardless
+    // of their initial values (both start as "false").
+    assert!(
+        html.contains("data-hovered"),
+        "data-hovered attribute missing: {html}"
+    );
+    assert!(
+        html.contains("data-dragging"),
+        "data-dragging attribute missing: {html}"
+    );
+    // The SVG plot must still be rendered inside the wrapper.
+    assert!(html.contains("if-curve__plot"), "plot svg missing: {html}");
+}
+
 // `cmd_tx` is NOT a prop. The harness seeds it via `AppContext` per the
 // `HarnessComponent` pattern in `frame/mapping_editor/tests.rs:82-168`.
 // This avoids the `Sender: !PartialEq` problem entirely.
