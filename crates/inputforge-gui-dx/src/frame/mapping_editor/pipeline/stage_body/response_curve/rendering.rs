@@ -291,6 +291,12 @@ fn render_tick_labels() -> Element {
         (1.0, "1"),
     ];
     let ys = [(-1.0_f64, "-1"), (0.0, "0"), (1.0, "1")];
+    // Y-axis labels render INSIDE the plot near the left axis. The original
+    // x="-1.04" + text-anchor="end" placed text at SVG pixel ~2 and grew it
+    // leftward, falling outside the SVG drawing area's overflow:hidden bounds.
+    // Anchoring at start with x=-1.0 + dx=0.015 nudges the text just inside
+    // the plot frame; dominant-baseline="central" centers the glyph on the y
+    // tick position so the "0" label sits on the y=0 grid line, not above it.
     rsx! {
         g {
             class: "if-curve__ticks",
@@ -307,8 +313,9 @@ fn render_tick_labels() -> Element {
                 text {
                     key: "ty-{y}",
                     class: "if-curve__tick-label",
-                    x: "-1.04", y: "{-y}",
-                    text_anchor: "end",
+                    x: "-0.98", y: "{-y}",
+                    text_anchor: "start",
+                    dominant_baseline: "central",
                     "{lbl}"
                 }
             }
