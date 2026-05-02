@@ -78,11 +78,28 @@ pub struct MenuAnchor {
     pub y: f64,
 }
 
-/// Trigger bounding rect captured for `MenuItems` floating positioning.
-/// All values are viewport-relative pixels (the coordinate system of
-/// `Element.getBoundingClientRect()`), so they feed straight into a
-/// `position: fixed` style.
+/// Final viewport-relative placement of a `MenuItems` floating list,
+/// computed in pass 2 of the popper after the menu's own dimensions are
+/// known. Values feed straight into a `position: fixed` inline style.
 #[derive(Debug, Clone, Copy, PartialEq)]
+struct MenuPlacement {
+    left: f64,
+    top: f64,
+}
+
+/// Padding (in CSS px) the popper leaves between the floating list and
+/// the viewport edge when the trigger sits close to a side. Matches the
+/// 4px gap used between the trigger and the menu vertically; chosen so a
+/// clamped menu never sits flush against the viewport edge.
+const VIEWPORT_PADDING: f64 = 4.0;
+
+/// Vertical offset (in CSS px) between the trigger's edge and the menu
+/// when the menu opens below or above. Mirrors the historical
+/// `top: calc(100% + 4px)` of the pre-popper `.if-menu__items` wrapper.
+const TRIGGER_GAP: f64 = 4.0;
+
+/// Trigger bounding rect, viewport-relative pixels.
+#[derive(Debug, Clone, Copy)]
 struct TriggerRect {
     left: f64,
     top: f64,
@@ -90,10 +107,63 @@ struct TriggerRect {
     bottom: f64,
 }
 
-impl TriggerRect {
-    fn width(self) -> f64 {
-        self.right - self.left
-    }
+/// Floating menu's measured size (CSS px).
+#[derive(Debug, Clone, Copy)]
+struct MenuSize {
+    width: f64,
+    height: f64,
+}
+
+/// Viewport size in CSS px (`window.innerWidth/innerHeight`).
+#[derive(Debug, Clone, Copy)]
+struct Viewport {
+    width: f64,
+    height: f64,
+}
+
+/// Compute the final viewport-relative placement of a floating menu list.
+/// Implements a small flip-and-clamp policy: prefer "below the trigger";
+/// flip to "above" if below would clip and above fits; else clamp inside
+/// the viewport.
+fn compute_placement(
+    trigger: TriggerRect,
+    menu: MenuSize,
+    viewport: Viewport,
+    anchor: Anchor,
+) -> MenuPlacement {
+    // Horizontal: anchor decides the desired left edge of the menu;
+    // clamp to keep the menu fully inside the viewport (with padding).
+    let desired_left = match anchor {
+        Anchor::Start => trigger.left,
+        Anchor::Center => f64::midpoint(trigger.left, trigger.right) - menu.width / 2.0,
+        Anchor::End => trigger.right - menu.width,
+    };
+    let max_left = (viewport.width - menu.width - VIEWPORT_PADDING).max(VIEWPORT_PADDING);
+    let left = desired_left.clamp(VIEWPORT_PADDING, max_left);
+
+    // Vertical: prefer below (`trigger.bottom + gap`); flip above if
+    // below clips and above fits; else clamp.
+    let below_top = trigger.bottom + TRIGGER_GAP;
+    let above_top = trigger.top - menu.height - TRIGGER_GAP;
+    let fits_below = below_top + menu.height <= viewport.height - VIEWPORT_PADDING;
+    let fits_above = above_top >= VIEWPORT_PADDING;
+    let top = if fits_below {
+        below_top
+    } else if fits_above {
+        above_top
+    } else {
+        // Neither side fits cleanly. Pick the side with more room and
+        // clamp to keep as much of the menu in the viewport as possible.
+        let space_below = viewport.height - trigger.bottom;
+        let space_above = trigger.top;
+        if space_below >= space_above {
+            (viewport.height - menu.height - VIEWPORT_PADDING).max(VIEWPORT_PADDING)
+        } else {
+            VIEWPORT_PADDING
+        }
+    };
+
+    MenuPlacement { left, top }
 }
 
 #[component]
@@ -211,41 +281,74 @@ pub fn MenuItems(
     let menu_id = state.menu_id.read().clone();
     let trigger_id = state.trigger_id.read().clone();
 
-    // Captured viewport rect for the trigger button. Cleared on close so
-    // each open re-measures (the trigger may have moved due to layout
-    // changes between opens).
-    let mut trigger_rect: Signal<Option<TriggerRect>> = use_signal(|| None);
+    // Two-pass popper placement. Pass 1: render the menu invisibly so it
+    // takes layout space and we can read its size. Pass 2: spawn an eval
+    // that measures both rects + viewport, compute optimal placement
+    // (flip-above-on-overflow, clamp horizontally), commit it back into
+    // this signal. While `placement` is `None` the menu renders with
+    // `visibility: hidden` so the user does not see a flash at the
+    // (0, 0) placeholder coordinates.
+    let mut placement: Signal<Option<MenuPlacement>> = use_signal(|| None);
 
-    // Measure the trigger when the menu opens; clear the rect when it
-    // closes. The eval reads `getBoundingClientRect()` and pipes the four
-    // numbers back via `dioxus.send`. Until the rect arrives, the menu
-    // does not render (one-tick delay; the eval round-trip is sub-frame
-    // in practice). When `open` flips back to false we drop the rect so
-    // the next open starts from a clean slate.
+    // Effect 1: drive the placement signal off `open`. On open=true,
+    // schedule the pass-2 measurement. On open=false, clear placement
+    // so the next open starts from pass 1 again (otherwise a stale
+    // placement would briefly flash at the previous coords).
+    let menu_id_for_eval = menu_id.clone();
+    let trigger_id_for_eval = trigger_id.clone();
+    let anchor_for_eval = anchor;
     use_effect(move || {
         let is_open = *open_signal.read();
-        if is_open {
-            let target_id = trigger_id.clone();
-            spawn(async move {
-                let mut handle = document::eval(&format!(
-                    "var el = document.getElementById('{target_id}');\n\
-                     if (!el) {{ dioxus.send([0, 0, 0, 0]); return; }}\n\
-                     var r = el.getBoundingClientRect();\n\
-                     dioxus.send([r.left, r.top, r.right, r.bottom]);"
-                ));
-                if let Ok(value) = handle.recv::<[f64; 4]>().await {
-                    let [left, top, right, bottom] = value;
-                    trigger_rect.set(Some(TriggerRect {
-                        left,
-                        top,
-                        right,
-                        bottom,
-                    }));
-                }
-            });
-        } else {
-            trigger_rect.set(None);
+        if !is_open {
+            placement.set(None);
+            return;
         }
+        let menu_id_owned = menu_id_for_eval.clone();
+        let trigger_id_owned = trigger_id_for_eval.clone();
+        spawn(async move {
+            // Both rects + viewport size in one round-trip. The menu is
+            // already in the DOM (pass-1 hidden render committed before
+            // this effect ran), so its size is measurable. Eight numbers:
+            // trigger left/top/right/bottom, menu width/height, viewport
+            // width/height.
+            let mut handle = document::eval(&format!(
+                "var t = document.getElementById('{trigger_id_owned}');\n\
+                 var m = document.getElementById('{menu_id_owned}');\n\
+                 if (!t || !m) {{ dioxus.send([0, 0, 0, 0, 0, 0, 0, 0]); return; }}\n\
+                 var tr = t.getBoundingClientRect();\n\
+                 var mr = m.getBoundingClientRect();\n\
+                 dioxus.send([tr.left, tr.top, tr.right, tr.bottom, \
+                              mr.width, mr.height, \
+                              window.innerWidth, window.innerHeight]);"
+            ));
+            if let Ok(value) = handle.recv::<[f64; 8]>().await {
+                let [t_left, t_top, t_right, t_bottom, m_w, m_h, vp_w, vp_h] = value;
+                // Guard against the trigger/menu-not-found path: width
+                // and height of zero mean the eval found neither. Skip
+                // the placement update so the menu stays hidden rather
+                // than committing to a degenerate (0, 0) location.
+                if m_w > 0.0 && m_h > 0.0 {
+                    let p = compute_placement(
+                        TriggerRect {
+                            left: t_left,
+                            top: t_top,
+                            right: t_right,
+                            bottom: t_bottom,
+                        },
+                        MenuSize {
+                            width: m_w,
+                            height: m_h,
+                        },
+                        Viewport {
+                            width: vp_w,
+                            height: vp_h,
+                        },
+                        anchor_for_eval,
+                    );
+                    placement.set(Some(p));
+                }
+            }
+        });
     });
 
     let target_id_for_keydown = menu_id.clone();
@@ -268,41 +371,33 @@ pub fn MenuItems(
     };
 
     // Auto-focus the first menuitem once the menu is mounted with a
-    // measured rect. Tracks both `open` and the rect signal so it fires
-    // exactly once per open: on the rect None -> Some transition that
-    // accompanies the menu becoming visible.
+    // committed placement. Tracks both `open` and `placement` so it
+    // fires exactly once per open, on the placement None -> Some
+    // transition that accompanies the menu becoming visible.
     let target_id_for_focus = menu_id.clone();
     use_effect(move || {
         let is_open = *open_signal.read();
-        let has_rect = trigger_rect.read().is_some();
-        if is_open && has_rect {
+        let has_placement = placement.read().is_some();
+        if is_open && has_placement {
             focus_menu_item(&target_id_for_focus, FocusAction::First);
         }
     });
 
     let is_open = *open_signal.read();
-    let Some(rect) = (if is_open { *trigger_rect.read() } else { None }) else {
+    if !is_open {
         return rsx! {};
-    };
+    }
 
-    // Anchor-relative inline positioning. The list is positioned at a
-    // single point on the trigger's bottom edge and (for non-Start
-    // anchors) translated by a CSS percentage of its own width. Doing the
-    // centering on the list itself (not on a wrapper) is safe here
-    // because the backdrop is a SIBLING, not a descendant; the list's
-    // `transform` can not become a containing block for the backdrop.
-    let top_px = rect.bottom + 4.0;
-    let (left_px, transform) = match anchor {
-        Anchor::Start => (rect.left, ""),
-        Anchor::Center => (rect.left + rect.width() / 2.0, "translateX(-50%)"),
-        Anchor::End => (rect.right, "translateX(-100%)"),
-    };
-    let style = if transform.is_empty() {
-        format!("position: fixed; left: {left_px}px; top: {top_px}px; z-index: 1001;")
-    } else {
-        format!(
-            "position: fixed; left: {left_px}px; top: {top_px}px; z-index: 1001; transform: {transform};"
-        )
+    // Pass-1 vs pass-2 inline style. Pass 1 keeps the menu invisible at
+    // (0, 0) so the eval can measure it without the user seeing a flash.
+    // Pass 2 commits the computed placement.
+    let style = match *placement.read() {
+        None => "position: fixed; left: 0; top: 0; visibility: hidden; z-index: 1001;".to_owned(),
+        Some(p) => format!(
+            "position: fixed; left: {left}px; top: {top}px; z-index: 1001;",
+            left = p.left,
+            top = p.top,
+        ),
     };
 
     let combined = merge_class("if-menu__list", "", class.as_deref());
