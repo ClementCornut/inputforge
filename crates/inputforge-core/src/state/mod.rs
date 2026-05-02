@@ -66,11 +66,6 @@ pub struct AppState {
     pub profile_path: Option<PathBuf>,
     /// Warnings surfaced to the user (e.g., `HidHide` unavailable).
     pub warnings: Vec<String>,
-    /// Set when the user clicks Quit in the tray menu while the GUI is open.
-    ///
-    /// The GUI closes its viewport and the main loop checks this flag
-    /// after the GUI returns to decide whether to enter the tray loop.
-    pub quit_requested: bool,
     /// When `Some`, the engine is in a forced-mode override; mode-change
     /// rules are paused.
     pub mode_force: Option<ForcedMode>,
@@ -91,7 +86,6 @@ impl AppState {
             calibrations: DeviceCalibrationStore::new(),
             profile_path: None,
             warnings: Vec::new(),
-            quit_requested: false,
             mode_force: None,
         }
     }
@@ -130,7 +124,6 @@ impl AppState {
             calibrations,
             profile_path: None,
             warnings: Vec::new(),
-            quit_requested: false,
             mode_force: None,
         }
     }

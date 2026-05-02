@@ -31,10 +31,6 @@ pub(crate) fn show_window() {
 /// webviews, and the event loop exits because `exit_on_last_window_close`
 /// is true (the default, F3 does not override). `launch_gui` returns;
 /// `main.rs::shutdown()` then runs.
-///
-/// `quit_requested` in `AppState` is **not** read on the Dioxus path
-/// (egui still uses it). The close-behavior switch is the entire Quit
-/// pathway, there is no flag to gate, no close-hook to wire.
 pub(crate) fn request_quit() {
     let w = window();
     w.set_close_behavior(WindowCloseBehaviour::WindowCloses);
