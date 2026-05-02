@@ -22,6 +22,19 @@ struct MenuState {
     menu_id: Signal<String>,
 }
 
+/// Where the dropdown attaches to its trigger horizontally. `Start` = left edge,
+/// `Center` = under the trigger's centerline, `End` = right edge. `Start` matches
+/// the historical default and is the right pick for small triggers (icon button,
+/// label-and-caret); `Center` is the right pick for full-width triggers like the
+/// `AddPalette` `+` slot, where left-anchoring would float the menu off the trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Anchor {
+    #[default]
+    Start,
+    Center,
+    End,
+}
+
 #[component]
 pub fn MenuRoot(#[props(default)] class: Option<String>, children: Element) -> Element {
     let state = MenuState {
@@ -40,9 +53,30 @@ pub fn MenuRoot(#[props(default)] class: Option<String>, children: Element) -> E
 }
 
 #[component]
-pub fn MenuTrigger(#[props(default)] class: Option<String>, children: Element) -> Element {
+pub fn MenuTrigger(
+    #[props(default)] class: Option<String>,
+    /// When `true`, the `if-menu__trigger` base class is omitted, so the
+    /// caller's `class` is the only surface styling. Use for triggers that
+    /// already carry a non-trivial visual treatment (e.g. `AddPalette`'s
+    /// dashed-violet "next slot"). The structural attributes
+    /// (`aria-haspopup`, `aria-expanded`, `aria-controls`) are unaffected.
+    #[props(default)]
+    unstyled: bool,
+    /// Accessible name for icon-only triggers. When `Some`, an `aria-label`
+    /// attribute is emitted; when `None`, the attribute is omitted entirely
+    /// (Dioxus 0.7 skips `Option<String>` attribute values that are `None`).
+    /// Required for any trigger whose visible content is an icon with no
+    /// adjacent text, per WCAG 2.1 SC 4.1.2 (Name, Role, Value).
+    #[props(default)]
+    aria_label: Option<String>,
+    children: Element,
+) -> Element {
     let mut state = use_context::<MenuState>();
-    let combined = merge_class("if-menu__trigger", "", class.as_deref());
+    let combined = if unstyled {
+        class.as_deref().unwrap_or("").to_owned()
+    } else {
+        merge_class("if-menu__trigger", "", class.as_deref())
+    };
     let menu_id = state.menu_id.read().clone();
     let onclick = move |_| {
         let now = !*state.open.read();
@@ -55,17 +89,38 @@ pub fn MenuTrigger(#[props(default)] class: Option<String>, children: Element) -
             "aria-haspopup": "true",
             "aria-expanded": "{state.open.read()}",
             "aria-controls": "{menu_id}",
+            "aria-label": aria_label,
             {children}
         }
     }
 }
 
 #[component]
-pub fn MenuItems(#[props(default)] class: Option<String>, children: Element) -> Element {
+pub fn MenuItems(
+    /// Class extension for the OUTER positioned container (`.if-menu__items`),
+    /// NOT the visible list. The visible chrome (background, border, shadow,
+    /// `min-width`) lives on the inner `.if-menu__list`. If you need to
+    /// customise the list surface, use a descendant selector
+    /// (e.g. `.your-class .if-menu__list { ... }`) rather than expecting
+    /// `your-class` to land on the surface itself.
+    #[props(default)]
+    class: Option<String>,
+    /// Horizontal alignment of the dropdown relative to its trigger.
+    /// Defaults to `Start` (the historical behaviour). `Center` and `End`
+    /// switch on CSS modifier classes that override the default `left: 0`.
+    #[props(default)]
+    anchor: Anchor,
+    children: Element,
+) -> Element {
     let state = use_context::<MenuState>();
     let mut open_signal = state.open;
     let menu_id = state.menu_id.read().clone();
-    let combined = merge_class("if-menu__items", "", class.as_deref());
+    let anchor_class = match anchor {
+        Anchor::Start => "",
+        Anchor::Center => "if-menu__items--center",
+        Anchor::End => "if-menu__items--end",
+    };
+    let combined = merge_class("if-menu__items", anchor_class, class.as_deref());
 
     let target_id_for_keydown = menu_id.clone();
     let onkeydown = move |evt: KeyboardEvent| {

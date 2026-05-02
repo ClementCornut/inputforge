@@ -59,3 +59,22 @@
 .if-menu__item:hover:not(:disabled) { background: var(--color-border); }
 .if-menu__item:focus-visible        { outline: 2px solid var(--color-border-focus); outline-offset: -2px; }
 .if-menu__item:disabled             { opacity: 0.5; cursor: not-allowed; }
+
+/* Block-level container: flips .if-menu from inline-flex to block so a
+   full-width trigger inside (e.g. AddPalette's "+ next slot" row) actually
+   fills its parent row instead of shrink-wrapping to its content. */
+.if-menu--block {
+    display: block;
+}
+
+/* Anchor variants for the dropdown. Default is left-aligned (`left: 0`,
+   set on `.if-menu__items`); --center pulls the menu under the trigger's
+   horizontal centerline; --end pins to the trigger's right edge. */
+.if-menu__items--center {
+    left: 50%;
+    transform: translateX(-50%);
+}
+.if-menu__items--end {
+    left: auto;
+    right: 0;
+}

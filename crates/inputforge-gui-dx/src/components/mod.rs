@@ -33,7 +33,7 @@ pub use icon::Icon;
 pub use icon_button::IconButton;
 pub use label::Label;
 pub use layout::{Cluster, Inset, Stack};
-pub use menu::{MenuItem, MenuItems, MenuRoot, MenuTrigger};
+pub use menu::{Anchor, MenuItem, MenuItems, MenuRoot, MenuTrigger};
 pub use number_input::NumberInput;
 pub use select::Select;
 pub use separator::{Separator, SeparatorOrientation};
