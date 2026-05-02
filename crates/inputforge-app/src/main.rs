@@ -109,21 +109,19 @@ fn main() -> Result<()> {
     // Create the system tray icon (always visible).
     let tray = AppTray::new(Arc::clone(&state))?;
 
-    {
-        if let Err(e) = launch_gui(
-            Arc::clone(&state),
-            cmd_tx.clone(),
-            tray.menu_item_ids(),
-            settings.clone(),
-            cli.start_minimized,
-        ) {
-            tracing::error!(%e, "GUI exited with error");
-        }
-        // launch_gui only returns on real Quit (tray Quit click). Fall
-        // through to shutdown, no run_tray_loop, no drain_stale_gui_events,
-        // no quit_requested flag. The window-hides-on-X behavior is owned
-        // by Dioxus via WindowCloseBehaviour::WindowHides set in launch_gui.
+    if let Err(e) = launch_gui(
+        Arc::clone(&state),
+        cmd_tx.clone(),
+        tray.menu_item_ids(),
+        settings.clone(),
+        cli.start_minimized,
+    ) {
+        tracing::error!(%e, "GUI exited with error");
     }
+    // launch_gui only returns on real Quit (tray Quit click). Fall
+    // through to shutdown, no run_tray_loop, no drain_stale_gui_events,
+    // no quit_requested flag. The window-hides-on-X behavior is owned
+    // by Dioxus via WindowCloseBehaviour::WindowHides set in launch_gui.
 
     // Graceful shutdown.
     shutdown(cmd_tx, engine_handle);

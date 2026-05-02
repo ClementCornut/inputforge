@@ -4,7 +4,7 @@ set -e
 echo "==> Checking formatting..."
 cargo fmt --all -- --check
 
-echo "==> Running clippy (default features / gui-dioxus)..."
+echo "==> Running clippy..."
 cargo clippy --all-targets -- -D warnings
 
 echo "==> Pre-commit checks passed."

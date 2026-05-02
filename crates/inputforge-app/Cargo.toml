@@ -10,13 +10,9 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-[features]
-default    = ["gui-dioxus"]
-gui-dioxus = ["dep:inputforge-gui-dx"]
-
 [dependencies]
 inputforge-core   = { workspace = true }
-inputforge-gui-dx = { workspace = true, optional = true }
+inputforge-gui-dx = { workspace = true }
 anyhow            = { workspace = true }
 parking_lot       = { workspace = true }
 tracing           = { workspace = true }

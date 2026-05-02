@@ -45,7 +45,7 @@ fn main() {
         // a workspace built without SDL3 simply skips the copy step.
         println!(
             "cargo:warning=SDL3.dll not found at {}; \
-             gui-dioxus and SDL3-backed runtimes will fail to load the DLL at runtime. \
+             SDL3-backed runtimes will fail to load the DLL at runtime. \
              Place SDL3 libraries at <workspace_root>/SDL/.",
             sdl3_src.display()
         );

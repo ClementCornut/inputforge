@@ -1,8 +1,9 @@
 # inputforge-gui-dx
 
-Dioxus Desktop GUI for InputForge: parallel runtime, opt-in via the
-`gui-dioxus` feature on `inputforge-app`. The egui crate (`inputforge-gui`)
-remains the default until the F16 cutover.
+Dioxus Desktop GUI for InputForge: the sole frontend after the egui crate
+(`inputforge-gui`) was removed. `inputforge-app` depends on this crate
+unconditionally; build with `cargo build -p inputforge-app` or
+`dx run -p inputforge-app`.
 
 ## Pinned versions
 
@@ -29,19 +30,8 @@ warning scan. **Not** the daily loop; each hot-reload respawns the engine
 thread, re-registers the tray, re-runs HidHide detection.
 
 ```bash
-cd crates/inputforge-app
-dx serve --platform desktop --no-default-features --features gui-dioxus
+dx serve -p inputforge-app --platform desktop
 ```
-
-## Build / run matrix
-
-| Command | Result |
-|---|---|
-| `cargo build` / `cargo run` | egui (default) |
-| `cargo build --no-default-features --features gui-dioxus` | Dioxus |
-| `cargo run --no-default-features --features gui-dioxus`   | Dioxus shell + tray + lifecycle, production-viable |
-| `cargo build --features gui-dioxus` (default still on)    | compile error |
-| `cargo build --no-default-features`                       | compile error |
 
 ## Component Gallery (F2)
 
@@ -143,7 +133,7 @@ cargo's fingerprint of `inputforge-app` is still fresh. Force a rerun with:
 
 ```bash
 cargo clean -p inputforge-app
-dx run -p inputforge-app --no-default-features --features gui-dioxus
+dx run -p inputforge-app
 ```
 
 A full `cargo clean` is unnecessary; the per-package clean is enough.
@@ -152,7 +142,7 @@ A full `cargo clean` is unnecessary; the per-package clean is enough.
 
 ### Tray bridge
 
-Under `--features gui-dioxus`, tray menu events are observed via the
+Tray menu events are observed via the
 `use_muda_event_handler` hook (`dioxus_desktop`'s public hooks API). The
 spec originally specified `Config::with_custom_event_handler` matching
 on `UserWindowEvent::MudaMenuEvent`, but `dioxus_desktop::ipc` is a
@@ -183,18 +173,13 @@ runs, the engine thread joins, `HidHide` unhide and `vJoy` release fire
 via `Drop`.
 
 `--start-minimized` is plumbed via the `start_minimized: bool`
-parameter on `launch_gui`. The Dioxus side calls `set_visible(false)`
-once during `app_root` mount when the flag is set; tray Show works
-identically. The egui side ignores the parameter; it already gates
-startup launch from `cli.start_minimized` in `main.rs`.
-
-**Cost asymmetry.** The egui path skips `launch_gui_blocking` entirely
-when `--start-minimized` is set, so no window or webview exists until
-tray Show. The Dioxus path always creates the WebView2 window (plus the
-polling and listener tasks) and merely hides it. End-user UX is the same;
-startup memory/CPU is not. Dioxus 0.7's `tao::EventLoop::run` is one-shot,
-so a tray-triggered relaunch isn't viable without restructuring the whole
-event loop; defer-launch parity is left as a future investigation.
+parameter on `launch_gui`. `app_root` calls `set_visible(false)` once
+during mount when the flag is set; tray Show then re-opens the window.
+The WebView2 window plus the polling and listener tasks are always
+created at startup; the flag only hides the window. Dioxus 0.7's
+`tao::EventLoop::run` is one-shot, so a tray-triggered defer-launch
+isn't viable without restructuring the whole event loop, deferred as a
+future investigation.
 
 Note the dioxus-desktop 0.7.6 API spelling asymmetry:
 - `Config::with_close_behaviour`: UK (builder method)
