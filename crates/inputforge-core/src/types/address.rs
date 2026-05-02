@@ -107,7 +107,14 @@ impl<'de> Deserialize<'de> for InputAddress {
                      use the bound shape instead",
                 ))
             }
-            InputAddressOnTheWire::Bound { device, input } => Ok(Self::Bound { device, input }),
+            InputAddressOnTheWire::Bound { device, input } => {
+                if device.0.is_empty() {
+                    return Err(serde::de::Error::custom(
+                        "InputAddress: `device` must not be empty; use `unbound = true` for an unbound address",
+                    ));
+                }
+                Ok(Self::Bound { device, input })
+            }
         }
     }
 }
@@ -259,16 +266,35 @@ mod tests {
     }
 
     #[test]
-    fn input_address_legacy_empty_device_still_parses_as_bound() {
-        // The pre-migration profile shape. Task 8's walker turns this into
-        // Unbound; here we lock in that the deserializer alone produces Bound
-        // (with empty device).
-        let legacy = r#"{"device":"","input":{"type":"button","index":0}}"#;
-        let addr: InputAddress = serde_json::from_str(legacy).unwrap();
-        let InputAddress::Bound { device, .. } = addr else {
-            panic!("expected Bound");
-        };
-        assert!(device.0.is_empty());
+    fn input_address_empty_device_is_rejected() {
+        // Empty `device` strings used to be the pre-refactor "no binding" sentinel.
+        // The deserializer now rejects them explicitly so any malformed profile
+        // fails fast at load time. Use `unbound = true` for the unbound encoding.
+        let json = r#"{"device":"","input":{"type":"button","index":0}}"#;
+        let result: Result<InputAddress, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "empty device must be rejected");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("`device` must not be empty"),
+            "error must mention empty device, got: {err}"
+        );
+        assert!(
+            err.contains("`unbound = true`"),
+            "error must hint at the canonical unbound shape, got: {err}"
+        );
+    }
+
+    #[test]
+    fn input_address_empty_device_is_rejected_via_toml() {
+        // Symmetric coverage for TOML, the actual on-disk format.
+        let toml_str = r#"
+device = ""
+[input]
+type = "button"
+index = 0
+"#;
+        let result: Result<InputAddress, _> = toml::from_str(toml_str);
+        assert!(result.is_err(), "empty device must be rejected in TOML too");
     }
 
     #[test]
