@@ -72,7 +72,7 @@ pub(crate) fn ModeTabContextMenu(
     let cmd_activate = ctx.commands.clone();
     let cmd_default = ctx.commands.clone();
 
-    let labelled_by = format!("mode-tab-{tab_idx}");
+    let labelled_by_owned = format!("mode-tab-{tab_idx}");
 
     let anchor = match open.read().as_ref() {
         Some((n, rect)) if n == &tab_name => *rect,
@@ -114,8 +114,6 @@ pub(crate) fn ModeTabContextMenu(
         x: anchor.left,
         y: anchor.bottom,
     };
-
-    let labelled_by_owned = labelled_by.clone();
 
     rsx! {
         AnchoredMenu {

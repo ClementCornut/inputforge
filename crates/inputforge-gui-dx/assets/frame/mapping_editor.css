@@ -797,9 +797,10 @@
 
 /* Per-item modifier: tightens MenuItem's default padding to keep the
    palette dense. The base .if-menu__item supplies hover bg, focus ring,
-   and disabled state. */
+   and disabled state. Equal-specificity override wins by source order
+   because MAPPING_EDITOR_CSS is loaded after MENU_CSS (theme/mod.rs). */
 .if-add-palette__item {
-    padding: 4px 8px !important;
+    padding: 4px 8px;
     font-size: 12px;
 }
 
@@ -814,5 +815,5 @@
 .if-stage-menu__item--danger {
     /* Hex fallback protects against silent invisible-text in any
        partially-loaded theme where --color-error is undefined. */
-    color: var(--color-error, #f25555);
+    color: var(--color-error, #F25555);
 }

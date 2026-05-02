@@ -136,11 +136,9 @@ pub(crate) fn StageActionsMenu(
 
     let stage_id = menu.stage.clone();
     let Some((parent_path, current_idx)) = split_stage_path(&stage_id) else {
-        // Malformed path: bail; render nothing. The parent's stage_menu
-        // signal stays Some until the user clicks outside, which will
-        // route through the AnchoredMenu's backdrop on the NEXT render.
-        // In practice this is unreachable (split_stage_path only fails
-        // on empty / non-Index paths, which the caller never produces).
+        // Malformed path: bail; render nothing. In practice unreachable
+        // (split_stage_path only fails on empty / non-Index paths, which
+        // the caller never produces).
         tracing::warn!(
             target: "f9::mapping_editor",
             action = "stage_menu_malformed_path",
