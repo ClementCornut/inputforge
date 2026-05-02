@@ -138,3 +138,8 @@
   color: var(--color-curve-stroke, var(--color-primary));
   fill: none;
 }
+/* Mini instrument plate. Luminance shift only, no stroke: a 1px hairline at
+   this scale would clip on the SVG boundary, and DESIGN.md's "lift =
+   luminance + hairline" rule degrades cleanly to luminance-only at the
+   28x14 size where the hairline is sub-pixel anyway. */
+.if-curve__thumbnail-bg { fill: var(--color-bg-sunken); }

@@ -26,8 +26,9 @@ const THUMBNAIL_SAMPLE_COUNT: usize = 30;
 /// vertical strokes are not rendered ~2x thicker than horizontal ones.
 pub(crate) fn header_thumbnail(curve: &ResponseCurve) -> Element {
     let samples = sample_curve_path(curve, THUMBNAIL_SAMPLE_COUNT);
-    // 4-decimal precision is byte-stable across platforms for snapshot
-    // tests and is well below the 0.12 stroke width (no visible aliasing).
+    // 4-decimal precision is byte-stable across platforms for snapshot tests
+    // and is well below the rendered stroke (rounded to ~1.5 CSS px), so no
+    // visible aliasing.
     let points = samples
         .iter()
         .map(|(x, y)| format!("{x:.4},{y:.4}"))
@@ -41,13 +42,29 @@ pub(crate) fn header_thumbnail(curve: &ResponseCurve) -> Element {
             view_box: "-1.05 -1.05 2.1 2.1",
             preserve_aspect_ratio: "none",
             "aria-hidden": "true",
+            // Recessed instrument plate. Mirrors the main plot's
+            // `bg-sunken` canvas at thumbnail scale so the same cyan-blue
+            // stroke gains the same contrast lift it has on the main plot.
+            // Sharp edges match the main `.if-curve__plot-frame` (no radius).
+            rect {
+                class: "if-curve__thumbnail-bg",
+                x: "-1.05",
+                y: "-1.05",
+                width: "2.1",
+                height: "2.1",
+            }
             g {
                 transform: "scale(1, -1)",
                 polyline {
                     points: "{points}",
                     fill: "none",
                     stroke: "currentColor",
-                    "stroke-width": "0.12",
+                    // With `vector-effect: non-scaling-stroke` this value
+                    // resolves in CSS pixels regardless of the 13.33x6.67
+                    // viewBox stretch. 1.5 mirrors the main plot's 1.75px
+                    // proportionally and is the minimum that reads cleanly
+                    // at 28x14 against the recessed plate.
+                    "stroke-width": "1.5",
                     "stroke-linecap": "round",
                     "stroke-linejoin": "round",
                     // `preserveAspectRatio="none"` stretches the 2.1x2.1
