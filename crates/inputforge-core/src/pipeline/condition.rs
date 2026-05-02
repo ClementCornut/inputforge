@@ -1,30 +1,50 @@
-// Rust guideline compliant 2026-03-03
+// Rust guideline compliant 2026-05-02
 
 use crate::action::Condition;
+use crate::types::InputAddress;
 
 use super::InputCache;
 
 /// Evaluate a condition against the input cache.
+///
+/// Leaves whose `input` is [`InputAddress::Unbound`] return `false`: they are
+/// incomplete predicates that the user has not yet bound to a real input.
+/// `Not(Unbound)` therefore returns `true` (the natural consequence of
+/// `!false`). The validator surfaces unbound leaves as malformed-hints
+/// regardless, so users still get inline feedback that the condition is
+/// incomplete.
 #[must_use]
 pub fn evaluate_condition(condition: &Condition, cache: &dyn InputCache) -> bool {
     match condition {
-        Condition::ButtonPressed { input } => cache.get_button(input),
-        Condition::ButtonReleased { input } => !cache.get_button(input),
-        Condition::AxisInRange { input, min, max } => {
-            // Range thresholds are interpreted in the bipolar-encoded
-            // [-1, 1] domain, regardless of the input's polarity. A
-            // unipolar pedal at idle (encoded -1) compared against
-            // `min: 0.0, max: 1.0` evaluates as out-of-range, which
-            // matches existing F1-F9 condition semantics. Polarity is
-            // intentionally unused.
-            let (value, _polarity) = cache.get_axis(input);
-            value >= *min && value <= *max
-        }
-        Condition::HatDirection { input, directions } => {
-            let current = cache.get_hat(input);
-            // O(n) linear scan is acceptable: HatDirection has at most 9 variants.
-            directions.contains(&current)
-        }
+        Condition::ButtonPressed { input } => match input {
+            InputAddress::Bound { .. } => cache.get_button(input),
+            InputAddress::Unbound => false,
+        },
+        Condition::ButtonReleased { input } => match input {
+            InputAddress::Bound { .. } => !cache.get_button(input),
+            InputAddress::Unbound => false,
+        },
+        Condition::AxisInRange { input, min, max } => match input {
+            InputAddress::Bound { .. } => {
+                // Range thresholds are interpreted in the bipolar-encoded
+                // [-1, 1] domain, regardless of the input's polarity. A
+                // unipolar pedal at idle (encoded -1) compared against
+                // `min: 0.0, max: 1.0` evaluates as out-of-range, which
+                // matches existing F1-F9 condition semantics. Polarity is
+                // intentionally unused.
+                let (value, _polarity) = cache.get_axis(input);
+                value >= *min && value <= *max
+            }
+            InputAddress::Unbound => false,
+        },
+        Condition::HatDirection { input, directions } => match input {
+            InputAddress::Bound { .. } => {
+                let current = cache.get_hat(input);
+                // O(n) linear scan is acceptable: HatDirection has at most 9 variants.
+                directions.contains(&current)
+            }
+            InputAddress::Unbound => false,
+        },
         Condition::All { conditions } => conditions.iter().all(|c| evaluate_condition(c, cache)),
         Condition::Any { conditions } => conditions.iter().any(|c| evaluate_condition(c, cache)),
         Condition::Not { condition } => !evaluate_condition(condition, cache),
@@ -35,7 +55,7 @@ pub fn evaluate_condition(condition: &Condition, cache: &dyn InputCache) -> bool
 mod tests {
     use super::super::test_helpers::{MockCache, axis_input_address, button_input_address};
     use super::*;
-    use crate::types::{DeviceId, HatDirection, InputAddress, InputId};
+    use crate::types::{DeviceId, HatDirection, InputId};
 
     // -- Nested conditions ----------------------------------------------------
 
@@ -273,5 +293,62 @@ mod tests {
             }),
         };
         assert!(!evaluate_condition(&condition, &cache));
+    }
+
+    // -- Unbound leaves -------------------------------------------------------
+
+    #[test]
+    fn button_pressed_unbound_is_false() {
+        let cache = MockCache::new();
+        let cond = Condition::ButtonPressed {
+            input: InputAddress::Unbound,
+        };
+        assert!(!evaluate_condition(&cond, &cache));
+    }
+
+    #[test]
+    fn button_released_unbound_is_false() {
+        // Released-on-Unbound is also false: the user has not picked a binding,
+        // so the condition is incomplete and must not satisfy.
+        let cache = MockCache::new();
+        let cond = Condition::ButtonReleased {
+            input: InputAddress::Unbound,
+        };
+        assert!(!evaluate_condition(&cond, &cache));
+    }
+
+    #[test]
+    fn axis_in_range_unbound_is_false() {
+        let cache = MockCache::new();
+        let cond = Condition::AxisInRange {
+            input: InputAddress::Unbound,
+            min: -1.0,
+            max: 1.0,
+        };
+        assert!(!evaluate_condition(&cond, &cache));
+    }
+
+    #[test]
+    fn hat_direction_unbound_is_false() {
+        let cache = MockCache::new();
+        let cond = Condition::HatDirection {
+            input: InputAddress::Unbound,
+            directions: vec![HatDirection::N],
+        };
+        assert!(!evaluate_condition(&cond, &cache));
+    }
+
+    #[test]
+    fn not_unbound_is_true() {
+        // !false == true is the natural consequence of the leaf-Unbound semantics.
+        // This is documented behaviour, not a bug; the validator (Task 9) flags
+        // unbound leaves as malformed-hints regardless.
+        let cache = MockCache::new();
+        let cond = Condition::Not {
+            condition: Box::new(Condition::ButtonPressed {
+                input: InputAddress::Unbound,
+            }),
+        };
+        assert!(evaluate_condition(&cond, &cache));
     }
 }
