@@ -2,9 +2,11 @@
 
 //! Live readout: IN/OUT axis bars with merge-mapping layout.
 //!
-//! Renders a compact two-row grid (label | bar | percentage) driven by the
-//! live `ctx.live` snapshot for raw values and
-//! `evaluate_actions_through` for pipeline-evaluated values.
+//! IN and OUT rows read directly from the live `ctx.live` snapshot (raw
+//! input cache and engine output cache, respectively). Merged-IN runs
+//! `evaluate_actions_through` over the input cache so curve/deadzone edits
+//! preview live. When the engine is stopped, OUT freezes at the engine's
+//! last-written value and the row carries an `--frozen` modifier class.
 //!
 //! **Layout rules (per F9 spec lines 42, 417)**
 //! - Non-merge: `IN`, dashed divider, `OUT` (OUT omitted when no `MapToVJoy`).
@@ -15,12 +17,20 @@ use dioxus::prelude::*;
 
 use inputforge_core::action::Action;
 use inputforge_core::processing::into_natural_domain;
+use inputforge_core::state::EngineStatus;
 use inputforge_core::types::{
     AxisPolarity, InputAddress, InputId, InputValue, MergeOp, OutputAddress, OutputId, VJoyAxis,
 };
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot};
 use crate::frame::mapping_list::source_label;
+
+/// CSS modifier class applied to a `ReadoutRow` whose value is held
+/// (engine stopped / paused). The component renders this suffix as part
+/// of a static literal in `ReadoutRow`; this const exists so SSR tests
+/// can `html.contains(FROZEN_ROW_CLASS)` rather than retyping the
+/// modifier name. Keep the literal and the const in sync.
+pub(super) const FROZEN_ROW_CLASS: &str = "if-editor__readout-row--frozen";
 
 // ---------------------------------------------------------------------------
 // Public component
@@ -36,6 +46,7 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
     let ctx = use_context::<AppContext>();
     let live = ctx.live.read();
     let cfg = ctx.config.read();
+    let engine_running = matches!(ctx.meta.read().engine_status, EngineStatus::Running);
 
     let primary_value = read_axis_display(&primary, &live, &cfg);
     let merge_ctx = find_merge_context(&actions);
@@ -84,19 +95,12 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
         }
     });
 
-    let out_value = out_addr.is_some().then(|| {
-        let state = ctx.state.read();
-        let iv = inputforge_core::pipeline::evaluate_actions_through(
-            &actions,
-            &state,
-            &primary,
-            actions.len(),
-        );
-        AxisDisplay {
-            value: into_natural_domain(axis_f64(&iv), output_polarity),
-            polarity: output_polarity,
-        }
-    });
+    // OUT reads directly from the engine output cache (projected into
+    // `live.output_values` by `LiveSnapshot::from_state`). When the engine
+    // isn't running it freezes at the last written value, by design.
+    let out_value = out_addr
+        .as_ref()
+        .map(|out| read_output_display(out, &live, &cfg, output_polarity));
 
     rsx! {
         div { class: "if-editor__readout",
@@ -116,11 +120,13 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
                         label: "IN 1".to_owned(),
                         tag: primary_tag.clone(),
                         display: primary_value,
+                        frozen: false,
                     }
                     ReadoutRow {
                         label: "IN 2".to_owned(),
                         tag: secondary_tag.unwrap_or_default(),
                         display: secondary,
+                        frozen: false,
                     }
                 }
                 ReadoutDivider { label: "merge".to_owned() }
@@ -132,12 +138,14 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
                             value: into_natural_domain(0.0, output_polarity),
                             polarity: output_polarity,
                         }),
+                        frozen: false,
                     }
                     if let Some(out) = out_value {
                         ReadoutRow {
                             label: "OUT".to_owned(),
                             tag: out_tag.clone().unwrap_or_default(),
                             display: out,
+                            frozen: !engine_running,
                         }
                     }
                 }
@@ -151,6 +159,7 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
                         label: "IN".to_owned(),
                         tag: primary_tag.clone(),
                         display: primary_value,
+                        frozen: false,
                     }
                 }
                 if let Some(out) = out_value {
@@ -160,6 +169,7 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
                             label: "OUT".to_owned(),
                             tag: out_tag.clone().unwrap_or_default(),
                             display: out,
+                            frozen: !engine_running,
                         }
                     }
                 }
@@ -178,8 +188,13 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
 /// unipolar axes, matching the live-green visual described in the spec.
 /// Bipolar bars also carry a `--bipolar` modifier class so the CSS can
 /// draw a center tick that communicates polarity at idle.
+///
+/// `frozen` is true only on the OUT row when the engine is not running.
+/// CSS dims the bar fill and percentage to signal "held value, not live";
+/// label and tag stay at full strength because they describe configuration,
+/// not telemetry.
 #[component]
-fn ReadoutRow(label: String, tag: String, display: AxisDisplay) -> Element {
+fn ReadoutRow(label: String, tag: String, display: AxisDisplay, frozen: bool) -> Element {
     let pct_text = format_percentage(&display);
     let bipolar = matches!(display.polarity, AxisPolarity::Bipolar);
 
@@ -213,8 +228,14 @@ fn ReadoutRow(label: String, tag: String, display: AxisDisplay) -> Element {
         "if-editor__readout-bar"
     };
 
+    let row_class = if frozen {
+        "if-editor__readout-row if-editor__readout-row--frozen"
+    } else {
+        "if-editor__readout-row"
+    };
+
     rsx! {
-        div { class: "if-editor__readout-row",
+        div { class: "{row_class}",
             div { class: "if-editor__readout-label", "{label}" }
             div { class: "if-editor__readout-tag", "{tag}" }
             div { class: "{bar_class}",
@@ -295,6 +316,57 @@ fn read_axis_display(
     AxisDisplay {
         value: 0.0,
         polarity: AxisPolarity::Bipolar,
+    }
+}
+
+/// Read the engine output value for `out` from the live snapshot.
+///
+/// Mirrors `read_axis_display` but indexes into `live.output_values` (the
+/// projection of the engine's output cache) instead of `device_inputs`.
+/// The cache is written by the engine on tick and is never cleared by
+/// `Activate`/`Deactivate`/`Pause`/`Resume`, so this naturally freezes at
+/// the last engine value when the engine is stopped.
+///
+/// `polarity` is the inferred output polarity (from the merge op or, in
+/// the no-merge case, from the primary input). The cache stores raw vJoy
+/// floats (bipolar wire format); `into_natural_domain` remaps to the
+/// row's polarity so a unipolar pedal mapped to vJoy Z still renders as
+/// a unipolar bar.
+///
+/// Falls back to `value: 0.0` when the device or output id is not present
+/// in the snapshot.
+fn read_output_display(
+    out: &OutputAddress,
+    live: &LiveSnapshot,
+    cfg: &ConfigSnapshot,
+    polarity: AxisPolarity,
+) -> AxisDisplay {
+    let dev_idx = cfg
+        .virtual_devices
+        .iter()
+        .position(|v| v.device_id == out.device);
+    let raw = dev_idx
+        .and_then(|di| live.output_values.get(di))
+        .and_then(|vals| match out.output {
+            OutputId::Axis { id } => vals
+                .axes
+                .iter()
+                .find_map(|&(axis, value)| (axis == id).then_some(value)),
+            OutputId::Button { id } => {
+                // vJoy buttons are 1-indexed; `LiveSnapshot::from_state`
+                // builds the buttons vec via `(1..=button_count)`.
+                // `id == 0` is malformed input; treat it as "no value"
+                // and let the outer fallback render an idle bar rather
+                // than silently aliasing button 0 to button 1.
+                let idx = usize::from(id.checked_sub(1)?);
+                vals.buttons.get(idx).map(|&b| if b { 1.0 } else { 0.0 })
+            }
+            OutputId::Hat { .. } => None,
+        })
+        .unwrap_or(0.0);
+    AxisDisplay {
+        value: into_natural_domain(raw, polarity),
+        polarity,
     }
 }
 

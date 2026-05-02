@@ -13,7 +13,9 @@ use inputforge_core::mode::ModeTree;
 use inputforge_core::profile::Profile;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, EngineStatus};
-use inputforge_core::types::{AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId};
+use inputforge_core::types::{
+    AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, VJoyAxis, VirtualDeviceConfig,
+};
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
 use crate::frame::mapping_editor::{EditorState, MappingEditor, use_editor_state_provider};
@@ -145,6 +147,44 @@ fn live_snapshot_with_axes(axes: Vec<(f64, AxisPolarity)>) -> LiveSnapshot {
     }
 }
 
+/// Build a single-device `LiveSnapshot` with both physical axis values and
+/// a single virtual-device's output axis values.
+///
+/// Mirrors `live_snapshot_with_axes`; adds a single `VjoyOutputValues` entry
+/// at index 0 with the supplied `output_axes`. Tests pair this with
+/// `add_vjoy_device` on the `AppState` so `cfg.virtual_devices[0]` aligns
+/// with `live.output_values[0]`, matching the production projection in
+/// `LiveSnapshot::from_state`.
+fn live_snapshot_with_axes_and_outputs(
+    axes: Vec<(f64, AxisPolarity)>,
+    output_axes: Vec<(VJoyAxis, f64)>,
+) -> LiveSnapshot {
+    LiveSnapshot {
+        device_inputs: vec![crate::context::DeviceInputValues {
+            axes,
+            buttons: vec![],
+            hats: vec![],
+        }],
+        output_values: vec![crate::context::VjoyOutputValues {
+            axes: output_axes,
+            buttons: vec![],
+            hats: vec![],
+        }],
+    }
+}
+
+/// Push a vJoy `VirtualDeviceConfig` onto `state.virtual_devices` so the
+/// derived `ConfigSnapshot` includes it. Required for any OUT-row test:
+/// `read_output_display` looks up by position in `cfg.virtual_devices`.
+fn add_vjoy_device(state: &mut AppState, device_id: u8, axes: Vec<VJoyAxis>) {
+    state.virtual_devices.push(VirtualDeviceConfig {
+        device_id,
+        axes,
+        button_count: 0,
+        hat_count: 0,
+    });
+}
+
 /// Props for the harness component.
 ///
 /// `AppState` is not `Clone`/`PartialEq`, so it is wrapped in
@@ -169,6 +209,11 @@ struct HarnessProps {
     current_mode: Option<String>,
     #[props(default)]
     initial_live: Option<Arc<LiveSnapshot>>,
+    /// Engine status reported in the `MetaSnapshot`. Defaults to `Running`
+    /// when absent so existing tests are unaffected. Overridden by the
+    /// engine-stopped OUT-row tests.
+    #[props(default)]
+    engine_status: Option<EngineStatus>,
 }
 
 impl PartialEq for HarnessProps {
@@ -176,6 +221,7 @@ impl PartialEq for HarnessProps {
         Arc::ptr_eq(&self.state, &other.state)
             && self.addr == other.addr
             && self.current_mode == other.current_mode
+            && self.engine_status == other.engine_status
             && match (&self.initial_live, &other.initial_live) {
                 (Some(a), Some(b)) => Arc::ptr_eq(a, b),
                 (None, None) => true,
@@ -196,9 +242,11 @@ fn HarnessComponent(props: HarnessProps) -> Element {
         addr,
         current_mode,
         initial_live,
+        engine_status,
     } = props;
 
     let runtime_mode = current_mode.unwrap_or_else(|| "Default".to_owned());
+    let runtime_engine_status = engine_status.unwrap_or(EngineStatus::Running);
 
     let (cmd_tx, _) = mpsc::channel();
     let raw = RawHandles {
@@ -211,7 +259,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     let selection: crate::frame::MappingKey = ("Default".to_owned(), addr.clone());
     let snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
     let meta = use_signal(|| MetaSnapshot {
-        engine_status: EngineStatus::Running,
+        engine_status: runtime_engine_status,
         profile_name: Some("P".to_owned()),
         modes: vec!["Default".to_owned(), "Combat".to_owned()],
         startup_mode: Some("Default".to_owned()),
@@ -254,6 +302,7 @@ fn harness_with(state: AppState, addr: InputAddress) -> VirtualDom {
             addr,
             current_mode: None,
             initial_live: None,
+            engine_status: None,
         },
     )
 }
@@ -274,6 +323,7 @@ fn harness_with_current_mode(
             addr,
             current_mode: Some(current_mode.to_owned()),
             initial_live: None,
+            engine_status: None,
         },
     )
 }
@@ -291,6 +341,28 @@ fn harness_with_live(state: AppState, addr: InputAddress, live: LiveSnapshot) ->
             addr,
             current_mode: None,
             initial_live: Some(Arc::new(live)),
+            engine_status: None,
+        },
+    )
+}
+
+/// Build a `VirtualDom` with a pre-seeded `LiveSnapshot` and explicit
+/// engine status. Used by OUT-row freeze tests to drive
+/// `engine_status: EngineStatus::Stopped` into the harness.
+fn harness_with_live_and_status(
+    state: AppState,
+    addr: InputAddress,
+    live: LiveSnapshot,
+    engine_status: EngineStatus,
+) -> VirtualDom {
+    VirtualDom::new_with_props(
+        HarnessComponent,
+        HarnessProps {
+            state: Arc::new(RwLock::new(state)),
+            addr,
+            current_mode: None,
+            initial_live: Some(Arc::new(live)),
+            engine_status: Some(engine_status),
         },
     )
 }
@@ -650,6 +722,7 @@ fn editor_undo_recap_shows_label_and_kbd_hint() {
             addr,
             current_mode: None,
             initial_live: None,
+            engine_status: None,
         },
     );
     vdom.rebuild_in_place();
@@ -1020,7 +1093,7 @@ fn editor_live_readout_average_bb_renders_bipolar_unchanged() {
 /// the OUT row should show natural 0.00 (empty bar), not raw -1.00.
 #[test]
 fn editor_live_readout_unipolar_primary_no_merge_out_inherits_unipolar() {
-    use inputforge_core::types::{OutputAddress, OutputId, VJoyAxis};
+    use inputforge_core::types::{OutputAddress, OutputId};
 
     let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
@@ -1032,12 +1105,21 @@ fn editor_live_readout_unipolar_primary_no_merge_out_inherits_unipolar() {
             output: OutputId::Axis { id: VJoyAxis::X },
         },
     }];
-    let state = seeded_profile_with_polarities_and_axes(
+    let mut state = seeded_profile_with_polarities_and_axes(
         actions,
         vec![AxisPolarity::Unipolar],
         &[(0, -1.0, AxisPolarity::Unipolar)],
     );
-    let live = live_snapshot_with_axes(vec![(-1.0, AxisPolarity::Unipolar)]);
+    add_vjoy_device(&mut state, 1, vec![VJoyAxis::X]);
+    // OUT now reads from the engine output cache (projected into
+    // `live.output_values`) instead of running the pipeline. The engine
+    // having written -1.0 to vJoy X for an idle Unipolar pedal is the
+    // expected steady state; through `into_natural_domain` that surfaces
+    // as `0.00` in the OUT row, matching the pre-change assertion.
+    let live = live_snapshot_with_axes_and_outputs(
+        vec![(-1.0, AxisPolarity::Unipolar)],
+        vec![(VJoyAxis::X, -1.0)],
+    );
     let mut vdom = harness_with_live(state, primary, live);
     vdom.rebuild_in_place();
     let html = render(&vdom);
@@ -1055,6 +1137,126 @@ fn editor_live_readout_unipolar_primary_no_merge_out_inherits_unipolar() {
     assert!(
         html.contains("0.00"),
         "expected natural-domain `0.00` for Unipolar OUT idle; got: {html}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// OUT row reads engine output cache, not the input pipeline
+// ---------------------------------------------------------------------------
+
+/// Headline regression: when the engine is stopped, OUT shows the engine
+/// output cache value, NOT a value re-derived from the (still-moving)
+/// input cache through the action pipeline.
+#[test]
+fn editor_live_readout_out_freezes_when_engine_stopped() {
+    use inputforge_core::types::{OutputAddress, OutputId};
+
+    let primary = InputAddress::Bound {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let actions = vec![Action::MapToVJoy {
+        output: OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        },
+    }];
+    // Input cache shows the user moving the stick to +0.50 right now.
+    // Engine output cache is frozen at +0.20 from the last engine tick.
+    // With the new wiring, OUT must read +0.20, not +0.50.
+    let mut state = seeded_profile_with_polarities_and_axes(
+        actions,
+        vec![AxisPolarity::Bipolar],
+        &[(0, 0.5, AxisPolarity::Bipolar)],
+    );
+    add_vjoy_device(&mut state, 1, vec![VJoyAxis::X]);
+    let live = live_snapshot_with_axes_and_outputs(
+        vec![(0.5, AxisPolarity::Bipolar)],
+        vec![(VJoyAxis::X, 0.2)],
+    );
+    let mut vdom = harness_with_live_and_status(state, primary, live, EngineStatus::Stopped);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("+0.20"),
+        "expected OUT to render the engine cache value `+0.20`; got: {html}"
+    );
+}
+
+/// When the engine is stopped, the OUT row carries the
+/// `if-editor__readout-row--frozen` modifier class so CSS can dim the bar
+/// fill and percentage. The IN row does not.
+#[test]
+fn editor_live_readout_out_row_marks_frozen_class_when_engine_stopped() {
+    use inputforge_core::types::{OutputAddress, OutputId};
+
+    let primary = InputAddress::Bound {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let actions = vec![Action::MapToVJoy {
+        output: OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        },
+    }];
+    let mut state = seeded_profile_with_polarities_and_axes(
+        actions,
+        vec![AxisPolarity::Bipolar],
+        &[(0, 0.0, AxisPolarity::Bipolar)],
+    );
+    add_vjoy_device(&mut state, 1, vec![VJoyAxis::X]);
+    let live = live_snapshot_with_axes_and_outputs(
+        vec![(0.0, AxisPolarity::Bipolar)],
+        vec![(VJoyAxis::X, 0.0)],
+    );
+    let mut vdom = harness_with_live_and_status(state, primary, live, EngineStatus::Stopped);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains(super::live_readout::FROZEN_ROW_CLASS),
+        "expected OUT row to carry frozen modifier class when engine stopped; got: {html}"
+    );
+    // The frozen class should appear exactly once (only the OUT row).
+    let frozen_count = html.matches(super::live_readout::FROZEN_ROW_CLASS).count();
+    assert_eq!(
+        frozen_count, 1,
+        "expected exactly one frozen row (OUT); found {frozen_count}; html: {html}"
+    );
+}
+
+/// While the engine is running, no row carries the frozen modifier class.
+#[test]
+fn editor_live_readout_out_row_omits_frozen_class_when_engine_running() {
+    use inputforge_core::types::{OutputAddress, OutputId};
+
+    let primary = InputAddress::Bound {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    };
+    let actions = vec![Action::MapToVJoy {
+        output: OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        },
+    }];
+    let mut state = seeded_profile_with_polarities_and_axes(
+        actions,
+        vec![AxisPolarity::Bipolar],
+        &[(0, 0.0, AxisPolarity::Bipolar)],
+    );
+    add_vjoy_device(&mut state, 1, vec![VJoyAxis::X]);
+    let live = live_snapshot_with_axes_and_outputs(
+        vec![(0.0, AxisPolarity::Bipolar)],
+        vec![(VJoyAxis::X, 0.0)],
+    );
+    // Default harness path uses EngineStatus::Running.
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        !html.contains(super::live_readout::FROZEN_ROW_CLASS),
+        "expected no frozen rows when engine running; got: {html}"
     );
 }
 

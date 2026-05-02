@@ -3,7 +3,7 @@
 //! Sticky engine-offline banner shown above the editor frame.
 //!
 //! Renders only when `MetaSnapshot::engine_status` is [`EngineStatus::Stopped`].
-//! When visible it surfaces "Engine offline. Edits not applied." and a ghost
+//! When visible it surfaces "Engine offline. Outputs frozen at last value." and a ghost
 //! `Restart engine` button that dispatches [`EngineCommand::Activate`].
 //!
 //! # Banner precedence
@@ -56,7 +56,7 @@ pub(crate) fn EngineOfflineBanner() -> Element {
             class: "if-editor__offline-banner",
             role: "status",
             "aria-live": "polite",
-            div { class: "if-editor__offline-text", "Engine offline. Edits not applied." }
+            div { class: "if-editor__offline-text", "Engine offline. Outputs frozen at last value." }
             button {
                 r#type: "button",
                 class: "if-editor__offline-action",

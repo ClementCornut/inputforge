@@ -463,6 +463,18 @@
     color: var(--color-text);
 }
 
+/* Engine-stopped: OUT row reads as frozen at the last engine output.
+   Bar fill drops out of the live-green palette into a muted neutral, the
+   percentage dims one step. Label and tag stay at full strength because
+   they describe the row, not its (stale) value. */
+.if-editor__readout-row--frozen .if-editor__readout-fill {
+    background: var(--color-text-muted);
+}
+
+.if-editor__readout-row--frozen .if-editor__readout-pct {
+    opacity: 0.7;
+}
+
 /* Section divider with inline label: dashed lines on either side of a
    small uppercase label (e.g. `─── merge ───`). The flex pseudo-element
    trick gives full-width dashes that auto-resize as the label grows
