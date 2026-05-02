@@ -13,13 +13,40 @@ pub(crate) use focus_walker::{FocusAction, focus_menu_item};
 /// the correct items wrapper.
 static MENU_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// Shared open-state context for menu compound.
+/// Reason a menu was closed. Trigger-attached menus (`MenuRoot`) discard
+/// this; cursor-anchored menus (`AnchoredMenu`) surface it through `on_close`
+/// so the parent can decide whether to re-focus the originating element.
+///
+/// `Escape` and `ClickOutside` mean the user dismissed without picking
+/// anything; the parent typically re-focuses the originating trigger.
+/// `Tab` means the user pressed Tab to leave the menu; the parent must NOT
+/// re-focus the trigger because the browser's natural Tab traversal is
+/// moving focus to the next element. `ItemActivated` fires after a
+/// `MenuItem` click; the parent's behaviour is item-specific (often
+/// re-focus the trigger as a default landing spot before the activated
+/// item's own follow-on focus takes over).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloseReason {
+    Escape,
+    ClickOutside,
+    Tab,
+    ItemActivated,
+}
+
+/// Shared open-state context for menu compound. Both `MenuRoot` and
+/// `AnchoredMenu` install one of these so `MenuItem` works under either.
 #[derive(Clone, Copy)]
 struct MenuState {
+    /// Open-state signal. `MenuRoot` owns this directly; `AnchoredMenu`
+    /// mirrors its prop into here so `MenuItems`'s hidden+focus logic
+    /// keeps reading from one place.
     open: Signal<bool>,
-    /// Stable DOM id for the items wrapper. Shared so `MenuTrigger` can advertise
-    /// `aria-controls=<id>` and `MenuItems` can render `id=<id>` matching.
+    /// Stable DOM id for the items wrapper.
     menu_id: Signal<String>,
+    /// Close dispatcher. `MenuRoot` provides one that flips `open` to
+    /// false and discards the reason; `AnchoredMenu` provides one that
+    /// fires its `on_close` handler with the reason.
+    close: Callback<CloseReason>,
 }
 
 /// Where the dropdown attaches to its trigger horizontally. `Start` = left edge,
@@ -36,15 +63,29 @@ pub enum Anchor {
 }
 
 #[component]
-pub fn MenuRoot(#[props(default)] class: Option<String>, children: Element) -> Element {
+pub fn MenuRoot(
+    /// Class extension for the OUTER wrapper (`.if-menu`). Use for layout-flow
+    /// modifiers like `if-menu--block` (which flips the wrapper from
+    /// `inline-flex` to `block`).
+    #[props(default)]
+    class: Option<String>,
+    children: Element,
+) -> Element {
+    let open = use_signal(|| false);
+    let menu_id = use_signal(|| {
+        format!(
+            "if-menu-{}",
+            MENU_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+        )
+    });
+    let close = use_callback(move |_reason: CloseReason| {
+        let mut o = open;
+        o.set(false);
+    });
     let state = MenuState {
-        open: use_signal(|| false),
-        menu_id: use_signal(|| {
-            format!(
-                "if-menu-{}",
-                MENU_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
-            )
-        }),
+        open,
+        menu_id,
+        close,
     };
     use_context_provider(|| state);
 
@@ -176,20 +217,22 @@ pub fn MenuItem(
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
-    let mut state = use_context::<MenuState>();
+    let state = use_context::<MenuState>();
     let combined = merge_class("if-menu__item", "", class.as_deref());
     let handler = onclick;
+    let close = state.close;
     let onclick = move |evt: MouseEvent| {
         if let Some(h) = &handler {
             h.call(evt);
         }
-        state.open.set(false);
+        close.call(CloseReason::ItemActivated);
     };
     rsx! {
         button {
             class: "{combined}",
             role: "menuitem",
             disabled,
+            "aria-disabled": "{disabled}",
             onclick,
             {children}
         }
