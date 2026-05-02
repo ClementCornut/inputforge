@@ -268,10 +268,10 @@ pub fn MenuItems(
     /// `Start` aligns the list's left edge with the trigger's left edge;
     /// `Center` centres the list under the trigger's horizontal midpoint;
     /// `End` aligns the list's right edge with the trigger's right edge.
-    /// Centering and end-alignment are applied via inline `transform` on
-    /// the list element itself; this is safe because `MenuItems` no longer
-    /// nests `position: fixed` descendants under the list (the backdrop
-    /// is a sibling, so the list's transform can not reparent it).
+    /// Alignment is realised by `compute_placement`, which adjusts the
+    /// desired `left` coordinate before clamping to the viewport. No inline
+    /// `transform` is emitted; the list's inline style contains only
+    /// `position`, `left`, `top`, `visibility`, and `z-index`.
     #[props(default)]
     anchor: Anchor,
     children: Element,
@@ -531,10 +531,10 @@ pub fn AnchoredMenu(
     /// Class extension for the inner LIST surface (`.if-menu__list`).
     /// NOTE: this is the visible chrome layer, NOT a wrapper. `AnchoredMenu`
     /// has no positioned outer wrapper because it applies `position: fixed`
-    /// directly on the list. This differs from `MenuItems.class` (which
-    /// targets the outer `.if-menu__items` wrapper) and from `MenuRoot.class`
-    /// (which targets the outer `.if-menu` wrapper). If you need wrapper-level
-    /// styling, lift it to a parent component.
+    /// directly on the list. This matches `MenuItems.class` (which also
+    /// lands directly on `.if-menu__list` post-popper) and differs from
+    /// `MenuRoot.class` (which targets the outer `.if-menu` wrapper). If
+    /// you need wrapper-level styling, lift it to a parent component.
     #[props(default)]
     class: Option<String>,
     children: Element,
