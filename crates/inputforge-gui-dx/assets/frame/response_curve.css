@@ -114,7 +114,13 @@
 }
 .if-curve__tick-label {
   font-family: var(--font-mono);
-  font-size: 11px;
+  /* SVG `font-size` resolves in USER coordinate units (the viewBox), not CSS
+     pixels: a `px`-suffixed value is still interpreted as user units in this
+     context. With the plot's `viewBox="-1.05 -1.05 2.1 2.1"` and a 480px
+     rendered plot, 1 user unit = ~228 px. 0.05 user units therefore renders
+     at ~11.4 px, matching the DESIGN.md caption size. Specifying `11px`
+     directly here renders at ~2515 px and clips the entire SVG. */
+  font-size: 0.05;
   fill: var(--color-text-subtle);
 }
 .if-curve__thumbnail {
