@@ -138,12 +138,17 @@ pub(crate) fn StageActionsMenu(
     let Some((parent_path, current_idx)) = split_stage_path(&stage_id) else {
         // Malformed path: bail; render nothing. In practice unreachable
         // (split_stage_path only fails on empty / non-Index paths, which
-        // the caller never produces).
+        // the caller never produces). The defensive editor.stage_menu
+        // reset ensures a regression surfaces as a closed menu rather
+        // than a signal stuck in the open state (re-renders would
+        // otherwise hit this branch indefinitely).
         tracing::warn!(
             target: "f9::mapping_editor",
             action = "stage_menu_malformed_path",
             "stage menu opened with malformed StageId"
         );
+        let mut stage_menu_signal = editor.stage_menu;
+        stage_menu_signal.set(None);
         return rsx! {};
     };
 
