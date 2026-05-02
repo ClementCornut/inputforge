@@ -132,18 +132,20 @@ pub(crate) fn handle_pointer_move(
     (state, None, false)
 }
 
-/// Handle a pointer-up event.
+/// Pointer-up returns `Result<ResponseCurve, String>` so the host body can
+/// write the validator's actual error to `EditorState.malformed_hints[stage_id]`.
 ///
-/// Clears `state.dragging` and re-validates `working_curve` through the
-/// engine constructors.
-///
-/// - `Ok(curve)`: the curve is valid; the host should dispatch `SetMapping`
-///   with the new curve and clear `EditorState.malformed_hints[stage_id]`.
-/// - `Err(msg)`: the curve is invalid; the host should restore from
-///   `pre_drag_curve` and write `msg` into
-///   `EditorState.malformed_hints[stage_id]`. No `SetMapping` is dispatched.
-///
-/// Returns `(BodyState, Result<ResponseCurve, String>, changed)`.
+/// Three return shapes:
+/// - `(_, Ok(valid), true)`: drag committed; host dispatches `SetMapping`
+///   with `valid` and pushes an undo entry. `next.pre_drag_curve` is `None`.
+/// - `(_, Err(msg), false)` with `state.dragging.is_some()` on entry: drag
+///   reverted by validator. `msg` carries the engine error text. `next.pre_drag_curve`
+///   IS still populated; the host should `take()` it to restore the working
+///   curve signal, and write `msg` to `EditorState.malformed_hints[stage_id]`.
+/// - `(_, Err(""), false)` with `state.dragging.is_none()` on entry: no drag
+///   was active; the host should treat this as a no-op (e.g. stray pointerup
+///   from outside a drag). The empty error string is the sentinel; check
+///   `state.dragging` before calling to avoid relying on it.
 pub(crate) fn handle_pointer_up(
     mut state: BodyState,
     working_curve: &ResponseCurve,
@@ -159,9 +161,10 @@ pub(crate) fn handle_pointer_up(
             (state, Ok(valid), true)
         }
         Err(err) => {
-            // Revert: the host should restore from `pre_drag_curve` and
-            // write `err` into `EditorState.malformed_hints[stage_id]`.
-            let _revert = state.pre_drag_curve.take();
+            // Validation failed. `pre_drag_curve` remains populated in the returned
+            // state so the host body can `take()` it and restore the working curve
+            // signal. The host also writes `err` into
+            // `EditorState.malformed_hints[stage_id]`.
             (state, Err(err), false)
         }
     }
@@ -508,5 +511,29 @@ mod tests {
                 points[1].1
             );
         }
+    }
+
+    #[test]
+    fn pointer_up_invalid_keeps_pre_drag_curve_for_host_revert() {
+        let curve = seed_curve();
+        let invalid = ResponseCurve::PiecewiseLinear {
+            points: vec![(-1.0, -1.0), (1.0, 0.2), (1.0, 1.0)],
+            symmetric: false,
+        };
+        let state = BodyState {
+            cached_anchors: extract_anchors(&curve),
+            dragging: Some(DragInProgress {
+                point_index: 1,
+                bounds: (-1.0, 1.0),
+            }),
+            pre_drag_curve: Some(curve.clone()),
+            ..BodyState::default()
+        };
+        let (next, committed, _) = handle_pointer_up(state, &invalid);
+        assert!(committed.is_err(), "invalid curve must produce Err");
+        assert!(
+            next.pre_drag_curve.is_some(),
+            "pre_drag_curve must survive on Err so host can restore"
+        );
     }
 }
