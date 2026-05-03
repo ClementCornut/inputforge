@@ -30,11 +30,11 @@ use crate::error::{EngineError, Result};
 ///
 /// `pinned` is derived from `kind`:
 /// - `Manual` → `pinned = true` unconditionally.
-/// - `AutoSessionStart` / `AutoBeforeRestore` → `pinned = false`.
+/// - `AutoSessionStart` / `AutoBeforeRestore` / `AutoBeforeBulkMap` → `pinned = false`.
 ///
 /// Returns `Ok(None)` when `kind == AutoSessionStart`, `cfg.skip_if_unchanged`
 /// is true, and the latest existing snapshot has the same `content_hash`.
-/// `AutoBeforeRestore` and `Manual` always create.
+/// `AutoBeforeRestore`, `AutoBeforeBulkMap`, and `Manual` always create.
 ///
 /// Does not call [`prune`], caller is responsible.
 ///

@@ -31,6 +31,9 @@ pub enum SnapshotKind {
     /// Created by `RestoreSnapshot` immediately before applying the
     /// restore. Always fires; never deduped.
     AutoBeforeRestore,
+    /// Created by `SetMappingsBulk` immediately before applying the
+    /// bulk upsert pass. Always fires; never deduped.
+    AutoBeforeBulkMap,
     /// Created by user dispatch of `CreateSnapshot { kind: Manual }`.
     /// Auto-pinned.
     Manual,
