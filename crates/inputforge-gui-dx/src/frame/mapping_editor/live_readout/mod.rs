@@ -18,16 +18,18 @@ use dioxus::prelude::*;
 use inputforge_core::action::Action;
 use inputforge_core::processing::into_natural_domain;
 use inputforge_core::state::EngineStatus;
-use inputforge_core::types::{AxisPolarity, InputAddress, MergeOp, OutputAddress};
+use inputforge_core::types::{InputAddress, MergeOp, OutputAddress};
 
 use crate::context::AppContext;
 use crate::frame::mapping_list::source_label;
 
+mod in_block;
 mod value_helpers;
 
+use in_block::{ReadoutDivider, ReadoutRow};
 use value_helpers::{
-    AxisDisplay, axis_f64, format_output_label, format_percentage, merge_output_polarity,
-    read_axis_display, read_output_display,
+    AxisDisplay, axis_f64, format_output_label, merge_output_polarity, read_axis_display,
+    read_output_display,
 };
 
 /// CSS modifier class applied to a `ReadoutRow` whose value is held
@@ -179,91 +181,6 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
                     }
                 }
             }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Sub-component
-// ---------------------------------------------------------------------------
-
-/// One row in the readout grid: label | tag | bar | percentage text.
-///
-/// The bar fill is anchored at 50% for bipolar axes and at 0% for
-/// unipolar axes, matching the live-green visual described in the spec.
-/// Bipolar bars also carry a `--bipolar` modifier class so the CSS can
-/// draw a center tick that communicates polarity at idle.
-///
-/// `frozen` is true only on the OUT row when the engine is not running.
-/// CSS dims the bar fill and percentage to signal "held value, not live";
-/// label and tag stay at full strength because they describe configuration,
-/// not telemetry.
-#[component]
-fn ReadoutRow(label: String, tag: String, display: AxisDisplay, frozen: bool) -> Element {
-    let pct_text = format_percentage(&display);
-    let bipolar = matches!(display.polarity, AxisPolarity::Bipolar);
-
-    // Bipolar bars are anchored at the 50% center and grow toward one
-    // edge, so the visual maximum is half the container width. Unipolar
-    // bars grow from the left edge across the full width.
-    let fill_pct = if bipolar {
-        (display.value.abs() * 50.0).clamp(0.0, 50.0)
-    } else {
-        (display.value.abs() * 100.0).clamp(0.0, 100.0)
-    };
-
-    // Always set BOTH `left` and `right` (with `auto` for the off side)
-    // so Dioxus's per-property style diffing cannot leave a stale anchor
-    // from a previous render. Without this, switching from negative to
-    // positive (or vice versa) keeps the prior side's `50%` set, which
-    // CSS resolves into `left: 50%; right: 50%; width: <pct>%;` and
-    // honors `left + width` regardless of sign — so both signs grow
-    // rightward and overflow the container.
-    let bar_style = if bipolar && display.value < 0.0 {
-        format!("left: auto; right: 50%; width: {fill_pct}%;")
-    } else if bipolar {
-        format!("left: 50%; right: auto; width: {fill_pct}%;")
-    } else {
-        format!("left: 0; right: auto; width: {fill_pct}%;")
-    };
-
-    let bar_class = if bipolar {
-        "if-editor__readout-bar if-editor__readout-bar--bipolar"
-    } else {
-        "if-editor__readout-bar"
-    };
-
-    let row_class = if frozen {
-        "if-editor__readout-row if-editor__readout-row--frozen"
-    } else {
-        "if-editor__readout-row"
-    };
-
-    rsx! {
-        div { class: "{row_class}",
-            div { class: "if-editor__readout-label", "{label}" }
-            div { class: "if-editor__readout-tag", "{tag}" }
-            div { class: "{bar_class}",
-                div {
-                    class: "if-editor__readout-fill",
-                    style: "{bar_style}",
-                }
-            }
-            div { class: "if-editor__readout-pct", "{pct_text}" }
-        }
-    }
-}
-
-/// Section divider with an inline label (e.g. `─── merge ───`).
-///
-/// Renders as a single grid cell that spans the full row and contains
-/// dashed lines on either side of a small uppercase label, marking the
-/// transition between the input section and the merged-or-output section.
-#[component]
-fn ReadoutDivider(label: String) -> Element {
-    rsx! {
-        div { class: "if-editor__readout-divider",
-            span { class: "if-editor__readout-divider-label", "{label}" }
         }
     }
 }
