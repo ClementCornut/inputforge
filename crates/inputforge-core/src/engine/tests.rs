@@ -3525,3 +3525,73 @@ fn engine_set_mappings_bulk_skips_entries_with_unbound_input() {
         "Unbound input entries must be skipped by the bulk handler"
     );
 }
+
+#[test]
+fn smoke_bulk_map_full_round_trip_creates_correct_profile_state() {
+    use crate::action::BulkMapEntry;
+    use crate::types::{OutputAddress, OutputId};
+
+    let (mut engine, state, tx, _dir, path) = make_engine_with_simple_disk_profile();
+    let mut entries = Vec::new();
+    // Four axes, eight buttons, one hat.
+    for i in 0u8..4 {
+        let axis_enum = match i {
+            0 => VJoyAxis::X,
+            1 => VJoyAxis::Y,
+            2 => VJoyAxis::Z,
+            _ => VJoyAxis::Rx,
+        };
+        entries.push(BulkMapEntry {
+            input: axis_addr(i),
+            mode: "Default".to_owned(),
+            output: vjoy_axis_output(1, axis_enum),
+        });
+    }
+    for i in 0u8..8 {
+        entries.push(BulkMapEntry {
+            input: button_addr(i),
+            mode: "Default".to_owned(),
+            output: vjoy_button_output(1, i + 1),
+        });
+    }
+    entries.push(BulkMapEntry {
+        input: InputAddress::Bound {
+            device: dev_id(),
+            input: InputId::Hat { index: 0 },
+        },
+        mode: "Default".to_owned(),
+        output: OutputAddress {
+            device: 1,
+            output: OutputId::Hat { id: 1 },
+        },
+    });
+
+    tx.send(EngineCommand::SetMappingsBulk {
+        entries,
+        snapshot_label: "Before bulk-map: dev-1 to vJoy 1".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let mappings = state
+        .read()
+        .active_profile
+        .as_ref()
+        .unwrap()
+        .mappings()
+        .to_vec();
+    assert_eq!(mappings.len(), 13, "4 axes + 8 buttons + 1 hat = 13");
+    for m in &mappings {
+        assert_eq!(m.name, None);
+        assert_eq!(m.actions.len(), 1);
+        assert!(matches!(m.actions[0], Action::MapToVJoy { .. }));
+    }
+
+    let listed = crate::snapshot::list(&path).unwrap();
+    assert!(
+        listed
+            .iter()
+            .any(|s| matches!(s.kind, crate::snapshot::SnapshotKind::AutoBeforeBulkMap)),
+        "AutoBeforeBulkMap must be listed"
+    );
+}
