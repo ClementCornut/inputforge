@@ -240,6 +240,24 @@ impl Profile {
         }
     }
 
+    /// Apply a batch of upserts in a single in-memory pass.
+    ///
+    /// Each entry produces a mapping with `name: None` and exactly one
+    /// `Action::MapToVJoy { output: entry.output }`. Existing mappings
+    /// for `(entry.input, entry.mode)` are replaced. Empty `entries`
+    /// is a no-op.
+    ///
+    /// **No file save.** The engine handler is responsible for
+    /// persistence; see `EngineCommand::SetMappingsBulk`.
+    pub fn set_mappings_bulk(&mut self, entries: &[crate::action::BulkMapEntry]) {
+        for entry in entries {
+            let actions = vec![Action::MapToVJoy {
+                output: entry.output.clone(),
+            }];
+            self.set_mapping(&entry.input, &entry.mode, None, actions);
+        }
+    }
+
     /// Remove the mapping for `(input, mode)`. Returns `true` if a mapping
     /// was removed, `false` if no matching mapping existed.
     pub fn remove_mapping(&mut self, input: &InputAddress, mode: &str) -> bool {
@@ -576,6 +594,32 @@ mod tests {
         DeviceId, KeyCombo, KeyModifier, MergeOp, OutputAddress, OutputId, VJoyAxis,
     };
     use std::collections::HashMap;
+
+    fn test_profile_with_one_mode() -> Profile {
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        Profile::new(
+            "T".to_owned(),
+            vec![],
+            modes,
+            vec![],
+            vec![],
+            "Default".to_owned(),
+        )
+    }
+
+    fn test_profile_with_two_modes() -> Profile {
+        let map = HashMap::from([("Default".to_owned(), vec!["Combat".to_owned()])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        Profile::new(
+            "T".to_owned(),
+            vec![],
+            modes,
+            vec![],
+            vec![],
+            "Default".to_owned(),
+        )
+    }
 
     fn test_modes() -> ModeTree {
         let mut map = HashMap::new();
@@ -1152,6 +1196,226 @@ enabled = true
         let m = profile.find_mapping(&test_input(), "Default").unwrap();
         assert_eq!(m.name, Some("Cleared".to_owned()));
         assert!(m.actions.is_empty());
+    }
+
+    #[test]
+    fn profile_set_mappings_bulk_with_empty_entries_is_noop() {
+        use crate::action::BulkMapEntry;
+
+        let mut profile = test_profile_with_one_mode();
+        profile.set_mappings_bulk(&[] as &[BulkMapEntry]);
+        assert!(profile.mappings().is_empty());
+    }
+
+    #[test]
+    fn profile_set_mappings_bulk_creates_single_mapping_with_unnamed_passthrough() {
+        use crate::action::{Action, BulkMapEntry};
+        use crate::types::{DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis};
+
+        let mut profile = test_profile_with_one_mode();
+        let output = OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        };
+        let entries = vec![BulkMapEntry {
+            input: InputAddress::Bound {
+                device: DeviceId("dev-1".to_owned()),
+                input: InputId::Axis { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            output: output.clone(),
+        }];
+        profile.set_mappings_bulk(&entries);
+
+        assert_eq!(profile.mappings().len(), 1);
+        let m = &profile.mappings()[0];
+        assert_eq!(m.name, None);
+        assert_eq!(m.actions.len(), 1);
+        match &m.actions[0] {
+            Action::MapToVJoy { output: actual } => assert_eq!(actual, &output),
+            other => panic!("expected MapToVJoy action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn profile_set_mappings_bulk_creates_one_mapping_per_entry_across_modes() {
+        use crate::action::BulkMapEntry;
+        use crate::types::{DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis};
+
+        let mut profile = test_profile_with_two_modes();
+        let input = InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        let output = OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        };
+        let entries = vec![
+            BulkMapEntry {
+                input: input.clone(),
+                mode: "Default".to_owned(),
+                output: output.clone(),
+            },
+            BulkMapEntry {
+                input: input.clone(),
+                mode: "Combat".to_owned(),
+                output: output.clone(),
+            },
+        ];
+        profile.set_mappings_bulk(&entries);
+        assert_eq!(profile.mappings().len(), 2);
+    }
+
+    #[test]
+    fn profile_set_mappings_bulk_replaces_existing_mapping_overwriting_name_and_actions() {
+        use crate::action::{Action, BulkMapEntry};
+        use crate::types::{DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis};
+
+        let mut profile = test_profile_with_one_mode();
+        let input = InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        profile.set_mapping(
+            &input,
+            "Default",
+            Some("Throttle".to_owned()),
+            vec![Action::Invert],
+        );
+
+        let entries = vec![BulkMapEntry {
+            input: input.clone(),
+            mode: "Default".to_owned(),
+            output: OutputAddress {
+                device: 1,
+                output: OutputId::Axis { id: VJoyAxis::Y },
+            },
+        }];
+        profile.set_mappings_bulk(&entries);
+
+        assert_eq!(profile.mappings().len(), 1, "must upsert, not append");
+        let m = &profile.mappings()[0];
+        assert_eq!(m.name, None, "name must be cleared by bulk replace");
+        assert!(matches!(m.actions[0], Action::MapToVJoy { .. }));
+    }
+
+    #[test]
+    fn profile_set_mappings_bulk_each_generated_mapping_has_action_vec_of_exactly_one_map_to_vjoy()
+    {
+        use crate::action::{Action, BulkMapEntry};
+        use crate::types::{DeviceId, InputAddress, InputId, OutputAddress, OutputId};
+
+        let mut profile = test_profile_with_one_mode();
+        let entries = vec![BulkMapEntry {
+            input: InputAddress::Bound {
+                device: DeviceId("dev-1".to_owned()),
+                input: InputId::Button { index: 5 },
+            },
+            mode: "Default".to_owned(),
+            output: OutputAddress {
+                device: 1,
+                output: OutputId::Button { id: 6 },
+            },
+        }];
+        profile.set_mappings_bulk(&entries);
+        let m = &profile.mappings()[0];
+        assert_eq!(m.actions.len(), 1);
+        assert!(matches!(m.actions[0], Action::MapToVJoy { .. }));
+    }
+
+    #[test]
+    fn profile_set_mappings_bulk_each_generated_mapping_has_name_none() {
+        use crate::action::BulkMapEntry;
+        use crate::types::{DeviceId, InputAddress, InputId, OutputAddress, OutputId};
+
+        let mut profile = test_profile_with_one_mode();
+        let entries = vec![BulkMapEntry {
+            input: InputAddress::Bound {
+                device: DeviceId("dev-1".to_owned()),
+                input: InputId::Hat { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            output: OutputAddress {
+                device: 1,
+                output: OutputId::Hat { id: 1 },
+            },
+        }];
+        profile.set_mappings_bulk(&entries);
+        assert_eq!(profile.mappings()[0].name, None);
+    }
+
+    #[test]
+    fn profile_set_mappings_bulk_mixed_create_and_replace_in_one_call() {
+        use crate::action::{Action, BulkMapEntry};
+        use crate::types::{DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis};
+
+        let mut profile = test_profile_with_one_mode();
+        let in_a = InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        let in_b = InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 1 },
+        };
+        profile.set_mapping(
+            &in_a,
+            "Default",
+            Some("Pre".to_owned()),
+            vec![Action::Invert],
+        );
+
+        let out = OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        };
+        let entries = vec![
+            BulkMapEntry {
+                input: in_a.clone(),
+                mode: "Default".to_owned(),
+                output: out.clone(),
+            },
+            BulkMapEntry {
+                input: in_b.clone(),
+                mode: "Default".to_owned(),
+                output: out.clone(),
+            },
+        ];
+        profile.set_mappings_bulk(&entries);
+
+        assert_eq!(profile.mappings().len(), 2);
+        assert_eq!(profile.find_mapping(&in_a, "Default").unwrap().name, None);
+        assert!(matches!(
+            profile.find_mapping(&in_a, "Default").unwrap().actions[0],
+            Action::MapToVJoy { .. }
+        ));
+        assert!(profile.find_mapping(&in_b, "Default").is_some());
+    }
+
+    #[test]
+    fn profile_set_mappings_bulk_into_unknown_mode_still_upserts_silently() {
+        use crate::action::BulkMapEntry;
+        use crate::types::{DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis};
+
+        let mut profile = test_profile_with_one_mode();
+        let entries = vec![BulkMapEntry {
+            input: InputAddress::Bound {
+                device: DeviceId("dev-1".to_owned()),
+                input: InputId::Axis { index: 0 },
+            },
+            mode: "Phantom".to_owned(),
+            output: OutputAddress {
+                device: 1,
+                output: OutputId::Axis { id: VJoyAxis::X },
+            },
+        }];
+        profile.set_mappings_bulk(&entries);
+        assert_eq!(
+            profile.mappings().len(),
+            1,
+            "engine accepts the upsert; reload-time validation will flag the orphan"
+        );
     }
 
     // --- set_modes / remove_mappings_for_mode ---
