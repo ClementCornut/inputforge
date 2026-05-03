@@ -33,99 +33,60 @@ pub(crate) fn Toolbar(
     let cmd_tx = ctx.commands.clone();
     let config_signal = ctx.config;
 
-    // Annotate the bindings as `ReadSignal<f64>` so the `.into()` in each
-    // `value:` slot below disambiguates: Dioxus 0.7 has multiple `SuperInto`
-    // impls for `Signal<f64>` (one via `dioxus_core`, one via `dioxus_stores`)
-    // and the `value: ReadSignal<f64>` prop type alone is not enough to
-    // resolve the conversion at the call site.
-    let low_signal: ReadSignal<f64> = use_signal(|| config.low()).into();
-    let cl_signal: ReadSignal<f64> = use_signal(|| config.center_low()).into();
-    let ch_signal: ReadSignal<f64> = use_signal(|| config.center_high()).into();
-    let high_signal: ReadSignal<f64> = use_signal(|| config.high()).into();
+    // Build a single `EventHandler<f64>` per field (4 fields), wired to BOTH
+    // `oncommit` (text edit + Enter/blur) and `onstep` (+/- button). Without
+    // the onstep wiring the spinner buttons would be silent. `EventHandler<T>`
+    // is `Copy`, so the same handler can be passed to both prop slots.
+    let on_low = make_field_handler(
+        FieldId::Low,
+        config.clone(),
+        root_actions.clone(),
+        stage_id.clone(),
+        mapping_key.clone(),
+        cmd_tx.clone(),
+        undo_log,
+        malformed_hints,
+        config_signal,
+    );
+    let on_cl = make_field_handler(
+        FieldId::CL,
+        config.clone(),
+        root_actions.clone(),
+        stage_id.clone(),
+        mapping_key.clone(),
+        cmd_tx.clone(),
+        undo_log,
+        malformed_hints,
+        config_signal,
+    );
+    let on_ch = make_field_handler(
+        FieldId::CH,
+        config.clone(),
+        root_actions.clone(),
+        stage_id.clone(),
+        mapping_key.clone(),
+        cmd_tx.clone(),
+        undo_log,
+        malformed_hints,
+        config_signal,
+    );
+    let on_high = make_field_handler(
+        FieldId::High,
+        config.clone(),
+        root_actions.clone(),
+        stage_id.clone(),
+        mapping_key.clone(),
+        cmd_tx.clone(),
+        undo_log,
+        malformed_hints,
+        config_signal,
+    );
 
-    // Lots of clones for the 5 closures (4 commits + 1 reset).
-    let stage_id_low = stage_id.clone();
-    let stage_id_cl = stage_id.clone();
-    let stage_id_ch = stage_id.clone();
-    let stage_id_high = stage_id.clone();
-    let stage_id_reset = stage_id.clone();
-    let mapping_key_low = mapping_key.clone();
-    let mapping_key_cl = mapping_key.clone();
-    let mapping_key_ch = mapping_key.clone();
-    let mapping_key_high = mapping_key.clone();
-    let mapping_key_reset = mapping_key.clone();
-    let cmd_tx_low = cmd_tx.clone();
-    let cmd_tx_cl = cmd_tx.clone();
-    let cmd_tx_ch = cmd_tx.clone();
-    let cmd_tx_high = cmd_tx.clone();
-    let cmd_tx_reset = cmd_tx.clone();
-    let cfg_low = config.clone();
-    let cfg_cl = config.clone();
-    let cfg_ch = config.clone();
-    let cfg_high = config.clone();
     let cfg_current = config.clone();
-    let actions_low = root_actions.clone();
-    let actions_cl = root_actions.clone();
-    let actions_ch = root_actions.clone();
-    let actions_high = root_actions.clone();
+    let stage_id_reset = stage_id.clone();
+    let mapping_key_reset = mapping_key.clone();
+    let cmd_tx_reset = cmd_tx.clone();
     let actions_reset = root_actions.clone();
-
-    let on_low_commit = move |v: f64| {
-        commit_field(
-            &cfg_low,
-            FieldId::Low,
-            v,
-            &actions_low,
-            &stage_id_low,
-            &mapping_key_low,
-            &cmd_tx_low,
-            &mut undo_log,
-            &mut malformed_hints,
-            config_signal,
-        );
-    };
-    let on_cl_commit = move |v: f64| {
-        commit_field(
-            &cfg_cl,
-            FieldId::CL,
-            v,
-            &actions_cl,
-            &stage_id_cl,
-            &mapping_key_cl,
-            &cmd_tx_cl,
-            &mut undo_log,
-            &mut malformed_hints,
-            config_signal,
-        );
-    };
-    let on_ch_commit = move |v: f64| {
-        commit_field(
-            &cfg_ch,
-            FieldId::CH,
-            v,
-            &actions_ch,
-            &stage_id_ch,
-            &mapping_key_ch,
-            &cmd_tx_ch,
-            &mut undo_log,
-            &mut malformed_hints,
-            config_signal,
-        );
-    };
-    let on_high_commit = move |v: f64| {
-        commit_field(
-            &cfg_high,
-            FieldId::High,
-            v,
-            &actions_high,
-            &stage_id_high,
-            &mapping_key_high,
-            &cmd_tx_high,
-            &mut undo_log,
-            &mut malformed_hints,
-            config_signal,
-        );
-    };
     let on_reset = move |_| {
         let default = default_config();
         // Exact float equality is intentional: a config that's been moved and
@@ -156,7 +117,12 @@ pub(crate) fn Toolbar(
             Field { label: "Low".to_owned(), for_id: Some("dz-low".to_owned()), error: err.clone(),
                 NumberInput {
                     id: Some("dz-low".to_owned()),
-                    value: low_signal,
+                    // Pass the live `f64` directly: Dioxus 0.7 wraps it into a
+                    // ReadSignal that re-syncs on each Toolbar re-render. This
+                    // is what keeps the field text following the deadzone state
+                    // when an outer edit (drag, keyboard nudge, Reset) updates
+                    // the config through `config_signal`.
+                    value: config.low(),
                     min: -1.0,
                     // The 0.001 epsilon is a UX nudge: gives the spinner a
                     // buffer above the validator's strict `<` boundary so a
@@ -165,43 +131,46 @@ pub(crate) fn Toolbar(
                     max: config.center_low() - 0.001,
                     step: 0.01,
                     precision: Some(2),
-                    oncommit: on_low_commit,
+                    oncommit: on_low,
+                    onstep: on_low,
                 }
             }
             Field { label: "CL".to_owned(), for_id: Some("dz-cl".to_owned()), error: err.clone(),
                 NumberInput {
                     id: Some("dz-cl".to_owned()),
-                    value: cl_signal,
+                    value: config.center_low(),
                     min: config.low() + 0.001,
                     max: config.center_high(),
                     step: 0.01,
                     precision: Some(2),
-                    oncommit: on_cl_commit,
+                    oncommit: on_cl,
+                    onstep: on_cl,
                 }
             }
             Field { label: "CH".to_owned(), for_id: Some("dz-ch".to_owned()), error: err.clone(),
                 NumberInput {
                     id: Some("dz-ch".to_owned()),
-                    value: ch_signal,
+                    value: config.center_high(),
                     min: config.center_low(),
                     max: config.high() - 0.001,
                     step: 0.01,
                     precision: Some(2),
-                    oncommit: on_ch_commit,
+                    oncommit: on_ch,
+                    onstep: on_ch,
                 }
             }
             Field { label: "High".to_owned(), for_id: Some("dz-high".to_owned()), error: err.clone(),
                 NumberInput {
                     id: Some("dz-high".to_owned()),
-                    value: high_signal,
+                    value: config.high(),
                     min: config.center_high() + 0.001,
                     max: 1.0,
                     step: 0.01,
                     precision: Some(2),
-                    oncommit: on_high_commit,
+                    oncommit: on_high,
+                    onstep: on_high,
                 }
             }
-            div { class: "if-deadzone__toolbar-spacer" }
             Button {
                 variant: ButtonVariant::Secondary,
                 size: ButtonSize::Sm,
@@ -218,6 +187,41 @@ enum FieldId {
     CL,
     CH,
     High,
+}
+
+/// Build a single `EventHandler<f64>` that calls `commit_field` for one named
+/// threshold. Invoked once per field at component render. The returned handler
+/// is `Copy` so the rsx site wires it to BOTH `oncommit` (text edit) and
+/// `onstep` (+/- buttons) without further cloning.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "matches commit_field's argument set; one binding site per field"
+)]
+fn make_field_handler(
+    field: FieldId,
+    config: DeadzoneConfig,
+    actions: Vec<Action>,
+    stage_id: StageId,
+    mapping_key: MappingKey,
+    cmd_tx: Sender<EngineCommand>,
+    mut undo_log: Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
+    mut malformed_hints: Signal<std::collections::HashMap<StageId, String>>,
+    config_signal: Signal<crate::context::ConfigSnapshot>,
+) -> EventHandler<f64> {
+    EventHandler::new(move |v: f64| {
+        commit_field(
+            &config,
+            field,
+            v,
+            &actions,
+            &stage_id,
+            &mapping_key,
+            &cmd_tx,
+            &mut undo_log,
+            &mut malformed_hints,
+            config_signal,
+        );
+    })
 }
 
 #[expect(

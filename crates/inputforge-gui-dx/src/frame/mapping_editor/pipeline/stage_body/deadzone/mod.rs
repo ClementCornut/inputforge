@@ -327,12 +327,27 @@ pub(crate) fn DeadzoneBody(
     let snap = body.read();
     let dragging_attr = snap.dragging.is_some().to_string();
     let hovered_attr = snap.hovered_handle.is_some().to_string();
+    let is_dragging = snap.dragging.is_some();
     drop(snap);
+
+    // While a handle is mid-drag, prefer the in-flight `working_config` so the
+    // plot and toolbar fields update synchronously with the cursor instead of
+    // waiting for the engine SetMapping round-trip on mouseup. F10 hides this
+    // by maintaining a `cached_path` updated in the move arm; F11 renders
+    // straight from the config so it needs the live working value here.
+    let display_config = if is_dragging {
+        working_config
+            .read()
+            .clone()
+            .unwrap_or_else(|| live_config.clone())
+    } else {
+        live_config.clone()
+    };
 
     rsx! {
         div { class: "if-deadzone",
             toolbar::Toolbar {
-                config: live_config.clone(),
+                config: display_config.clone(),
                 stage_id: stage_id.clone(),
                 root_actions: live_actions.clone(),
                 mapping_key: mapping_key.clone(),
@@ -347,7 +362,7 @@ pub(crate) fn DeadzoneBody(
                 onmounted: on_mounted,
                 onkeydown: on_key,
                 onfocusout: on_focus_out,
-                { rendering::render_plot(&live_config, &body.read(), live_value) }
+                { rendering::render_plot(&display_config, &body.read(), live_value) }
             }
         }
     }

@@ -59,6 +59,16 @@ pub fn NumberInput(
     // (rename-inline). `use_signal` runs once per component instance; the
     // initial seed is the formatted `value` at first mount.
     let mut local_text = use_signal(|| display_value.clone());
+    // Resync `local_text` whenever the formatted external value changes (drag,
+    // keyboard nudge, sibling commit). Without this, blurring without typing
+    // would re-commit the stale mount-time value and clobber the live state.
+    // While the user is actively typing, `display_value` does not change (the
+    // external signal is unchanged until commit), so this effect does not
+    // overwrite typed text.
+    let display_for_sync = display_value.clone();
+    use_effect(use_reactive!(|display_for_sync| {
+        local_text.set(display_for_sync);
+    }));
     let input_handler = move |evt: FormEvent| {
         local_text.set(evt.value());
         if let Some(h) = &oninput {

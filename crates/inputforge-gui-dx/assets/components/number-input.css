@@ -25,7 +25,11 @@
     color: var(--color-text);
     font-family: var(--font-mono);
     padding: var(--space-2) var(--space-3);
-    width: 6ch;
+    /* Reserve 6 chars of content room so signed two-decimal values like
+       "-0.85" fit without clipping. The global `* { box-sizing: border-box }`
+       reset means a bare `width: 6ch` would include the 24px of horizontal
+       padding and leave only ~3 visible chars; the calc() compensates. */
+    width: calc(6ch + var(--space-3) * 2);
     text-align: right;
     -moz-appearance: textfield;
 }
