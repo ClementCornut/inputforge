@@ -30,6 +30,7 @@ pub(crate) enum PanelSlot {
     None,
     Devices,
     Profiles,
+    BulkMap,
 }
 
 /// GUI-only chrome state, provided once in `app_root`.

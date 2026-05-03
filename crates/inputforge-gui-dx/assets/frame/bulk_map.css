@@ -1,0 +1,8 @@
+/* Bulk-map wizard styles. Body lands in task 19. */
+/* Always declare display explicitly on flex containers in this project. */
+.if-bulk-map {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-3);
+}

@@ -4,6 +4,19 @@ use crate::frame::view_state::{PanelSlot as PanelSlotEnum, ViewState};
 
 const PANEL_SLOT_CSS: Asset = asset!("/assets/frame/panel_slot.css");
 
+enum ShellMode {
+    Standard {
+        caption: &'static str,
+        title: &'static str,
+        body: &'static str,
+        aria: &'static str,
+    },
+    Custom {
+        aria: &'static str,
+        content: Element,
+    },
+}
+
 #[component]
 pub(crate) fn PanelSlot() -> Element {
     tracing::trace!(target: "frame::render", region = "panel_slot");
@@ -16,34 +29,35 @@ pub(crate) fn PanelSlot() -> Element {
         return rsx! { Stylesheet { href: PANEL_SLOT_CSS } };
     }
 
-    // Single stable <aside> across Devices ⇄ Profiles ⇄ Calibration.
-    // Hoisting the element outside the match keeps Dioxus's diff at the
-    // text-node level on tool swap, so the entrance keyframe only fires
-    // on the genuine None → Some open, not on every Some → Some swap
-    // (which previously read as a close-and-reopen animation). F12/F13
-    // will rewrite this file end-to-end; the placeholder just gives the
-    // chrome a faithful "which tool is active" readout in the meantime.
     let calib = *via_calib.read();
-    let (caption, title, body, aria) = match s {
-        PanelSlotEnum::Devices if calib => (
-            "Panel · F12",
-            "Calibration",
-            "F12 owns content (calibration)",
-            "Calibration panel",
-        ),
-        PanelSlotEnum::Devices => (
-            "Panel · F12",
-            "Devices",
-            "F12 owns content",
-            "Devices panel",
-        ),
-        PanelSlotEnum::Profiles => (
-            "Panel · F13",
-            "Profiles",
-            "F13 owns content",
-            "Profiles panel",
-        ),
+    let mode = match s {
+        PanelSlotEnum::Devices if calib => ShellMode::Standard {
+            caption: "Panel · F12",
+            title: "Calibration",
+            body: "F12 owns content (calibration)",
+            aria: "Calibration panel",
+        },
+        PanelSlotEnum::Devices => ShellMode::Standard {
+            caption: "Panel · F12",
+            title: "Devices",
+            body: "F12 owns content",
+            aria: "Devices panel",
+        },
+        PanelSlotEnum::Profiles => ShellMode::Standard {
+            caption: "Panel · F13",
+            title: "Profiles",
+            body: "F13 owns content",
+            aria: "Profiles panel",
+        },
+        PanelSlotEnum::BulkMap => ShellMode::Custom {
+            aria: "Bulk mapping wizard",
+            content: rsx! { crate::frame::bulk_map::BulkMapPanel {} },
+        },
         PanelSlotEnum::None => unreachable!("None branch returned above"),
+    };
+
+    let aria = match &mode {
+        ShellMode::Standard { aria, .. } | ShellMode::Custom { aria, .. } => *aria,
     };
 
     rsx! {
@@ -51,11 +65,80 @@ pub(crate) fn PanelSlot() -> Element {
         aside {
             class: "if-panel-slot",
             "aria-label": "{aria}",
-            header { class: "if-panel-slot__header",
-                div { class: "if-panel-slot__caption", "{caption}" }
-                h2 { class: "if-panel-slot__title", "{title}" }
+            match mode {
+                ShellMode::Standard { caption, title, body, .. } => rsx! {
+                    header { class: "if-panel-slot__header",
+                        div { class: "if-panel-slot__caption", "{caption}" }
+                        h2 { class: "if-panel-slot__title", "{title}" }
+                    }
+                    div { class: "if-panel-slot__body", "{body}" }
+                },
+                ShellMode::Custom { content, .. } => rsx! {
+                    {content}
+                },
             }
-            div { class: "if-panel-slot__body", "{body}" }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use dioxus_ssr::render;
+
+    #[derive(Clone, Copy, Props, PartialEq)]
+    struct TestHarnessProps {
+        slot: PanelSlotEnum,
+        #[props(default)]
+        via_calibration: bool,
+    }
+
+    #[allow(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn TestHarness(props: TestHarnessProps) -> Element {
+        let editing_mode = use_signal(|| "Default".to_owned());
+        let panel_slot = use_signal(|| props.slot);
+        let via_calibration = use_signal(|| props.via_calibration);
+        let selected_mapping = use_signal(|| None);
+
+        use_context_provider(|| ViewState {
+            editing_mode,
+            panel_slot,
+            via_calibration,
+            selected_mapping,
+        });
+
+        rsx! { PanelSlot {} }
+    }
+
+    fn render_slot(slot: PanelSlotEnum) -> String {
+        let mut vdom = VirtualDom::new_with_props(
+            TestHarness,
+            TestHarnessProps {
+                slot,
+                via_calibration: false,
+            },
+        );
+        vdom.rebuild_in_place();
+        render(&vdom)
+    }
+
+    #[test]
+    fn devices_profiles_and_bulk_map_share_stable_aside_shell() {
+        for slot in [
+            PanelSlotEnum::Devices,
+            PanelSlotEnum::Profiles,
+            PanelSlotEnum::BulkMap,
+        ] {
+            let html = render_slot(slot);
+
+            assert!(
+                html.contains(r#"<aside class="if-panel-slot""#),
+                "slot {slot:?} did not render the stable panel shell: {html}"
+            );
         }
     }
 }

@@ -1,6 +1,7 @@
 //! F7 application frame: top bar, banner, status bar, panel slot, layout.
 
 mod banner;
+mod bulk_map;
 mod layout;
 mod mapping_editor;
 mod mapping_list;
