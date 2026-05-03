@@ -141,6 +141,20 @@ fn render_handles(config: &DeadzoneConfig, _state: &BodyState) -> Element {
 }
 
 fn render_hover_ring(config: &DeadzoneConfig, state: &BodyState) -> Element {
+    // Pending-split takes precedence: when a pointer-down landed on the
+    // stacked center pair, draw a hover ring on BOTH candidates so the
+    // user reads "drag direction will pick" before they commit.
+    if let Some((a, b)) = state.pending_split {
+        let p = handle_positions(config);
+        let idx_a = HandleId::ALL.iter().position(|h| *h == a).unwrap();
+        let idx_b = HandleId::ALL.iter().position(|h| *h == b).unwrap();
+        let pos_a = p[idx_a];
+        let pos_b = p[idx_b];
+        return rsx! {
+            circle { class: "if-deadzone__hover-ring", cx: "{pos_a.0}", cy: "{pos_a.1}", r: "0.085", fill: "none" }
+            circle { class: "if-deadzone__hover-ring", cx: "{pos_b.0}", cy: "{pos_b.1}", r: "0.085", fill: "none" }
+        };
+    }
     let Some(handle) = state.hovered_handle else {
         return rsx! {};
     };

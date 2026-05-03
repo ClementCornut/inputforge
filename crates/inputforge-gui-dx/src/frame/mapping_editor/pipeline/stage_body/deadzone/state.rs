@@ -59,6 +59,13 @@ pub(crate) struct BodyState {
     pub focused_handle: Option<HandleId>,
     pub pre_drag_config: Option<DeadzoneConfig>,
     pub nudge_coalesce: NudgeCoalesce<KeyKind>,
+    /// Set on a pointer-down that lands inside the hit-radius of two
+    /// handles at once (CL and CH stacked at the same x, the default
+    /// config's most common state). The first significant pointer-move
+    /// resolves the pair to a single `dragging` based on cursor direction:
+    /// rightward picks the second handle, leftward picks the first.
+    /// Cleared on resolution OR on pointer-up without movement.
+    pub pending_split: Option<(HandleId, HandleId)>,
 }
 
 #[cfg(test)]
@@ -88,5 +95,6 @@ mod tests {
         assert!(s.hovered_handle.is_none());
         assert!(s.focused_handle.is_none());
         assert!(s.pre_drag_config.is_none());
+        assert!(s.pending_split.is_none());
     }
 }

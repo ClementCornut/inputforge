@@ -99,7 +99,11 @@ fn dispatch_bridge_event(
         }
         "up" => {
             let prev = body.peek().clone();
-            if prev.dragging.is_none() {
+            // Run the up handler when there is anything to clear: a real
+            // drag, OR a deferred stacked-center pending_split that the
+            // user clicked into without moving (no dispatch in that case;
+            // the phantom-undo guard below catches it).
+            if prev.dragging.is_none() && prev.pending_split.is_none() {
                 return;
             }
             let cfg = config_signal.read();
