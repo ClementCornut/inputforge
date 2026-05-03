@@ -730,6 +730,13 @@ impl Engine {
                 self.remove_mapping(&input, &mode);
                 self.pending_output_refresh = true;
             }
+            EngineCommand::SetMappingsBulk {
+                entries,
+                snapshot_label,
+            } => {
+                self.set_mappings_bulk(&entries, snapshot_label);
+                self.pending_output_refresh = true;
+            }
         }
         Ok(())
     }
@@ -875,6 +882,100 @@ impl Engine {
                 path = %path.display(),
                 error = %e,
                 "failed to save profile after RemoveMapping",
+            );
+        }
+    }
+
+    /// Apply a bulk-map command. See `EngineCommand::SetMappingsBulk`
+    /// for the four-step contract.
+    ///
+    /// Returns `()`, matching `set_mapping`'s shape. Snapshot and save
+    /// errors surface to the user via the warnings channel rather than
+    /// `?`, because the parent command-drain loop swallows arm errors
+    /// and the user's recovery path is a manual Restore via the
+    /// snapshot index UI.
+    fn set_mappings_bulk(&self, entries: &[crate::action::BulkMapEntry], snapshot_label: String) {
+        // Step 0: clone the profile path. The read guard drops at the
+        // end of this `let`. Do not hold any state lock during
+        // `crate::snapshot::create` and `crate::snapshot::prune`,
+        // which perform disk I/O that must run lock-free (mirrors
+        // `engine/run.rs` RestoreSnapshot at lines 687-700).
+        let Some(path) = self.state.read().profile_path.clone() else {
+            tracing::warn!(target: "bulk_map", "SetMappingsBulk: no profile loaded, ignoring");
+            self.state
+                .write()
+                .warnings
+                .push("Bulk-map ignored: no profile loaded".to_owned());
+            return;
+        };
+
+        // Step 1: pre-save in-memory profile so the on-disk body
+        // matches the user's pre-bulk authored state. Without this,
+        // the snapshot in step 2 captures whatever happened to be on
+        // disk last (which may be older than the in-memory state if
+        // any caller deferred a save).
+        {
+            let state = self.state.read();
+            if let Some(profile) = state.active_profile.as_ref() {
+                if let Err(e) = profile.save(&path) {
+                    tracing::warn!(
+                        target: "bulk_map",
+                        path = %path.display(),
+                        error = ?e,
+                        "SetMappingsBulk: pre-snapshot save failed; aborting"
+                    );
+                    drop(state);
+                    self.state.write().warnings.push(
+                        "Bulk-map aborted: could not save profile before snapshot".to_owned(),
+                    );
+                    return;
+                }
+            } else {
+                return;
+            }
+        }
+
+        // Step 2: take the recovery snapshot. Abort if it fails so the
+        // user never ends up with bulk-applied mappings and no
+        // snapshot to roll back to.
+        match crate::snapshot::create(
+            &path,
+            crate::snapshot::SnapshotKind::AutoBeforeBulkMap,
+            Some(snapshot_label),
+            &self.settings.snapshot,
+        ) {
+            Ok(_) => {
+                let _ = crate::snapshot::prune(&path, &self.settings.snapshot);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    target: "bulk_map",
+                    error = ?e,
+                    "SetMappingsBulk: AutoBeforeBulkMap snapshot failed; aborting apply"
+                );
+                self.state
+                    .write()
+                    .warnings
+                    .push("Bulk-map aborted: could not create recovery snapshot".to_owned());
+                return;
+            }
+        }
+
+        // Step 3: apply upserts and persist (second save).
+        let mut state = self.state.write();
+        let Some(profile) = state.active_profile.as_mut() else {
+            return;
+        };
+        profile.set_mappings_bulk(entries);
+        if let Err(e) = profile.save(&path) {
+            tracing::warn!(
+                target: "bulk_map",
+                path = %path.display(),
+                error = ?e,
+                "SetMappingsBulk: post-bulk save failed; in-memory state holds bulk; recovery via Restore"
+            );
+            state.warnings.push(
+                "Bulk-map applied in memory but disk save failed; reload to revert".to_owned(),
             );
         }
     }

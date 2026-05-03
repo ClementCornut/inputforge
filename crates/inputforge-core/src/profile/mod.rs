@@ -251,6 +251,9 @@ impl Profile {
     /// persistence; see `EngineCommand::SetMappingsBulk`.
     pub fn set_mappings_bulk(&mut self, entries: &[crate::action::BulkMapEntry]) {
         for entry in entries {
+            if matches!(entry.input, InputAddress::Unbound) {
+                continue;
+            }
             let actions = vec![Action::MapToVJoy {
                 output: entry.output.clone(),
             }];
