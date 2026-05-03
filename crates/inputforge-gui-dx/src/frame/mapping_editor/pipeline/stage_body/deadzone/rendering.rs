@@ -43,13 +43,19 @@ pub(crate) fn render_plot(
                 {render_axis_cross()}
                 {render_identity()}
                 {render_curve(config)}
+                // Live signal sits BELOW the handles so a coincident input
+                // value (input ≈ 0 over the stacked CL/CH at default config,
+                // or held against a saturation rail) does not occlude the
+                // handle the user wants to grab. The 0.07-radius halo extends
+                // ~0.05 past the 0.022 handle perimeter, so the green wash
+                // still reads as the live channel without hiding the disc.
+                if let Some((input, output)) = live_pair {
+                    {render_live(input, output)}
+                }
                 {render_handles(config, state)}
                 {render_hover_ring(config, state)}
                 {render_drag_halo(config, state)}
                 {render_focus_ring(config, state)}
-                if let Some((input, output)) = live_pair {
-                    {render_live(input, output)}
-                }
             }
             {render_tick_labels()}
         }
