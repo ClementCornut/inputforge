@@ -48,7 +48,10 @@ use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::pipeline::at_path;
 use crate::frame::mapping_editor::pipeline::stage::stage_summary_for;
-use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
+use crate::frame::mapping_editor::pipeline::stage_body::instruments::bridge::{
+    BridgeEvent, mount_mouse_bridge, stage_id_dom_id,
+};
+use crate::frame::mapping_editor::undo_log::StageId;
 
 use self::state::{BodyState, extract_anchors};
 
@@ -65,31 +68,6 @@ const CURVE_SAMPLE_COUNT: usize = 200;
 // mount `Stylesheet { ... }` in this body's `rsx!`. The theme module is
 // the single owner of `<link rel="stylesheet">` mounts.
 
-/// Build a stable DOM id for a `ResponseCurveBody`'s plot wrapper.
-///
-/// `MountedData::get_client_rect()` does not return a working rect on the
-/// Dioxus 0.7 desktop target (the same limitation noted in
-/// `top_bar/mode_tabs/mod.rs:179`). `on_mounted` instead calls
-/// `document::eval` with `getBoundingClientRect()`, so the wrapper div needs
-/// a unique id selectable from JS. The id is derived from `stage_id` so each
-/// curve body on screen queries its own rect even when multiple stages of
-/// the same kind are mounted (e.g. a top-level curve plus one inside a
-/// Conditional branch).
-fn stage_id_dom_id(stage_id: &StageId) -> String {
-    use std::fmt::Write as _;
-    let mut s = String::from("if-curve-plot");
-    for seg in &stage_id.0 {
-        match seg {
-            StageIdSegment::Index(n) => {
-                let _ = write!(s, "-i{n}");
-            }
-            StageIdSegment::IfTrue => s.push_str("-t"),
-            StageIdSegment::IfFalse => s.push_str("-f"),
-        }
-    }
-    s
-}
-
 /// Project the curve stored at `stage_id` from the current root `actions`.
 ///
 /// Falls back to `fallback` when projection fails (e.g., transient mid-edit
@@ -104,119 +82,6 @@ fn project_stage_curve(
         Some(Action::ResponseCurve { curve }) => curve.clone(),
         _ => fallback.clone(),
     }
-}
-
-// ---------------------------------------------------------------------------
-// JS-bridge mouse-event capture
-// ---------------------------------------------------------------------------
-
-/// JavaScript installed by `on_mounted` via `document::eval`. Captures mouse
-/// events at the document level (where they fire reliably in `WebView2`) and
-/// forwards them to Rust as `BridgeEvent` JSON payloads. Coords are coerced to
-/// integers (`| 0`) to sidestep the float-vs-integer deserialization bug
-/// tracked in Dioxus issue #4706.
-///
-/// `__PLOT_ID__` is replaced with the wrapper div's stage-id-derived DOM id so
-/// each curve body's listeners scope to its own plot rect. A `dragging` flag
-/// keeps move/up firing when the cursor leaves the plot mid-drag (otherwise
-/// the user could lose the drag by exiting the plot bounds).
-///
-/// Listener-scoping rule: events that fire only inside the plot
-/// (`mousedown`, `dblclick`, `contextmenu`) attach to `plotEl`, so the browser
-/// auto-collects them when the wrapper div is removed from the DOM on
-/// component unmount. `mousemove` and `mouseup` MUST stay on `document` because
-/// the user can drag past the plot bounds; those two carry an explicit
-/// `getElementById(...)` null-check so a stale closure self-disables once its
-/// target element is gone. Without that guard, listeners would accumulate
-/// across mapping switches / stage collapse cycles and every doc-level mouse
-/// event would fan out to N stale closures.
-const BRIDGE_JS_TEMPLATE: &str = r"
-    var plotEl = document.getElementById('__PLOT_ID__');
-    if (!plotEl) return;
-    var plotId = '__PLOT_ID__';
-    var dragging = false;
-
-    // Re-read getBoundingClientRect on EVERY event. Caching the mount-time
-    // rect breaks as soon as the page scrolls, the toolbar layout shifts, or
-    // the window resizes; the viewBox coords Rust computes would be stale,
-    // and clicks would map to whatever offset the rect drifted to (the
-    // symptom: 'I can only place points in the bottom-left quarter'). The
-    // live rect (rl, rt, rs) is sent with every payload so dispatch_bridge_event
-    // builds a fresh PlotRect for each handler invocation.
-    var sendEvt = function(kind, e) {
-        var r = plotEl.getBoundingClientRect();
-        dioxus.send({
-            kind: kind,
-            x: e.clientX | 0,
-            y: e.clientY | 0,
-            rl: r.left,
-            rt: r.top,
-            rs: Math.min(r.width, r.height),
-        });
-    };
-
-    var inPlot = function(e) {
-        var r = plotEl.getBoundingClientRect();
-        return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
-    };
-
-    plotEl.addEventListener('mousedown', function(e) {
-        if (e.button !== 0) return;
-        dragging = true;
-        sendEvt('down', e);
-    });
-
-    document.addEventListener('mousemove', function(e) {
-        if (!document.getElementById(plotId)) return;
-        if (!dragging && !inPlot(e)) return;
-        sendEvt('move', e);
-    });
-
-    document.addEventListener('mouseup', function(e) {
-        if (!document.getElementById(plotId)) return;
-        if (e.button !== 0) return;
-        if (!dragging) return;
-        dragging = false;
-        sendEvt('up', e);
-    });
-
-    plotEl.addEventListener('dblclick', function(e) {
-        sendEvt('dbl', e);
-    });
-
-    plotEl.addEventListener('contextmenu', function(e) {
-        e.preventDefault();
-        // Right-click during a left-drag must not leave `dragging` stuck true.
-        // Synthesize an 'up' so dispatch_bridge_event runs handle_pointer_up
-        // (commits or reverts the drag); then deliver the 'ctx' for the
-        // remove-anchor path.
-        if (dragging) {
-            dragging = false;
-            sendEvt('up', e);
-        }
-        sendEvt('ctx', e);
-    });
-";
-
-/// Wire payload for the JS bridge. `x`/`y` are cursor viewport-CSS-pixel
-/// coords; `rl`/`rt`/`rs` are the plot wrapper's live `getBoundingClientRect`
-/// (left, top, smaller-of-width/height). Sending the live rect with every
-/// event prevents stale-rect drift from misprojecting the cursor when the page
-/// scrolls or the surrounding layout shifts. Defaults keep deserialization
-/// permissive so a malformed message never crashes the dispatcher loop.
-#[derive(Debug, serde::Deserialize)]
-struct BridgeEvent {
-    kind: String,
-    #[serde(default)]
-    x: f64,
-    #[serde(default)]
-    y: f64,
-    #[serde(default)]
-    rl: f64,
-    #[serde(default)]
-    rt: f64,
-    #[serde(default)]
-    rs: f64,
 }
 
 /// Single-message dispatcher invoked by the eval loop in `on_mounted`. Routes
@@ -554,44 +419,34 @@ pub(crate) fn ResponseCurveBody(
     //
     // Workaround: install raw JS event listeners at the document level via
     // `document::eval`, capture coords as integers (`| 0`), and stream them
-    // back through the eval `Channel` to a Rust dispatcher task that calls the
-    // existing pure handlers in `interaction.rs`. Bypasses the broken delegator
-    // entirely. `onkeydown` / `onfocusout` continue to work via the normal
-    // Dioxus path and remain on the wrapper div.
-    let plot_dom_id = stage_id_dom_id(&stage_id);
-    let plot_dom_id_for_mount = plot_dom_id.clone();
+    // back through the eval `Channel` to a Rust dispatcher closure that calls
+    // the existing pure handlers in `interaction.rs`. Bypasses the broken
+    // delegator entirely. `onkeydown` / `onfocusout` continue to work via the
+    // normal Dioxus path and remain on the wrapper div. The shared
+    // `mount_mouse_bridge` infrastructure (JS install, listener cleanup, event
+    // parse, rect projection) lives in `instruments::bridge`; the per-editor
+    // dispatch closure passed below is the F10-shaped portion that owns the
+    // signals and calls `dispatch_bridge_event`.
+    let plot_dom_id = stage_id_dom_id("if-curve-plot", &stage_id);
     let curve_for_bridge = curve.clone();
     let mapping_key_for_bridge = mapping_key_for_evt.clone();
     let stage_id_for_bridge = stage_id_for_evt.clone();
     let cmd_tx_for_bridge = cmd_tx.clone();
-    let on_mounted = move |_evt: MountedEvent| {
-        let id = plot_dom_id_for_mount.clone();
-        let curve_seed = curve_for_bridge.clone();
-        let mapping_key = mapping_key_for_bridge.clone();
-        let stage_id = stage_id_for_bridge.clone();
-        let cmd_tx = cmd_tx_for_bridge.clone();
-        spawn(async move {
-            let js = BRIDGE_JS_TEMPLATE.replace("__PLOT_ID__", &id);
-            let mut handle = document::eval(&js);
-            loop {
-                let Ok(payload) = handle.recv::<BridgeEvent>().await else {
-                    break;
-                };
-                dispatch_bridge_event(
-                    &payload,
-                    body,
-                    working_curve,
-                    config_signal,
-                    undo_log,
-                    malformed_hints,
-                    &mapping_key,
-                    &stage_id,
-                    &curve_seed,
-                    &cmd_tx,
-                );
-            }
-        });
+    let dispatch = move |payload: BridgeEvent| {
+        dispatch_bridge_event(
+            &payload,
+            body,
+            working_curve,
+            config_signal,
+            undo_log,
+            malformed_hints,
+            &mapping_key_for_bridge,
+            &stage_id_for_bridge,
+            &curve_for_bridge,
+            &cmd_tx_for_bridge,
+        );
     };
+    let on_mounted = mount_mouse_bridge(plot_dom_id.clone(), dispatch);
 
     // --- on_key ---
     // Routes a normalized `KeyInput` through `keyboard::handle_key`, updates
