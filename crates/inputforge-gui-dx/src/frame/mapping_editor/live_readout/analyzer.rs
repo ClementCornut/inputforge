@@ -226,6 +226,32 @@ fn append_non_conditional_actions(actions: &[Action], out: &mut Vec<Action>) {
     );
 }
 
+fn compute_is_active(chain: &[ChainStep]) -> bool {
+    chain.iter().all(|step| match step {
+        ChainStep::Merge { .. } => true,
+        ChainStep::Conditional {
+            evaluated, branch, ..
+        } => *evaluated == matches!(branch, Branch::IfTrue),
+    })
+}
+
+fn terminal_polarity(
+    chain: &[ChainStep],
+    primary: &InputAddress,
+    state: &AppState,
+) -> AxisPolarity {
+    chain
+        .iter()
+        .rev()
+        .find_map(|step| match step {
+            ChainStep::Merge {
+                polarity_at_step, ..
+            } => Some(*polarity_at_step),
+            ChainStep::Conditional { .. } => None,
+        })
+        .unwrap_or_else(|| state.input_cache.get_axis(primary).1)
+}
+
 fn walk(
     context: &AnalysisContext<'_>,
     actions: &[Action],
@@ -262,18 +288,20 @@ fn walk(
                 });
             }
             Action::MapToVJoy { output } => {
+                let is_active = compute_is_active(chain_stack);
+                let polarity = terminal_polarity(chain_stack, context.primary, context.state);
                 model.outputs.push(OutputDescriptor {
                     destination: OutputDestination::VJoy(output.clone()),
                     chain: chain_stack.clone(),
-                    is_active: true,
-                    polarity: AxisPolarity::Bipolar,
+                    is_active,
+                    polarity,
                 });
             }
             Action::MapToKeyboard { key } => {
                 model.outputs.push(OutputDescriptor {
                     destination: OutputDestination::Keyboard(key.clone()),
                     chain: chain_stack.clone(),
-                    is_active: true,
+                    is_active: compute_is_active(chain_stack),
                     polarity: AxisPolarity::Bipolar,
                 });
             }
@@ -816,7 +844,7 @@ mod walker_tests {
                         evaluated: false,
                         branch: Branch::IfTrue,
                     }],
-                    is_active: true,
+                    is_active: false,
                     polarity: AxisPolarity::Bipolar,
                 },
                 OutputDescriptor {
@@ -874,10 +902,87 @@ mod walker_tests {
                         evaluated: true,
                         branch: Branch::IfFalse,
                     }],
-                    is_active: true,
+                    is_active: false,
                     polarity: AxisPolarity::Bipolar,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn is_active_true_when_predicate_matches_branch() {
+        let primary = input(0);
+        let true_output = vjoy_axis(VJoyAxis::X);
+        let false_output = vjoy_axis(VJoyAxis::Y);
+        let mut state = AppState::new();
+        set_button(&mut state, &button(0), true);
+        let actions = vec![Action::Conditional {
+            condition: condition(),
+            if_true: vec![Action::MapToVJoy {
+                output: true_output,
+            }],
+            if_false: vec![Action::MapToVJoy {
+                output: false_output,
+            }],
+        }];
+
+        let model = analyze_actions_with_state(&actions, &primary, &state);
+
+        assert_eq!(model.outputs.len(), 2);
+        assert!(model.outputs[0].is_active);
+        assert!(!model.outputs[1].is_active);
+    }
+
+    #[test]
+    fn is_active_nested_path_and_evaluation() {
+        let primary = input(0);
+        let active_output = vjoy_axis(VJoyAxis::X);
+        let inactive_output = vjoy_axis(VJoyAxis::Y);
+        let inner_condition = Condition::ButtonPressed { input: button(1) };
+        let mut state = AppState::new();
+        set_button(&mut state, &button(0), true);
+        set_button(&mut state, &button(1), false);
+        let actions = vec![Action::Conditional {
+            condition: condition(),
+            if_true: vec![Action::Conditional {
+                condition: inner_condition,
+                if_true: vec![Action::MapToVJoy {
+                    output: inactive_output,
+                }],
+                if_false: vec![Action::MapToVJoy {
+                    output: active_output,
+                }],
+            }],
+            if_false: Vec::new(),
+        }];
+
+        let model = analyze_actions_with_state(&actions, &primary, &state);
+
+        assert_eq!(model.outputs.len(), 2);
+        assert!(!model.outputs[0].is_active);
+        assert!(model.outputs[1].is_active);
+    }
+
+    #[test]
+    fn polarity_no_merges_inherits_primary() {
+        let primary = input(0);
+        let output = vjoy_axis(VJoyAxis::X);
+        let mut state = AppState::new();
+        set_axis(&mut state, &primary, 0.25, AxisPolarity::Unipolar);
+        let actions = vec![Action::MapToVJoy {
+            output: output.clone(),
+        }];
+
+        let model = analyze_actions_with_state(&actions, &primary, &state);
+
+        assert_eq!(
+            model.outputs,
+            vec![OutputDescriptor {
+                destination: OutputDestination::VJoy(output),
+                chain: Vec::new(),
+                is_active: true,
+                polarity: AxisPolarity::Unipolar,
+            }]
         );
     }
 
