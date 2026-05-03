@@ -1,0 +1,125 @@
+.if-deadzone {
+  --color-deadzone-zone-sat: var(--color-error);
+  --color-deadzone-zone-ramp: var(--color-primary);
+  --color-deadzone-zone-dead: var(--color-text-subtle);
+  --color-deadzone-curve: var(--color-primary);
+  --color-deadzone-handle-fill: var(--color-text);
+  --color-deadzone-handle-stroke: var(--color-bg-sunken);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  width: 100%;
+}
+
+.if-deadzone__toolbar {
+  display: flex;
+  flex-direction: row;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.if-deadzone__toolbar-spacer { flex: 1; }
+
+.if-deadzone__plot-frame {
+  display: flex;
+  position: relative;
+  width: clamp(240px, 100%, 480px);
+  aspect-ratio: 1 / 1;
+  cursor: default;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.if-deadzone__plot-frame:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+.if-deadzone__plot-frame[data-hovered="true"] { cursor: pointer; }
+.if-deadzone__plot-frame[data-dragging="true"] { cursor: grabbing; }
+
+.if-deadzone__plot {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.if-deadzone__bg { fill: var(--color-bg-sunken); }
+
+.if-deadzone__zone--sat  { fill: var(--color-deadzone-zone-sat);  opacity: 0.12; }
+.if-deadzone__zone--ramp { fill: var(--color-deadzone-zone-ramp); opacity: 0.06; }
+.if-deadzone__zone--dead { fill: var(--color-deadzone-zone-dead); opacity: 0.10; }
+
+.if-deadzone__grid-major { stroke: var(--instr-grid-major); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.if-deadzone__axis-cross { stroke: var(--instr-axis-cross); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.if-deadzone__identity {
+  stroke: var(--instr-identity-stroke);
+  stroke-width: 1px;
+  stroke-dasharray: 4 6;
+  vector-effect: non-scaling-stroke;
+  fill: none;
+  opacity: 0.55;
+}
+
+.if-deadzone__path {
+  stroke: var(--color-deadzone-curve);
+  stroke-width: 1.75px;
+  stroke-linejoin: round;
+  filter: url(#if-instr-glow);
+  vector-effect: non-scaling-stroke;
+  fill: none;
+}
+
+.if-deadzone__handle {
+  fill: var(--color-deadzone-handle-fill);
+  stroke: var(--color-deadzone-handle-stroke);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+.if-deadzone__hover-ring {
+  stroke: var(--color-border-focus);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.55;
+}
+.if-deadzone__drag-halo {
+  fill: var(--color-border-focus);
+  opacity: 0.30;
+}
+.if-deadzone__focus-ring {
+  stroke: var(--color-border-focus);
+  stroke-width: 1.5px;
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
+  fill: none;
+}
+.if-deadzone__live-guide {
+  stroke: var(--color-live);
+  stroke-width: 0.5px;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.5;
+}
+.if-deadzone__live-dot-halo { fill: var(--color-live); opacity: 0.18; }
+.if-deadzone__live-dot {
+  fill: var(--color-live);
+  filter: url(#if-instr-glow);
+}
+.if-deadzone__tick-label {
+  font-family: var(--font-mono);
+  /* Unit-less: SVG resolves font-size in user units inside the viewBox.
+     A `px` suffix here regresses to clipping (the px is interpreted as
+     CSS pixels, far larger than 0.05 user units). Mirrors the F10 lesson
+     at response_curve.css:132. */
+  font-size: 0.05;
+  fill: var(--color-text-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .if-deadzone * {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
