@@ -2,9 +2,11 @@
 
 #![expect(
     dead_code,
-    reason = "Task 4 defines the readout model before the analyzer walker uses it."
+    reason = "Task 5 emits only inputs and outputs; later tasks populate chains and predicates."
 )]
 
+use inputforge_core::action::Action;
+use inputforge_core::state::AppState;
 use inputforge_core::types::{AxisPolarity, InputAddress, KeyCombo, MergeOp, OutputAddress};
 
 /// Maximum action nesting analyzed for live readout.
@@ -114,6 +116,60 @@ pub(super) enum PredicateKind {
     },
 }
 
+pub(super) fn analyze(
+    actions: &[Action],
+    primary: &InputAddress,
+    _state: &AppState,
+) -> LiveReadoutModel {
+    let mut model = LiveReadoutModel {
+        pipeline_inputs: vec![primary.clone()],
+        predicates: Vec::new(),
+        outputs: Vec::new(),
+    };
+    walk(actions, &mut model, 0);
+    model
+}
+
+fn walk(actions: &[Action], model: &mut LiveReadoutModel, depth: usize) {
+    if depth > MAX_NESTED_ACTION_DEPTH {
+        return;
+    }
+
+    for action in actions {
+        match action {
+            Action::MergeAxis { second_input, .. } => {
+                model.pipeline_inputs.push(second_input.clone());
+            }
+            Action::MapToVJoy { output } => {
+                model.outputs.push(OutputDescriptor {
+                    destination: OutputDestination::VJoy(output.clone()),
+                    chain: Vec::new(),
+                    is_active: true,
+                    polarity: AxisPolarity::Bipolar,
+                });
+            }
+            Action::MapToKeyboard { key } => {
+                model.outputs.push(OutputDescriptor {
+                    destination: OutputDestination::Keyboard(key.clone()),
+                    chain: Vec::new(),
+                    is_active: true,
+                    polarity: AxisPolarity::Bipolar,
+                });
+            }
+            Action::Conditional {
+                if_true, if_false, ..
+            } => {
+                walk(if_true, model, depth + 1);
+                walk(if_false, model, depth + 1);
+            }
+            Action::ResponseCurve { .. }
+            | Action::Deadzone { .. }
+            | Action::Invert
+            | Action::ChangeMode { .. } => {}
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,5 +217,201 @@ mod tests {
                 polarity_at_step: AxisPolarity::Bipolar,
             }
         );
+    }
+}
+
+#[cfg(test)]
+mod walker_tests {
+    use super::*;
+    use inputforge_core::action::Condition;
+    use inputforge_core::types::{DeviceId, InputId, KeyModifier, OutputId, VJoyAxis};
+
+    fn input(index: u8) -> InputAddress {
+        InputAddress::Bound {
+            device: DeviceId("stick".to_owned()),
+            input: InputId::Axis { index },
+        }
+    }
+
+    fn button(index: u8) -> InputAddress {
+        InputAddress::Bound {
+            device: DeviceId("stick".to_owned()),
+            input: InputId::Button { index },
+        }
+    }
+
+    fn vjoy_axis(axis: VJoyAxis) -> OutputAddress {
+        OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: axis },
+        }
+    }
+
+    fn keyboard_combo(key: &str) -> KeyCombo {
+        KeyCombo {
+            key: key.to_owned(),
+            modifiers: vec![KeyModifier::Ctrl, KeyModifier::Shift],
+        }
+    }
+
+    fn condition() -> Condition {
+        Condition::ButtonPressed { input: button(0) }
+    }
+
+    fn nested_conditional(levels: usize, terminal: Action) -> Action {
+        let mut action = terminal;
+        for _ in 0..levels {
+            action = Action::Conditional {
+                condition: condition(),
+                if_true: vec![action],
+                if_false: Vec::new(),
+            };
+        }
+        action
+    }
+
+    fn analyze_actions(actions: &[Action], primary: &InputAddress) -> LiveReadoutModel {
+        analyze(actions, primary, &AppState::new())
+    }
+
+    #[test]
+    fn empty_actions_yields_only_primary_input() {
+        let primary = input(0);
+
+        let model = analyze_actions(&[], &primary);
+
+        assert_eq!(model.pipeline_inputs, vec![primary]);
+        assert!(model.predicates.is_empty());
+        assert!(model.outputs.is_empty());
+    }
+
+    #[test]
+    fn stacked_merges_emit_primary_plus_secondaries_in_order() {
+        let primary = input(0);
+        let second = input(1);
+        let third = input(2);
+        let actions = vec![
+            Action::MergeAxis {
+                second_input: second.clone(),
+                operation: MergeOp::Average,
+            },
+            Action::MergeAxis {
+                second_input: third.clone(),
+                operation: MergeOp::Maximum,
+            },
+        ];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(model.pipeline_inputs, vec![primary, second, third]);
+        assert!(model.outputs.is_empty());
+    }
+
+    #[test]
+    fn sibling_outputs_yield_one_descriptor_each() {
+        let primary = input(0);
+        let first = vjoy_axis(VJoyAxis::X);
+        let second = vjoy_axis(VJoyAxis::Y);
+        let actions = vec![
+            Action::MapToVJoy {
+                output: first.clone(),
+            },
+            Action::MapToVJoy {
+                output: second.clone(),
+            },
+        ];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(model.outputs.len(), 2);
+        assert_eq!(
+            model.outputs[0],
+            OutputDescriptor {
+                destination: OutputDestination::VJoy(first),
+                chain: Vec::new(),
+                is_active: true,
+                polarity: AxisPolarity::Bipolar,
+            }
+        );
+        assert_eq!(
+            model.outputs[1],
+            OutputDescriptor {
+                destination: OutputDestination::VJoy(second),
+                chain: Vec::new(),
+                is_active: true,
+                polarity: AxisPolarity::Bipolar,
+            }
+        );
+    }
+
+    #[test]
+    fn keyboard_output_yields_keyboard_destination() {
+        let primary = input(0);
+        let key = keyboard_combo("F1");
+        let actions = vec![Action::MapToKeyboard { key: key.clone() }];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(
+            model.outputs,
+            vec![OutputDescriptor {
+                destination: OutputDestination::Keyboard(key),
+                chain: Vec::new(),
+                is_active: true,
+                polarity: AxisPolarity::Bipolar,
+            }]
+        );
+    }
+
+    #[test]
+    fn conditional_outputs_in_both_branches_are_emitted() {
+        let primary = input(0);
+        let true_output = vjoy_axis(VJoyAxis::X);
+        let false_output = vjoy_axis(VJoyAxis::Y);
+        let actions = vec![Action::Conditional {
+            condition: condition(),
+            if_true: vec![Action::MapToVJoy {
+                output: true_output.clone(),
+            }],
+            if_false: vec![Action::MapToVJoy {
+                output: false_output.clone(),
+            }],
+        }];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(
+            model.outputs,
+            vec![
+                OutputDescriptor {
+                    destination: OutputDestination::VJoy(true_output),
+                    chain: Vec::new(),
+                    is_active: true,
+                    polarity: AxisPolarity::Bipolar,
+                },
+                OutputDescriptor {
+                    destination: OutputDestination::VJoy(false_output),
+                    chain: Vec::new(),
+                    is_active: true,
+                    polarity: AxisPolarity::Bipolar,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn walker_caps_at_max_nested_depth() {
+        let primary = input(0);
+        let actions = vec![nested_conditional(
+            MAX_NESTED_ACTION_DEPTH + 1,
+            Action::MapToVJoy {
+                output: vjoy_axis(VJoyAxis::X),
+            },
+        )];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(model.pipeline_inputs, vec![primary]);
+        assert!(model.outputs.is_empty());
     }
 }
