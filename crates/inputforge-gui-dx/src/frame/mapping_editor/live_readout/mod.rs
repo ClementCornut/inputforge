@@ -23,6 +23,7 @@ use inputforge_core::types::{InputAddress, MergeOp, OutputAddress};
 use crate::context::AppContext;
 use crate::frame::mapping_list::source_label;
 
+mod analyzer;
 mod in_block;
 mod value_helpers;
 
