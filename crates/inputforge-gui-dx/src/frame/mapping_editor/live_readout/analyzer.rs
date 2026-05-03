@@ -6,7 +6,9 @@
 )]
 
 use inputforge_core::action::Action;
-use inputforge_core::pipeline::{BranchStep, InputCache, evaluate_actions_through_path};
+use inputforge_core::pipeline::{
+    BranchStep, InputCache, evaluate_actions_through_path, evaluate_condition,
+};
 use inputforge_core::state::AppState;
 use inputforge_core::types::{AxisPolarity, InputAddress, KeyCombo, MergeOp, OutputAddress};
 
@@ -276,13 +278,29 @@ fn walk(
                 });
             }
             Action::Conditional {
-                if_true, if_false, ..
+                condition,
+                if_true,
+                if_false,
             } => {
+                let condition_label = format!("{condition:?}");
+                let evaluated = evaluate_condition(condition, &context.state.input_cache);
+
                 branch_path.push(BranchStep::IfTrue(i));
+                chain_stack.push(ChainStep::Conditional {
+                    condition_label: condition_label.clone(),
+                    evaluated,
+                    branch: Branch::IfTrue,
+                });
                 walk(context, if_true, model, chain_stack, branch_path, depth + 1);
+                chain_stack.pop();
                 branch_path.pop();
 
                 branch_path.push(BranchStep::IfFalse(i));
+                chain_stack.push(ChainStep::Conditional {
+                    condition_label,
+                    evaluated,
+                    branch: Branch::IfFalse,
+                });
                 walk(
                     context,
                     if_false,
@@ -291,6 +309,7 @@ fn walk(
                     branch_path,
                     depth + 1,
                 );
+                chain_stack.pop();
                 branch_path.pop();
             }
             Action::ResponseCurve { .. }
@@ -596,11 +615,17 @@ mod walker_tests {
             encoded_value: 0.4,
             polarity_at_step: AxisPolarity::Bipolar,
         };
+        let condition_step = ChainStep::Conditional {
+            condition_label: format!("{:?}", condition()),
+            evaluated: false,
+            branch: Branch::IfTrue,
+        };
         assert_eq!(model.outputs.len(), 3);
         assert_eq!(
             model.outputs[0].chain,
             vec![
                 pre_split_step.clone(),
+                condition_step,
                 ChainStep::Merge {
                     operation: MergeOp::Average,
                     secondary_input: nested,
@@ -609,7 +634,17 @@ mod walker_tests {
                 },
             ]
         );
-        assert_eq!(model.outputs[1].chain, vec![pre_split_step.clone()]);
+        assert_eq!(
+            model.outputs[1].chain,
+            vec![
+                pre_split_step.clone(),
+                ChainStep::Conditional {
+                    condition_label: format!("{:?}", condition()),
+                    evaluated: false,
+                    branch: Branch::IfFalse,
+                },
+            ]
+        );
         assert_eq!(model.outputs[2].chain, vec![pre_split_step]);
     }
 
@@ -757,8 +792,10 @@ mod walker_tests {
         let primary = input(0);
         let true_output = vjoy_axis(VJoyAxis::X);
         let false_output = vjoy_axis(VJoyAxis::Y);
+        let test_condition = condition();
+        let condition_label = format!("{test_condition:?}");
         let actions = vec![Action::Conditional {
-            condition: condition(),
+            condition: test_condition,
             if_true: vec![Action::MapToVJoy {
                 output: true_output.clone(),
             }],
@@ -774,17 +811,158 @@ mod walker_tests {
             vec![
                 OutputDescriptor {
                     destination: OutputDestination::VJoy(true_output),
-                    chain: Vec::new(),
+                    chain: vec![ChainStep::Conditional {
+                        condition_label: condition_label.clone(),
+                        evaluated: false,
+                        branch: Branch::IfTrue,
+                    }],
                     is_active: true,
                     polarity: AxisPolarity::Bipolar,
                 },
                 OutputDescriptor {
                     destination: OutputDestination::VJoy(false_output),
-                    chain: Vec::new(),
+                    chain: vec![ChainStep::Conditional {
+                        condition_label,
+                        evaluated: false,
+                        branch: Branch::IfFalse,
+                    }],
                     is_active: true,
                     polarity: AxisPolarity::Bipolar,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn conditional_branches_record_distinct_chain_steps() {
+        let primary = input(0);
+        let true_output = vjoy_axis(VJoyAxis::X);
+        let false_output = vjoy_axis(VJoyAxis::Y);
+        let test_condition = condition();
+        let condition_label = format!("{test_condition:?}");
+        let mut state = AppState::new();
+        set_button(&mut state, &button(0), true);
+        let actions = vec![Action::Conditional {
+            condition: test_condition,
+            if_true: vec![Action::MapToVJoy {
+                output: true_output.clone(),
+            }],
+            if_false: vec![Action::MapToVJoy {
+                output: false_output.clone(),
+            }],
+        }];
+
+        let model = analyze_actions_with_state(&actions, &primary, &state);
+
+        assert_eq!(
+            model.outputs,
+            vec![
+                OutputDescriptor {
+                    destination: OutputDestination::VJoy(true_output),
+                    chain: vec![ChainStep::Conditional {
+                        condition_label: condition_label.clone(),
+                        evaluated: true,
+                        branch: Branch::IfTrue,
+                    }],
+                    is_active: true,
+                    polarity: AxisPolarity::Bipolar,
+                },
+                OutputDescriptor {
+                    destination: OutputDestination::VJoy(false_output),
+                    chain: vec![ChainStep::Conditional {
+                        condition_label,
+                        evaluated: true,
+                        branch: Branch::IfFalse,
+                    }],
+                    is_active: true,
+                    polarity: AxisPolarity::Bipolar,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn nested_conditional_records_two_chain_steps() {
+        let primary = input(0);
+        let output = vjoy_axis(VJoyAxis::X);
+        let outer_condition = condition();
+        let inner_condition = Condition::ButtonReleased { input: button(1) };
+        let outer_label = format!("{outer_condition:?}");
+        let inner_label = format!("{inner_condition:?}");
+        let mut state = AppState::new();
+        set_button(&mut state, &button(0), true);
+        set_button(&mut state, &button(1), false);
+        let actions = vec![Action::Conditional {
+            condition: outer_condition,
+            if_true: vec![Action::Conditional {
+                condition: inner_condition,
+                if_true: vec![Action::MapToVJoy {
+                    output: output.clone(),
+                }],
+                if_false: Vec::new(),
+            }],
+            if_false: Vec::new(),
+        }];
+
+        let model = analyze_actions_with_state(&actions, &primary, &state);
+
+        assert_eq!(
+            model.outputs,
+            vec![OutputDescriptor {
+                destination: OutputDestination::VJoy(output),
+                chain: vec![
+                    ChainStep::Conditional {
+                        condition_label: outer_label,
+                        evaluated: true,
+                        branch: Branch::IfTrue,
+                    },
+                    ChainStep::Conditional {
+                        condition_label: inner_label,
+                        evaluated: true,
+                        branch: Branch::IfTrue,
+                    },
+                ],
+                is_active: true,
+                polarity: AxisPolarity::Bipolar,
+            }]
+        );
+    }
+
+    #[test]
+    fn conditional_evaluated_uses_input_cache() {
+        let primary = input(0);
+        let watched_axis = input(1);
+        let output = vjoy_axis(VJoyAxis::X);
+        let test_condition = Condition::AxisInRange {
+            input: watched_axis.clone(),
+            min: 0.25,
+            max: 0.75,
+        };
+        let condition_label = format!("{test_condition:?}");
+        let mut state = AppState::new();
+        set_axis(&mut state, &watched_axis, 0.5, AxisPolarity::Bipolar);
+        let actions = vec![Action::Conditional {
+            condition: test_condition,
+            if_true: vec![Action::MapToVJoy {
+                output: output.clone(),
+            }],
+            if_false: Vec::new(),
+        }];
+
+        let model = analyze_actions_with_state(&actions, &primary, &state);
+
+        assert_eq!(
+            model.outputs,
+            vec![OutputDescriptor {
+                destination: OutputDestination::VJoy(output),
+                chain: vec![ChainStep::Conditional {
+                    condition_label,
+                    evaluated: true,
+                    branch: Branch::IfTrue,
+                }],
+                is_active: true,
+                polarity: AxisPolarity::Bipolar,
+            }]
         );
     }
 
