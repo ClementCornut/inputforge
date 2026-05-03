@@ -12,6 +12,8 @@ use inputforge_core::pipeline::{
 use inputforge_core::state::AppState;
 use inputforge_core::types::{AxisPolarity, InputAddress, KeyCombo, MergeOp, OutputAddress};
 
+use crate::context::ConfigSnapshot;
+
 /// Maximum action nesting analyzed for live readout.
 ///
 /// This is high enough for editor built pipelines while bounding future
@@ -123,6 +125,7 @@ pub(super) fn analyze(
     actions: &[Action],
     primary: &InputAddress,
     state: &AppState,
+    cfg: &ConfigSnapshot,
 ) -> LiveReadoutModel {
     let mut model = LiveReadoutModel {
         pipeline_inputs: vec![primary.clone()],
@@ -133,6 +136,7 @@ pub(super) fn analyze(
         top_level: actions,
         primary,
         state,
+        cfg,
     };
     let mut chain_stack = Vec::new();
     let mut branch_path = Vec::new();
@@ -151,6 +155,7 @@ struct AnalysisContext<'a> {
     top_level: &'a [Action],
     primary: &'a InputAddress,
     state: &'a AppState,
+    cfg: &'a ConfigSnapshot,
 }
 
 impl AnalysisContext<'_> {
@@ -310,7 +315,8 @@ fn walk(
                 if_true,
                 if_false,
             } => {
-                let condition_label = format!("{condition:?}");
+                let condition_label =
+                    super::predicate::format_condition_label(condition, context.cfg);
                 let evaluated = evaluate_condition(condition, &context.state.input_cache);
 
                 branch_path.push(BranchStep::IfTrue(i));
@@ -453,7 +459,12 @@ mod walker_tests {
     }
 
     fn analyze_actions(actions: &[Action], primary: &InputAddress) -> LiveReadoutModel {
-        analyze(actions, primary, &AppState::new())
+        analyze(
+            actions,
+            primary,
+            &AppState::new(),
+            &ConfigSnapshot::default(),
+        )
     }
 
     fn analyze_actions_with_state(
@@ -461,7 +472,11 @@ mod walker_tests {
         primary: &InputAddress,
         state: &AppState,
     ) -> LiveReadoutModel {
-        analyze(actions, primary, state)
+        analyze(actions, primary, state, &ConfigSnapshot::default())
+    }
+
+    fn condition_label(condition: &Condition) -> String {
+        super::super::predicate::format_condition_label(condition, &ConfigSnapshot::default())
     }
 
     fn set_axis(state: &mut AppState, input: &InputAddress, value: f64, polarity: AxisPolarity) {
@@ -644,7 +659,7 @@ mod walker_tests {
             polarity_at_step: AxisPolarity::Bipolar,
         };
         let condition_step = ChainStep::Conditional {
-            condition_label: format!("{:?}", condition()),
+            condition_label: condition_label(&condition()),
             evaluated: false,
             branch: Branch::IfTrue,
         };
@@ -667,7 +682,7 @@ mod walker_tests {
             vec![
                 pre_split_step.clone(),
                 ChainStep::Conditional {
-                    condition_label: format!("{:?}", condition()),
+                    condition_label: condition_label(&condition()),
                     evaluated: false,
                     branch: Branch::IfFalse,
                 },
@@ -821,7 +836,7 @@ mod walker_tests {
         let true_output = vjoy_axis(VJoyAxis::X);
         let false_output = vjoy_axis(VJoyAxis::Y);
         let test_condition = condition();
-        let condition_label = format!("{test_condition:?}");
+        let condition_label = condition_label(&test_condition);
         let actions = vec![Action::Conditional {
             condition: test_condition,
             if_true: vec![Action::MapToVJoy {
@@ -867,7 +882,7 @@ mod walker_tests {
         let true_output = vjoy_axis(VJoyAxis::X);
         let false_output = vjoy_axis(VJoyAxis::Y);
         let test_condition = condition();
-        let condition_label = format!("{test_condition:?}");
+        let condition_label = condition_label(&test_condition);
         let mut state = AppState::new();
         set_button(&mut state, &button(0), true);
         let actions = vec![Action::Conditional {
@@ -992,8 +1007,8 @@ mod walker_tests {
         let output = vjoy_axis(VJoyAxis::X);
         let outer_condition = condition();
         let inner_condition = Condition::ButtonReleased { input: button(1) };
-        let outer_label = format!("{outer_condition:?}");
-        let inner_label = format!("{inner_condition:?}");
+        let outer_label = condition_label(&outer_condition);
+        let inner_label = condition_label(&inner_condition);
         let mut state = AppState::new();
         set_button(&mut state, &button(0), true);
         set_button(&mut state, &button(1), false);
@@ -1043,7 +1058,7 @@ mod walker_tests {
             min: 0.25,
             max: 0.75,
         };
-        let condition_label = format!("{test_condition:?}");
+        let condition_label = condition_label(&test_condition);
         let mut state = AppState::new();
         set_axis(&mut state, &watched_axis, 0.5, AxisPolarity::Bipolar);
         let actions = vec![Action::Conditional {
