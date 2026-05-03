@@ -6,6 +6,7 @@
 )]
 
 use inputforge_core::action::Action;
+use inputforge_core::pipeline::{BranchStep, InputCache, evaluate_actions_through_path};
 use inputforge_core::state::AppState;
 use inputforge_core::types::{AxisPolarity, InputAddress, KeyCombo, MergeOp, OutputAddress};
 
@@ -119,31 +120,149 @@ pub(super) enum PredicateKind {
 pub(super) fn analyze(
     actions: &[Action],
     primary: &InputAddress,
-    _state: &AppState,
+    state: &AppState,
 ) -> LiveReadoutModel {
     let mut model = LiveReadoutModel {
         pipeline_inputs: vec![primary.clone()],
         predicates: Vec::new(),
         outputs: Vec::new(),
     };
-    walk(actions, &mut model, 0);
+    let context = AnalysisContext {
+        top_level: actions,
+        primary,
+        state,
+    };
+    let mut chain_stack = Vec::new();
+    let mut branch_path = Vec::new();
+    walk(
+        &context,
+        actions,
+        &mut model,
+        &mut chain_stack,
+        &mut branch_path,
+        0,
+    );
     model
 }
 
-fn walk(actions: &[Action], model: &mut LiveReadoutModel, depth: usize) {
+struct AnalysisContext<'a> {
+    top_level: &'a [Action],
+    primary: &'a InputAddress,
+    state: &'a AppState,
+}
+
+impl AnalysisContext<'_> {
+    fn compute_merge_step_data(
+        &self,
+        branch_path: &[BranchStep],
+        chain_stack: &[ChainStep],
+        local_idx: usize,
+        second_input: &InputAddress,
+        operation: MergeOp,
+    ) -> (f64, AxisPolarity) {
+        let actions = self.flatten_actions_to_merge(branch_path, local_idx);
+        let input_value =
+            evaluate_actions_through_path(&actions, self.state, self.primary, &[], actions.len());
+        let encoded_value = super::value_helpers::axis_f64(&input_value);
+        let primary_polarity = chain_stack
+            .iter()
+            .rev()
+            .find_map(|step| match step {
+                ChainStep::Merge {
+                    polarity_at_step, ..
+                } => Some(*polarity_at_step),
+                ChainStep::Conditional { .. } => None,
+            })
+            .unwrap_or_else(|| self.state.input_cache.get_axis(self.primary).1);
+        let secondary_polarity = self.state.input_cache.get_axis(second_input).1;
+        let polarity_at_step = super::value_helpers::merge_output_polarity(
+            operation,
+            primary_polarity,
+            secondary_polarity,
+        );
+
+        (encoded_value, polarity_at_step)
+    }
+
+    fn flatten_actions_to_merge(
+        &self,
+        branch_path: &[BranchStep],
+        local_idx: usize,
+    ) -> Vec<Action> {
+        let mut flattened = Vec::new();
+        let mut current = self.top_level;
+
+        for step in branch_path {
+            let (index, wants_true) = match *step {
+                BranchStep::IfTrue(index) => (index, true),
+                BranchStep::IfFalse(index) => (index, false),
+            };
+            append_non_conditional_actions(&current[..index], &mut flattened);
+            match &current[index] {
+                Action::Conditional {
+                    if_true, if_false, ..
+                } => {
+                    current = if wants_true { if_true } else { if_false };
+                }
+                other => {
+                    panic!("branch path target at index {index} must be Conditional, got {other:?}")
+                }
+            }
+        }
+
+        append_non_conditional_actions(&current[..=local_idx], &mut flattened);
+        flattened
+    }
+}
+
+fn append_non_conditional_actions(actions: &[Action], out: &mut Vec<Action>) {
+    out.extend(
+        actions
+            .iter()
+            .filter(|action| !matches!(action, Action::Conditional { .. }))
+            .cloned(),
+    );
+}
+
+fn walk(
+    context: &AnalysisContext<'_>,
+    actions: &[Action],
+    model: &mut LiveReadoutModel,
+    chain_stack: &mut Vec<ChainStep>,
+    branch_path: &mut Vec<BranchStep>,
+    depth: usize,
+) {
+    let stack_baseline = chain_stack.len();
     if depth > MAX_NESTED_ACTION_DEPTH {
+        chain_stack.truncate(stack_baseline);
         return;
     }
 
-    for action in actions {
+    for (i, action) in actions.iter().enumerate() {
         match action {
-            Action::MergeAxis { second_input, .. } => {
+            Action::MergeAxis {
+                second_input,
+                operation,
+            } => {
                 model.pipeline_inputs.push(second_input.clone());
+                let (encoded_value, polarity_at_step) = context.compute_merge_step_data(
+                    branch_path,
+                    chain_stack,
+                    i,
+                    second_input,
+                    *operation,
+                );
+                chain_stack.push(ChainStep::Merge {
+                    operation: *operation,
+                    secondary_input: second_input.clone(),
+                    encoded_value,
+                    polarity_at_step,
+                });
             }
             Action::MapToVJoy { output } => {
                 model.outputs.push(OutputDescriptor {
                     destination: OutputDestination::VJoy(output.clone()),
-                    chain: Vec::new(),
+                    chain: chain_stack.clone(),
                     is_active: true,
                     polarity: AxisPolarity::Bipolar,
                 });
@@ -151,7 +270,7 @@ fn walk(actions: &[Action], model: &mut LiveReadoutModel, depth: usize) {
             Action::MapToKeyboard { key } => {
                 model.outputs.push(OutputDescriptor {
                     destination: OutputDestination::Keyboard(key.clone()),
-                    chain: Vec::new(),
+                    chain: chain_stack.clone(),
                     is_active: true,
                     polarity: AxisPolarity::Bipolar,
                 });
@@ -159,8 +278,20 @@ fn walk(actions: &[Action], model: &mut LiveReadoutModel, depth: usize) {
             Action::Conditional {
                 if_true, if_false, ..
             } => {
-                walk(if_true, model, depth + 1);
-                walk(if_false, model, depth + 1);
+                branch_path.push(BranchStep::IfTrue(i));
+                walk(context, if_true, model, chain_stack, branch_path, depth + 1);
+                branch_path.pop();
+
+                branch_path.push(BranchStep::IfFalse(i));
+                walk(
+                    context,
+                    if_false,
+                    model,
+                    chain_stack,
+                    branch_path,
+                    depth + 1,
+                );
+                branch_path.pop();
             }
             Action::ResponseCurve { .. }
             | Action::Deadzone { .. }
@@ -168,6 +299,8 @@ fn walk(actions: &[Action], model: &mut LiveReadoutModel, depth: usize) {
             | Action::ChangeMode { .. } => {}
         }
     }
+
+    chain_stack.truncate(stack_baseline);
 }
 
 #[cfg(test)]
@@ -224,7 +357,9 @@ mod tests {
 mod walker_tests {
     use super::*;
     use inputforge_core::action::Condition;
-    use inputforge_core::types::{DeviceId, InputId, KeyModifier, OutputId, VJoyAxis};
+    use inputforge_core::types::{
+        AxisValue, DeviceId, InputId, InputValue, KeyModifier, OutputId, VJoyAxis,
+    };
 
     fn input(index: u8) -> InputAddress {
         InputAddress::Bound {
@@ -274,6 +409,30 @@ mod walker_tests {
         analyze(actions, primary, &AppState::new())
     }
 
+    fn analyze_actions_with_state(
+        actions: &[Action],
+        primary: &InputAddress,
+        state: &AppState,
+    ) -> LiveReadoutModel {
+        analyze(actions, primary, state)
+    }
+
+    fn set_axis(state: &mut AppState, input: &InputAddress, value: f64, polarity: AxisPolarity) {
+        state.input_cache.update(
+            input,
+            &InputValue::Axis {
+                value: AxisValue::new(value),
+                polarity,
+            },
+        );
+    }
+
+    fn set_button(state: &mut AppState, input: &InputAddress, pressed: bool) {
+        state
+            .input_cache
+            .update(input, &InputValue::Button { pressed });
+    }
+
     #[test]
     fn empty_actions_yields_only_primary_input() {
         let primary = input(0);
@@ -305,6 +464,236 @@ mod walker_tests {
 
         assert_eq!(model.pipeline_inputs, vec![primary, second, third]);
         assert!(model.outputs.is_empty());
+    }
+
+    #[test]
+    fn merge_then_output_records_one_chain_step() {
+        let primary = input(0);
+        let second = input(1);
+        let output = vjoy_axis(VJoyAxis::X);
+        let mut state = AppState::new();
+        set_axis(&mut state, &primary, 0.5, AxisPolarity::Bipolar);
+        set_axis(&mut state, &second, 0.25, AxisPolarity::Bipolar);
+        let actions = vec![
+            Action::MergeAxis {
+                second_input: second.clone(),
+                operation: MergeOp::Average,
+            },
+            Action::MapToVJoy {
+                output: output.clone(),
+            },
+        ];
+
+        let model = analyze_actions_with_state(&actions, &primary, &state);
+
+        assert_eq!(
+            model.outputs,
+            vec![OutputDescriptor {
+                destination: OutputDestination::VJoy(output),
+                chain: vec![ChainStep::Merge {
+                    operation: MergeOp::Average,
+                    secondary_input: second,
+                    encoded_value: 0.375,
+                    polarity_at_step: AxisPolarity::Bipolar,
+                }],
+                is_active: true,
+                polarity: AxisPolarity::Bipolar,
+            }]
+        );
+    }
+
+    #[test]
+    fn stacked_merges_record_two_chain_steps_for_each_output() {
+        let primary = input(0);
+        let second = input(1);
+        let third = input(2);
+        let first_output = vjoy_axis(VJoyAxis::X);
+        let second_output = vjoy_axis(VJoyAxis::Y);
+        let mut state = AppState::new();
+        set_axis(&mut state, &primary, 0.2, AxisPolarity::Bipolar);
+        set_axis(&mut state, &second, 0.6, AxisPolarity::Bipolar);
+        set_axis(&mut state, &third, -0.4, AxisPolarity::Bipolar);
+        let actions = vec![
+            Action::MergeAxis {
+                second_input: second.clone(),
+                operation: MergeOp::Average,
+            },
+            Action::MergeAxis {
+                second_input: third.clone(),
+                operation: MergeOp::Average,
+            },
+            Action::MapToVJoy {
+                output: first_output,
+            },
+            Action::MapToVJoy {
+                output: second_output,
+            },
+        ];
+
+        let model = analyze_actions_with_state(&actions, &primary, &state);
+
+        let expected_chain = vec![
+            ChainStep::Merge {
+                operation: MergeOp::Average,
+                secondary_input: second,
+                encoded_value: 0.4,
+                polarity_at_step: AxisPolarity::Bipolar,
+            },
+            ChainStep::Merge {
+                operation: MergeOp::Average,
+                secondary_input: third,
+                encoded_value: 0.0,
+                polarity_at_step: AxisPolarity::Bipolar,
+            },
+        ];
+        assert_eq!(model.outputs.len(), 2);
+        assert_eq!(model.outputs[0].chain, expected_chain);
+        assert_eq!(model.outputs[1].chain, model.outputs[0].chain);
+    }
+
+    #[test]
+    fn sibling_outputs_share_the_pre_split_merges_only() {
+        let primary = input(0);
+        let pre_split = input(1);
+        let nested = input(2);
+        let true_output = vjoy_axis(VJoyAxis::X);
+        let false_output = vjoy_axis(VJoyAxis::Y);
+        let after_output = vjoy_axis(VJoyAxis::Z);
+        let mut state = AppState::new();
+        set_axis(&mut state, &primary, 0.2, AxisPolarity::Bipolar);
+        set_axis(&mut state, &pre_split, 0.6, AxisPolarity::Bipolar);
+        set_axis(&mut state, &nested, -0.4, AxisPolarity::Bipolar);
+        let actions = vec![
+            Action::MergeAxis {
+                second_input: pre_split.clone(),
+                operation: MergeOp::Average,
+            },
+            Action::Conditional {
+                condition: condition(),
+                if_true: vec![
+                    Action::MergeAxis {
+                        second_input: nested.clone(),
+                        operation: MergeOp::Average,
+                    },
+                    Action::MapToVJoy {
+                        output: true_output,
+                    },
+                ],
+                if_false: vec![Action::MapToVJoy {
+                    output: false_output,
+                }],
+            },
+            Action::MapToVJoy {
+                output: after_output,
+            },
+        ];
+
+        let model = analyze_actions_with_state(&actions, &primary, &state);
+
+        let pre_split_step = ChainStep::Merge {
+            operation: MergeOp::Average,
+            secondary_input: pre_split,
+            encoded_value: 0.4,
+            polarity_at_step: AxisPolarity::Bipolar,
+        };
+        assert_eq!(model.outputs.len(), 3);
+        assert_eq!(
+            model.outputs[0].chain,
+            vec![
+                pre_split_step.clone(),
+                ChainStep::Merge {
+                    operation: MergeOp::Average,
+                    secondary_input: nested,
+                    encoded_value: 0.0,
+                    polarity_at_step: AxisPolarity::Bipolar,
+                },
+            ]
+        );
+        assert_eq!(model.outputs[1].chain, vec![pre_split_step.clone()]);
+        assert_eq!(model.outputs[2].chain, vec![pre_split_step]);
+    }
+
+    #[test]
+    fn top_level_merge_after_conditional_ignores_nested_branch_merge_value() {
+        let primary = input(0);
+        let nested = input(1);
+        let later = input(2);
+        let output = vjoy_axis(VJoyAxis::X);
+        let mut state = AppState::new();
+        set_axis(&mut state, &primary, 0.0, AxisPolarity::Bipolar);
+        set_axis(&mut state, &nested, 1.0, AxisPolarity::Bipolar);
+        set_axis(&mut state, &later, -1.0, AxisPolarity::Bipolar);
+        set_button(&mut state, &button(0), true);
+        let actions = vec![
+            Action::Conditional {
+                condition: condition(),
+                if_true: vec![Action::MergeAxis {
+                    second_input: nested,
+                    operation: MergeOp::Average,
+                }],
+                if_false: Vec::new(),
+            },
+            Action::MergeAxis {
+                second_input: later.clone(),
+                operation: MergeOp::Average,
+            },
+            Action::MapToVJoy { output },
+        ];
+
+        let model = analyze_actions_with_state(&actions, &primary, &state);
+
+        assert_eq!(
+            model.outputs[0].chain,
+            vec![ChainStep::Merge {
+                operation: MergeOp::Average,
+                secondary_input: later,
+                encoded_value: -0.5,
+                polarity_at_step: AxisPolarity::Bipolar,
+            }]
+        );
+    }
+
+    #[test]
+    fn merge_step_carries_polarity_at_step_not_terminal() {
+        let primary = input(0);
+        let second = input(1);
+        let third = input(2);
+        let output = vjoy_axis(VJoyAxis::X);
+        let mut state = AppState::new();
+        set_axis(&mut state, &primary, -0.2, AxisPolarity::Unipolar);
+        set_axis(&mut state, &second, 0.2, AxisPolarity::Unipolar);
+        set_axis(&mut state, &third, 0.4, AxisPolarity::Bipolar);
+        let actions = vec![
+            Action::MergeAxis {
+                second_input: second.clone(),
+                operation: MergeOp::Average,
+            },
+            Action::MergeAxis {
+                second_input: third.clone(),
+                operation: MergeOp::Average,
+            },
+            Action::MapToVJoy { output },
+        ];
+
+        let model = analyze_actions_with_state(&actions, &primary, &state);
+
+        assert_eq!(
+            model.outputs[0].chain,
+            vec![
+                ChainStep::Merge {
+                    operation: MergeOp::Average,
+                    secondary_input: second,
+                    encoded_value: 0.0,
+                    polarity_at_step: AxisPolarity::Unipolar,
+                },
+                ChainStep::Merge {
+                    operation: MergeOp::Average,
+                    secondary_input: third,
+                    encoded_value: 0.2,
+                    polarity_at_step: AxisPolarity::Bipolar,
+                },
+            ]
+        );
     }
 
     #[test]
