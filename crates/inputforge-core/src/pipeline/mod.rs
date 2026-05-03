@@ -43,6 +43,15 @@ pub enum PipelineOutput {
     },
 }
 
+/// Selects a conditional branch while resolving a nested action path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BranchStep {
+    /// Selects the `if_true` branch at the given action index.
+    IfTrue(usize),
+    /// Selects the `if_false` branch at the given action index.
+    IfFalse(usize),
+}
+
 /// Read-only access to the latest input values.
 ///
 /// Implementations provide the current state of all physical inputs,
@@ -218,8 +227,18 @@ pub fn evaluate_actions_through(
     primary: &InputAddress,
     stop_at: usize,
 ) -> InputValue {
+    let (input_value, mut ctx) = evaluation_context(state, primary);
     let stop = stop_at.min(actions.len());
 
+    execute_pipeline(&actions[..stop], &mut ctx);
+
+    project_input_value(&input_value, ctx.current_value)
+}
+
+fn evaluation_context<'a>(
+    state: &'a crate::state::AppState,
+    primary: &InputAddress,
+) -> (InputValue, PipelineContext<'a>) {
     // Discriminate variant from the address; read via the InputCache trait.
     // Returns the cache's default for missing entries (axis: 0.0 + Bipolar,
     // button: false, hat: HatDirection::Center): same convention as direct
@@ -255,27 +274,86 @@ pub fn evaluate_actions_through(
         InputValue::Hat { .. } => 0.0,
     };
 
-    let mut ctx = PipelineContext {
+    let ctx = PipelineContext {
         current_value,
         input_value: input_value.clone(),
         outputs: Vec::new(),
         input_cache: &state.input_cache,
     };
 
-    execute_pipeline(&actions[..stop], &mut ctx);
+    (input_value, ctx)
+}
 
+fn project_input_value(input_value: &InputValue, current_value: f64) -> InputValue {
     match input_value {
-        InputValue::Axis { polarity, .. } => InputValue::Axis {
-            value: crate::types::AxisValue::new(ctx.current_value),
+        &InputValue::Axis { polarity, .. } => InputValue::Axis {
+            value: crate::types::AxisValue::new(current_value),
             polarity,
         },
         InputValue::Button { .. } => InputValue::Button {
-            pressed: ctx.current_value > BUTTON_PRESS_THRESHOLD,
+            pressed: current_value > BUTTON_PRESS_THRESHOLD,
         },
         // Hats: pipeline evaluation does not modify direction; the cached
         // direction reads through unchanged.
-        InputValue::Hat { direction } => InputValue::Hat { direction },
+        &InputValue::Hat { direction } => InputValue::Hat { direction },
     }
+}
+
+/// Re-run a partial action pipeline through a nested conditional branch path.
+///
+/// An empty `path` is identical to [`evaluate_actions_through`]. Each path
+/// step executes preceding actions in the current slice, identifies a
+/// conditional by index, then selects that conditional's true or false branch
+/// as the next slice without evaluating the predicate.
+///
+/// # Panics
+///
+/// Panics if any path step index is out of range for the current slice.
+/// Panics if any path step points to an action that is not
+/// [`Action::Conditional`]. Also inherits the `primary` invariant panic from
+/// [`evaluate_actions_through`].
+#[must_use]
+pub fn evaluate_actions_through_path(
+    actions: &[Action],
+    state: &crate::state::AppState,
+    primary: &InputAddress,
+    path: &[BranchStep],
+    stop_at: usize,
+) -> InputValue {
+    let (input_value, mut ctx) = evaluation_context(state, primary);
+    let mut current = actions;
+
+    for step in path {
+        let (index, wants_true) = match *step {
+            BranchStep::IfTrue(index) => (index, true),
+            BranchStep::IfFalse(index) => (index, false),
+        };
+
+        let action = current.get(index).unwrap_or_else(|| {
+            panic!(
+                "branch path index {index} out of range for action slice of length {}",
+                current.len()
+            )
+        });
+
+        execute_pipeline(&current[..index], &mut ctx);
+
+        match action {
+            Action::Conditional {
+                if_true, if_false, ..
+            } => {
+                current = if wants_true { if_true } else { if_false };
+            }
+            other => {
+                panic!("branch path target at index {index} must be Conditional, got {other:?}")
+            }
+        }
+    }
+
+    let stop = stop_at.min(current.len());
+    execute_pipeline(&current[..stop], &mut ctx);
+
+    project_input_value(&input_value, ctx.current_value)
 }
 
 #[cfg(test)]
@@ -1116,5 +1194,206 @@ mod tests {
             }
             other => panic!("expected Axis, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn path_empty_matches_evaluate_actions_through() {
+        let mut state = AppState::new();
+        let addr = axis_input_address();
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
+            },
+        );
+
+        let actions = [Action::Invert, Action::Invert];
+        let expected = evaluate_actions_through(&actions, &state, &addr, 1);
+        let out = evaluate_actions_through_path(&actions, &state, &addr, &[], 1);
+
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn path_one_level_if_true_branch_subset_runs() {
+        let mut state = AppState::new();
+        let addr = axis_input_address();
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
+            },
+        );
+
+        let actions = [Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: button_input_address(),
+            },
+            if_true: vec![
+                Action::Invert,
+                Action::MapToVJoy {
+                    output: test_output(),
+                },
+                Action::Invert,
+            ],
+            if_false: vec![Action::Invert, Action::Invert],
+        }];
+
+        let out =
+            evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfTrue(0)], 1);
+
+        match out {
+            InputValue::Axis { value, .. } => {
+                assert!((value.value() - (-0.5)).abs() < TOLERANCE);
+            }
+            other => panic!("expected Axis, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn path_preserves_ancestor_prefix_before_branch() {
+        let mut state = AppState::new();
+        let addr = axis_input_address();
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
+            },
+        );
+
+        let actions = [
+            Action::Invert,
+            Action::Conditional {
+                condition: Condition::ButtonPressed {
+                    input: button_input_address(),
+                },
+                if_true: vec![Action::Invert],
+                if_false: vec![Action::Invert],
+            },
+        ];
+
+        let out =
+            evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfTrue(1)], 1);
+
+        match out {
+            InputValue::Axis { value, .. } => {
+                assert!((value.value() - 0.5).abs() < TOLERANCE);
+            }
+            other => panic!("expected Axis, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn path_if_false_branch_subset_runs() {
+        let mut state = AppState::new();
+        let addr = axis_input_address();
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
+            },
+        );
+
+        let actions = [Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: button_input_address(),
+            },
+            if_true: vec![Action::Invert],
+            if_false: vec![
+                Action::Invert,
+                Action::MapToVJoy {
+                    output: test_output(),
+                },
+                Action::Invert,
+            ],
+        }];
+
+        let out =
+            evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfFalse(0)], 3);
+
+        match out {
+            InputValue::Axis { value, .. } => {
+                assert!((value.value() - 0.5).abs() < TOLERANCE);
+            }
+            other => panic!("expected Axis, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn path_two_levels_deep_is_path_aware() {
+        let mut state = AppState::new();
+        let addr = axis_input_address();
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
+            },
+        );
+
+        let actions = [Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: button_input_address(),
+            },
+            if_true: vec![
+                Action::Invert,
+                Action::Conditional {
+                    condition: Condition::ButtonPressed {
+                        input: button_input_address(),
+                    },
+                    if_true: vec![Action::Invert],
+                    if_false: vec![Action::MapToVJoy {
+                        output: test_output(),
+                    }],
+                },
+            ],
+            if_false: vec![Action::Invert],
+        }];
+
+        let out = evaluate_actions_through_path(
+            &actions,
+            &state,
+            &addr,
+            &[BranchStep::IfTrue(0), BranchStep::IfFalse(1)],
+            1,
+        );
+
+        match out {
+            InputValue::Axis { value, .. } => {
+                assert!((value.value() - (-0.5)).abs() < TOLERANCE);
+            }
+            other => panic!("expected Axis, got {other:?}"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Conditional")]
+    fn path_non_conditional_target_panics() {
+        let state = AppState::new();
+        let addr = axis_input_address();
+        let actions = [Action::Invert];
+
+        let _ = evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfTrue(0)], 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "out of range")]
+    fn path_out_of_range_panics() {
+        let state = AppState::new();
+        let addr = axis_input_address();
+        let actions = [Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: button_input_address(),
+            },
+            if_true: Vec::new(),
+            if_false: Vec::new(),
+        }];
+
+        let _ =
+            evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfFalse(1)], 1);
     }
 }
