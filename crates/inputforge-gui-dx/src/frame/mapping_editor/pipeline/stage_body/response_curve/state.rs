@@ -3,6 +3,8 @@
 
 use inputforge_core::processing::curves::ResponseCurve;
 
+use crate::frame::mapping_editor::pipeline::stage_body::instruments::nudge_coalesce::NudgeCoalesce;
+
 use super::keyboard::KeyKind;
 
 /// Per-mounted-component state held in a `Signal<BodyState>` inside
@@ -20,13 +22,10 @@ pub(crate) struct BodyState {
     /// Flat list of draggable points; mutation.rs index space.
     pub cached_anchors: Vec<(f64, f64)>,
     pub cache_dirty: bool,
-    /// Timestamp (ms since component mount) of the last keyboard nudge.
-    /// Drives Task 7's 250 ms same-key coalesce window for undo merging.
-    pub last_nudge_at_ms: Option<u64>,
-    /// Key kind of the last nudge, used together with `last_nudge_at_ms`
-    /// to decide whether the next nudge merges into the existing undo
-    /// entry or pushes a fresh one.
-    pub last_nudge_key: Option<KeyKind>,
+    /// Coalesce state for the 250 ms same-key undo merge window. Owned by
+    /// the shared `instruments::nudge_coalesce` module so F10 and F11 share
+    /// one implementation.
+    pub nudge_coalesce: NudgeCoalesce<KeyKind>,
 }
 
 // Manual `Default` so `cache_dirty` defaults to `true`. The Task 4 test
@@ -43,8 +42,7 @@ impl Default for BodyState {
             cached_path: Vec::new(),
             cached_anchors: Vec::new(),
             cache_dirty: true,
-            last_nudge_at_ms: None,
-            last_nudge_key: None,
+            nudge_coalesce: NudgeCoalesce::default(),
         }
     }
 }

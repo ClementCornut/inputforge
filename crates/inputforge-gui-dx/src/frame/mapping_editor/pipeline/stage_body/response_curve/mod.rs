@@ -747,8 +747,7 @@ pub(crate) fn ResponseCurveBody(
     let mut body_for_focusout = body;
     let on_focus_out = move |_| {
         body_for_focusout.with_mut(|s| {
-            s.last_nudge_at_ms = None;
-            s.last_nudge_key = None;
+            s.nudge_coalesce.reset();
         });
     };
 

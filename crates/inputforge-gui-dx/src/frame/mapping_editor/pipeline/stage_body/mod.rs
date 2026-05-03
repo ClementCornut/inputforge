@@ -16,6 +16,7 @@ use crate::frame::mapping_editor::undo_log::StageId;
 use crate::icons::{Icon as IconKind, IconSize};
 
 mod conditional;
+mod instruments;
 mod invert;
 mod map_to_keyboard;
 mod map_to_vjoy;

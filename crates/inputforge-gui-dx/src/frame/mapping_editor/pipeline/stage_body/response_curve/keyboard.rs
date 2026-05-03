@@ -19,13 +19,6 @@ const KEY_NUDGE_STEP: f64 = 0.01;
 /// semantics in accessibility and creative software.
 const KEY_NUDGE_STEP_LARGE: f64 = 0.10;
 
-/// Window during which two consecutive presses of the same arrow key are
-/// merged into a single undo entry (milliseconds).
-///
-/// 250 ms is short enough to feel instantaneous to the user but long enough
-/// to capture a held-key auto-repeat burst as one logical operation.
-const KEY_COALESCE_WINDOW_MS: u64 = 250;
-
 /// Inputs the host normalizes from a Dioxus `KeyboardEvent`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KeyInput {
@@ -43,7 +36,8 @@ pub(crate) enum KeyInput {
 }
 
 /// Coarse-grained kind used by the coalesce-window state. Two presses
-/// of the same `KeyKind` within `KEY_COALESCE_WINDOW_MS` merge into a
+/// of the same `KeyKind` within
+/// `instruments::nudge_coalesce::COALESCE_WINDOW_MS` merge into a
 /// single undo entry; presses of different kinds always push.
 ///
 /// The `Arrow` prefix is kept verbatim because it mirrors the `KeyInput`
@@ -194,12 +188,8 @@ pub(crate) fn handle_key(
                 return (state, None, None, false);
             };
             let kind = key.nudge_kind().expect("arrow key has nudge kind");
-            let merge = matches!(state.last_nudge_key, Some(prev) if prev == kind)
-                && state
-                    .last_nudge_at_ms
-                    .is_some_and(|t| now_ms.saturating_sub(t) <= KEY_COALESCE_WINDOW_MS);
-            state.last_nudge_at_ms = Some(now_ms);
-            state.last_nudge_key = Some(kind);
+            let merge = state.nudge_coalesce.should_merge(now_ms, kind);
+            state.nudge_coalesce.record(now_ms, kind);
             state.cache_dirty = true;
             let outcome = if merge {
                 KeyOutcome::MergeUndo
@@ -236,7 +226,7 @@ pub(crate) fn handle_key(
                 return (state, None, None, false);
             }
             state.cache_dirty = true;
-            state.last_nudge_key = None;
+            state.nudge_coalesce.reset();
             (
                 state,
                 Some(local),
@@ -252,7 +242,7 @@ pub(crate) fn handle_key(
                 return (state, None, None, false);
             }
             state.cache_dirty = true;
-            state.last_nudge_key = None;
+            state.nudge_coalesce.reset();
             // Clamp focused index after removal.
             let new_anchors = super::state::extract_anchors(&local);
             state.focused_point = if new_anchors.is_empty() {
@@ -566,8 +556,7 @@ mod tests {
     #[test]
     fn same_key_within_window_merges_undo() {
         let (curve, mut state) = seed();
-        state.last_nudge_at_ms = Some(1000);
-        state.last_nudge_key = Some(KeyKind::ArrowRight);
+        state.nudge_coalesce.record(1000, KeyKind::ArrowRight);
         let (_, _, outcome, _) =
             handle_key(state, &curve, KeyInput::ArrowRight { shift: false }, 1100);
         match outcome {
@@ -579,8 +568,7 @@ mod tests {
     #[test]
     fn same_key_after_window_pushes_new_undo() {
         let (curve, mut state) = seed();
-        state.last_nudge_at_ms = Some(1000);
-        state.last_nudge_key = Some(KeyKind::ArrowRight);
+        state.nudge_coalesce.record(1000, KeyKind::ArrowRight);
         let (_, _, outcome, _) =
             handle_key(state, &curve, KeyInput::ArrowRight { shift: false }, 1500);
         assert!(matches!(outcome, Some(KeyOutcome::PushUndo { .. })));
