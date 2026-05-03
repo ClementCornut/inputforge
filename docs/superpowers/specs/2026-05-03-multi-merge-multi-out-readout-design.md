@@ -50,6 +50,7 @@ The decisions below were validated in brainstorm one question at a time.
 - The divider strip between IN and OUT carries the existing `out` / `merge` label and an "expand all ▾" pill (visible only when at least one OUT has a non-empty chain).
 - OUT chevrons sit in a new trailing column (right of the percentage), matching the established right-aligned numeric grid.
 - Expanded chain block is indented under the OUT row with a 1px dashed `--color-border-strong` left border, distinct from the IN/OUT grid columns. Chain rows use smaller font + 4px-tall bars in `--color-processing` (teal) for merge intermediates; conditional outcomes render in `--color-control` (violet).
+- Keyboard accessibility: the "expand all" pill is a `<button>` element placed in tab order between the last IN row and the first OUT row. Per-OUT chevrons are also `<button>` elements, focusable in OUT row order. Both follow the system's standard 2px focus-cyan outline at 2px offset (per `DESIGN.md` Buttons spec).
 
 ---
 
@@ -68,7 +69,7 @@ The decisions below were validated in brainstorm one question at a time.
 
 ### Module split
 
-The current `live_readout.rs` is ~640 lines and the multi-merge / multi-out work will roughly double it. Promote the single file to a module directory:
+The current `live_readout.rs` is ~705 lines and the multi-merge / multi-out work will roughly double it. Promote the single file to a module directory:
 
 ```
 crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/
@@ -94,24 +95,24 @@ struct LiveReadoutModel {
     pipeline_inputs: Vec<InputAddress>,    // primary first, then merge secondaries in DFS order
     predicates: Vec<PredicateDescriptor>,  // boolean inputs referenced by Conditional conditions
     outputs: Vec<OutputDescriptor>,        // every terminal MapToVJoy + MapToKeyboard
-    output_polarity: AxisPolarity,         // inferred once from the merge chain
 }
 
 struct OutputDescriptor {
     destination: OutputDestination,        // VJoy(OutputAddress) | Keyboard(KeyCombo)
     chain: Vec<ChainStep>,                 // merges + conditionals on the path to this output
     is_active: bool,                       // see "is_active evaluation" below
+    polarity: AxisPolarity,                // computed per output by walking this output's path through the merge chain; ignored for keyboard outputs
 }
 
 enum ChainStep {
     Merge {
-        op: MergeOp,
+        operation: MergeOp,
         partner: InputAddress,
         intermediate_value: f64,           // pipeline-evaluated value at this stage (natural domain)
     },
     Conditional {
-        predicate: PredicateDescriptor,
-        evaluated: bool,                   // current predicate truth
+        condition_label: String,           // pre-rendered, composite-aware label (e.g. "Btn 3 AND Axis Y in [0.20..0.80]"); see "Predicate evaluator"
+        evaluated: bool,                   // current composite-condition truth
         branch: Branch,                    // which branch this output sits in
     },
 }
@@ -132,38 +133,52 @@ enum OutputDestination {
 ```
 
 The walker:
-- For `Action::MergeAxis { second_input, op }`: appends `second_input` to `pipeline_inputs`; pushes a `Merge` step (with the partial pipeline-evaluated intermediate value) onto the current chain stack.
+- For `Action::MergeAxis { second_input, operation }`: appends `second_input` to `pipeline_inputs`; pushes a `Merge` step (with the partial pipeline-evaluated intermediate value, see "Intermediate value computation" below) onto the current chain stack. The chain stack is a `Vec<ChainStep>` mutated during DFS; when emitting an `OutputDescriptor`, the analyzer captures `chain.clone()` so sibling branches do not share state.
 - For `Action::MapToVJoy { output }`: emits an `OutputDescriptor { destination: VJoy(output.clone()), chain: <chain stack snapshot>, is_active: <AND of all conditional steps> }`.
 - For `Action::MapToKeyboard { key }`: same as `MapToVJoy` but with `Keyboard(key.clone())`.
-- For `Action::Conditional { condition, if_true, if_false }`: builds a `PredicateDescriptor` (composites flattened to one leaf entry per distinct input address; the `predicates` vec is deduplicated using the input address as the key, so the same button referenced by two conditionals shows once in the IN block); pushes a `Conditional { branch: IfTrue }` step, recurses into `if_true`; pops, pushes `Conditional { branch: IfFalse }`, recurses into `if_false`; pops.
+- For `Action::Conditional { condition, if_true, if_false }`: evaluates the composite via `evaluate_condition` (see "Predicate evaluator" below), pre-renders a composite-aware `condition_label` (leaf conditions use their chip label form; `All`/`Any`/`Not` render as `A AND B` / `A OR B` / `NOT A` infix), and builds `PredicateDescriptor`s for the IN block (composites flattened to one leaf entry per leaf condition; the `predicates` vec is deduplicated using the tuple `(input_address, kind_discriminant)` as the key, so the same input referenced as `ButtonPressed` in one Conditional and `ButtonReleased` in another shows two distinct chips. Range bounds and direction sets are *not* part of the dedup key: multiple `AxisInRange` or `HatDirection` checks on the same input across different Conditionals collapse to a single chip; their distinct bounds or direction sets appear in the expanded chain block, not at chip granularity). Then pushes a `Conditional { condition_label, evaluated, branch: IfTrue }` step, recurses into `if_true`; pops, pushes `Conditional { condition_label, evaluated, branch: IfFalse }`, recurses into `if_false`; pops.
 - Processing actions (`ResponseCurve`, `Deadzone`, `Invert`) are ignored by the analyzer (they don't change pipeline shape, only value).
-- `Action::ChangeMode` is ignored (not a routing concern at the readout level).
+- `Action::ChangeMode` is ignored (not a routing concern at the readout level). It is a leaf node (`{ strategy: ModeChangeStrategy }`); no recursion.
 
-The model is rebuilt every render. Cost is O(action-tree size), bounded by the user's mapping; the existing render path already clones the actions vec per render, so no new allocation pressure beyond what's already there. Memoization is unnecessary at the size of typical pipelines (single-digit nodes).
+The model is rebuilt every render. Walk cost is O(action-tree size); each merge additionally pays one `evaluate_actions_through` call (see "Intermediate value computation" below), so total analyzer cost is O(N · M) where N is action-tree size and M is merge count. Bounded by the user's mapping. The existing render path already clones the actions vec per render, so no new allocation pressure beyond what's already there. Memoization is unnecessary at the size of typical pipelines (single-digit nodes).
 
 ### `is_active` evaluation
 
 For each `OutputDescriptor`, `is_active` is the AND over every `Conditional` step in the chain of:
 
 ```
-predicate.state == (branch == Branch::IfTrue)
+step.evaluated == matches!(step.branch, Branch::IfTrue)
 ```
 
-i.e. for an `IfTrue` branch the predicate must currently evaluate true; for an `IfFalse` branch it must evaluate false. An output sitting inside no `Conditional` (chain has only `Merge` steps or is empty) is unconditionally active. Predicate evaluation itself runs through `evaluate_predicate` below; the analyzer caches the result on each `Conditional` chain step (`evaluated`) so the renderer doesn't re-evaluate.
+i.e. for an `IfTrue` branch the conditional must currently evaluate true; for an `IfFalse` branch it must evaluate false. An output sitting inside no `Conditional` (chain has only `Merge` steps or is empty) is unconditionally active. The gating boolean is the *composite-condition result* stored on each `ChainStep::Conditional.evaluated`, not per-leaf `PredicateDescriptor.state`; a `Condition::All { [A, B] }` wrapping a branch evaluates as one boolean (logical AND of A and B), and that single boolean gates the branch even though the IN block renders one chip per leaf. Engine-stopped is *not* part of `is_active`; it is handled by the freeze truth table below, which `OutRow` evaluates via `frozen = !engine_running || !descriptor.is_active`.
+
+Pathological depth: `MAX_CONDITION_DEPTH = 32` (`condition.rs:9`) caps action-tree depth at the validator level, so the readout assumes it does not need its own cap. If the expanded chain block grows past one viewport, it scrolls vertically with the surrounding `LiveReadout` panel (no internal scroller).
 
 ### Predicate evaluator
 
-`predicate.rs` exposes one function:
+The analyzer reuses the existing core function:
 
 ```rust
-fn evaluate_predicate(cond: &Condition, state: &AppState) -> bool
+inputforge_core::pipeline::evaluate_condition(condition, &state.input_cache as &dyn InputCache) -> bool
 ```
 
-It reads `state.input_cache.get_button` / `get_axis` / `get_hat` and recurses through `Condition::All` / `Any` / `Not` short-circuiting where appropriate. The analyzer takes the `state.read()` lock once per render and feeds the guard to all sub-evaluations, mirroring the existing merged-IN evaluation pattern.
+(`crates/inputforge-core/src/pipeline/condition.rs:17`). It already recurses through `Condition::All` / `Any` / `Not` with short-circuiting and respects `MAX_CONDITION_DEPTH`. For each `Conditional` node encountered during the DFS walk, the analyzer calls `evaluate_condition` once and stores the resulting `bool` on the corresponding `ChainStep::Conditional.evaluated` field; that boolean is the load-bearing input to `is_active` (above). The analyzer takes the `state.read()` lock once per render, feeding the guard's `input_cache` to all sub-evaluations.
+
+`predicate.rs` therefore retains only label-formatting work: predicate-kind to chip-glyph dispatch, source-label resolution, the per-leaf `PredicateDescriptor.state` snapshot used for the IN-block chip rendering (which is independent of branch gating, see "is_active evaluation" above), and the composite-aware `condition_label` rendering used by the expanded chain block (leaf conditions reuse their chip label form; `All { conditions }` joins child labels with ` AND `, `Any` with ` OR `, `Not { condition }` prefixes `NOT `). It does *not* reimplement `All`/`Any`/`Not` evaluation recursion; that lives in `evaluate_condition`.
 
 ### Output polarity inference
 
-`value_helpers.rs::infer_output_polarity` walks the same DFS path used by the analyzer, applying the existing `merge_output_polarity` table for each merge encountered. With multiple terminal outputs, the same polarity applies to every OUT (the value flowing through the pipeline at each terminal point shares one f64; polarity is a display concern, not a runtime concern). Keyboard outputs ignore polarity (they're chip-rendered).
+`value_helpers.rs::infer_output_polarity` walks the same DFS path used by the analyzer, applying the existing `merge_output_polarity` table for each merge encountered along *each output's specific path*. Polarity is computed per `OutputDescriptor` and stored on its `polarity` field, because two `MapToVJoy` outputs in different `Conditional` branches (or at different stack depths) can hit different merge sequences and therefore different polarities. Keyboard outputs ignore polarity (they are chip-rendered).
+
+### Intermediate value computation
+
+For each `Action::MergeAxis` encountered during the DFS walk, the analyzer captures the merge's action-index `i` (within its containing `Vec<Action>`) and calls:
+
+```rust
+inputforge_core::pipeline::evaluate_actions_through(&actions, &state, &primary, i + 1)
+```
+
+passing `i + 1` as `stop_at` (exclusive). The returned `InputValue` is destructured to its f64 component (axis polarity already applied by the pipeline) and stored on `ChainStep::Merge.intermediate_value`. This generalizes the single-merge call already at `live_readout.rs:86` (`evaluate_actions_through(&actions, &state, &primary, c.index + 1)`) to every merge in the tree. Cost is O(action-tree size²) per render, well below the perf budget given typical tree size and the validator's `MAX_CONDITION_DEPTH = 32` cap. No new core API surface introduced; the call sites live inside `analyzer.rs`.
 
 ---
 
@@ -202,7 +217,7 @@ The `OutRow` wrapper dispatches on `OutputDescriptor.destination` and (for vJoy)
 |---|---|
 | `VJoy(OutputId::Axis { id })` | bar (existing rendering, polarity-aware) + mono pct |
 | `VJoy(OutputId::Button { id })` | unipolar bar 0/100% + mono pct (`0.00` / `1.00`) |
-| `VJoy(OutputId::Hat { id })` | directional glyph cell — single character `↑↗→↘↓↙←↖·` rendered in the bar slot, no animation. Pct slot empty. |
+| `VJoy(OutputId::Hat { id })` | directional glyph cell, single character `↑↗→↘↓↙←↖·` rendered in the bar slot, no animation. Pct slot empty. |
 | `Keyboard(key_combo)` | chip in `--color-control` (violet badge), key combo in mono. Filled when `is_active` per Q6-A; hollow when frozen. Bar slot replaced by chip cell. Pct slot empty. |
 
 `OutRow` reuses the existing `ReadoutRow` layout shell where possible: same column grid, same `--frozen` modifier class application. The four cell variants share the `if-editor__readout-row` BEM root; chip and glyph variants get sub-modifiers (`--kb`, `--hat`).
@@ -213,8 +228,8 @@ The `OutRow` wrapper dispatches on `OutputDescriptor.destination` and (for vJoy)
 |---|---|
 | `ButtonPressed { input }` | source label + filled green dot (filled = pressed) |
 | `ButtonReleased { input }` | source label with " (released)" suffix + filled dot when *currently released* |
-| `AxisInRange { input, range }` | source label + small mono `[low..high]` glyph + filled green dot when in range |
-| `HatDirection { input, direction }` | source label + direction glyph (`↑↗→↘↓↙←↖`) + filled green dot when matching |
+| `AxisInRange { input, min, max }` | source label + small mono `[min..max]` glyph (e.g. `[0.20..0.80]`) + filled `--color-live` dot when in range. Range thresholds render verbatim from the source `f64`s and are interpreted in the bipolar-encoded `[-1, 1]` domain regardless of the input's natural polarity (per `pipeline/condition.rs:27-36`); a unipolar pedal in range `[0.0, 1.0]` therefore shows thresholds in `[-1, 1]` form, not in pedal-natural form. |
+| `HatDirection { input, directions }` | source label + concatenated direction glyph string in JetBrainsMono using the alphabet `↑↗→↘↓↙←↖·` (e.g. `[N]` → `↑`, `[N, NE, E]` → `↑↗→`, `[Center]` → `·`, all 9 → `↑↗→↘↓↙←↖·`) + filled `--color-live` dot when the current hat reading from `state.input_cache.get_hat(input)` is contained in `directions`; hollow with `--color-text-subtle` border otherwise. The configured glyph string is static (predicate is read-only here); only the indicator dot animates with hat motion. `Center` is a first-class direction, filled when matched. Engine-stopped + branch-inactive flip the dot to hollow via the same `--frozen` modifier path used by axis bars. |
 
 Composites (`All` / `Any` / `Not`) flatten in the analyzer: each leaf condition becomes one chip. The composite operator is *not* shown in the predicate subsection. The conditional outcome inside the expanded chain *does* show the predicate evaluation as a single boolean (after composite combination).
 
@@ -224,8 +239,8 @@ Indented block under the OUT row, left-bordered with 1px dashed `--color-border-
 
 | Step | Layout |
 |---|---|
-| `Merge { op, partner, intermediate_value }` | small-uppercase `MERGE n` label in `--color-output` (gold), partner source label in muted text, smaller bar (4px tall) in `--color-processing` (teal) showing intermediate value, mono pct in `--color-text-muted` |
-| `Conditional { predicate, evaluated, branch }` | small-uppercase `COND` label in `--color-control` (violet), predicate label in muted text, → "active branch" or "inactive branch" tag (violet for active, text-subtle for inactive) |
+| `Merge { operation, partner, intermediate_value }` | small-uppercase `MERGE n` label in `--color-output` (gold), partner source label in muted text, smaller bar (4px tall) in `--color-processing` (teal) showing intermediate value, mono pct in `--color-text-muted` |
+| `Conditional { condition_label, evaluated, branch }` | small-uppercase `COND` label in `--color-control` (violet), `condition_label` in muted text (composite-aware: leaf conditions render as their chip label, `All`/`Any`/`Not` render as `A AND B` / `A OR B` / `NOT A` infix form), → "active branch" or "inactive branch" tag (violet for active, text-subtle for inactive) |
 
 The chain block respects the engine-stopped freeze: when `--frozen` is on the parent OUT row, the chain bars and chips inherit the muted treatment.
 
@@ -250,7 +265,7 @@ struct ExpandState {
 
 ### Engine-stopped + branch-inactive freeze composition
 
-One CSS class — `if-editor__readout-row--frozen`, already shipped — handles both cases. `OutRow` computes `frozen = !engine_running || !descriptor.is_active`. Truth table:
+One CSS class, `if-editor__readout-row--frozen` (already shipped), handles both cases. `OutRow` computes `frozen = !engine_running || !descriptor.is_active`. Truth table:
 
 | Engine | Conditional branch | Row visual |
 |---|---|---|
