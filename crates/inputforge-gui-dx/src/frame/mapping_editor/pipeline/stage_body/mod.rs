@@ -104,7 +104,14 @@ pub(crate) fn StageBody(
                 root_actions: root_actions.clone(),
             }
         },
-        Action::Deadzone { .. } => rsx! { placeholders::DeadzonePlaceholder {} },
+        Action::Deadzone { config } => rsx! {
+            deadzone::DeadzoneBody {
+                mapping_key: mapping_key.clone(),
+                stage_id: stage_id.clone(),
+                config: config.clone(),
+                root_actions: root_actions.clone(),
+            }
+        },
         Action::ChangeMode { .. } => rsx! { placeholders::ChangeModePlaceholder {} },
     }
 }
@@ -125,8 +132,8 @@ pub(crate) fn header_right_slot(action: &Action, expanded: bool) -> Element {
     match action {
         // F10: thumbnail replaces the default chevron.
         Action::ResponseCurve { curve } => response_curve::thumbnail::header_thumbnail(curve),
-        // F11 will override (preview = deadzone visualization):
-        Action::Deadzone { .. } => default_chevron(expanded),
+        // F11: thumbnail replaces the default chevron.
+        Action::Deadzone { config } => deadzone::thumbnail::header_thumbnail(config),
         // F14 will override (preview = mode badge):
         Action::ChangeMode { .. } => default_chevron(expanded),
         // F9-owned variants: chevron only.
