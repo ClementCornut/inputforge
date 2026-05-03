@@ -2,12 +2,9 @@
 
 //! Toolbar above the plot: type segmented control + symmetric switch + reset.
 
-use std::sync::mpsc::Sender;
-
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Mapping};
-use inputforge_core::engine::EngineCommand;
+use inputforge_core::action::Action;
 use inputforge_core::processing::curves::ResponseCurve;
 
 use crate::components::tabs::{TabItem, Tabs};
@@ -15,8 +12,8 @@ use crate::components::{Button, ButtonSize, ButtonVariant, Switch};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::replace_at_path;
-use crate::frame::mapping_editor::undo_log::{StageId, UndoKind};
+use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::dispatch_stage_edit;
+use crate::frame::mapping_editor::undo_log::StageId;
 
 use super::CurveType;
 use super::mutation;
@@ -26,7 +23,7 @@ use super::mutation;
 /// Owns three controls: a type segmented control (`Tabs`), a symmetric
 /// `Switch`, and a ghost `Button` to reset to the identity curve. Each
 /// control dispatches `EngineCommand::SetMapping` and pushes an undo entry
-/// via `dispatch_curve_edit`.
+/// via `instruments::stage_dispatch::dispatch_stage_edit`.
 ///
 /// All signals needed are received as props so the component remains
 /// SSR-testable in isolation (no implicit context reads for data).
@@ -94,10 +91,10 @@ pub(crate) fn Toolbar(
             .mapping_names
             .get(&key_for_type.1)
             .cloned();
-        dispatch_curve_edit(
+        dispatch_stage_edit(
             &actions_for_type,
             &stage_for_type,
-            new,
+            Action::ResponseCurve { curve: new },
             &key_for_type,
             name,
             &cmd_for_type,
@@ -131,10 +128,10 @@ pub(crate) fn Toolbar(
             .mapping_names
             .get(&key_for_sym.1)
             .cloned();
-        dispatch_curve_edit(
+        dispatch_stage_edit(
             &actions_for_sym,
             &stage_for_sym,
-            new,
+            Action::ResponseCurve { curve: new },
             &key_for_sym,
             name,
             &cmd_for_sym,
@@ -158,10 +155,10 @@ pub(crate) fn Toolbar(
             .mapping_names
             .get(&key_for_reset.1)
             .cloned();
-        dispatch_curve_edit(
+        dispatch_stage_edit(
             &actions_for_reset,
             &stage_for_reset,
-            new,
+            Action::ResponseCurve { curve: new },
             &key_for_reset,
             name,
             &cmd_for_reset,
@@ -206,100 +203,4 @@ fn kind_label(k: CurveType) -> &'static str {
         CurveType::CubicSpline => "spline",
         CurveType::CubicBezier => "bezier",
     }
-}
-
-/// Dispatch a curve edit to the engine **without** recording an undo entry.
-///
-/// Used by the keyboard handler's same-key coalesce path (`MergeUndo`): the
-/// engine must receive the updated curve but the undo log must not receive a
-/// new entry. The first nudge of a coalesce burst already pushed an entry
-/// (via [`dispatch_curve_edit`]) whose `mapping_before` captures the
-/// pre-burst state, so `undo` restores correctly without the intermediate
-/// entries.
-///
-/// `name` is threaded through to preserve the user-set mapping name (mirrors
-/// the `dispatch_curve_edit` convention; see `name_field.rs:60-70`).
-pub(crate) fn dispatch_curve_edit_no_undo(
-    actions_before: &[Action],
-    stage_id: &StageId,
-    new_curve: ResponseCurve,
-    mapping_key: &MappingKey,
-    name: Option<String>,
-    cmd_tx: &Sender<EngineCommand>,
-) {
-    let Some(new_actions) = replace_at_path(
-        actions_before,
-        stage_id,
-        Action::ResponseCurve { curve: new_curve },
-    ) else {
-        return;
-    };
-    if cmd_tx
-        .send(EngineCommand::SetMapping {
-            input: mapping_key.1.clone(),
-            mode: mapping_key.0.clone(),
-            name,
-            actions: new_actions,
-        })
-        .is_err()
-    {
-        tracing::warn!(
-            target: "f10::response_curve",
-            action = "set_mapping_no_undo_drop_offline",
-            "dropped no-undo SetMapping command: receiver disconnected"
-        );
-    }
-}
-
-// `name` is resolved by the caller via
-// `ctx.config.read().mapping_names.get(mapping_key).cloned()`. Both the
-// undo `before` snapshot and the engine command must carry the same
-// `Some(name)` to preserve the user-set mapping name (mirrors F9
-// amendment #2; see `name_field.rs:60-70` and `input_field.rs:87-103`).
-#[expect(
-    clippy::too_many_arguments,
-    reason = "F9 convention; matches dispatch_input_field_edit signature"
-)]
-pub(crate) fn dispatch_curve_edit(
-    actions_before: &[Action],
-    stage_id: &StageId,
-    new_curve: ResponseCurve,
-    mapping_key: &MappingKey,
-    name: Option<String>,
-    cmd_tx: &Sender<EngineCommand>,
-    undo_log: &mut Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
-    label: String,
-) {
-    let Some(new_actions) = replace_at_path(
-        actions_before,
-        stage_id,
-        Action::ResponseCurve { curve: new_curve },
-    ) else {
-        return;
-    };
-    let before = Mapping {
-        input: mapping_key.1.clone(),
-        mode: mapping_key.0.clone(),
-        name: name.clone(),
-        actions: actions_before.to_vec(),
-    };
-    if cmd_tx
-        .send(EngineCommand::SetMapping {
-            input: mapping_key.1.clone(),
-            mode: mapping_key.0.clone(),
-            name,
-            actions: new_actions,
-        })
-        .is_err()
-    {
-        tracing::warn!(
-            target: "f10::response_curve",
-            action = "set_mapping_drop_offline",
-            "dropped SetMapping command: receiver disconnected"
-        );
-        return;
-    }
-    undo_log
-        .write()
-        .push_edit(mapping_key.clone(), before, UndoKind::StageEdit, label);
 }

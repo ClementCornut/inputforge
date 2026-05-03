@@ -77,10 +77,10 @@ impl KeyInput {
 ///
 /// 1. On the FIRST key in a coalesce streak (`PushUndo`), the host
 ///    captures `mapping_before = mapping_at(actions_root, mapping_key)`
-///    and calls `dispatch_curve_edit(...)`, which internally calls
+///    and calls `dispatch_stage_edit(...)`, which internally calls
 ///    `undo_log.push_edit(key, mapping_before, StageEdit, label)`.
 /// 2. On every SUBSEQUENT key in the same streak (`MergeUndo`), the host
-///    calls `dispatch_curve_edit_no_undo(...)`, which dispatches
+///    calls `dispatch_stage_edit_no_undo(...)`, which dispatches
 ///    `EngineCommand::SetMapping` to the engine but does NOT touch the
 ///    undo log. The first entry's `mapping_before` already captures the
 ///    pre-streak state, so undo restores correctly.

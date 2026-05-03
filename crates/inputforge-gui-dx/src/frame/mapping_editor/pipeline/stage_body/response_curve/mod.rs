@@ -51,6 +51,9 @@ use crate::frame::mapping_editor::pipeline::stage::stage_summary_for;
 use crate::frame::mapping_editor::pipeline::stage_body::instruments::bridge::{
     BridgeEvent, mount_mouse_bridge, stage_id_dom_id,
 };
+use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::{
+    dispatch_stage_edit, dispatch_stage_edit_no_undo,
+};
 use crate::frame::mapping_editor::undo_log::StageId;
 
 use self::state::{BodyState, extract_anchors};
@@ -167,10 +170,10 @@ fn dispatch_bridge_event(
                     let cfg2 = config_signal.read();
                     let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
                     drop(cfg2);
-                    toolbar::dispatch_curve_edit(
+                    dispatch_stage_edit(
                         &actions_snap,
                         stage_id,
-                        valid,
+                        Action::ResponseCurve { curve: valid },
                         mapping_key,
                         name,
                         cmd_tx,
@@ -218,10 +221,10 @@ fn dispatch_bridge_event(
                             let cfg2 = config_signal.read();
                             let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
                             drop(cfg2);
-                            toolbar::dispatch_curve_edit(
+                            dispatch_stage_edit(
                                 &actions_snap,
                                 stage_id,
-                                valid,
+                                Action::ResponseCurve { curve: valid },
                                 mapping_key,
                                 name,
                                 cmd_tx,
@@ -256,10 +259,10 @@ fn dispatch_bridge_event(
                             let cfg2 = config_signal.read();
                             let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
                             drop(cfg2);
-                            toolbar::dispatch_curve_edit(
+                            dispatch_stage_edit(
                                 &actions_snap,
                                 stage_id,
-                                valid,
+                                Action::ResponseCurve { curve: valid },
                                 mapping_key,
                                 name,
                                 cmd_tx,
@@ -496,7 +499,7 @@ pub(crate) fn ResponseCurveBody(
 
         // Re-project curve and root actions from the live config so the handler
         // sees the freshest state (no stale prop closures). Drop the read guard
-        // before dispatch_curve_edit acquires its own write on undo_log.
+        // before dispatch_stage_edit acquires its own write on undo_log.
         let cfg = config_signal.read();
         let actions: Vec<Action> = cfg.selected_mapping_actions.clone().unwrap_or_default();
         let live_curve = project_stage_curve(&actions, &stage_id_for_key, &curve);
@@ -509,10 +512,10 @@ pub(crate) fn ResponseCurveBody(
         let Some(new) = new_curve else { return };
         match outcome {
             Some(keyboard::KeyOutcome::PushUndo { label }) => {
-                toolbar::dispatch_curve_edit(
+                dispatch_stage_edit(
                     &actions,
                     &stage_id_for_key,
-                    new,
+                    Action::ResponseCurve { curve: new },
                     &mapping_key_for_key,
                     name,
                     &cmd_tx_for_key,
@@ -527,10 +530,10 @@ pub(crate) fn ResponseCurveBody(
                 // captures the pre-burst state, so undo restores correctly.
                 // Redo replays the first nudge's SetMapping only; accepted as
                 // a deliberate UX simplification.
-                toolbar::dispatch_curve_edit_no_undo(
+                dispatch_stage_edit_no_undo(
                     &actions,
                     &stage_id_for_key,
-                    new,
+                    Action::ResponseCurve { curve: new },
                     &mapping_key_for_key,
                     name,
                     &cmd_tx_for_key,
