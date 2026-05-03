@@ -2,14 +2,14 @@
 
 **Status:** Design approved, ready for implementation plan
 **Date:** 2026-05-03
-**Parent specs:** [`2026-04-30-f8-mapping-list-design.md`](./2026-04-30-f8-mapping-list-design.md) (mapping list, `+ Add mapping` row, conflict detection patterns), [`2026-04-30-f9-mapping-editor-design.md`](./2026-04-30-f9-mapping-editor-design.md) (`live_readout` primitive), [`2026-04-28-f6-snapshot-preferences-core-design.md`](./2026-04-28-f6-snapshot-preferences-core-design.md) (snapshot infrastructure).
+**Parent specs:** [`2026-04-30-f8-mapping-list-design.md`](./2026-04-30-f8-mapping-list-design.md) (mapping list, `+ Add mapping` row, F8's per-row conflict pattern is extended across modes for the wizard's per-(row, mode) scope), [`2026-04-30-f9-mapping-editor-design.md`](./2026-04-30-f9-mapping-editor-design.md) (live data-source convention: `AppState.input_cache` reads), [`2026-04-28-f6-snapshot-preferences-core-design.md`](./2026-04-28-f6-snapshot-preferences-core-design.md) (snapshot infrastructure).
 **Brainstorm artefacts:** `.superpowers/brainstorm/1197-1777800140/content/panel-layout.html`
 **Design system:** [`/DESIGN.md`](../../DESIGN.md)
 **Product brief:** [`/PRODUCT.md`](../../PRODUCT.md)
 **Engine command:** `crates/inputforge-core/src/engine/command.rs:33` (existing `EngineCommand::SetMapping`).
 **Profile mutation:** `crates/inputforge-core/src/profile/mod.rs:219` (existing `Profile::set_mapping`).
 **Snapshot kinds:** `crates/inputforge-core/src/snapshot/types.rs:27` (existing `SnapshotKind`).
-**Live virtual-device state:** `crates/inputforge-core/src/state/mod.rs:62` (existing `EngineState.virtual_devices`).
+**Live virtual-device state:** `crates/inputforge-core/src/state/mod.rs:62` (existing `AppState.virtual_devices`).
 **vJoy device enumeration:** `crates/inputforge-core/src/output/vjoy_output.rs:215` (existing `VJoyOutput::list_devices`).
 
 ---
@@ -27,7 +27,7 @@ The shape of the bulk operation is intentionally narrow:
 - Per-row override of the auto-suggested target output, with a `(do not map)` choice that excludes a row.
 - Pre-flight tally of what Apply will create, replace, skip, and exclude.
 - Per-group bulk affordances (skip-all-conflicts, replace-all-conflicts) that surface only when relevant, so the group headers stay clean for the typical case.
-- Atomic apply: one auto-snapshot, one bulk command to the engine, one profile save, one toast.
+- Atomic apply: pre-save the in-memory profile (so disk and memory match), one auto-snapshot taken from disk, one bulk command to the engine upserting in-memory, one second profile save, one toast.
 
 The user can re-run the wizard whenever a new device is plugged in, or when starting from a fresh profile.
 
@@ -43,7 +43,7 @@ The decisions below were validated in brainstorm one question at a time.
 
 **Q3. Conflict handling: A.** Skip on conflict by default. A row whose `(input, mode)` already exists in the active profile renders dimmed with an `already mapped: "<existing name>"` subtext and is excluded from the apply tally. A per-row `replace` chip promotes the row to the replace tally and tints the row amber, swapping the subtext to `replacing "<existing name>"`. Bias is toward not destroying user work.
 
-**Q4. Auto-mapping convention: A.** Positional, by index. Source axis index `i` maps to the `i`-th vJoy axis in enum order (`X, Y, Z, Rx, Ry, Rz, Slider0, Slider1`). Source button `i` maps to vJoy button `i + 1`. Source hat `i` maps to vJoy hat `i + 1`. If the source has more inputs of a kind than the target vJoy exposes, the overflow rows default to `(do not map)` and the per-row select hides the unavailable slots. Persisted per-(source, target) override replay is deferred (see Deferred follow-ups).
+**Q4. Auto-mapping convention: A.** Positional, by index. Source axis index `i` maps to the `i`-th vJoy axis in enum order (`X, Y, Z, Rx, Ry, Rz, Slider0, Slider1`). Source button `i` (0-indexed) maps to vJoy button `i + 1` (1-indexed at the SDK layer; this is intentional, not a typo). Source hat `i` (0-indexed) maps to vJoy hat `i + 1`. If the source has more inputs of a kind than the target vJoy exposes, the overflow rows default to `(do not map)` and the per-row select hides the unavailable slots. Concretely: an axis row whose `i >= len(VirtualDeviceConfig.axes)`, a button row whose `i >= VirtualDeviceConfig.button_count`, or a hat row whose `i >= VirtualDeviceConfig.hat_count` is overflow. Persisted per-(source, target) override replay is deferred (see Deferred follow-ups).
 
 **Q5. Action set: A.** Bare passthrough. Each generated mapping carries a single `Action::MapToVJoy { output }` and nothing else. No deadzone, no response curve, no inversion. Flavour is added afterward in the regular per-mapping editor.
 
@@ -53,11 +53,11 @@ The decisions below were validated in brainstorm one question at a time.
 
 **Q8. Source device picker scope: A.** Currently-connected devices only. The picker reads from the engine's connected-device list (the source of truth for input enumeration). Disconnected devices in the profile are not eligible. This sidesteps the offline-enumeration problem (SDL3 cannot report axis or button counts for an unplugged device) and matches the `Live data is the contract` principle. Offline authoring is deferred (see Deferred follow-ups).
 
-**Q9. Target vJoy picker scope: C.** Live-detected vJoys only, with an honest empty state. The picker reads from `EngineState.virtual_devices`, populated by the engine's vJoy probe at startup. The select surfaces both device id and capability summary (`vJoy 1: 8 axes, 32 buttons, 1 hat`). Per-row target selects filter their option lists to slots that the chosen vJoy actually exposes (no offering `Slider1` if vJoy is configured with five axes). When `EngineState.virtual_devices` is empty, the panel shows a no-signal empty state pointing the user at vJoyConf and disables the Apply button.
+**Q9. Target vJoy picker scope: C.** Live-detected vJoys only, with an honest empty state. The picker reads from `AppState.virtual_devices`, populated by the engine's vJoy probe at startup. The select surfaces both device id and capability summary (`vJoy 1: 8 axes, 32 buttons, 1 hat`). Per-row target selects filter their option lists to slots that the chosen vJoy actually exposes (no offering `Slider1` if vJoy is configured with five axes). When `AppState.virtual_devices` is empty, the panel shows a no-signal empty state pointing the user at vJoyConf and disables the Apply button.
 
-**Q10. Live readout per row: A.** Inline, reusing the existing `frame::mapping_editor::live_readout` primitive in compact form. Each axis row shows a bipolar bar; each button row shows a filled-or-stamped dot; each hat row shows a mono cardinal letter. Wiggle the stick, watch the corresponding row pulse, confirm the auto-mapping pointed at the right slot.
+**Q10. Live readout per row: A.** Inline, via a new sibling component `crate::frame::bulk_map::row_readout` that mirrors the data sources used by `LiveReadout` (`AppState.input_cache` reads) but renders axes, buttons, and hats per the wizard grid template. F9's existing `LiveReadout` is layout-coupled to the editor and only handles axes; the wizard needs all three kinds, so a sibling component is the cleaner boundary. Each axis row shows a bipolar bar; each button row shows a filled-or-stamped dot; each hat row shows a mono cardinal letter. Wiggle the stick, watch the corresponding row pulse, confirm the auto-mapping pointed at the right slot.
 
-**Q11. Apply atomicity and undo: C, embedded snapshot.** New `EngineCommand::SetMappingsBulk { entries, snapshot_label }` variant; engine handler creates an `AutoBeforeBulkMap` snapshot first, then processes all entries in one in-memory pass and writes the profile file once. The snapshot creation is **inside** the bulk handler (not a separate dispatched command) so the bulk apply cannot proceed without a recovery snapshot. If the snapshot creation fails, the handler aborts the apply and logs a warning; the user sees an error toast and the profile is unchanged. This mirrors the `RestoreSnapshot` handler's `AutoBeforeRestore` pattern: snapshot and mutation are atomic to the same handler.
+**Q11. Apply atomicity and undo: C, embedded snapshot.** New `EngineCommand::SetMappingsBulk { entries, snapshot_label }` variant. The engine handler runs four steps in order: (1) save the current in-memory profile to disk so the on-disk body matches the user's pre-bulk state; (2) create an `AutoBeforeBulkMap` snapshot via `crate::snapshot::create`, then `crate::snapshot::prune`; (3) process all entries in one in-memory pass; (4) save the post-bulk profile to disk. The success toast is GUI-side and dispatched optimistically by the wizard before the engine even processes the command (see Post-apply behaviour below); it is not an engine handler step. The snapshot creation is **inside** the bulk handler (not a separate dispatched command) so the bulk apply cannot proceed without a recovery snapshot. If the snapshot creation fails, the handler aborts the apply and logs a warning; the user sees an error toast and the profile is unchanged. The pre-save in step 1 guarantees the recovery snapshot captures the user's authored state at the moment of bulk apply, not whatever happened to be on disk last. This handler shape borrows from the `RestoreSnapshot` pattern (`engine/run.rs:686-727`) for the snapshot-then-mutate discipline, but bulk-map does not reload from disk after the bulk save: the in-memory mutation is the source of truth, and the recovery path on save failure is user-driven Restore via the snapshot index UI rather than auto-rollback.
 
 **Q12. Summary chip placement: B.** Co-located with the Apply button. The summary chip sits directly above (or beside) the primary action, so plan and execute are visually coupled at the moment the user is about to commit. No top-of-panel summary; the metadata strip at the top stays focused on inputs (Source, Target, Mode, all-modes).
 
@@ -84,9 +84,9 @@ The decisions below were validated in brainstorm one question at a time.
 
 The wizard launches from a single icon button in the top bar's `tools_cluster`. The button's hover tooltip reads `Bulk-map device to vJoy ...`. No other entry point exists.
 
-When the user clicks, the panel slides in from the right of the workspace at 460px wide (clamped to `min(460px, calc(100vw - 240px - 320px))` on narrow windows, so the rail and a minimum mapping-editor footprint stay visible). The panel surface uses `--bg-elevated` with a 1px `--border` left edge (not `--strong`; the spirit of the side-stripe ban applies) and the standard chamfer highlight (`inset 0 1px 0 rgba(255,255,255,0.04)`) on the upper edge.
+When the user clicks, the panel slides in from the right of the workspace at 460px wide (clamped to `min(460px, calc(100vw - 240px - 320px))` on narrow windows, so the rail and a minimum mapping-editor footprint stay visible). The wizard mounts inside the existing `<aside class="if-panel-slot">` scaffolding owned by `crates/inputforge-gui-dx/src/frame/panel_slot/mod.rs:51`, reached via a new `PanelSlot::BulkMap` variant on the existing enum at `crates/inputforge-gui-dx/src/frame/view_state.rs:28`. This makes the wizard mutually exclusive with `PanelSlot::Devices` and `PanelSlot::Profiles` (only one right-side tool open at a time), reuses the entrance-keyframe discipline already in `panel_slot/mod.rs`, and avoids a parallel right-aside element. The panel surface uses `--bg-elevated` with a 1px `--border` left edge (not `--strong`; the spirit of the side-stripe ban applies) and the standard chamfer highlight (`inset 0 1px 0 rgba(255,255,255,0.04)`) on the upper edge. If the existing aside CSS in `panel_slot.css` enforces a width that conflicts with 460px, the implementation may add a per-variant width override in `panel_slot/mod.rs`; this is a tactical follow-up, not a blocker.
 
-The panel is **modeless**. It does not dim the canvas, does not trap focus from the underlying mapping list rail, and does not block keyboard navigation outside its boundary. Esc dismisses the panel and discards all per-row edits silently with no confirm dialog. This matches `DESIGN.md` Surfaces section 6: side panel for multi-field flows, dialog only for data-loss or destructive confirmations.
+The panel is **modeless**, on the same terms as the existing `PanelSlot::Devices` and `PanelSlot::Profiles` variants. It does not dim the canvas, does not trap focus from the underlying mapping list rail, and does not block keyboard navigation outside its boundary. Esc dismisses the panel and discards all per-row edits silently with no confirm dialog. This matches `DESIGN.md` Surfaces section 6: side panel for multi-field flows, dialog only for data-loss or destructive confirmations.
 
 The mapping editor (centre column) is occluded while the panel is open. The mapping list rail (left column) stays visible so the user can see the mode they are editing and the ambient list of existing mappings while the wizard reasons about conflicts against that mode.
 
@@ -105,7 +105,7 @@ Two-row, two-column grid:
 - Row 1: Source picker, Target picker.
 - Row 2: Mode picker, `Apply to all modes (N)` checkbox.
 
-Both pickers use the existing `Select` primitive. The all-modes toggle uses the existing `Checkbox` primitive (real `<input type="checkbox">`, never a span-as-checkbox). When the all-modes checkbox is checked, the Mode picker enters its `disabled` state.
+Both pickers use the existing `Select` primitive. The all-modes toggle uses the existing `Checkbox` primitive (real `<input type="checkbox">`, never a span-as-checkbox). When the all-modes checkbox is checked, the Mode picker enters its `disabled` state. If the existing `Checkbox` primitive does not support arbitrary label content (the `(N)` count needs to render inline with the label), treat this as a primitive enhancement; the fallback is to render the count as a sibling span. Tactical decision at implementation time, not blocking.
 
 ### Rows table
 
@@ -122,8 +122,8 @@ Row anatomy:
 
 - **Kind chip.** 18px square with a single letter (`A`, `B`, `H`), tinted with the row's category hue at 14% (processing teal for axis, control violet for button, output gold for hat). The hat chip's gold is desaturated one step from the canonical `--output` to widen the gap from `--warning` amber and avoid visual collision when the row also carries a replace badge.
 - **Source cell.** Mono `Axis 0` / `Btn 5` / `Hat 0` label in the body. When the row collides with an existing mapping in any mode the wizard is targeting, a caption-size subtext appears below: `replacing "Throttle"` (amber) when set to replace, or `already mapped: "Throttle"` (muted) when set to skip.
-- **Live cell.** The compact form of `frame::mapping_editor::live_readout`. Bipolar bar for axes (showing the cached input value from `EngineState.input_cache`), filled-or-stamped dot for buttons, mono cardinal letter for hats. Live values use `--live` at 60-70% fill rather than full saturation, so a row of pressed buttons does not become the loudest pixel cluster on the panel.
-- **Target cell.** The existing `Select` primitive listing only the chosen vJoy's available outputs of the matching kind, plus a `(do not map)` option at the top. Mono font for the actual identifiers (`Axis X`, `Button 5`, `Hat 1`); Inter italic for the `(do not map)` placeholder.
+- **Live cell.** `crate::frame::bulk_map::row_readout` (new sibling component, see Cross-cutting reuses below). Bipolar bar for axes (showing the cached input value from `AppState.input_cache`), filled-or-stamped dot for buttons, mono cardinal letter for hats. Live values use `--live` at 60-70% fill rather than full saturation, so a row of pressed buttons does not become the loudest pixel cluster on the panel.
+- **Target cell.** The existing `Select` primitive listing only the chosen vJoy's available outputs of the matching kind, plus a `(do not map)` option at the top. Mono font for the actual identifiers (`Axis X`, `Button 5`, `Hat 1`); Inter italic for the `(do not map)` placeholder. If the existing `Select` primitive does not support per-option font variants, treat this as a tactical follow-up; the fallback is a non-italic placeholder. Not blocking.
 - **Action cell.** A single affordance with two visual states: outlined chip `replace` when the row is currently set to skip (action available), filled chip `replacing` when set to replace (state active). Same shape, same column, same x-position; weight changes encode state. This collapses the two distinct affordances flagged in design critique into one consistent column.
 
 ### Group headers
@@ -153,11 +153,11 @@ Right-aligned action row. Ghost `Cancel` plus primary `Apply 12 mappings` (the c
 
 ### Post-apply behaviour
 
-On Apply click, the GUI dispatches the single `SetMappingsBulk` command, **immediately closes the panel** (sets `view.bulk_map_open` to `false`), and **immediately enqueues a success toast** `Created X mappings` (where X is `create + replace`) via the existing toast primitive. This is optimistic: the engine handler is presumed to succeed. If the snapshot creation fails inside the handler, the engine pushes a warning to the existing warnings channel, which already drives a separate error toast (`Bulk-map aborted: could not create recovery snapshot`) via the existing warnings-bridge wiring. Both toasts can co-exist; the user reads them top-to-bottom and the failure toast supersedes in meaning.
+On Apply click, the GUI dispatches the single `SetMappingsBulk` command, **immediately closes the panel** (sets `view.panel_slot` to `PanelSlot::None`), and **immediately enqueues a success toast** `Created X mappings` (where X is `create + replace`) via the existing toast primitive. This is optimistic: the engine handler is presumed to succeed. If the snapshot creation fails inside the handler, the engine pushes a warning to the existing warnings channel, which already drives a separate error toast (`Bulk-map aborted: could not create recovery snapshot`) via the existing warnings-bridge wiring. Both toasts can co-exist; the user reads them top-to-bottom and the failure toast supersedes in meaning.
 
 ### Empty state (no vJoy detected)
 
-When `EngineState.virtual_devices` is empty at panel open, the metadata strip and rows table are replaced by an instrument-style "no signal" framing: a neutral icon, the title `No vJoy devices configured`, and the caption `Configure outputs in vJoyConf, then reopen.`. No SVG illustration of people or devices, no "Get started!" CTA. The footer renders with Apply disabled; Cancel and Esc still work.
+When `AppState.virtual_devices` is empty at panel open, the metadata strip and rows table are replaced by an instrument-style "no signal" framing: a neutral icon, the title `No vJoy devices configured`, and the caption `Configure outputs in vJoyConf, then reopen.`. No SVG illustration of people or devices, no "Get started!" CTA. The footer renders with Apply disabled; Cancel and Esc still work.
 
 ### Motion
 
@@ -186,6 +186,12 @@ When `EngineState.virtual_devices` is empty at panel open, the metadata strip an
 // crates/inputforge-core/src/action/bulk.rs (new file)
 #[derive(Debug, Clone, PartialEq)]
 pub struct BulkMapEntry {
+    /// `input` MUST be `InputAddress::Bound { device, input }`.
+    /// The wizard always knows the source device, so all entries it
+    /// dispatches are bound. The engine handler treats `Unbound`
+    /// entries as user error and silently skips them (covered by the
+    /// `engine_set_mappings_bulk_skips_entries_with_unbound_input`
+    /// test in layer 3).
     pub input: InputAddress,
     pub mode: String,
     pub output: OutputAddress,
@@ -221,7 +227,7 @@ pub enum SnapshotKind {
 }
 ```
 
-Serializes as `auto_before_bulk_map`. Not pinned (existing `pinned: matches!(kind, SnapshotKind::Manual)` logic in `snapshot/index.rs:169` already handles the new variant correctly). Always fires; never deduped, mirroring `AutoBeforeRestore` semantics. Recovery via the existing snapshot index UI.
+Serializes as `auto_before_bulk_map`. Not pinned (existing production `pinned: matches!(kind, SnapshotKind::Manual)` logic in `crates/inputforge-core/src/snapshot/mod.rs:80` already handles the new variant correctly; the matching expression in `snapshot/index.rs:169` is a test-fixture builder, not the runtime invariant). Always fires; never deduped, mirroring `AutoBeforeRestore` semantics. Recovery via the existing snapshot index UI.
 
 ### New `Profile` method
 
@@ -237,7 +243,7 @@ impl Profile {
 }
 ```
 
-Single in-memory pass that delegates to the existing `set_mapping` upsert. **No file save inside this method.** The engine handler does the save once after the whole batch.
+Single in-memory pass that delegates to the existing `set_mapping` upsert. **No file save inside this method.** The engine handler owns the two profile saves (pre-snapshot and post-bulk); see the next section.
 
 ### Engine handler
 
@@ -248,40 +254,80 @@ EngineCommand::SetMappingsBulk { entries, snapshot_label } => {
     self.pending_output_refresh = true;
 }
 
-fn set_mappings_bulk(&mut self, entries: Vec<BulkMapEntry>, snapshot_label: String) {
+// Returns `()`, matching the shape of the existing `set_mapping` handler
+// (`crates/inputforge-core/src/engine/run.rs:783`). Snapshot and save
+// errors surface to the user via the warnings channel rather than `?`,
+// because the parent command-drain loop swallows arm errors anyway.
+fn set_mappings_bulk(&self, entries: Vec<BulkMapEntry>, snapshot_label: String) {
+    // Step 0: clone the profile path. The read guard drops at the end of
+    // this statement. Do NOT hold any state lock during
+    // `crate::snapshot::create` and `crate::snapshot::prune` (step 2),
+    // because those perform disk I/O that must run lock-free (mirrors
+    // `engine/run.rs:687-700`). Step 1's pre-save takes a short-lived
+    // read guard that drops before step 2.
     let Some(path) = self.state.read().profile_path.clone() else {
         tracing::warn!("SetMappingsBulk: no profile loaded, ignoring");
         return;
     };
 
-    // Step 1: take the recovery snapshot. Abort if it fails so the user
+    // Step 1: pre-save the in-memory profile so the on-disk body matches
+    // the user's pre-bulk authored state. Without this, the snapshot in
+    // step 2 captures whatever happened to be on disk last (which may be
+    // older than the in-memory state if any caller deferred a save).
+    {
+        let state = self.state.read();
+        if let Some(profile) = state.active_profile.as_ref() {
+            if let Err(e) = profile.save(&path) {
+                tracing::warn!(path = %path.display(), error = ?e, "SetMappingsBulk: pre-snapshot save failed; aborting");
+                drop(state);
+                self.state.write().warnings.push(
+                    "Bulk-map aborted: could not save profile before snapshot".to_owned()
+                );
+                return;
+            }
+        } else {
+            return;
+        }
+    } // read guard drops
+
+    // Step 2: take the recovery snapshot. Abort if it fails so the user
     // never ends up with bulk-applied mappings and no snapshot to roll
-    // back to. Mirrors the RestoreSnapshot handler's AutoBeforeRestore
-    // discipline.
-    if let Err(e) = self.create_snapshot(SnapshotKind::AutoBeforeBulkMap, Some(snapshot_label)) {
-        tracing::warn!(error = ?e, "SetMappingsBulk: AutoBeforeBulkMap snapshot failed; aborting apply");
-        // Surface to the GUI via the existing warnings channel so a toast
-        // can render via the warnings_bridge in inputforge-gui-dx. Profile
-        // is unchanged.
-        self.state.write().warnings.push(
-            "Bulk-map aborted: could not create recovery snapshot".to_owned()
-        );
-        return;
+    // back to. Note: `snapshot::create` and `snapshot::prune` are free
+    // functions in `crates/inputforge-core/src/snapshot/mod.rs`, NOT
+    // methods on `Engine`. They are called with `&path` and the existing
+    // `self.settings.snapshot` config.
+    match crate::snapshot::create(
+        &path,
+        crate::snapshot::SnapshotKind::AutoBeforeBulkMap,
+        Some(snapshot_label),
+        &self.settings.snapshot,
+    ) {
+        Ok(_) => {
+            // Prune retention; failure is non-fatal (matches RestoreSnapshot).
+            let _ = crate::snapshot::prune(&path, &self.settings.snapshot);
+        }
+        Err(e) => {
+            tracing::warn!(error = ?e, "SetMappingsBulk: AutoBeforeBulkMap snapshot failed; aborting apply");
+            self.state.write().warnings.push(
+                "Bulk-map aborted: could not create recovery snapshot".to_owned()
+            );
+            return;
+        }
     }
 
-    // Step 2: apply upserts and persist.
+    // Step 3: apply upserts and persist (second save).
     let mut state = self.state.write();
     let Some(profile) = state.active_profile.as_mut() else {
         return;
     };
     profile.set_mappings_bulk(&entries);
     if let Err(e) = profile.save(&path) {
-        tracing::warn!(path = %path.display(), error = ?e, "SetMappingsBulk: profile save failed");
+        tracing::warn!(path = %path.display(), error = ?e, "SetMappingsBulk: post-bulk save failed; in-memory state holds bulk; recovery via Restore");
     }
 }
 ```
 
-One snapshot taken per bulk apply, atomically with the upserts. One disk write per bulk apply for the profile, no matter how many entries. Same lock discipline as the existing `set_mapping` handler at `engine/run.rs:782`.
+Two profile saves per bulk apply (one before the snapshot, one after the upserts), regardless of entry count. The snapshot captures the pre-bulk authored state; the upserts run lock-correctly with the read guard dropped before snapshot I/O and the write guard taken only for the in-memory mutation plus post-bulk save. Same `fn -> ()` shape as the existing `set_mapping` handler at `crates/inputforge-core/src/engine/run.rs:783`.
 
 ### GUI dispatch
 
@@ -301,7 +347,12 @@ The engine handler is responsible for creating the recovery snapshot and the ups
 The wizard computes its `Vec<BulkMapEntry>` by walking the cross-product of committed rows and selected modes:
 
 ```text
-selected_modes = if apply_to_all_modes { profile.modes().all_names() } else { vec![mode_picker_value] }
+selected_modes: Vec<String> = if apply_to_all_modes {
+    // ModeTree::all_modes returns Vec<&str>; entries own their mode strings.
+    profile.modes().all_modes().iter().map(|s| (*s).to_owned()).collect()
+} else {
+    vec![mode_picker_value]
+}
 
 for each row in user-committed rows:                # excludes "(do not map)" and skip-on-conflict
     for each mode in selected_modes:
@@ -315,14 +366,15 @@ Conflict resolution is per `(row, mode)`. With `Apply to all modes` checked, a s
 
 ### Failure semantics
 
-- **Snapshot creation failure**: handler aborts the apply before any upsert. Profile is unchanged. A warning is pushed to the GUI's warnings channel so a toast can surface "Bulk-map aborted: could not create recovery snapshot." The user can retry once the underlying issue (typically disk space or permissions on the snapshot directory) is resolved.
+- **Pre-snapshot save failure** (step 1): the handler aborts before the snapshot. In-memory state is unchanged. A warning is pushed to the GUI's warnings channel: "Bulk-map aborted: could not save profile before snapshot." Disk and memory remain in sync. Typically caused by permissions or disk-full on the profile path.
+- **Snapshot creation failure** (step 2): the handler aborts before any upsert. Profile is unchanged on disk and in memory (the pre-snapshot save in step 1 succeeded but is a no-op against the previous on-disk body). A warning is pushed: "Bulk-map aborted: could not create recovery snapshot." The user can retry once the underlying issue (typically disk space or permissions on the snapshot directory) is resolved.
 - **Per-entry validation failures** (e.g. an entry references a mode that disappears between dispatch and handle): GUI filters before dispatch. Engine treats entries as authoritative; a stale mode reference produces a mapping into a now-orphan mode, which is benign in the data model. Existing `Profile::from_raw` validation flags orphan mappings on next reload.
-- **Profile save failure**: the in-memory upserts are committed; the disk write logs a warning. The recovery snapshot, taken in step 1 of the handler, provides the user's recovery path via Restore. Identical behaviour to the existing `SetMapping` handler.
-- **Bulk command sent without a loaded profile**: warn-and-ignore before snapshot creation. Identical to the existing `SetMapping` handler.
+- **Post-bulk save failure** (step 3): the in-memory upserts are committed; the disk write logs a warning. Disk now holds the pre-bulk state (the post-bulk save did not land); memory holds the post-bulk state. The recovery snapshot, taken in step 2, captures the same pre-bulk state as disk, so a Restore via the snapshot index UI is a visual no-op but is correct (and resyncs memory to disk on reload). On the next normal `LoadProfile` or app restart the user loses the bulk apply silently; the warnings-channel toast is the only signal.
+- **Bulk command sent without a loaded profile**: warn-and-ignore before any save or snapshot. Identical to the existing `SetMapping` handler.
 
 ### What this design avoids
 
-- Per-entry disk writes: a 40-row apply does one save, not 40.
+- Per-entry disk writes: a 40-row apply does two saves total (pre-snapshot, post-bulk), not 40.
 - Touching the existing `SetMapping` command: per-mapping editing flows continue unchanged.
 - A parallel upsert code path: `set_mappings_bulk` is a thin loop over the existing `set_mapping`.
 - Holding write locks across IPC: same discipline as existing handlers.
@@ -355,16 +407,19 @@ Reuses fixtures from existing `set_mapping_*` tests in the same module.
 ### Layer 3: engine command handler (in `engine/tests.rs`)
 
 ```text
-engine_set_mappings_bulk_writes_profile_to_disk_exactly_once
+engine_set_mappings_bulk_writes_profile_to_disk_exactly_twice_per_apply
 engine_set_mappings_bulk_with_no_profile_loaded_is_noop_and_logs_warning
 engine_set_mappings_bulk_sets_pending_output_refresh_true
 engine_set_mappings_bulk_n_entries_completes_in_single_handler_pass
-engine_set_mappings_bulk_creates_auto_before_bulk_map_snapshot_before_upserts
+engine_set_mappings_bulk_creates_auto_before_bulk_map_snapshot_between_pre_save_and_upserts
+engine_set_mappings_bulk_pre_snapshot_save_failure_aborts_and_logs_warning
 engine_set_mappings_bulk_aborts_apply_when_snapshot_creation_fails
-engine_set_mappings_bulk_save_failure_keeps_in_memory_state_and_logs_warning
+engine_set_mappings_bulk_abort_path_does_not_leak_state_write_lock
+engine_set_mappings_bulk_post_bulk_save_failure_keeps_in_memory_state_and_logs_warning
+engine_set_mappings_bulk_skips_entries_with_unbound_input
 ```
 
-The "writes exactly once" test counts profile saves via tempfile mtime or a wrapped save call. The "creates snapshot before upserts" test asserts that the snapshot index gains an `AutoBeforeBulkMap` entry whose `taken_at` is strictly before the post-bulk profile save mtime, even though the dispatch is a single command. The "aborts when snapshot fails" test injects a snapshot-creation failure (e.g. read-only snapshot dir) and asserts the profile mappings are unchanged plus a warning was pushed to the warnings channel.
+The "writes exactly twice" test counts profile saves on the happy path via tempfile mtime or a wrapped save call: one before the snapshot, one after the upserts. The abort-path tests (`pre_snapshot_save_failure_aborts_and_logs_warning`, `aborts_apply_when_snapshot_creation_fails`) cover the lower save counts when the handler bails before step 3. The "creates snapshot between pre-save and upserts" test asserts that the snapshot's `taken_at` falls strictly between the two save mtimes, capturing the pre-bulk authored state. The "aborts when snapshot fails" test injects a snapshot-creation failure (e.g. read-only snapshot dir) and asserts the profile mappings are unchanged plus a warning was pushed to the warnings channel. The "abort path does not leak write lock" test asserts that after a snapshot-creation failure, a subsequent `state.read()` succeeds without timeout. The "skips entries with unbound input" test passes a `BulkMapEntry { input: InputAddress::Unbound, ... }` and asserts no mapping is created (defensive: GUI never dispatches Unbound, but the engine treats the variant as user error).
 
 ### Layer 4: `SnapshotKind::AutoBeforeBulkMap` (in `snapshot/tests.rs`)
 
@@ -379,7 +434,7 @@ Mirrors the existing tests for `AutoSessionStart` and `AutoBeforeRestore`.
 
 ### Layer 5: GUI panel (in `frame/bulk_map/tests.rs`, new module)
 
-Dioxus SSR pattern from `frame/mapping_list/tests.rs` and `frame/mapping_editor/tests.rs`. Per-test fixtures construct an `AppContext` plus `EngineState` snapshot, render the panel via `dioxus_ssr::render`, and assert against the rendered DOM string. Command-dispatch tests inspect the mock `Sender<EngineCommand>` queue via `commands.try_iter()`.
+Dioxus SSR pattern from `frame/mapping_list/tests.rs` and `frame/mapping_editor/tests.rs`. Per-test fixtures construct an `AppContext` plus `AppState` snapshot, render the panel via `dioxus_ssr::render`, and assert against the rendered DOM string. Command-dispatch tests inspect the mock `Sender<EngineCommand>` queue via `commands.try_iter()`.
 
 ```text
 panel_renders_no_signal_when_virtual_devices_empty
@@ -403,10 +458,13 @@ panel_apply_dispatches_single_set_mappings_bulk_command_with_snapshot_label
 panel_apply_excludes_skip_rows_and_do_not_map_rows_from_dispatch
 panel_apply_to_all_modes_emits_one_entry_per_committed_row_per_mode
 panel_apply_to_all_modes_with_per_mode_conflict_skips_only_conflicting_modes
-panel_apply_immediately_closes_panel_setting_view_bulk_map_open_false
+panel_apply_immediately_closes_panel_setting_panel_slot_to_none
 panel_apply_enqueues_success_toast_with_create_plus_replace_count
 panel_esc_dismisses_panel_silently_with_no_confirm
 panel_apply_button_label_renders_create_plus_replace_count
+panel_axis_row_renders_compact_bipolar_bar
+panel_button_row_renders_filled_or_stamped_dot
+panel_hat_row_renders_cardinal_letter
 ```
 
 ### Layer 6: workspace-level smoke (cargo-runnable)
@@ -421,9 +479,9 @@ Constructs a profile with one mode, no mappings, one device with four axes, eigh
 
 ### What the test suite explicitly does not test
 
-- SDL3 device enumeration (mock at the `EngineState.connected_devices` boundary; trust the SDL3 layer).
-- The vJoy driver acquire path (mock at `EngineState.virtual_devices`).
-- Live readout pixel rendering (covered by existing `live_readout` tests).
+- SDL3 device enumeration (mock at the `AppState.devices` boundary; trust the SDL3 layer).
+- The vJoy driver acquire path (mock at `AppState.virtual_devices`).
+- Live readout pixel rendering for `LiveReadout` (covered by existing F9 tests). The new `row_readout` sibling component is covered by layer-5 wizard tests below; it does not share rendering code with `LiveReadout`.
 - The `Select`, `Checkbox`, `Button` primitives (covered by existing component tests).
 - Trivial standard library behaviour (`Vec::push`, `String::clone`).
 
@@ -465,6 +523,7 @@ conflicts.rs        per-(row, mode) conflict detection
 group_actions.rs    skip-all / replace-all / include-all / exclude-all chip logic
 summary.rs          summary chip count computation
 apply.rs            entry generation: rows by modes to Vec<BulkMapEntry>; dispatches the SetMappingsBulk command with snapshot label
+row_readout.rs      sibling compact live readout: bipolar bar (axis), filled-or-stamped dot (button), cardinal letter (hat); reads AppState.input_cache like LiveReadout
 empty_state.rs      no-signal framing when virtual_devices is empty
 tests.rs            layer-5 tests (Dioxus SSR)
 ```
@@ -475,16 +534,17 @@ A new asset:
 
 ### `inputforge-gui-dx` (modifications)
 
-- `src/frame/top_bar/tools_cluster/logic.rs`: add the `bulk_map_open` toggle handler.
+- `src/frame/top_bar/tools_cluster/logic.rs`: add the bulk-map toggle handler that sets `view.panel_slot` to `PanelSlot::BulkMap` (or back to `PanelSlot::None` on second click of the same button).
 - `src/frame/top_bar/tools_cluster/mod.rs`: render the new icon button.
-- `src/frame/view_state.rs`: add `pub bulk_map_open: Signal<bool>` to `ViewState`. Initialised `false`.
-- `src/frame/mod.rs`: `pub mod bulk_map;` and conditional mount of `BulkMapPanel` in the shell when `view.bulk_map_open` is true.
+- `src/frame/view_state.rs`: extend `PanelSlot` enum at `view_state.rs:28` with a `BulkMap` variant. `ViewState.panel_slot` already carries this; no new signal added.
+- `src/frame/panel_slot/mod.rs`: add a `PanelSlot::BulkMap` arm to the `match` at `panel_slot/mod.rs:27` that mounts `BulkMapPanel` inside the existing `<aside>` scaffolding. If 460px conflicts with the aside's CSS width, add a per-variant width override here.
+- `src/frame/mod.rs`: `pub mod bulk_map;` so `panel_slot/mod.rs` can import the `BulkMapPanel` component.
 - `src/icons/mod.rs`: add the tools-cluster icon glyph (specific SVG drawn at implementation time).
 
 ### Cross-cutting reuses (no modification)
 
 - `crate::toast::queue`: enqueue the post-apply success toast (`X mappings created`).
-- `crate::frame::mapping_editor::live_readout`: reused in compact form per row. Configuration of "compact" may live as a small extension or new sub-module if the existing primitive is not configurable enough; tactical decision at implementation time.
+- `crate::frame::mapping_editor::live_readout`: not reused; F9 is unmodified. The wizard ships its own sibling `row_readout` component (see new files above) that draws from the same `AppState.input_cache` data source but renders axes, buttons, and hats per the wizard grid template (LiveReadout handles axes only and is layout-coupled to the editor).
 - `crate::components::*`: `Select`, `Checkbox`, `Button`, `IconButton`, badge.
 
 ### No new component primitives
@@ -495,7 +555,7 @@ The wizard introduces no new reusable primitives (no `SidePanel`, no segmented c
 
 - F6 snapshot/preferences: extended (new `SnapshotKind` variant). Strictly additive.
 - F8 mapping list: borrows the conflict-detection pattern from `add_inline.rs` for per-(row, mode) computation. F8 itself is not modified.
-- F9 mapping editor: borrows the `live_readout` primitive. F9 itself is not modified.
+- F9 mapping editor: shares the live data-source convention (`AppState.input_cache` reads via the same `AppContext` patterns). The wizard's `row_readout` is a new sibling component, not a borrow of `LiveReadout`. F9 itself is not modified.
 - Toast system: reused. Not modified.
 - Tools cluster: extended with one new button. Strictly additive.
 
