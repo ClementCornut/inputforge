@@ -165,6 +165,15 @@ fn dispatch_bridge_event(
             let dragged = working_curve.peek().clone().unwrap_or_else(|| live.clone());
             working_curve.set(None);
             let (mut next, result, _) = interaction::handle_pointer_up(prev, &dragged);
+            // Phantom-undo guard: a mousedown + mouseup with no intervening move
+            // means `working_curve` was never updated, so `dragged == live`. Without
+            // this guard the body would dispatch a no-op `SetMapping` and record a
+            // `"curve: drag"` undo entry for a user gesture that did not change
+            // anything. F11 has the same guard in `deadzone/mod.rs` (Task 14).
+            if dragged == live {
+                body.set(next);
+                return;
+            }
             match result {
                 Ok(valid) => {
                     let cfg2 = config_signal.read();
