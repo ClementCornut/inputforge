@@ -12,9 +12,7 @@ use dioxus::prelude::*;
 use inputforge_core::processing::curves::ResponseCurve;
 
 use super::state::BodyState;
-
-/// 0.012 viewBox units; `≈ 1.4px` at 240px rendered size.
-const GLOW_STDDEV: &str = "0.012";
+use crate::frame::mapping_editor::pipeline::stage_body::instruments::INSTR_GLOW_STDDEV;
 
 /// Top-level plot. Composes the layered SVG and returns it as a single
 /// `Element`. Layer ordering matches the spec's stack table.
@@ -39,9 +37,9 @@ pub(crate) fn render_plot(
             // Filter defs.
             defs {
                 filter {
-                    id: "if-curve-glow",
+                    id: "if-instr-glow",
                     x: "-50%", y: "-50%", width: "200%", height: "200%",
-                    feGaussianBlur { std_deviation: "{GLOW_STDDEV}" }
+                    feGaussianBlur { std_deviation: "{INSTR_GLOW_STDDEV}" }
                 }
             }
             // Background.

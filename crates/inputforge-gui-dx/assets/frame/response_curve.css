@@ -4,10 +4,11 @@
      Rule" applies even to translucent whites). Hue matches
      --color-bg-elevated. The major grid (quarter-points only) is the sole
      background-reference layer; the axis cross at the origin gets a touch
-     more ink because it is the most-referenced point on a bipolar curve. */
-  --color-curve-grid-major: rgba(150, 165, 220, 0.18);
-  --color-curve-axis-cross: rgba(150, 165, 220, 0.32);
-  --color-curve-identity: var(--color-text-subtle);
+     more ink because it is the most-referenced point on a bipolar curve.
+     Shared values live in assets/tokens/instruments.css. */
+  --color-curve-grid-major: var(--instr-grid-major);
+  --color-curve-axis-cross: var(--instr-axis-cross);
+  --color-curve-identity: var(--instr-identity-stroke);
   --color-curve-stroke: var(--color-primary);
   --color-curve-handle: rgb(from var(--color-primary) r g b / 0.40);
   --color-curve-anchor-fill: var(--color-text);
@@ -81,7 +82,7 @@
   stroke-width: 1.75px;
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: url(#if-curve-glow);
+  filter: url(#if-instr-glow);
   vector-effect: non-scaling-stroke;
   fill: none;
 }
@@ -119,7 +120,7 @@
 .if-curve__live-dot-halo { fill: var(--color-live); opacity: 0.18; }
 .if-curve__live-dot {
   fill: var(--color-live);
-  filter: url(#if-curve-glow);
+  filter: url(#if-instr-glow);
 }
 .if-curve__tick-label {
   font-family: var(--font-mono);

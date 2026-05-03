@@ -12,5 +12,4 @@ pub(crate) mod stage_dispatch;
 /// SVG `feGaussianBlur` standard deviation used by every instrument's curve
 /// glow filter. Pinned in Rust (rather than CSS) because SVG attributes do
 /// not resolve CSS custom properties.
-#[allow(dead_code, reason = "real consumer lands in Task 5")]
 pub(crate) const INSTR_GLOW_STDDEV: f64 = 0.012;

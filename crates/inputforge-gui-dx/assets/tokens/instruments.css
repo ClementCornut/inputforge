@@ -1,0 +1,6 @@
+/* Shared instrument visual tokens (F10 + F11 + future signature instruments). */
+:root {
+  --instr-grid-major: rgba(150, 165, 220, 0.18);
+  --instr-axis-cross: rgba(150, 165, 220, 0.32);
+  --instr-identity-stroke: var(--color-text-subtle);
+}

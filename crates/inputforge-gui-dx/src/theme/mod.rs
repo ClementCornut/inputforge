@@ -18,6 +18,7 @@ const SPACING_CSS: Asset = asset!("/assets/tokens/spacing.css");
 const RADII_CSS: Asset = asset!("/assets/tokens/radii.css");
 const ELEVATION_CSS: Asset = asset!("/assets/tokens/elevation.css");
 const MOTION_CSS: Asset = asset!("/assets/tokens/motion.css");
+const INSTRUMENTS_TOKENS_CSS: Asset = asset!("/assets/tokens/instruments.css");
 const GLOBAL_CSS: Asset = asset!("/assets/global.css");
 const ICON_CSS: Asset = asset!("/assets/components/icon.css");
 const BUTTON_CSS: Asset = asset!("/assets/components/button.css");
@@ -68,6 +69,7 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: RADII_CSS }
         Stylesheet { href: ELEVATION_CSS }
         Stylesheet { href: MOTION_CSS }
+        Stylesheet { href: INSTRUMENTS_TOKENS_CSS }
 
         // Body baseline.
         Stylesheet { href: GLOBAL_CSS }
