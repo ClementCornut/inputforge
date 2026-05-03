@@ -4,10 +4,10 @@
 //! and future signature instruments). Each helper here has at least two
 //! consumers; helpers with only one consumer stay inside their owning editor.
 
-// TODO(Task 2-4): re-enable after sibling modules land.
+// TODO(Task 3-4): re-enable after sibling modules land.
 // pub(crate) mod bridge;
-// pub(crate) mod live_axis;
 // pub(crate) mod stage_dispatch;
+pub(crate) mod live_axis;
 pub(crate) mod nudge_coalesce;
 
 /// SVG `feGaussianBlur` standard deviation used by every instrument's curve

@@ -41,9 +41,7 @@ impl CurveType {
 use dioxus::prelude::*;
 
 use inputforge_core::action::Action;
-use inputforge_core::pipeline::evaluate_actions_through;
 use inputforge_core::processing::curves::{ResponseCurve, sample_curve_path};
-use inputforge_core::types::InputValue;
 
 use crate::context::AppContext;
 use crate::frame::MappingKey;
@@ -105,56 +103,6 @@ fn project_stage_curve(
     match at_path(actions, stage_id) {
         Some(Action::ResponseCurve { curve }) => curve.clone(),
         _ => fallback.clone(),
-    }
-}
-
-/// Project the live axis reading for a top-level stage through the pipeline
-/// and return the input value as `Some(f64)`, or `None` when any gate fails.
-///
-/// # Gates
-///
-/// 1. `stage_id` must be exactly `[Index(n)]`. Nested stages are gated out
-///    because `evaluate_actions_through` walks only the root action list; a
-///    nested stage would require a sub-slice that is not yet threaded here.
-/// 2. `addr` must be `InputAddress::Bound` (has a real device). Unbound
-///    mappings have no device to read from.
-/// 3. The device must be in `state.devices` with `connected: true`.
-/// 4. The evaluated `InputValue` must be `Axis`. Button and Hat inputs are
-///    not projected because `ResponseCurve` stages operate on scalar values.
-///
-/// `ctx.live` is read (not peeked) to subscribe the calling component to the
-/// engine's ~60 Hz polling tick, ensuring the dot re-renders on every poll.
-fn compute_live_value(
-    stage_id: &StageId,
-    addr: &inputforge_core::types::InputAddress,
-    ctx: &AppContext,
-    actions: &[Action],
-) -> Option<f64> {
-    // Gate 1: top-level only.
-    let stop_at = match stage_id.0.as_slice() {
-        [StageIdSegment::Index(n)] => *n,
-        _ => return None,
-    };
-    // Gate 2: bound input only.
-    let device_id = addr.device()?;
-    // Subscribe to the ~60 Hz polling tick. The actual values come from
-    // `ctx.state`, not from `ctx.live`; this read is solely for reactivity.
-    let _ = ctx.live.read();
-    let state_guard = ctx.state.try_read()?;
-    // Gate 3: device must be connected.
-    let device_present = state_guard
-        .devices
-        .iter()
-        .any(|d| &d.info.id == device_id && d.connected);
-    if !device_present {
-        return None;
-    }
-    let value = evaluate_actions_through(actions, &state_guard, addr, stop_at);
-    drop(state_guard);
-    // Gate 4: axis inputs only.
-    match value {
-        InputValue::Axis { value, .. } => Some(value.value()),
-        _ => None,
     }
 }
 
@@ -580,8 +528,9 @@ pub(crate) fn ResponseCurveBody(
     //   2. `mapping_key.1` must be `InputAddress::Bound` (has a real device).
     //   3. The device must be present in `state.devices` with `connected: true`.
     //   4. The evaluated `InputValue` must be `Axis` (non-axis inputs yield `None`).
-    let live_value: Option<f64> =
-        compute_live_value(&stage_id, &mapping_key.1, &ctx, &live_actions);
+    let live_value: Option<f64> = crate::frame::mapping_editor::pipeline::stage_body::instruments::live_axis::compute_live_axis_value(
+        &stage_id, &mapping_key.1, &ctx, &live_actions,
+    );
 
     // Pre-clone captures needed by event-handler closures. Each closure is a
     // `move` closure invoked on every event; captures must be cloned once here
