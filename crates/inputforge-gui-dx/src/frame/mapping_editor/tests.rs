@@ -185,6 +185,37 @@ fn add_vjoy_device(state: &mut AppState, device_id: u8, axes: Vec<VJoyAxis>) {
     });
 }
 
+fn seeded_profile_with_pipeline(
+    actions: Vec<Action>,
+    axis_polarities: Vec<AxisPolarity>,
+    axis_values: &[(u8, f64, AxisPolarity)],
+    button_states: &[(u8, bool)],
+    hat_states: &[(u8, inputforge_core::types::HatDirection)],
+) -> AppState {
+    use inputforge_core::types::InputValue;
+
+    let mut state = seeded_profile_with_polarities_and_axes(actions, axis_polarities, axis_values);
+    if let Some(device) = state.devices.get_mut(0) {
+        device.info.buttons = button_states
+            .iter()
+            .map(|(idx, _)| idx + 1)
+            .max()
+            .unwrap_or(0);
+        device.info.hats = hat_states.iter().map(|(idx, _)| idx + 1).max().unwrap_or(0);
+    }
+    for &(idx, pressed) in button_states {
+        state
+            .input_cache
+            .update(&btn_addr(idx), &InputValue::Button { pressed });
+    }
+    for &(idx, direction) in hat_states {
+        state
+            .input_cache
+            .update(&hat_addr(idx), &InputValue::Hat { direction });
+    }
+    state
+}
+
 fn axis_addr(index: u8) -> InputAddress {
     InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
@@ -267,33 +298,21 @@ fn render_with_pipeline_and_engine(
     }
 
     let primary = axis_addr(0);
-    let mut state =
-        seeded_profile_with_polarities_and_axes(actions.to_vec(), polarities, &axis_values);
-    if let Some(device) = state.devices.get_mut(0) {
-        device.info.buttons = buttons
-            .iter()
-            .map(|(addr, _)| input_index(addr) + 1)
-            .max()
-            .unwrap_or(0);
-        device.info.hats = hats
-            .iter()
-            .map(|(addr, _)| input_index(addr) + 1)
-            .max()
-            .unwrap_or(0);
-    }
-    for (addr, pressed) in buttons {
-        state
-            .input_cache
-            .update(addr, &InputValue::Button { pressed: *pressed });
-    }
-    for (addr, direction) in hats {
-        state.input_cache.update(
-            addr,
-            &InputValue::Hat {
-                direction: *direction,
-            },
-        );
-    }
+    let button_states: Vec<(u8, bool)> = buttons
+        .iter()
+        .map(|(addr, pressed)| (input_index(addr), *pressed))
+        .collect();
+    let hat_states: Vec<(u8, inputforge_core::types::HatDirection)> = hats
+        .iter()
+        .map(|(addr, direction)| (input_index(addr), *direction))
+        .collect();
+    let mut state = seeded_profile_with_pipeline(
+        actions.to_vec(),
+        polarities,
+        &axis_values,
+        &button_states,
+        &hat_states,
+    );
     add_vjoy_device(&mut state, 1, vec![VJoyAxis::X, VJoyAxis::Y]);
 
     let mut live_axes = vec![(0.0, AxisPolarity::Bipolar); axis_count];
@@ -1260,6 +1279,64 @@ fn editor_live_readout_axis_in_range_chip_live_dot_when_in_range() {
         &[],
     );
     assert!(html.contains("if-editor__readout-chip-dot--hollow"));
+}
+
+#[test]
+fn editor_live_readout_stacked_merges_render_three_in_rows() {
+    use inputforge_core::types::MergeOp;
+
+    let actions = vec![
+        Action::MergeAxis {
+            second_input: axis_addr(1),
+            operation: MergeOp::Bidirectional,
+        },
+        Action::MergeAxis {
+            second_input: axis_addr(2),
+            operation: MergeOp::Average,
+        },
+        Action::MapToVJoy { output: vjoy_x() },
+    ];
+    let html = render_with_pipeline(
+        &actions,
+        &[
+            (axis_addr(0), AxisPolarity::Bipolar, 0.3),
+            (axis_addr(1), AxisPolarity::Bipolar, 0.0),
+            (axis_addr(2), AxisPolarity::Bipolar, 0.0),
+        ],
+        &[],
+        &[],
+    );
+
+    assert!(html.contains(">IN 1<"), "expected IN 1; got: {html}");
+    assert!(html.contains(">IN 2<"), "expected IN 2; got: {html}");
+    assert!(html.contains(">IN 3<"), "expected IN 3; got: {html}");
+    assert!(
+        html.contains("IN \u{00b7} pipeline"),
+        "expected IN section label; got: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_sibling_outputs_render_two_out_rows() {
+    let actions = vec![
+        Action::MapToVJoy { output: vjoy_x() },
+        Action::MapToVJoy { output: vjoy_y() },
+    ];
+    let html = render_with_pipeline(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.5)],
+        &[],
+        &[],
+    );
+
+    assert!(
+        html.contains("X axis"),
+        "expected first OUT tag; got: {html}"
+    );
+    assert!(
+        html.contains("Y axis"),
+        "expected second OUT tag; got: {html}"
+    );
 }
 
 /// Unipolar primary, no merge, with `MapToVJoy`. The OUT row should
