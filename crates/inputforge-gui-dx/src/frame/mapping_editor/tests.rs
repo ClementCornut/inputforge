@@ -1649,6 +1649,32 @@ fn editor_live_readout_chevron_present_only_when_chain_non_empty() {
 }
 
 #[test]
+fn editor_live_readout_chevron_uses_icon_not_text_glyph() {
+    let with_merge_html = render_with_pipeline(
+        &expand_toggle_fixture_actions(),
+        &[
+            (axis_addr(0), AxisPolarity::Bipolar, 0.2),
+            (axis_addr(1), AxisPolarity::Bipolar, 0.8),
+        ],
+        &[],
+        &[],
+    );
+
+    assert!(
+        with_merge_html.contains("if-editor__readout-chevron"),
+        "expected chevron button; got: {with_merge_html}"
+    );
+    assert!(
+        with_merge_html.contains("if-icon"),
+        "expected shared SVG icon in chevron button; got: {with_merge_html}"
+    );
+    assert!(
+        !with_merge_html.contains(">\u{25b8}<") && !with_merge_html.contains(">\u{25be}<"),
+        "chevron button must not render text glyphs; got: {with_merge_html}"
+    );
+}
+
+#[test]
 fn editor_live_readout_expand_all_pill_visible_when_any_chain_non_empty() {
     let html = render_with_pipeline(
         &expand_toggle_fixture_actions(),
@@ -1706,6 +1732,10 @@ fn editor_live_readout_per_output_expand_renders_chain_block() {
     assert!(
         html.contains(">MERGE 1<"),
         "expected merge step; got: {html}"
+    );
+    assert!(
+        html.contains(">+0.50<"),
+        "expected merge preview to show the live average of +0.50; got: {html}"
     );
 }
 

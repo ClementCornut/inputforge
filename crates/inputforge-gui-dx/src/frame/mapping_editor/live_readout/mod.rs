@@ -78,6 +78,11 @@ fn LiveReadoutInner(
 ) -> Element {
     let ctx = use_context::<AppContext>();
     let model = {
+        // Subscribe the analyzer owner to the live polling tick. IN/OUT rows
+        // read `ctx.live` themselves, but expanded merge-chain previews are
+        // derived by the analyzer from `ctx.state`; without this wake gate,
+        // chain rows can stay on the value from the last structural render.
+        let _live_tick = ctx.live.read();
         let state = ctx.state.read();
         let cfg = ctx.config.read();
         analyzer::analyze(&actions, &primary, &state, &cfg)

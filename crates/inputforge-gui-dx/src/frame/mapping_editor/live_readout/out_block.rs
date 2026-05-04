@@ -10,7 +10,9 @@ use dioxus::prelude::*;
 
 use inputforge_core::types::{AxisPolarity, HatDirection, OutputId};
 
+use crate::components::Icon;
 use crate::context::AppContext;
+use crate::icons::{Icon as IconKind, IconSize};
 
 use super::analyzer::{LiveReadoutModel, OutputDescriptor, OutputDestination};
 use super::in_block::ReadoutRow;
@@ -83,7 +85,8 @@ pub(super) fn OutRow(
     let frozen = !engine_running || !descriptor.is_active;
     let has_chain = !descriptor.chain.is_empty();
     let expanded = expand_state.read().is_expanded(idx);
-    let chevron_text = chevron_label(expanded);
+    let chevron_icon = chevron_icon(expanded);
+    let chevron_label = chevron_label(expanded);
 
     let value_cell = match &descriptor.destination {
         OutputDestination::VJoy(out) => match out.output {
@@ -166,8 +169,13 @@ pub(super) fn OutRow(
             button {
                 class: "if-editor__readout-chevron",
                 "type": "button",
+                "aria-label": "{chevron_label}",
+                "aria-expanded": "{expanded}",
                 onclick,
-                "{chevron_text}"
+                Icon {
+                    name: chevron_icon,
+                    size: IconSize::Sm,
+                }
             }
         }
     } else {
@@ -242,8 +250,20 @@ fn row_wrap_class(frozen: bool) -> &'static str {
     }
 }
 
+fn chevron_icon(expanded: bool) -> IconKind {
+    if expanded {
+        IconKind::ChevronDown
+    } else {
+        IconKind::ChevronRight
+    }
+}
+
 fn chevron_label(expanded: bool) -> &'static str {
-    if expanded { "\u{25be}" } else { "\u{25b8}" }
+    if expanded {
+        "Collapse output merge preview"
+    } else {
+        "Expand output merge preview"
+    }
 }
 
 fn hat_row_class(frozen: bool) -> &'static str {
@@ -385,13 +405,15 @@ mod tests {
     }
 
     #[test]
-    fn row_wrap_class_and_chevron_label_track_state() {
+    fn row_wrap_class_and_chevron_state_track_state() {
         assert_eq!(row_wrap_class(false), "if-editor__readout-row-wrap");
         assert_eq!(
             row_wrap_class(true),
             "if-editor__readout-row-wrap if-editor__readout-row-wrap--frozen"
         );
-        assert_eq!(chevron_label(false), "\u{25b8}");
-        assert_eq!(chevron_label(true), "\u{25be}");
+        assert_eq!(chevron_icon(false), IconKind::ChevronRight);
+        assert_eq!(chevron_icon(true), IconKind::ChevronDown);
+        assert_eq!(chevron_label(false), "Expand output merge preview");
+        assert_eq!(chevron_label(true), "Collapse output merge preview");
     }
 }
