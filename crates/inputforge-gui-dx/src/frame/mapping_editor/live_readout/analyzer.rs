@@ -1,16 +1,15 @@
 // Rust guideline compliant 2026-05-03
 
-#![expect(
-    dead_code,
-    reason = "Task 5 emits only inputs and outputs; later tasks populate chains and predicates."
-)]
+use std::collections::HashSet;
 
-use inputforge_core::action::Action;
+use inputforge_core::action::{Action, Condition};
 use inputforge_core::pipeline::{
     BranchStep, InputCache, evaluate_actions_through_path, evaluate_condition,
 };
 use inputforge_core::state::AppState;
-use inputforge_core::types::{AxisPolarity, InputAddress, KeyCombo, MergeOp, OutputAddress};
+use inputforge_core::types::{
+    AxisPolarity, HatDirection, InputAddress, KeyCombo, MergeOp, OutputAddress,
+};
 
 use crate::context::ConfigSnapshot;
 
@@ -117,7 +116,7 @@ pub(super) enum PredicateKind {
     /// Hat must match one of these directions.
     HatDirection {
         /// Accepted hat directions.
-        directions: Vec<inputforge_core::types::HatDirection>,
+        directions: Vec<HatDirection>,
     },
 }
 
@@ -140,12 +139,14 @@ pub(super) fn analyze(
     };
     let mut chain_stack = Vec::new();
     let mut branch_path = Vec::new();
+    let mut predicate_keys = HashSet::new();
     walk(
         &context,
         actions,
         &mut model,
         &mut chain_stack,
         &mut branch_path,
+        &mut predicate_keys,
         0,
     );
     model
@@ -257,12 +258,151 @@ fn terminal_polarity(
         .unwrap_or_else(|| state.input_cache.get_axis(primary).1)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PredicateDedupKey {
+    input: InputAddress,
+    kind: PredicateKindDedupKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum PredicateKindDedupKey {
+    ButtonPressed,
+    ButtonReleased,
+    AxisInRange { min_bits: u64, max_bits: u64 },
+    HatDirection { directions: Vec<u8> },
+}
+
+impl PredicateDedupKey {
+    fn new(input: &InputAddress, kind: &PredicateKind) -> Self {
+        Self {
+            input: input.clone(),
+            kind: PredicateKindDedupKey::from(kind),
+        }
+    }
+}
+
+impl From<&PredicateKind> for PredicateKindDedupKey {
+    fn from(kind: &PredicateKind) -> Self {
+        match kind {
+            PredicateKind::ButtonPressed => Self::ButtonPressed,
+            PredicateKind::ButtonReleased => Self::ButtonReleased,
+            PredicateKind::AxisInRange { min, max } => Self::AxisInRange {
+                min_bits: normalized_float_bits(*min),
+                max_bits: normalized_float_bits(*max),
+            },
+            PredicateKind::HatDirection { directions } => Self::HatDirection {
+                directions: canonical_hat_direction_keys(directions),
+            },
+        }
+    }
+}
+
+fn normalized_float_bits(value: f64) -> u64 {
+    if value == 0.0 {
+        0.0f64.to_bits()
+    } else {
+        value.to_bits()
+    }
+}
+
+fn canonical_hat_direction_keys(directions: &[HatDirection]) -> Vec<u8> {
+    let mut keys: Vec<_> = directions.iter().copied().map(hat_direction_key).collect();
+    keys.sort_unstable();
+    keys.dedup();
+    keys
+}
+
+fn hat_direction_key(direction: HatDirection) -> u8 {
+    match direction {
+        HatDirection::Center => 0,
+        HatDirection::N => 1,
+        HatDirection::NE => 2,
+        HatDirection::E => 3,
+        HatDirection::SE => 4,
+        HatDirection::S => 5,
+        HatDirection::SW => 6,
+        HatDirection::W => 7,
+        HatDirection::NW => 8,
+    }
+}
+
+fn collect_condition_predicates(
+    context: &AnalysisContext<'_>,
+    condition: &Condition,
+    model: &mut LiveReadoutModel,
+    predicate_keys: &mut HashSet<PredicateDedupKey>,
+) {
+    match condition {
+        Condition::ButtonPressed { input } => emit_predicate(
+            context,
+            model,
+            predicate_keys,
+            input,
+            PredicateKind::ButtonPressed,
+        ),
+        Condition::ButtonReleased { input } => emit_predicate(
+            context,
+            model,
+            predicate_keys,
+            input,
+            PredicateKind::ButtonReleased,
+        ),
+        Condition::AxisInRange { input, min, max } => emit_predicate(
+            context,
+            model,
+            predicate_keys,
+            input,
+            PredicateKind::AxisInRange {
+                min: *min,
+                max: *max,
+            },
+        ),
+        Condition::HatDirection { input, directions } => emit_predicate(
+            context,
+            model,
+            predicate_keys,
+            input,
+            PredicateKind::HatDirection {
+                directions: directions.clone(),
+            },
+        ),
+        Condition::All { conditions } | Condition::Any { conditions } => {
+            for condition in conditions {
+                collect_condition_predicates(context, condition, model, predicate_keys);
+            }
+        }
+        Condition::Not { condition } => {
+            collect_condition_predicates(context, condition, model, predicate_keys);
+        }
+    }
+}
+
+fn emit_predicate(
+    context: &AnalysisContext<'_>,
+    model: &mut LiveReadoutModel,
+    predicate_keys: &mut HashSet<PredicateDedupKey>,
+    input: &InputAddress,
+    kind: PredicateKind,
+) {
+    if !predicate_keys.insert(PredicateDedupKey::new(input, &kind)) {
+        return;
+    }
+
+    model.predicates.push(PredicateDescriptor {
+        inputs: vec![input.clone()],
+        state: super::predicate::evaluate_leaf_state(input, &kind, &context.state.input_cache),
+        label: super::predicate::format_predicate_chip_label(input, context.cfg),
+        kind,
+    });
+}
+
 fn walk(
     context: &AnalysisContext<'_>,
     actions: &[Action],
     model: &mut LiveReadoutModel,
     chain_stack: &mut Vec<ChainStep>,
     branch_path: &mut Vec<BranchStep>,
+    predicate_keys: &mut HashSet<PredicateDedupKey>,
     depth: usize,
 ) {
     let stack_baseline = chain_stack.len();
@@ -315,6 +455,7 @@ fn walk(
                 if_true,
                 if_false,
             } => {
+                collect_condition_predicates(context, condition, model, predicate_keys);
                 let condition_label =
                     super::predicate::format_condition_label(condition, context.cfg);
                 let evaluated = evaluate_condition(condition, &context.state.input_cache);
@@ -325,7 +466,15 @@ fn walk(
                     evaluated,
                     branch: Branch::IfTrue,
                 });
-                walk(context, if_true, model, chain_stack, branch_path, depth + 1);
+                walk(
+                    context,
+                    if_true,
+                    model,
+                    chain_stack,
+                    branch_path,
+                    predicate_keys,
+                    depth + 1,
+                );
                 chain_stack.pop();
                 branch_path.pop();
 
@@ -341,6 +490,7 @@ fn walk(
                     model,
                     chain_stack,
                     branch_path,
+                    predicate_keys,
                     depth + 1,
                 );
                 chain_stack.pop();
@@ -409,7 +559,6 @@ mod tests {
 #[cfg(test)]
 mod walker_tests {
     use super::*;
-    use inputforge_core::action::Condition;
     use inputforge_core::types::{
         AxisValue, DeviceId, InputId, InputValue, KeyModifier, OutputId, VJoyAxis,
     };
@@ -477,6 +626,14 @@ mod walker_tests {
 
     fn condition_label(condition: &Condition) -> String {
         super::super::predicate::format_condition_label(condition, &ConfigSnapshot::default())
+    }
+
+    fn conditional_action(condition: Condition) -> Action {
+        Action::Conditional {
+            condition,
+            if_true: Vec::new(),
+            if_false: Vec::new(),
+        }
     }
 
     fn set_axis(state: &mut AppState, input: &InputAddress, value: f64, polarity: AxisPolarity) {
@@ -873,6 +1030,291 @@ mod walker_tests {
                     polarity: AxisPolarity::Bipolar,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn conditional_emits_predicate_descriptor() {
+        let primary = input(0);
+        let watched = button(1);
+        let mut state = AppState::new();
+        set_button(&mut state, &watched, true);
+        let actions = vec![conditional_action(Condition::ButtonPressed {
+            input: watched.clone(),
+        })];
+
+        let model = analyze_actions_with_state(&actions, &primary, &state);
+
+        assert_eq!(
+            model.predicates,
+            vec![PredicateDescriptor {
+                kind: PredicateKind::ButtonPressed,
+                inputs: vec![watched.clone()],
+                state: true,
+                label: super::super::predicate::format_predicate_chip_label(
+                    &watched,
+                    &ConfigSnapshot::default()
+                ),
+            }]
+        );
+    }
+
+    #[test]
+    fn composite_all_flattens_to_one_chip_per_leaf() {
+        let primary = input(0);
+        let first = button(1);
+        let second = input(2);
+        let actions = vec![conditional_action(Condition::All {
+            conditions: vec![
+                Condition::ButtonPressed {
+                    input: first.clone(),
+                },
+                Condition::AxisInRange {
+                    input: second.clone(),
+                    min: 0.25,
+                    max: 0.75,
+                },
+            ],
+        })];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(model.predicates.len(), 2);
+        assert_eq!(model.predicates[0].kind, PredicateKind::ButtonPressed);
+        assert_eq!(model.predicates[0].inputs, vec![first]);
+        assert_eq!(
+            model.predicates[1].kind,
+            PredicateKind::AxisInRange {
+                min: 0.25,
+                max: 0.75,
+            }
+        );
+        assert_eq!(model.predicates[1].inputs, vec![second]);
+    }
+
+    #[test]
+    fn composite_any_flattens_to_one_chip_per_leaf() {
+        let primary = input(0);
+        let first = button(1);
+        let second = input(2);
+        let actions = vec![conditional_action(Condition::Any {
+            conditions: vec![
+                Condition::ButtonReleased {
+                    input: first.clone(),
+                },
+                Condition::AxisInRange {
+                    input: second.clone(),
+                    min: -0.25,
+                    max: 0.25,
+                },
+            ],
+        })];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(model.predicates.len(), 2);
+        assert_eq!(model.predicates[0].kind, PredicateKind::ButtonReleased);
+        assert_eq!(model.predicates[0].inputs, vec![first]);
+        assert_eq!(
+            model.predicates[1].kind,
+            PredicateKind::AxisInRange {
+                min: -0.25,
+                max: 0.25,
+            }
+        );
+        assert_eq!(model.predicates[1].inputs, vec![second]);
+    }
+
+    #[test]
+    fn composite_not_flattens_to_inner_leaves() {
+        let primary = input(0);
+        let first = button(1);
+        let second = button(2);
+        let actions = vec![conditional_action(Condition::Not {
+            condition: Box::new(Condition::All {
+                conditions: vec![
+                    Condition::ButtonPressed {
+                        input: first.clone(),
+                    },
+                    Condition::ButtonReleased {
+                        input: second.clone(),
+                    },
+                ],
+            }),
+        })];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(model.predicates.len(), 2);
+        assert_eq!(model.predicates[0].kind, PredicateKind::ButtonPressed);
+        assert_eq!(model.predicates[0].inputs, vec![first]);
+        assert_eq!(model.predicates[1].kind, PredicateKind::ButtonReleased);
+        assert_eq!(model.predicates[1].inputs, vec![second]);
+    }
+
+    #[test]
+    fn duplicate_input_same_kind_dedups_to_one_chip() {
+        let primary = input(0);
+        let watched = button(1);
+        let actions = vec![
+            conditional_action(Condition::ButtonPressed {
+                input: watched.clone(),
+            }),
+            conditional_action(Condition::ButtonPressed { input: watched }),
+        ];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(model.predicates.len(), 1);
+        assert_eq!(model.predicates[0].kind, PredicateKind::ButtonPressed);
+    }
+
+    #[test]
+    fn same_input_different_kinds_renders_two_chips() {
+        let primary = input(0);
+        let watched = button(1);
+        let actions = vec![
+            conditional_action(Condition::ButtonPressed {
+                input: watched.clone(),
+            }),
+            conditional_action(Condition::ButtonReleased { input: watched }),
+        ];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(model.predicates.len(), 2);
+        assert_eq!(model.predicates[0].kind, PredicateKind::ButtonPressed);
+        assert_eq!(model.predicates[1].kind, PredicateKind::ButtonReleased);
+    }
+
+    #[test]
+    fn axis_in_range_distinct_bounds_render_two_chips() {
+        let primary = input(0);
+        let watched = input(1);
+        let actions = vec![
+            conditional_action(Condition::AxisInRange {
+                input: watched.clone(),
+                min: 0.0,
+                max: 0.5,
+            }),
+            conditional_action(Condition::AxisInRange {
+                input: watched.clone(),
+                min: 0.0,
+                max: 0.5,
+            }),
+            conditional_action(Condition::AxisInRange {
+                input: watched,
+                min: 0.25,
+                max: 0.75,
+            }),
+        ];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(model.predicates.len(), 2);
+        assert_eq!(
+            model.predicates[0].kind,
+            PredicateKind::AxisInRange { min: 0.0, max: 0.5 }
+        );
+        assert_eq!(
+            model.predicates[1].kind,
+            PredicateKind::AxisInRange {
+                min: 0.25,
+                max: 0.75
+            }
+        );
+    }
+
+    #[test]
+    fn axis_in_range_signed_zero_bounds_dedup_to_one_chip() {
+        let primary = input(0);
+        let watched = input(1);
+        let actions = vec![
+            conditional_action(Condition::AxisInRange {
+                input: watched.clone(),
+                min: -0.0,
+                max: 0.5,
+            }),
+            conditional_action(Condition::AxisInRange {
+                input: watched,
+                min: 0.0,
+                max: 0.5,
+            }),
+        ];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(model.predicates.len(), 1);
+        assert_eq!(
+            model.predicates[0].kind,
+            PredicateKind::AxisInRange {
+                min: -0.0,
+                max: 0.5
+            }
+        );
+    }
+
+    #[test]
+    fn hat_direction_distinct_sets_render_two_chips() {
+        let primary = input(0);
+        let watched = InputAddress::Bound {
+            device: DeviceId("stick".to_owned()),
+            input: InputId::Hat { index: 0 },
+        };
+        let actions = vec![
+            conditional_action(Condition::HatDirection {
+                input: watched.clone(),
+                directions: vec![HatDirection::N],
+            }),
+            conditional_action(Condition::HatDirection {
+                input: watched,
+                directions: vec![HatDirection::N, HatDirection::E],
+            }),
+        ];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(model.predicates.len(), 2);
+        assert_eq!(
+            model.predicates[0].kind,
+            PredicateKind::HatDirection {
+                directions: vec![HatDirection::N],
+            }
+        );
+        assert_eq!(
+            model.predicates[1].kind,
+            PredicateKind::HatDirection {
+                directions: vec![HatDirection::N, HatDirection::E],
+            }
+        );
+    }
+
+    #[test]
+    fn hat_direction_reordered_duplicate_sets_dedup_to_one_chip() {
+        let primary = input(0);
+        let watched = InputAddress::Bound {
+            device: DeviceId("stick".to_owned()),
+            input: InputId::Hat { index: 0 },
+        };
+        let actions = vec![
+            conditional_action(Condition::HatDirection {
+                input: watched.clone(),
+                directions: vec![HatDirection::N, HatDirection::E],
+            }),
+            conditional_action(Condition::HatDirection {
+                input: watched,
+                directions: vec![HatDirection::E, HatDirection::N, HatDirection::N],
+            }),
+        ];
+
+        let model = analyze_actions(&actions, &primary);
+
+        assert_eq!(model.predicates.len(), 1);
+        assert_eq!(
+            model.predicates[0].kind,
+            PredicateKind::HatDirection {
+                directions: vec![HatDirection::N, HatDirection::E],
+            }
         );
     }
 
