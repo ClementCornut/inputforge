@@ -7,7 +7,7 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::types::{InputAddress, InputId};
+use inputforge_core::types::{InputAddress, InputId, OutputAddress, OutputId, VJoyAxis};
 
 use crate::components::sortable::{SortableHandle, SortableState};
 use crate::context::{AppContext, MappingSummary};
@@ -24,6 +24,25 @@ pub(crate) fn group_to_u32(group: GroupKind) -> u32 {
         GroupKind::Buttons => 1,
         GroupKind::Hats => 2,
     }
+}
+
+fn compact_output_label(output: &OutputAddress) -> String {
+    let suffix = match output.output {
+        OutputId::Axis { id } => match id {
+            VJoyAxis::X => "X",
+            VJoyAxis::Y => "Y",
+            VJoyAxis::Z => "Z",
+            VJoyAxis::Rx => "Rx",
+            VJoyAxis::Ry => "Ry",
+            VJoyAxis::Rz => "Rz",
+            VJoyAxis::Slider0 => "Slider 0",
+            VJoyAxis::Slider1 => "Slider 1",
+        }
+        .to_owned(),
+        OutputId::Button { id } => format!("Btn {id}"),
+        OutputId::Hat { id } => format!("Hat {id}"),
+    };
+    format!("vJoy {} · {}", output.device, suffix)
 }
 
 #[component]
@@ -160,11 +179,9 @@ pub(crate) fn Row(
                     state: renaming,
                 }
             } else {
-                div { class: "if-row__name",
-                    if let Some(name) = &summary.name {
+                if let Some(name) = &summary.name {
+                    div { class: "if-row__name",
                         "{name}"
-                    } else {
-                        em { class: "if-row__name--unnamed", "(unnamed)" }
                     }
                 }
             }
@@ -175,6 +192,13 @@ pub(crate) fn Row(
                         class: "if-row__source-input",
                         "data-kind": kind_class,
                         "{input_label}"
+                    }
+                    if let Some(output) = &summary.first_vjoy_output {
+                        span {
+                            class: "if-row__output-badge",
+                            title: "{compact_output_label(output)}",
+                            "{compact_output_label(output)}"
+                        }
                     }
                 }
                 if merge_glyph.is_some() || cond_glyph.is_some() {

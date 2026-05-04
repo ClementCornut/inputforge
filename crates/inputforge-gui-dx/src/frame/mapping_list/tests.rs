@@ -99,6 +99,103 @@ fn row_renders_name_and_source_line() {
 }
 
 #[test]
+fn row_omits_unnamed_placeholder_when_not_renaming() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::frame::mapping_list::row::Row;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let summary = MappingSummary {
+            input: InputAddress::Bound {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: None,
+            glyphs: GlyphFlags::default(),
+            referenced_devices: vec![DeviceId("dev".to_owned())],
+            first_vjoy_output: None,
+        };
+        let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
+        let sortable = use_sortable_state::<u32>();
+        rsx! {
+            Row {
+                summary: summary,
+                is_active: false,
+                renaming: renaming,
+                sortable: sortable,
+                filter_active: false,
+                on_open_menu: move |_: (InputAddress, f64, f64)| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        !html.contains("(unnamed)"),
+        "unnamed placeholder must be omitted: {html}"
+    );
+    assert!(
+        html.contains("dev"),
+        "source device must remain visible: {html}"
+    );
+    assert!(
+        html.contains("Btn 1"),
+        "source input must remain visible: {html}"
+    );
+}
+
+#[test]
+fn row_renders_compact_vjoy_output_badge() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::frame::mapping_list::row::Row;
+    use inputforge_core::types::{
+        DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis,
+    };
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let summary = MappingSummary {
+            input: InputAddress::Bound {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Axis { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Pitch".to_owned()),
+            glyphs: GlyphFlags::default(),
+            referenced_devices: vec![DeviceId("dev".to_owned())],
+            first_vjoy_output: Some(OutputAddress {
+                device: 2,
+                output: OutputId::Axis { id: VJoyAxis::X },
+            }),
+        };
+        let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
+        let sortable = use_sortable_state::<u32>();
+        rsx! {
+            Row {
+                summary: summary,
+                is_active: false,
+                renaming: renaming,
+                sortable: sortable,
+                filter_active: false,
+                on_open_menu: move |_: (InputAddress, f64, f64)| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(html.contains("vJoy 2"), "vJoy device missing: {html}");
+    assert!(html.contains('X'), "vJoy output missing: {html}");
+    assert!(
+        html.contains("if-row__output-badge"),
+        "output badge class missing: {html}"
+    );
+}
+
+#[test]
 fn row_active_class_when_selected() {
     use crate::context::{GlyphFlags, MappingSummary};
     use crate::frame::mapping_list::row::Row;
