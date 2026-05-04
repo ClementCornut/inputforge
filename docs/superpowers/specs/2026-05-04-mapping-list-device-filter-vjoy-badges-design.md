@@ -75,6 +75,8 @@ Device chips are derived from devices referenced by mappings in the current mode
 
 The chip row is hidden when there are no device references in the current mode.
 
+The `Add mapping` control is sticky at the bottom of the rail. The mapping groups scroll behind/above it when the list is long, so adding a mapping remains reachable without scrolling to the end. The sticky control uses rail chrome, not a floating card, and must not cover the final row; reserve bottom padding in the scrollable list equal to the sticky control height plus the rail gap.
+
 Rows keep their current group structure: axes, buttons, hats. Named rows show the mapping name as the primary line. Unnamed rows do not render a fake title; the source line becomes the visible identity.
 
 Rows with `first_vjoy_output` show one compact badge at the row end:
@@ -133,6 +135,7 @@ Add focused coverage for:
 - duplicate device display names are disambiguated
 - zero-result empty state exposes clear actions for text and device filters
 - chip strip renders as a single-row overflow container with stable height in constrained width
+- sticky `Add mapping` control remains visible while long mapping lists scroll and does not occlude the last row
 - vJoy output badge includes both vJoy device and output label
 
 ## Implementation Notes
