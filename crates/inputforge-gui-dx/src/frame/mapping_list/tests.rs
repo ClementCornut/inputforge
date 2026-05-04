@@ -631,7 +631,9 @@ fn empty_zero_filter_results_quotes_query() {
         rsx! {
             EmptyZeroFilterResults {
                 query: "ailerons".to_owned(),
-                on_clear: move |()| {},
+                device_label: None,
+                on_clear_text: move |()| {},
+                on_clear_device: None,
             }
         }
     }
@@ -643,8 +645,41 @@ fn empty_zero_filter_results_quotes_query() {
         "filtered-empty title must quote the current query: {html}",
     );
     assert!(
-        html.contains("Clear filter"),
-        "clear-filter button missing: {html}"
+        html.contains("Clear text"),
+        "clear text button missing: {html}"
+    );
+}
+
+#[test]
+fn mapping_list_zero_filter_exposes_clear_actions() {
+    use crate::frame::mapping_list::empty::EmptyZeroFilterResults;
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        rsx! {
+            EmptyZeroFilterResults {
+                query: "throttle".to_owned(),
+                device_label: Some("Twin Stick".to_owned()),
+                on_clear_text: move |()| {},
+                on_clear_device: Some(EventHandler::new(move |()| {})),
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("Clear text"),
+        "text clear action missing: {html}"
+    );
+    assert!(
+        html.contains("Clear device"),
+        "device clear action missing: {html}"
+    );
+    assert!(
+        html.contains("Twin Stick"),
+        "device label missing from zero-filter state: {html}"
     );
 }
 
@@ -970,7 +1005,9 @@ fn empty_zero_filter_results_renders_full_anatomy() {
         rsx! {
             EmptyZeroFilterResults {
                 query: "ailerons".to_owned(),
-                on_clear: move |()| {},
+                device_label: None,
+                on_clear_text: move |()| {},
+                on_clear_device: None,
             }
         }
     }
@@ -986,8 +1023,8 @@ fn empty_zero_filter_results_renders_full_anatomy() {
         "exact helper text per spec missing: {html}",
     );
     assert!(
-        html.contains("Clear filter"),
-        "Clear filter ghost-link missing: {html}"
+        html.contains("Clear text"),
+        "Clear text ghost-link missing: {html}"
     );
 }
 

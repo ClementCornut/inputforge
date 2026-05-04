@@ -4,8 +4,8 @@
 //!   title + helper + primary `+ Add mapping` button that expands directly
 //!   into `CapturingArmed` (skips Resting -> click).
 //!
-//! State B, zero filter results: title quoting `<query>` + helper +
-//!   ghost-link `Clear filter` button.
+//! State B, zero filter results: title naming active filters + helper +
+//!   independent ghost clear buttons.
 
 use dioxus::prelude::*;
 
@@ -30,21 +30,45 @@ pub(crate) fn EmptyZeroMappings(on_start_capture: EventHandler<()>) -> Element {
 }
 
 #[component]
-pub(crate) fn EmptyZeroFilterResults(query: String, on_clear: EventHandler<()>) -> Element {
+pub(crate) fn EmptyZeroFilterResults(
+    query: String,
+    device_label: Option<String>,
+    on_clear_text: EventHandler<()>,
+    on_clear_device: Option<EventHandler<()>>,
+) -> Element {
     tracing::trace!(target: "frame::render", region = "mapping_list::empty_zero_filter_results");
+    let has_query = !query.trim().is_empty();
     rsx! {
         div { class: "if-rail-empty if-rail-empty--zero-filter-results",
             div { class: "if-rail-empty__title",
-                "No mappings match "
-                span { class: "muted", "\"{query}\"" }
+                "No mappings match"
+                if has_query {
+                    " "
+                    span { class: "muted", "\"{query}\"" }
+                }
+                if let Some(label) = &device_label {
+                    " on "
+                    span { class: "muted", "{label}" }
+                }
             }
             div { class: "if-rail-empty__helper",
                 "Filter searches name and source label."
             }
-            Button {
-                variant: ButtonVariant::Ghost,
-                onclick: move |_| on_clear.call(()),
-                "Clear filter"
+            div { class: "if-rail-empty__actions",
+                if has_query {
+                    Button {
+                        variant: ButtonVariant::Ghost,
+                        onclick: move |_| on_clear_text.call(()),
+                        "Clear text"
+                    }
+                }
+                if let Some(clear_device) = on_clear_device {
+                    Button {
+                        variant: ButtonVariant::Ghost,
+                        onclick: move |_| clear_device.call(()),
+                        "Clear device"
+                    }
+                }
             }
         }
     }

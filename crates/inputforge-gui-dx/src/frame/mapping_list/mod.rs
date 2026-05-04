@@ -361,6 +361,13 @@ pub(crate) fn MappingList() -> Element {
     }
 
     if (!query_empty || device_selected) && rows.is_empty() {
+        let selected_device_label = selected_device.read().as_ref().and_then(|selected| {
+            device_chips_memo
+                .read()
+                .iter()
+                .find(|chip| &chip.id == selected)
+                .map(|chip| chip.label.clone())
+        });
         return rsx! {
             Stylesheet { href: MAPPING_LIST_CSS }
             div { class: "if-rail",
@@ -371,10 +378,17 @@ pub(crate) fn MappingList() -> Element {
                 }
                 EmptyZeroFilterResults {
                     query: query.clone(),
-                    on_clear: move |()| {
+                    device_label: selected_device_label,
+                    on_clear_text: move |()| {
                         let mut q = filter_query;
                         q.set(String::new());
-                    }
+                    },
+                    on_clear_device: device_selected.then(|| {
+                        EventHandler::new(move |()| {
+                            let mut selected_device = selected_device;
+                            selected_device.set(None);
+                        })
+                    }),
                 }
                 div { class: "if-rail__add-sticky",
                     AddInline {
