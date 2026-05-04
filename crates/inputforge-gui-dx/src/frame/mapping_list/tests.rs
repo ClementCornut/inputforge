@@ -373,56 +373,6 @@ fn row_renders_compact_vjoy_output_badge() {
 }
 
 #[test]
-fn row_omits_legacy_output_name_when_badge_renders_same_output() {
-    use crate::context::{GlyphFlags, MappingSummary};
-    use crate::frame::mapping_list::row::Row;
-    use inputforge_core::types::{
-        DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis,
-    };
-
-    fn TestComponent() -> Element {
-        provide_minimal_contexts();
-        let summary = MappingSummary {
-            input: InputAddress::Bound {
-                device: DeviceId("dev".to_owned()),
-                input: InputId::Axis { index: 0 },
-            },
-            mode: "Default".to_owned(),
-            name: Some("vJoy 2 · X".to_owned()),
-            glyphs: GlyphFlags::default(),
-            referenced_devices: vec![DeviceId("dev".to_owned())],
-            first_vjoy_output: Some(OutputAddress {
-                device: 2,
-                output: OutputId::Axis { id: VJoyAxis::X },
-            }),
-        };
-        let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state::<u32>();
-        rsx! {
-            Row {
-                summary: summary,
-                is_active: false,
-                renaming: renaming,
-                sortable: sortable,
-                filter_active: false,
-                on_open_menu: move |_: (InputAddress, f64, f64)| {},
-            }
-        }
-    }
-    let mut vdom = VirtualDom::new(TestComponent);
-    vdom.rebuild_in_place();
-    let html = render(&vdom);
-    assert!(
-        html.contains("if-row__output-badge"),
-        "new output chip must stay visible: {html}"
-    );
-    assert!(
-        !html.contains("if-row__name"),
-        "legacy output-name notation must not duplicate the badge: {html}"
-    );
-}
-
-#[test]
 fn row_active_class_when_selected() {
     use crate::context::{GlyphFlags, MappingSummary};
     use crate::frame::mapping_list::row::Row;

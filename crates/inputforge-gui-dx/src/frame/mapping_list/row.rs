@@ -45,30 +45,6 @@ fn compact_output_label(output: &OutputAddress) -> String {
     format!("vJoy {} · {}", output.device, suffix)
 }
 
-fn legacy_output_name_label(output: &OutputAddress) -> String {
-    let suffix = match output.output {
-        OutputId::Axis { id } => match id {
-            VJoyAxis::X => "X axis",
-            VJoyAxis::Y => "Y axis",
-            VJoyAxis::Z => "Z axis",
-            VJoyAxis::Rx => "Rx axis",
-            VJoyAxis::Ry => "Ry axis",
-            VJoyAxis::Rz => "Rz axis",
-            VJoyAxis::Slider0 => "Slider 0",
-            VJoyAxis::Slider1 => "Slider 1",
-        }
-        .to_owned(),
-        OutputId::Button { id } => format!("Button {id}"),
-        OutputId::Hat { id } => format!("Hat {id}"),
-    };
-    format!("vJoy {} · {}", output.device, suffix)
-}
-
-fn is_legacy_output_name(name: &str, output: &OutputAddress) -> bool {
-    let trimmed = name.trim();
-    trimmed == compact_output_label(output) || trimmed == legacy_output_name_label(output)
-}
-
 #[component]
 #[allow(
     unused_qualifications,
@@ -182,16 +158,6 @@ pub(crate) fn Row(
             let cfg = ctx.config.read();
             source_label::format(predicate, &cfg)
         });
-    let visible_name = summary
-        .name
-        .as_ref()
-        .filter(|name| {
-            !summary
-                .first_vjoy_output
-                .as_ref()
-                .is_some_and(|output| is_legacy_output_name(name, output))
-        })
-        .cloned();
 
     rsx! {
         div {
@@ -213,7 +179,7 @@ pub(crate) fn Row(
                     state: renaming,
                 }
             } else {
-                if let Some(name) = &visible_name {
+                if let Some(name) = &summary.name {
                     div { class: "if-row__name",
                         "{name}"
                     }
