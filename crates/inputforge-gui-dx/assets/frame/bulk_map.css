@@ -1,8 +1,230 @@
-/* Bulk-map wizard styles. Body lands in task 19. */
-/* Always declare display explicitly on flex containers in this project. */
+/* Bulk-map wizard. Panel-scoped under .if-bulk-map. */
+
 .if-bulk-map {
     display: flex;
     flex: 1;
     flex-direction: column;
     gap: var(--space-3);
+    padding: var(--space-4) var(--space-3);
+    color: var(--color-text);
+    font-size: var(--text-base);
+    width: 460px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+    .if-bulk-map {
+        width: min(460px, calc(100vw - 240px - 320px));
+    }
+}
+
+.if-bulk-map__header {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.if-bulk-map__title {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-tight);
+}
+
+.if-bulk-map__close {
+    background: transparent;
+    border: none;
+    color: var(--color-text-subtle);
+    font-size: var(--text-lg);
+    line-height: 1;
+    cursor: pointer;
+    padding: var(--space-1) var(--space-2);
+}
+
+.if-bulk-map__metadata {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2) var(--space-3);
+}
+
+.if-bulk-map__table {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.if-bulk-map__group-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-1);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--color-bg-elevated);
+    color: var(--color-text-subtle);
+    font-size: var(--text-sm);
+    text-transform: uppercase;
+}
+
+.if-bulk-map__group-title {
+    flex: 1;
+}
+
+.if-bulk-map__row {
+    display: grid;
+    grid-template-columns: 28px 1fr 70px 1fr auto;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1);
+}
+
+.if-bulk-map__kind {
+    display: flex;
+    width: 18px;
+    height: 18px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    background: rgba(56, 189, 248, 0.14);
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+}
+
+.if-bulk-map__source {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+}
+
+.if-bulk-map__live {
+    display: flex;
+    height: 8px;
+    align-items: center;
+    position: relative;
+}
+
+.if-bulk-map__live--axis {
+    height: 8px;
+    position: relative;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.if-bulk-map__live-bar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 2px;
+    background: var(--color-live);
+    opacity: 0.65;
+    transition:
+        width var(--duration-fast) var(--easing-fast),
+        left var(--duration-fast) var(--easing-fast),
+        right var(--duration-fast) var(--easing-fast);
+}
+
+.if-bulk-map__live--button {
+    width: 8px;
+    height: 8px;
+    margin: 0 auto;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.if-bulk-map__live--button-on {
+    background: var(--color-live);
+    opacity: 0.7;
+}
+
+.if-bulk-map__live--hat {
+    color: var(--color-live);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-align: center;
+}
+
+.if-bulk-map__chip {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    font-size: var(--text-xs);
+    padding: var(--space-0) var(--space-2);
+}
+
+.if-bulk-map__chip--active {
+    background: var(--color-warning-bg);
+    border-color: var(--color-warning);
+    color: var(--color-warning);
+}
+
+.if-bulk-map__summary {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text-subtle);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+.if-bulk-map__summary-create,
+.if-bulk-map__summary-replace,
+.if-bulk-map__summary-skip,
+.if-bulk-map__summary-excluded {
+    color: var(--color-text);
+}
+
+.if-bulk-map__summary-modes,
+.if-bulk-map__summary-sep {
+    color: var(--color-text-subtle);
+}
+
+.if-bulk-map__footer {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end;
+    gap: var(--space-2);
+}
+
+.if-bulk-map__caption {
+    color: var(--color-text-subtle);
+    font-size: var(--text-xs);
+    text-align: right;
+}
+
+.if-bulk-map__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-5);
+}
+
+.if-bulk-map__empty-icon {
+    color: var(--color-text-subtle);
+    font-size: var(--text-2xl);
+}
+
+.if-bulk-map__empty-title {
+    color: var(--color-text);
+    font-size: var(--text-base);
+}
+
+.if-bulk-map__empty-caption {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    text-align: center;
 }
