@@ -34,14 +34,16 @@ mod tests;
 use dioxus::prelude::*;
 
 use inputforge_core::engine::EngineCommand;
-use inputforge_core::types::InputAddress;
+use inputforge_core::types::{DeviceId, InputAddress};
 
 use crate::components::sortable::{SortableGap, SortableLiveRegion, use_sortable_state};
 use crate::components::{InputSize, TextInput};
 use crate::context::{AppContext, MappingSummary};
 use crate::frame::mapping_list::add_inline::AddInline;
 use crate::frame::mapping_list::empty::{EmptyZeroFilterResults, EmptyZeroMappings};
-use crate::frame::mapping_list::filter::matches_filter;
+use crate::frame::mapping_list::filter::{
+    DeviceChip, device_chips_for_mode, matches_device_filter, matches_filter,
+};
 use crate::frame::mapping_list::group::{GroupKind, group_of};
 use crate::frame::mapping_list::keyboard::{Intent, Key, ReorderDir, State, handle_key};
 use crate::frame::mapping_list::row::{Row, group_to_u32};
@@ -90,6 +92,7 @@ pub(crate) fn MappingList() -> Element {
     let filter_query: Signal<String> = use_signal(String::new);
     let filter_focused: Signal<bool> = use_signal(|| false);
     let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
+    let selected_device: Signal<Option<DeviceId>> = use_signal(|| None);
     let force_expand_add: Signal<bool> = use_signal(|| false);
     let menu_open: Signal<Option<(InputAddress, f64, f64)>> = use_signal(|| None);
     let delete_target: Signal<Option<MappingSummary>> = use_signal(|| None);
@@ -107,15 +110,33 @@ pub(crate) fn MappingList() -> Element {
         let cfg = ctx.config.read();
         let mode_now = editing.read().clone();
         let query = filter_query.read().clone();
+        let selected = selected_device.read().clone();
         let mut total: usize = 0;
         let mut filtered: Vec<MappingSummary> = Vec::new();
         for m in cfg.mappings.iter().filter(|m| m.mode == mode_now) {
             total += 1;
-            if matches_filter(m, &query, &cfg) {
+            if matches_filter(m, &query, &cfg) && matches_device_filter(m, selected.as_ref()) {
                 filtered.push(m.clone());
             }
         }
         (total, filtered)
+    });
+
+    let device_chips_memo = use_memo(move || {
+        let cfg = ctx.config.read();
+        let mode_now = editing.read().clone();
+        device_chips_for_mode(&cfg.mappings, &mode_now, &cfg)
+    });
+
+    use_effect(move || {
+        let chips = device_chips_memo.read();
+        let selected = selected_device.read().clone();
+        if let Some(device) = selected {
+            if !chips.iter().any(|chip| chip.id == device) {
+                let mut selected_device = selected_device;
+                selected_device.set(None);
+            }
+        }
     });
 
     // Document-scoped keyboard listener, mirrors Task 8's
@@ -317,6 +338,7 @@ pub(crate) fn MappingList() -> Element {
     };
     let query = filter_query.read().clone();
     let query_empty = query.trim().is_empty();
+    let device_selected = selected_device.read().is_some();
 
     if total == 0 {
         return rsx! {
@@ -328,19 +350,25 @@ pub(crate) fn MappingList() -> Element {
                         force.set(true);
                     }
                 }
-                AddInline {
-                    force_expanded: force_expand_add,
-                    pending_duplicate: pending_duplicate,
+                div { class: "if-rail__add-sticky",
+                    AddInline {
+                        force_expanded: force_expand_add,
+                        pending_duplicate: pending_duplicate,
+                    }
                 }
             }
         };
     }
 
-    if !query_empty && rows.is_empty() {
+    if (!query_empty || device_selected) && rows.is_empty() {
         return rsx! {
             Stylesheet { href: MAPPING_LIST_CSS }
             div { class: "if-rail",
                 FilterInput { value: filter_query, focused: filter_focused }
+                DeviceFilterRow {
+                    chips: device_chips_memo.read().clone(),
+                    selected: selected_device,
+                }
                 EmptyZeroFilterResults {
                     query: query.clone(),
                     on_clear: move |()| {
@@ -348,9 +376,11 @@ pub(crate) fn MappingList() -> Element {
                         q.set(String::new());
                     }
                 }
-                AddInline {
-                    force_expanded: force_expand_add,
-                    pending_duplicate: pending_duplicate,
+                div { class: "if-rail__add-sticky",
+                    AddInline {
+                        force_expanded: force_expand_add,
+                        pending_duplicate: pending_duplicate,
+                    }
                 }
             }
         };
@@ -365,7 +395,7 @@ pub(crate) fn MappingList() -> Element {
     let drag_from_for_drop = sortable.drag_from;
     let live_writer_for_drop = sortable.live_announcement;
     let mode_for_drop = editing.read().clone();
-    let filter_active = !query.trim().is_empty();
+    let filter_active = !query.trim().is_empty() || device_selected;
 
     let group_iter = GroupKind::ordered().into_iter().filter_map(|group| {
         let group_rows: Vec<MappingSummary> = rows
@@ -495,10 +525,18 @@ pub(crate) fn MappingList() -> Element {
         Stylesheet { href: MAPPING_LIST_CSS }
         div { class: "if-rail",
             FilterInput { value: filter_query, focused: filter_focused }
-            { group_iter }
-            AddInline {
-                force_expanded: force_expand_add,
-                pending_duplicate: pending_duplicate,
+            DeviceFilterRow {
+                chips: device_chips_memo.read().clone(),
+                selected: selected_device,
+            }
+            div { class: "if-rail__scroll",
+                { group_iter }
+            }
+            div { class: "if-rail__add-sticky",
+                AddInline {
+                    force_expanded: force_expand_add,
+                    pending_duplicate: pending_duplicate,
+                }
             }
             ContextMenuMount {
                 menu_open: menu_open,
@@ -514,6 +552,48 @@ pub(crate) fn MappingList() -> Element {
             // Move up/down, keyboard Alt+Arrow). The text is overwritten
             // at each dispatch site via `format_reorder_announcement`.
             SortableLiveRegion { state: sortable }
+        }
+    }
+}
+
+#[component]
+#[allow(
+    unused_qualifications,
+    reason = "Dioxus 0.7 RSX macro emits redundant qualifications on event listeners."
+)]
+fn DeviceFilterRow(chips: Vec<DeviceChip>, selected: Signal<Option<DeviceId>>) -> Element {
+    if chips.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        div {
+            class: "if-rail__device-filter",
+            role: "group",
+            "aria-label": "Filter mappings by device",
+            for chip in chips {
+                {
+                    let active = selected.read().as_ref() == Some(&chip.id);
+                    let id = chip.id.clone();
+                    let label = chip.label.clone();
+                    rsx! {
+                        button {
+                            class: if active { "if-rail__device-chip is-active" } else { "if-rail__device-chip" },
+                            r#type: "button",
+                            "aria-pressed": if active { "true" } else { "false" },
+                            title: "{label}",
+                            onclick: move |_| {
+                                let mut selected = selected;
+                                if selected.peek().as_ref() == Some(&id) {
+                                    selected.set(None);
+                                } else {
+                                    selected.set(Some(id.clone()));
+                                }
+                            },
+                            "{label}"
+                        }
+                    }
+                }
+            }
         }
     }
 }

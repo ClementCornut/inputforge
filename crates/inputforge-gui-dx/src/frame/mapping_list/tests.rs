@@ -59,6 +59,183 @@ fn mapping_list_mounts_with_rail_class() {
 }
 
 #[test]
+fn mapping_list_renders_single_row_device_filter_chips() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use inputforge_core::state::DeviceState;
+    use inputforge_core::types::{AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let ctx = use_context::<AppContext>();
+        let mut cfg_signal = ctx.config;
+        use_hook(move || {
+            cfg_signal.set(ConfigSnapshot {
+                devices: vec![
+                    DeviceState {
+                        info: DeviceInfo {
+                            id: DeviceId("stick".to_owned()),
+                            name: "Twin Stick".to_owned(),
+                            axes: 1,
+                            buttons: 1,
+                            hats: 0,
+                            instance_path: None,
+                            axis_polarities: vec![AxisPolarity::Bipolar],
+                        },
+                        connected: true,
+                    },
+                    DeviceState {
+                        info: DeviceInfo {
+                            id: DeviceId("pedals".to_owned()),
+                            name: "Pedals".to_owned(),
+                            axes: 1,
+                            buttons: 0,
+                            hats: 0,
+                            instance_path: None,
+                            axis_polarities: vec![AxisPolarity::Bipolar],
+                        },
+                        connected: true,
+                    },
+                ],
+                mappings: vec![
+                    MappingSummary {
+                        input: InputAddress::Bound {
+                            device: DeviceId("stick".to_owned()),
+                            input: InputId::Axis { index: 0 },
+                        },
+                        mode: "Default".to_owned(),
+                        name: Some("Pitch".to_owned()),
+                        glyphs: GlyphFlags::default(),
+                        referenced_devices: vec![DeviceId("stick".to_owned())],
+                        first_vjoy_output: None,
+                    },
+                    MappingSummary {
+                        input: InputAddress::Bound {
+                            device: DeviceId("pedals".to_owned()),
+                            input: InputId::Axis { index: 0 },
+                        },
+                        mode: "Default".to_owned(),
+                        name: Some("Rudder".to_owned()),
+                        glyphs: GlyphFlags::default(),
+                        referenced_devices: vec![DeviceId("pedals".to_owned())],
+                        first_vjoy_output: None,
+                    },
+                ],
+                ..ConfigSnapshot::default()
+            });
+        });
+        rsx! { MappingList {} }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-rail__device-filter"),
+        "chip strip missing: {html}"
+    );
+    assert!(
+        html.contains("role=\"group\""),
+        "chip group role missing: {html}"
+    );
+    assert!(
+        html.contains("aria-label=\"Filter mappings by device\""),
+        "chip group aria-label missing: {html}"
+    );
+    assert!(html.contains("Twin Stick"), "first chip missing: {html}");
+    assert!(html.contains("Pedals"), "second chip missing: {html}");
+}
+
+#[test]
+fn mapping_list_device_chips_are_toggle_buttons() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use inputforge_core::state::DeviceState;
+    use inputforge_core::types::{AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let ctx = use_context::<AppContext>();
+        let mut cfg_signal = ctx.config;
+        use_hook(move || {
+            cfg_signal.set(ConfigSnapshot {
+                devices: vec![DeviceState {
+                    info: DeviceInfo {
+                        id: DeviceId("stick".to_owned()),
+                        name: "Twin Stick".to_owned(),
+                        axes: 1,
+                        buttons: 1,
+                        hats: 0,
+                        instance_path: None,
+                        axis_polarities: vec![AxisPolarity::Bipolar],
+                    },
+                    connected: true,
+                }],
+                mappings: vec![MappingSummary {
+                    input: InputAddress::Bound {
+                        device: DeviceId("stick".to_owned()),
+                        input: InputId::Button { index: 0 },
+                    },
+                    mode: "Default".to_owned(),
+                    name: Some("Boost".to_owned()),
+                    glyphs: GlyphFlags::default(),
+                    referenced_devices: vec![DeviceId("stick".to_owned())],
+                    first_vjoy_output: None,
+                }],
+                ..ConfigSnapshot::default()
+            });
+        });
+        rsx! { MappingList {} }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-rail__device-chip"),
+        "chip class missing: {html}"
+    );
+    assert!(
+        html.contains("type=\"button\""),
+        "chip type missing: {html}"
+    );
+    assert!(
+        html.contains("aria-pressed=\"false\""),
+        "chip pressed state missing: {html}"
+    );
+    assert!(
+        html.contains("title=\"Twin Stick\""),
+        "chip title missing: {html}"
+    );
+}
+
+#[test]
+fn mapping_list_add_inline_is_in_sticky_footer() {
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        rsx! { MappingList {} }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-rail__add-sticky"),
+        "sticky footer missing: {html}"
+    );
+}
+
+#[test]
+fn mapping_list_css_keeps_device_chips_one_row() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+    assert!(css.contains(".if-rail__device-filter"));
+    assert!(css.contains("overflow-x: auto"));
+    assert!(css.contains("overflow-y: hidden"));
+    assert!(css.contains("flex-wrap: nowrap"));
+    assert!(css.contains(".if-rail__device-chip"));
+    assert!(css.contains("flex: 0 0 auto"));
+    assert!(css.contains("white-space: nowrap"));
+    assert!(css.contains(".if-rail__device-chip:focus-visible"));
+}
+
+#[test]
 fn row_renders_name_and_source_line() {
     use crate::context::{GlyphFlags, MappingSummary};
     use crate::frame::mapping_list::row::Row;
