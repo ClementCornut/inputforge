@@ -23,6 +23,8 @@
 
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/context.rs`
+- Modify: `crates/inputforge-gui-dx/src/frame/mapping_list/filter.rs`
+- Modify: `crates/inputforge-gui-dx/src/frame/mapping_list/tests.rs`
 
 - [ ] **Step 1: Write failing context tests**
 
@@ -224,6 +226,8 @@ fn first_vjoy_output(actions: &[inputforge_core::action::Action]) -> Option<Outp
 
 Populate the fields in `ConfigSnapshot::from_state`.
 
+Before expecting this task's tests to pass, compile-fix all existing `MappingSummary { ... }` literals affected by the new fields. Known fallout exists in `mapping_list/filter.rs` helper/test rows and in several `mapping_list/tests.rs` component fixtures. Either add `referenced_devices` and `first_vjoy_output` to each literal directly, or introduce a shared `mapping_summary_for_test(...)` helper in `mapping_list/tests.rs` and convert the repeated fixtures to use it.
+
 - [ ] **Step 4: Run context tests**
 
 Run: `cargo test -p inputforge-gui-dx mapping_summary_ --lib`
@@ -233,7 +237,7 @@ Expected: both tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/inputforge-gui-dx/src/context.rs
+git add crates/inputforge-gui-dx/src/context.rs crates/inputforge-gui-dx/src/frame/mapping_list/filter.rs crates/inputforge-gui-dx/src/frame/mapping_list/tests.rs
 git commit -m "feat(mapping-list): summarize device refs and vjoy output"
 ```
 
@@ -387,6 +391,8 @@ Expected: unnamed test fails because `(unnamed)` is still rendered; badge test f
 
 In `row.rs`, add an output label helper:
 
+This helper intentionally duplicates the existing private editor/live-readout output-label convention locally for this pass. Do not add a shared formatter refactor here; centralization can happen later if more GUI surfaces need the same API.
+
 ```rust
 fn compact_output_label(output: &OutputAddress) -> String {
     let suffix = match output.output {
@@ -447,37 +453,41 @@ Add tests:
 ```rust
 #[test]
 fn mapping_list_renders_single_row_device_filter_chips() {
-    // Seed two Default mappings referencing two devices.
-    // Assert "if-rail__device-filter" and each device label are present.
+    // Seed two Default mappings referencing two connected devices.
+    // Render MappingList and assert:
+    // - "if-rail__device-filter" is present.
+    // - role="group" and aria-label="Filter mappings by device" are present.
+    // - each device label appears exactly once as chip text/title.
+}
+
+#[test]
+fn mapping_list_device_chips_are_toggle_buttons() {
+    // Seed one Default mapping referencing one device.
+    // Render MappingList and assert the chip has:
+    // - class "if-rail__device-chip".
+    // - type="button".
+    // - aria-pressed="false".
+    // - a title equal to the visible device label.
 }
 
 #[test]
 fn mapping_list_add_inline_is_in_sticky_footer() {
     // Mount MappingList with several mappings.
+    // Assert "if-rail__scroll" wraps the mapping groups.
     // Assert AddInline appears under "if-rail__add-sticky".
 }
 
 #[test]
-fn mapping_list_zero_filter_exposes_clear_actions() {
-    use crate::frame::mapping_list::empty::EmptyZeroFilterResults;
-
-    fn TestComponent() -> Element {
-        provide_minimal_contexts();
-        rsx! {
-            EmptyZeroFilterResults {
-                query: "throttle".to_owned(),
-                device_label: Some("Twin Stick".to_owned()),
-                on_clear_text: move |()| {},
-                on_clear_device: Some(EventHandler::new(move |()| {})),
-            }
-        }
-    }
-
-    let mut vdom = VirtualDom::new(TestComponent);
-    vdom.rebuild_in_place();
-    let html = render(&vdom);
-    assert!(html.contains("Clear text"), "text clear action missing: {html}");
-    assert!(html.contains("Clear device"), "device clear action missing: {html}");
+fn mapping_list_css_keeps_device_chips_one_row() {
+    let css = include_str!("../../../../assets/frame/mapping_list.css");
+    assert!(css.contains(".if-rail__device-filter"));
+    assert!(css.contains("overflow-x: auto"));
+    assert!(css.contains("overflow-y: hidden"));
+    assert!(css.contains("flex-wrap: nowrap"));
+    assert!(css.contains(".if-rail__device-chip"));
+    assert!(css.contains("flex: 0 0 auto"));
+    assert!(css.contains("white-space: nowrap"));
+    assert!(css.contains(".if-rail__device-chip:focus-visible"));
 }
 ```
 
@@ -533,7 +543,7 @@ fn DeviceFilterRow(chips: Vec<DeviceChip>, selected: Signal<Option<DeviceId>>) -
         return rsx! {};
     }
     rsx! {
-        div { class: "if-rail__device-filter", role: "list", "aria-label": "Filter mappings by device",
+        div { class: "if-rail__device-filter", role: "group", "aria-label": "Filter mappings by device",
             for chip in chips {
                 {
                     let active = selected.read().as_ref() == Some(&chip.id);
@@ -574,7 +584,7 @@ div { class: "if-rail__add-sticky",
 }
 ```
 
-Also clear selected device with an effect when it no longer exists in chips.
+Also clear selected device with an effect when the current mode changes or chip derivation changes and `selected_device` is no longer present in `device_chips_for_mode`. The effect should compare by `DeviceId`, and leave the selection intact when the same `DeviceId` still exists under a different display label.
 
 - [ ] **Step 4: Add CSS**
 
@@ -587,6 +597,7 @@ In `mapping_list.css`, add:
 
 .if-rail__device-filter {
     display: flex;
+    flex-wrap: nowrap;
     gap: var(--space-1);
     overflow-x: auto;
     overflow-y: hidden;
@@ -606,6 +617,11 @@ In `mapping_list.css`, add:
 .if-rail__device-chip.is-active {
     border-color: var(--color-primary);
     color: var(--color-primary);
+}
+
+.if-rail__device-chip:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
 }
 
 .if-rail__scroll {
@@ -651,6 +667,34 @@ git commit -m "feat(mapping-list): add device chips and sticky add"
 
 Add a component test for `EmptyZeroFilterResults` with text and device clear handlers. Assert it renders `Clear text` and `Clear device`.
 
+Use this concrete fixture:
+
+```rust
+#[test]
+fn mapping_list_zero_filter_exposes_clear_actions() {
+    use crate::frame::mapping_list::empty::EmptyZeroFilterResults;
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        rsx! {
+            EmptyZeroFilterResults {
+                query: "throttle".to_owned(),
+                device_label: Some("Twin Stick".to_owned()),
+                on_clear_text: move |()| {},
+                on_clear_device: Some(EventHandler::new(move |()| {})),
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(html.contains("Clear text"), "text clear action missing: {html}");
+    assert!(html.contains("Clear device"), "device clear action missing: {html}");
+    assert!(html.contains("Twin Stick"), "device label missing from zero-filter state: {html}");
+}
+```
+
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cargo test -p inputforge-gui-dx empty_zero_filter --lib`
@@ -668,7 +712,7 @@ on_clear_text: EventHandler<()>,
 on_clear_device: Option<EventHandler<()>>,
 ```
 
-Render `Clear text` when `query.trim()` is non-empty and `Clear device` when `device_label.is_some()`.
+Render the zero-result message so it represents both active filters: include the text query when `query.trim()` is non-empty and include the selected device label when `device_label.is_some()`. Render `Clear text` when `query.trim()` is non-empty and `Clear device` when `device_label.is_some()`. Both actions must use the existing `Button { variant: ButtonVariant::Ghost }` styling inside the empty-state action area, with independent handlers.
 
 Update `MappingList` zero-filter branch to pass both handlers.
 
