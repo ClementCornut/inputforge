@@ -1129,6 +1129,10 @@ fn editor_live_readout_omits_out_when_no_map_to_vjoy() {
     vdom.rebuild_in_place();
     let html = render(&vdom);
     assert!(!html.contains(">OUT<"), "OUT row must be hidden: {html}");
+    assert!(
+        !html.contains("if-editor__readout-divider"),
+        "divider must be hidden without OUT rows: {html}"
+    );
 }
 
 #[test]
@@ -1542,13 +1546,39 @@ fn editor_live_readout_keyboard_active_renders_live_chip() {
     }];
     let html = render_with_pipeline(
         &actions,
-        &[(axis_addr(0), AxisPolarity::Bipolar, 0.0)],
+        &[(axis_addr(0), AxisPolarity::Bipolar, 1.0)],
         &[(btn_addr(0), true)],
         &[],
     );
 
     assert!(html.contains("if-editor__readout-kb-chip--live"));
     assert!(html.contains("Ctrl + Space"));
+}
+
+#[test]
+fn editor_live_readout_keyboard_active_below_threshold_renders_idle_chip() {
+    use inputforge_core::action::Condition;
+    use inputforge_core::types::{KeyCombo, KeyModifier};
+
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed { input: btn_addr(0) },
+        if_true: vec![Action::MapToKeyboard {
+            key: KeyCombo {
+                key: "Space".to_owned(),
+                modifiers: vec![KeyModifier::Ctrl],
+            },
+        }],
+        if_false: vec![],
+    }];
+    let html = render_with_pipeline(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.5)],
+        &[(btn_addr(0), true)],
+        &[],
+    );
+
+    assert!(html.contains("if-editor__readout-kb-chip--idle"));
+    assert!(!html.contains(super::live_readout::FROZEN_ROW_CLASS));
 }
 
 #[test]

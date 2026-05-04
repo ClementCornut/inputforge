@@ -144,10 +144,11 @@ pub(super) fn OutRow(
                 }
             }
         },
-        OutputDestination::Keyboard(combo) => {
-            let combo_text = format_key_combo(combo);
+        OutputDestination::Keyboard { key, pressed } => {
+            let combo_text = format_key_combo(key);
+            let key_live = engine_running && descriptor.is_active && *pressed;
             let row_class = keyboard_row_class(frozen);
-            let chip_class = keyboard_chip_class(frozen);
+            let chip_class = keyboard_chip_class(key_live);
             let label = row_label.clone();
 
             rsx! {
@@ -265,11 +266,11 @@ fn keyboard_row_class(frozen: bool) -> &'static str {
     }
 }
 
-fn keyboard_chip_class(frozen: bool) -> &'static str {
-    if frozen {
-        "if-editor__readout-kb-chip if-editor__readout-kb-chip--idle"
-    } else {
+fn keyboard_chip_class(live: bool) -> &'static str {
+    if live {
         "if-editor__readout-kb-chip if-editor__readout-kb-chip--live"
+    } else {
+        "if-editor__readout-kb-chip if-editor__readout-kb-chip--idle"
     }
 }
 
@@ -325,13 +326,13 @@ mod tests {
     }
 
     #[test]
-    fn keyboard_chip_class_tracks_frozen_state() {
+    fn keyboard_chip_class_tracks_live_state() {
         assert_eq!(
-            keyboard_chip_class(false),
+            keyboard_chip_class(true),
             "if-editor__readout-kb-chip if-editor__readout-kb-chip--live"
         );
         assert_eq!(
-            keyboard_chip_class(true),
+            keyboard_chip_class(false),
             "if-editor__readout-kb-chip if-editor__readout-kb-chip--idle"
         );
     }

@@ -4,7 +4,8 @@ use std::collections::HashSet;
 
 use inputforge_core::action::{Action, Condition};
 use inputforge_core::pipeline::{
-    BranchStep, InputCache, evaluate_actions_through_path, evaluate_condition,
+    BranchStep, InputCache, button_pressed_from_value, evaluate_actions_through_path,
+    evaluate_condition,
 };
 use inputforge_core::state::AppState;
 use inputforge_core::types::{
@@ -49,7 +50,12 @@ pub(super) enum OutputDestination {
     /// vJoy axis, button, or hat output.
     VJoy(OutputAddress),
     /// Keyboard key combination output.
-    Keyboard(KeyCombo),
+    Keyboard {
+        /// Key combination emitted by the pipeline.
+        key: KeyCombo,
+        /// Whether the current pipeline value would press the key.
+        pressed: bool,
+    },
 }
 
 /// Transformation step shown in an output chain.
@@ -220,6 +226,17 @@ impl AnalysisContext<'_> {
 
         append_non_conditional_actions(&current[..=local_idx], &mut flattened);
         flattened
+    }
+
+    fn keyboard_pressed(&self, branch_path: &[BranchStep], local_idx: usize) -> bool {
+        let projected = evaluate_actions_through_path(
+            self.top_level,
+            self.state,
+            self.primary,
+            branch_path,
+            local_idx,
+        );
+        button_pressed_from_value(super::value_helpers::axis_f64(&projected))
     }
 }
 
@@ -443,8 +460,12 @@ fn walk(
                 });
             }
             Action::MapToKeyboard { key } => {
+                let pressed = context.keyboard_pressed(branch_path, i);
                 model.outputs.push(OutputDescriptor {
-                    destination: OutputDestination::Keyboard(key.clone()),
+                    destination: OutputDestination::Keyboard {
+                        key: key.clone(),
+                        pressed,
+                    },
                     chain: chain_stack.clone(),
                     is_active: compute_is_active(chain_stack),
                     polarity: AxisPolarity::Bipolar,
@@ -979,7 +1000,10 @@ mod walker_tests {
         assert_eq!(
             model.outputs,
             vec![OutputDescriptor {
-                destination: OutputDestination::Keyboard(key),
+                destination: OutputDestination::Keyboard {
+                    key,
+                    pressed: false,
+                },
                 chain: Vec::new(),
                 is_active: true,
                 polarity: AxisPolarity::Bipolar,

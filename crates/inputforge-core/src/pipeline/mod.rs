@@ -20,6 +20,12 @@ use crate::types::{
 /// press state (e.g., for `MapToVJoy` and `MapToKeyboard` actions).
 const BUTTON_PRESS_THRESHOLD: f64 = 0.5;
 
+/// Return whether a scalar pipeline value is considered pressed.
+#[must_use]
+pub fn button_pressed_from_value(value: f64) -> bool {
+    value > BUTTON_PRESS_THRESHOLD
+}
+
 /// Output produced by the pipeline executor.
 ///
 /// These are transient values consumed by the output stage.
@@ -101,7 +107,7 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
             }
             Action::Invert => match &ctx.input_value {
                 InputValue::Button { .. } => {
-                    ctx.current_value = if ctx.current_value > BUTTON_PRESS_THRESHOLD {
+                    ctx.current_value = if button_pressed_from_value(ctx.current_value) {
                         0.0
                     } else {
                         1.0
@@ -126,7 +132,7 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                 InputValue::Button { .. } => {
                     ctx.outputs.push(PipelineOutput::SetButton {
                         output: output.clone(),
-                        pressed: ctx.current_value > BUTTON_PRESS_THRESHOLD,
+                        pressed: button_pressed_from_value(ctx.current_value),
                     });
                 }
                 InputValue::Hat { .. } => {
@@ -140,7 +146,7 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                 _ => {
                     ctx.outputs.push(PipelineOutput::SendKey {
                         key: key.clone(),
-                        pressed: ctx.current_value > BUTTON_PRESS_THRESHOLD,
+                        pressed: button_pressed_from_value(ctx.current_value),
                     });
                 }
             },
@@ -291,7 +297,7 @@ fn project_input_value(input_value: &InputValue, current_value: f64) -> InputVal
             polarity,
         },
         InputValue::Button { .. } => InputValue::Button {
-            pressed: current_value > BUTTON_PRESS_THRESHOLD,
+            pressed: button_pressed_from_value(current_value),
         },
         // Hats: pipeline evaluation does not modify direction; the cached
         // direction reads through unchanged.
@@ -449,6 +455,12 @@ mod tests {
                 pressed: true,
             }
         );
+    }
+
+    #[test]
+    fn button_pressed_from_value_uses_strict_threshold() {
+        assert!(!button_pressed_from_value(0.5));
+        assert!(button_pressed_from_value(0.500_001));
     }
 
     // -- Hat input passthrough ------------------------------------------------

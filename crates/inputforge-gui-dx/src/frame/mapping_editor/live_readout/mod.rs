@@ -108,8 +108,10 @@ fn LiveReadoutInner(
     rsx! {
         div { class: "if-editor__readout",
             InBlock { model: model_for_in }
-            DividerStrip {}
-            OutBlock { model: model_for_out, expand_state, engine_running }
+            if outputs_len > 0 {
+                DividerStrip {}
+                OutBlock { model: model_for_out, expand_state, engine_running }
+            }
         }
     }
 }
