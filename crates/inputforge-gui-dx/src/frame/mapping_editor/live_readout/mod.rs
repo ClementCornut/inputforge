@@ -21,7 +21,8 @@ mod predicate;
 mod value_helpers;
 
 use in_block::InBlock;
-use out_block::{DividerStrip, ExpandState, OutBlock};
+pub(crate) use out_block::ExpandState;
+use out_block::{DividerStrip, OutBlock};
 
 /// CSS modifier class applied to readout rows whose value is held.
 pub(super) const FROZEN_ROW_CLASS: &str = "if-editor__readout-row--frozen";
@@ -31,6 +32,31 @@ pub(super) const FROZEN_ROW_CLASS: &str = "if-editor__readout-row--frozen";
 /// The analyzer receives one coherent state/config snapshot per render.
 #[component]
 pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Element {
+    let expand_state: Signal<ExpandState> = use_signal(ExpandState::default);
+
+    rsx! {
+        LiveReadoutInner { primary, actions, expand_state }
+    }
+}
+
+#[cfg(test)]
+#[component]
+pub(crate) fn LiveReadoutTest(
+    primary: InputAddress,
+    actions: Vec<Action>,
+    expand_state: Signal<ExpandState>,
+) -> Element {
+    rsx! {
+        LiveReadoutInner { primary, actions, expand_state }
+    }
+}
+
+#[component]
+fn LiveReadoutInner(
+    primary: InputAddress,
+    actions: Vec<Action>,
+    expand_state: Signal<ExpandState>,
+) -> Element {
     let ctx = use_context::<AppContext>();
     let model = {
         let state = ctx.state.read();
@@ -40,7 +66,6 @@ pub(crate) fn LiveReadout(primary: InputAddress, actions: Vec<Action>) -> Elemen
     let engine_running = matches!(ctx.meta.read().engine_status, EngineStatus::Running);
     let outputs_len = model.outputs.len();
 
-    let mut expand_state: Signal<ExpandState> = use_signal(ExpandState::default);
     let mut prev_outputs_len: Signal<usize> = use_signal(|| outputs_len);
     use_effect(move || {
         let prev = *prev_outputs_len.read();

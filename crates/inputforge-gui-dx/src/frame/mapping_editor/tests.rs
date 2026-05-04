@@ -547,6 +547,157 @@ fn harness_with_live_and_status(
     )
 }
 
+#[derive(Clone, Props)]
+struct LiveReadoutExpandHarnessProps {
+    state: Arc<RwLock<AppState>>,
+    primary: InputAddress,
+    actions: Vec<Action>,
+    expand_state: super::live_readout::ExpandState,
+}
+
+impl PartialEq for LiveReadoutExpandHarnessProps {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.state, &other.state)
+            && self.primary == other.primary
+            && self.actions == other.actions
+            && self.expand_state == other.expand_state
+    }
+}
+
+#[allow(
+    non_snake_case,
+    reason = "Dioxus components are PascalCase by convention"
+)]
+fn LiveReadoutExpandHarness(props: LiveReadoutExpandHarnessProps) -> Element {
+    let LiveReadoutExpandHarnessProps {
+        state,
+        primary,
+        actions,
+        expand_state,
+    } = props;
+
+    let (cmd_tx, _) = mpsc::channel();
+    let raw = RawHandles {
+        state,
+        commands: cmd_tx,
+        settings: Arc::new(AppSettings::default()),
+    };
+    use_context_provider(|| raw.clone());
+
+    let selection: crate::frame::MappingKey = ("Default".to_owned(), primary.clone());
+    let snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
+    let live_snapshot = LiveSnapshot::from_state(&raw.state.read(), &snap);
+    let meta = use_signal(|| MetaSnapshot {
+        engine_status: EngineStatus::Running,
+        profile_name: Some("P".to_owned()),
+        current_mode: "Default".to_owned(),
+        ..MetaSnapshot::default()
+    });
+    let config = use_signal(|| snap);
+    let live = use_signal(|| live_snapshot);
+    let ctx = AppContext {
+        state: Arc::clone(&raw.state),
+        commands: raw.commands.clone(),
+        settings: Arc::clone(&raw.settings),
+        meta,
+        config,
+        live,
+    };
+    use_context_provider(|| ctx);
+
+    let injected_expand_state = use_signal(|| expand_state);
+    rsx! {
+        super::live_readout::LiveReadoutTest {
+            primary,
+            actions,
+            expand_state: injected_expand_state,
+        }
+    }
+}
+
+fn harness_with_expand(
+    state: AppState,
+    primary: InputAddress,
+    actions: Vec<Action>,
+    expand_state: super::live_readout::ExpandState,
+) -> VirtualDom {
+    VirtualDom::new_with_props(
+        LiveReadoutExpandHarness,
+        LiveReadoutExpandHarnessProps {
+            state: Arc::new(RwLock::new(state)),
+            primary,
+            actions,
+            expand_state,
+        },
+    )
+}
+
+fn expand_toggle_fixture_actions() -> Vec<Action> {
+    use inputforge_core::types::MergeOp;
+
+    vec![
+        Action::MergeAxis {
+            second_input: axis_addr(1),
+            operation: MergeOp::Average,
+        },
+        Action::MapToVJoy { output: vjoy_x() },
+    ]
+}
+
+fn expand_toggle_fixture() -> (AppState, InputAddress) {
+    let primary = axis_addr(0);
+    let mut state = seeded_profile_with_pipeline(
+        expand_toggle_fixture_actions(),
+        vec![AxisPolarity::Bipolar, AxisPolarity::Bipolar],
+        &[
+            (0, 0.2, AxisPolarity::Bipolar),
+            (1, 0.8, AxisPolarity::Bipolar),
+        ],
+        &[],
+        &[],
+    );
+    add_vjoy_device(&mut state, 1, vec![VJoyAxis::X]);
+    (state, primary)
+}
+
+fn expand_toggle_fixture_two_outputs_actions() -> Vec<Action> {
+    use inputforge_core::types::MergeOp;
+
+    vec![
+        Action::MergeAxis {
+            second_input: axis_addr(1),
+            operation: MergeOp::Average,
+        },
+        Action::MapToVJoy { output: vjoy_x() },
+        Action::MergeAxis {
+            second_input: axis_addr(2),
+            operation: MergeOp::Average,
+        },
+        Action::MapToVJoy { output: vjoy_y() },
+    ]
+}
+
+fn expand_toggle_fixture_two_outputs() -> (AppState, InputAddress) {
+    let primary = axis_addr(0);
+    let mut state = seeded_profile_with_pipeline(
+        expand_toggle_fixture_two_outputs_actions(),
+        vec![
+            AxisPolarity::Bipolar,
+            AxisPolarity::Bipolar,
+            AxisPolarity::Bipolar,
+        ],
+        &[
+            (0, 0.2, AxisPolarity::Bipolar),
+            (1, 0.8, AxisPolarity::Bipolar),
+            (2, -0.4, AxisPolarity::Bipolar),
+        ],
+        &[],
+        &[],
+    );
+    add_vjoy_device(&mut state, 1, vec![VJoyAxis::X, VJoyAxis::Y]);
+    (state, primary)
+}
+
 // ---------------------------------------------------------------------------
 // Basic smoke test
 // ---------------------------------------------------------------------------
@@ -1412,6 +1563,169 @@ fn editor_live_readout_keyboard_inactive_renders_idle_chip() {
 
     assert!(html.contains("if-editor__readout-kb-chip--idle"));
     assert!(html.contains(super::live_readout::FROZEN_ROW_CLASS));
+}
+
+#[test]
+fn editor_live_readout_predicate_chip_button_pressed_renders_live() {
+    use inputforge_core::action::Condition;
+
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed { input: btn_addr(0) },
+        if_true: vec![],
+        if_false: vec![],
+    }];
+    let html = render_with_pipeline(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.0)],
+        &[(btn_addr(0), true)],
+        &[],
+    );
+
+    assert!(
+        html.contains("IN \u{00b7} predicates"),
+        "expected predicate section label; got: {html}"
+    );
+    assert!(
+        html.contains("if-editor__readout-chip--live"),
+        "expected live predicate chip; got: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_predicate_chip_axis_in_range_shows_bounds() {
+    use inputforge_core::action::Condition;
+
+    let actions = vec![Action::Conditional {
+        condition: Condition::AxisInRange {
+            input: axis_addr(1),
+            min: 0.2,
+            max: 0.8,
+        },
+        if_true: vec![],
+        if_false: vec![],
+    }];
+    let html = render_with_pipeline(
+        &actions,
+        &[
+            (axis_addr(0), AxisPolarity::Bipolar, 0.0),
+            (axis_addr(1), AxisPolarity::Bipolar, 0.5),
+        ],
+        &[],
+        &[],
+    );
+
+    assert!(
+        html.contains("[0.20..0.80]"),
+        "expected bounds; got: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_chevron_present_only_when_chain_non_empty() {
+    let no_merge_html = render_with_pipeline(
+        &[Action::MapToVJoy { output: vjoy_x() }],
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.0)],
+        &[],
+        &[],
+    );
+    assert!(
+        !no_merge_html.contains("if-editor__readout-chevron\""),
+        "expected no chevron without a chain; got: {no_merge_html}"
+    );
+
+    let with_merge_html = render_with_pipeline(
+        &expand_toggle_fixture_actions(),
+        &[
+            (axis_addr(0), AxisPolarity::Bipolar, 0.2),
+            (axis_addr(1), AxisPolarity::Bipolar, 0.8),
+        ],
+        &[],
+        &[],
+    );
+    assert!(
+        with_merge_html.contains("if-editor__readout-chevron\""),
+        "expected chevron with a chain; got: {with_merge_html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_expand_all_pill_visible_when_any_chain_non_empty() {
+    let html = render_with_pipeline(
+        &expand_toggle_fixture_actions(),
+        &[
+            (axis_addr(0), AxisPolarity::Bipolar, 0.2),
+            (axis_addr(1), AxisPolarity::Bipolar, 0.8),
+        ],
+        &[],
+        &[],
+    );
+
+    assert!(
+        html.contains("if-editor__readout-expand-all"),
+        "expected expand-all control; got: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_chain_collapsed_by_default_renders_no_chain_block() {
+    let (state, primary) = expand_toggle_fixture();
+    let mut vdom = harness_with(state, primary);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(
+        html.contains("if-editor__readout-chevron\""),
+        "expected chevron for collapsed expandable row; got: {html}"
+    );
+    assert!(
+        !html.contains("if-editor__readout-chain\""),
+        "expected no chain block by default; got: {html}"
+    );
+    assert!(
+        !html.contains("if-editor__readout-chain-row"),
+        "expected no chain rows by default; got: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_per_output_expand_renders_chain_block() {
+    let (state, primary) = expand_toggle_fixture();
+    let actions = expand_toggle_fixture_actions();
+    let expand_state = super::live_readout::ExpandState {
+        expand_all: false,
+        per_output: vec![true],
+    };
+    let mut vdom = harness_with_expand(state, primary, actions, expand_state);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(
+        html.contains("if-editor__readout-chain\""),
+        "expected expanded chain block; got: {html}"
+    );
+    assert!(
+        html.contains(">MERGE 1<"),
+        "expected merge step; got: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_expand_all_expands_every_chain() {
+    let (state, primary) = expand_toggle_fixture_two_outputs();
+    let actions = expand_toggle_fixture_two_outputs_actions();
+    let expand_state = super::live_readout::ExpandState {
+        expand_all: true,
+        per_output: vec![false, false],
+    };
+    let mut vdom = harness_with_expand(state, primary, actions, expand_state);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert_eq!(
+        count_substring(&html, "if-editor__readout-chain\""),
+        2,
+        "expected one expanded chain per output; got: {html}"
+    );
 }
 
 /// Unipolar primary, no merge, with `MapToVJoy`. The OUT row should

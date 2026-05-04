@@ -28,7 +28,7 @@ const READOUT_GROUP_CLASS: &str = "if-editor__readout-group";
 /// `per_output` is index-aligned with `LiveReadoutModel::outputs`.
 /// `expand_all` acts as a global override for every output row.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub(super) struct ExpandState {
+pub(crate) struct ExpandState {
     pub expand_all: bool,
     pub per_output: Vec<bool>,
 }
