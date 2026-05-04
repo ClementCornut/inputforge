@@ -7,6 +7,7 @@ pub(crate) enum Tool {
     Devices,
     Calibration,
     Profiles,
+    BulkMap,
 }
 
 /// Whether a given tool button should render as active.
@@ -19,6 +20,7 @@ pub(crate) fn tool_active(slot: PanelSlot, via_calibration: bool, tool: Tool) ->
         (PanelSlot::Devices, false, Tool::Devices)
             | (PanelSlot::Devices, true, Tool::Calibration)
             | (PanelSlot::Profiles, _, Tool::Profiles)
+            | (PanelSlot::BulkMap, _, Tool::BulkMap)
     )
 }
 
@@ -44,6 +46,13 @@ mod tests {
         assert!(tool_active(PanelSlot::Profiles, false, Tool::Profiles));
         assert!(tool_active(PanelSlot::Profiles, true, Tool::Profiles));
         assert!(!tool_active(PanelSlot::Profiles, true, Tool::Calibration));
+    }
+
+    #[test]
+    fn bulk_map_panel_lights_bulk_map_regardless_of_via_calibration() {
+        assert!(tool_active(PanelSlot::BulkMap, false, Tool::BulkMap));
+        assert!(tool_active(PanelSlot::BulkMap, true, Tool::BulkMap));
+        assert!(!tool_active(PanelSlot::BulkMap, false, Tool::Devices));
     }
 
     #[test]
