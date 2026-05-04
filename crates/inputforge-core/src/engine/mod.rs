@@ -9,6 +9,7 @@
 //! channel.
 
 mod command;
+mod dependencies;
 mod output_handler;
 mod run;
 #[cfg(all(test, feature = "test-util"))]

@@ -97,20 +97,18 @@ fn LiveReadoutInner(
         if prev != reset_key {
             expand_state.with_mut(|s| {
                 s.per_output = vec![false; outputs_len];
-                s.expand_all = false;
             });
             prev_reset_key.set(reset_key.clone());
         }
     }));
 
     let model_for_in = model.clone();
-    let model_for_divider = model.clone();
     let model_for_out = model;
 
     rsx! {
         div { class: "if-editor__readout",
             InBlock { model: model_for_in }
-            DividerStrip { model: model_for_divider, expand_state }
+            DividerStrip {}
             OutBlock { model: model_for_out, expand_state, engine_running }
         }
     }

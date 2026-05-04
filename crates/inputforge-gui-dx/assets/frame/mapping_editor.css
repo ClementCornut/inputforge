@@ -370,6 +370,11 @@
 /* Task 17: live readout (IN/OUT bars + merge layout) */
 
 .if-editor__readout {
+    --if-editor__readout-label-col: 60px;
+    --if-editor__readout-tag-col: clamp(120px, 18vw, 260px);
+    --if-editor__readout-pct-col: 60px;
+    --if-editor__readout-chevron-col: 24px;
+
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -377,16 +382,14 @@
     border-bottom: 1px solid var(--color-border);
 }
 
-/* A readout group: each side of the dashed divider is its own grid so
-   the tag column auto-sizes per group. Bars within a group share an
-   x origin (longest tag in *that* group sets the column); bars across
-   groups can differ. Rows use `display: contents` to dissolve into
+/* A readout group: IN and OUT remain separate DOM sections, but they
+   share the same column tokens so every top-level live bar reads against
+   one instrument scale. Rows use `display: contents` to dissolve into
    the group grid so each row's cells become grid items. */
 .if-editor__readout-group {
     display: grid;
-    /* label | tag | bar | percentage | optional chevron. The final
-       max-content column collapses when no OUT row supplies a chevron. */
-    grid-template-columns: 60px minmax(0, max-content) 1fr 60px max-content;
+    /* label | tag | bar | percentage | reserved chevron */
+    grid-template-columns: var(--if-editor__readout-label-col) var(--if-editor__readout-tag-col) minmax(0, 1fr) var(--if-editor__readout-pct-col) var(--if-editor__readout-chevron-col);
     column-gap: 12px;
     row-gap: 8px;
     align-items: center;
@@ -410,7 +413,7 @@
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--color-text-subtle);
-    max-width: 200px;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -478,24 +481,17 @@
     opacity: 0.7;
 }
 
-/* Section divider with inline label: dashed lines on either side of a
-   small uppercase label (e.g. `─── merge ───`). The flex pseudo-element
-   trick gives full-width dashes that auto-resize as the label grows
-   without measuring anything. Sits as a sibling of `.if-editor__
-   readout-row` inside the flex-column readout container, so it
-   naturally takes the container's full width. */
+/* Plain separator between IN and OUT sections. It stays decorative-only;
+   output chain expansion lives on each row's chevron so the divider does
+   not compete with the live readout controls. */
 .if-editor__readout-divider {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 4px 0;
+    margin: 8px 0;
+    border-top: 1px dashed var(--color-border-strong);
 }
 
 .if-editor__readout-divider::before,
 .if-editor__readout-divider::after {
-    content: "";
-    flex: 1 1 auto;
-    border-top: 1px dashed var(--color-border-strong);
+    content: none;
 }
 
 .if-editor__readout-divider-label {
@@ -503,10 +499,6 @@
     font-size: 10px;
     text-transform: uppercase;
     color: var(--color-text-subtle);
-}
-
-.if-editor__readout-divider-spacer {
-    flex: 1 1 auto;
 }
 
 /* Task 18: analyzer-driven readout primitives */
@@ -528,11 +520,25 @@
     margin: 8px 0 2px;
 }
 
+.if-editor__readout-predicate-row {
+    display: contents;
+}
+
+.if-editor__readout-predicate-label {
+    grid-column: 1;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: 500;
+    color: var(--color-text-subtle);
+}
+
 .if-editor__readout-chips {
+    grid-column: 2 / -1;
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    padding-left: 56px;
+    min-width: 0;
 }
 
 .if-editor__readout-chip {
@@ -653,8 +659,7 @@
     color: var(--color-text);
 }
 
-.if-editor__readout-chevron:focus-visible,
-.if-editor__readout-expand-all:focus-visible {
+.if-editor__readout-chevron:focus-visible {
     outline: 2px solid var(--color-border-focus);
     outline-offset: 2px;
 }
@@ -665,57 +670,43 @@
     height: 24px;
 }
 
-.if-editor__readout-expand-all {
-    margin-left: 8px;
-    font-family: var(--font-sans);
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--color-text-subtle);
-    border: 0;
-    border-radius: 2px;
-    padding: 2px 8px;
-    background: transparent;
-    cursor: pointer;
-}
-
-.if-editor__readout-expand-all:hover {
-    color: var(--color-text);
-}
-
 .if-editor__readout-chain {
     grid-column: 1 / -1;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    display: grid;
+    /* label | tag | bar | percentage | reserved chevron */
+    grid-template-columns: var(--if-editor__readout-label-col) var(--if-editor__readout-tag-col) minmax(0, 1fr) var(--if-editor__readout-pct-col) var(--if-editor__readout-chevron-col);
+    column-gap: 12px;
+    row-gap: 2px;
+    align-items: center;
     background: var(--color-bg-sunken);
-    padding: 6px 0 6px 28px;
+    padding: 6px 0;
     margin: 0;
 }
 
 .if-editor__readout-chain-row {
-    display: grid;
-    grid-template-columns: 80px minmax(0, 1fr) 1fr 56px;
-    column-gap: 10px;
-    align-items: center;
+    display: contents;
     font-size: 11px;
     color: var(--color-text-muted);
 }
 
 .if-editor__readout-chain-row.is-cond {
-    grid-template-columns: 80px minmax(0, 1fr) auto;
+    display: contents;
 }
 
-.if-editor__readout-chain-row.is-inactive {
+.if-editor__readout-chain-row.is-inactive > * {
     opacity: 0.6;
 }
 
 .if-editor__readout-chain-step {
+    grid-column: 1;
+    padding-left: 8px;
     font-family: var(--font-mono);
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--color-output);
     font-weight: 500;
+    white-space: nowrap;
 }
 
 .if-editor__readout-chain-row.is-cond .if-editor__readout-chain-step {
@@ -723,13 +714,16 @@
 }
 
 .if-editor__readout-chain-tag {
+    grid-column: 2;
     color: var(--color-text-muted);
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .if-editor__readout-chain-bar {
+    grid-column: 3;
     position: relative;
     height: 4px;
     background: var(--color-bg-elevated);
@@ -756,6 +750,7 @@
 }
 
 .if-editor__readout-chain-pct {
+    grid-column: 4;
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--color-text-subtle);
@@ -763,9 +758,12 @@
 }
 
 .if-editor__readout-chain-outcome {
+    grid-column: 3 / 5;
+    justify-self: end;
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--color-text-subtle);
+    text-align: right;
 }
 
 .if-editor__readout-chain-outcome--active {

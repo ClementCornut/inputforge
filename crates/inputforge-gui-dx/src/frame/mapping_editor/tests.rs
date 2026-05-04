@@ -1488,6 +1488,18 @@ fn editor_live_readout_sibling_outputs_render_two_out_rows() {
         html.contains("Y axis"),
         "expected second OUT tag; got: {html}"
     );
+    assert!(
+        html.contains("OUT \u{00b7} destinations"),
+        "expected OUT destination section label; got: {html}"
+    );
+    assert!(
+        html.contains(">OUT 1<"),
+        "expected first OUT row to carry an ordinal label; got: {html}"
+    );
+    assert!(
+        html.contains(">OUT 2<"),
+        "expected second OUT row to carry an ordinal label; got: {html}"
+    );
 }
 
 #[test]
@@ -1589,6 +1601,10 @@ fn editor_live_readout_predicate_chip_button_pressed_renders_live() {
         html.contains("if-editor__readout-chip--live"),
         "expected live predicate chip; got: {html}"
     );
+    assert!(
+        html.contains(">IF<"),
+        "expected predicate chip row to have a grid-aligned label; got: {html}"
+    );
 }
 
 #[test]
@@ -1675,7 +1691,7 @@ fn editor_live_readout_chevron_uses_icon_not_text_glyph() {
 }
 
 #[test]
-fn editor_live_readout_expand_all_pill_visible_when_any_chain_non_empty() {
+fn editor_live_readout_omits_expand_all_control_when_chain_exists() {
     let html = render_with_pipeline(
         &expand_toggle_fixture_actions(),
         &[
@@ -1687,8 +1703,12 @@ fn editor_live_readout_expand_all_pill_visible_when_any_chain_non_empty() {
     );
 
     assert!(
-        html.contains("if-editor__readout-expand-all"),
-        "expected expand-all control; got: {html}"
+        html.contains("if-editor__readout-chevron"),
+        "expected per-output chevron; got: {html}"
+    );
+    assert!(
+        !html.contains("if-editor__readout-expand-all"),
+        "expected no bulk expand control; got: {html}"
     );
 }
 
@@ -1718,7 +1738,6 @@ fn editor_live_readout_per_output_expand_renders_chain_block() {
     let (state, primary) = expand_toggle_fixture();
     let actions = expand_toggle_fixture_actions();
     let expand_state = super::live_readout::ExpandState {
-        expand_all: false,
         per_output: vec![true],
     };
     let mut vdom = harness_with_expand(state, primary, actions, expand_state);
@@ -1736,25 +1755,6 @@ fn editor_live_readout_per_output_expand_renders_chain_block() {
     assert!(
         html.contains(">+0.50<"),
         "expected merge preview to show the live average of +0.50; got: {html}"
-    );
-}
-
-#[test]
-fn editor_live_readout_expand_all_expands_every_chain() {
-    let (state, primary) = expand_toggle_fixture_two_outputs();
-    let actions = expand_toggle_fixture_two_outputs_actions();
-    let expand_state = super::live_readout::ExpandState {
-        expand_all: true,
-        per_output: vec![false, false],
-    };
-    let mut vdom = harness_with_expand(state, primary, actions, expand_state);
-    vdom.rebuild_in_place();
-    let html = render(&vdom);
-
-    assert_eq!(
-        count_substring(&html, "if-editor__readout-chain\""),
-        2,
-        "expected one expanded chain per output; got: {html}"
     );
 }
 

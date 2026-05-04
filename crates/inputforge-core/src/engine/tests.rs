@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use parking_lot::RwLock;
 
-use crate::action::{Action, CycleModes, Mapping, ModeChangeStrategy};
+use crate::action::{Action, Condition, CycleModes, Mapping, ModeChangeStrategy};
 use crate::callbacks::{CallbackRegistry, ReleaseCallback};
 use crate::device::mock::{MockDeviceHider, MockInputSource};
 use crate::device::traits::HotplugEvent;
@@ -26,7 +26,7 @@ use crate::settings::AppSettings;
 use crate::state::{AppState, DeviceState, EngineStatus, InputCacheStore, OutputCacheStore};
 use crate::types::{
     AxisPolarity, AxisValue, DeviceId, DeviceInfo, HatDirection, InputAddress, InputEvent, InputId,
-    InputValue, KeyCombo, OutputAddress, OutputId, VJoyAxis,
+    InputValue, KeyCombo, MergeOp, OutputAddress, OutputId, VJoyAxis,
 };
 
 use super::Engine;
@@ -471,6 +471,206 @@ fn tick_processes_axis_event_to_output() {
 }
 
 #[test]
+fn tick_merge_axis_secondary_event_refreshes_primary_mapping_output() {
+    let mapping = Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![
+            Action::MergeAxis {
+                second_input: axis_addr(1),
+                operation: MergeOp::Average,
+            },
+            Action::MapToVJoy {
+                output: vjoy_axis_output(1, VJoyAxis::X),
+            },
+        ],
+    };
+    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+
+    let mut input = MockInputSource::default();
+    input.events.push(axis_event(0, 0.2));
+
+    let (mut engine, state, _tx) = make_engine(input, profile);
+    engine.tick().unwrap();
+
+    input = MockInputSource::default();
+    input.events.push(axis_event(1, 0.8));
+    engine.input = Box::new(input);
+    engine.tick().unwrap();
+
+    let output = state.read().output_cache.get_axis(1, VJoyAxis::X);
+    assert!(
+        (output - 0.5).abs() < f64::EPSILON,
+        "secondary-only merge event should refresh output from cached primary, got {output}"
+    );
+}
+
+#[test]
+fn tick_conditional_button_predicate_event_refreshes_primary_mapping_output() {
+    let mapping = Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: button_addr(1),
+            },
+            if_true: vec![
+                Action::Invert,
+                Action::MapToVJoy {
+                    output: vjoy_axis_output(1, VJoyAxis::X),
+                },
+            ],
+            if_false: vec![Action::MapToVJoy {
+                output: vjoy_axis_output(1, VJoyAxis::X),
+            }],
+        }],
+    };
+    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+
+    let mut input = MockInputSource::default();
+    input.events.push(axis_event(0, 0.6));
+
+    let (mut engine, state, _tx) = make_engine(input, profile);
+    engine.tick().unwrap();
+
+    input = MockInputSource::default();
+    input.events.push(button_event(1, true));
+    engine.input = Box::new(input);
+    engine.tick().unwrap();
+
+    let output = state.read().output_cache.get_axis(1, VJoyAxis::X);
+    assert!(
+        (output - (-0.6)).abs() < f64::EPSILON,
+        "predicate-only button event should refresh conditional output, got {output}"
+    );
+}
+
+#[test]
+fn tick_conditional_axis_predicate_event_refreshes_primary_mapping_output() {
+    let mapping = Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::Conditional {
+            condition: Condition::AxisInRange {
+                input: axis_addr(1),
+                min: 0.5,
+                max: 1.0,
+            },
+            if_true: vec![
+                Action::Invert,
+                Action::MapToVJoy {
+                    output: vjoy_axis_output(1, VJoyAxis::X),
+                },
+            ],
+            if_false: vec![Action::MapToVJoy {
+                output: vjoy_axis_output(1, VJoyAxis::X),
+            }],
+        }],
+    };
+    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+
+    let mut input = MockInputSource::default();
+    input.events.push(axis_event(0, 0.4));
+
+    let (mut engine, state, _tx) = make_engine(input, profile);
+    engine.tick().unwrap();
+
+    input = MockInputSource::default();
+    input.events.push(axis_event(1, 0.75));
+    engine.input = Box::new(input);
+    engine.tick().unwrap();
+
+    let output = state.read().output_cache.get_axis(1, VJoyAxis::X);
+    assert!(
+        (output - (-0.4)).abs() < f64::EPSILON,
+        "predicate-only axis event should refresh conditional output, got {output}"
+    );
+}
+
+#[test]
+fn tick_unrelated_input_event_does_not_refresh_mapping_output() {
+    let mapping = Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::MapToVJoy {
+            output: vjoy_axis_output(1, VJoyAxis::X),
+        }],
+    };
+    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+
+    let mut input = MockInputSource::default();
+    input.events.push(axis_event(0, 0.2));
+
+    let (mut engine, state, _tx) = make_engine(input, profile);
+    engine.tick().unwrap();
+
+    input = MockInputSource::default();
+    input.events.push(axis_event(2, 0.9));
+    engine.input = Box::new(input);
+    engine.tick().unwrap();
+
+    let output = state.read().output_cache.get_axis(1, VJoyAxis::X);
+    assert!(
+        (output - 0.2).abs() < f64::EPSILON,
+        "unrelated event should leave previous output cached, got {output}"
+    );
+    assert!(
+        engine.output_buffer.is_empty(),
+        "unrelated event should not emit a fresh output"
+    );
+}
+
+#[test]
+fn tick_dependent_mapping_runs_once_when_input_is_referenced_twice() {
+    let mapping = Mapping {
+        input: axis_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![
+            Action::MergeAxis {
+                second_input: axis_addr(1),
+                operation: MergeOp::Average,
+            },
+            Action::Conditional {
+                condition: Condition::AxisInRange {
+                    input: axis_addr(1),
+                    min: 0.5,
+                    max: 1.0,
+                },
+                if_true: vec![Action::MapToVJoy {
+                    output: vjoy_axis_output(1, VJoyAxis::X),
+                }],
+                if_false: vec![Action::MapToVJoy {
+                    output: vjoy_axis_output(1, VJoyAxis::X),
+                }],
+            },
+        ],
+    };
+    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+
+    let mut input = MockInputSource::default();
+    input.events.push(axis_event(0, 0.2));
+
+    let (mut engine, _state, _tx) = make_engine(input, profile);
+    engine.tick().unwrap();
+
+    input = MockInputSource::default();
+    input.events.push(axis_event(1, 0.8));
+    engine.input = Box::new(input);
+    engine.tick().unwrap();
+
+    assert_eq!(
+        engine.output_buffer.len(),
+        1,
+        "a mapping with duplicate dependency references should execute once"
+    );
+}
+
+#[test]
 fn tick_updates_current_mode_in_state() {
     let mapping = Mapping {
         input: button_addr(0),
@@ -620,7 +820,7 @@ fn tick_release_pops_temporary_mode_before_mapping() {
         mode: "Default".to_owned(),
         name: None,
         actions: vec![Action::Conditional {
-            condition: crate::action::Condition::ButtonPressed {
+            condition: Condition::ButtonPressed {
                 input: button_addr(0),
             },
             if_true: vec![Action::ChangeMode {

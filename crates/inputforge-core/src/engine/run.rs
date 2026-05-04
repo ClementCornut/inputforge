@@ -11,18 +11,18 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use crate::action::Action;
+use crate::action::{Action, Mapping};
 use crate::callbacks::ReleaseCallback;
 use crate::device::traits::HotplugEvent;
 use crate::error::Result;
-use crate::mode::resolve_mapping;
 use crate::pipeline::{self, PipelineContext};
 use crate::profile::{CalibrationEntry, Profile};
-use crate::state::{DeviceCalibrationStore, DeviceState, EngineStatus};
+use crate::state::{AppState, DeviceCalibrationStore, DeviceState, EngineStatus, InputCacheEntry};
 use crate::types::{InputAddress, InputEvent, InputId, InputValue};
 
 use super::Engine;
 use super::command::EngineCommand;
+use super::dependencies::active_mappings_for_event;
 use super::output_handler::{
     process_pipeline_outputs, record_outputs_to_cache, refresh_axes_for_mode_change,
 };
@@ -182,58 +182,65 @@ impl Engine {
                 callbacks_changed_mode = self.mode_state.current() != mode_before_callbacks;
             }
 
-            // Resolve mapping for this input in the current mode.
-            let Some(mapping) = resolve_mapping(
+            let active_mappings = active_mappings_for_event(
                 &mappings,
                 &event.source,
                 self.mode_state.current(),
                 &mode_tree,
-            ) else {
+            );
+            if active_mappings.is_empty() {
                 continue;
-            };
+            }
 
-            // Single lock acquisition for calibration lookup and pipeline context.
-            let guard = self.state.read();
-            let current_value = resolve_input_value(event, &guard.calibrations);
+            for mapping in active_mappings {
+                // Single lock acquisition for calibration lookup and pipeline context.
+                let guard = self.state.read();
+                let Some((current_value, input_value)) =
+                    pipeline_input_for_mapping(mapping, event, &guard)
+                else {
+                    continue;
+                };
 
-            let mut ctx = PipelineContext {
-                current_value,
-                input_value: event.value.clone(),
-                outputs: Vec::new(),
-                input_cache: &guard.input_cache,
-            };
-            pipeline::execute_pipeline(&mapping.actions, &mut ctx);
-            let outputs = std::mem::take(&mut ctx.outputs);
-            drop(guard);
+                let mut ctx = PipelineContext {
+                    current_value,
+                    input_value,
+                    outputs: Vec::new(),
+                    input_cache: &guard.input_cache,
+                };
+                pipeline::execute_pipeline(&mapping.actions, &mut ctx);
+                let outputs = std::mem::take(&mut ctx.outputs);
+                drop(guard);
 
-            // Process pipeline outputs.
-            let result = process_pipeline_outputs(
-                &outputs,
-                self.output.as_mut(),
-                self.keyboard.as_mut(),
-                &mut self.mode_state,
-                &mode_tree,
-                &mut self.callbacks,
-                &event.source,
-                mode_forced,
-            )?;
-
-            self.output_buffer.extend_from_slice(&outputs);
-
-            // If mode changed (via pipeline output or release callbacks),
-            // refresh all cached axes through the new mode.
-            if result.mode_changed || callbacks_changed_mode {
-                let mut guard = self.state.write();
-                let state: &mut crate::state::AppState = &mut guard;
-                refresh_axes_for_mode_change(
-                    &state.input_cache,
-                    &mappings,
-                    self.mode_state.current(),
-                    &mode_tree,
+                // Process pipeline outputs.
+                let result = process_pipeline_outputs(
+                    &outputs,
                     self.output.as_mut(),
-                    &mut state.output_cache,
+                    self.keyboard.as_mut(),
+                    &mut self.mode_state,
+                    &mode_tree,
+                    &mut self.callbacks,
+                    &event.source,
+                    mode_forced,
                 )?;
-                self.output_buffer.clear();
+
+                self.output_buffer.extend_from_slice(&outputs);
+
+                // If mode changed (via pipeline output or release callbacks),
+                // refresh all cached axes through the new mode.
+                if result.mode_changed || callbacks_changed_mode {
+                    let mut guard = self.state.write();
+                    let state: &mut AppState = &mut guard;
+                    refresh_axes_for_mode_change(
+                        &state.input_cache,
+                        &mappings,
+                        self.mode_state.current(),
+                        &mode_tree,
+                        self.output.as_mut(),
+                        &mut state.output_cache,
+                    )?;
+                    self.output_buffer.clear();
+                    break;
+                }
             }
         }
 
@@ -267,7 +274,7 @@ impl Engine {
     /// device positions on the first tick after activation.
     fn apply_activation_refresh(
         &mut self,
-        mappings: &[crate::action::Mapping],
+        mappings: &[Mapping],
         mode_tree: &crate::mode::ModeTree,
     ) -> Result<()> {
         if !self.pending_output_refresh {
@@ -275,7 +282,7 @@ impl Engine {
         }
         self.pending_output_refresh = false;
         let mut guard = self.state.write();
-        let state: &mut crate::state::AppState = &mut guard;
+        let state: &mut AppState = &mut guard;
         refresh_axes_for_mode_change(
             &state.input_cache,
             mappings,
@@ -1055,6 +1062,47 @@ impl Engine {
             }
         }
     }
+}
+
+fn pipeline_input_for_mapping(
+    mapping: &Mapping,
+    event: &InputEvent,
+    state: &AppState,
+) -> Option<(f64, InputValue)> {
+    if mapping.input == event.source {
+        let current_value = resolve_input_value(event, &state.calibrations);
+        return Some((current_value, event.value.clone()));
+    }
+
+    let cached_inputs = state.input_cache.clone_compact();
+    let input_value = cached_input_value(&cached_inputs, &mapping.input)?;
+    let current_value = match &input_value {
+        InputValue::Axis { .. } => {
+            let cached_event = InputEvent {
+                source: mapping.input.clone(),
+                value: input_value.clone(),
+                timestamp: event.timestamp,
+            };
+            resolve_input_value(&cached_event, &state.calibrations)
+        }
+        InputValue::Button { pressed } => {
+            if *pressed {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        InputValue::Hat { .. } => 0.0,
+    };
+
+    Some((current_value, input_value))
+}
+
+fn cached_input_value(entries: &[InputCacheEntry], address: &InputAddress) -> Option<InputValue> {
+    entries
+        .iter()
+        .find(|entry| entry.address == *address)
+        .map(|entry| entry.value.clone())
 }
 
 /// Resolve the pipeline input value from an event, applying calibration if available.

@@ -227,6 +227,48 @@ mod tests {
     }
 
     #[test]
+    fn chain_preview_rows_share_parent_readout_scale() {
+        let css = include_str!("../../../../assets/frame/mapping_editor.css");
+
+        assert!(
+            css.contains(
+                ".if-editor__readout-chain {\n    grid-column: 1 / -1;\n    display: grid;"
+            ),
+            "expanded chain block must establish a grid aligned to the parent readout"
+        );
+        assert!(
+            css.contains(
+                "grid-template-columns: var(--if-editor__readout-label-col) \
+                 var(--if-editor__readout-tag-col) minmax(0, 1fr) \
+                 var(--if-editor__readout-pct-col) \
+                 var(--if-editor__readout-chevron-col);"
+            ),
+            "chain preview rows must use the parent readout column tokens"
+        );
+        for declaration in [
+            ".if-editor__readout-chain-row {\n    display: contents;",
+            ".if-editor__readout-chain-bar {\n    grid-column: 3;",
+            ".if-editor__readout-chain-pct {\n    grid-column: 4;",
+            ".if-editor__readout-chain-outcome {\n    grid-column: 3 / 5;",
+            ".if-editor__readout-chain-step {\n    grid-column: 1;\n    padding-left: 8px;",
+            "white-space: nowrap;",
+        ] {
+            assert!(
+                css.contains(declaration),
+                "missing chain alignment declaration: {declaration}"
+            );
+        }
+        assert!(
+            !css.contains("grid-template-columns: 80px minmax(0, 1fr) 1fr 56px;"),
+            "chain preview rows must not keep an independent bar/value grid"
+        );
+        assert!(
+            !css.contains("padding: 6px 0 6px 28px;"),
+            "chain indentation must not move the preview bar scale"
+        );
+    }
+
+    #[test]
     fn conditional_outcome_class_tracks_active_state() {
         assert_eq!(
             conditional_outcome_class(true),

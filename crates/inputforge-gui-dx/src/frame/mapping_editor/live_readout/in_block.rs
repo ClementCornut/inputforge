@@ -12,6 +12,7 @@ use super::value_helpers::{AxisDisplay, format_percentage, read_axis_display};
 const READOUT_SECTION_CLASS: &str = "if-editor__readout-section";
 const READOUT_SECTION_LABEL_CLASS: &str = "if-editor__readout-section-label";
 const READOUT_GROUP_CLASS: &str = "if-editor__readout-group";
+const READOUT_PREDICATE_LABEL_CLASS: &str = "if-editor__readout-predicate-label";
 const READOUT_CHIPS_CLASS: &str = "if-editor__readout-chips";
 
 /// High-level IN side of the live readout.
@@ -46,16 +47,21 @@ pub(super) fn InBlock(model: LiveReadoutModel) -> Element {
         if has_predicates {
             div { class: "{READOUT_SECTION_CLASS}",
                 div { class: "{READOUT_SECTION_LABEL_CLASS}", "IN \u{00b7} predicates" }
-                div { class: "{READOUT_CHIPS_CLASS}",
-                    for (idx, predicate) in model.predicates.iter().enumerate() {
-                        {
-                            let chip_class = predicate_chip_class(predicate.state);
-                            let dot_class = predicate_dot_class(predicate.state);
-                            let label = predicate_chip_label(predicate);
-                            rsx! {
-                                div { key: "predicate-{idx}", class: "{chip_class}",
-                                    span { class: "{dot_class}" }
-                                    span { class: "if-editor__readout-chip-label", "{label}" }
+                div { class: "{READOUT_GROUP_CLASS}",
+                    div { class: "if-editor__readout-predicate-row",
+                        div { class: "{READOUT_PREDICATE_LABEL_CLASS}", "IF" }
+                        div { class: "{READOUT_CHIPS_CLASS}",
+                            for (idx, predicate) in model.predicates.iter().enumerate() {
+                                {
+                                    let chip_class = predicate_chip_class(predicate.state);
+                                    let dot_class = predicate_dot_class(predicate.state);
+                                    let label = predicate_chip_label(predicate);
+                                    rsx! {
+                                        div { key: "predicate-{idx}", class: "{chip_class}",
+                                            span { class: "{dot_class}" }
+                                            span { class: "if-editor__readout-chip-label", "{label}" }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -238,7 +244,33 @@ mod tests {
             READOUT_SECTION_LABEL_CLASS,
             "if-editor__readout-section-label"
         );
+        assert_eq!(
+            READOUT_PREDICATE_LABEL_CLASS,
+            "if-editor__readout-predicate-label"
+        );
         assert_eq!(READOUT_CHIPS_CLASS, "if-editor__readout-chips");
+    }
+
+    #[test]
+    fn predicate_chips_align_to_readout_grid() {
+        let css = include_str!("../../../../assets/frame/mapping_editor.css");
+
+        assert!(
+            css_rule_contains(
+                css,
+                ".if-editor__readout-predicate-label",
+                "grid-column: 1;"
+            ),
+            "predicate rows must reserve the readout label column"
+        );
+        assert!(
+            css_rule_contains(css, ".if-editor__readout-chips", "grid-column: 2 / -1;"),
+            "predicate chips must align to the shared readout grid instead of floating from an arbitrary offset"
+        );
+        assert!(
+            !css_rule_contains(css, ".if-editor__readout-chips", "padding-left"),
+            "predicate chips must not use old fixed padding; it drifts from the readout grid"
+        );
     }
 
     #[test]
@@ -261,6 +293,39 @@ mod tests {
         }
     }
 
+    #[test]
+    fn readout_groups_share_one_scale_grid() {
+        let css = include_str!("../../../../assets/frame/mapping_editor.css");
+        for declaration in [
+            "--if-editor__readout-label-col: 60px;",
+            "--if-editor__readout-tag-col: clamp(120px, 18vw, 260px);",
+            "--if-editor__readout-pct-col: 60px;",
+            "--if-editor__readout-chevron-col: 24px;",
+        ] {
+            assert!(
+                css_rule_contains(css, ".if-editor__readout", declaration),
+                ".if-editor__readout must define {declaration} so IN and OUT readout bars share one scale"
+            );
+        }
+
+        assert!(
+            css_rule_contains(
+                css,
+                ".if-editor__readout-group",
+                "grid-template-columns: var(--if-editor__readout-label-col) var(--if-editor__readout-tag-col) minmax(0, 1fr) var(--if-editor__readout-pct-col) var(--if-editor__readout-chevron-col);"
+            ),
+            ".if-editor__readout-group must reserve identical label, tag, bar, percentage, and chevron columns"
+        );
+        assert!(
+            !css_rule_contains(css, ".if-editor__readout-group", "max-content"),
+            ".if-editor__readout-group must not auto-size columns per group; that makes IN and OUT bars misalign"
+        );
+        assert!(
+            css_rule_contains(css, ".if-editor__readout-tag", "min-width: 0;"),
+            ".if-editor__readout-tag must truncate inside the shared tag column instead of expanding the scale"
+        );
+    }
+
     fn css_rule_contains(css: &str, selector: &str, declaration: &str) -> bool {
         css.split('}').any(|block| {
             let Some((selectors, body)) = block.split_once('{') else {
@@ -268,7 +333,7 @@ mod tests {
             };
             selectors
                 .split(',')
-                .any(|candidate| candidate.trim() == selector)
+                .any(|candidate| candidate.trim().ends_with(selector))
                 && body.contains(declaration)
         })
     }

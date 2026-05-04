@@ -28,17 +28,15 @@ const READOUT_GROUP_CLASS: &str = "if-editor__readout-group";
 /// Per-readout expand state for output chains.
 ///
 /// `per_output` is index-aligned with `LiveReadoutModel::outputs`.
-/// `expand_all` acts as a global override for every output row.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct ExpandState {
-    pub expand_all: bool,
     pub per_output: Vec<bool>,
 }
 
 impl ExpandState {
     /// Return whether the output at `idx` is currently expanded.
     pub(super) fn is_expanded(&self, idx: usize) -> bool {
-        self.expand_all || self.per_output.get(idx).copied().unwrap_or(false)
+        self.per_output.get(idx).copied().unwrap_or(false)
     }
 }
 
@@ -54,16 +52,18 @@ pub(super) fn OutBlock(
     }
     let outputs: Vec<Rc<OutputDescriptor>> =
         model.outputs.iter().map(|d| Rc::new(d.clone())).collect();
+    let has_multiple_outputs = outputs.len() > 1;
 
     rsx! {
         div { class: "{READOUT_SECTION_CLASS}",
-            div { class: "{READOUT_SECTION_LABEL_CLASS}", "OUT" }
+            div { class: "{READOUT_SECTION_LABEL_CLASS}", "OUT \u{00b7} destinations" }
             div { class: "{READOUT_GROUP_CLASS}",
                 for (idx, descriptor) in outputs.iter().cloned().enumerate() {
                     OutRow {
                         key: "output-{idx}",
                         descriptor,
                         idx,
+                        has_multiple_outputs,
                         expand_state,
                         engine_running,
                     }
@@ -78,6 +78,7 @@ pub(super) fn OutBlock(
 pub(super) fn OutRow(
     descriptor: Rc<OutputDescriptor>,
     idx: usize,
+    has_multiple_outputs: bool,
     expand_state: Signal<ExpandState>,
     engine_running: bool,
 ) -> Element {
@@ -87,6 +88,7 @@ pub(super) fn OutRow(
     let expanded = expand_state.read().is_expanded(idx);
     let chevron_icon = chevron_icon(expanded);
     let chevron_label = chevron_label(expanded);
+    let row_label = output_row_label(idx, has_multiple_outputs);
 
     let value_cell = match &descriptor.destination {
         OutputDestination::VJoy(out) => match out.output {
@@ -98,7 +100,7 @@ pub(super) fn OutRow(
 
                 rsx! {
                     ReadoutRow {
-                        label: "OUT".to_owned(),
+                        label: row_label.clone(),
                         tag,
                         display,
                         frozen,
@@ -117,7 +119,7 @@ pub(super) fn OutRow(
 
                 rsx! {
                     ReadoutRow {
-                        label: "OUT".to_owned(),
+                        label: row_label.clone(),
                         tag,
                         display,
                         frozen,
@@ -130,10 +132,11 @@ pub(super) fn OutRow(
                 let tag = format_output_label(out);
                 let glyph = hat_glyph_for(read_output_hat(out, &live, &cfg));
                 let row_class = hat_row_class(frozen);
+                let label = row_label.clone();
 
                 rsx! {
                     div { class: "{row_class}",
-                        div { class: "if-editor__readout-label", "OUT" }
+                        div { class: "if-editor__readout-label", "{label}" }
                         div { class: "if-editor__readout-tag", "{tag}" }
                         div { class: "if-editor__readout-hat-glyph", "{glyph}" }
                         div { class: "if-editor__readout-pct" }
@@ -145,10 +148,11 @@ pub(super) fn OutRow(
             let combo_text = format_key_combo(combo);
             let row_class = keyboard_row_class(frozen);
             let chip_class = keyboard_chip_class(frozen);
+            let label = row_label.clone();
 
             rsx! {
                 div { class: "{row_class}",
-                    div { class: "if-editor__readout-label", "OUT" }
+                    div { class: "if-editor__readout-label", "{label}" }
                     div { class: "if-editor__readout-tag", "Keyboard" }
                     div { class: "if-editor__readout-kb-cell",
                         span { class: "{chip_class}", "{combo_text}" }
@@ -200,33 +204,9 @@ pub(super) fn OutRow(
 
 /// Divider strip between IN and OUT sections.
 #[component]
-pub(super) fn DividerStrip(model: LiveReadoutModel, expand_state: Signal<ExpandState>) -> Element {
-    let any_expandable = model.outputs.iter().any(|o| !o.chain.is_empty());
-    let outputs_len = model.outputs.len();
-    let expanded_now = expand_state.read().expand_all;
-    let button_text = if expanded_now {
-        "collapse all"
-    } else {
-        "expand all"
-    };
-    let onclick = move |_| {
-        expand_state.with_mut(|s| {
-            set_all_expanded(s, outputs_len, !s.expand_all);
-        });
-    };
-
+pub(super) fn DividerStrip() -> Element {
     rsx! {
-        div { class: "if-editor__readout-divider",
-            span { class: "if-editor__readout-divider-spacer" }
-            if any_expandable {
-                button {
-                    class: "if-editor__readout-expand-all",
-                    "type": "button",
-                    onclick,
-                    "{button_text}"
-                }
-            }
-        }
+        div { class: "if-editor__readout-divider" }
     }
 }
 
@@ -237,9 +217,12 @@ fn toggle_output_expanded(state: &mut ExpandState, idx: usize) {
     state.per_output[idx] = !state.per_output[idx];
 }
 
-fn set_all_expanded(state: &mut ExpandState, outputs_len: usize, expanded: bool) {
-    state.expand_all = expanded;
-    state.per_output = vec![expanded; outputs_len];
+fn output_row_label(index: usize, has_multiple_outputs: bool) -> String {
+    if has_multiple_outputs {
+        format!("OUT {}", index + 1)
+    } else {
+        "OUT".to_owned()
+    }
 }
 
 fn row_wrap_class(frozen: bool) -> &'static str {
@@ -354,21 +337,14 @@ mod tests {
     }
 
     #[test]
-    fn expand_state_applies_global_override_and_per_output_state() {
-        let mut state = ExpandState {
-            expand_all: false,
+    fn expand_state_applies_per_output_state() {
+        let state = ExpandState {
             per_output: vec![false, true],
         };
 
         assert!(!state.is_expanded(0));
         assert!(state.is_expanded(1));
         assert!(!state.is_expanded(2));
-
-        state.expand_all = true;
-
-        assert!(state.is_expanded(0));
-        assert!(state.is_expanded(1));
-        assert!(state.is_expanded(2));
     }
 
     #[test]
@@ -384,24 +360,6 @@ mod tests {
 
         assert_eq!(state.per_output, vec![false, false, false]);
         assert!(!state.is_expanded(2));
-    }
-
-    #[test]
-    fn set_all_expanded_syncs_global_and_per_output_state() {
-        let mut state = ExpandState {
-            expand_all: false,
-            per_output: vec![true],
-        };
-
-        set_all_expanded(&mut state, 3, true);
-
-        assert!(state.expand_all);
-        assert_eq!(state.per_output, vec![true, true, true]);
-
-        set_all_expanded(&mut state, 2, false);
-
-        assert!(!state.expand_all);
-        assert_eq!(state.per_output, vec![false, false]);
     }
 
     #[test]
