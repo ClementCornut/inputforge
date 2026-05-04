@@ -1,0 +1,8 @@
+[mcp_servers.chrome-devtools]
+command = "bunx"
+args = [
+  "chrome-devtools-mcp@latest",
+  "--browserUrl",
+  "http://127.0.0.1:9222",
+  "--no-usage-statistics",
+]
