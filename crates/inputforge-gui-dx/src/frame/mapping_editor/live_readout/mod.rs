@@ -25,6 +25,7 @@ use crate::frame::mapping_list::source_label;
 
 mod analyzer;
 mod in_block;
+mod out_block;
 mod predicate;
 mod value_helpers;
 
