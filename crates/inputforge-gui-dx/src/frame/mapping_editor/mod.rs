@@ -14,7 +14,7 @@ mod engine_offline_banner;
 mod header;
 mod inactive_hint;
 pub(crate) mod keyboard;
-mod live_readout;
+pub(crate) mod live_readout;
 pub(crate) mod pipeline;
 pub(crate) mod undo_log;
 mod undo_recap;

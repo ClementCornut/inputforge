@@ -32,10 +32,19 @@ pub(crate) enum PanelSlot {
     Profiles,
 }
 
+/// Which primary workspace owns the main surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum MainSurface {
+    #[default]
+    Mappings,
+    BulkMap,
+}
+
 /// GUI-only chrome state, provided once in `app_root`.
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code, reason = "Used in app_root context provider (Task 18)")]
 pub(crate) struct ViewState {
+    pub main_surface: Signal<MainSurface>,
     pub editing_mode: Signal<String>,
     pub panel_slot: Signal<PanelSlot>,
     pub via_calibration: Signal<bool>,
@@ -166,6 +175,7 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
         .unwrap_or_else(|| "Default".to_owned());
 
     let editing_mode = use_signal(|| initial_editing.clone());
+    let main_surface = use_signal(MainSurface::default);
     let panel_slot = use_signal(PanelSlot::default);
     let via_calibration = use_signal(|| false);
     let selected_mapping: Signal<Option<MappingKey>> = use_signal(|| None);
@@ -219,6 +229,7 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
     });
 
     ViewState {
+        main_surface,
         editing_mode,
         panel_slot,
         via_calibration,
@@ -241,6 +252,19 @@ mod tests {
         fn _assert(view: ViewState) {
             let _: Signal<Option<MappingKey>> = view.selected_mapping;
         }
+    }
+
+    /// Compile-time gate, proves the primary workspace state lives on `ViewState`.
+    #[test]
+    fn main_surface_field_type() {
+        fn _assert(view: ViewState) {
+            let _: Signal<MainSurface> = view.main_surface;
+        }
+    }
+
+    #[test]
+    fn main_surface_defaults_to_mappings() {
+        assert_eq!(MainSurface::default(), MainSurface::Mappings);
     }
 
     fn _synthetic_addr() -> InputAddress {

@@ -71,4 +71,49 @@
 
 /* `.if-panel-slot` (sized 320px when mounted) is a flex sibling here.
    When `panel_slot == None`, it isn't rendered, so no flex item is
-   produced and `__center` reclaims the space naturally. */
+   produced and `__surface` reclaims the space naturally. */
+.if-layout__surface {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.if-layout__mapping-workspace {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.if-layout__mode-strip {
+    flex: 0 0 40px;
+    display: flex;
+    min-width: 0;
+    background: var(--color-bg-sunken);
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border-strong);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-text) 4%, transparent);
+}
+
+.if-layout__mode-strip .if-mode-tabs {
+    height: 100%;
+    margin-left: 0;
+    padding-left: var(--space-2);
+}
+
+.if-layout__mapping-body {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+.if-layout__bulk-map {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}

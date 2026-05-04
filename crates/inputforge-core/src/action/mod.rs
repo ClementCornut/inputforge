@@ -1,9 +1,11 @@
 // Rust guideline compliant 2026-03-06
 
+mod bulk;
 mod condition;
 mod mapping;
 mod mode_change;
 
+pub use bulk::BulkMapEntry;
 pub use condition::{Condition, validate_depth};
 pub use mapping::Mapping;
 pub use mode_change::{CycleModes, ModeChangeStrategy};

@@ -57,6 +57,55 @@ fn create_auto_before_restore_never_dedupes() {
 }
 
 #[test]
+fn snapshot_kind_auto_before_bulk_map_serializes_to_snake_case() {
+    #[derive(serde::Serialize)]
+    struct Wrapper {
+        kind: SnapshotKind,
+    }
+    let s = toml::to_string(&Wrapper {
+        kind: SnapshotKind::AutoBeforeBulkMap,
+    })
+    .unwrap();
+    assert!(s.contains("auto_before_bulk_map"), "got: {s}");
+}
+
+#[test]
+fn snapshot_kind_auto_before_bulk_map_round_trips_through_toml() {
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct Wrapper {
+        kind: SnapshotKind,
+    }
+    let s = toml::to_string(&Wrapper {
+        kind: SnapshotKind::AutoBeforeBulkMap,
+    })
+    .unwrap();
+    let back: Wrapper = toml::from_str(&s).unwrap();
+    assert_eq!(back.kind, SnapshotKind::AutoBeforeBulkMap);
+}
+
+#[test]
+fn snapshot_kind_auto_before_bulk_map_creates_unpinned_snapshot() {
+    let (_dir, path) = fresh_profile_dir();
+    let cfg = SnapshotConfig::default();
+    let snap = create(&path, SnapshotKind::AutoBeforeBulkMap, None, &cfg)
+        .unwrap()
+        .unwrap();
+    assert!(!snap.pinned, "AutoBeforeBulkMap is unpinned");
+}
+
+#[test]
+fn snapshot_kind_auto_before_bulk_map_always_fires_never_deduped() {
+    let (_dir, path) = fresh_profile_dir();
+    let cfg = SnapshotConfig::default();
+    let a = create(&path, SnapshotKind::AutoBeforeBulkMap, None, &cfg).unwrap();
+    let b = create(&path, SnapshotKind::AutoBeforeBulkMap, None, &cfg).unwrap();
+    assert!(
+        a.is_some() && b.is_some(),
+        "AutoBeforeBulkMap must never dedup"
+    );
+}
+
+#[test]
 fn create_skip_dedup_when_skip_if_unchanged_false() {
     let (_dir, path) = fresh_profile_dir();
     let cfg = SnapshotConfig {

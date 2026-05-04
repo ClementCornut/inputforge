@@ -23,6 +23,7 @@ pub fn Select(
         InputSize::Lg => "if-select--lg",
     };
     let combined = merge_class("if-select", size_class, class.as_deref());
+    let selected_value = value.read().clone();
     let change_handler = move |evt: FormEvent| {
         if let Some(h) = &onchange {
             h.call(evt);
@@ -39,21 +40,21 @@ pub fn Select(
                 select {
                     class: "{combined}",
                     id: "{id_val}",
-                    value: "{value}",
+                    value: "{selected_value}",
                     disabled,
                     onchange: change_handler,
                     for (val, label) in options.iter() {
-                        option { value: "{val}", "{label}" }
+                        option { value: "{val}", selected: *val == selected_value, "{label}" }
                     }
                 }
             } else {
                 select {
                     class: "{combined}",
-                    value: "{value}",
+                    value: "{selected_value}",
                     disabled,
                     onchange: change_handler,
                     for (val, label) in options.iter() {
-                        option { value: "{val}", "{label}" }
+                        option { value: "{val}", selected: *val == selected_value, "{label}" }
                     }
                 }
             }
@@ -63,5 +64,42 @@ pub fn Select(
                 class: "if-select-wrapper__chevron".to_owned(),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dioxus_ssr::render;
+
+    #[test]
+    fn select_marks_matching_option_selected() {
+        #[expect(
+            non_snake_case,
+            reason = "Dioxus components are PascalCase by convention"
+        )]
+        fn Harness() -> Element {
+            let value = use_signal(|| "b".to_owned());
+            let value_ro: ReadSignal<String> = value.into();
+            rsx! {
+                Select {
+                    value: value_ro,
+                    onchange: move |_| {},
+                    options: vec![
+                        ("a".to_owned(), "A".to_owned()),
+                        ("b".to_owned(), "B".to_owned()),
+                    ],
+                }
+            }
+        }
+
+        let mut vdom = VirtualDom::new(Harness);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+
+        assert!(
+            html.contains(r#"<option value="b" selected=true>B</option>"#),
+            "matching option should be selected: {html}"
+        );
     }
 }

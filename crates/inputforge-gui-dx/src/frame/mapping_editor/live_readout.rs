@@ -18,8 +18,9 @@ use dioxus::prelude::*;
 use inputforge_core::action::Action;
 use inputforge_core::processing::into_natural_domain;
 use inputforge_core::state::EngineStatus;
+pub(crate) use inputforge_core::types::AxisPolarity;
 use inputforge_core::types::{
-    AxisPolarity, InputAddress, InputId, InputValue, MergeOp, OutputAddress, OutputId, VJoyAxis,
+    HatDirection, InputAddress, InputId, InputValue, MergeOp, OutputAddress, OutputId, VJoyAxis,
 };
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot};
@@ -273,10 +274,10 @@ fn ReadoutDivider(label: String) -> Element {
 /// - `Bipolar`: `[-1.0, 1.0]`, where 0 is centered.
 /// - `Unipolar`: `[0.0, 1.0]`, where 0 is idle and 1 is fully pressed.
 #[derive(Clone, Copy, PartialEq)]
-struct AxisDisplay {
+pub(crate) struct AxisDisplay {
     /// Normalized value in the polarity's natural domain.
-    value: f64,
-    polarity: AxisPolarity,
+    pub(crate) value: f64,
+    pub(crate) polarity: AxisPolarity,
 }
 
 /// Read the raw axis value and polarity for `addr` from the live snapshot.
@@ -289,7 +290,7 @@ struct AxisDisplay {
 /// remap to the natural `[0.0, 1.0]` domain via `into_natural_domain` so a
 /// Thrustmaster pedal idle reads `0.00` (not `-1.00`) and the unipolar
 /// bar fill grows monotonically with press depth.
-fn read_axis_display(
+pub(crate) fn read_axis_display(
     addr: &InputAddress,
     live: &LiveSnapshot,
     cfg: &ConfigSnapshot,
@@ -317,6 +318,56 @@ fn read_axis_display(
         value: 0.0,
         polarity: AxisPolarity::Bipolar,
     }
+}
+
+/// Read whether the button at `addr` is currently pressed in the live
+/// snapshot.
+///
+/// Returns `false` when the device or button index is not present
+/// (engine offline, non-button input, or stale address).
+pub(crate) fn read_button_pressed(
+    addr: &InputAddress,
+    live: &LiveSnapshot,
+    cfg: &ConfigSnapshot,
+) -> bool {
+    let Some(InputId::Button { index }) = addr.input_id() else {
+        return false;
+    };
+    let dev_idx = cfg
+        .devices
+        .iter()
+        .position(|d| Some(&d.info.id) == addr.device());
+    dev_idx
+        .and_then(|di| live.device_inputs.get(di))
+        .and_then(|dev_inputs| {
+            // InputAddress stores buttons 0-indexed. Reconstruct the SDK
+            // 1-indexed id, then convert back with checked_sub so malformed
+            // or overflowing values fail closed.
+            let one_indexed = index.checked_add(1)?;
+            let zero_based = usize::from(one_indexed.checked_sub(1)?);
+            dev_inputs.buttons.get(zero_based).copied()
+        })
+        .unwrap_or(false)
+}
+
+/// Read the hat direction at `addr` from the live snapshot. Returns
+/// `HatDirection::Center` when the device or hat index is not present.
+pub(crate) fn read_hat_direction(
+    addr: &InputAddress,
+    live: &LiveSnapshot,
+    cfg: &ConfigSnapshot,
+) -> HatDirection {
+    let Some(InputId::Hat { index }) = addr.input_id() else {
+        return HatDirection::Center;
+    };
+    let dev_idx = cfg
+        .devices
+        .iter()
+        .position(|d| Some(&d.info.id) == addr.device());
+    dev_idx
+        .and_then(|di| live.device_inputs.get(di))
+        .and_then(|dev_inputs| dev_inputs.hats.get(usize::from(*index)).copied())
+        .unwrap_or(HatDirection::Center)
 }
 
 /// Read the engine output value for `out` from the live snapshot.

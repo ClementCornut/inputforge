@@ -1,11 +1,9 @@
 // Rust guideline compliant 2026-04-30
 
 //! F4 destructive-confirm dialog for Delete-mode. Hoisted out of the
-//! `ModeTabs` component so it doesn't render as a child of the
-//! `.if-top-bar` flex line, the dialog now mounts as a sibling of the
-//! bar, which keeps the bar's children list pure (no hidden 0×0
-//! `<dialog>` flex child) and removes a structural smell flagged by
-//! the F8-impeccable audit.
+//! `ModeTabs` component so it doesn't render as a child of the mode
+//! strip or the top-bar flex line. `Layout` mounts it as shell-level
+//! chrome, keeping navigation children lists pure.
 //!
 //! State is shared with `ModeTabs` via the [`ModeDeleteSignal`]
 //! context: `ModeTabs` writes the target mode name on the Delete

@@ -2212,11 +2212,10 @@ fn make_engine_with_disk_profile() -> (
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -2278,7 +2277,7 @@ fn add_mode_under_named_parent() {
 fn add_mode_rejects_empty_name() {
     let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
     let err = engine.handle_command(EngineCommand::AddMode {
-        name: "".to_owned(),
+        name: String::new(),
         parent: None,
     });
     assert!(err.is_err(), "expected error on empty name");
@@ -2354,10 +2353,9 @@ fn add_mode_no_active_profile_is_no_op() {
 fn add_mode_returns_err_when_persist_fails() {
     let (mut engine, state, _tx, _dir, path) = make_engine_with_disk_profile();
     // Make the profile path point at a directory to force save() to fail.
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.parent().unwrap().to_path_buf());
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.parent().unwrap().to_path_buf());
+    drop(s);
     let err = engine.handle_command(EngineCommand::AddMode {
         name: "Approach".to_owned(),
         parent: None,
@@ -2413,11 +2411,10 @@ fn rename_mode_cascades_into_mappings() {
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -2534,7 +2531,7 @@ fn rename_mode_rejects_empty_to() {
     let (mut engine, _state, _tx, _dir, _path) = make_engine_with_disk_profile();
     let err = engine.handle_command(EngineCommand::RenameMode {
         from: "Combat".to_owned(),
-        to: "".to_owned(),
+        to: String::new(),
     });
     assert!(err.is_err());
 }
@@ -2621,11 +2618,10 @@ fn rename_mode_rejects_when_cycle_would_collapse() {
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (_tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -2660,7 +2656,6 @@ fn rename_mode_rejects_when_cycle_would_collapse() {
             .modes()
             .contains("Landing")
     );
-    let _ = _tx;
 }
 
 #[test]
@@ -2682,11 +2677,10 @@ fn rename_mode_rewrites_switch_to_action() {
     let profile = make_profile(three_mode_tree(), mappings);
     profile.save(&path).unwrap();
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -2735,11 +2729,10 @@ fn rename_mode_rewrites_temporary_action() {
     let profile = make_profile(three_mode_tree(), mappings);
     profile.save(&path).unwrap();
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -2788,11 +2781,10 @@ fn rename_mode_rewrites_cycle_action() {
     let profile = make_profile(three_mode_tree(), mappings);
     profile.save(&path).unwrap();
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -2958,11 +2950,10 @@ fn delete_mode_cascades_subtree_and_mappings() {
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -3026,11 +3017,10 @@ fn delete_mode_rejects_when_subtree_contains_startup_mode() {
     );
     profile.save(&path).unwrap();
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (_tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -3116,11 +3106,10 @@ fn delete_mode_resets_when_active_is_descendant() {
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -3228,7 +3217,7 @@ fn set_default_mode_rejects_unknown_name() {
 fn set_default_mode_rejects_empty_name() {
     let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
     let err = engine.handle_command(EngineCommand::SetDefaultMode {
-        name: "".to_owned(),
+        name: String::new(),
     });
     assert!(err.is_err());
     // Whitespace-only also rejected.
@@ -3245,5 +3234,353 @@ fn set_default_mode_rejects_empty_name() {
             .settings()
             .startup_mode(),
         "Default"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// SetMappingsBulk handler tests (Bulk-map wizard)
+// ---------------------------------------------------------------------------
+
+fn make_bulk_entry(input_idx: u8, axis: VJoyAxis) -> crate::action::BulkMapEntry {
+    crate::action::BulkMapEntry {
+        input: axis_addr(input_idx),
+        mode: "Default".to_owned(),
+        output: vjoy_axis_output(1, axis),
+    }
+}
+
+#[test]
+fn engine_set_mappings_bulk_persists_to_disk_and_creates_snapshot() {
+    let (mut engine, _state, tx, _dir, path) = make_engine_with_simple_disk_profile();
+
+    let pre_writes = std::fs::read(&path).unwrap();
+
+    tx.send(EngineCommand::SetMappingsBulk {
+        entries: vec![make_bulk_entry(0, VJoyAxis::X)],
+        snapshot_label: "Before bulk-map: dev-1 to vJoy 1".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let post_writes = std::fs::read(&path).unwrap();
+    assert_ne!(
+        pre_writes, post_writes,
+        "post-bulk save must update on-disk body"
+    );
+    let listed = crate::snapshot::list(&path).unwrap();
+    let bulk_count = listed
+        .iter()
+        .filter(|s| matches!(s.kind, crate::snapshot::SnapshotKind::AutoBeforeBulkMap))
+        .count();
+    assert_eq!(
+        bulk_count, 1,
+        "exactly one AutoBeforeBulkMap snapshot per apply"
+    );
+}
+
+#[test]
+fn engine_set_mappings_bulk_with_no_profile_loaded_is_noop_and_warns() {
+    let state = Arc::new(RwLock::new(AppState::new()));
+    state.write().engine_status = EngineStatus::Running;
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+        PathBuf::new(),
+    );
+
+    tx.send(EngineCommand::SetMappingsBulk {
+        entries: vec![make_bulk_entry(0, VJoyAxis::X)],
+        snapshot_label: "x".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    assert!(state.read().active_profile.is_none(), "still no profile");
+    let warns = state.read().warnings.clone();
+    assert!(
+        warns
+            .iter()
+            .any(|w| w.contains("Bulk-map ignored: no profile loaded")),
+        "warnings must surface the no-profile abort, got: {warns:?}"
+    );
+}
+
+#[test]
+fn engine_set_mappings_bulk_sets_pending_output_refresh_true() {
+    let (mut engine, _state, _tx, _dir, _path) = make_engine_with_simple_disk_profile();
+    engine
+        .handle_command(EngineCommand::SetMappingsBulk {
+            entries: vec![make_bulk_entry(0, VJoyAxis::X)],
+            snapshot_label: "x".to_owned(),
+        })
+        .unwrap();
+    assert!(
+        engine.pending_output_refresh,
+        "bulk apply must trigger output refresh"
+    );
+}
+
+#[test]
+fn engine_set_mappings_bulk_applies_all_n_entries() {
+    let (mut engine, state, tx, _dir, path) = make_engine_with_simple_disk_profile();
+    let mut entries = Vec::new();
+    for i in 0..8 {
+        entries.push(make_bulk_entry(i, VJoyAxis::X));
+    }
+    tx.send(EngineCommand::SetMappingsBulk {
+        entries,
+        snapshot_label: "x".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    assert_eq!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .mappings()
+            .len(),
+        8
+    );
+    let _ = path;
+}
+
+#[test]
+fn engine_set_mappings_bulk_creates_auto_before_bulk_map_snapshot_with_label() {
+    let (mut engine, state, tx, _dir, path) = make_engine_with_simple_disk_profile();
+
+    tx.send(EngineCommand::SetMappingsBulk {
+        entries: vec![make_bulk_entry(0, VJoyAxis::X)],
+        snapshot_label: "Before bulk-map: dev-1 to vJoy 1".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let listed = crate::snapshot::list(&path).unwrap();
+    let snap = listed
+        .iter()
+        .find(|s| matches!(s.kind, crate::snapshot::SnapshotKind::AutoBeforeBulkMap))
+        .expect("AutoBeforeBulkMap must exist");
+    assert_eq!(
+        snap.label.as_deref(),
+        Some("Before bulk-map: dev-1 to vJoy 1")
+    );
+    assert_eq!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .mappings()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn engine_set_mappings_bulk_pre_snapshot_save_failure_aborts_and_warns() {
+    let (mut engine, state, tx, dir, path) = make_engine_with_simple_disk_profile();
+    let nested = dir.path().join("nested");
+    std::fs::create_dir_all(&nested).unwrap();
+    let nested_path = nested.join("profile.toml");
+    std::fs::write(&nested_path, std::fs::read(&path).unwrap()).unwrap();
+    state.write().profile_path = Some(nested_path.clone());
+    std::fs::remove_dir_all(&nested).unwrap();
+
+    tx.send(EngineCommand::SetMappingsBulk {
+        entries: vec![make_bulk_entry(0, VJoyAxis::X)],
+        snapshot_label: "x".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let warns = state.read().warnings.clone();
+    assert!(
+        warns.iter().any(|w| w.contains("Bulk-map aborted")),
+        "warnings must surface a Bulk-map aborted line, got: {warns:?}"
+    );
+    assert!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .mappings()
+            .is_empty()
+    );
+}
+
+#[test]
+fn engine_set_mappings_bulk_aborts_apply_when_snapshot_creation_fails() {
+    let (mut engine, state, tx, _dir, path) = make_engine_with_simple_disk_profile();
+    let snap_dir = crate::snapshot::__test_snap_dir(&path).unwrap();
+    std::fs::write(&snap_dir, b"blocker").unwrap();
+
+    tx.send(EngineCommand::SetMappingsBulk {
+        entries: vec![make_bulk_entry(0, VJoyAxis::X)],
+        snapshot_label: "x".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    assert!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .mappings()
+            .is_empty()
+    );
+    let warns = state.read().warnings.clone();
+    assert!(
+        warns.iter().any(|w| w.contains("recovery snapshot")),
+        "must push 'recovery snapshot' warning, got: {warns:?}"
+    );
+}
+
+#[test]
+fn engine_set_mappings_bulk_abort_path_does_not_leak_state_write_lock() {
+    let (mut engine, state, tx, _dir, path) = make_engine_with_simple_disk_profile();
+    let snap_dir = crate::snapshot::__test_snap_dir(&path).unwrap();
+    std::fs::write(&snap_dir, b"blocker").unwrap();
+
+    tx.send(EngineCommand::SetMappingsBulk {
+        entries: vec![make_bulk_entry(0, VJoyAxis::X)],
+        snapshot_label: "x".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    assert!(
+        state.try_read().is_some(),
+        "abort path must release any write guard before returning"
+    );
+}
+
+#[test]
+fn engine_set_mappings_bulk_happy_path_in_memory_state_holds_one_mapping() {
+    let (mut engine, state, tx, _dir, _path) = make_engine_with_simple_disk_profile();
+    tx.send(EngineCommand::SetMappingsBulk {
+        entries: vec![make_bulk_entry(0, VJoyAxis::X)],
+        snapshot_label: "x".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    assert_eq!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .mappings()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn engine_set_mappings_bulk_skips_entries_with_unbound_input() {
+    let (mut engine, state, tx, _dir, _path) = make_engine_with_simple_disk_profile();
+
+    let entry = crate::action::BulkMapEntry {
+        input: InputAddress::Unbound,
+        mode: "Default".to_owned(),
+        output: vjoy_axis_output(1, VJoyAxis::X),
+    };
+    tx.send(EngineCommand::SetMappingsBulk {
+        entries: vec![entry],
+        snapshot_label: "x".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    assert!(
+        state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .mappings()
+            .is_empty(),
+        "Unbound input entries must be skipped by the bulk handler"
+    );
+}
+
+#[test]
+fn smoke_bulk_map_full_round_trip_creates_correct_profile_state() {
+    use crate::action::BulkMapEntry;
+    use crate::types::{OutputAddress, OutputId};
+
+    let (mut engine, state, tx, _dir, path) = make_engine_with_simple_disk_profile();
+    let mut entries = Vec::new();
+    // Four axes, eight buttons, one hat.
+    for i in 0u8..4 {
+        let axis_enum = match i {
+            0 => VJoyAxis::X,
+            1 => VJoyAxis::Y,
+            2 => VJoyAxis::Z,
+            _ => VJoyAxis::Rx,
+        };
+        entries.push(BulkMapEntry {
+            input: axis_addr(i),
+            mode: "Default".to_owned(),
+            output: vjoy_axis_output(1, axis_enum),
+        });
+    }
+    for i in 0u8..8 {
+        entries.push(BulkMapEntry {
+            input: button_addr(i),
+            mode: "Default".to_owned(),
+            output: vjoy_button_output(1, i + 1),
+        });
+    }
+    entries.push(BulkMapEntry {
+        input: InputAddress::Bound {
+            device: dev_id(),
+            input: InputId::Hat { index: 0 },
+        },
+        mode: "Default".to_owned(),
+        output: OutputAddress {
+            device: 1,
+            output: OutputId::Hat { id: 1 },
+        },
+    });
+
+    tx.send(EngineCommand::SetMappingsBulk {
+        entries,
+        snapshot_label: "Before bulk-map: dev-1 to vJoy 1".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+
+    let mappings = state
+        .read()
+        .active_profile
+        .as_ref()
+        .unwrap()
+        .mappings()
+        .to_vec();
+    assert_eq!(mappings.len(), 13, "4 axes + 8 buttons + 1 hat = 13");
+    for m in &mappings {
+        assert_eq!(m.name, None);
+        assert_eq!(m.actions.len(), 1);
+        assert!(matches!(m.actions[0], Action::MapToVJoy { .. }));
+    }
+
+    let listed = crate::snapshot::list(&path).unwrap();
+    assert!(
+        listed
+            .iter()
+            .any(|s| matches!(s.kind, crate::snapshot::SnapshotKind::AutoBeforeBulkMap)),
+        "AutoBeforeBulkMap must be listed"
     );
 }

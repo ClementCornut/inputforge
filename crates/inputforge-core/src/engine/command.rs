@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::action::Action;
+use crate::action::{Action, BulkMapEntry};
 use crate::processing::Calibration;
 use crate::snapshot::{SnapshotId, SnapshotKind};
 use crate::types::{DeviceId, InputAddress};
@@ -36,6 +36,28 @@ pub enum EngineCommand {
         mode: String,
         name: Option<String>,
         actions: Vec<Action>,
+    },
+
+    /// Apply a batch of mapping upserts in a single atomic pass.
+    ///
+    /// Engine handler order:
+    ///   1. Pre-save the in-memory profile to disk (so the snapshot
+    ///      captures the user's authored state, not whatever was on
+    ///      disk last).
+    ///   2. Create an `AutoBeforeBulkMap` snapshot, then `prune`. If
+    ///      the snapshot fails, abort: profile is unchanged on disk
+    ///      and in memory; a warning is pushed to the warnings
+    ///      channel; user retries after fixing the underlying issue.
+    ///   3. Run all entries through `Profile::set_mappings_bulk` in
+    ///      one in-memory pass.
+    ///   4. Save the post-bulk profile to disk.
+    ///
+    /// `snapshot_label` is the user-visible label attached to the
+    /// recovery snapshot. Format guidance:
+    /// `"Before bulk-map: <source> to vJoy <id>"`.
+    SetMappingsBulk {
+        entries: Vec<BulkMapEntry>,
+        snapshot_label: String,
     },
 
     /// Remove the mapping for `(input, mode)`. No-op if no such mapping
@@ -206,5 +228,33 @@ mod tests {
         };
         assert_eq!(a, b, "PartialEq must hold across the new variant");
         assert!(format!("{a:?}").contains("RemoveMapping"));
+    }
+
+    #[test]
+    fn set_mappings_bulk_variant_debug_and_partialeq() {
+        use crate::action::BulkMapEntry;
+        use crate::types::{DeviceId, InputId, OutputId, VJoyAxis};
+
+        let entry = BulkMapEntry {
+            input: InputAddress::Bound {
+                device: DeviceId("dev-1".to_owned()),
+                input: InputId::Axis { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            output: crate::types::OutputAddress {
+                device: 1,
+                output: OutputId::Axis { id: VJoyAxis::X },
+            },
+        };
+        let a = EngineCommand::SetMappingsBulk {
+            entries: vec![entry.clone()],
+            snapshot_label: "Before bulk-map: dev-1 to vJoy 1".to_owned(),
+        };
+        let b = EngineCommand::SetMappingsBulk {
+            entries: vec![entry],
+            snapshot_label: "Before bulk-map: dev-1 to vJoy 1".to_owned(),
+        };
+        assert_eq!(a, b);
+        assert!(format!("{a:?}").contains("SetMappingsBulk"));
     }
 }
