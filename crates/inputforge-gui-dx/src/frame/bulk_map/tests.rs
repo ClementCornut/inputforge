@@ -212,3 +212,57 @@ fn panel_footer_renders_cancel_and_apply_buttons() {
     assert!(html.contains("Cancel"), "got: {html}");
     assert!(html.contains("Apply"), "got: {html}");
 }
+
+#[test]
+fn panel_axis_row_renders_compact_bipolar_bar() {
+    let html = render_panel(Scenario::Full);
+
+    assert!(
+        html.contains("if-bulk-map__live--axis"),
+        "axis live cell class: {html}"
+    );
+}
+
+#[test]
+fn panel_button_row_renders_filled_or_stamped_dot() {
+    let html = render_panel(Scenario::Full);
+
+    assert!(
+        html.contains("if-bulk-map__live--button"),
+        "button live cell class: {html}"
+    );
+}
+
+#[test]
+fn panel_hat_row_renders_cardinal_letter() {
+    let html = render_panel(Scenario::Full);
+
+    assert!(
+        html.contains("if-bulk-map__live--hat"),
+        "hat live cell class: {html}"
+    );
+}
+
+#[test]
+fn panel_target_picker_options_render_axis_human_labels() {
+    let html = render_panel(Scenario::Full);
+
+    assert!(
+        html.contains("X axis"),
+        "axis option label must use X axis format: {html}"
+    );
+    assert!(
+        html.contains("Slider 0"),
+        "slider option label must use Slider 0 format: {html}"
+    );
+}
+
+#[test]
+fn panel_replace_chip_renders_aria_pressed_false_by_default() {
+    let html = render_panel(Scenario::Full);
+
+    assert!(
+        html.contains(r#"aria-pressed="false""#),
+        "replace chip default: {html}"
+    );
+}
