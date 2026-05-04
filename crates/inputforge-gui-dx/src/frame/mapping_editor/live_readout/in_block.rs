@@ -2,7 +2,106 @@ use dioxus::prelude::*;
 
 use inputforge_core::types::AxisPolarity;
 
-use super::value_helpers::{AxisDisplay, format_percentage};
+use crate::context::AppContext;
+use crate::frame::mapping_list::source_label;
+
+use super::analyzer::{LiveReadoutModel, PredicateDescriptor, PredicateKind};
+use super::predicate::render_hat_glyphs;
+use super::value_helpers::{AxisDisplay, format_percentage, read_axis_display};
+
+const READOUT_SECTION_CLASS: &str = "if-editor__readout-section";
+const READOUT_SECTION_LABEL_CLASS: &str = "if-editor__readout-section-label";
+const READOUT_GROUP_CLASS: &str = "if-editor__readout-group";
+const READOUT_CHIPS_CLASS: &str = "if-editor__readout-chips";
+
+/// High-level IN side of the live readout.
+///
+/// Pipeline inputs are rendered as regular axis rows. Predicate chips
+/// are rendered below them when the analyzer found conditional leaves.
+#[component]
+pub(super) fn InBlock(model: LiveReadoutModel) -> Element {
+    let ctx = use_context::<AppContext>();
+    let live = ctx.live.read();
+    let cfg = ctx.config.read();
+    let has_multiple_inputs = model.pipeline_inputs.len() > 1;
+    let has_predicates = !model.predicates.is_empty();
+
+    rsx! {
+        div { class: "{READOUT_SECTION_CLASS}",
+            if has_multiple_inputs {
+                div { class: "{READOUT_SECTION_LABEL_CLASS}", "IN \u{00b7} pipeline" }
+            }
+            div { class: "{READOUT_GROUP_CLASS}",
+                for (idx, addr) in model.pipeline_inputs.iter().enumerate() {
+                    ReadoutRow {
+                        key: "pipeline-{idx}",
+                        label: input_row_label(idx, has_multiple_inputs),
+                        tag: source_label::format(addr, &cfg),
+                        display: read_axis_display(addr, &live, &cfg),
+                        frozen: false,
+                    }
+                }
+            }
+        }
+        if has_predicates {
+            div { class: "{READOUT_SECTION_CLASS}",
+                div { class: "{READOUT_SECTION_LABEL_CLASS}", "IN \u{00b7} predicates" }
+                div { class: "{READOUT_CHIPS_CLASS}",
+                    for (idx, predicate) in model.predicates.iter().enumerate() {
+                        {
+                            let chip_class = predicate_chip_class(predicate.state);
+                            let dot_class = predicate_dot_class(predicate.state);
+                            let label = predicate_chip_label(predicate);
+                            rsx! {
+                                div { key: "predicate-{idx}", class: "{chip_class}",
+                                    span { class: "{dot_class}" }
+                                    span { class: "if-editor__readout-chip-label", "{label}" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn input_row_label(index: usize, has_multiple_inputs: bool) -> String {
+    if has_multiple_inputs {
+        format!("IN {}", index + 1)
+    } else {
+        "IN".to_owned()
+    }
+}
+
+fn predicate_chip_class(state: bool) -> &'static str {
+    if state {
+        "if-editor__readout-chip if-editor__readout-chip--live"
+    } else {
+        "if-editor__readout-chip if-editor__readout-chip--idle"
+    }
+}
+
+fn predicate_dot_class(state: bool) -> &'static str {
+    if state {
+        "if-editor__readout-chip-dot"
+    } else {
+        "if-editor__readout-chip-dot if-editor__readout-chip-dot--hollow"
+    }
+}
+
+fn predicate_chip_label(predicate: &PredicateDescriptor) -> String {
+    match &predicate.kind {
+        PredicateKind::ButtonPressed => predicate.label.clone(),
+        PredicateKind::ButtonReleased => format!("{} (released)", predicate.label),
+        PredicateKind::AxisInRange { min, max } => {
+            format!("{} [{min:.2}..{max:.2}]", predicate.label)
+        }
+        PredicateKind::HatDirection { directions } => {
+            format!("{} {}", predicate.label, render_hat_glyphs(directions))
+        }
+    }
+}
 
 /// One row in the readout grid: label, tag, bar, percentage text.
 ///
@@ -86,5 +185,73 @@ pub(super) fn ReadoutDivider(label: String) -> Element {
         div { class: "if-editor__readout-divider",
             span { class: "if-editor__readout-divider-label", "{label}" }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use inputforge_core::types::HatDirection;
+
+    fn predicate(kind: PredicateKind) -> PredicateDescriptor {
+        PredicateDescriptor {
+            kind,
+            inputs: Vec::new(),
+            state: false,
+            label: "Button 1".to_owned(),
+        }
+    }
+
+    #[test]
+    fn predicate_chip_label_adds_variant_suffixes() {
+        assert_eq!(
+            predicate_chip_label(&predicate(PredicateKind::ButtonPressed)),
+            "Button 1"
+        );
+        assert_eq!(
+            predicate_chip_label(&predicate(PredicateKind::ButtonReleased)),
+            "Button 1 (released)"
+        );
+        assert_eq!(
+            predicate_chip_label(&predicate(PredicateKind::AxisInRange {
+                min: -0.25,
+                max: 0.75,
+            })),
+            "Button 1 [-0.25..0.75]"
+        );
+        assert_eq!(
+            predicate_chip_label(&predicate(PredicateKind::HatDirection {
+                directions: vec![HatDirection::E, HatDirection::N],
+            })),
+            "Button 1 \u{2191}\u{2192}"
+        );
+    }
+
+    #[test]
+    fn predicate_chip_classes_follow_live_state() {
+        assert_eq!(
+            predicate_chip_class(true),
+            "if-editor__readout-chip if-editor__readout-chip--live"
+        );
+        assert_eq!(
+            predicate_chip_class(false),
+            "if-editor__readout-chip if-editor__readout-chip--idle"
+        );
+        assert_eq!(predicate_dot_class(true), "if-editor__readout-chip-dot");
+        assert_eq!(
+            predicate_dot_class(false),
+            "if-editor__readout-chip-dot if-editor__readout-chip-dot--hollow"
+        );
+    }
+
+    #[test]
+    fn section_classes_match_readout_css_contract() {
+        assert_eq!(READOUT_SECTION_CLASS, "if-editor__readout-section");
+        assert_eq!(
+            READOUT_SECTION_LABEL_CLASS,
+            "if-editor__readout-section-label"
+        );
+        assert_eq!(READOUT_CHIPS_CLASS, "if-editor__readout-chips");
     }
 }
