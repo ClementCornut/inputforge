@@ -122,6 +122,20 @@ mod tests {
     }
 
     #[test]
+    fn replace_row_emits_all_selected_modes() {
+        let mut p = one_mode_profile();
+        let rows = vec![axis_row(0, Some(x_target()), true)];
+        p.set_mapping(&rows[0].input, "Default", None, vec![Action::Invert]);
+        let entries = build_entries(&p, &rows, &["Default".to_owned(), "Combat".to_owned()]);
+        let modes = entries
+            .iter()
+            .map(|entry| entry.mode.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(modes, vec!["Default", "Combat"]);
+    }
+
+    #[test]
     fn includes_replace_rows_without_conflict_as_normal_create() {
         // replace=true with no existing mapping: the flag is irrelevant
         // (no mapping to replace), entry is emitted as a normal create.

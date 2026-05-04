@@ -83,7 +83,7 @@
   display: grid;
   width: min(100%, 56rem);
   max-width: 56rem;
-  grid-template-columns: 28px minmax(24rem, 1fr) minmax(8rem, 8rem) auto;
+  grid-template-columns: 28px minmax(24rem, 1fr) minmax(8rem, 8rem) 7rem;
   align-items: center;
   gap: var(--space-2);
   margin-inline: auto;
@@ -204,10 +204,19 @@
 }
 
 .if-bulk-map__action {
+  align-self: stretch;
+  display: flex;
   justify-self: start;
 }
 
+.if-bulk-map__action--empty {
+  min-height: 24px;
+}
+
 .if-bulk-map__chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: 1px solid var(--color-border);
   border-radius: 3px;
@@ -283,7 +292,7 @@
   .if-bulk-map__row {
     width: 100%;
     max-width: none;
-    grid-template-columns: 28px minmax(16rem, 1fr) minmax(8rem, 8rem) auto;
+    grid-template-columns: 28px minmax(16rem, 1fr) minmax(8rem, 8rem) 7rem;
   }
 
   .if-bulk-map__footer {

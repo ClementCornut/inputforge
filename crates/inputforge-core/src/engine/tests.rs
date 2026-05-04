@@ -2212,11 +2212,10 @@ fn make_engine_with_disk_profile() -> (
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -2278,7 +2277,7 @@ fn add_mode_under_named_parent() {
 fn add_mode_rejects_empty_name() {
     let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
     let err = engine.handle_command(EngineCommand::AddMode {
-        name: "".to_owned(),
+        name: String::new(),
         parent: None,
     });
     assert!(err.is_err(), "expected error on empty name");
@@ -2354,10 +2353,9 @@ fn add_mode_no_active_profile_is_no_op() {
 fn add_mode_returns_err_when_persist_fails() {
     let (mut engine, state, _tx, _dir, path) = make_engine_with_disk_profile();
     // Make the profile path point at a directory to force save() to fail.
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.parent().unwrap().to_path_buf());
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.parent().unwrap().to_path_buf());
+    drop(s);
     let err = engine.handle_command(EngineCommand::AddMode {
         name: "Approach".to_owned(),
         parent: None,
@@ -2413,11 +2411,10 @@ fn rename_mode_cascades_into_mappings() {
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -2534,7 +2531,7 @@ fn rename_mode_rejects_empty_to() {
     let (mut engine, _state, _tx, _dir, _path) = make_engine_with_disk_profile();
     let err = engine.handle_command(EngineCommand::RenameMode {
         from: "Combat".to_owned(),
-        to: "".to_owned(),
+        to: String::new(),
     });
     assert!(err.is_err());
 }
@@ -2621,11 +2618,10 @@ fn rename_mode_rejects_when_cycle_would_collapse() {
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (_tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -2660,7 +2656,6 @@ fn rename_mode_rejects_when_cycle_would_collapse() {
             .modes()
             .contains("Landing")
     );
-    let _ = _tx;
 }
 
 #[test]
@@ -2682,11 +2677,10 @@ fn rename_mode_rewrites_switch_to_action() {
     let profile = make_profile(three_mode_tree(), mappings);
     profile.save(&path).unwrap();
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -2735,11 +2729,10 @@ fn rename_mode_rewrites_temporary_action() {
     let profile = make_profile(three_mode_tree(), mappings);
     profile.save(&path).unwrap();
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -2788,11 +2781,10 @@ fn rename_mode_rewrites_cycle_action() {
     let profile = make_profile(three_mode_tree(), mappings);
     profile.save(&path).unwrap();
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -2958,11 +2950,10 @@ fn delete_mode_cascades_subtree_and_mappings() {
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -3026,11 +3017,10 @@ fn delete_mode_rejects_when_subtree_contains_startup_mode() {
     );
     profile.save(&path).unwrap();
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (_tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -3116,11 +3106,10 @@ fn delete_mode_resets_when_active_is_descendant() {
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    }
+    let mut s = state.write();
+    s.profile_path = Some(path.clone());
+    s.engine_status = EngineStatus::Running;
+    drop(s);
     let (tx, rx) = mpsc::channel();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
@@ -3228,7 +3217,7 @@ fn set_default_mode_rejects_unknown_name() {
 fn set_default_mode_rejects_empty_name() {
     let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
     let err = engine.handle_command(EngineCommand::SetDefaultMode {
-        name: "".to_owned(),
+        name: String::new(),
     });
     assert!(err.is_err());
     // Whitespace-only also rejected.

@@ -406,7 +406,7 @@ fn panel_conflicting_row_renders_contextual_replace_control() {
     let html = render(&vdom);
 
     assert!(
-        html.contains(r#"aria-pressed="false""#) && html.contains(">replace</button>"),
+        html.contains(r#"aria-pressed="false""#) && html.contains(">Replace</button>"),
         "conflicting row should expose contextual replace control: {html}"
     );
 }
@@ -446,7 +446,7 @@ fn panel_axes_group_shows_replace_all_chip_when_axis_conflict_exists() {
     let html = render(&vdom);
 
     assert!(
-        html.contains("replace all conflicts"),
+        html.contains("Replace all conflicts"),
         "chip must render on Axes group: {html}"
     );
 }
@@ -458,7 +458,7 @@ fn panel_buttons_group_omits_replace_all_chip_when_no_button_conflict() {
     let to_next_group = buttons_section.split("Hats (").next().unwrap_or("");
 
     assert!(
-        !to_next_group.contains("replace all conflicts"),
+        !to_next_group.contains("Replace all conflicts"),
         "no chip on clean group: {html}"
     );
 }
@@ -479,7 +479,7 @@ fn panel_axes_group_shows_include_all_chip_when_a_row_is_do_not_map() {
     let html = render(&vdom);
 
     assert!(
-        html.contains("include all"),
+        html.contains("Include all"),
         "chip must render when at least one row is unmapped: {html}"
     );
 }
@@ -489,7 +489,7 @@ fn panel_axes_group_shows_exclude_all_chip_when_at_least_one_row_has_target() {
     let html = render_panel(Scenario::Full);
 
     assert!(
-        html.contains("exclude all"),
+        html.contains("Exclude all"),
         "exclude-all chip must render when rows have targets: {html}"
     );
 }
@@ -551,6 +551,166 @@ fn source_row_labels_are_user_facing_one_based() {
     assert_eq!(super::source_row_label(RowKind::Button, 0), "Button 1");
     assert_eq!(super::source_row_label(RowKind::Hat, 0), "Hat 1");
     assert_eq!(super::source_row_label(RowKind::Button, 7), "Button 8");
+}
+
+#[test]
+fn row_conflicts_detects_any_active_mode_conflict() {
+    let map = HashMap::from([("Default".to_owned(), vec!["Combat".to_owned()])]);
+    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let mut profile = Profile::new(
+        "T".to_owned(),
+        vec![],
+        modes,
+        vec![],
+        vec![],
+        "Default".to_owned(),
+    );
+    let rows = super::derive_rows(&DeviceId("dev-1".to_owned()), 1, 0, 0, &one_vjoy());
+    profile.set_mapping(
+        &rows[0].input,
+        "Combat",
+        Some("Combat throttle".to_owned()),
+        vec![Action::Invert],
+    );
+
+    let active_modes = vec!["Default".to_owned(), "Combat".to_owned()];
+
+    assert_eq!(
+        super::row_conflicts(&rows, &profile, &active_modes),
+        vec![true]
+    );
+}
+
+#[test]
+fn row_conflicts_ignores_inactive_mode_conflicts() {
+    let map = HashMap::from([("Default".to_owned(), vec!["Combat".to_owned()])]);
+    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let mut profile = Profile::new(
+        "T".to_owned(),
+        vec![],
+        modes,
+        vec![],
+        vec![],
+        "Default".to_owned(),
+    );
+    let rows = super::derive_rows(&DeviceId("dev-1".to_owned()), 1, 0, 0, &one_vjoy());
+    profile.set_mapping(
+        &rows[0].input,
+        "Combat",
+        Some("Combat throttle".to_owned()),
+        vec![Action::Invert],
+    );
+
+    assert_eq!(
+        super::row_conflicts(&rows, &profile, &["Default".to_owned()]),
+        vec![false]
+    );
+}
+
+#[test]
+fn reconcile_missing_source_falls_back_and_rebuilds_rows() {
+    use crate::frame::bulk_map::state::WizardState;
+
+    let devices = vec![one_device_state()];
+    let vjoys = vec![one_vjoy()];
+    let mut wizard = WizardState::empty("Default".to_owned());
+    wizard.source_device_id = Some(DeviceId("missing".to_owned()));
+    wizard.target_vjoy_id = Some(1);
+    wizard.rows = super::derive_rows(&DeviceId("missing".to_owned()), 1, 0, 0, &vjoys[0]);
+
+    super::reconcile_wizard_state(&mut wizard, &devices, &vjoys);
+
+    assert_eq!(wizard.source_device_id, Some(DeviceId("dev-1".to_owned())));
+    assert_eq!(wizard.rows.len(), 13);
+    assert!(matches!(
+        wizard.rows[0].input,
+        InputAddress::Bound {
+            device: DeviceId(ref id),
+            ..
+        } if id == "dev-1"
+    ));
+}
+
+#[test]
+fn reconcile_missing_target_falls_back_and_rebuilds_rows() {
+    use crate::frame::bulk_map::state::WizardState;
+
+    let devices = vec![one_device_state()];
+    let mut fallback = one_vjoy();
+    fallback.device_id = 2;
+    let vjoys = vec![fallback];
+    let mut wizard = WizardState::empty("Default".to_owned());
+    wizard.source_device_id = Some(DeviceId("dev-1".to_owned()));
+    wizard.target_vjoy_id = Some(9);
+    wizard.rows = Vec::new();
+
+    super::reconcile_wizard_state(&mut wizard, &devices, &vjoys);
+
+    assert_eq!(wizard.target_vjoy_id, Some(2));
+    assert_eq!(wizard.rows.len(), 13);
+    assert!(
+        wizard
+            .rows
+            .iter()
+            .all(|row| row.target.as_ref().is_none_or(|target| target.device == 2))
+    );
+}
+
+#[test]
+fn reconcile_changed_capabilities_rebuilds_rows() {
+    use crate::frame::bulk_map::state::WizardState;
+
+    let mut device = one_device_state();
+    device.info.axes = 2;
+    device.info.buttons = 1;
+    device.info.hats = 0;
+    device.info.axis_polarities = vec![AxisPolarity::Bipolar; 2];
+    let devices = vec![device];
+    let vjoys = vec![one_vjoy()];
+    let mut wizard = WizardState::empty("Default".to_owned());
+    wizard.source_device_id = Some(DeviceId("dev-1".to_owned()));
+    wizard.target_vjoy_id = Some(1);
+    wizard.rows = super::derive_rows(&DeviceId("dev-1".to_owned()), 4, 8, 1, &vjoys[0]);
+
+    super::reconcile_wizard_state(&mut wizard, &devices, &vjoys);
+
+    assert_eq!(wizard.rows.len(), 3);
+}
+
+#[test]
+fn reconcile_valid_selection_leaves_rows_untouched() {
+    use crate::frame::bulk_map::state::WizardState;
+
+    let devices = vec![one_device_state()];
+    let vjoys = vec![one_vjoy()];
+    let rows = super::derive_rows(&DeviceId("dev-1".to_owned()), 4, 8, 1, &vjoys[0]);
+    let mut wizard = WizardState::empty("Default".to_owned());
+    wizard.source_device_id = Some(DeviceId("dev-1".to_owned()));
+    wizard.target_vjoy_id = Some(1);
+    wizard.rows = rows.clone();
+
+    super::reconcile_wizard_state(&mut wizard, &devices, &vjoys);
+
+    assert_eq!(wizard.rows, rows);
+}
+
+#[test]
+fn reconcile_valid_selection_preserves_row_overrides() {
+    use crate::frame::bulk_map::state::WizardState;
+
+    let devices = vec![one_device_state()];
+    let vjoys = vec![one_vjoy()];
+    let mut rows = super::derive_rows(&DeviceId("dev-1".to_owned()), 4, 8, 1, &vjoys[0]);
+    rows[0].replace = true;
+    rows[1].target = None;
+    let mut wizard = WizardState::empty("Default".to_owned());
+    wizard.source_device_id = Some(DeviceId("dev-1".to_owned()));
+    wizard.target_vjoy_id = Some(1);
+    wizard.rows = rows.clone();
+
+    super::reconcile_wizard_state(&mut wizard, &devices, &vjoys);
+
+    assert_eq!(wizard.rows, rows);
 }
 
 #[test]

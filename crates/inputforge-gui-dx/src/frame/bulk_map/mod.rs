@@ -110,6 +110,7 @@ fn BulkMapReadyPanel() -> Element {
         );
         state
     });
+    reconcile_wizard_state(&mut wizard.write(), &connected_devices, &virtual_devices);
 
     let source_text = wizard
         .peek()
@@ -129,6 +130,12 @@ fn BulkMapReadyPanel() -> Element {
     let mut target_value = use_signal(|| target_text.clone());
     let mut mode_value = use_signal(|| mode_text.clone());
     let mut apply_to_all = use_signal(|| apply_to_all_text);
+    if source_value.peek().as_str() != source_text.as_str() {
+        source_value.set(source_text.clone());
+    }
+    if target_value.peek().as_str() != target_text.as_str() {
+        target_value.set(target_text.clone());
+    }
 
     let on_source_change = {
         let connected_devices = connected_devices.clone();
@@ -241,14 +248,18 @@ fn BulkMapReadyPanel() -> Element {
     let on_axis_replace = row_replace_handler(wizard, RowKind::Axis);
     let on_button_replace = row_replace_handler(wizard, RowKind::Button);
     let on_hat_replace = row_replace_handler(wizard, RowKind::Hat);
-    let current_mode = wizard.peek().mode.clone();
+    let active_modes = if *apply_to_all.read() {
+        modes.clone()
+    } else {
+        vec![wizard.read().mode.clone()]
+    };
     let (axis_conflicting, button_conflicting, hat_conflicting) = {
         let state = ctx.state.read();
         if let Some(profile) = state.active_profile.as_ref() {
             (
-                row_conflicts(&axis_rows, profile, &current_mode),
-                row_conflicts(&button_rows, profile, &current_mode),
-                row_conflicts(&hat_rows, profile, &current_mode),
+                row_conflicts(&axis_rows, profile, &active_modes),
+                row_conflicts(&button_rows, profile, &active_modes),
+                row_conflicts(&hat_rows, profile, &active_modes),
             )
         } else {
             (
@@ -276,11 +287,6 @@ fn BulkMapReadyPanel() -> Element {
         target_for_groups.clone(),
         conflicting_indices(&hat_rows, &hat_conflicting),
     );
-    let active_modes = if *apply_to_all.read() {
-        modes.clone()
-    } else {
-        vec![wizard.read().mode.clone()]
-    };
     let counts = {
         let state = ctx.state.read();
         let profile = state
@@ -476,25 +482,25 @@ fn BulkMapRowsGroup(
                 span { class: "if-bulk-map__group-title", "{title} ({rows.len()})" }
                 if render_skip {
                     BulkMapGroupChip {
-                        label: "skip all conflicts".to_owned(),
+                        label: "Skip all conflicts".to_owned(),
                         on_click: on_skip_all_conflicts,
                     }
                 }
                 if render_replace {
                     BulkMapGroupChip {
-                        label: "replace all conflicts".to_owned(),
+                        label: "Replace all conflicts".to_owned(),
                         on_click: on_replace_all_conflicts,
                     }
                 }
                 if render_include {
                     BulkMapGroupChip {
-                        label: "include all".to_owned(),
+                        label: "Include all".to_owned(),
                         on_click: on_include_all,
                     }
                 }
                 if render_exclude {
                     BulkMapGroupChip {
-                        label: "exclude all".to_owned(),
+                        label: "Exclude all".to_owned(),
                         on_click: on_exclude_all,
                     }
                 }
@@ -609,8 +615,14 @@ fn BulkMapRow(
                         },
                         "aria-pressed": "{row.replace}",
                         onclick,
-                        if row.replace { "replacing" } else { "replace" }
+                        if row.replace { "Replacing" } else { "Replace" }
                     }
+                }
+            } else {
+                span {
+                    role: "gridcell",
+                    class: "if-bulk-map__action if-bulk-map__action--empty",
+                    "aria-hidden": "true",
                 }
             }
         }
@@ -695,15 +707,16 @@ fn group_chip_handlers(
 fn row_conflicts(
     rows: &[RowState],
     profile: &inputforge_core::profile::Profile,
-    mode: &str,
+    modes: &[String],
 ) -> Vec<bool> {
     rows.iter()
         .map(|row| {
-            let modes = [mode.to_owned()];
-            let is_conflicting = conflicts::existing_name_for(profile, &row.input, mode).is_some();
+            let is_conflicting = modes
+                .iter()
+                .any(|mode| conflicts::existing_name_for(profile, &row.input, mode).is_some());
             debug_assert_eq!(
                 is_conflicting,
-                !conflicts::conflicting_modes(profile, &row.input, &modes).is_empty()
+                !conflicts::conflicting_modes(profile, &row.input, modes).is_empty()
             );
             is_conflicting
         })
@@ -838,6 +851,90 @@ fn derive_rows_for_selection(
             target,
         ),
         _ => Vec::new(),
+    }
+}
+
+fn reconcile_wizard_state(
+    state: &mut WizardState,
+    connected_devices: &[DeviceState],
+    virtual_devices: &[VirtualDeviceConfig],
+) -> bool {
+    let source_id = state
+        .source_device_id
+        .as_ref()
+        .filter(|id| {
+            connected_devices
+                .iter()
+                .any(|device| &device.info.id == *id)
+        })
+        .cloned()
+        .or_else(|| {
+            connected_devices
+                .first()
+                .map(|device| device.info.id.clone())
+        });
+    let target_id = state
+        .target_vjoy_id
+        .filter(|id| virtual_devices.iter().any(|device| device.device_id == *id))
+        .or_else(|| virtual_devices.first().map(|device| device.device_id));
+    let rows = derive_rows_for_selection(
+        source_id.as_ref(),
+        connected_devices,
+        target_id,
+        virtual_devices,
+    );
+    let changed = state.source_device_id != source_id
+        || state.target_vjoy_id != target_id
+        || !rows_match_current_capabilities(&state.rows, &rows, target_id, virtual_devices);
+    if changed {
+        state.source_device_id = source_id;
+        state.target_vjoy_id = target_id;
+        state.rows = rows;
+    }
+    changed
+}
+
+fn rows_match_current_capabilities(
+    current: &[RowState],
+    derived: &[RowState],
+    target_id: Option<u8>,
+    virtual_devices: &[VirtualDeviceConfig],
+) -> bool {
+    current.len() == derived.len()
+        && current
+            .iter()
+            .zip(derived.iter())
+            .all(|(current, derived)| {
+                current.kind == derived.kind
+                    && current.source_index == derived.source_index
+                    && current.input == derived.input
+                    && current.target.as_ref().is_none_or(|target| {
+                        target_is_available(target, target_id, virtual_devices)
+                    })
+            })
+}
+
+fn target_is_available(
+    address: &OutputAddress,
+    target_id: Option<u8>,
+    virtual_devices: &[VirtualDeviceConfig],
+) -> bool {
+    let Some(target_id) = target_id else {
+        return false;
+    };
+    let Some(target) = virtual_devices
+        .iter()
+        .find(|device| device.device_id == target_id)
+    else {
+        return false;
+    };
+    if address.device != target.device_id {
+        return false;
+    }
+    match address.output {
+        OutputId::Axis { id } => target.axes.contains(&id),
+        OutputId::Button { id } => id > 0 && id <= target.button_count,
+        OutputId::Hat { id } => id > 0 && id <= target.hat_count,
     }
 }
 
