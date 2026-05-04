@@ -381,13 +381,12 @@
    the tag column auto-sizes per group. Bars within a group share an
    x origin (longest tag in *that* group sets the column); bars across
    groups can differ. Rows use `display: contents` to dissolve into
-   the group grid so each row's 4 cells become 4 grid items. */
+   the group grid so each row's cells become grid items. */
 .if-editor__readout-group {
     display: grid;
-    /* label | tag | bar | percentage. Tag column auto-sizes to its
-       content, capped via max-width on the cell so very long device
-       names truncate instead of eating the bar width. */
-    grid-template-columns: 60px minmax(0, max-content) 1fr 60px;
+    /* label | tag | bar | percentage | optional chevron. The final
+       max-content column collapses when no OUT row supplies a chevron. */
+    grid-template-columns: 60px minmax(0, max-content) 1fr 60px max-content;
     column-gap: 12px;
     row-gap: 8px;
     align-items: center;
@@ -500,6 +499,263 @@
     font-size: 10px;
     text-transform: uppercase;
     color: var(--color-text-subtle);
+}
+
+.if-editor__readout-divider-spacer {
+    flex: 1 1 auto;
+}
+
+/* Task 18: analyzer-driven readout primitives */
+
+.if-editor__readout-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.if-editor__readout-section-label {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.45;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-subtle);
+    margin: 8px 0 2px;
+}
+
+.if-editor__readout-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-left: 56px;
+}
+
+.if-editor__readout-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-subtle);
+}
+
+.if-editor__readout-chip--live {
+    color: var(--color-live);
+    border-color: var(--color-live);
+    background: rgba(46, 224, 160, 0.10);
+}
+
+.if-editor__readout-chip-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.if-editor__readout-chip-dot--hollow {
+    background: transparent;
+    border: 1.5px solid currentColor;
+}
+
+.if-editor__readout-chip-label {
+    color: inherit;
+}
+
+.if-editor__readout-row--hat .if-editor__readout-hat-glyph {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    text-align: center;
+    color: var(--color-text);
+}
+
+.if-editor__readout-row-wrap--frozen .if-editor__readout-row--hat .if-editor__readout-hat-glyph {
+    color: var(--color-text-muted);
+}
+
+.if-editor__readout-row--kb .if-editor__readout-kb-cell {
+    display: flex;
+    align-items: center;
+}
+
+.if-editor__readout-kb-chip {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--color-control);
+    color: var(--color-control-badge-text);
+    background: var(--color-control-bg);
+}
+
+.if-editor__readout-kb-chip--idle {
+    color: var(--color-text-subtle);
+    border-color: var(--color-border);
+    background: transparent;
+}
+
+.if-editor__readout-row-wrap {
+    display: contents;
+}
+
+.if-editor__readout-row-wrap--frozen .if-editor__readout-fill {
+    background: var(--color-text-muted);
+}
+
+.if-editor__readout-row-wrap--frozen .if-editor__readout-pct {
+    opacity: 0.7;
+}
+
+.if-editor__readout-row-wrap--frozen .if-editor__readout-chain {
+    opacity: 0.7;
+}
+
+.if-editor__readout-row-wrap--frozen .if-editor__readout-chain-fill {
+    background: var(--color-text-muted);
+}
+
+.if-editor__readout-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: 0;
+    color: var(--color-text-subtle);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 0;
+    border-radius: 2px;
+}
+
+.if-editor__readout-chevron:hover {
+    color: var(--color-text);
+}
+
+.if-editor__readout-chevron:focus-visible,
+.if-editor__readout-expand-all:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+.if-editor__readout-chevron-spacer {
+    width: 24px;
+    height: 24px;
+}
+
+.if-editor__readout-expand-all {
+    margin-left: 8px;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-text-subtle);
+    border: 0;
+    border-radius: 2px;
+    padding: 2px 8px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.if-editor__readout-expand-all:hover {
+    color: var(--color-text);
+}
+
+.if-editor__readout-chain {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--color-bg-sunken);
+    padding: 6px 0 6px 28px;
+    margin: 0;
+}
+
+.if-editor__readout-chain-row {
+    display: grid;
+    grid-template-columns: 80px minmax(0, 1fr) 1fr 56px;
+    column-gap: 10px;
+    align-items: center;
+    font-size: 11px;
+    color: var(--color-text-muted);
+}
+
+.if-editor__readout-chain-row.is-cond {
+    grid-template-columns: 80px minmax(0, 1fr) auto;
+}
+
+.if-editor__readout-chain-row.is-inactive {
+    opacity: 0.6;
+}
+
+.if-editor__readout-chain-step {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-output);
+    font-weight: 500;
+}
+
+.if-editor__readout-chain-row.is-cond .if-editor__readout-chain-step {
+    color: var(--color-control);
+}
+
+.if-editor__readout-chain-tag {
+    color: var(--color-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.if-editor__readout-chain-bar {
+    position: relative;
+    height: 4px;
+    background: var(--color-bg-elevated);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.if-editor__readout-chain-bar--bipolar::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 1px;
+    height: 100%;
+    background: var(--color-border-strong);
+}
+
+.if-editor__readout-chain-fill {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    background: var(--color-processing);
+    border-radius: 2px;
+}
+
+.if-editor__readout-chain-pct {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--color-text-subtle);
+    text-align: right;
+}
+
+.if-editor__readout-chain-outcome {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--color-text-subtle);
+}
+
+.if-editor__readout-chain-outcome--active {
+    color: var(--color-control);
 }
 
 /* Task 18: inactive-runtime hint banner */
