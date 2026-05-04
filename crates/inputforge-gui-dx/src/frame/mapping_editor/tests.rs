@@ -1339,6 +1339,81 @@ fn editor_live_readout_sibling_outputs_render_two_out_rows() {
     );
 }
 
+#[test]
+fn editor_live_readout_conditional_active_branch_live_inactive_frozen() {
+    use inputforge_core::action::Condition;
+
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed { input: btn_addr(0) },
+        if_true: vec![Action::MapToVJoy { output: vjoy_x() }],
+        if_false: vec![Action::MapToVJoy { output: vjoy_y() }],
+    }];
+    let html = render_with_pipeline(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.0)],
+        &[(btn_addr(0), true)],
+        &[],
+    );
+
+    assert_eq!(
+        count_substring(&html, super::live_readout::FROZEN_ROW_CLASS),
+        1,
+        "expected exactly one frozen row for the inactive branch; got: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_keyboard_active_renders_live_chip() {
+    use inputforge_core::action::Condition;
+    use inputforge_core::types::{KeyCombo, KeyModifier};
+
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed { input: btn_addr(0) },
+        if_true: vec![Action::MapToKeyboard {
+            key: KeyCombo {
+                key: "Space".to_owned(),
+                modifiers: vec![KeyModifier::Ctrl],
+            },
+        }],
+        if_false: vec![],
+    }];
+    let html = render_with_pipeline(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.0)],
+        &[(btn_addr(0), true)],
+        &[],
+    );
+
+    assert!(html.contains("if-editor__readout-kb-chip--live"));
+    assert!(html.contains("Ctrl + Space"));
+}
+
+#[test]
+fn editor_live_readout_keyboard_inactive_renders_idle_chip() {
+    use inputforge_core::action::Condition;
+    use inputforge_core::types::{KeyCombo, KeyModifier};
+
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed { input: btn_addr(0) },
+        if_true: vec![Action::MapToKeyboard {
+            key: KeyCombo {
+                key: "Space".to_owned(),
+                modifiers: vec![KeyModifier::Ctrl],
+            },
+        }],
+        if_false: vec![],
+    }];
+    let html = render_with_pipeline(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.0)],
+        &[(btn_addr(0), false)],
+        &[],
+    );
+
+    assert!(html.contains("if-editor__readout-kb-chip--idle"));
+    assert!(html.contains(super::live_readout::FROZEN_ROW_CLASS));
+}
+
 /// Unipolar primary, no merge, with `MapToVJoy`. The OUT row should
 /// inherit the primary's Unipolar polarity (since `find_merge_context`
 /// returns None) and apply the natural-domain remap.
