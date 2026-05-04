@@ -111,6 +111,8 @@ enum Scenario {
     NoVjoy,
     Full,
     WithDisconnected,
+    EmptyInputs,
+    ButtonsOnly,
 }
 
 fn state_for(scenario: Scenario) -> AppState {
@@ -137,6 +139,24 @@ fn state_for(scenario: Scenario) -> AppState {
                 },
                 connected: false,
             });
+            state
+        }
+        Scenario::EmptyInputs => {
+            let mut state = seeded_state(true);
+            let device = state.devices.first_mut().expect("seeded device exists");
+            device.info.axes = 0;
+            device.info.buttons = 0;
+            device.info.hats = 0;
+            device.info.axis_polarities = vec![];
+            state
+        }
+        Scenario::ButtonsOnly => {
+            let mut state = seeded_state(true);
+            let device = state.devices.first_mut().expect("seeded device exists");
+            device.info.axes = 0;
+            device.info.buttons = 3;
+            device.info.hats = 0;
+            device.info.axis_polarities = vec![];
             state
         }
     }
@@ -210,11 +230,32 @@ fn panel_target_picker_renders_capability_summary() {
 }
 
 #[test]
-fn panel_footer_renders_cancel_and_apply_buttons() {
+fn panel_footer_omits_cancel_and_clean_reset() {
     let html = render_panel(Scenario::Full);
 
-    assert!(html.contains("Cancel"), "got: {html}");
+    assert!(
+        !html.contains("Cancel"),
+        "full-page workspace exits through primary nav: {html}"
+    );
+    assert!(
+        !html.contains("Reset"),
+        "clean auto-map state should not show reset: {html}"
+    );
     assert!(html.contains("Apply"), "got: {html}");
+}
+
+#[test]
+fn panel_ready_workspace_has_batch_map_region_without_drawer_header() {
+    let html = render_panel(Scenario::Full);
+
+    assert!(
+        html.contains(r#"aria-label="Batch map device inputs""#),
+        "batch map region label missing: {html}"
+    );
+    assert!(
+        !html.contains("Bulk-map device") && !html.contains("if-bulk-map__close"),
+        "drawer header title and close affordance must not render: {html}"
+    );
 }
 
 #[test]
@@ -248,6 +289,65 @@ fn panel_hat_row_renders_cardinal_letter() {
 }
 
 #[test]
+fn panel_rows_mark_source_live_layout_by_kind() {
+    let html = render_panel(Scenario::Full);
+
+    assert!(
+        html.contains("if-bulk-map__row if-bulk-map__row--axis"),
+        "axis row layout hook missing: {html}"
+    );
+    assert!(
+        html.contains("if-bulk-map__row if-bulk-map__row--button"),
+        "button row layout hook missing: {html}"
+    );
+    assert!(
+        html.contains("if-bulk-map__row if-bulk-map__row--hat"),
+        "hat row layout hook missing: {html}"
+    );
+    assert!(
+        html.contains("if-bulk-map__source-cell if-bulk-map__source-cell--axis"),
+        "axis source/live layout hook missing: {html}"
+    );
+    assert!(
+        html.contains("if-bulk-map__source-cell if-bulk-map__source-cell--button"),
+        "button source/live layout hook missing: {html}"
+    );
+    assert!(
+        html.contains("if-bulk-map__source-cell if-bulk-map__source-cell--hat"),
+        "hat source/live layout hook missing: {html}"
+    );
+}
+
+#[test]
+fn panel_hides_empty_categories_independently() {
+    let html = render_panel(Scenario::ButtonsOnly);
+
+    assert!(
+        !html.contains("Axes (0)"),
+        "empty axes group hidden: {html}"
+    );
+    assert!(html.contains("Buttons (3)"), "button group visible: {html}");
+    assert!(
+        !html.contains("Hats (0)"),
+        "empty hats group hidden: {html}"
+    );
+}
+
+#[test]
+fn panel_renders_single_table_empty_state_when_all_categories_empty() {
+    let html = render_panel(Scenario::EmptyInputs);
+
+    assert!(
+        html.contains("No inputs available for this source device."),
+        "table empty state missing: {html}"
+    );
+    assert!(
+        !html.contains("Axes (0)") && !html.contains("Buttons (0)") && !html.contains("Hats (0)"),
+        "empty category headers must be omitted: {html}"
+    );
+}
+
+#[test]
 fn panel_target_picker_options_render_axis_human_labels() {
     let html = render_panel(Scenario::Full);
 
@@ -262,12 +362,52 @@ fn panel_target_picker_options_render_axis_human_labels() {
 }
 
 #[test]
-fn panel_replace_chip_renders_aria_pressed_false_by_default() {
+fn panel_clean_rows_omit_contextual_replace_controls() {
     let html = render_panel(Scenario::Full);
 
     assert!(
-        html.contains(r#"aria-pressed="false""#),
-        "replace chip default: {html}"
+        !html.contains(r#"aria-pressed="false""#) && !html.contains(">replace</button>"),
+        "clean rows should not repeat inactive replace controls: {html}"
+    );
+}
+
+#[test]
+fn panel_conflicting_row_renders_contextual_replace_control() {
+    fn TestComponent() -> Element {
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let mut profile = Profile::new(
+            "T".to_owned(),
+            vec![],
+            modes,
+            vec![],
+            vec![],
+            "Default".to_owned(),
+        );
+        let collide_input = InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        profile.set_mapping(
+            &collide_input,
+            "Default",
+            Some("Throttle".to_owned()),
+            vec![Action::Invert],
+        );
+        let mut state = AppState::with_profile(profile);
+        state.devices.push(one_device_state());
+        state.virtual_devices.push(one_vjoy());
+        let _ = provide(state);
+        rsx! { BulkMapPanel {} }
+    }
+
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(
+        html.contains(r#"aria-pressed="false""#) && html.contains(">replace</button>"),
+        "conflicting row should expose contextual replace control: {html}"
     );
 }
 
@@ -366,6 +506,51 @@ fn panel_summary_chip_counts_match_row_states() {
     let html = render_panel(Scenario::Full);
 
     assert!(html.contains("+13 create"), "create count: {html}");
+}
+
+#[test]
+fn panel_summary_and_actions_share_footer_region() {
+    let html = render_panel(Scenario::Full);
+    let footer = html
+        .split(r#"<footer class="if-bulk-map__footer""#)
+        .nth(1)
+        .unwrap_or("");
+
+    assert!(footer.contains("+13 create"), "summary in footer: {html}");
+    assert!(
+        footer.contains("Apply 13 mappings"),
+        "apply button in footer: {html}"
+    );
+}
+
+#[test]
+fn row_dirty_detection_flags_user_overrides_only() {
+    use crate::frame::bulk_map::rows_dirty;
+
+    let baseline = super::derive_rows(&DeviceId("dev-1".to_owned()), 2, 0, 0, &one_vjoy());
+    let mut edited = baseline.clone();
+    edited[0].target = None;
+
+    assert!(!rows_dirty(&baseline, &baseline));
+    assert!(rows_dirty(&edited, &baseline));
+}
+
+#[test]
+fn row_key_includes_source_device_identity() {
+    let dev_1 = super::derive_rows(&DeviceId("dev-1".to_owned()), 1, 0, 0, &one_vjoy());
+    let dev_2 = super::derive_rows(&DeviceId("dev-2".to_owned()), 1, 0, 0, &one_vjoy());
+
+    assert_ne!(super::row_key(&dev_1[0]), super::row_key(&dev_2[0]));
+}
+
+#[test]
+fn source_row_labels_are_user_facing_one_based() {
+    use crate::frame::bulk_map::state::RowKind;
+
+    assert_eq!(super::source_row_label(RowKind::Axis, 0), "Axis 1");
+    assert_eq!(super::source_row_label(RowKind::Button, 0), "Button 1");
+    assert_eq!(super::source_row_label(RowKind::Hat, 0), "Hat 1");
+    assert_eq!(super::source_row_label(RowKind::Button, 7), "Button 8");
 }
 
 #[test]
@@ -489,7 +674,7 @@ fn panel_apply_for_test_dispatches_set_mappings_bulk_with_snapshot_label() {
             snapshot_label,
         } => {
             assert_eq!(entries.len(), 1);
-            assert_eq!(snapshot_label, "Before bulk-map: dev-1 to vJoy 1");
+            assert_eq!(snapshot_label, "Before batch map: dev-1 to vJoy 1");
         }
         _ => panic!("expected SetMappingsBulk"),
     }

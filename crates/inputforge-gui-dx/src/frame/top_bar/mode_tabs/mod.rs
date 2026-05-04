@@ -64,12 +64,9 @@ pub(crate) fn ModeTabs() -> Element {
     let mut renaming: Signal<Option<String>> = use_signal(|| None);
     // Tail `+` inline editor open-state.
     let mut adding: Signal<bool> = use_signal(|| false);
-    // F4 delete-confirm target. Owned by `TopBar` and provided through
-    // `ModeDeleteSignal` so the dialog component can render as a
-    // sibling of `.if-top-bar` (not a child), the audit-flagged
-    // structural smell. ModeTabs writes here from the keyboard Delete
-    // arm and the context-menu Delete handler; `ModeDeleteDialog`
-    // reads it to drive its own `dialog_open` mirror.
+    // F4 delete-confirm target. Owned by `Layout` and provided through
+    // `ModeDeleteSignal` so the mode strip can live inside the mappings
+    // workspace while `ModeDeleteDialog` remains a shell-level sibling.
     let mut delete_target: Signal<Option<String>> = use_context::<ModeDeleteSignal>().0;
 
     // Which tab's context menu is open (if any), with anchor coords.

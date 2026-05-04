@@ -1,4 +1,4 @@
-//! F-bulk-map: side-panel bulk mapping wizard. See
+//! F-bulk-map: primary workspace bulk mapping wizard. See
 //! `docs/superpowers/specs/2026-05-03-bulk-mapping-design.md`.
 
 mod apply;
@@ -15,11 +15,12 @@ mod tests;
 
 use dioxus::prelude::*;
 use inputforge_core::engine::EngineCommand;
+use inputforge_core::state::DeviceState;
 use inputforge_core::types::{
     DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis, VirtualDeviceConfig,
 };
 
-use crate::components::{Button, Checkbox, Field, Select};
+use crate::components::{Button, ButtonVariant, Checkbox, Field, Select};
 use crate::context::AppContext;
 use crate::frame::bulk_map::auto_map::{auto_axis_target, auto_button_target, auto_hat_target};
 use crate::frame::bulk_map::empty_state::NoVjoyEmptyState;
@@ -28,7 +29,7 @@ use crate::frame::bulk_map::group_actions::{
 };
 use crate::frame::bulk_map::row_readout::RowReadout;
 use crate::frame::bulk_map::state::{RowKind, RowState, WizardState};
-use crate::frame::view_state::{PanelSlot, ViewState};
+use crate::frame::view_state::{MainSurface, ViewState};
 use crate::toast::{ToastLevel, ToastQueue};
 
 const BULK_MAP_CSS: Asset = asset!("/assets/frame/bulk_map.css");
@@ -38,8 +39,6 @@ pub(crate) fn BulkMapPanel() -> Element {
     tracing::trace!(target: "frame::render", region = "bulk_map");
 
     let ctx = use_context::<AppContext>();
-    let view = use_context::<ViewState>();
-    let mut panel = view.panel_slot;
 
     let virtual_devices: Vec<VirtualDeviceConfig> = ctx.state.read().virtual_devices.clone();
     let has_profile = ctx.state.read().active_profile.is_some();
@@ -47,14 +46,12 @@ pub(crate) fn BulkMapPanel() -> Element {
     if !has_profile {
         return rsx! {
             Stylesheet { href: BULK_MAP_CSS }
-            section { class: "if-bulk-map", "aria-label": "Bulk-map device wizard",
-                BulkMapHeader { on_close: move |_| panel.set(PanelSlot::None) }
+            section { class: "if-bulk-map", "aria-label": "Batch map device inputs",
                 NoVjoyEmptyState {
                     title: "No profile loaded".to_owned(),
                     caption: "Load or create a profile, then reopen.".to_owned(),
                 }
                 footer { class: "if-bulk-map__footer",
-                    Button { onclick: move |_| panel.set(PanelSlot::None), "Cancel" }
                     Button { disabled: true, onclick: move |_| {}, "Apply" }
                 }
             }
@@ -64,11 +61,9 @@ pub(crate) fn BulkMapPanel() -> Element {
     if virtual_devices.is_empty() {
         return rsx! {
             Stylesheet { href: BULK_MAP_CSS }
-            section { class: "if-bulk-map", "aria-label": "Bulk-map device wizard",
-                BulkMapHeader { on_close: move |_| panel.set(PanelSlot::None) }
+            section { class: "if-bulk-map", "aria-label": "Batch map device inputs",
                 NoVjoyEmptyState {}
                 footer { class: "if-bulk-map__footer",
-                    Button { onclick: move |_| panel.set(PanelSlot::None), "Cancel" }
                     Button { disabled: true, onclick: move |_| {}, "Apply" }
                 }
             }
@@ -86,7 +81,7 @@ fn BulkMapReadyPanel() -> Element {
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
     let toast = use_context::<ToastQueue>();
-    let mut panel = view.panel_slot;
+    let main_surface = view.main_surface;
 
     let connected_devices = {
         let state = ctx.state.read();
@@ -107,15 +102,12 @@ fn BulkMapReadyPanel() -> Element {
             .first()
             .map(|device| device.info.id.clone());
         state.target_vjoy_id = virtual_devices.first().map(|device| device.device_id);
-        if let (Some(source), Some(target)) = (connected_devices.first(), virtual_devices.first()) {
-            state.rows = derive_rows(
-                &source.info.id,
-                source.info.axes,
-                source.info.buttons,
-                source.info.hats,
-                target,
-            );
-        }
+        state.rows = derive_rows_for_selection(
+            state.source_device_id.as_ref(),
+            &connected_devices,
+            state.target_vjoy_id,
+            &virtual_devices,
+        );
         state
     });
 
@@ -147,22 +139,12 @@ fn BulkMapReadyPanel() -> Element {
             let source_id = DeviceId(value);
             let mut state = wizard.write();
             state.source_device_id = Some(source_id.clone());
-            let target = state
-                .target_vjoy_id
-                .and_then(|id| virtual_devices.iter().find(|device| device.device_id == id));
-            let source = connected_devices
-                .iter()
-                .find(|device| device.info.id == source_id);
-            state.rows = match (source, target) {
-                (Some(source), Some(target)) => derive_rows(
-                    &source.info.id,
-                    source.info.axes,
-                    source.info.buttons,
-                    source.info.hats,
-                    target,
-                ),
-                _ => Vec::new(),
-            };
+            state.rows = derive_rows_for_selection(
+                state.source_device_id.as_ref(),
+                &connected_devices,
+                state.target_vjoy_id,
+                &virtual_devices,
+            );
         }
     };
     let on_target_change = {
@@ -174,22 +156,12 @@ fn BulkMapReadyPanel() -> Element {
             if let Ok(id) = value.parse::<u8>() {
                 let mut state = wizard.write();
                 state.target_vjoy_id = Some(id);
-                let source = state.source_device_id.as_ref().and_then(|source_id| {
-                    connected_devices
-                        .iter()
-                        .find(|device| &device.info.id == source_id)
-                });
-                let target = virtual_devices.iter().find(|device| device.device_id == id);
-                state.rows = match (source, target) {
-                    (Some(source), Some(target)) => derive_rows(
-                        &source.info.id,
-                        source.info.axes,
-                        source.info.buttons,
-                        source.info.hats,
-                        target,
-                    ),
-                    _ => Vec::new(),
-                };
+                state.rows = derive_rows_for_selection(
+                    state.source_device_id.as_ref(),
+                    &connected_devices,
+                    state.target_vjoy_id,
+                    &virtual_devices,
+                );
             }
         }
     };
@@ -241,6 +213,13 @@ fn BulkMapReadyPanel() -> Element {
             .cloned()
     });
     let rows = wizard.read().rows.clone();
+    let baseline_rows = derive_rows_for_selection(
+        wizard.peek().source_device_id.as_ref(),
+        &connected_devices,
+        wizard.peek().target_vjoy_id,
+        &virtual_devices,
+    );
+    let is_dirty = rows_dirty(&rows, &baseline_rows);
     let axis_rows = rows
         .iter()
         .filter(|row| row.kind == RowKind::Axis)
@@ -312,10 +291,18 @@ fn BulkMapReadyPanel() -> Element {
     };
     let apply_count = counts.create + counts.replace;
     let apply_label = format!("Apply {apply_count} mappings");
+    let has_axis_rows = !axis_rows.is_empty();
+    let has_button_rows = !button_rows.is_empty();
+    let has_hat_rows = !hat_rows.is_empty();
+    let has_any_rows = has_axis_rows || has_button_rows || has_hat_rows;
+    let on_reset = {
+        let baseline_rows = baseline_rows.clone();
+        move |_| wizard.write().rows.clone_from(&baseline_rows)
+    };
     let on_apply = {
         let cmd_tx = ctx.commands.clone();
         let ctx = ctx.clone();
-        let mut panel = panel;
+        let mut main_surface = main_surface;
         let active_modes = active_modes.clone();
         move |_| {
             let state = wizard.peek().clone();
@@ -337,14 +324,12 @@ fn BulkMapReadyPanel() -> Element {
                 snapshot_label,
             });
             toast.push(ToastLevel::Success, format!("Created {count} mappings"));
-            panel.set(PanelSlot::None);
+            main_surface.set(MainSurface::Mappings);
         }
     };
 
     rsx! {
-        section { class: "if-bulk-map", "aria-label": "Bulk-map device wizard",
-            BulkMapHeader { on_close: move |_| panel.set(PanelSlot::None) }
-
+        section { class: "if-bulk-map", "aria-label": "Batch map device inputs",
             div { class: "if-bulk-map__metadata",
                 Field { label: "Source".to_owned(), for_id: Some("bulk-map-source".to_owned()),
                     Select {
@@ -372,71 +357,96 @@ fn BulkMapReadyPanel() -> Element {
                     }
                 }
                 Field {
-                    label: format!("Apply to all modes ({})", modes.len()),
+                    class: Some("if-bulk-map__apply-field".to_owned()),
+                    label: "Apply to".to_owned(),
                     for_id: Some("bulk-map-all-modes".to_owned()),
-                    Checkbox {
-                        id: Some("bulk-map-all-modes".to_owned()),
-                        checked: apply_to_all_ro,
-                        onchange: on_apply_to_all_change,
+                    div { class: "if-bulk-map__apply-control",
+                        Checkbox {
+                            id: Some("bulk-map-all-modes".to_owned()),
+                            checked: apply_to_all_ro,
+                            onchange: on_apply_to_all_change,
+                        }
+                        span { class: "if-bulk-map__apply-label", "All modes ({modes.len()})" }
                     }
                 }
             }
 
             div { role: "grid", class: "if-bulk-map__table",
-                BulkMapRowsGroup {
-                    title: "Axes".to_owned(),
-                    rows: axis_rows,
-                    target_vjoy: target_for_groups.clone(),
-                    conflicting: axis_conflicting,
-                    on_row_change: on_axis_change,
-                    on_row_replace_toggle: on_axis_replace,
-                    on_skip_all_conflicts: axis_chip_handlers.skip_all_conflicts,
-                    on_replace_all_conflicts: axis_chip_handlers.replace_all_conflicts,
-                    on_include_all: axis_chip_handlers.include_all,
-                    on_exclude_all: axis_chip_handlers.exclude_all,
+                if has_axis_rows {
+                    BulkMapRowsGroup {
+                        title: "Axes".to_owned(),
+                        rows: axis_rows,
+                        target_vjoy: target_for_groups.clone(),
+                        conflicting: axis_conflicting,
+                        on_row_change: on_axis_change,
+                        on_row_replace_toggle: on_axis_replace,
+                        on_skip_all_conflicts: axis_chip_handlers.skip_all_conflicts,
+                        on_replace_all_conflicts: axis_chip_handlers.replace_all_conflicts,
+                        on_include_all: axis_chip_handlers.include_all,
+                        on_exclude_all: axis_chip_handlers.exclude_all,
+                    }
                 }
-                BulkMapRowsGroup {
-                    title: "Buttons".to_owned(),
-                    rows: button_rows,
-                    target_vjoy: target_for_groups.clone(),
-                    conflicting: button_conflicting,
-                    on_row_change: on_button_change,
-                    on_row_replace_toggle: on_button_replace,
-                    on_skip_all_conflicts: button_chip_handlers.skip_all_conflicts,
-                    on_replace_all_conflicts: button_chip_handlers.replace_all_conflicts,
-                    on_include_all: button_chip_handlers.include_all,
-                    on_exclude_all: button_chip_handlers.exclude_all,
+                if has_button_rows {
+                    BulkMapRowsGroup {
+                        title: "Buttons".to_owned(),
+                        rows: button_rows,
+                        target_vjoy: target_for_groups.clone(),
+                        conflicting: button_conflicting,
+                        on_row_change: on_button_change,
+                        on_row_replace_toggle: on_button_replace,
+                        on_skip_all_conflicts: button_chip_handlers.skip_all_conflicts,
+                        on_replace_all_conflicts: button_chip_handlers.replace_all_conflicts,
+                        on_include_all: button_chip_handlers.include_all,
+                        on_exclude_all: button_chip_handlers.exclude_all,
+                    }
                 }
-                BulkMapRowsGroup {
-                    title: "Hats".to_owned(),
-                    rows: hat_rows,
-                    target_vjoy: target_for_groups,
-                    conflicting: hat_conflicting,
-                    on_row_change: on_hat_change,
-                    on_row_replace_toggle: on_hat_replace,
-                    on_skip_all_conflicts: hat_chip_handlers.skip_all_conflicts,
-                    on_replace_all_conflicts: hat_chip_handlers.replace_all_conflicts,
-                    on_include_all: hat_chip_handlers.include_all,
-                    on_exclude_all: hat_chip_handlers.exclude_all,
+                if has_hat_rows {
+                    BulkMapRowsGroup {
+                        title: "Hats".to_owned(),
+                        rows: hat_rows,
+                        target_vjoy: target_for_groups,
+                        conflicting: hat_conflicting,
+                        on_row_change: on_hat_change,
+                        on_row_replace_toggle: on_hat_replace,
+                        on_skip_all_conflicts: hat_chip_handlers.skip_all_conflicts,
+                        on_replace_all_conflicts: hat_chip_handlers.replace_all_conflicts,
+                        on_include_all: hat_chip_handlers.include_all,
+                        on_exclude_all: hat_chip_handlers.exclude_all,
+                    }
                 }
-            }
-            div { class: "if-bulk-map__summary",
-                span { class: "if-bulk-map__summary-create", "+{counts.create} create" }
-                if *apply_to_all.read() {
-                    span { class: "if-bulk-map__summary-modes", " across {modes.len()} modes" }
+                if !has_any_rows {
+                    div { role: "row", class: "if-bulk-map__table-empty",
+                        "No inputs available for this source device."
+                    }
                 }
-                span { class: "if-bulk-map__summary-sep", " / " }
-                span { class: "if-bulk-map__summary-replace", "{counts.replace} replace" }
-                span { class: "if-bulk-map__summary-sep", " / " }
-                span { class: "if-bulk-map__summary-skip", "{counts.skip} skip" }
-                span { class: "if-bulk-map__summary-sep", " / " }
-                span { class: "if-bulk-map__summary-excluded", "{counts.excluded} excluded" }
             }
             footer { class: "if-bulk-map__footer",
-                Button { onclick: move |_| panel.set(PanelSlot::None), "Cancel" }
-                Button { disabled: apply_count == 0, onclick: on_apply, "{apply_label}" }
+                div { class: "if-bulk-map__footer-info",
+                    div { class: "if-bulk-map__summary",
+                        span { class: "if-bulk-map__summary-create", "+{counts.create} create" }
+                        if *apply_to_all.read() {
+                            span { class: "if-bulk-map__summary-modes", " across {modes.len()} modes" }
+                        }
+                        span { class: "if-bulk-map__summary-sep", " / " }
+                        span { class: "if-bulk-map__summary-replace", "{counts.replace} replace" }
+                        span { class: "if-bulk-map__summary-sep", " / " }
+                        span { class: "if-bulk-map__summary-skip", "{counts.skip} skip" }
+                        span { class: "if-bulk-map__summary-sep", " / " }
+                        span { class: "if-bulk-map__summary-excluded", "{counts.excluded} excluded" }
+                    }
+                    span { class: "if-bulk-map__caption", "{snapshot_caption}" }
+                }
+                div { class: "if-bulk-map__footer-actions",
+                    if is_dirty {
+                        Button {
+                            variant: ButtonVariant::Secondary,
+                            onclick: on_reset,
+                            "Reset"
+                        }
+                    }
+                    Button { disabled: apply_count == 0, onclick: on_apply, "{apply_label}" }
+                }
             }
-            div { class: "if-bulk-map__caption", "{snapshot_caption}" }
         }
     }
 }
@@ -489,12 +499,20 @@ fn BulkMapRowsGroup(
                     }
                 }
             }
-            for row in rows.iter().cloned() {
-                BulkMapRow {
-                    row,
-                    target_vjoy: target_vjoy.clone(),
-                    on_change: on_row_change,
-                    on_replace_toggle: on_row_replace_toggle,
+            for (index, row) in rows.iter().cloned().enumerate() {
+                {
+                    let key = row_key(&row);
+                    let is_conflicting = conflicting.get(index).copied().unwrap_or(false);
+                    rsx! {
+                        BulkMapRow {
+                            key: "{key}",
+                            row,
+                            is_conflicting,
+                            target_vjoy: target_vjoy.clone(),
+                            on_change: on_row_change,
+                            on_replace_toggle: on_row_replace_toggle,
+                        }
+                    }
                 }
             }
         }
@@ -517,6 +535,7 @@ fn BulkMapGroupChip(label: String, on_click: EventHandler<()>) -> Element {
 #[component]
 fn BulkMapRow(
     row: RowState,
+    is_conflicting: bool,
     target_vjoy: Option<VirtualDeviceConfig>,
     on_change: EventHandler<(u8, Option<OutputAddress>)>,
     on_replace_toggle: EventHandler<u8>,
@@ -526,17 +545,26 @@ fn BulkMapRow(
         RowKind::Button => "B",
         RowKind::Hat => "H",
     };
-    let source_label = match row.kind {
-        RowKind::Axis => format!("Axis {}", row.source_index),
-        RowKind::Button => format!("Btn {}", row.source_index),
-        RowKind::Hat => format!("Hat {}", row.source_index),
+    let row_class = match row.kind {
+        RowKind::Axis => "if-bulk-map__row if-bulk-map__row--axis",
+        RowKind::Button => "if-bulk-map__row if-bulk-map__row--button",
+        RowKind::Hat => "if-bulk-map__row if-bulk-map__row--hat",
     };
+    let source_cell_class = match row.kind {
+        RowKind::Axis => "if-bulk-map__source-cell if-bulk-map__source-cell--axis",
+        RowKind::Button => "if-bulk-map__source-cell if-bulk-map__source-cell--button",
+        RowKind::Hat => "if-bulk-map__source-cell if-bulk-map__source-cell--hat",
+    };
+    let source_label = source_row_label(row.kind, row.source_index);
     let target_options = build_target_options(row.kind, target_vjoy.as_ref());
     let current = row
         .target
         .as_ref()
         .map_or_else(|| DO_NOT_MAP_VALUE.to_owned(), format_output_value);
-    let mut select_value = use_signal(|| current);
+    let mut select_value = use_signal(|| current.clone());
+    if select_value.peek().as_str() != current.as_str() {
+        select_value.set(current.clone());
+    }
     let id_attr = format!("bulk-map-row-{kind_letter}-{}", row.source_index);
     let on_target_change = {
         let kind = row.kind;
@@ -551,13 +579,16 @@ fn BulkMapRow(
     };
     let select_ro: ReadSignal<String> = select_value.into();
     let onclick = move |_| on_replace_toggle.call(row.source_index);
+    let show_replace = is_conflicting || row.replace;
 
     rsx! {
-        div { role: "row", class: "if-bulk-map__row",
+        div { role: "row", class: "{row_class}",
             span { role: "gridcell", class: "if-bulk-map__kind", "{kind_letter}" }
-            span { role: "gridcell", class: "if-bulk-map__source", "{source_label}" }
-            span { role: "gridcell", class: "if-bulk-map__live-cell",
-                RowReadout { kind: row.kind, address: row.input.clone() }
+            span { role: "gridcell", class: "{source_cell_class}",
+                span { class: "if-bulk-map__source", "{source_label}" }
+                span { class: "if-bulk-map__live-cell",
+                    RowReadout { kind: row.kind, address: row.input.clone() }
+                }
             }
             span { role: "gridcell", class: "if-bulk-map__target",
                 Select {
@@ -567,17 +598,19 @@ fn BulkMapRow(
                     options: target_options,
                 }
             }
-            span { role: "gridcell", class: "if-bulk-map__action",
-                button {
-                    r#type: "button",
-                    class: if row.replace {
-                        "if-bulk-map__chip if-bulk-map__chip--active"
-                    } else {
-                        "if-bulk-map__chip"
-                    },
-                    "aria-pressed": "{row.replace}",
-                    onclick,
-                    if row.replace { "replacing" } else { "replace" }
+            if show_replace {
+                span { role: "gridcell", class: "if-bulk-map__action",
+                    button {
+                        r#type: "button",
+                        class: if row.replace {
+                            "if-bulk-map__chip if-bulk-map__chip--active"
+                        } else {
+                            "if-bulk-map__chip"
+                        },
+                        "aria-pressed": "{row.replace}",
+                        onclick,
+                        if row.replace { "replacing" } else { "replace" }
+                    }
                 }
             }
         }
@@ -585,6 +618,19 @@ fn BulkMapRow(
 }
 
 const DO_NOT_MAP_VALUE: &str = "(do not map)";
+
+fn row_key(row: &RowState) -> String {
+    format!("{:?}:{:?}:{}", row.input, row.kind, row.source_index)
+}
+
+fn source_row_label(kind: RowKind, source_index: u8) -> String {
+    let display_index = u16::from(source_index) + 1;
+    match kind {
+        RowKind::Axis => format!("Axis {display_index}"),
+        RowKind::Button => format!("Button {display_index}"),
+        RowKind::Hat => format!("Hat {display_index}"),
+    }
+}
 
 fn row_change_handler(
     mut wizard: Signal<WizardState>,
@@ -769,6 +815,36 @@ fn derive_rows(
     rows
 }
 
+fn derive_rows_for_selection(
+    source_id: Option<&DeviceId>,
+    connected_devices: &[DeviceState],
+    target_id: Option<u8>,
+    virtual_devices: &[VirtualDeviceConfig],
+) -> Vec<RowState> {
+    let Some(source_id) = source_id else {
+        return Vec::new();
+    };
+    let source = connected_devices
+        .iter()
+        .find(|device| &device.info.id == source_id);
+    let target =
+        target_id.and_then(|id| virtual_devices.iter().find(|device| device.device_id == id));
+    match (source, target) {
+        (Some(source), Some(target)) => derive_rows(
+            &source.info.id,
+            source.info.axes,
+            source.info.buttons,
+            source.info.hats,
+            target,
+        ),
+        _ => Vec::new(),
+    }
+}
+
+fn rows_dirty(rows: &[RowState], baseline: &[RowState]) -> bool {
+    rows != baseline
+}
+
 fn auto_target_for(
     kind: RowKind,
     source_index: u8,
@@ -909,23 +985,5 @@ impl WizardState {
         let mut state = Self::empty(mode);
         state.rows = rows;
         state
-    }
-}
-
-#[component]
-fn BulkMapHeader(on_close: EventHandler<MouseEvent>) -> Element {
-    let onclick = move |evt| on_close.call(evt);
-    rsx! {
-        header { class: "if-bulk-map__header",
-            h2 { class: "if-bulk-map__title", "Bulk-map device" }
-            button {
-                r#type: "button",
-                class: "if-bulk-map__close",
-                "aria-label": "Close panel",
-                title: "Esc",
-                onclick,
-                "x"
-            }
-        }
     }
 }

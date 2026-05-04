@@ -38,7 +38,7 @@ pub(super) fn build_entries(
 }
 
 pub(super) fn format_snapshot_label(source_name: &str, target_id: u8) -> String {
-    format!("Before bulk-map: {source_name} to vJoy {target_id}")
+    format!("Before batch map: {source_name} to vJoy {target_id}")
 }
 
 #[cfg(test)]
@@ -155,7 +155,7 @@ mod tests {
     fn label_format_matches_spec() {
         assert_eq!(
             format_snapshot_label("FlightStick", 1),
-            "Before bulk-map: FlightStick to vJoy 1"
+            "Before batch map: FlightStick to vJoy 1"
         );
     }
 }

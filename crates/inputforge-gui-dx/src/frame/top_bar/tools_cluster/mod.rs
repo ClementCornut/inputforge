@@ -32,7 +32,6 @@ pub(crate) fn ToolsCluster() -> Element {
     let devices_active = tool_active(s, v, Tool::Devices);
     let calibration_active = tool_active(s, v, Tool::Calibration);
     let profiles_active = tool_active(s, v, Tool::Profiles);
-    let bulk_map_active = tool_active(s, v, Tool::BulkMap);
 
     rsx! {
         nav { class: "if-tools-cluster", "aria-label": "Side panels",
@@ -81,20 +80,6 @@ pub(crate) fn ToolsCluster() -> Element {
                         panel.set(PanelSlot::None);
                     } else {
                         panel.set(PanelSlot::Profiles);
-                        via.set(false);
-                    }
-                },
-            }
-            ToolButton {
-                label: "Bulk-map",
-                active: bulk_map_active,
-                disabled: !p,
-                disabled_reason: "Load a profile to bulk-map a device.",
-                onclick: move |_| {
-                    if bulk_map_active {
-                        panel.set(PanelSlot::None);
-                    } else {
-                        panel.set(PanelSlot::BulkMap);
                         via.set(false);
                     }
                 },
