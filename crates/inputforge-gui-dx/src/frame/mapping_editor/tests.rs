@@ -547,21 +547,6 @@ fn harness_with_live_and_status(
     )
 }
 
-#[test]
-fn editor_header_omits_legacy_vjoy_output_notation() {
-    let primary = axis_addr(0);
-    let state = seeded_profile_with_one_mapping(vec![Action::MapToVJoy { output: vjoy_x() }]);
-
-    let mut vdom = harness_with(state, primary);
-    vdom.rebuild_in_place();
-    let html = render(&vdom);
-
-    assert!(
-        !html.contains("if-editor__subtitle-output"),
-        "legacy header output notation should not duplicate the mapping-list output chip: {html}"
-    );
-}
-
 #[derive(Clone, Props)]
 struct LiveReadoutExpandHarnessProps {
     state: Arc<RwLock<AppState>>,
@@ -890,7 +875,7 @@ fn engine_offline_banner_visible_when_status_is_stopped() {
 }
 
 // ---------------------------------------------------------------------------
-// Task 14: editor header (h2 + subtitle source/rebind controls)
+// Task 14: editor header (h2 + subtitle with optional output arrow)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -913,9 +898,10 @@ fn editor_header_shows_name_as_h2() {
     let html = render(&vdom);
     assert!(html.contains("<h2"), "expected h2 element: {html}");
     assert!(html.contains("Yaw"), "expected mapping name: {html}");
+    // Arrow present because MapToVJoy is in the action tree.
     assert!(
-        !html.contains("if-editor__subtitle-output"),
-        "expected no legacy subtitle output notation: {html}"
+        html.contains('\u{2192}') || html.contains("&rarr;") || html.contains("&#8594;"),
+        "expected arrow when MapToVJoy present: {html}"
     );
 }
 
@@ -929,9 +915,10 @@ fn editor_header_omits_output_when_no_map_to_vjoy() {
     let mut vdom = harness_with(state, addr);
     vdom.rebuild_in_place();
     let html = render(&vdom);
+    // No arrow because no MapToVJoy.
     assert!(
-        !html.contains("if-editor__subtitle-output"),
-        "expected no subtitle output notation when no MapToVJoy: {html}"
+        !html.contains('\u{2192}') && !html.contains("&rarr;") && !html.contains("&#8594;"),
+        "expected no arrow when no MapToVJoy: {html}"
     );
 }
 
