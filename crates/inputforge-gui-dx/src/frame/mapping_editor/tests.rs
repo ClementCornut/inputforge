@@ -185,6 +185,167 @@ fn add_vjoy_device(state: &mut AppState, device_id: u8, axes: Vec<VJoyAxis>) {
     });
 }
 
+fn axis_addr(index: u8) -> InputAddress {
+    InputAddress::Bound {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index },
+    }
+}
+
+fn btn_addr(index: u8) -> InputAddress {
+    InputAddress::Bound {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Button { index },
+    }
+}
+
+fn hat_addr(index: u8) -> InputAddress {
+    InputAddress::Bound {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Hat { index },
+    }
+}
+
+fn vjoy_x() -> inputforge_core::types::OutputAddress {
+    use inputforge_core::types::{OutputAddress, OutputId};
+    OutputAddress {
+        device: 1,
+        output: OutputId::Axis { id: VJoyAxis::X },
+    }
+}
+
+fn vjoy_y() -> inputforge_core::types::OutputAddress {
+    use inputforge_core::types::{OutputAddress, OutputId};
+    OutputAddress {
+        device: 1,
+        output: OutputId::Axis { id: VJoyAxis::Y },
+    }
+}
+
+fn input_index(addr: &InputAddress) -> u8 {
+    match addr {
+        InputAddress::Bound { input, .. } => match input {
+            InputId::Axis { index } | InputId::Button { index } | InputId::Hat { index } => *index,
+        },
+        InputAddress::Unbound => 0,
+    }
+}
+
+fn count_substring(haystack: &str, needle: &str) -> usize {
+    haystack.matches(needle).count()
+}
+
+fn render_with_pipeline(
+    actions: &[Action],
+    axes: &[(InputAddress, AxisPolarity, f64)],
+    buttons: &[(InputAddress, bool)],
+    hats: &[(InputAddress, inputforge_core::types::HatDirection)],
+) -> String {
+    render_with_pipeline_and_engine(actions, axes, buttons, hats, EngineStatus::Running)
+}
+
+fn render_with_pipeline_and_engine(
+    actions: &[Action],
+    axes: &[(InputAddress, AxisPolarity, f64)],
+    buttons: &[(InputAddress, bool)],
+    hats: &[(InputAddress, inputforge_core::types::HatDirection)],
+    engine_status: EngineStatus,
+) -> String {
+    use inputforge_core::types::{AxisValue, InputValue};
+
+    let axis_count = axes
+        .iter()
+        .map(|(addr, _, _)| usize::from(input_index(addr)) + 1)
+        .max()
+        .unwrap_or(1);
+    let mut polarities = vec![AxisPolarity::Bipolar; axis_count];
+    let mut axis_values = Vec::with_capacity(axes.len());
+    for (addr, polarity, value) in axes {
+        let idx = input_index(addr);
+        polarities[usize::from(idx)] = *polarity;
+        axis_values.push((idx, *value, *polarity));
+    }
+
+    let primary = axis_addr(0);
+    let mut state =
+        seeded_profile_with_polarities_and_axes(actions.to_vec(), polarities, &axis_values);
+    if let Some(device) = state.devices.get_mut(0) {
+        device.info.buttons = buttons
+            .iter()
+            .map(|(addr, _)| input_index(addr) + 1)
+            .max()
+            .unwrap_or(0);
+        device.info.hats = hats
+            .iter()
+            .map(|(addr, _)| input_index(addr) + 1)
+            .max()
+            .unwrap_or(0);
+    }
+    for (addr, pressed) in buttons {
+        state
+            .input_cache
+            .update(addr, &InputValue::Button { pressed: *pressed });
+    }
+    for (addr, direction) in hats {
+        state.input_cache.update(
+            addr,
+            &InputValue::Hat {
+                direction: *direction,
+            },
+        );
+    }
+    add_vjoy_device(&mut state, 1, vec![VJoyAxis::X, VJoyAxis::Y]);
+
+    let mut live_axes = vec![(0.0, AxisPolarity::Bipolar); axis_count];
+    for (addr, polarity, value) in axes {
+        live_axes[usize::from(input_index(addr))] = (*value, *polarity);
+    }
+    let button_count = buttons
+        .iter()
+        .map(|(addr, _)| usize::from(input_index(addr)) + 1)
+        .max()
+        .unwrap_or(0);
+    let mut live_buttons = vec![false; button_count];
+    for (addr, pressed) in buttons {
+        live_buttons[usize::from(input_index(addr))] = *pressed;
+    }
+    let hat_count = hats
+        .iter()
+        .map(|(addr, _)| usize::from(input_index(addr)) + 1)
+        .max()
+        .unwrap_or(0);
+    let mut live_hats = vec![inputforge_core::types::HatDirection::Center; hat_count];
+    for (addr, direction) in hats {
+        live_hats[usize::from(input_index(addr))] = *direction;
+    }
+    let live = LiveSnapshot {
+        device_inputs: vec![crate::context::DeviceInputValues {
+            axes: live_axes,
+            buttons: live_buttons,
+            hats: live_hats,
+        }],
+        output_values: vec![crate::context::VjoyOutputValues {
+            axes: vec![(VJoyAxis::X, 0.0), (VJoyAxis::Y, 0.0)],
+            buttons: vec![],
+            hats: vec![],
+        }],
+    };
+
+    for (addr, polarity, value) in axes {
+        state.input_cache.update(
+            addr,
+            &InputValue::Axis {
+                value: AxisValue::new(*value),
+                polarity: *polarity,
+            },
+        );
+    }
+
+    let mut vdom = harness_with_live_and_status(state, primary, live, engine_status);
+    vdom.rebuild_in_place();
+    render(&vdom)
+}
+
 /// Props for the harness component.
 ///
 /// `AppState` is not `Clone`/`PartialEq`, so it is wrapped in
@@ -870,6 +1031,235 @@ fn editor_live_readout_merge_layout_omits_legacy_merged_in_row() {
         !html.contains("Merged"),
         "new analyzer-driven layout should move merge details out of the top-level IN rows; got: {html}"
     );
+}
+
+#[test]
+fn editor_live_readout_composite_all_predicate_renders_two_chips_and_and_combines() {
+    use inputforge_core::action::Condition;
+
+    let actions = vec![Action::Conditional {
+        condition: Condition::All {
+            conditions: vec![
+                Condition::ButtonPressed { input: btn_addr(0) },
+                Condition::ButtonPressed { input: btn_addr(1) },
+            ],
+        },
+        if_true: vec![Action::MapToVJoy { output: vjoy_x() }],
+        if_false: vec![],
+    }];
+
+    let html = render_with_pipeline(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.5)],
+        &[(btn_addr(0), true), (btn_addr(1), true)],
+        &[],
+    );
+    assert_eq!(
+        count_substring(
+            &html,
+            "if-editor__readout-chip if-editor__readout-chip--live"
+        ),
+        2
+    );
+    assert_eq!(
+        count_substring(&html, super::live_readout::FROZEN_ROW_CLASS),
+        0
+    );
+
+    let html = render_with_pipeline(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.5)],
+        &[(btn_addr(0), true), (btn_addr(1), false)],
+        &[],
+    );
+    assert_eq!(
+        count_substring(&html, super::live_readout::FROZEN_ROW_CLASS),
+        1
+    );
+}
+
+#[test]
+fn editor_live_readout_nested_conditional_inner_active_only_when_path_matches() {
+    use inputforge_core::action::Condition;
+
+    let inner = Action::Conditional {
+        condition: Condition::ButtonPressed { input: btn_addr(1) },
+        if_true: vec![Action::MapToVJoy { output: vjoy_x() }],
+        if_false: vec![Action::MapToVJoy { output: vjoy_y() }],
+    };
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed { input: btn_addr(0) },
+        if_true: vec![inner],
+        if_false: vec![],
+    }];
+
+    let html = render_with_pipeline(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.5)],
+        &[(btn_addr(0), true), (btn_addr(1), true)],
+        &[],
+    );
+    assert!(html.contains("X axis"));
+    assert!(html.contains("Y axis"));
+    assert_eq!(
+        count_substring(&html, super::live_readout::FROZEN_ROW_CLASS),
+        1
+    );
+
+    let html = render_with_pipeline(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.5)],
+        &[(btn_addr(0), false), (btn_addr(1), true)],
+        &[],
+    );
+    assert_eq!(
+        count_substring(&html, super::live_readout::FROZEN_ROW_CLASS),
+        2
+    );
+}
+
+#[test]
+fn editor_live_readout_engine_stopped_with_multi_out_freezes_all_rows() {
+    use inputforge_core::action::Condition;
+
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed { input: btn_addr(0) },
+        if_true: vec![Action::MapToVJoy { output: vjoy_x() }],
+        if_false: vec![Action::MapToVJoy { output: vjoy_y() }],
+    }];
+    let html = render_with_pipeline_and_engine(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.5)],
+        &[(btn_addr(0), true)],
+        &[],
+        EngineStatus::Stopped,
+    );
+
+    assert_eq!(
+        count_substring(&html, "if-editor__readout-row-wrap--frozen"),
+        2
+    );
+}
+
+#[test]
+fn editor_live_readout_hat_direction_predicate_chip_glyphs() {
+    use inputforge_core::action::Condition;
+    use inputforge_core::types::HatDirection;
+
+    let actions = vec![Action::Conditional {
+        condition: Condition::HatDirection {
+            input: hat_addr(0),
+            directions: vec![HatDirection::N, HatDirection::NE],
+        },
+        if_true: vec![Action::MapToVJoy { output: vjoy_x() }],
+        if_false: vec![],
+    }];
+    let html = render_with_pipeline(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.0)],
+        &[],
+        &[(hat_addr(0), HatDirection::N)],
+    );
+
+    assert!(html.contains("\u{2191}"));
+    assert!(html.contains("\u{2197}"));
+    assert!(html.contains("if-editor__readout-chip--live"));
+}
+
+#[test]
+fn editor_live_readout_button_released_chip_suffix_and_inverted_dot() {
+    use inputforge_core::action::Condition;
+
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonReleased { input: btn_addr(0) },
+        if_true: vec![Action::MapToVJoy { output: vjoy_x() }],
+        if_false: vec![],
+    }];
+    let html = render_with_pipeline(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.0)],
+        &[(btn_addr(0), false)],
+        &[],
+    );
+    assert!(html.contains("(released)"));
+    assert!(html.contains("if-editor__readout-chip--live"));
+
+    let html = render_with_pipeline(
+        &actions,
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.0)],
+        &[(btn_addr(0), true)],
+        &[],
+    );
+    assert!(html.contains("(released)"));
+    assert!(html.contains("if-editor__readout-chip-dot--hollow"));
+}
+
+#[test]
+fn editor_live_readout_per_output_polarity_disagreement() {
+    use inputforge_core::action::Condition;
+    use inputforge_core::types::MergeOp;
+
+    let actions = vec![Action::Conditional {
+        condition: Condition::ButtonPressed { input: btn_addr(0) },
+        if_true: vec![
+            Action::MergeAxis {
+                second_input: axis_addr(1),
+                operation: MergeOp::Bidirectional,
+            },
+            Action::MapToVJoy { output: vjoy_x() },
+        ],
+        if_false: vec![Action::MapToVJoy { output: vjoy_y() }],
+    }];
+    let html = render_with_pipeline(
+        &actions,
+        &[
+            (axis_addr(0), AxisPolarity::Unipolar, -0.5),
+            (axis_addr(1), AxisPolarity::Unipolar, -0.5),
+        ],
+        &[(btn_addr(0), true)],
+        &[],
+    );
+    let bipolar_count = count_substring(&html, "if-editor__readout-bar--bipolar");
+    assert!(bipolar_count >= 1);
+    let non_bipolar_bars = count_substring(&html, "if-editor__readout-bar") - bipolar_count;
+    assert!(non_bipolar_bars >= 1);
+}
+
+#[test]
+fn editor_live_readout_axis_in_range_chip_live_dot_when_in_range() {
+    use inputforge_core::action::Condition;
+
+    let actions = vec![Action::Conditional {
+        condition: Condition::AxisInRange {
+            input: axis_addr(1),
+            min: 0.20,
+            max: 0.80,
+        },
+        if_true: vec![Action::MapToVJoy { output: vjoy_x() }],
+        if_false: vec![],
+    }];
+    let html = render_with_pipeline(
+        &actions,
+        &[
+            (axis_addr(0), AxisPolarity::Bipolar, 0.0),
+            (axis_addr(1), AxisPolarity::Bipolar, 0.5),
+        ],
+        &[],
+        &[],
+    );
+    assert!(html.contains("[0.20..0.80]"));
+    assert!(html.contains("if-editor__readout-chip--live"));
+
+    let html = render_with_pipeline(
+        &actions,
+        &[
+            (axis_addr(0), AxisPolarity::Bipolar, 0.0),
+            (axis_addr(1), AxisPolarity::Bipolar, -0.3),
+        ],
+        &[],
+        &[],
+    );
+    assert!(html.contains("if-editor__readout-chip-dot--hollow"));
 }
 
 /// Unipolar primary, no merge, with `MapToVJoy`. The OUT row should
