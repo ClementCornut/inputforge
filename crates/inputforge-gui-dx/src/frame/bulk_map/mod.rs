@@ -27,6 +27,9 @@ use crate::components::{Button, Checkbox, Field, Select};
 use crate::context::AppContext;
 use crate::frame::bulk_map::auto_map::{auto_axis_target, auto_button_target, auto_hat_target};
 use crate::frame::bulk_map::empty_state::NoVjoyEmptyState;
+use crate::frame::bulk_map::group_actions::{
+    show_exclude_all, show_include_all, show_replace_all_conflicts, show_skip_all_conflicts,
+};
 use crate::frame::bulk_map::row_readout::RowReadout;
 use crate::frame::bulk_map::state::{RowKind, RowState, WizardState};
 use crate::frame::view_state::{PanelSlot, ViewState};
@@ -261,6 +264,41 @@ fn BulkMapReadyPanel() -> Element {
     let on_axis_replace = row_replace_handler(wizard, RowKind::Axis);
     let on_button_replace = row_replace_handler(wizard, RowKind::Button);
     let on_hat_replace = row_replace_handler(wizard, RowKind::Hat);
+    let current_mode = wizard.peek().mode.clone();
+    let (axis_conflicting, button_conflicting, hat_conflicting) = {
+        let state = ctx.state.read();
+        if let Some(profile) = state.active_profile.as_ref() {
+            (
+                row_conflicts(&axis_rows, profile, &current_mode),
+                row_conflicts(&button_rows, profile, &current_mode),
+                row_conflicts(&hat_rows, profile, &current_mode),
+            )
+        } else {
+            (
+                vec![false; axis_rows.len()],
+                vec![false; button_rows.len()],
+                vec![false; hat_rows.len()],
+            )
+        }
+    };
+    let axis_chip_handlers = group_chip_handlers(
+        wizard,
+        RowKind::Axis,
+        target_for_groups.clone(),
+        conflicting_indices(&axis_rows, &axis_conflicting),
+    );
+    let button_chip_handlers = group_chip_handlers(
+        wizard,
+        RowKind::Button,
+        target_for_groups.clone(),
+        conflicting_indices(&button_rows, &button_conflicting),
+    );
+    let hat_chip_handlers = group_chip_handlers(
+        wizard,
+        RowKind::Hat,
+        target_for_groups.clone(),
+        conflicting_indices(&hat_rows, &hat_conflicting),
+    );
 
     rsx! {
         section { class: "if-bulk-map", "aria-label": "Bulk-map device wizard",
@@ -308,22 +346,37 @@ fn BulkMapReadyPanel() -> Element {
                     title: "Axes".to_owned(),
                     rows: axis_rows,
                     target_vjoy: target_for_groups.clone(),
+                    conflicting: axis_conflicting,
                     on_row_change: on_axis_change,
                     on_row_replace_toggle: on_axis_replace,
+                    on_skip_all_conflicts: axis_chip_handlers.skip_all_conflicts,
+                    on_replace_all_conflicts: axis_chip_handlers.replace_all_conflicts,
+                    on_include_all: axis_chip_handlers.include_all,
+                    on_exclude_all: axis_chip_handlers.exclude_all,
                 }
                 BulkMapRowsGroup {
                     title: "Buttons".to_owned(),
                     rows: button_rows,
                     target_vjoy: target_for_groups.clone(),
+                    conflicting: button_conflicting,
                     on_row_change: on_button_change,
                     on_row_replace_toggle: on_button_replace,
+                    on_skip_all_conflicts: button_chip_handlers.skip_all_conflicts,
+                    on_replace_all_conflicts: button_chip_handlers.replace_all_conflicts,
+                    on_include_all: button_chip_handlers.include_all,
+                    on_exclude_all: button_chip_handlers.exclude_all,
                 }
                 BulkMapRowsGroup {
                     title: "Hats".to_owned(),
                     rows: hat_rows,
                     target_vjoy: target_for_groups,
+                    conflicting: hat_conflicting,
                     on_row_change: on_hat_change,
                     on_row_replace_toggle: on_hat_replace,
+                    on_skip_all_conflicts: hat_chip_handlers.skip_all_conflicts,
+                    on_replace_all_conflicts: hat_chip_handlers.replace_all_conflicts,
+                    on_include_all: hat_chip_handlers.include_all,
+                    on_exclude_all: hat_chip_handlers.exclude_all,
                 }
             }
             div { class: "if-bulk-map__summary" }
@@ -341,13 +394,48 @@ fn BulkMapRowsGroup(
     title: String,
     rows: Vec<RowState>,
     target_vjoy: Option<VirtualDeviceConfig>,
+    conflicting: Vec<bool>,
     on_row_change: EventHandler<(u8, Option<OutputAddress>)>,
     on_row_replace_toggle: EventHandler<u8>,
+    on_skip_all_conflicts: EventHandler<()>,
+    on_replace_all_conflicts: EventHandler<()>,
+    on_include_all: EventHandler<()>,
+    on_exclude_all: EventHandler<()>,
 ) -> Element {
+    let row_refs = rows.iter().collect::<Vec<_>>();
+    let render_skip = show_skip_all_conflicts(&row_refs, &conflicting);
+    let render_replace = show_replace_all_conflicts(&row_refs, &conflicting);
+    let render_include = show_include_all(&row_refs);
+    let render_exclude = show_exclude_all(&row_refs);
+
     rsx! {
         div { role: "rowgroup", class: "if-bulk-map__group",
             div { role: "row", class: "if-bulk-map__group-header",
-                "{title} ({rows.len()})"
+                span { class: "if-bulk-map__group-title", "{title} ({rows.len()})" }
+                if render_skip {
+                    BulkMapGroupChip {
+                        label: "skip all conflicts".to_owned(),
+                        on_click: on_skip_all_conflicts,
+                    }
+                }
+                if render_replace {
+                    BulkMapGroupChip {
+                        label: "replace all conflicts".to_owned(),
+                        on_click: on_replace_all_conflicts,
+                    }
+                }
+                if render_include {
+                    BulkMapGroupChip {
+                        label: "include all".to_owned(),
+                        on_click: on_include_all,
+                    }
+                }
+                if render_exclude {
+                    BulkMapGroupChip {
+                        label: "exclude all".to_owned(),
+                        on_click: on_exclude_all,
+                    }
+                }
             }
             for row in rows.iter().cloned() {
                 BulkMapRow {
@@ -357,6 +445,19 @@ fn BulkMapRowsGroup(
                     on_replace_toggle: on_row_replace_toggle,
                 }
             }
+        }
+    }
+}
+
+#[component]
+fn BulkMapGroupChip(label: String, on_click: EventHandler<()>) -> Element {
+    let onclick = move |_| on_click.call(());
+    rsx! {
+        button {
+            r#type: "button",
+            class: "if-bulk-map__chip",
+            onclick,
+            "{label}"
         }
     }
 }
@@ -462,6 +563,105 @@ fn row_replace_handler(mut wizard: Signal<WizardState>, kind: RowKind) -> EventH
     })
 }
 
+struct GroupChipHandlers {
+    skip_all_conflicts: EventHandler<()>,
+    replace_all_conflicts: EventHandler<()>,
+    include_all: EventHandler<()>,
+    exclude_all: EventHandler<()>,
+}
+
+fn group_chip_handlers(
+    wizard: Signal<WizardState>,
+    kind: RowKind,
+    target: Option<VirtualDeviceConfig>,
+    conflicting_indices: Vec<u8>,
+) -> GroupChipHandlers {
+    GroupChipHandlers {
+        skip_all_conflicts: set_conflict_replace_handler(
+            wizard,
+            kind,
+            conflicting_indices.clone(),
+            false,
+        ),
+        replace_all_conflicts: set_conflict_replace_handler(
+            wizard,
+            kind,
+            conflicting_indices,
+            true,
+        ),
+        include_all: include_all_handler(wizard, kind, target),
+        exclude_all: exclude_all_handler(wizard, kind),
+    }
+}
+
+fn row_conflicts(
+    rows: &[RowState],
+    profile: &inputforge_core::profile::Profile,
+    mode: &str,
+) -> Vec<bool> {
+    rows.iter()
+        .map(|row| conflicts::existing_name_for(profile, &row.input, mode).is_some())
+        .collect()
+}
+
+fn conflicting_indices(rows: &[RowState], conflicting: &[bool]) -> Vec<u8> {
+    rows.iter()
+        .zip(conflicting.iter())
+        .filter_map(|(row, &is_conflicting)| is_conflicting.then_some(row.source_index))
+        .collect()
+}
+
+fn set_conflict_replace_handler(
+    mut wizard: Signal<WizardState>,
+    kind: RowKind,
+    conflicting_indices: Vec<u8>,
+    replace: bool,
+) -> EventHandler<()> {
+    EventHandler::new(move |()| {
+        for row in wizard
+            .write()
+            .rows
+            .iter_mut()
+            .filter(|row| row.kind == kind && conflicting_indices.contains(&row.source_index))
+        {
+            row.replace = replace;
+        }
+    })
+}
+
+fn include_all_handler(
+    mut wizard: Signal<WizardState>,
+    kind: RowKind,
+    target: Option<VirtualDeviceConfig>,
+) -> EventHandler<()> {
+    EventHandler::new(move |()| {
+        let Some(target) = target.as_ref() else {
+            return;
+        };
+        for row in wizard
+            .write()
+            .rows
+            .iter_mut()
+            .filter(|row| row.kind == kind && row.target.is_none())
+        {
+            row.target = auto_target_for(row.kind, row.source_index, target);
+        }
+    })
+}
+
+fn exclude_all_handler(mut wizard: Signal<WizardState>, kind: RowKind) -> EventHandler<()> {
+    EventHandler::new(move |()| {
+        for row in wizard
+            .write()
+            .rows
+            .iter_mut()
+            .filter(|row| row.kind == kind)
+        {
+            row.target = None;
+        }
+    })
+}
+
 fn derive_rows(
     source_id: &DeviceId,
     axes_count: u8,
@@ -507,6 +707,18 @@ fn derive_rows(
         });
     }
     rows
+}
+
+fn auto_target_for(
+    kind: RowKind,
+    source_index: u8,
+    target: &VirtualDeviceConfig,
+) -> Option<OutputAddress> {
+    match kind {
+        RowKind::Axis => auto_axis_target(target, usize::from(source_index)),
+        RowKind::Button => auto_button_target(target, usize::from(source_index)),
+        RowKind::Hat => auto_hat_target(target, usize::from(source_index)),
+    }
 }
 
 fn build_target_options(

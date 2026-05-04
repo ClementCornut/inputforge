@@ -13,12 +13,15 @@ use dioxus::prelude::*;
 use dioxus_ssr::render;
 use parking_lot::RwLock;
 
+use inputforge_core::action::Action;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::mode::ModeTree;
 use inputforge_core::profile::Profile;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, DeviceState};
-use inputforge_core::types::{AxisPolarity, DeviceId, DeviceInfo, VJoyAxis, VirtualDeviceConfig};
+use inputforge_core::types::{
+    AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, VJoyAxis, VirtualDeviceConfig,
+};
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
 use crate::frame::bulk_map::BulkMapPanel;
@@ -264,5 +267,88 @@ fn panel_replace_chip_renders_aria_pressed_false_by_default() {
     assert!(
         html.contains(r#"aria-pressed="false""#),
         "replace chip default: {html}"
+    );
+}
+
+#[test]
+fn panel_axes_group_shows_replace_all_chip_when_axis_conflict_exists() {
+    fn TestComponent() -> Element {
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let mut profile = Profile::new(
+            "T".to_owned(),
+            vec![],
+            modes,
+            vec![],
+            vec![],
+            "Default".to_owned(),
+        );
+        let collide_input = InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        profile.set_mapping(
+            &collide_input,
+            "Default",
+            Some("Throttle".to_owned()),
+            vec![Action::Invert],
+        );
+        let mut state = AppState::with_profile(profile);
+        state.devices.push(one_device_state());
+        state.virtual_devices.push(one_vjoy());
+        let _ = provide(state);
+        rsx! { BulkMapPanel {} }
+    }
+
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(
+        html.contains("replace all conflicts"),
+        "chip must render on Axes group: {html}"
+    );
+}
+
+#[test]
+fn panel_buttons_group_omits_replace_all_chip_when_no_button_conflict() {
+    let html = render_panel(Scenario::Full);
+    let buttons_section = html.split("Buttons (").nth(1).unwrap_or("");
+    let to_next_group = buttons_section.split("Hats (").next().unwrap_or("");
+
+    assert!(
+        !to_next_group.contains("replace all conflicts"),
+        "no chip on clean group: {html}"
+    );
+}
+
+#[test]
+fn panel_axes_group_shows_include_all_chip_when_a_row_is_do_not_map() {
+    fn TestComponent() -> Element {
+        let mut state = seeded_state(true);
+        if let Some(vjoy) = state.virtual_devices.first_mut() {
+            vjoy.axes = vec![VJoyAxis::X, VJoyAxis::Y, VJoyAxis::Z];
+        }
+        let _ = provide(state);
+        rsx! { BulkMapPanel {} }
+    }
+
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(
+        html.contains("include all"),
+        "chip must render when at least one row is unmapped: {html}"
+    );
+}
+
+#[test]
+fn panel_axes_group_shows_exclude_all_chip_when_at_least_one_row_has_target() {
+    let html = render_panel(Scenario::Full);
+
+    assert!(
+        html.contains("exclude all"),
+        "exclude-all chip must render when rows have targets: {html}"
     );
 }
