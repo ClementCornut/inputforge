@@ -21,8 +21,10 @@ mod predicate;
 mod value_helpers;
 
 use in_block::InBlock;
+pub(crate) use inputforge_core::types::AxisPolarity;
 pub(crate) use out_block::ExpandState;
 use out_block::{DividerStrip, OutBlock};
+pub(crate) use value_helpers::{read_axis_display, read_button_pressed, read_hat_direction};
 
 /// CSS modifier class applied to readout rows whose value is held.
 pub(super) const FROZEN_ROW_CLASS: &str = "if-editor__readout-row--frozen";

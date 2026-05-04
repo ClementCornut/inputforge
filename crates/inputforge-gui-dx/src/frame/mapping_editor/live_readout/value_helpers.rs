@@ -7,7 +7,8 @@
 
 use inputforge_core::processing::into_natural_domain;
 use inputforge_core::types::{
-    AxisPolarity, InputAddress, InputId, InputValue, MergeOp, OutputAddress, OutputId, VJoyAxis,
+    AxisPolarity, HatDirection, InputAddress, InputId, InputValue, MergeOp, OutputAddress,
+    OutputId, VJoyAxis,
 };
 
 use crate::context::{ConfigSnapshot, LiveSnapshot};
@@ -18,7 +19,7 @@ use crate::context::{ConfigSnapshot, LiveSnapshot};
 /// - `Bipolar`: `[-1.0, 1.0]`, where 0 is centered.
 /// - `Unipolar`: `[0.0, 1.0]`, where 0 is idle and 1 is fully pressed.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub(super) struct AxisDisplay {
+pub(crate) struct AxisDisplay {
     pub value: f64,
     pub polarity: AxisPolarity,
 }
@@ -27,7 +28,7 @@ pub(super) struct AxisDisplay {
 ///
 /// Falls back to `(0.0, Bipolar)` when the device or axis index is not
 /// present in the snapshot.
-pub(super) fn read_axis_display(
+pub(crate) fn read_axis_display(
     addr: &InputAddress,
     live: &LiveSnapshot,
     cfg: &ConfigSnapshot,
@@ -55,6 +56,50 @@ pub(super) fn read_axis_display(
         value: 0.0,
         polarity: AxisPolarity::Bipolar,
     }
+}
+
+/// Read whether the button at `addr` is currently pressed.
+///
+/// Returns `false` when the address is not a button, or when the device
+/// or input index is absent from the live snapshot.
+pub(crate) fn read_button_pressed(
+    addr: &InputAddress,
+    live: &LiveSnapshot,
+    cfg: &ConfigSnapshot,
+) -> bool {
+    let Some(InputId::Button { index }) = addr.input_id() else {
+        return false;
+    };
+    let dev_idx = cfg
+        .devices
+        .iter()
+        .position(|d| Some(&d.info.id) == addr.device());
+    dev_idx
+        .and_then(|di| live.device_inputs.get(di))
+        .and_then(|dev_inputs| dev_inputs.buttons.get(usize::from(*index)).copied())
+        .unwrap_or(false)
+}
+
+/// Read the hat direction at `addr` from the live snapshot.
+///
+/// Returns `Center` when the address is not a hat, or when the device
+/// or input index is absent from the live snapshot.
+pub(crate) fn read_hat_direction(
+    addr: &InputAddress,
+    live: &LiveSnapshot,
+    cfg: &ConfigSnapshot,
+) -> HatDirection {
+    let Some(InputId::Hat { index }) = addr.input_id() else {
+        return HatDirection::Center;
+    };
+    let dev_idx = cfg
+        .devices
+        .iter()
+        .position(|d| Some(&d.info.id) == addr.device());
+    dev_idx
+        .and_then(|di| live.device_inputs.get(di))
+        .and_then(|dev_inputs| dev_inputs.hats.get(usize::from(*index)).copied())
+        .unwrap_or(HatDirection::Center)
 }
 
 /// Read the engine output value for `out` from the live snapshot.
@@ -122,8 +167,8 @@ pub(super) fn read_output_hat(
     _out: &OutputAddress,
     _live: &LiveSnapshot,
     _cfg: &ConfigSnapshot,
-) -> inputforge_core::types::HatDirection {
-    inputforge_core::types::HatDirection::Center
+) -> HatDirection {
+    HatDirection::Center
 }
 
 /// Extract a scalar f64 from any `InputValue`.
