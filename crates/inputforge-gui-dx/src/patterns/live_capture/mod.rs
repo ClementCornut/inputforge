@@ -35,6 +35,23 @@ pub(crate) enum CaptureFilter {
     ButtonsOnly,
 }
 
+pub(crate) const CAPTURE_PROMPT: &str = "Press an input\u{2026}";
+
+pub(crate) fn is_current_capture_session(owned_session: Option<u64>, current_session: u64) -> bool {
+    owned_session == Some(current_session)
+}
+
+pub(crate) fn rebind_composite_class(input: &InputAddress, is_listening: bool) -> &'static str {
+    match (is_listening, input.is_unbound()) {
+        (true, true) => {
+            "if-rebind-composite if-rebind-composite--listening if-rebind-composite--unbound"
+        }
+        (true, false) => "if-rebind-composite if-rebind-composite--listening",
+        (false, true) => "if-rebind-composite if-rebind-composite--unbound",
+        (false, false) => "if-rebind-composite",
+    }
+}
+
 /// Public handle exposed via context. `Copy` (every field is `Signal`
 /// or `Callback`, both `Copy` in Dioxus 0.7+) so consumers do
 /// `use_context::<LiveCapture>()` without an explicit clone.
@@ -45,6 +62,7 @@ pub(crate) enum CaptureFilter {
 )]
 pub(crate) struct LiveCapture {
     pub active: Signal<bool>,
+    pub session: Signal<u64>,
     pub captured: Signal<Option<InputAddress>>,
     pub start: Callback<CaptureFilter>,
     pub cancel: Callback<()>,
@@ -62,6 +80,7 @@ pub(crate) struct LiveCapture {
 )]
 pub(crate) fn use_live_capture_provider() -> LiveCapture {
     let active: Signal<bool> = use_signal(|| false);
+    let session: Signal<u64> = use_signal(|| 0);
     let captured: Signal<Option<InputAddress>> = use_signal(|| None);
     let core_state: Signal<CoreState> = use_signal(CoreState::default);
 
@@ -77,6 +96,9 @@ pub(crate) fn use_live_capture_provider() -> LiveCapture {
         });
         let mut cap = captured;
         cap.set(None);
+        let mut session_signal = session;
+        let next_session = session_signal.peek().wrapping_add(1);
+        session_signal.set(next_session);
         let mut a = active;
         a.set(true);
         tracing::debug!(target: "f8::live_capture", ?filter, "capture armed");
@@ -193,6 +215,7 @@ pub(crate) fn use_live_capture_provider() -> LiveCapture {
 
     let live = LiveCapture {
         active,
+        session,
         captured,
         start,
         cancel,

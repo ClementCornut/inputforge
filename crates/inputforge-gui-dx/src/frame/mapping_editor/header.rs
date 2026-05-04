@@ -33,7 +33,9 @@ use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, UndoKind, format_undo_label};
 use crate::frame::mapping_list::source_label;
 use crate::frame::view_state::ViewState;
-use crate::patterns::live_capture::{CaptureFilter, LiveCapture};
+use crate::patterns::live_capture::{
+    CAPTURE_PROMPT, CaptureFilter, LiveCapture, is_current_capture_session, rebind_composite_class,
+};
 
 #[component]
 #[allow(
@@ -61,23 +63,23 @@ pub(crate) fn Header(
     // Local UI state.
     let mut armed: Signal<bool> = use_signal(|| false);
     let mut local_name: Signal<String> = use_signal(|| name.clone());
-    // Disambiguates "we armed this capture" from another consumer's capture
-    // (e.g. MergeAxis secondary picker). Without it the captured-signal effect
-    // would fire for every consumer's capture.
-    let mut is_armed_consumer: Signal<bool> = use_signal(|| false);
+    // Disambiguates "we armed this capture" from another consumer's capture.
+    // Stores the LiveCapture session this header owns; a newer session means
+    // another surface superseded us while `capture.active` can remain true.
+    let mut armed_session: Signal<Option<u64>> = use_signal(|| None);
 
     // Cancel any in-flight rebind capture when the user switches mappings.
     //
     // Subscribe to `view.selected_mapping` (the change source) so the effect
     // re-fires when the user picks a different mapping in the rail. Use
-    // `peek()` for `is_armed_consumer` so arming the flag in `on_rebind`
+    // `peek()` for `armed_session` so arming in `on_rebind`
     // does NOT trigger this effect to cancel itself.
     let selected_for_cancel = view.selected_mapping;
     use_effect(move || {
         let _selected = selected_for_cancel.read();
-        if *is_armed_consumer.peek() {
+        if armed_session.peek().is_some() {
             capture.cancel.call(());
-            is_armed_consumer.set(false);
+            armed_session.set(None);
         }
     });
 
@@ -85,8 +87,8 @@ pub(crate) fn Header(
     // armed consumer, dispatch `SetMapping` then push a `Rebind` undo entry.
     //
     // Subscribe to `capture.captured` (the change source). Read
-    // `is_armed_consumer` via `peek()` so the dispatch path's
-    // `is_armed_consumer.set(false)` cleanup does not retrigger the effect.
+    // `armed_session` via `peek()` so the dispatch path's cleanup does not
+    // retrigger the effect.
     let mapping_key_for_capture = mapping_key.clone();
     let actions_for_capture = actions.clone();
     let name_for_capture = Some(name.clone());
@@ -96,7 +98,7 @@ pub(crate) fn Header(
 
     use_effect(move || {
         let captured_addr = capture.captured.read().clone();
-        if !*is_armed_consumer.peek() {
+        if !is_current_capture_session(*armed_session.peek(), *capture.session.peek()) {
             return;
         }
         let Some(new_addr) = captured_addr else {
@@ -110,7 +112,7 @@ pub(crate) fn Header(
         // same-name skip. Clearing `captured` and the consumer flag keeps
         // the listening UI from sticking around.
         if new_addr == old_addr {
-            is_armed_consumer.set(false);
+            armed_session.set(None);
             let mut cap = capture.captured;
             cap.set(None);
             return;
@@ -142,7 +144,7 @@ pub(crate) fn Header(
                 action = "rebind_drop_offline",
                 "rebind dropped: engine channel disconnected"
             );
-            is_armed_consumer.set(false);
+            armed_session.set(None);
             capture.cancel.call(());
             return;
         }
@@ -167,7 +169,7 @@ pub(crate) fn Header(
             "mapping rebound"
         );
 
-        is_armed_consumer.set(false);
+        armed_session.set(None);
         let mut cap = capture.captured;
         cap.set(None);
     });
@@ -190,16 +192,8 @@ pub(crate) fn Header(
     // `PredicateInputRow`: applied to both the idle and listening branches
     // so the class doesn't flicker if the user opens, then cancels, a
     // rebind on an Unbound row.
-    let composite_class = if input.is_unbound() {
-        "if-rebind-composite if-rebind-composite--unbound"
-    } else {
-        "if-rebind-composite"
-    };
-    let listening_class = if input.is_unbound() {
-        "if-rebind-composite if-rebind-composite--listening if-rebind-composite--unbound"
-    } else {
-        "if-rebind-composite if-rebind-composite--listening"
-    };
+    let composite_class = rebind_composite_class(&input, false);
+    let listening_class = rebind_composite_class(&input, true);
 
     // ----- Display-mode handlers (h2) -----
 
@@ -310,22 +304,23 @@ pub(crate) fn Header(
         local_name.set(evt.value());
     };
 
-    // External-cancel watcher: when `cap.active` flips false while we were
-    // armed and nothing was captured, reset `is_armed_consumer` so the
-    // listening UI clears. Triggered by F8's document-level Esc listener
-    // or by another consumer claiming capture. Mirrors the equivalent
-    // watcher in `mapping_list/add_inline.rs`.
+    // External-cancel / supersede watcher. `active=false` handles Esc/cancel;
+    // `session` mismatch handles another capture surface starting while the
+    // global capture remains active.
     use_effect(move || {
-        if *capture.active.read() {
-            return;
-        }
-        if !*is_armed_consumer.peek() {
+        let active_now = *capture.active.read();
+        let current_session = *capture.session.read();
+        let owned_session = *armed_session.peek();
+        if owned_session.is_none() {
             return;
         }
         if capture.captured.peek().is_some() {
             return;
         }
-        is_armed_consumer.set(false);
+        if active_now && is_current_capture_session(owned_session, current_session) {
+            return;
+        }
+        armed_session.set(None);
     });
 
     // Rebind button: arm `LiveCapture::Any`. Set the consumer flag BEFORE
@@ -333,8 +328,8 @@ pub(crate) fn Header(
     // flag is true (effects run synchronously in SSR and on the next
     // microtask tick in the browser).
     let on_rebind = move |_: MouseEvent| {
-        is_armed_consumer.set(true);
         capture.start.call(CaptureFilter::Any);
+        armed_session.set(Some(*capture.session.peek()));
     };
 
     // Cancel button (visible only while armed): drop the capture and clear
@@ -342,8 +337,11 @@ pub(crate) fn Header(
     // mouse path.
     let on_cancel_rebind = move |_: MouseEvent| {
         capture.cancel.call(());
-        is_armed_consumer.set(false);
+        armed_session.set(None);
     };
+
+    let is_rebind_listening =
+        is_current_capture_session(*armed_session.read(), *capture.session.read());
 
     rsx! {
         div { class: "if-editor__header",
@@ -383,13 +381,13 @@ pub(crate) fn Header(
                 }
             }
             div { class: "if-editor__subtitle",
-                if *is_armed_consumer.read() {
+                if is_rebind_listening {
                     div { class: "{listening_class}",
                         span {
                             class: "if-rebind-composite__listening",
                             role: "status",
                             "aria-live": "polite",
-                            "Press an input\u{2026}"
+                            "{CAPTURE_PROMPT}"
                         }
                         button {
                             class: "if-rebind-composite__action",

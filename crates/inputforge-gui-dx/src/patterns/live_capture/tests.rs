@@ -5,8 +5,8 @@ use inputforge_core::types::{
     AxisPolarity, AxisValue, DeviceId, InputAddress, InputId, InputValue,
 };
 
-use super::CaptureFilter;
 use super::machine::{AXIS_DEADBAND, CoreState, DEBOUNCE_MS, LiveCaptureCore};
+use super::{CAPTURE_PROMPT, CaptureFilter, is_current_capture_session, rebind_composite_class};
 
 fn axis_addr(index: u8) -> InputAddress {
     InputAddress::Bound {
@@ -254,6 +254,26 @@ fn multi_axis_tie_first_encountered_wins() {
     );
 }
 
+#[test]
+fn capture_prompt_matches_shared_binding_ui_copy() {
+    assert_eq!(CAPTURE_PROMPT, "Press an input\u{2026}");
+}
+
+#[test]
+fn stale_session_is_not_current_capture_owner() {
+    assert!(is_current_capture_session(Some(2), 2));
+    assert!(!is_current_capture_session(Some(1), 2));
+    assert!(!is_current_capture_session(None, 2));
+}
+
+#[test]
+fn rebind_composite_class_combines_listening_and_unbound_modifiers() {
+    let class = rebind_composite_class(&InputAddress::Unbound, true);
+
+    assert!(class.contains("if-rebind-composite--listening"));
+    assert!(class.contains("if-rebind-composite--unbound"));
+}
+
 #[cfg(test)]
 mod hook_tests {
     use std::sync::{Arc, mpsc};
@@ -295,7 +315,8 @@ mod hook_tests {
             } else {
                 "ACTIVE_FALSE"
             };
-            rsx! { div { "{armed_marker}" } }
+            let session = *cap.session.read();
+            rsx! { div { "{armed_marker} SESSION:{session}" } }
         }
 
         let mut vdom = VirtualDom::new(TestComponent);
@@ -304,6 +325,10 @@ mod hook_tests {
         assert!(
             html.contains("ACTIVE_FALSE"),
             "fresh hook must initialize active=false; got: {html}",
+        );
+        assert!(
+            html.contains("SESSION:0"),
+            "fresh hook must initialize session=0; got: {html}",
         );
     }
 
@@ -328,6 +353,62 @@ mod hook_tests {
         assert!(
             html.contains("ARMED"),
             "start.call() must set active=true; got: {html}"
+        );
+    }
+
+    #[test]
+    fn start_callback_advances_session() {
+        #[allow(
+            non_snake_case,
+            reason = "Dioxus components are PascalCase by convention"
+        )]
+        fn TestComponent() -> Element {
+            provide_stub_app_context();
+            let cap = use_live_capture_provider();
+            use_hook(|| cap.start.call(CaptureFilter::Any));
+            let session = *cap.session.read();
+            rsx! { div { "SESSION:{session}" } }
+        }
+
+        let mut vdom = VirtualDom::new(TestComponent);
+        vdom.rebuild_in_place();
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert!(
+            html.contains("SESSION:1"),
+            "first start.call() must advance session to 1; got: {html}"
+        );
+    }
+
+    #[test]
+    fn second_start_while_active_advances_session_without_deactivating() {
+        #[allow(
+            non_snake_case,
+            reason = "Dioxus components are PascalCase by convention"
+        )]
+        fn TestComponent() -> Element {
+            provide_stub_app_context();
+            let cap = use_live_capture_provider();
+            use_hook(|| {
+                cap.start.call(CaptureFilter::Any);
+                cap.start.call(CaptureFilter::AxesOnly);
+            });
+            let marker = if *cap.active.read() { "ARMED" } else { "IDLE" };
+            let session = *cap.session.read();
+            rsx! { div { "{marker} SESSION:{session}" } }
+        }
+
+        let mut vdom = VirtualDom::new(TestComponent);
+        vdom.rebuild_in_place();
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert!(
+            html.contains("ARMED"),
+            "second start.call() must keep capture active; got: {html}"
+        );
+        assert!(
+            html.contains("SESSION:2"),
+            "second start.call() must advance session to 2; got: {html}"
         );
     }
 }

@@ -40,7 +40,7 @@
 //!
 //! 1. Name preservation: current name read from `cfg.mapping_names`.
 //! 2. Dispatch-before-undo: `push_edit` called only after `cmd.send` succeeds.
-//! 3. `is_armed_consumer` consumer-flag pattern (same as `MergeAxisBody`).
+//! 3. `LiveCapture.session` ownership pattern (same as `MergeAxisBody`).
 //! 4. Malformed-hint write for `AxisInRange` (min > max), `HatDirection`
 //!    (empty directions), `All` / `Any` (zero conditions).
 
@@ -59,7 +59,9 @@ use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::pipeline::replace_at_path;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 use crate::frame::mapping_list::source_label;
-use crate::patterns::live_capture::{CaptureFilter, LiveCapture};
+use crate::patterns::live_capture::{
+    CAPTURE_PROMPT, CaptureFilter, LiveCapture, is_current_capture_session, rebind_composite_class,
+};
 
 // ---------------------------------------------------------------------------
 // Kind string constants -- stable keys shared between picker and parser.
@@ -268,8 +270,8 @@ fn commit_condition(
 /// Renders the shared `if-rebind-composite` cluster (same primitive used by
 /// the editor header subtitle and the `MergeAxis` Secondary input row) so the
 /// rebind affordance reads identically across all three call sites. Follows
-/// the consumer-flag pattern from `MergeAxisBody`: `is_armed_consumer`
-/// ensures only the component that armed `LiveCapture` reacts when it fires.
+/// the session-ownership pattern from `MergeAxisBody`: the row only reacts
+/// when its stored `LiveCapture.session` still matches the current session.
 #[component]
 #[allow(
     unused_qualifications,
@@ -285,13 +287,13 @@ fn PredicateInputRow(
     let capture = use_context::<LiveCapture>();
     let ctx = use_context::<AppContext>();
 
-    let mut is_armed_consumer: Signal<bool> = use_signal(|| false);
+    let mut armed_session: Signal<Option<u64>> = use_signal(|| None);
 
     // Watch `capture.captured`: when we armed it, forward the new address.
     let input_for_effect = input.clone();
     use_effect(move || {
         let captured_addr = capture.captured.read().clone();
-        if !*is_armed_consumer.read() {
+        if !is_current_capture_session(*armed_session.peek(), *capture.session.peek()) {
             return;
         }
         let Some(new_addr) = captured_addr else {
@@ -299,7 +301,7 @@ fn PredicateInputRow(
         };
 
         // Disarm before calling the handler to prevent self-fire on re-render.
-        is_armed_consumer.set(false);
+        armed_session.set(None);
         let mut cap = capture.captured;
         cap.set(None);
 
@@ -311,22 +313,23 @@ fn PredicateInputRow(
         on_input_change.call(new_addr);
     });
 
-    // External-cancel watcher: when capture goes inactive without producing
-    // a captured value (F8's document-level Esc listener, or another
-    // consumer claiming capture), reset our consumer flag so the listening
-    // composite collapses back to the default state. Mirrors the equivalent
-    // watcher in `header.rs`.
+    // External-cancel / supersede watcher. `active=false` handles Esc/cancel;
+    // `session` mismatch handles another capture surface starting while the
+    // global capture remains active.
     use_effect(move || {
-        if *capture.active.read() {
-            return;
-        }
-        if !*is_armed_consumer.peek() {
+        let active_now = *capture.active.read();
+        let current_session = *capture.session.read();
+        let owned_session = *armed_session.peek();
+        if owned_session.is_none() {
             return;
         }
         if capture.captured.peek().is_some() {
             return;
         }
-        is_armed_consumer.set(false);
+        if active_now && is_current_capture_session(owned_session, current_session) {
+            return;
+        }
+        armed_session.set(None);
     });
 
     let source = source_label::format(&input, &ctx.config.read());
@@ -340,38 +343,30 @@ fn PredicateInputRow(
     // CSS rule only styles `__label` (idle branch), so the modifier is
     // inert in the listening state, but keeping it here means a future
     // rule keyed on `--unbound .__listening` would Just Work.
-    let composite_class = if input.is_unbound() {
-        "if-rebind-composite if-rebind-composite--unbound"
-    } else {
-        "if-rebind-composite"
-    };
-    let listening_class = if input.is_unbound() {
-        "if-rebind-composite if-rebind-composite--listening if-rebind-composite--unbound"
-    } else {
-        "if-rebind-composite if-rebind-composite--listening"
-    };
+    let composite_class = rebind_composite_class(&input, false);
+    let listening_class = rebind_composite_class(&input, true);
 
     let on_rebind = move |_: MouseEvent| {
-        // Set the consumer flag before calling `start` so the captured effect
-        // cannot fire before the flag is true.
-        is_armed_consumer.set(true);
         capture.start.call(CaptureFilter::Any);
+        armed_session.set(Some(*capture.session.peek()));
     };
 
     let on_cancel = move |_: MouseEvent| {
         capture.cancel.call(());
-        is_armed_consumer.set(false);
+        armed_session.set(None);
     };
+
+    let is_listening = is_current_capture_session(*armed_session.read(), *capture.session.read());
 
     rsx! {
         div { class: "if-predicate__input-row",
-            if *is_armed_consumer.read() {
+            if is_listening {
                 div { class: "{listening_class}",
                     span {
                         class: "if-rebind-composite__listening",
                         role: "status",
                         "aria-live": "polite",
-                        "Press an input\u{2026}"
+                        "{CAPTURE_PROMPT}"
                     }
                     button {
                         class: "if-rebind-composite__action",
