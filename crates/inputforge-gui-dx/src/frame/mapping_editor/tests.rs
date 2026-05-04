@@ -824,16 +824,9 @@ fn editor_live_readout_renders_out_when_map_to_vjoy_present() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// F9 follow-up: live readout polarity inference for merge results
-// ---------------------------------------------------------------------------
-
-/// Rudder-pedals scenario: two unipolar pedals merged via Bidirectional.
-/// Both at idle (encoded -1, -1); diff = 0 (centered bipolar).
-/// Expected: IN row formats `+0.00` (bipolar with sign), bar centered.
 #[test]
-fn editor_live_readout_bidirectional_uu_idle_renders_centered_bipolar_in() {
-    use inputforge_core::types::MergeOp;
+fn editor_live_readout_merge_layout_omits_legacy_merged_in_row() {
+    use inputforge_core::types::{MergeOp, OutputAddress, OutputId};
 
     let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
@@ -843,218 +836,19 @@ fn editor_live_readout_bidirectional_uu_idle_renders_centered_bipolar_in() {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 1 },
     };
-    let actions = vec![Action::MergeAxis {
-        second_input: secondary,
-        operation: MergeOp::Bidirectional,
-    }];
-    let state = seeded_profile_with_polarities_and_axes(
-        actions,
-        vec![AxisPolarity::Unipolar, AxisPolarity::Unipolar],
-        &[
-            (0, -1.0, AxisPolarity::Unipolar),
-            (1, -1.0, AxisPolarity::Unipolar),
-        ],
-    );
-    let live = live_snapshot_with_axes(vec![
-        (-1.0, AxisPolarity::Unipolar),
-        (-1.0, AxisPolarity::Unipolar),
-    ]);
-    let mut vdom = harness_with_live(state, primary, live);
-    vdom.rebuild_in_place();
-    let html = render(&vdom);
-    // The merged IN row inherits Bidirectional's Bipolar output polarity,
-    // so the format includes a sign prefix and reads exactly `+0.00`.
-    assert!(
-        html.contains("+0.00"),
-        "expected merged IN to render +0.00 for UU idle Bidirectional; got: {html}"
-    );
-    // IN 2 row inherits Unipolar; format omits the sign and reads `0.00`.
-    assert!(
-        html.contains(">IN 2<") || html.contains(">IN 2 "),
-        "expected IN 2 row label; got: {html}"
-    );
-    // Bipolar bars at center: width 0%, anchored at the 50% midline.
-    // The merged-IN row at idle should hit this exact style.
-    assert!(
-        html.contains("left: 50%; right: auto; width: 0%"),
-        "expected merged IN bar centered (0% width, 50% anchor); got: {html}"
-    );
-}
-
-/// Rudder UU Bidirectional, one pedal half-pressed: the user-reported
-/// bug case. Encoded inputs (0, -1); natural (0.5, 0); diff = 0.5.
-/// Merged IN row inherits Bipolar polarity and reads `+0.50`. Bar
-/// grows rightward to half its half-width: `width: 25%`, anchored at
-/// the 50% midline.
-///
-/// Pre-fix the encoded subtraction returned 1.0, rendering `+1.00`
-/// (full bar) when only one pedal was at half-press.
-#[test]
-fn editor_live_readout_bidirectional_uu_half_press_renders_half_deflection() {
-    use inputforge_core::types::MergeOp;
-
-    let primary = InputAddress::Bound {
-        device: DeviceId("dev-1".to_owned()),
-        input: InputId::Axis { index: 0 },
-    };
-    let secondary = InputAddress::Bound {
-        device: DeviceId("dev-1".to_owned()),
-        input: InputId::Axis { index: 1 },
-    };
-    let actions = vec![Action::MergeAxis {
-        second_input: secondary,
-        operation: MergeOp::Bidirectional,
-    }];
-    let state = seeded_profile_with_polarities_and_axes(
-        actions,
-        vec![AxisPolarity::Unipolar, AxisPolarity::Unipolar],
-        &[
-            (0, 0.0, AxisPolarity::Unipolar),
-            (1, -1.0, AxisPolarity::Unipolar),
-        ],
-    );
-    let live = live_snapshot_with_axes(vec![
-        (0.0, AxisPolarity::Unipolar),
-        (-1.0, AxisPolarity::Unipolar),
-    ]);
-    let mut vdom = harness_with_live(state, primary, live);
-    vdom.rebuild_in_place();
-    let html = render(&vdom);
-    // Merged IN reads bipolar +0.50, NOT +1.00.
-    assert!(
-        html.contains("+0.50"),
-        "expected merged IN +0.50 for half-press Bidirectional; got: {html}"
-    );
-    assert!(
-        !html.contains("+1.00"),
-        "merged IN must not render +1.00 for half-press; got: {html}"
-    );
-    // Bipolar bar grows from 50% midline rightward; visual maximum is
-    // half the container, so 50% deflection -> width: 25%.
-    assert!(
-        html.contains("left: 50%; right: auto; width: 25%"),
-        "expected merged IN bar at half-deflection (width: 25%, 50% anchor); got: {html}"
-    );
-}
-
-/// Average of two unipolar pedals at idle (encoded -1, -1).
-/// Expected: IN row inherits Unipolar polarity (per truth table); the
-/// natural-domain remap turns encoded -1 into displayed 0.00 with no
-/// sign prefix, and the bar is empty (anchored at left, zero width).
-#[test]
-fn editor_live_readout_average_uu_idle_renders_empty_unipolar_in() {
-    use inputforge_core::types::MergeOp;
-
-    let primary = InputAddress::Bound {
-        device: DeviceId("dev-1".to_owned()),
-        input: InputId::Axis { index: 0 },
-    };
-    let secondary = InputAddress::Bound {
-        device: DeviceId("dev-1".to_owned()),
-        input: InputId::Axis { index: 1 },
-    };
-    let actions = vec![Action::MergeAxis {
-        second_input: secondary,
-        operation: MergeOp::Average,
-    }];
-    let state = seeded_profile_with_polarities_and_axes(
-        actions,
-        vec![AxisPolarity::Unipolar, AxisPolarity::Unipolar],
-        &[
-            (0, -1.0, AxisPolarity::Unipolar),
-            (1, -1.0, AxisPolarity::Unipolar),
-        ],
-    );
-    let live = live_snapshot_with_axes(vec![
-        (-1.0, AxisPolarity::Unipolar),
-        (-1.0, AxisPolarity::Unipolar),
-    ]);
-    let mut vdom = harness_with_live(state, primary, live);
-    vdom.rebuild_in_place();
-    let html = render(&vdom);
-    // Unipolar format omits the sign. `0.00` (no leading +) appears for
-    // both per-input rows AND the merged IN row.
-    assert!(
-        !html.contains("+0.00"),
-        "no bipolar `+0.00` should appear for Average UU idle; got: {html}"
-    );
-    assert!(
-        html.contains("0.00"),
-        "expected unipolar `0.00` somewhere in the readout; got: {html}"
-    );
-    // The merged IN row's bar has `width: 0%` (empty), grown from the
-    // left edge.
-    assert!(
-        html.contains("left: 0; right: auto; width: 0%"),
-        "expected empty unipolar IN bar; got: {html}"
-    );
-}
-
-/// Average of two unipolar pedals fully pressed (encoded 1, 1).
-/// Expected: IN row Unipolar with natural value 1.0, format `1.00`,
-/// bar at full width.
-#[test]
-fn editor_live_readout_average_uu_full_press_renders_full_unipolar_in() {
-    use inputforge_core::types::MergeOp;
-
-    let primary = InputAddress::Bound {
-        device: DeviceId("dev-1".to_owned()),
-        input: InputId::Axis { index: 0 },
-    };
-    let secondary = InputAddress::Bound {
-        device: DeviceId("dev-1".to_owned()),
-        input: InputId::Axis { index: 1 },
-    };
-    let actions = vec![Action::MergeAxis {
-        second_input: secondary,
-        operation: MergeOp::Average,
-    }];
-    let state = seeded_profile_with_polarities_and_axes(
-        actions,
-        vec![AxisPolarity::Unipolar, AxisPolarity::Unipolar],
-        &[
-            (0, 1.0, AxisPolarity::Unipolar),
-            (1, 1.0, AxisPolarity::Unipolar),
-        ],
-    );
-    let live = live_snapshot_with_axes(vec![
-        (1.0, AxisPolarity::Unipolar),
-        (1.0, AxisPolarity::Unipolar),
-    ]);
-    let mut vdom = harness_with_live(state, primary, live);
-    vdom.rebuild_in_place();
-    let html = render(&vdom);
-    assert!(
-        html.contains("1.00"),
-        "expected `1.00` (Unipolar full press); got: {html}"
-    );
-    assert!(
-        html.contains("left: 0; right: auto; width: 100%"),
-        "expected full unipolar IN bar; got: {html}"
-    );
-}
-
-/// Bipolar+Bipolar Average regression: behavior must not change when
-/// both inputs are Bipolar. Anchors the "no regression" promise from
-/// the plan's acceptance criteria.
-#[test]
-fn editor_live_readout_average_bb_renders_bipolar_unchanged() {
-    use inputforge_core::types::MergeOp;
-
-    let primary = InputAddress::Bound {
-        device: DeviceId("dev-1".to_owned()),
-        input: InputId::Axis { index: 0 },
-    };
-    let secondary = InputAddress::Bound {
-        device: DeviceId("dev-1".to_owned()),
-        input: InputId::Axis { index: 1 },
-    };
-    let actions = vec![Action::MergeAxis {
-        second_input: secondary,
-        operation: MergeOp::Average,
-    }];
-    // Primary at +0.5, secondary at -0.5. Average = 0.0 (bipolar center).
-    let state = seeded_profile_with_polarities_and_axes(
+    let actions = vec![
+        Action::MergeAxis {
+            second_input: secondary,
+            operation: MergeOp::Average,
+        },
+        Action::MapToVJoy {
+            output: OutputAddress {
+                device: 1,
+                output: OutputId::Axis { id: VJoyAxis::X },
+            },
+        },
+    ];
+    let mut state = seeded_profile_with_polarities_and_axes(
         actions,
         vec![AxisPolarity::Bipolar, AxisPolarity::Bipolar],
         &[
@@ -1062,26 +856,19 @@ fn editor_live_readout_average_bb_renders_bipolar_unchanged() {
             (1, -0.5, AxisPolarity::Bipolar),
         ],
     );
-    let live = live_snapshot_with_axes(vec![
-        (0.5, AxisPolarity::Bipolar),
-        (-0.5, AxisPolarity::Bipolar),
-    ]);
+    add_vjoy_device(&mut state, 1, vec![VJoyAxis::X]);
+    let live = live_snapshot_with_axes_and_outputs(
+        vec![(0.5, AxisPolarity::Bipolar), (-0.5, AxisPolarity::Bipolar)],
+        vec![(VJoyAxis::X, 0.0)],
+    );
+
     let mut vdom = harness_with_live(state, primary, live);
     vdom.rebuild_in_place();
     let html = render(&vdom);
-    // Merged IN should be Bipolar (sign prefix) and read `+0.00`.
+
     assert!(
-        html.contains("+0.00"),
-        "expected bipolar `+0.00` for BB Average regression; got: {html}"
-    );
-    // Per-input rows show `+0.50` and `-0.50` (Bipolar formatting).
-    assert!(
-        html.contains("+0.50"),
-        "expected primary `+0.50` per-input; got: {html}"
-    );
-    assert!(
-        html.contains("-0.50"),
-        "expected secondary `-0.50` per-input; got: {html}"
+        !html.contains("Merged"),
+        "new analyzer-driven layout should move merge details out of the top-level IN rows; got: {html}"
     );
 }
 

@@ -174,20 +174,6 @@ pub(super) fn ReadoutRow(
     }
 }
 
-/// Section divider with an inline label.
-///
-/// Renders as a single grid cell that spans the full row and contains
-/// dashed lines on either side of a small uppercase label, marking the
-/// transition between the input section and the merged-or-output section.
-#[component]
-pub(super) fn ReadoutDivider(label: String) -> Element {
-    rsx! {
-        div { class: "if-editor__readout-divider",
-            span { class: "if-editor__readout-divider-label", "{label}" }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
