@@ -20,7 +20,8 @@ use inputforge_core::profile::Profile;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, DeviceState};
 use inputforge_core::types::{
-    AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, VJoyAxis, VirtualDeviceConfig,
+    AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis,
+    VirtualDeviceConfig,
 };
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
@@ -351,4 +352,145 @@ fn panel_axes_group_shows_exclude_all_chip_when_at_least_one_row_has_target() {
         html.contains("exclude all"),
         "exclude-all chip must render when rows have targets: {html}"
     );
+}
+
+#[test]
+fn panel_apply_button_renders_count_when_no_conflicts() {
+    let html = render_panel(Scenario::Full);
+
+    assert!(html.contains("Apply 13 mappings"), "Apply label: {html}");
+}
+
+#[test]
+fn panel_summary_chip_counts_match_row_states() {
+    let html = render_panel(Scenario::Full);
+
+    assert!(html.contains("+13 create"), "create count: {html}");
+}
+
+#[test]
+fn panel_summary_includes_across_n_modes_when_apply_to_all_checked() {
+    fn TestComponent() -> Element {
+        let map = HashMap::from([("Default".to_owned(), vec!["Combat".to_owned()])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let profile = Profile::new(
+            "T".to_owned(),
+            vec![],
+            modes,
+            vec![],
+            vec![],
+            "Default".to_owned(),
+        );
+        let mut state = AppState::with_profile(profile);
+        state.devices.push(one_device_state());
+        state.virtual_devices.push(one_vjoy());
+        let (mut ctx, _) = provide(state);
+        ctx.meta.write().modes = vec!["Default".to_owned(), "Combat".to_owned()];
+        rsx! { BulkMapPanel {} }
+    }
+
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(html.contains("Default"), "default mode option: {html}");
+    assert!(html.contains("Combat"), "combat mode option: {html}");
+}
+
+#[test]
+fn panel_do_not_map_target_excludes_row_from_apply_count() {
+    use crate::frame::bulk_map::{
+        apply_for_test,
+        state::{RowKind, RowState, WizardState},
+    };
+
+    let map = HashMap::from([("Default".to_owned(), vec![])]);
+    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let profile = Profile::new(
+        "T".to_owned(),
+        vec![],
+        modes,
+        vec![],
+        vec![],
+        "Default".to_owned(),
+    );
+    let state = AppState::with_profile(profile);
+    let row = RowState {
+        kind: RowKind::Axis,
+        source_index: 0,
+        input: InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        },
+        target: None,
+        replace: false,
+    };
+    let wizard = WizardState::with_seed_rows(vec![row], "Default".to_owned());
+    let (tx, rx) = mpsc::channel();
+
+    apply_for_test(&state, &wizard, &["Default".to_owned()], &tx);
+
+    let cmd = rx
+        .try_recv()
+        .expect("dispatch must always send a command, even if entries empty");
+    match cmd {
+        EngineCommand::SetMappingsBulk { entries, .. } => {
+            assert!(
+                entries.is_empty(),
+                "do-not-map row must not produce an entry"
+            );
+        }
+        _ => panic!("expected SetMappingsBulk"),
+    }
+}
+
+#[test]
+fn panel_apply_for_test_dispatches_set_mappings_bulk_with_snapshot_label() {
+    use crate::frame::bulk_map::{
+        apply_for_test,
+        state::{RowKind, RowState, WizardState},
+    };
+
+    let map = HashMap::from([("Default".to_owned(), vec![])]);
+    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let profile = Profile::new(
+        "T".to_owned(),
+        vec![],
+        modes,
+        vec![],
+        vec![],
+        "Default".to_owned(),
+    );
+    let state = AppState::with_profile(profile);
+    let row = RowState {
+        kind: RowKind::Axis,
+        source_index: 0,
+        input: InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        },
+        target: Some(OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        }),
+        replace: false,
+    };
+    let mut wizard = WizardState::with_seed_rows(vec![row], "Default".to_owned());
+    wizard.source_device_id = Some(DeviceId("dev-1".to_owned()));
+    wizard.target_vjoy_id = Some(1);
+    let (tx, rx) = mpsc::channel();
+
+    apply_for_test(&state, &wizard, &["Default".to_owned()], &tx);
+
+    let cmd = rx.try_recv().expect("dispatch arrives");
+    match cmd {
+        EngineCommand::SetMappingsBulk {
+            entries,
+            snapshot_label,
+        } => {
+            assert_eq!(entries.len(), 1);
+            assert_eq!(snapshot_label, "Before bulk-map: dev-1 to vJoy 1");
+        }
+        _ => panic!("expected SetMappingsBulk"),
+    }
 }

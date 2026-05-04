@@ -1,11 +1,6 @@
 //! F-bulk-map: side-panel bulk mapping wizard. See
 //! `docs/superpowers/specs/2026-05-03-bulk-mapping-design.md`.
 
-#![allow(
-    dead_code,
-    reason = "Module wired progressively across tasks 9 to 18; allow removed in 18d."
-)]
-
 mod apply;
 mod auto_map;
 mod conflicts;
@@ -19,6 +14,7 @@ mod summary;
 mod tests;
 
 use dioxus::prelude::*;
+use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{
     DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis, VirtualDeviceConfig,
 };
@@ -33,6 +29,7 @@ use crate::frame::bulk_map::group_actions::{
 use crate::frame::bulk_map::row_readout::RowReadout;
 use crate::frame::bulk_map::state::{RowKind, RowState, WizardState};
 use crate::frame::view_state::{PanelSlot, ViewState};
+use crate::toast::{ToastLevel, ToastQueue};
 
 const BULK_MAP_CSS: Asset = asset!("/assets/frame/bulk_map.css");
 
@@ -88,6 +85,7 @@ pub(crate) fn BulkMapPanel() -> Element {
 fn BulkMapReadyPanel() -> Element {
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
+    let toast = use_context::<ToastQueue>();
     let mut panel = view.panel_slot;
 
     let connected_devices = {
@@ -299,6 +297,49 @@ fn BulkMapReadyPanel() -> Element {
         target_for_groups.clone(),
         conflicting_indices(&hat_rows, &hat_conflicting),
     );
+    let active_modes = if *apply_to_all.read() {
+        modes.clone()
+    } else {
+        vec![wizard.read().mode.clone()]
+    };
+    let counts = {
+        let state = ctx.state.read();
+        let profile = state
+            .active_profile
+            .as_ref()
+            .expect("no-profile guard at top of component covers this path");
+        summary::tally(profile, &wizard.read().rows, &active_modes)
+    };
+    let apply_count = counts.create + counts.replace;
+    let apply_label = format!("Apply {apply_count} mappings");
+    let on_apply = {
+        let cmd_tx = ctx.commands.clone();
+        let ctx = ctx.clone();
+        let mut panel = panel;
+        let active_modes = active_modes.clone();
+        move |_| {
+            let state = wizard.peek().clone();
+            let entries = {
+                let app_state = ctx.state.read();
+                let profile = app_state.active_profile.as_ref().expect("profile loaded");
+                apply::build_entries(profile, &state.rows, &active_modes)
+            };
+            let count = entries.len();
+            let snapshot_label = apply::format_snapshot_label(
+                state
+                    .source_device_id
+                    .as_ref()
+                    .map_or("source", |device| device.0.as_str()),
+                state.target_vjoy_id.unwrap_or(0),
+            );
+            let _ = cmd_tx.send(EngineCommand::SetMappingsBulk {
+                entries,
+                snapshot_label,
+            });
+            toast.push(ToastLevel::Success, format!("Created {count} mappings"));
+            panel.set(PanelSlot::None);
+        }
+    };
 
     rsx! {
         section { class: "if-bulk-map", "aria-label": "Bulk-map device wizard",
@@ -379,10 +420,21 @@ fn BulkMapReadyPanel() -> Element {
                     on_exclude_all: hat_chip_handlers.exclude_all,
                 }
             }
-            div { class: "if-bulk-map__summary" }
+            div { class: "if-bulk-map__summary",
+                span { class: "if-bulk-map__summary-create", "+{counts.create} create" }
+                if *apply_to_all.read() {
+                    span { class: "if-bulk-map__summary-modes", " across {modes.len()} modes" }
+                }
+                span { class: "if-bulk-map__summary-sep", " / " }
+                span { class: "if-bulk-map__summary-replace", "{counts.replace} replace" }
+                span { class: "if-bulk-map__summary-sep", " / " }
+                span { class: "if-bulk-map__summary-skip", "{counts.skip} skip" }
+                span { class: "if-bulk-map__summary-sep", " / " }
+                span { class: "if-bulk-map__summary-excluded", "{counts.excluded} excluded" }
+            }
             footer { class: "if-bulk-map__footer",
                 Button { onclick: move |_| panel.set(PanelSlot::None), "Cancel" }
-                Button { disabled: true, onclick: move |_| {}, "Apply" }
+                Button { disabled: apply_count == 0, onclick: on_apply, "{apply_label}" }
             }
             div { class: "if-bulk-map__caption", "{snapshot_caption}" }
         }
@@ -600,7 +652,15 @@ fn row_conflicts(
     mode: &str,
 ) -> Vec<bool> {
     rows.iter()
-        .map(|row| conflicts::existing_name_for(profile, &row.input, mode).is_some())
+        .map(|row| {
+            let modes = [mode.to_owned()];
+            let is_conflicting = conflicts::existing_name_for(profile, &row.input, mode).is_some();
+            debug_assert_eq!(
+                is_conflicting,
+                !conflicts::conflicting_modes(profile, &row.input, &modes).is_empty()
+            );
+            is_conflicting
+        })
         .collect()
 }
 
@@ -818,6 +878,37 @@ fn parse_axis(value: &str) -> Option<VJoyAxis> {
         "Slider0" => Some(VJoyAxis::Slider0),
         "Slider1" => Some(VJoyAxis::Slider1),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+fn apply_for_test(
+    state: &inputforge_core::state::AppState,
+    wizard: &WizardState,
+    modes: &[String],
+    command_tx: &std::sync::mpsc::Sender<EngineCommand>,
+) {
+    let profile = state.active_profile.as_ref().expect("profile loaded");
+    let entries = apply::build_entries(profile, &wizard.rows, modes);
+    let snapshot_label = apply::format_snapshot_label(
+        wizard
+            .source_device_id
+            .as_ref()
+            .map_or("source", |device| device.0.as_str()),
+        wizard.target_vjoy_id.unwrap_or(0),
+    );
+    let _ = command_tx.send(EngineCommand::SetMappingsBulk {
+        entries,
+        snapshot_label,
+    });
+}
+
+#[cfg(test)]
+impl WizardState {
+    fn with_seed_rows(rows: Vec<RowState>, mode: String) -> Self {
+        let mut state = Self::empty(mode);
+        state.rows = rows;
+        state
     }
 }
 
