@@ -4,9 +4,10 @@
 //! rows. vJoy hats and keyboard combos use destination-specific rows
 //! that preserve the surrounding section structure.
 
+use std::rc::Rc;
+
 use dioxus::prelude::*;
 
-use inputforge_core::state::EngineStatus;
 use inputforge_core::types::{AxisPolarity, HatDirection, OutputId};
 
 use crate::context::AppContext;
@@ -22,21 +23,47 @@ const READOUT_SECTION_CLASS: &str = "if-editor__readout-section";
 const READOUT_SECTION_LABEL_CLASS: &str = "if-editor__readout-section-label";
 const READOUT_GROUP_CLASS: &str = "if-editor__readout-group";
 
+/// Per-readout expand state for output chains.
+///
+/// `per_output` is index-aligned with `LiveReadoutModel::outputs`.
+/// `expand_all` acts as a global override for every output row.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(super) struct ExpandState {
+    pub expand_all: bool,
+    pub per_output: Vec<bool>,
+}
+
+impl ExpandState {
+    /// Return whether the output at `idx` is currently expanded.
+    pub(super) fn is_expanded(&self, idx: usize) -> bool {
+        self.expand_all || self.per_output.get(idx).copied().unwrap_or(false)
+    }
+}
+
 /// High-level OUT side of the live readout.
 #[component]
-pub(super) fn OutBlock(model: LiveReadoutModel) -> Element {
+pub(super) fn OutBlock(
+    model: LiveReadoutModel,
+    expand_state: Signal<ExpandState>,
+    engine_running: bool,
+) -> Element {
     if model.outputs.is_empty() {
         return rsx! {};
     }
+    let outputs: Vec<Rc<OutputDescriptor>> =
+        model.outputs.iter().map(|d| Rc::new(d.clone())).collect();
 
     rsx! {
         div { class: "{READOUT_SECTION_CLASS}",
             div { class: "{READOUT_SECTION_LABEL_CLASS}", "OUT" }
             div { class: "{READOUT_GROUP_CLASS}",
-                for (idx, descriptor) in model.outputs.iter().cloned().enumerate() {
+                for (idx, descriptor) in outputs.iter().cloned().enumerate() {
                     OutRow {
                         key: "output-{idx}",
                         descriptor,
+                        idx,
+                        expand_state,
+                        engine_running,
                     }
                 }
             }
@@ -46,12 +73,19 @@ pub(super) fn OutBlock(model: LiveReadoutModel) -> Element {
 
 /// Render one OUT row for an analyzed terminal destination.
 #[component]
-pub(super) fn OutRow(descriptor: OutputDescriptor) -> Element {
+pub(super) fn OutRow(
+    descriptor: Rc<OutputDescriptor>,
+    idx: usize,
+    expand_state: Signal<ExpandState>,
+    engine_running: bool,
+) -> Element {
     let ctx = use_context::<AppContext>();
-    let engine_running = matches!(ctx.meta.read().engine_status, EngineStatus::Running);
     let frozen = !engine_running || !descriptor.is_active;
+    let has_chain = !descriptor.chain.is_empty();
+    let expanded = expand_state.read().is_expanded(idx);
+    let chevron_text = chevron_label(expanded);
 
-    match &descriptor.destination {
+    let value_cell = match &descriptor.destination {
         OutputDestination::VJoy(out) => match out.output {
             OutputId::Axis { .. } => {
                 let live = ctx.live.read();
@@ -120,7 +154,96 @@ pub(super) fn OutRow(descriptor: OutputDescriptor) -> Element {
                 }
             }
         }
+    };
+
+    let chevron = if has_chain {
+        let onclick = move |_| {
+            expand_state.with_mut(|s| {
+                toggle_output_expanded(s, idx);
+            });
+        };
+        rsx! {
+            button {
+                class: "if-editor__readout-chevron",
+                "type": "button",
+                onclick,
+                "{chevron_text}"
+            }
+        }
+    } else {
+        rsx! { div { class: "if-editor__readout-chevron-spacer" } }
+    };
+
+    let chain_block = if expanded && has_chain {
+        rsx! { super::out_chain::OutChain { descriptor: descriptor.as_ref().clone() } }
+    } else {
+        rsx! {}
+    };
+    let row_wrap_class = row_wrap_class(frozen);
+
+    rsx! {
+        div { class: "{row_wrap_class}",
+            {value_cell}
+            {chevron}
+            {chain_block}
+        }
     }
+}
+
+/// Divider strip between IN and OUT sections.
+#[component]
+pub(super) fn DividerStrip(model: LiveReadoutModel, expand_state: Signal<ExpandState>) -> Element {
+    let any_expandable = model.outputs.iter().any(|o| !o.chain.is_empty());
+    let outputs_len = model.outputs.len();
+    let expanded_now = expand_state.read().expand_all;
+    let button_text = if expanded_now {
+        "collapse all"
+    } else {
+        "expand all"
+    };
+    let onclick = move |_| {
+        expand_state.with_mut(|s| {
+            set_all_expanded(s, outputs_len, !s.expand_all);
+        });
+    };
+
+    rsx! {
+        div { class: "if-editor__readout-divider",
+            span { class: "if-editor__readout-divider-spacer" }
+            if any_expandable {
+                button {
+                    class: "if-editor__readout-expand-all",
+                    "type": "button",
+                    onclick,
+                    "{button_text}"
+                }
+            }
+        }
+    }
+}
+
+fn toggle_output_expanded(state: &mut ExpandState, idx: usize) {
+    if state.per_output.len() <= idx {
+        state.per_output.resize(idx + 1, false);
+    }
+    state.per_output[idx] = !state.per_output[idx];
+}
+
+fn set_all_expanded(state: &mut ExpandState, outputs_len: usize, expanded: bool) {
+    state.expand_all = expanded;
+    state.per_output = vec![expanded; outputs_len];
+}
+
+fn row_wrap_class(frozen: bool) -> &'static str {
+    if frozen {
+        "if-editor__readout-row-wrap if-editor__readout-row-wrap--frozen"
+    } else {
+        "if-editor__readout-row-wrap"
+    }
+}
+
+fn chevron_label(expanded: bool) -> &'static str {
+    if expanded { "\u{25be}" } else { "\u{25b8}" }
 }
 
 fn hat_row_class(frozen: bool) -> &'static str {
@@ -208,5 +331,67 @@ mod tests {
             keyboard_chip_class(true),
             "if-editor__readout-kb-chip if-editor__readout-kb-chip--idle"
         );
+    }
+
+    #[test]
+    fn expand_state_applies_global_override_and_per_output_state() {
+        let mut state = ExpandState {
+            expand_all: false,
+            per_output: vec![false, true],
+        };
+
+        assert!(!state.is_expanded(0));
+        assert!(state.is_expanded(1));
+        assert!(!state.is_expanded(2));
+
+        state.expand_all = true;
+
+        assert!(state.is_expanded(0));
+        assert!(state.is_expanded(1));
+        assert!(state.is_expanded(2));
+    }
+
+    #[test]
+    fn toggle_output_expanded_resizes_and_flips_one_index() {
+        let mut state = ExpandState::default();
+
+        toggle_output_expanded(&mut state, 2);
+
+        assert_eq!(state.per_output, vec![false, false, true]);
+        assert!(state.is_expanded(2));
+
+        toggle_output_expanded(&mut state, 2);
+
+        assert_eq!(state.per_output, vec![false, false, false]);
+        assert!(!state.is_expanded(2));
+    }
+
+    #[test]
+    fn set_all_expanded_syncs_global_and_per_output_state() {
+        let mut state = ExpandState {
+            expand_all: false,
+            per_output: vec![true],
+        };
+
+        set_all_expanded(&mut state, 3, true);
+
+        assert!(state.expand_all);
+        assert_eq!(state.per_output, vec![true, true, true]);
+
+        set_all_expanded(&mut state, 2, false);
+
+        assert!(!state.expand_all);
+        assert_eq!(state.per_output, vec![false, false]);
+    }
+
+    #[test]
+    fn row_wrap_class_and_chevron_label_track_state() {
+        assert_eq!(row_wrap_class(false), "if-editor__readout-row-wrap");
+        assert_eq!(
+            row_wrap_class(true),
+            "if-editor__readout-row-wrap if-editor__readout-row-wrap--frozen"
+        );
+        assert_eq!(chevron_label(false), "\u{25b8}");
+        assert_eq!(chevron_label(true), "\u{25be}");
     }
 }
