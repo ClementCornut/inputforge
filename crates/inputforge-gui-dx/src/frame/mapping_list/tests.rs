@@ -271,7 +271,11 @@ fn row_renders_name_and_source_line() {
     vdom.rebuild_in_place();
     let html = render(&vdom);
     assert!(html.contains("Boost"), "name must render: {html}");
-    assert!(html.contains("Btn 1"), "source line must render: {html}");
+    assert!(html.contains("dev"), "source device must render: {html}");
+    assert!(
+        !html.contains("if-row__source-input"),
+        "legacy input label must not render: {html}"
+    );
     assert!(html.contains("if-row"), "row root class missing: {html}");
 }
 
@@ -319,8 +323,8 @@ fn row_omits_unnamed_placeholder_when_not_renaming() {
         "source device must remain visible: {html}"
     );
     assert!(
-        html.contains("Btn 1"),
-        "source input must remain visible: {html}"
+        !html.contains("if-row__source-input"),
+        "legacy input label must not render: {html}"
     );
 }
 
@@ -369,6 +373,10 @@ fn row_renders_compact_vjoy_output_badge() {
     assert!(
         html.contains("if-row__output-badge"),
         "output badge class missing: {html}"
+    );
+    assert!(
+        !html.contains("if-row__source-input"),
+        "legacy input label must not render beside the output badge: {html}"
     );
 }
 
@@ -552,8 +560,12 @@ fn row_swaps_in_rename_inline_when_renaming_matches_input() {
         "Row must STILL render the source line during rename so the user keeps a handle on which row they are editing: {html}",
     );
     assert!(
-        html.contains("Btn 1"),
-        "Source-label text must remain visible during rename: {html}",
+        html.contains("dev"),
+        "Source device text must remain visible during rename: {html}",
+    );
+    assert!(
+        !html.contains("if-row__source-input"),
+        "legacy input label must not render during rename: {html}",
     );
 }
 

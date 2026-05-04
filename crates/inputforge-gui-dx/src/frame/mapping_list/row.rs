@@ -7,7 +7,7 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::types::{InputAddress, InputId, OutputAddress, OutputId, VJoyAxis};
+use inputforge_core::types::{InputAddress, OutputAddress, OutputId, VJoyAxis};
 
 use crate::components::sortable::{SortableHandle, SortableState};
 use crate::context::{AppContext, MappingSummary};
@@ -78,16 +78,7 @@ pub(crate) fn Row(
         .as_ref()
         .is_some_and(|a| a == &summary.input);
 
-    let (device_label, input_label) = source_label::split_label(&summary.input, &ctx.config.read());
-    let kind_class = match summary
-        .input
-        .input_id()
-        .expect("invariant: mapping list row addr always bound (mapping primary)")
-    {
-        InputId::Axis { .. } => "axis",
-        InputId::Button { .. } => "button",
-        InputId::Hat { .. } => "hat",
-    };
+    let (device_label, _) = source_label::split_label(&summary.input, &ctx.config.read());
 
     let mut sel = view.selected_mapping;
     let summary_for_click = summary.clone();
@@ -188,11 +179,6 @@ pub(crate) fn Row(
             div { class: "if-row__source",
                 div { class: "if-row__source-primary",
                     span { class: "if-row__source-device", "{device_label}" }
-                    span {
-                        class: "if-row__source-input",
-                        "data-kind": kind_class,
-                        "{input_label}"
-                    }
                     if let Some(output) = &summary.first_vjoy_output {
                         span {
                             class: "if-row__output-badge",

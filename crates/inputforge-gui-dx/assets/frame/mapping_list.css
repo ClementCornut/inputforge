@@ -206,19 +206,6 @@
     white-space: nowrap;
 }
 
-.if-row__source-input {
-    flex: 0 0 auto;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.01em;
-}
-
-/* Per-input-kind hue: same taxonomy already in use on the AddInline pad
- * chip. Subordinated chroma per DESIGN.md §2. */
-.if-row__source-input[data-kind="axis"]   { color: var(--color-output); }
-.if-row__source-input[data-kind="button"] { color: var(--color-control-badge-text); }
-.if-row__source-input[data-kind="hat"]    { color: var(--color-processing); }
-
 /* Qualifier line: merge and/or conditional chips. Sits below the primary
  * line at a smaller size so the trigger stays dominant. Each chip
  * truncates independently with its own ellipsis. */
