@@ -365,7 +365,14 @@ fn row_renders_compact_vjoy_output_badge() {
     vdom.rebuild_in_place();
     let html = render(&vdom);
     assert!(html.contains("vJoy 2"), "vJoy device missing: {html}");
-    assert!(html.contains('X'), "vJoy output missing: {html}");
+    assert!(
+        html.contains("title=\"vJoy 2 · X\""),
+        "vJoy output tooltip missing: {html}"
+    );
+    assert!(
+        html.contains(">vJoy 2</span>"),
+        "visible badge should avoid repeating the output suffix: {html}"
+    );
     assert!(
         html.contains("if-row__output-badge"),
         "output badge class missing: {html}"

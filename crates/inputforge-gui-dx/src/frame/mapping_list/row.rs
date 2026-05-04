@@ -45,6 +45,10 @@ fn compact_output_label(output: &OutputAddress) -> String {
     format!("vJoy {} · {}", output.device, suffix)
 }
 
+fn compact_output_badge_text(output: &OutputAddress) -> String {
+    format!("vJoy {}", output.device)
+}
+
 #[component]
 #[allow(
     unused_qualifications,
@@ -197,7 +201,7 @@ pub(crate) fn Row(
                         span {
                             class: "if-row__output-badge",
                             title: "{compact_output_label(output)}",
-                            "{compact_output_label(output)}"
+                            "{compact_output_badge_text(output)}"
                         }
                     }
                 }
