@@ -29,6 +29,23 @@ pub(crate) use value_helpers::{read_axis_display, read_button_pressed, read_hat_
 /// CSS modifier class applied to readout rows whose value is held.
 pub(super) const FROZEN_ROW_CLASS: &str = "if-editor__readout-row--frozen";
 
+#[derive(Debug, Clone, PartialEq)]
+struct ResetKey {
+    primary: InputAddress,
+    actions: Vec<Action>,
+    outputs_len: usize,
+}
+
+impl ResetKey {
+    fn new(primary: &InputAddress, actions: &[Action], outputs_len: usize) -> Self {
+        Self {
+            primary: primary.clone(),
+            actions: actions.to_vec(),
+            outputs_len,
+        }
+    }
+}
+
 /// Live IN/OUT readout section, mounted beneath the input field.
 ///
 /// The analyzer receives one coherent state/config snapshot per render.
@@ -67,18 +84,19 @@ fn LiveReadoutInner(
     };
     let engine_running = matches!(ctx.meta.read().engine_status, EngineStatus::Running);
     let outputs_len = model.outputs.len();
+    let reset_key = ResetKey::new(&primary, &actions, outputs_len);
 
-    let mut prev_outputs_len: Signal<usize> = use_signal(|| outputs_len);
-    use_effect(move || {
-        let prev = *prev_outputs_len.read();
-        if prev != outputs_len {
+    let mut prev_reset_key: Signal<ResetKey> = use_signal(|| reset_key.clone());
+    use_effect(use_reactive!(|(reset_key, outputs_len)| {
+        let prev = prev_reset_key.read().clone();
+        if prev != reset_key {
             expand_state.with_mut(|s| {
                 s.per_output = vec![false; outputs_len];
                 s.expand_all = false;
             });
-            prev_outputs_len.set(outputs_len);
+            prev_reset_key.set(reset_key.clone());
         }
-    });
+    }));
 
     let model_for_in = model.clone();
     let model_for_divider = model.clone();
@@ -94,4 +112,34 @@ fn LiveReadoutInner(
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use inputforge_core::types::{DeviceId, InputId, OutputAddress, OutputId, VJoyAxis};
+
+    use super::*;
+
+    fn axis_addr(index: u8) -> InputAddress {
+        InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index },
+        }
+    }
+
+    fn map_x() -> Action {
+        Action::MapToVJoy {
+            output: OutputAddress {
+                device: 1,
+                output: OutputId::Axis { id: VJoyAxis::X },
+            },
+        }
+    }
+
+    #[test]
+    fn reset_key_changes_for_different_primary_with_same_output_count() {
+        let actions = vec![map_x()];
+
+        assert_ne!(
+            ResetKey::new(&axis_addr(0), &actions, 1),
+            ResetKey::new(&axis_addr(1), &actions, 1)
+        );
+    }
+}
