@@ -397,6 +397,7 @@
 }
 
 .if-editor__readout-label {
+    grid-column: 1;
     font-family: var(--font-mono);
     font-size: 11px;
     text-transform: uppercase;
@@ -405,6 +406,7 @@
 }
 
 .if-editor__readout-tag {
+    grid-column: 2;
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--color-text-subtle);
@@ -415,6 +417,7 @@
 }
 
 .if-editor__readout-bar {
+    grid-column: 3;
     position: relative;
     height: 8px;
     /* Brighter bg + inset border for an at-idle visible track; the
@@ -455,6 +458,7 @@
 }
 
 .if-editor__readout-pct {
+    grid-column: 4;
     font-family: var(--font-mono);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
@@ -566,6 +570,10 @@
     color: inherit;
 }
 
+.if-editor__readout-hat-glyph {
+    grid-column: 3;
+}
+
 .if-editor__readout-row--hat .if-editor__readout-hat-glyph {
     font-family: var(--font-mono);
     font-size: 16px;
@@ -575,6 +583,10 @@
 
 .if-editor__readout-row-wrap--frozen .if-editor__readout-row--hat .if-editor__readout-hat-glyph {
     color: var(--color-text-muted);
+}
+
+.if-editor__readout-kb-cell {
+    grid-column: 3;
 }
 
 .if-editor__readout-row--kb .if-editor__readout-kb-cell {
@@ -621,6 +633,7 @@
 }
 
 .if-editor__readout-chevron {
+    grid-column: 5;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -647,6 +660,7 @@
 }
 
 .if-editor__readout-chevron-spacer {
+    grid-column: 5;
     width: 24px;
     height: 24px;
 }

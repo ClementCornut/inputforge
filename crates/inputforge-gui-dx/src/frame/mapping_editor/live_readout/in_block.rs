@@ -240,4 +240,36 @@ mod tests {
         );
         assert_eq!(READOUT_CHIPS_CLASS, "if-editor__readout-chips");
     }
+
+    #[test]
+    fn readout_cells_claim_stable_grid_columns() {
+        let css = include_str!("../../../../assets/frame/mapping_editor.css");
+        for (selector, declaration) in [
+            (".if-editor__readout-label", "grid-column: 1;"),
+            (".if-editor__readout-tag", "grid-column: 2;"),
+            (".if-editor__readout-bar", "grid-column: 3;"),
+            (".if-editor__readout-hat-glyph", "grid-column: 3;"),
+            (".if-editor__readout-kb-cell", "grid-column: 3;"),
+            (".if-editor__readout-pct", "grid-column: 4;"),
+            (".if-editor__readout-chevron", "grid-column: 5;"),
+            (".if-editor__readout-chevron-spacer", "grid-column: 5;"),
+        ] {
+            assert!(
+                css_rule_contains(css, selector, declaration),
+                "{selector} must declare {declaration} so display: contents rows restart on the same readout grid columns"
+            );
+        }
+    }
+
+    fn css_rule_contains(css: &str, selector: &str, declaration: &str) -> bool {
+        css.split('}').any(|block| {
+            let Some((selectors, body)) = block.split_once('{') else {
+                return false;
+            };
+            selectors
+                .split(',')
+                .any(|candidate| candidate.trim() == selector)
+                && body.contains(declaration)
+        })
+    }
 }
