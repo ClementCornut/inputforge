@@ -10,7 +10,8 @@ use inputforge_core::pipeline::InputCache;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, DeviceState, EngineStatus, ForcedMode};
 use inputforge_core::types::{
-    AxisPolarity, HatDirection, InputAddress, InputId, VJoyAxis, VirtualDeviceConfig,
+    AxisPolarity, DeviceId, HatDirection, InputAddress, InputId, OutputAddress, VJoyAxis,
+    VirtualDeviceConfig,
 };
 
 /// Raw signal-free handles installed via `LaunchBuilder::with_context`.
@@ -84,6 +85,8 @@ pub(crate) struct MappingSummary {
     pub mode: String,
     pub name: Option<String>,
     pub glyphs: GlyphFlags,
+    pub referenced_devices: Vec<DeviceId>,
+    pub first_vjoy_output: Option<OutputAddress>,
 }
 
 /// Pre-computed glyph state for a `MappingSummary`. The walker stops on
@@ -289,6 +292,80 @@ fn first_input_predicate(condition: &inputforge_core::action::Condition) -> Opti
     }
 }
 
+fn derive_referenced_devices(
+    primary: &InputAddress,
+    actions: &[inputforge_core::action::Action],
+) -> Vec<DeviceId> {
+    fn push_addr(out: &mut Vec<DeviceId>, addr: &InputAddress) {
+        if let Some(device) = addr.device() {
+            if !out.iter().any(|existing| existing == device) {
+                out.push(device.clone());
+            }
+        }
+    }
+
+    fn walk_condition(out: &mut Vec<DeviceId>, condition: &inputforge_core::action::Condition) {
+        use inputforge_core::action::Condition;
+        match condition {
+            Condition::ButtonPressed { input }
+            | Condition::ButtonReleased { input }
+            | Condition::AxisInRange { input, .. }
+            | Condition::HatDirection { input, .. } => push_addr(out, input),
+            Condition::All { conditions } | Condition::Any { conditions } => {
+                for child in conditions {
+                    walk_condition(out, child);
+                }
+            }
+            Condition::Not { condition } => walk_condition(out, condition),
+        }
+    }
+
+    fn walk_actions(out: &mut Vec<DeviceId>, actions: &[inputforge_core::action::Action]) {
+        use inputforge_core::action::Action;
+        for action in actions {
+            match action {
+                Action::MergeAxis { second_input, .. } => push_addr(out, second_input),
+                Action::Conditional {
+                    condition,
+                    if_true,
+                    if_false,
+                } => {
+                    walk_condition(out, condition);
+                    walk_actions(out, if_true);
+                    walk_actions(out, if_false);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    push_addr(&mut out, primary);
+    walk_actions(&mut out, actions);
+    out
+}
+
+fn first_vjoy_output(actions: &[inputforge_core::action::Action]) -> Option<OutputAddress> {
+    use inputforge_core::action::Action;
+    for action in actions {
+        match action {
+            Action::MapToVJoy { output } => return Some(output.clone()),
+            Action::Conditional {
+                if_true, if_false, ..
+            } => {
+                if let Some(output) = first_vjoy_output(if_true) {
+                    return Some(output);
+                }
+                if let Some(output) = first_vjoy_output(if_false) {
+                    return Some(output);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 impl ConfigSnapshot {
     pub(crate) fn from_state(s: &AppState, selection: Option<&crate::frame::MappingKey>) -> Self {
         let mut mapped_inputs = HashSet::new();
@@ -306,6 +383,8 @@ impl ConfigSnapshot {
                     mode: mapping.mode.clone(),
                     name: mapping.name.clone(),
                     glyphs: derive_glyphs(&mapping.actions),
+                    referenced_devices: derive_referenced_devices(&mapping.input, &mapping.actions),
+                    first_vjoy_output: first_vjoy_output(&mapping.actions),
                 });
                 if let Some((sel_mode, sel_input)) = selection {
                     if mapping.mode == *sel_mode && mapping.input == *sel_input {
@@ -969,6 +1048,102 @@ mod tests {
             s.glyphs.merge_secondary.as_ref(),
             Some(&secondary),
             "walker must descend into Conditional.if_true to find MergeAxis"
+        );
+    }
+
+    #[test]
+    fn mapping_summary_referenced_devices_dedupes_and_ignores_unbound() {
+        use inputforge_core::action::{Action, Condition, Mapping};
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::state::AppState;
+        use inputforge_core::types::{DeviceId, InputAddress, InputId, MergeOp};
+
+        let dev_a = DeviceId("dev-a".to_owned());
+        let primary = InputAddress::Bound {
+            device: dev_a.clone(),
+            input: InputId::Axis { index: 0 },
+        };
+        let modes =
+            ModeTree::from_adjacency(&HashMap::from([("Default".to_owned(), vec![])])).unwrap();
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            vec![Mapping {
+                input: primary.clone(),
+                mode: "Default".to_owned(),
+                name: None,
+                actions: vec![
+                    Action::MergeAxis {
+                        second_input: InputAddress::Unbound,
+                        operation: MergeOp::Average,
+                    },
+                    Action::Conditional {
+                        condition: Condition::ButtonPressed { input: primary },
+                        if_true: vec![],
+                        if_false: vec![],
+                    },
+                ],
+            }],
+            vec![],
+            "Default".to_owned(),
+        );
+
+        let cfg = ConfigSnapshot::from_state(&AppState::with_profile(profile), None);
+        assert_eq!(cfg.mappings[0].referenced_devices, vec![dev_a]);
+    }
+
+    #[test]
+    fn mapping_summary_finds_first_vjoy_output_in_preorder() {
+        use inputforge_core::action::{Action, Condition, Mapping};
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::state::AppState;
+        use inputforge_core::types::{
+            DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis,
+        };
+
+        let modes =
+            ModeTree::from_adjacency(&HashMap::from([("Default".to_owned(), vec![])])).unwrap();
+        let input = InputAddress::Bound {
+            device: DeviceId("stick".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        let true_output = OutputAddress {
+            device: 2,
+            output: OutputId::Axis { id: VJoyAxis::Y },
+        };
+        let false_output = OutputAddress {
+            device: 3,
+            output: OutputId::Axis { id: VJoyAxis::Z },
+        };
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            vec![Mapping {
+                input: input.clone(),
+                mode: "Default".to_owned(),
+                name: None,
+                actions: vec![Action::Conditional {
+                    condition: Condition::ButtonPressed { input },
+                    if_true: vec![Action::MapToVJoy {
+                        output: true_output.clone(),
+                    }],
+                    if_false: vec![Action::MapToVJoy {
+                        output: false_output,
+                    }],
+                }],
+            }],
+            vec![],
+            "Default".to_owned(),
+        );
+
+        let cfg = ConfigSnapshot::from_state(&AppState::with_profile(profile), None);
+        assert_eq!(
+            cfg.mappings[0].first_vjoy_output.as_ref(),
+            Some(&true_output)
         );
     }
 

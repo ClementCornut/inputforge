@@ -64,6 +64,8 @@ mod tests {
             mode: "Default".to_owned(),
             name: Some(name.to_owned()),
             glyphs: GlyphFlags::default(),
+            referenced_devices: vec![DeviceId("tfm".to_owned())],
+            first_vjoy_output: None,
         }
     }
 
@@ -110,6 +112,8 @@ mod tests {
             mode: "Default".to_owned(),
             name: None,
             glyphs: GlyphFlags::default(),
+            referenced_devices: vec![DeviceId("tfm".to_owned())],
+            first_vjoy_output: None,
         };
         assert!(matches_filter(&row, "Z", &cfg));
         assert!(matches_filter(&row, "tfm", &cfg));
