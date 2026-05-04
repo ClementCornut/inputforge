@@ -15,10 +15,9 @@
 //!
 //! `LiveCapture` is single-instance. Both the editor-frame `InputField` (Task
 //! 16) and this component consume `LiveCapture.captured`. To prevent races each
-//! consumer owns a local `Signal<bool>` `is_armed_consumer` flag. Only the
-//! consumer that set its flag to `true` reacts when `captured` fires; all
-//! others see `false` and skip. This is the project-wide convention; deviating
-//! from it causes the self-fire bug documented in Task 16.
+//! consumer stores the `LiveCapture.session` it armed. Only the consumer whose
+//! stored session matches the current session reacts when `captured` fires; a
+//! newer session means another capture surface superseded it.
 //!
 //! # Malformed hints (Amendment 1, Task 9)
 //!
@@ -58,7 +57,9 @@ use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::pipeline::replace_at_path;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 use crate::frame::mapping_list::source_label;
-use crate::patterns::live_capture::{CaptureFilter, LiveCapture};
+use crate::patterns::live_capture::{
+    CAPTURE_PROMPT, CaptureFilter, LiveCapture, is_current_capture_session, rebind_composite_class,
+};
 
 /// Malformed-hint message shown when the [`MergeAxisBody`] secondary input
 /// is [`InputAddress::Unbound`].
@@ -119,10 +120,10 @@ pub(crate) fn MergeAxisBody(
     let editor = use_context::<EditorState>();
     let capture = use_context::<LiveCapture>();
 
-    // --- Consumer-flag for LiveCapture race prevention ---
-    // Set to true only while THIS component is waiting for a secondary-input
-    // capture; cleared when capture arrives or is cancelled.
-    let mut is_armed_consumer: Signal<bool> = use_signal(|| false);
+    // --- Capture-session ownership for LiveCapture race prevention ---
+    // Stores the LiveCapture session this component owns; a newer session
+    // means another surface superseded this secondary-input capture.
+    let mut armed_session: Signal<Option<u64>> = use_signal(|| None);
 
     // Task 9 + Amendment 1: malformed-hint write / clear on every render.
     // Priority: Unbound > secondary-equals-primary. Written during the
@@ -168,8 +169,8 @@ pub(crate) fn MergeAxisBody(
     use_effect(move || {
         let captured_addr = captured_mut.read().clone();
 
-        // Only act when this component armed the capture.
-        if !*is_armed_consumer.read() {
+        // Only act when this component owns the current capture session.
+        if !is_current_capture_session(*armed_session.peek(), *capture.session.peek()) {
             return;
         }
         let Some(new_addr) = captured_addr else {
@@ -194,7 +195,7 @@ pub(crate) fn MergeAxisBody(
         let Some(new_actions) = replace_at_path(&root_for_cap, &stage_id_for_cap, new_action)
         else {
             // Invalid path: skip edit so no phantom undo entry is created.
-            is_armed_consumer.set(false);
+            armed_session.set(None);
             captured_mut.set(None);
             return;
         };
@@ -221,7 +222,7 @@ pub(crate) fn MergeAxisBody(
                 action = "merge_axis_secondary_drop_offline",
                 "secondary capture dropped: engine channel disconnected"
             );
-            is_armed_consumer.set(false);
+            armed_session.set(None);
             captured_mut.set(None);
             return;
         }
@@ -240,7 +241,7 @@ pub(crate) fn MergeAxisBody(
             .push_edit(key_for_cap.clone(), before, UndoKind::StageEdit, label);
 
         // Disarm and clear so stale effects do not re-fire.
-        is_armed_consumer.set(false);
+        armed_session.set(None);
         captured_mut.set(None);
     });
 
@@ -249,9 +250,33 @@ pub(crate) fn MergeAxisBody(
     // fire before the flag is true (effects run synchronously in SSR).
     let start_cb = capture.start;
     let on_rebind = move |_: MouseEvent| {
-        is_armed_consumer.set(true);
         start_cb.call(CaptureFilter::AxesOnly);
+        armed_session.set(Some(*capture.session.peek()));
     };
+    let cancel_cb = capture.cancel;
+    let on_cancel_rebind = move |_: MouseEvent| {
+        cancel_cb.call(());
+        armed_session.set(None);
+    };
+
+    // External-cancel / supersede watcher. `active=false` handles Esc/cancel;
+    // `session` mismatch handles another capture surface starting while the
+    // global capture remains active.
+    use_effect(move || {
+        let active_now = *capture.active.read();
+        let current_session = *capture.session.read();
+        let owned_session = *armed_session.peek();
+        if owned_session.is_none() {
+            return;
+        }
+        if capture.captured.peek().is_some() {
+            return;
+        }
+        if active_now && is_current_capture_session(owned_session, current_session) {
+            return;
+        }
+        armed_session.set(None);
+    });
 
     // --- Operation picker change handler ---
     let key_for_op = mapping_key.clone();
@@ -347,15 +372,11 @@ pub(crate) fn MergeAxisBody(
     let secondary_label = source_label::format(&second_input, &ctx.config.read());
 
     // Compose the rebind-composite class so the placeholder label renders
-    // muted/italic when the secondary input is `Unbound`. Without the
-    // modifier the `Unbound` placeholder reads with the same weight as a
-    // real source label, which obscures that the field has not been bound
-    // yet. Mirrors the same pattern used in `PredicateInputRow`.
-    let composite_class = if second_input.is_unbound() {
-        "if-rebind-composite if-rebind-composite--unbound"
-    } else {
-        "if-rebind-composite"
-    };
+    // muted/italic when the secondary input is `Unbound`, and flips to the
+    // listening treatment while this component owns a capture.
+    let is_secondary_listening =
+        is_current_capture_session(*armed_session.read(), *capture.session.read());
+    let composite_class = rebind_composite_class(&second_input, is_secondary_listening);
 
     rsx! {
         div { class: "if-stage__body-merge-axis",
@@ -370,12 +391,27 @@ pub(crate) fn MergeAxisBody(
             div { class: "if-stage__body-field",
                 label { class: "if-stage__body-label", "Secondary input" }
                 div { class: "{composite_class}",
-                    span { class: "if-rebind-composite__label", "{secondary_label}" }
-                    button {
-                        class: "if-rebind-composite__action",
-                        r#type: "button",
-                        onclick: on_rebind,
-                        "rebind"
+                    if is_secondary_listening {
+                        span {
+                            class: "if-rebind-composite__listening",
+                            role: "status",
+                            "aria-live": "polite",
+                            "{CAPTURE_PROMPT}"
+                        }
+                        button {
+                            class: "if-rebind-composite__action",
+                            r#type: "button",
+                            onclick: on_cancel_rebind,
+                            "Cancel"
+                        }
+                    } else {
+                        span { class: "if-rebind-composite__label", "{secondary_label}" }
+                        button {
+                            class: "if-rebind-composite__action",
+                            r#type: "button",
+                            onclick: on_rebind,
+                            "rebind"
+                        }
                     }
                 }
             }

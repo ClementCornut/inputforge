@@ -47,7 +47,9 @@ use crate::context::{AppContext, MappingSummary};
 use crate::frame::mapping_list::source_label;
 use crate::frame::view_state::ViewState;
 use crate::icons::Icon as IconKind;
-use crate::patterns::live_capture::{CaptureFilter, LiveCapture};
+use crate::patterns::live_capture::{
+    CAPTURE_PROMPT, CaptureFilter, LiveCapture, is_current_capture_session,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 enum AddState {
@@ -169,6 +171,7 @@ pub(crate) fn AddInline(
     // duplicate flow so Refresh-icon recapture and Add-commit can both
     // see it. Cleared on Cancel / Esc / commit / Resting transitions.
     let mut local_source: Signal<Option<MappingSummary>> = use_signal(|| None);
+    let mut capture_session: Signal<Option<u64>> = use_signal(|| None);
 
     // Honor `force_expanded` from the parent, used by EmptyZeroMappings'
     // primary button to skip the dashed-row click. The component clears
@@ -189,6 +192,7 @@ pub(crate) fn AddInline(
                 phase: PadPhase::Capturing,
             });
             cap.start.call(CaptureFilter::Any);
+            capture_session.set(Some(*cap.session.peek()));
             force.set(false);
         }
     });
@@ -199,6 +203,7 @@ pub(crate) fn AddInline(
                 phase: PadPhase::Capturing,
             });
             cap.start.call(CaptureFilter::Any);
+            capture_session.set(Some(*cap.session.peek()));
             force_for_effect.set(false);
         }
     });
@@ -223,6 +228,7 @@ pub(crate) fn AddInline(
                 phase: PadPhase::Capturing,
             });
             cap.start.call(CaptureFilter::Any);
+            capture_session.set(Some(*cap.session.peek()));
             pending.set(None);
         }
     });
@@ -237,6 +243,7 @@ pub(crate) fn AddInline(
                 phase: PadPhase::Capturing,
             });
             cap.start.call(CaptureFilter::Any);
+            capture_session.set(Some(*cap.session.peek()));
             pending_for_effect.set(None);
         }
     });
@@ -254,6 +261,9 @@ pub(crate) fn AddInline(
                 phase: PadPhase::Capturing,
             }
         ) {
+            return;
+        }
+        if !is_current_capture_session(*capture_session.peek(), *cap.session.peek()) {
             return;
         }
         let Some(addr) = captured_now else {
@@ -279,21 +289,21 @@ pub(crate) fn AddInline(
         };
         drop(cfg);
         cap.cancel.call(());
+        capture_session.set(None);
         state.set(next_state);
     });
 
-    // External-cancel watcher: when `cap.active` flips false while we are
-    // in `Pad { Capturing }` AND no input was captured (i.e., LiveCapture
-    // was cancelled externally, its Esc listener fired, or some other
-    // consumer called `cap.cancel`), close the pad outright (per design
-    // choice 2.a, first Esc closes, no Disarmed intermediate).
+    // External-cancel / supersede watcher: `cap.active=false` handles Esc
+    // and explicit cancel; session mismatch handles another capture surface
+    // starting while the global capture remains active. Either case closes
+    // the pad outright (per design choice 2.a, first Esc closes, no
+    // Disarmed intermediate).
     //
     // Distinguishing case: when `cap.captured` is `Some`, the captured-
     // watcher above is doing the work; this watcher must not race it.
     use_effect(move || {
-        if *cap.active.read() {
-            return;
-        }
+        let active_now = *cap.active.read();
+        let current_session = *cap.session.read();
         if !matches!(
             *state.peek(),
             AddState::Pad {
@@ -305,9 +315,14 @@ pub(crate) fn AddInline(
         if cap.captured.peek().is_some() {
             return;
         }
+        let owned_session = *capture_session.peek();
+        if active_now && is_current_capture_session(owned_session, current_session) {
+            return;
+        }
         state.set(AddState::Resting);
         name.set(String::new());
         local_source.set(None);
+        capture_session.set(None);
     });
 
     // Collision drift: re-validate once per polling tick. If `existing` is
@@ -386,6 +401,7 @@ pub(crate) fn AddInline(
                         state.set(AddState::Resting);
                         name.set(String::new());
                         local_source.set(None);
+                        capture_session.set(None);
                     }
                     _ => break,
                 }
@@ -404,6 +420,7 @@ pub(crate) fn AddInline(
                             phase: PadPhase::Capturing,
                         });
                         cap.start.call(CaptureFilter::Any);
+                        capture_session.set(Some(*cap.session.peek()));
                     },
                     "aria-label": "Add mapping",
                     "+ Add mapping"
@@ -434,7 +451,7 @@ pub(crate) fn AddInline(
                     };
                     (input, device, kind)
                 } else {
-                    (String::new(), "Press an input\u{2026}".to_owned(), "")
+                    (String::new(), CAPTURE_PROMPT.to_owned(), "")
                 };
             drop(cfg);
 
@@ -475,6 +492,7 @@ pub(crate) fn AddInline(
                             state.set(AddState::Resting);
                             name.set(String::new());
                             local_source.set(None);
+                            capture_session.set(None);
                         }
                     },
                     div { class: "if-add-inline__readout",
@@ -504,6 +522,7 @@ pub(crate) fn AddInline(
                                     phase: PadPhase::Capturing,
                                 });
                                 cap.start.call(CaptureFilter::Any);
+                                capture_session.set(Some(*cap.session.peek()));
                             },
                         }
                     }
@@ -518,9 +537,11 @@ pub(crate) fn AddInline(
                             variant: ButtonVariant::Ghost,
                             size: ButtonSize::Sm,
                             onclick: move |_| {
+                                cap.cancel.call(());
                                 state.set(AddState::Resting);
                                 name.set(String::new());
                                 local_source.set(None);
+                                capture_session.set(None);
                             },
                             "Cancel"
                         }
@@ -543,6 +564,7 @@ pub(crate) fn AddInline(
                                     state.set(AddState::Resting);
                                     name.set(String::new());
                                     local_source.set(None);
+                                    capture_session.set(None);
                                 }
                             },
                             "Add"
@@ -575,6 +597,7 @@ pub(crate) fn AddInline(
                             state.set(AddState::Resting);
                             name.set(String::new());
                             local_source.set(None);
+                            capture_session.set(None);
                         },
                         "Edit existing"
                     }
@@ -584,6 +607,7 @@ pub(crate) fn AddInline(
                             state.set(AddState::Resting);
                             name.set(String::new());
                             local_source.set(None);
+                            capture_session.set(None);
                         },
                         "Cancel"
                     }
