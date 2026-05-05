@@ -16,6 +16,7 @@ F12 includes:
 - Grouped mapped coverage counts: axes, buttons, hats.
 - A selected-device detail section.
 - Explicit-save global custom device names.
+- App-wide remembered device records for disconnected devices.
 - Human-readable device identity diagnostics.
 - Non-live profile usage and troubleshooting utilities.
 
@@ -55,9 +56,28 @@ The inspector does not repeat the device name as a title. It starts with the `Di
 
 When the panel opens, select the first connected device if one exists. Otherwise select the first known disconnected device. If no devices are known, the ledger and inspector collapse into the no-signal empty state.
 
-## Device Alias Model
+## Global Device Memory
 
-Custom device names are app-wide, stored in `AppSettings`, not in profiles.
+Device aliases and remembered device metadata are app-wide, stored in `AppSettings`, not in profiles. This lets the panel render disconnected devices after an app restart, even when SDL cannot currently enumerate them.
+
+Use two separate settings tables:
+
+```rust
+pub struct AppSettings {
+    pub device_aliases: HashMap<DeviceId, String>,
+    pub device_registry: HashMap<DeviceId, DeviceRecord>,
+}
+
+pub struct DeviceRecord {
+    pub info: DeviceInfo,
+    pub diagnostics: DeviceDiagnostics,
+    pub last_seen_unix_ms: Option<u64>,
+}
+```
+
+`device_aliases` owns user-authored names. `device_registry` owns last-known hardware facts. Keeping them separate avoids coupling a user rename to SDL metadata refreshes.
+
+`DeviceRecord.info` stores the existing core device shape: `id`, hardware `name`, `axes`, `buttons`, `hats`, `instance_path`, and `axis_polarities`.
 
 Rules:
 
@@ -72,6 +92,14 @@ The GUI should resolve display names through:
 1. Global alias, when present.
 2. Hardware name from `DeviceInfo`.
 3. Device identifier fallback, only if no name is available.
+
+Panel row construction merges three sources:
+
+1. Live `AppState.devices`.
+2. Remembered `AppSettings.device_registry`.
+3. Current profile mappings for usage counts.
+
+Live state wins over remembered data. When a device is connected, display the current SDL-backed `DeviceInfo` and `DeviceDiagnostics`, then upsert that snapshot into `device_registry`. When a device is disconnected or not seen this session, display the remembered record and mark the row disconnected.
 
 ## Device Identity Diagnostics
 
@@ -88,6 +116,25 @@ F12 should collect and expose identity fields that SDL3 can provide:
 - Whether SDL reports the joystick as virtual.
 
 These fields do not all need equal visual weight. The row stays compact; diagnostics live in the fixed inspector. The default presentation is human-readable first: connection kind, hardware type, VID/PID, serial when present, and platform path lower in the detail.
+
+Represent these fields in a structured diagnostics payload:
+
+```rust
+pub struct DeviceDiagnostics {
+    pub vendor_id: Option<u16>,
+    pub product_id: Option<u16>,
+    pub product_version: Option<u16>,
+    pub firmware_version: Option<u16>,
+    pub serial: Option<String>,
+    pub joystick_type: Option<String>,
+    pub connection_state: Option<DeviceConnectionState>,
+    pub battery_percent: Option<u8>,
+    pub battery_state: Option<DeviceBatteryState>,
+    pub is_virtual: Option<bool>,
+}
+```
+
+The exact enum names can follow the existing `inputforge-core` type style during implementation. The important boundary is that raw SDL-specific values are normalized before reaching the GUI.
 
 ## Profile Usage
 
@@ -135,10 +182,11 @@ Current code stores `DeviceInfo` with name, axes, buttons, hats, `instance_path`
 This work requires engine/core changes:
 
 - Extend `DeviceInfo` or add a related metadata struct for SDL identity diagnostics.
-- Add app-wide device aliases to `AppSettings`.
+- Add app-wide `device_aliases` and `device_registry` to `AppSettings`.
 - Add an engine command to set or clear a device alias and persist `settings.toml`.
+- Update the device registry whenever SDL reports a connected physical device.
 - Project resolved display names into GUI snapshots so existing and future surfaces can use aliases consistently.
-- Disconnected devices use the metadata currently retained in memory. F12 does not add a persistent last-known diagnostics cache.
+- Project remembered device records into GUI snapshots so disconnected devices can show last-known counts and diagnostics after restart.
 
 ## Future Enhancements
 
