@@ -484,18 +484,19 @@ fn usage_for_device(device_id: &DeviceId, info: &DeviceInfo, s: &AppState) -> De
             if primary {
                 primary_mappings += 1;
                 record_input_kind(&mapping.input, &mut axes, &mut buttons, &mut hats);
-            } else if referenced {
+            }
+            let action_referenced = record_referenced_input_kinds(
+                device_id,
+                &mapping.actions,
+                &mut axes,
+                &mut buttons,
+                &mut hats,
+            );
+            if action_referenced {
                 secondary_mappings += 1;
-                record_referenced_input_kinds(
-                    device_id,
-                    &mapping.actions,
-                    &mut axes,
-                    &mut buttons,
-                    &mut hats,
-                );
             }
 
-            if primary || referenced {
+            if primary || referenced || action_referenced {
                 push_unique(&mut touched_modes, mapping.mode.clone());
                 if let Some(name) = &mapping.name {
                     push_unique(&mut touched_mapping_names, name.clone());
@@ -552,13 +553,15 @@ fn record_referenced_input_kinds(
     axes: &mut HashSet<u8>,
     buttons: &mut HashSet<u8>,
     hats: &mut HashSet<u8>,
-) {
+) -> bool {
     use inputforge_core::action::Action;
+    let mut found = false;
     for action in actions {
         match action {
             Action::MergeAxis { second_input, .. } => {
                 if second_input.device().is_some_and(|id| id == device_id) {
                     record_input_kind(second_input, axes, buttons, hats);
+                    found = true;
                 }
             }
             Action::Conditional {
@@ -566,13 +569,14 @@ fn record_referenced_input_kinds(
                 if_true,
                 if_false,
             } => {
-                record_condition_input_kinds(device_id, condition, axes, buttons, hats);
-                record_referenced_input_kinds(device_id, if_true, axes, buttons, hats);
-                record_referenced_input_kinds(device_id, if_false, axes, buttons, hats);
+                found |= record_condition_input_kinds(device_id, condition, axes, buttons, hats);
+                found |= record_referenced_input_kinds(device_id, if_true, axes, buttons, hats);
+                found |= record_referenced_input_kinds(device_id, if_false, axes, buttons, hats);
             }
             _ => {}
         }
     }
+    found
 }
 
 fn record_condition_input_kinds(
@@ -581,7 +585,7 @@ fn record_condition_input_kinds(
     axes: &mut HashSet<u8>,
     buttons: &mut HashSet<u8>,
     hats: &mut HashSet<u8>,
-) {
+) -> bool {
     use inputforge_core::action::Condition;
     match condition {
         Condition::ButtonPressed { input }
@@ -590,15 +594,20 @@ fn record_condition_input_kinds(
         | Condition::HatDirection { input, .. } => {
             if input.device().is_some_and(|id| id == device_id) {
                 record_input_kind(input, axes, buttons, hats);
+                true
+            } else {
+                false
             }
         }
         Condition::All { conditions } | Condition::Any { conditions } => {
+            let mut found = false;
             for child in conditions {
-                record_condition_input_kinds(device_id, child, axes, buttons, hats);
+                found |= record_condition_input_kinds(device_id, child, axes, buttons, hats);
             }
+            found
         }
         Condition::Not { condition } => {
-            record_condition_input_kinds(device_id, condition, axes, buttons, hats);
+            record_condition_input_kinds(device_id, condition, axes, buttons, hats)
         }
     }
 }
@@ -890,6 +899,59 @@ mod tests {
         assert_eq!(row.usage.axes.mapped, 1);
         assert_eq!(row.usage.buttons.mapped, 1);
         assert_eq!(row.usage.hats.mapped, 0);
+    }
+
+    #[test]
+    fn config_snapshot_counts_same_device_merge_axis_as_secondary_usage() {
+        use inputforge_core::action::{Action, Mapping};
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::types::MergeOp;
+
+        let device = DeviceId("dev-1".to_owned());
+        let primary = InputAddress::Bound {
+            device: device.clone(),
+            input: InputId::Button { index: 0 },
+        };
+        let merge_axis = InputAddress::Bound {
+            device: device.clone(),
+            input: InputId::Axis { index: 0 },
+        };
+        let modes =
+            ModeTree::from_adjacency(&HashMap::from([("Default".to_owned(), vec![])])).unwrap();
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            vec![Mapping {
+                input: primary,
+                mode: "Default".to_owned(),
+                name: Some("Toe brake blend".to_owned()),
+                actions: vec![Action::MergeAxis {
+                    second_input: merge_axis,
+                    operation: MergeOp::Average,
+                }],
+            }],
+            vec![],
+            "Default".to_owned(),
+        );
+        let mut state = AppState::with_profile(profile);
+        state.devices.push(DeviceState {
+            info: test_device("dev-1", "Sim Pedals", 4, 12, 0),
+            connected: true,
+            diagnostics: DeviceDiagnostics::default(),
+        });
+
+        let snapshot = ConfigSnapshot::from_state(&state, None);
+        let row = snapshot
+            .device_panel_rows
+            .iter()
+            .find(|row| row.device_id == device)
+            .expect("device row");
+
+        assert_eq!(row.usage.primary_mappings, 1);
+        assert_eq!(row.usage.secondary_mappings, 1);
+        assert_eq!(row.usage.axes.mapped, 1);
     }
 
     #[test]

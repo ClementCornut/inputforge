@@ -7,8 +7,6 @@ mod device_panel;
 const PANEL_SLOT_CSS: Asset = asset!("/assets/frame/panel_slot.css");
 
 struct PanelSpec {
-    caption: &'static str,
-    title: &'static str,
     body: &'static str,
     aria: &'static str,
 }
@@ -28,20 +26,14 @@ pub(crate) fn PanelSlot() -> Element {
     let calib = *via_calib.read();
     let spec = match s {
         PanelSlotEnum::Devices if calib => PanelSpec {
-            caption: "Panel · F12",
-            title: "Calibration",
             body: "F12 owns content (calibration)",
             aria: "Calibration panel",
         },
         PanelSlotEnum::Devices => PanelSpec {
-            caption: "Panel · F12",
-            title: "Devices",
             body: "F12 owns content",
             aria: "Devices panel",
         },
         PanelSlotEnum::Profiles => PanelSpec {
-            caption: "Panel · F13",
-            title: "Profiles",
             body: "F13 owns content",
             aria: "Profiles panel",
         },
@@ -57,10 +49,6 @@ pub(crate) fn PanelSlot() -> Element {
         aside {
             class: "if-panel-slot",
             "aria-label": "{spec.aria}",
-            header { class: "if-panel-slot__header",
-                div { class: "if-panel-slot__caption", "{spec.caption}" }
-                h2 { class: "if-panel-slot__title", "{spec.title}" }
-            }
             div { class: "if-panel-slot__body", {body} }
         }
     }
@@ -70,7 +58,13 @@ pub(crate) fn PanelSlot() -> Element {
 mod tests {
     use super::*;
 
+    use std::sync::{Arc, mpsc};
+
+    use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
     use dioxus_ssr::render;
+    use inputforge_core::settings::AppSettings;
+    use inputforge_core::state::AppState;
+    use parking_lot::RwLock;
 
     #[derive(Clone, Copy, Props, PartialEq)]
     struct TestHarnessProps {
@@ -89,6 +83,12 @@ mod tests {
         let panel_slot = use_signal(|| props.slot);
         let via_calibration = use_signal(|| props.via_calibration);
         let selected_mapping = use_signal(|| None);
+        let state = Arc::new(RwLock::new(AppState::new()));
+        let (commands, _rx) = mpsc::channel();
+        let settings = Arc::new(AppSettings::default());
+        let meta = use_signal(MetaSnapshot::default);
+        let config = use_signal(ConfigSnapshot::default);
+        let live = use_signal(LiveSnapshot::default);
 
         use_context_provider(|| ViewState {
             main_surface,
@@ -96,6 +96,14 @@ mod tests {
             panel_slot,
             via_calibration,
             selected_mapping,
+        });
+        use_context_provider(|| AppContext {
+            state,
+            commands,
+            settings,
+            meta,
+            config,
+            live,
         });
 
         rsx! { PanelSlot {} }
@@ -123,5 +131,18 @@ mod tests {
                 "slot {slot:?} did not render the stable panel shell: {html}"
             );
         }
+    }
+
+    #[test]
+    fn panel_header_omits_placeholder_caption() {
+        let html = render_slot(PanelSlotEnum::Devices);
+
+        assert!(!html.contains("Panel"));
+        assert!(!html.contains("F12"));
+        assert!(!html.contains("if-panel-slot__caption"));
+        assert!(!html.contains("if-panel-slot__header"));
+        assert!(!html.contains("if-panel-slot__title"));
+        assert!(!html.contains("<h2"));
+        assert!(!html.contains(">Devices<"));
     }
 }

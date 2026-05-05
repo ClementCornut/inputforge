@@ -26,7 +26,7 @@ pub(super) fn DevicePanel() -> Element {
         return rsx! {
             div { class: "if-device-panel if-device-panel--empty",
                 div { class: "if-device-panel__empty-title", "No devices known" }
-                div { class: "if-device-panel__empty-copy", "Connect a controller, wheel, pedals, or other SDL device to populate this panel." }
+                div { class: "if-device-panel__empty-copy", "Connect a controller, wheel, pedals, or other input device to populate this panel." }
             }
         };
     }
@@ -71,6 +71,7 @@ fn DeviceLedgerRow(
     selected: bool,
     onselect: EventHandler<DevicePanelRow>,
 ) -> Element {
+    let usage_items = usage_count_items(&row.usage);
     let state_label = if row.connected {
         "Connected"
     } else {
@@ -84,15 +85,26 @@ fn DeviceLedgerRow(
             class: if selected { "if-device-row if-device-row--selected" } else { "if-device-row" },
             "aria-pressed": "{selected}",
             onclick,
-            span { class: "if-device-row__state", "data-connected": "{row.connected}", "{state_label}" }
             span { class: "if-device-row__names",
-                span { class: "if-device-row__display", "{row.display_name}" }
-                span { class: "if-device-row__hardware", "{row.hardware_name}" }
+                span { class: "if-device-row__headline",
+                    span { class: "if-device-row__display", "{row.display_name}" }
+                    span { class: "if-device-row__state", "data-connected": "{row.connected}",
+                        span { class: "if-device-row__state-dot", "aria-hidden": "true" }
+                        span { class: "if-device-row__state-label", "{state_label}" }
+                    }
+                }
+                span { class: "if-device-row__hardware", title: "{row.hardware_name}", "{row.hardware_name}" }
             }
-            span { class: "if-device-row__counts",
-                span { "Axes {row.usage.axes.mapped}/{row.usage.axes.total}" }
-                span { "Buttons {row.usage.buttons.mapped}/{row.usage.buttons.total}" }
-                span { "Hats {row.usage.hats.mapped}/{row.usage.hats.total}" }
+            if !usage_items.is_empty() {
+                span { class: "if-device-row__counts",
+                    for item in usage_items {
+                        span {
+                            class: "if-device-row__count-chip",
+                            "data-complete": "{item.complete}",
+                            "{item.label}"
+                        }
+                    }
+                }
             }
         }
     }
@@ -117,22 +129,46 @@ fn DeviceInspector(
     let save_device = row.device_id.clone();
     let mut draft_alias_for_input = draft_alias;
     let draft_alias_for_save = draft_alias;
+    let mut draft_alias_for_keydown = draft_alias;
     let mut save_error_for_save = save_error;
+    let mut save_error_for_keydown = save_error;
     let mut save_error_for_copy = save_error;
     let commands = ctx.commands.clone();
+    let commands_for_keydown = commands.clone();
+    let save_device_for_keydown = save_device.clone();
+    let persisted_alias_for_keydown = persisted_alias.clone();
     let report_for_copy = report.clone();
     let oninput = move |event: FormEvent| draft_alias_for_input.set(event.value());
     let save_click = move |_| {
-        let alias = draft_alias_for_save.read().trim().to_owned();
-        let command = EngineCommand::SetDeviceAlias {
-            device: save_device.clone(),
-            alias: if alias.is_empty() { None } else { Some(alias) },
-        };
+        let command =
+            build_set_device_alias_command(save_device.clone(), &draft_alias_for_save.read());
         if let Err(error) = commands.send(command) {
             save_error_for_save.set(Some(error.to_string()));
         } else {
             save_error_for_save.set(None);
         }
+    };
+    let onkeydown = move |event: KeyboardEvent| match event.key() {
+        Key::Enter => {
+            event.prevent_default();
+            let draft_value = draft_alias_for_keydown.read().clone();
+            if draft_value.trim() == persisted_alias_for_keydown {
+                return;
+            }
+            let command =
+                build_set_device_alias_command(save_device_for_keydown.clone(), &draft_value);
+            if let Err(error) = commands_for_keydown.send(command) {
+                save_error_for_keydown.set(Some(error.to_string()));
+            } else {
+                save_error_for_keydown.set(None);
+            }
+        }
+        Key::Escape => {
+            event.prevent_default();
+            draft_alias_for_keydown.set(alias_draft_after_escape(&persisted_alias_for_keydown));
+            save_error_for_keydown.set(None);
+        }
+        _ => {}
     };
     let copy_click = move |_| {
         if let Err(error) = copy_device_report_to_clipboard(&report_for_copy) {
@@ -144,32 +180,38 @@ fn DeviceInspector(
 
     rsx! {
         section { class: "if-device-panel__inspector", "aria-label": "Selected device details",
-            label { class: "if-device-inspector__field",
+            div { class: "if-device-inspector__field",
                 span { "Display name" }
-                input {
-                    class: "if-device-inspector__input",
-                    value: "{draft_value}",
-                    oninput,
+                div { class: "if-device-inspector__edit-row",
+                    input {
+                        "aria-label": "Display name",
+                        class: "if-device-inspector__input if-text-input if-text-input--inset",
+                        value: "{draft_value}",
+                        oninput,
+                        onkeydown,
+                    }
+                    button {
+                        r#type: "button",
+                        class: "if-device-inspector__save if-button if-button--primary if-button--sm",
+                        disabled: !dirty,
+                        onclick: save_click,
+                        "Save"
+                    }
                 }
-            }
-            button {
-                r#type: "button",
-                class: "if-device-inspector__save",
-                disabled: !dirty,
-                onclick: save_click,
-                "Save name"
             }
             if let Some(error) = error {
                 div { class: "if-device-inspector__error", "{error}" }
             }
-            div { class: "if-device-inspector__hardware", "{row.hardware_name}" }
-            DiagnosticsBlock { row: row.clone() }
+            div { class: "if-device-inspector__meta",
+                span { class: "if-device-inspector__meta-label", "Hardware" }
+                span { class: "if-device-inspector__hardware", title: "{row.hardware_name}", "{row.hardware_name}" }
+            }
             UsageBlock { row: row.clone() }
             button {
                 r#type: "button",
-                class: "if-device-inspector__copy",
+                class: "if-device-inspector__copy if-button if-button--secondary if-button--sm",
                 onclick: copy_click,
-                "Copy device report"
+                "Copy report"
             }
         }
     }
@@ -186,40 +228,89 @@ pub(super) fn alias_draft_for_selected_row(row: &DevicePanelRow) -> String {
     row.alias.clone()
 }
 
-pub(super) fn build_device_report(row: &DevicePanelRow) -> String {
-    let diagnostics = &row.diagnostics;
-    let serial = diagnostics.serial.as_deref().unwrap_or("unavailable");
-    let instance_path = row.info.instance_path.as_deref().unwrap_or("unavailable");
-    format!(
-        "Display name: {}\nHardware name: {}\nConnection: {}\nAxes: {}/{} mapped\nButtons: {}/{} mapped\nHats: {}/{} mapped\nSDL GUID: {}\nVID: {}\nPID: {}\nProduct version: {}\nFirmware version: {}\nSerial: {}\nInstance path: {}",
-        row.display_name,
-        row.hardware_name,
-        if row.connected {
-            "connected"
-        } else {
-            "disconnected"
-        },
-        row.usage.axes.mapped,
-        row.usage.axes.total,
-        row.usage.buttons.mapped,
-        row.usage.buttons.total,
-        row.usage.hats.mapped,
-        row.usage.hats.total,
-        row.device_id.0,
-        format_optional_hex(diagnostics.vendor_id),
-        format_optional_hex(diagnostics.product_id),
-        format_optional_u16(diagnostics.product_version),
-        format_optional_u16(diagnostics.firmware_version),
-        serial,
-        instance_path
-    )
+fn alias_draft_after_escape(persisted_alias: &str) -> String {
+    persisted_alias.to_owned()
 }
 
-fn format_optional_hex(value: Option<u16>) -> String {
-    value.map_or_else(
-        || "unavailable".to_owned(),
-        |value| format!("0x{value:04x}"),
-    )
+fn build_set_device_alias_command(device: DeviceId, alias: &str) -> EngineCommand {
+    let alias = alias.trim().to_owned();
+    EngineCommand::SetDeviceAlias {
+        device,
+        alias: if alias.is_empty() { None } else { Some(alias) },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UsageCountItem {
+    label: String,
+    complete: bool,
+}
+
+fn usage_count_items(usage: &crate::context::DeviceUsageSummary) -> Vec<UsageCountItem> {
+    let mut labels = Vec::new();
+    if usage.axes.total > 0 {
+        labels.push(UsageCountItem {
+            label: format!("Axes {}/{}", usage.axes.mapped, usage.axes.total),
+            complete: usage.axes.mapped == usage.axes.total,
+        });
+    }
+    if usage.buttons.total > 0 {
+        labels.push(UsageCountItem {
+            label: format!("Buttons {}/{}", usage.buttons.mapped, usage.buttons.total),
+            complete: usage.buttons.mapped == usage.buttons.total,
+        });
+    }
+    if usage.hats.total > 0 {
+        labels.push(UsageCountItem {
+            label: format!("Hats {}/{}", usage.hats.mapped, usage.hats.total),
+            complete: usage.hats.mapped == usage.hats.total,
+        });
+    }
+    labels
+}
+
+fn usage_report_lines(usage: &crate::context::DeviceUsageSummary) -> Vec<String> {
+    let mut lines = Vec::new();
+    if usage.axes.total > 0 {
+        lines.push(format!(
+            "Axes: {}/{} mapped",
+            usage.axes.mapped, usage.axes.total
+        ));
+    }
+    if usage.buttons.total > 0 {
+        lines.push(format!(
+            "Buttons: {}/{} mapped",
+            usage.buttons.mapped, usage.buttons.total
+        ));
+    }
+    if usage.hats.total > 0 {
+        lines.push(format!(
+            "Hats: {}/{} mapped",
+            usage.hats.mapped, usage.hats.total
+        ));
+    }
+    lines
+}
+
+pub(super) fn build_device_report(row: &DevicePanelRow) -> String {
+    let diagnostics = &row.diagnostics;
+    let mut lines = vec![
+        format!("Display name: {}", row.display_name),
+        format!("Hardware name: {}", row.hardware_name),
+    ];
+    lines.extend(usage_report_lines(&row.usage));
+    lines.extend([
+        format!("SDL GUID: {}", row.device_id.0),
+        format!(
+            "Product version: {}",
+            format_optional_u16(diagnostics.product_version)
+        ),
+        format!(
+            "Firmware version: {}",
+            format_optional_u16(diagnostics.firmware_version)
+        ),
+    ]);
+    lines.join("\n")
 }
 
 fn format_optional_u16(value: Option<u16>) -> String {
@@ -242,55 +333,17 @@ fn copy_device_report_to_clipboard_with(
 }
 
 #[component]
-fn DiagnosticsBlock(row: DevicePanelRow) -> Element {
-    let connection = if row.connected {
-        "connected"
-    } else {
-        "disconnected"
-    };
-    let joystick_type = row
-        .diagnostics
-        .joystick_type
-        .as_deref()
-        .unwrap_or("unknown")
-        .to_owned();
-    let vid = format_optional_hex(row.diagnostics.vendor_id);
-    let pid = format_optional_hex(row.diagnostics.product_id);
-    let serial = row
-        .diagnostics
-        .serial
-        .as_deref()
-        .unwrap_or("unavailable")
-        .to_owned();
-    let instance_path = row
-        .info
-        .instance_path
-        .as_deref()
-        .unwrap_or("unavailable")
-        .to_owned();
-
-    rsx! {
-        dl { class: "if-device-diagnostics",
-            dt { "Connection" }
-            dd { "{connection}" }
-            dt { "Type" }
-            dd { "{joystick_type}" }
-            dt { "VID/PID" }
-            dd { "{vid} / {pid}" }
-            dt { "Serial" }
-            dd { "{serial}" }
-            dt { "Path" }
-            dd { "{instance_path}" }
-        }
-    }
-}
-
-#[component]
 fn UsageBlock(row: DevicePanelRow) -> Element {
     rsx! {
         div { class: "if-device-usage",
-            div { "Primary mappings {row.usage.primary_mappings}" }
-            div { "Merge and conditional references {row.usage.secondary_mappings}" }
+            div { class: "if-device-usage__row",
+                span { class: "if-device-inspector__meta-label", "Primary mappings" }
+                span { "{row.usage.primary_mappings}" }
+            }
+            div { class: "if-device-usage__row",
+                span { class: "if-device-inspector__meta-label", "Merge/conditional refs" }
+                span { "{row.usage.secondary_mappings}" }
+            }
         }
     }
 }
@@ -431,10 +484,82 @@ mod tests {
 
         assert!(report.contains("Display name: Wheel Base"));
         assert!(report.contains("Hardware name: SDL Wheel"));
-        assert!(report.contains("Connection: connected"));
         assert!(report.contains("Axes: 0/4 mapped"));
         assert!(!report.contains("Profile path"));
         assert!(!report.contains("Active mode"));
+        assert!(!report.contains("Instance path"));
+        assert!(!report.contains("Connection:"));
+        assert!(!report.contains("VID:"));
+        assert!(!report.contains("PID:"));
+        assert!(!report.contains("Serial:"));
+    }
+
+    #[test]
+    fn device_report_omits_zero_total_usage_categories() {
+        let mut row = panel_row("dev-1", "Button Box", true);
+        row.usage.axes.total = 0;
+        row.usage.buttons.total = 16;
+        row.usage.hats.total = 0;
+        let report = build_device_report(&row);
+
+        assert!(!report.contains("Axes: 0/0 mapped"));
+        assert!(report.contains("Buttons: 0/16 mapped"));
+        assert!(!report.contains("Hats: 0/0 mapped"));
+    }
+
+    #[test]
+    fn usage_count_labels_omit_zero_total_categories() {
+        let mut row = panel_row("dev-1", "Button Box", true);
+        row.usage.axes.total = 0;
+        row.usage.buttons.total = 16;
+        row.usage.hats.total = 0;
+
+        let labels: Vec<_> = usage_count_items(&row.usage)
+            .into_iter()
+            .map(|item| (item.label, item.complete))
+            .collect();
+
+        assert_eq!(labels, vec![("Buttons 0/16".to_owned(), false)]);
+    }
+
+    #[test]
+    fn usage_count_items_marks_complete_categories() {
+        let mut row = panel_row("dev-1", "Button Box", true);
+        row.usage.axes.mapped = 4;
+        row.usage.buttons.mapped = 6;
+        row.usage.buttons.total = 12;
+
+        let labels: Vec<_> = usage_count_items(&row.usage)
+            .into_iter()
+            .map(|item| (item.label, item.complete))
+            .collect();
+
+        assert_eq!(
+            labels,
+            vec![
+                ("Axes 4/4".to_owned(), true),
+                ("Buttons 6/12".to_owned(), false),
+                ("Hats 0/1".to_owned(), false),
+            ]
+        );
+    }
+
+    #[test]
+    fn device_alias_command_trims_and_clears_empty_names() {
+        let empty = build_set_device_alias_command(DeviceId("dev-1".to_owned()), "   ");
+        let named = build_set_device_alias_command(DeviceId("dev-1".to_owned()), "  Rig Pedals  ");
+
+        assert!(matches!(
+            empty,
+            EngineCommand::SetDeviceAlias { alias: None, .. }
+        ));
+        assert!(matches!(
+            named,
+            EngineCommand::SetDeviceAlias {
+                alias: Some(alias),
+                ..
+            } if alias == "Rig Pedals"
+        ));
     }
 
     #[test]
@@ -447,6 +572,12 @@ mod tests {
     }
 
     #[test]
+    fn escape_reverts_alias_draft_to_persisted_alias() {
+        assert_eq!(alias_draft_after_escape("Rig Pedals"), "Rig Pedals");
+        assert_eq!(alias_draft_after_escape(""), "");
+    }
+
+    #[test]
     fn device_panel_renders_ledger_and_fixed_inspector() {
         let html = render_device_panel(vec![panel_row("dev-1", "Wheel Base", true)]);
 
@@ -455,8 +586,178 @@ mod tests {
         assert!(html.contains("SDL Wheel"));
         assert!(html.contains("Axes 0/4"));
         assert!(html.contains("Display name"));
-        assert!(html.contains("Save name"));
-        assert!(html.contains("Copy device report"));
+        assert!(html.contains("if-text-input"));
+        assert!(html.contains("if-text-input--inset"));
+        assert!(html.contains("if-device-inspector__edit-row"));
+        assert!(html.contains(">Save<"));
+        assert!(!html.contains("Save name"));
+        assert!(
+            html.contains("if-device-inspector__save if-button if-button--primary if-button--sm")
+        );
+        assert!(html.contains("Hardware"));
+        assert!(html.contains("Merge/conditional refs"));
+        assert!(html.contains("Copy report"));
+        assert!(!html.contains("Copy device report"));
+        assert!(
+            html.contains("if-device-inspector__copy if-button if-button--secondary if-button--sm")
+        );
+        assert!(!html.contains(">Path<"));
+        assert!(!html.contains(">Connection<"));
+        assert!(!html.contains(">Type<"));
+        assert!(!html.contains(">VID/PID<"));
+        assert!(!html.contains(">Serial<"));
+    }
+
+    #[test]
+    fn device_panel_marks_selected_row_for_interaction_state() {
+        let html = render_device_panel(vec![panel_row("dev-1", "Wheel Base", true)]);
+
+        assert!(html.contains("if-device-row if-device-row--selected"));
+    }
+
+    #[test]
+    fn device_panel_renders_connection_state_on_name_line() {
+        let html = render_device_panel(vec![panel_row("dev-1", "Wheel Base", true)]);
+
+        assert!(html.contains("if-device-row__headline"));
+        assert!(html.contains("if-device-row__state-dot"));
+        assert!(html.contains("if-device-row__state-label"));
+        let headline_index = html
+            .find("if-device-row__headline")
+            .expect("headline class");
+        let display_index = html.find("if-device-row__display").expect("display class");
+        let state_index = html.find("if-device-row__state").expect("state class");
+        let hardware_index = html
+            .find("if-device-row__hardware")
+            .expect("hardware class");
+
+        assert!(headline_index < display_index);
+        assert!(display_index < state_index);
+        assert!(state_index < hardware_index);
+        assert!(!html.contains("CONNECTED"));
+    }
+
+    #[test]
+    fn device_panel_clamps_hardware_name_with_full_title() {
+        let html = render_device_panel(vec![panel_row("dev-1", "Wheel Base", true)]);
+
+        assert!(html.contains("if-device-row__hardware"));
+        assert!(html.contains("title=\"SDL Wheel\""));
+    }
+
+    #[test]
+    fn device_panel_renders_usage_count_chips_with_completion_state() {
+        let mut row = panel_row("dev-1", "Wheel Base", true);
+        row.usage.axes.mapped = 4;
+        row.usage.buttons.mapped = 6;
+        let html = render_device_panel(vec![row]);
+
+        assert!(html.contains("if-device-row__count-chip"));
+        assert!(html.contains("data-complete=\"true\""));
+        assert!(html.contains("data-complete=\"false\""));
+        assert!(html.contains("Axes 4/4"));
+        assert!(html.contains("Buttons 6/12"));
+    }
+
+    #[test]
+    fn panel_slot_css_defines_device_row_interaction_states() {
+        let css = include_str!("../../../assets/frame/panel_slot.css");
+
+        for selector in [
+            ".if-device-row:hover:not(:disabled)",
+            ".if-device-row:focus-visible",
+            ".if-device-row:active:not(:disabled)",
+            ".if-device-row--selected:hover:not(:disabled)",
+        ] {
+            assert!(css.contains(selector), "missing selector {selector}");
+        }
+        assert!(css.contains("cursor: pointer;"));
+        assert!(css.contains("transform: translateY(1px);"));
+        assert!(css.contains("transform: translateY(2px);"));
+    }
+
+    #[test]
+    fn panel_slot_css_keeps_device_row_status_on_name_line() {
+        let css = include_str!("../../../assets/frame/panel_slot.css");
+
+        assert!(css.contains(".if-device-row__headline {\n"));
+        assert!(css.contains("justify-content: space-between;"));
+        assert!(css.contains("align-items: baseline;"));
+        assert!(css.contains(".if-device-row__state {\n"));
+        assert!(css.contains("flex: 0 0 auto;"));
+        assert!(css.contains(".if-device-row__state-dot {\n"));
+        assert!(css.contains(".if-device-row__state-label {\n"));
+    }
+
+    #[test]
+    fn panel_slot_css_defines_device_row_count_chips_and_hardware_clamp() {
+        let css = include_str!("../../../assets/frame/panel_slot.css");
+
+        assert!(css.contains(".if-device-row__count-chip {\n"));
+        assert!(css.contains(".if-device-row__count-chip[data-complete=\"true\"]"));
+        assert!(css.contains(".if-device-row__hardware {\n"));
+        assert!(css.contains("-webkit-line-clamp: 2;"));
+    }
+
+    #[test]
+    fn panel_slot_css_leaves_inspector_button_visuals_to_shared_button() {
+        let css = include_str!("../../../assets/frame/panel_slot.css");
+        let button_layout = ".if-device-inspector__save,\n.if-device-inspector__copy {\n    align-self: flex-start;\n}";
+
+        assert!(css.contains(button_layout));
+        assert!(!css.contains(
+            ".if-device-inspector__save,\n.if-device-inspector__copy {\n    align-self: flex-start;\n    padding:"
+        ));
+    }
+
+    #[test]
+    fn panel_slot_css_keeps_device_inspector_anchored_below_scrollable_ledger() {
+        let css = include_str!("../../../assets/frame/panel_slot.css");
+
+        assert!(css.contains(".if-panel-slot__body {\n"));
+        assert!(css.contains("display: flex;"));
+        assert!(css.contains("overflow-y: hidden;"));
+        assert!(css.contains(".if-device-panel {\n"));
+        assert!(css.contains("height: 100%;"));
+        assert!(css.contains("grid-template-rows: minmax(0, 1fr) auto;"));
+        assert!(css.contains(".if-device-panel__ledger {\n"));
+        assert!(css.contains("overflow-y: auto;"));
+    }
+
+    #[test]
+    fn panel_slot_css_defines_inline_device_inspector_edit_row() {
+        let css = include_str!("../../../assets/frame/panel_slot.css");
+
+        assert!(css.contains(".if-device-inspector__edit-row {\n"));
+        assert!(css.contains("grid-template-columns: minmax(0, 1fr) auto;"));
+        assert!(css.contains(".if-device-inspector__meta-label {\n"));
+    }
+
+    #[test]
+    fn device_panel_omits_zero_total_usage_counts() {
+        let mut row = panel_row("dev-1", "Button Box", true);
+        row.usage.axes.total = 0;
+        row.usage.buttons.total = 0;
+        row.usage.hats.total = 0;
+        let html = render_device_panel(vec![row]);
+
+        assert!(!html.contains("Axes 0/0"));
+        assert!(!html.contains("Buttons 0/0"));
+        assert!(!html.contains("Hats 0/0"));
+        assert!(!html.contains("if-device-row__counts"));
+    }
+
+    #[test]
+    fn device_panel_keeps_nonzero_usage_counts() {
+        let mut row = panel_row("dev-1", "Button Box", true);
+        row.usage.axes.total = 0;
+        row.usage.buttons.total = 16;
+        row.usage.hats.total = 0;
+        let html = render_device_panel(vec![row]);
+
+        assert!(!html.contains("Axes 0/0"));
+        assert!(html.contains("Buttons 0/16"));
+        assert!(!html.contains("Hats 0/0"));
     }
 
     #[test]
@@ -464,6 +765,8 @@ mod tests {
         let html = render_device_panel(vec![]);
 
         assert!(html.contains("No devices known"));
+        assert!(html.contains("Connect a controller, wheel, pedals, or other input device"));
+        assert!(!html.contains("SDL"));
         assert!(!html.contains("if-device-panel__inspector"));
     }
 
@@ -490,5 +793,10 @@ mod tests {
         let copied = copied.expect("copied text");
         assert!(copied.contains("Display name: Wheel Base"));
         assert!(copied.contains("Hardware name: SDL Wheel"));
+        assert!(!copied.contains("Instance path"));
+        assert!(!copied.contains("Connection:"));
+        assert!(!copied.contains("VID:"));
+        assert!(!copied.contains("PID:"));
+        assert!(!copied.contains("Serial:"));
     }
 }
