@@ -212,3 +212,7 @@ Editor on top of F6's preferences core. Owns the settings surface (panel sub-sec
 - **Curve editor (F10) porting is nontrivial.** SVG + pointer events are a well-trodden pattern, but correctness of bezier math and symmetric mode needs direct porting of the existing logic at `crates/inputforge-gui/src/widgets/curve_editor/mutation.rs`, not re-derivation.
 - **Webview runtime on older Windows.** WebView2 is pre-installed on Windows 10 20H1+ and all Windows 11. Older systems may need the evergreen runtime installer. Acceptable for a configuration tool.
 - **Loss of `egui_kittest` snapshot tests.** See Open Questions.
+
+## Possible Future Enhancements
+
+- **Device panel beyond F12.** F12 deliberately avoids calibration, live input preview, and duplicate-device identity warnings. Future work can build on the Device Info panel with calibration drill-in, read-only HidHide status or management, richer wireless/battery treatment, per-device troubleshooting exports, device-specific health checks, and stronger duplicate-device handling if real rigs expose that problem.
