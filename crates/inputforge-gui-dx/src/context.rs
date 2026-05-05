@@ -10,8 +10,8 @@ use inputforge_core::pipeline::InputCache;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, DeviceState, EngineStatus, ForcedMode};
 use inputforge_core::types::{
-    AxisPolarity, DeviceId, HatDirection, InputAddress, InputId, OutputAddress, VJoyAxis,
-    VirtualDeviceConfig,
+    AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, HatDirection, InputAddress, InputId,
+    OutputAddress, VJoyAxis, VirtualDeviceConfig,
 };
 
 /// Raw signal-free handles installed via `LaunchBuilder::with_context`.
@@ -72,6 +72,7 @@ pub(crate) struct ConfigSnapshot {
     /// to detect cross-window conflicts: selection still refers to a key
     /// that the engine no longer holds.
     pub selected_mapping_key: Option<crate::frame::MappingKey>,
+    pub device_panel_rows: Vec<DevicePanelRow>,
 }
 
 /// One row's worth of state for the F8 mapping list. Populated by
@@ -87,6 +88,36 @@ pub(crate) struct MappingSummary {
     pub glyphs: GlyphFlags,
     pub referenced_devices: Vec<DeviceId>,
     pub first_vjoy_output: Option<OutputAddress>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct DeviceCoverage {
+    pub mapped: u8,
+    pub total: u8,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct DeviceUsageSummary {
+    pub axes: DeviceCoverage,
+    pub buttons: DeviceCoverage,
+    pub hats: DeviceCoverage,
+    pub primary_mappings: usize,
+    pub secondary_mappings: usize,
+    pub touched_modes: Vec<String>,
+    pub touched_mapping_names: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DevicePanelRow {
+    pub device_id: DeviceId,
+    pub display_name: String,
+    pub alias: String,
+    pub hardware_name: String,
+    pub connected: bool,
+    pub info: DeviceInfo,
+    pub diagnostics: DeviceDiagnostics,
+    pub usage: DeviceUsageSummary,
+    pub last_seen_unix_ms: Option<u64>,
 }
 
 /// Pre-computed glyph state for a `MappingSummary`. The walker stops on
@@ -366,6 +397,222 @@ fn first_vjoy_output(actions: &[inputforge_core::action::Action]) -> Option<Outp
     None
 }
 
+fn build_device_panel_rows(s: &AppState) -> Vec<DevicePanelRow> {
+    let mut rows = Vec::new();
+    let mut live_ids = HashSet::new();
+
+    for device in &s.devices {
+        live_ids.insert(device.info.id.clone());
+        rows.push(DevicePanelRow {
+            device_id: device.info.id.clone(),
+            display_name: display_name_for(&s.device_aliases, &device.info),
+            alias: s
+                .device_aliases
+                .get(&device.info.id)
+                .cloned()
+                .unwrap_or_default(),
+            hardware_name: device.info.name.clone(),
+            connected: device.connected,
+            info: device.info.clone(),
+            diagnostics: device.diagnostics.clone(),
+            usage: usage_for_device(&device.info.id, &device.info, s),
+            last_seen_unix_ms: s
+                .device_registry
+                .get(&device.info.id)
+                .and_then(|record| record.last_seen_unix_ms),
+        });
+    }
+
+    for (device_id, record) in &s.device_registry {
+        if live_ids.contains(device_id) {
+            continue;
+        }
+        rows.push(DevicePanelRow {
+            device_id: device_id.clone(),
+            display_name: display_name_for(&s.device_aliases, &record.info),
+            alias: s.device_aliases.get(device_id).cloned().unwrap_or_default(),
+            hardware_name: record.info.name.clone(),
+            connected: false,
+            info: record.info.clone(),
+            diagnostics: record.diagnostics.clone(),
+            usage: usage_for_device(device_id, &record.info, s),
+            last_seen_unix_ms: record.last_seen_unix_ms,
+        });
+    }
+
+    rows.sort_by(|a, b| {
+        b.connected.cmp(&a.connected).then_with(|| {
+            a.display_name
+                .to_ascii_lowercase()
+                .cmp(&b.display_name.to_ascii_lowercase())
+        })
+    });
+    rows
+}
+
+fn display_name_for(aliases: &HashMap<DeviceId, String>, info: &DeviceInfo) -> String {
+    aliases
+        .get(&info.id)
+        .filter(|alias| !alias.trim().is_empty())
+        .cloned()
+        .unwrap_or_else(|| {
+            if info.name.trim().is_empty() {
+                info.id.0.clone()
+            } else {
+                info.name.clone()
+            }
+        })
+}
+
+fn usage_for_device(device_id: &DeviceId, info: &DeviceInfo, s: &AppState) -> DeviceUsageSummary {
+    let mut axes = HashSet::new();
+    let mut buttons = HashSet::new();
+    let mut hats = HashSet::new();
+    let mut primary_mappings = 0;
+    let mut secondary_mappings = 0;
+    let mut touched_modes = Vec::new();
+    let mut touched_mapping_names = Vec::new();
+
+    if let Some(profile) = &s.active_profile {
+        for mapping in profile.mappings() {
+            let primary = mapping.input.device().is_some_and(|id| id == device_id);
+            let referenced_devices = derive_referenced_devices(&mapping.input, &mapping.actions);
+            let referenced = referenced_devices
+                .iter()
+                .any(|referenced| referenced == device_id);
+
+            if primary {
+                primary_mappings += 1;
+                record_input_kind(&mapping.input, &mut axes, &mut buttons, &mut hats);
+            } else if referenced {
+                secondary_mappings += 1;
+                record_referenced_input_kinds(
+                    device_id,
+                    &mapping.actions,
+                    &mut axes,
+                    &mut buttons,
+                    &mut hats,
+                );
+            }
+
+            if primary || referenced {
+                push_unique(&mut touched_modes, mapping.mode.clone());
+                if let Some(name) = &mapping.name {
+                    push_unique(&mut touched_mapping_names, name.clone());
+                }
+            }
+        }
+    }
+
+    DeviceUsageSummary {
+        axes: DeviceCoverage {
+            mapped: set_len_as_u8(&axes),
+            total: info.axes,
+        },
+        buttons: DeviceCoverage {
+            mapped: set_len_as_u8(&buttons),
+            total: info.buttons,
+        },
+        hats: DeviceCoverage {
+            mapped: set_len_as_u8(&hats),
+            total: info.hats,
+        },
+        primary_mappings,
+        secondary_mappings,
+        touched_modes,
+        touched_mapping_names,
+    }
+}
+
+fn record_input_kind(
+    address: &InputAddress,
+    axes: &mut HashSet<u8>,
+    buttons: &mut HashSet<u8>,
+    hats: &mut HashSet<u8>,
+) {
+    let InputAddress::Bound { input, .. } = address else {
+        return;
+    };
+    match input {
+        InputId::Axis { index } => {
+            axes.insert(*index);
+        }
+        InputId::Button { index } => {
+            buttons.insert(*index);
+        }
+        InputId::Hat { index } => {
+            hats.insert(*index);
+        }
+    }
+}
+
+fn record_referenced_input_kinds(
+    device_id: &DeviceId,
+    actions: &[inputforge_core::action::Action],
+    axes: &mut HashSet<u8>,
+    buttons: &mut HashSet<u8>,
+    hats: &mut HashSet<u8>,
+) {
+    use inputforge_core::action::Action;
+    for action in actions {
+        match action {
+            Action::MergeAxis { second_input, .. } => {
+                if second_input.device().is_some_and(|id| id == device_id) {
+                    record_input_kind(second_input, axes, buttons, hats);
+                }
+            }
+            Action::Conditional {
+                condition,
+                if_true,
+                if_false,
+            } => {
+                record_condition_input_kinds(device_id, condition, axes, buttons, hats);
+                record_referenced_input_kinds(device_id, if_true, axes, buttons, hats);
+                record_referenced_input_kinds(device_id, if_false, axes, buttons, hats);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn record_condition_input_kinds(
+    device_id: &DeviceId,
+    condition: &inputforge_core::action::Condition,
+    axes: &mut HashSet<u8>,
+    buttons: &mut HashSet<u8>,
+    hats: &mut HashSet<u8>,
+) {
+    use inputforge_core::action::Condition;
+    match condition {
+        Condition::ButtonPressed { input }
+        | Condition::ButtonReleased { input }
+        | Condition::AxisInRange { input, .. }
+        | Condition::HatDirection { input, .. } => {
+            if input.device().is_some_and(|id| id == device_id) {
+                record_input_kind(input, axes, buttons, hats);
+            }
+        }
+        Condition::All { conditions } | Condition::Any { conditions } => {
+            for child in conditions {
+                record_condition_input_kinds(device_id, child, axes, buttons, hats);
+            }
+        }
+        Condition::Not { condition } => {
+            record_condition_input_kinds(device_id, condition, axes, buttons, hats);
+        }
+    }
+}
+
+fn set_len_as_u8(set: &HashSet<u8>) -> u8 {
+    set.len().try_into().unwrap_or(u8::MAX)
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
+}
+
 impl ConfigSnapshot {
     pub(crate) fn from_state(s: &AppState, selection: Option<&crate::frame::MappingKey>) -> Self {
         let mut mapped_inputs = HashSet::new();
@@ -401,6 +648,7 @@ impl ConfigSnapshot {
             mappings,
             selected_mapping_actions,
             selected_mapping_key: selection.cloned(),
+            device_panel_rows: build_device_panel_rows(s),
         }
     }
 }
@@ -408,6 +656,83 @@ impl ConfigSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_device(id: &str, name: &str, axes: u8, buttons: u8, hats: u8) -> DeviceInfo {
+        DeviceInfo {
+            id: DeviceId(id.to_owned()),
+            name: name.to_owned(),
+            axes,
+            buttons,
+            hats,
+            instance_path: None,
+            axis_polarities: vec![AxisPolarity::Bipolar; usize::from(axes)],
+        }
+    }
+
+    fn profile_with_primary_merge_and_conditional_device_refs() -> inputforge_core::profile::Profile
+    {
+        use inputforge_core::action::{Action, Condition, Mapping};
+        use inputforge_core::mode::ModeTree;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::types::MergeOp;
+
+        let modes =
+            ModeTree::from_adjacency(&HashMap::from([("Default".to_owned(), vec![])])).unwrap();
+        let device = DeviceId("dev-1".to_owned());
+        let other = DeviceId("dev-2".to_owned());
+        let third = DeviceId("dev-3".to_owned());
+        let primary_button = InputAddress::Bound {
+            device: device.clone(),
+            input: InputId::Button { index: 0 },
+        };
+        let secondary_axis = InputAddress::Bound {
+            device: device.clone(),
+            input: InputId::Axis { index: 1 },
+        };
+
+        Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            vec![
+                Mapping {
+                    input: primary_button.clone(),
+                    mode: "Default".to_owned(),
+                    name: Some("Primary fire".to_owned()),
+                    actions: vec![],
+                },
+                Mapping {
+                    input: InputAddress::Bound {
+                        device: other,
+                        input: InputId::Axis { index: 0 },
+                    },
+                    mode: "Default".to_owned(),
+                    name: Some("Merged axis".to_owned()),
+                    actions: vec![Action::MergeAxis {
+                        second_input: secondary_axis,
+                        operation: MergeOp::Average,
+                    }],
+                },
+                Mapping {
+                    input: InputAddress::Bound {
+                        device: third,
+                        input: InputId::Button { index: 0 },
+                    },
+                    mode: "Default".to_owned(),
+                    name: Some("Conditional fire".to_owned()),
+                    actions: vec![Action::Conditional {
+                        condition: Condition::ButtonPressed {
+                            input: primary_button,
+                        },
+                        if_true: vec![],
+                        if_false: vec![],
+                    }],
+                },
+            ],
+            vec![],
+            "Default".to_owned(),
+        )
+    }
 
     #[test]
     fn meta_snapshot_default_is_empty() {
@@ -430,6 +755,7 @@ mod tests {
         assert!(c.mapped_inputs.is_empty());
         assert!(c.mapping_names.is_empty());
         assert!(c.mappings.is_empty());
+        assert!(c.device_panel_rows.is_empty());
     }
 
     #[test]
@@ -509,6 +835,61 @@ mod tests {
         assert_eq!(cfg.virtual_devices[0].button_count, 4);
         assert!(cfg.mapped_inputs.is_empty()); // no profile loaded
         assert!(cfg.mapping_names.is_empty());
+    }
+
+    #[test]
+    fn config_snapshot_merges_live_and_remembered_device_rows() {
+        let live = DeviceState {
+            info: test_device("dev-live", "Live Wheel", 4, 12, 1),
+            connected: true,
+            diagnostics: DeviceDiagnostics::default(),
+        };
+        let remembered = test_device("dev-old", "Old Pedals", 3, 0, 0);
+        let mut state = AppState::new();
+        state.devices.push(live);
+        state
+            .device_aliases
+            .insert(DeviceId("dev-live".to_owned()), "Rig Wheel".to_owned());
+        state.device_registry.insert(
+            DeviceId("dev-old".to_owned()),
+            inputforge_core::settings::DeviceRecord {
+                info: remembered,
+                diagnostics: DeviceDiagnostics::default(),
+                last_seen_unix_ms: Some(1),
+            },
+        );
+
+        let snapshot = ConfigSnapshot::from_state(&state, None);
+
+        assert_eq!(snapshot.device_panel_rows.len(), 2);
+        assert_eq!(snapshot.device_panel_rows[0].display_name, "Rig Wheel");
+        assert!(snapshot.device_panel_rows[0].connected);
+        assert_eq!(snapshot.device_panel_rows[1].display_name, "Old Pedals");
+        assert!(!snapshot.device_panel_rows[1].connected);
+    }
+
+    #[test]
+    fn config_snapshot_counts_primary_merge_and_conditional_usage() {
+        let mut state =
+            AppState::with_profile(profile_with_primary_merge_and_conditional_device_refs());
+        state.devices.push(DeviceState {
+            info: test_device("dev-1", "Stick", 6, 32, 1),
+            connected: true,
+            diagnostics: DeviceDiagnostics::default(),
+        });
+
+        let snapshot = ConfigSnapshot::from_state(&state, None);
+        let row = snapshot
+            .device_panel_rows
+            .iter()
+            .find(|row| row.device_id == DeviceId("dev-1".to_owned()))
+            .expect("device row");
+
+        assert_eq!(row.usage.primary_mappings, 1);
+        assert_eq!(row.usage.secondary_mappings, 2);
+        assert_eq!(row.usage.axes.mapped, 1);
+        assert_eq!(row.usage.buttons.mapped, 1);
+        assert_eq!(row.usage.hats.mapped, 0);
     }
 
     #[test]
