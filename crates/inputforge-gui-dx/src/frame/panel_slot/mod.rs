@@ -47,6 +47,10 @@ pub(crate) fn PanelSlot() -> Element {
         },
         PanelSlotEnum::None => unreachable!("None branch returned above"),
     };
+    let body = match s {
+        PanelSlotEnum::Devices if !calib => rsx! { device_panel::DevicePanel {} },
+        _ => rsx! { "{spec.body}" },
+    };
 
     rsx! {
         Stylesheet { href: PANEL_SLOT_CSS }
@@ -57,7 +61,7 @@ pub(crate) fn PanelSlot() -> Element {
                 div { class: "if-panel-slot__caption", "{spec.caption}" }
                 h2 { class: "if-panel-slot__title", "{spec.title}" }
             }
-            div { class: "if-panel-slot__body", "{spec.body}" }
+            div { class: "if-panel-slot__body", {body} }
         }
     }
 }
