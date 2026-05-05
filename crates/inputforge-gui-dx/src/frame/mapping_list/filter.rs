@@ -82,7 +82,9 @@ mod tests {
     use super::*;
 
     use inputforge_core::state::DeviceState;
-    use inputforge_core::types::{AxisPolarity, DeviceInfo, InputAddress, InputId};
+    use inputforge_core::types::{
+        AxisPolarity, DeviceDiagnostics, DeviceInfo, InputAddress, InputId,
+    };
 
     use crate::context::GlyphFlags;
 
@@ -99,6 +101,7 @@ mod tests {
                     axis_polarities: vec![AxisPolarity::Bipolar; 4],
                 },
                 connected: true,
+                diagnostics: DeviceDiagnostics::default(),
             }],
             ..ConfigSnapshot::default()
         }
@@ -133,6 +136,7 @@ mod tests {
                         axis_polarities: vec![AxisPolarity::Bipolar],
                     },
                     connected: true,
+                    diagnostics: DeviceDiagnostics::default(),
                 })
                 .collect(),
             ..ConfigSnapshot::default()

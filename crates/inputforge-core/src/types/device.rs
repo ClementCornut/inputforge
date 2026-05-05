@@ -41,6 +41,40 @@ pub struct DeviceInfo {
     pub axis_polarities: Vec<AxisPolarity>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeviceConnectionState {
+    Wired,
+    Wireless,
+    Unknown,
+    Invalid,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeviceBatteryState {
+    Unknown,
+    Empty,
+    Low,
+    Medium,
+    Full,
+    Charging,
+    Charged,
+    Wired,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct DeviceDiagnostics {
+    pub vendor_id: Option<u16>,
+    pub product_id: Option<u16>,
+    pub product_version: Option<u16>,
+    pub firmware_version: Option<u16>,
+    pub serial: Option<String>,
+    pub joystick_type: Option<String>,
+    pub connection_state: Option<DeviceConnectionState>,
+    pub battery_percent: Option<u8>,
+    pub battery_state: Option<DeviceBatteryState>,
+    pub is_virtual: Option<bool>,
+}
+
 /// Configuration for creating a virtual vJoy device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VirtualDeviceConfig {
@@ -109,6 +143,17 @@ mod tests {
         let json = serde_json::to_string(&info).unwrap();
         let back: DeviceInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(info, back);
+    }
+
+    #[test]
+    fn device_diagnostics_defaults_to_unknown_identity() {
+        let diagnostics = DeviceDiagnostics::default();
+
+        assert_eq!(diagnostics.connection_state, None);
+        assert_eq!(diagnostics.vendor_id, None);
+        assert_eq!(diagnostics.product_id, None);
+        assert_eq!(diagnostics.serial, None);
+        assert_eq!(diagnostics.is_virtual, None);
     }
 
     #[test]

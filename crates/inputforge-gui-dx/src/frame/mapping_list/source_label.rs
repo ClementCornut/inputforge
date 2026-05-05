@@ -72,7 +72,7 @@ mod tests {
     use super::*;
 
     use inputforge_core::state::DeviceState;
-    use inputforge_core::types::{AxisPolarity, DeviceId, DeviceInfo};
+    use inputforge_core::types::{AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo};
 
     fn cfg_with_device(name: &str, did: &str) -> ConfigSnapshot {
         ConfigSnapshot {
@@ -87,6 +87,7 @@ mod tests {
                     axis_polarities: vec![AxisPolarity::Bipolar; 8],
                 },
                 connected: true,
+                diagnostics: DeviceDiagnostics::default(),
             }],
             ..ConfigSnapshot::default()
         }

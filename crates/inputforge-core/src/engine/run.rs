@@ -18,7 +18,7 @@ use crate::error::Result;
 use crate::pipeline::{self, PipelineContext};
 use crate::profile::{CalibrationEntry, Profile};
 use crate::state::{AppState, DeviceCalibrationStore, DeviceState, EngineStatus, InputCacheEntry};
-use crate::types::{InputAddress, InputEvent, InputId, InputValue};
+use crate::types::{DeviceDiagnostics, InputAddress, InputEvent, InputId, InputValue};
 
 use super::Engine;
 use super::command::EngineCommand;
@@ -1050,6 +1050,7 @@ impl Engine {
                         state.devices.push(DeviceState {
                             info: info.clone(),
                             connected: true,
+                            diagnostics: DeviceDiagnostics::default(),
                         });
                     }
                 }

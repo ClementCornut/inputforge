@@ -18,12 +18,14 @@ pub use device::DeviceState;
 pub use output_cache::OutputCacheStore;
 pub use status::EngineStatus;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
 use crate::profile::Profile;
-use crate::types::VirtualDeviceConfig;
+use crate::settings::DeviceRecord;
+use crate::types::{DeviceId, VirtualDeviceConfig};
 
 /// Sticky forced-mode override.
 ///
@@ -45,6 +47,10 @@ pub struct ForcedMode {
 pub struct AppState {
     /// Connected devices and their live input values.
     pub devices: Vec<DeviceState>,
+    /// App-wide custom device aliases mirrored from `AppSettings`.
+    pub device_aliases: HashMap<DeviceId, String>,
+    /// Last-known physical device records mirrored from `AppSettings`.
+    pub device_registry: HashMap<DeviceId, DeviceRecord>,
     /// Name of the currently active mode.
     pub current_mode: String,
     /// Current engine lifecycle status.
@@ -77,6 +83,8 @@ impl AppState {
     pub fn new() -> Self {
         Self {
             devices: Vec::new(),
+            device_aliases: HashMap::new(),
+            device_registry: HashMap::new(),
             current_mode: "Default".to_owned(),
             engine_status: EngineStatus::Stopped,
             active_profile: None,
@@ -115,6 +123,8 @@ impl AppState {
         }
         Self {
             devices: Vec::new(),
+            device_aliases: HashMap::new(),
+            device_registry: HashMap::new(),
             current_mode: startup_mode,
             engine_status: EngineStatus::Stopped,
             active_profile: Some(profile),

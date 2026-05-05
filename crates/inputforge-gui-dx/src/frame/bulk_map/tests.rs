@@ -20,8 +20,8 @@ use inputforge_core::profile::Profile;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, DeviceState};
 use inputforge_core::types::{
-    AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis,
-    VirtualDeviceConfig,
+    AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId, OutputAddress,
+    OutputId, VJoyAxis, VirtualDeviceConfig,
 };
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
@@ -65,6 +65,7 @@ pub(super) fn one_device_state() -> DeviceState {
             axis_polarities: vec![AxisPolarity::Bipolar; 4],
         },
         connected: true,
+        diagnostics: DeviceDiagnostics::default(),
     }
 }
 
@@ -138,6 +139,7 @@ fn state_for(scenario: Scenario) -> AppState {
                     axis_polarities: vec![],
                 },
                 connected: false,
+                diagnostics: DeviceDiagnostics::default(),
             });
             state
         }

@@ -479,7 +479,7 @@ mod tests {
 
     #[test]
     fn config_from_state_clones_devices_and_virtual_devices() {
-        use inputforge_core::types::{DeviceId, DeviceInfo};
+        use inputforge_core::types::{DeviceDiagnostics, DeviceId, DeviceInfo};
 
         let mut state = AppState::new();
         state.devices.push(DeviceState {
@@ -493,6 +493,7 @@ mod tests {
                 axis_polarities: vec![AxisPolarity::Unipolar],
             },
             connected: true,
+            diagnostics: DeviceDiagnostics::default(),
         });
         state.virtual_devices.push(VirtualDeviceConfig {
             device_id: 1,
@@ -522,7 +523,9 @@ mod tests {
     #[test]
     fn live_from_state_reads_caches_per_device_shape() {
         use inputforge_core::state::DeviceState;
-        use inputforge_core::types::{AxisValue, DeviceId, DeviceInfo, InputId, InputValue};
+        use inputforge_core::types::{
+            AxisValue, DeviceDiagnostics, DeviceId, DeviceInfo, InputId, InputValue,
+        };
 
         let mut state = AppState::new();
         let did = DeviceId("dev-1".to_owned());
@@ -538,6 +541,7 @@ mod tests {
                 axis_polarities: vec![AxisPolarity::Bipolar],
             },
             connected: true,
+            diagnostics: DeviceDiagnostics::default(),
         });
         state.virtual_devices.push(VirtualDeviceConfig {
             device_id: 1,
@@ -653,7 +657,7 @@ mod tests {
     fn f1_readout_data_binding_contract() {
         use inputforge_core::state::{AppState, DeviceState, EngineStatus};
         use inputforge_core::types::{
-            AxisPolarity, DeviceId, DeviceInfo, VJoyAxis, VirtualDeviceConfig,
+            AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, VJoyAxis, VirtualDeviceConfig,
         };
 
         let mut s = AppState::new();
@@ -671,6 +675,7 @@ mod tests {
                 axis_polarities: vec![AxisPolarity::Bipolar; 2],
             },
             connected: true,
+            diagnostics: DeviceDiagnostics::default(),
         });
         s.virtual_devices.push(VirtualDeviceConfig {
             device_id: 1,

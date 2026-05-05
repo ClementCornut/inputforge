@@ -16,7 +16,9 @@ use parking_lot::RwLock;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, DeviceState, EngineStatus};
-use inputforge_core::types::{AxisPolarity, DeviceId, DeviceInfo, VJoyAxis, VirtualDeviceConfig};
+use inputforge_core::types::{
+    AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, VJoyAxis, VirtualDeviceConfig,
+};
 
 fn main() -> anyhow::Result<()> {
     let _ = tracing_subscriber::fmt()
@@ -41,6 +43,7 @@ fn main() -> anyhow::Result<()> {
             axis_polarities: vec![AxisPolarity::Bipolar; 4],
         },
         connected: true,
+        diagnostics: DeviceDiagnostics::default(),
     });
 
     state.virtual_devices.push(VirtualDeviceConfig {

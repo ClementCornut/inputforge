@@ -62,7 +62,9 @@ fn mapping_list_mounts_with_rail_class() {
 fn mapping_list_renders_single_row_device_filter_chips() {
     use crate::context::{GlyphFlags, MappingSummary};
     use inputforge_core::state::DeviceState;
-    use inputforge_core::types::{AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId};
+    use inputforge_core::types::{
+        AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId,
+    };
 
     fn TestComponent() -> Element {
         provide_minimal_contexts();
@@ -82,6 +84,7 @@ fn mapping_list_renders_single_row_device_filter_chips() {
                             axis_polarities: vec![AxisPolarity::Bipolar],
                         },
                         connected: true,
+                        diagnostics: DeviceDiagnostics::default(),
                     },
                     DeviceState {
                         info: DeviceInfo {
@@ -94,6 +97,7 @@ fn mapping_list_renders_single_row_device_filter_chips() {
                             axis_polarities: vec![AxisPolarity::Bipolar],
                         },
                         connected: true,
+                        diagnostics: DeviceDiagnostics::default(),
                     },
                 ],
                 mappings: vec![
@@ -149,7 +153,9 @@ fn mapping_list_renders_single_row_device_filter_chips() {
 fn mapping_list_device_chips_are_toggle_buttons() {
     use crate::context::{GlyphFlags, MappingSummary};
     use inputforge_core::state::DeviceState;
-    use inputforge_core::types::{AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId};
+    use inputforge_core::types::{
+        AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId,
+    };
 
     fn TestComponent() -> Element {
         provide_minimal_contexts();
@@ -168,6 +174,7 @@ fn mapping_list_device_chips_are_toggle_buttons() {
                         axis_polarities: vec![AxisPolarity::Bipolar],
                     },
                     connected: true,
+                    diagnostics: DeviceDiagnostics::default(),
                 }],
                 mappings: vec![MappingSummary {
                     input: InputAddress::Bound {

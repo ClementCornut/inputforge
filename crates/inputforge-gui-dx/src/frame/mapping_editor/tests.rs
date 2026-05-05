@@ -14,7 +14,8 @@ use inputforge_core::profile::Profile;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, EngineStatus};
 use inputforge_core::types::{
-    AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, VJoyAxis, VirtualDeviceConfig,
+    AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId, VJoyAxis,
+    VirtualDeviceConfig,
 };
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
@@ -66,6 +67,7 @@ fn seeded_profile_with_one_mapping(actions: Vec<Action>) -> AppState {
             axis_polarities: vec![AxisPolarity::Bipolar; 2],
         },
         connected: true,
+        diagnostics: DeviceDiagnostics::default(),
     });
     state
 }
@@ -116,6 +118,7 @@ fn seeded_profile_with_polarities_and_axes(
             axis_polarities,
         },
         connected: true,
+        diagnostics: DeviceDiagnostics::default(),
     });
     for &(idx, value, polarity) in axis_values {
         let addr = InputAddress::Bound {

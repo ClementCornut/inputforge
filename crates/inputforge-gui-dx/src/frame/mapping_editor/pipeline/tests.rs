@@ -313,6 +313,7 @@ fn build_state(actions: Vec<Action>) -> (AppState, InputAddress) {
             axis_polarities: vec![AxisPolarity::Bipolar; 2],
         },
         connected: true,
+        diagnostics: inputforge_core::types::DeviceDiagnostics::default(),
     });
     (state, addr)
 }
@@ -596,6 +597,7 @@ fn synth_cfg() -> ConfigSnapshot {
                 axis_polarities: vec![AxisPolarity::Bipolar; 2],
             },
             connected: true,
+            diagnostics: inputforge_core::types::DeviceDiagnostics::default(),
         }],
         ..ConfigSnapshot::default()
     }

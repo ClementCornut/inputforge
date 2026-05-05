@@ -1,6 +1,6 @@
 // Rust guideline compliant 2026-03-03
 
-use crate::types::DeviceInfo;
+use crate::types::{DeviceDiagnostics, DeviceInfo};
 
 /// Live device state tracked by the engine.
 ///
@@ -12,6 +12,8 @@ pub struct DeviceState {
     pub info: DeviceInfo,
     /// Whether the device is currently connected.
     pub connected: bool,
+    /// Identity and transport facts collected from the input backend.
+    pub diagnostics: DeviceDiagnostics,
 }
 
 #[cfg(test)]
@@ -31,6 +33,7 @@ mod tests {
                 axis_polarities: vec![],
             },
             connected: true,
+            diagnostics: DeviceDiagnostics::default(),
         }
     }
 
@@ -59,6 +62,7 @@ mod tests {
         let state = DeviceState {
             info: sample_device(),
             connected: true,
+            diagnostics: DeviceDiagnostics::default(),
         };
         assert!(state.connected);
         assert_eq!(state.info.name, "Test Joystick");
@@ -69,6 +73,7 @@ mod tests {
         let state = DeviceState {
             info: sample_device(),
             connected: false,
+            diagnostics: DeviceDiagnostics::default(),
         };
         let cloned = state.clone();
         assert!(!cloned.connected);
@@ -80,6 +85,7 @@ mod tests {
         let state = DeviceState {
             info: sample_device(),
             connected: true,
+            diagnostics: DeviceDiagnostics::default(),
         };
         let debug = format!("{state:?}");
         assert!(debug.contains("DeviceState"));

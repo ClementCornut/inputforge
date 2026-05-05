@@ -25,8 +25,8 @@ use crate::profile::Profile;
 use crate::settings::AppSettings;
 use crate::state::{AppState, DeviceState, EngineStatus, InputCacheStore, OutputCacheStore};
 use crate::types::{
-    AxisPolarity, AxisValue, DeviceId, DeviceInfo, HatDirection, InputAddress, InputEvent, InputId,
-    InputValue, KeyCombo, MergeOp, OutputAddress, OutputId, VJoyAxis,
+    AxisPolarity, AxisValue, DeviceDiagnostics, DeviceId, DeviceInfo, HatDirection, InputAddress,
+    InputEvent, InputId, InputValue, KeyCombo, MergeOp, OutputAddress, OutputId, VJoyAxis,
 };
 
 use super::Engine;
@@ -800,6 +800,7 @@ fn tick_hotplug_disconnected_marks_device() {
     state.write().devices.push(DeviceState {
         info: device_info,
         connected: true,
+        diagnostics: DeviceDiagnostics::default(),
     });
 
     engine.tick().unwrap();
@@ -1327,6 +1328,7 @@ fn tick_hotplug_reconnect_updates_existing() {
     state.write().devices.push(DeviceState {
         info: original_info,
         connected: false,
+        diagnostics: DeviceDiagnostics::default(),
     });
 
     engine.tick().unwrap();

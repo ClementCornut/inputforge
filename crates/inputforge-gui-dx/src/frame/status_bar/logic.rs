@@ -66,7 +66,7 @@ pub(crate) fn truncate_path(path: &Path, max_chars: usize) -> String {
 mod tests {
     use std::path::PathBuf;
 
-    use inputforge_core::types::{AxisPolarity, DeviceId, DeviceInfo};
+    use inputforge_core::types::{AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo};
 
     use super::*;
 
@@ -82,6 +82,7 @@ mod tests {
                 axis_polarities: vec![AxisPolarity::Unipolar],
             },
             connected,
+            diagnostics: DeviceDiagnostics::default(),
         }
     }
 

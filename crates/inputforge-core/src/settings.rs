@@ -1,12 +1,23 @@
 // Application-level settings (persisted outside profiles)
 // Rust guideline compliant 2026-04-28
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 use crate::snapshot::SnapshotConfig;
+use crate::types::{DeviceDiagnostics, DeviceId, DeviceInfo};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceRecord {
+    pub info: DeviceInfo,
+    #[serde(default)]
+    pub diagnostics: DeviceDiagnostics,
+    #[serde(default)]
+    pub last_seen_unix_ms: Option<u64>,
+}
 
 /// Application-wide settings persisted between sessions.
 ///
@@ -25,6 +36,12 @@ pub struct AppSettings {
     /// via `#[serde(default)]`.
     #[serde(default)]
     pub snapshot: SnapshotConfig,
+
+    #[serde(default)]
+    pub device_aliases: HashMap<DeviceId, String>,
+
+    #[serde(default)]
+    pub device_registry: HashMap<DeviceId, DeviceRecord>,
 }
 
 impl AppSettings {
@@ -118,11 +135,41 @@ impl AppSettings {
         std::fs::write(path, toml_str)?;
         Ok(())
     }
+
+    #[must_use]
+    pub fn display_name_for(&self, info: &DeviceInfo) -> String {
+        self.device_aliases
+            .get(&info.id)
+            .filter(|alias| !alias.trim().is_empty())
+            .cloned()
+            .unwrap_or_else(|| {
+                if info.name.trim().is_empty() {
+                    info.id.0.clone()
+                } else {
+                    info.name.clone()
+                }
+            })
+    }
+
+    pub fn set_device_alias(&mut self, device: DeviceId, alias: Option<String>) {
+        match alias
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+        {
+            Some(alias) => {
+                self.device_aliases.insert(device, alias);
+            }
+            None => {
+                self.device_aliases.remove(&device);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::DeviceConnectionState;
 
     #[test]
     fn config_dir_ends_with_inputforge() {
@@ -257,6 +304,51 @@ mod tests {
     }
 
     #[test]
+    fn settings_round_trips_device_aliases_and_registry() {
+        let device = DeviceId("030000005e0400008e02000000000000".to_owned());
+        let mut settings = AppSettings::default();
+        settings
+            .device_aliases
+            .insert(device.clone(), "Wheel Base".to_owned());
+        settings.device_registry.insert(
+            device.clone(),
+            DeviceRecord {
+                info: DeviceInfo {
+                    id: device.clone(),
+                    name: "SDL Wheel".to_owned(),
+                    axes: 6,
+                    buttons: 32,
+                    hats: 1,
+                    instance_path: Some(r"\\?\hid#vid_045e&pid_028e".to_owned()),
+                    axis_polarities: vec![],
+                },
+                diagnostics: DeviceDiagnostics {
+                    vendor_id: Some(0x045e),
+                    product_id: Some(0x028e),
+                    connection_state: Some(DeviceConnectionState::Wired),
+                    ..DeviceDiagnostics::default()
+                },
+                last_seen_unix_ms: Some(1_714_200_000_000),
+            },
+        );
+
+        let toml = toml::to_string_pretty(&settings).expect("settings serialize");
+        let loaded: AppSettings = toml::from_str(&toml).expect("settings deserialize");
+
+        assert_eq!(
+            loaded.device_aliases.get(&device),
+            Some(&"Wheel Base".to_owned())
+        );
+        assert_eq!(
+            loaded
+                .device_registry
+                .get(&device)
+                .map(|record| record.info.name.as_str()),
+            Some("SDL Wheel")
+        );
+    }
+
+    #[test]
     fn settings_round_trips_with_custom_snapshot_table() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("settings.toml");
@@ -267,6 +359,7 @@ mod tests {
                 max_count: 7,
                 skip_if_unchanged: false,
             },
+            ..Default::default()
         };
         s.save_to(&path).unwrap();
 

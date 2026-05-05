@@ -440,7 +440,8 @@ fn body_renders_live_dot_for_top_level_stage_with_connected_device() {
         use inputforge_core::settings::AppSettings;
         use inputforge_core::state::{AppState, DeviceState};
         use inputforge_core::types::{
-            AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, InputValue,
+            AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId,
+            InputValue,
         };
         use parking_lot::RwLock;
         use std::sync::{Arc, mpsc};
@@ -465,6 +466,7 @@ fn body_renders_live_dot_for_top_level_stage_with_connected_device() {
                 axis_polarities: vec![AxisPolarity::Bipolar],
             },
             connected: true,
+            diagnostics: DeviceDiagnostics::default(),
         });
         state.input_cache.update(
             &addr,

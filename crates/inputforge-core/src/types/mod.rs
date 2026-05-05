@@ -6,6 +6,9 @@ pub mod input;
 pub mod mapping;
 
 pub use address::{InputAddress, InputId, OutputAddress, OutputId, VJoyAxis};
-pub use device::{AxisPolarity, DeviceId, DeviceInfo, VirtualDeviceConfig};
+pub use device::{
+    AxisPolarity, DeviceBatteryState, DeviceConnectionState, DeviceDiagnostics, DeviceId,
+    DeviceInfo, VirtualDeviceConfig,
+};
 pub use input::{AxisValue, HatDirection, InputEvent, InputValue};
 pub use mapping::{KeyCombo, KeyModifier, MergeOp};
