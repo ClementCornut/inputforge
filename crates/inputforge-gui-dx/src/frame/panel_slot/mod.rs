@@ -2,6 +2,8 @@ use dioxus::prelude::*;
 
 use crate::frame::view_state::{PanelSlot as PanelSlotEnum, ViewState};
 
+mod device_panel;
+
 const PANEL_SLOT_CSS: Asset = asset!("/assets/frame/panel_slot.css");
 
 struct PanelSpec {
