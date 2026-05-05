@@ -151,9 +151,9 @@ Coherent with F10's animation timing and precision feel. Owns the deadzone visua
 
 Right-side panel that plugs into F7's Replace slot. Owns the device-list section (connection dot, name, coverage, disconnection display); the device drill-in section (axes/buttons/hats with live values + role badges + the subtle `cal` pill); the axis drill-in calibration editor (raw + calibrated bars, Min/Center−/Center+/Max number fields, Record range / Set center / Reset, amber dirty banner, calibration remains the only explicit-save surface in the GUI); used-by backref panel listing every mapping touching the axis.
 
-#### F13. Profiles side panel + Snapshots + no-profile empty state, *feature flag flips here*
+#### F13. Profiles side panel + Snapshots + no-profile empty state
 
-Right-side panel that plugs into F7's Replace slot. Owns the profile library + Snapshots sub-section; per-row hover-revealed actions; `+ New` inline expanding-row flow with template radio (Blank / Copy from active / Copy from selected); `Open file…` OS picker; per-snapshot actions (Pin/Unpin · Rename · Delete · Restore →) wired to F6's snapshot commands; and the no-profile workspace empty state (`+ New profile`, `Open file…`, library pointer; engine forced Stopped). Profile rename, snapshot rename, and `+ New` name commit on Enter or blur, Esc cancels. **Default feature flag flips to `gui-dioxus` when this merges**, all core and secondary surfaces are in place at this point; tray was wired in F3.
+Right-side panel that plugs into F7's Replace slot. Owns the profile library + Snapshots sub-section; per-row hover-revealed actions; `+ New` inline expanding-row flow with template radio (Blank / Copy from active / Copy from selected); `Open file…` OS picker; per-snapshot actions (Pin/Unpin · Rename · Delete · Restore →) wired to F6's snapshot commands; and the no-profile workspace empty state (`+ New profile`, `Open file…`, library pointer; engine forced Stopped). Profile rename, snapshot rename, and `+ New` name commit on Enter or blur, Esc cancels.
 
 #### F14. Mode editing (beyond tab CRUD)
 
