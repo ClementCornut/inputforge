@@ -93,6 +93,12 @@ pub enum EngineCommand {
     /// same `process_commands` drain still see the old config.
     ReloadSettings,
 
+    /// Set or clear the global display alias for a device.
+    SetDeviceAlias {
+        device: DeviceId,
+        alias: Option<String>,
+    },
+
     /// Take a snapshot of the active profile.
     CreateSnapshot {
         kind: SnapshotKind,
@@ -155,6 +161,12 @@ mod tests {
         let c = EngineCommand::ReloadSettings;
         assert!(format!("{c:?}").contains("ReloadSettings"));
 
+        let c = EngineCommand::SetDeviceAlias {
+            device: DeviceId("dev-1".to_owned()),
+            alias: Some("Wheel".to_owned()),
+        };
+        assert!(format!("{c:?}").contains("SetDeviceAlias"));
+
         let c = EngineCommand::CreateSnapshot {
             kind: SnapshotKind::Manual,
             label: None,
@@ -208,6 +220,12 @@ mod tests {
         };
         assert_eq!(a, b, "PartialEq must hold across the new variants");
         let _: String = format!("{a:?}");
+
+        let c = EngineCommand::SetDeviceAlias {
+            device: DeviceId("dev-1".to_owned()),
+            alias: Some("Wheel".to_owned()),
+        };
+        assert!(format!("{c:?}").contains("SetDeviceAlias"));
     }
 
     #[test]

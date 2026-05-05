@@ -410,6 +410,19 @@ impl Engine {
                 self.settings = crate::settings::AppSettings::load_from(&self.settings_path);
                 tracing::info!(target: "engine", "settings reloaded");
             }
+            EngineCommand::SetDeviceAlias { device, alias } => {
+                self.settings.set_device_alias(device.clone(), alias);
+                self.settings.save_to(&self.settings_path)?;
+                self.state
+                    .write()
+                    .device_aliases
+                    .clone_from(&self.settings.device_aliases);
+                tracing::info!(
+                    target: "engine",
+                    device = %device.0,
+                    "device alias persisted"
+                );
+            }
             EngineCommand::CreateSnapshot { kind, label } => {
                 let path = self.state.read().profile_path.clone();
                 if let Some(path) = path {

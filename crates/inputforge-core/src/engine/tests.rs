@@ -147,6 +147,29 @@ fn make_engine(
     (engine, state, tx)
 }
 
+fn test_engine_with_settings_path(settings: AppSettings) -> (Engine, PathBuf) {
+    let settings_path =
+        std::env::temp_dir().join(format!("inputforge-settings-{}.toml", ulid::Ulid::new()));
+    settings.save_to(&settings_path).unwrap();
+
+    let profile = make_profile(simple_mode_tree(), vec![]);
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    state.write().engine_status = EngineStatus::Running;
+    let (_tx, rx) = mpsc::channel();
+    let engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        settings,
+        settings_path.clone(),
+    );
+
+    (engine, settings_path)
+}
+
 // ---------------------------------------------------------------------------
 // T1-T7: Output handler unit tests
 // ---------------------------------------------------------------------------
@@ -1861,6 +1884,47 @@ fn reload_settings_picks_up_disk_edits() {
         "ReloadSettings must read from settings_path"
     );
     assert!(!engine.settings.snapshot.skip_if_unchanged);
+}
+
+#[test]
+fn set_device_alias_persists_trimmed_alias() {
+    let device = DeviceId("dev-1".to_owned());
+    let (mut engine, settings_path) = test_engine_with_settings_path(AppSettings::default());
+
+    engine
+        .handle_command(EngineCommand::SetDeviceAlias {
+            device: device.clone(),
+            alias: Some("  Wheel Base  ".to_owned()),
+        })
+        .expect("alias command succeeds");
+
+    let loaded = AppSettings::load_from(&settings_path);
+    assert_eq!(
+        loaded.device_aliases.get(&device),
+        Some(&"Wheel Base".to_owned())
+    );
+    let _ = std::fs::remove_file(settings_path);
+}
+
+#[test]
+fn set_device_alias_with_blank_value_clears_alias() {
+    let device = DeviceId("dev-1".to_owned());
+    let mut settings = AppSettings::default();
+    settings
+        .device_aliases
+        .insert(device.clone(), "Wheel Base".to_owned());
+    let (mut engine, settings_path) = test_engine_with_settings_path(settings);
+
+    engine
+        .handle_command(EngineCommand::SetDeviceAlias {
+            device: device.clone(),
+            alias: Some(" ".to_owned()),
+        })
+        .expect("alias clear succeeds");
+
+    let loaded = AppSettings::load_from(&settings_path);
+    assert!(!loaded.device_aliases.contains_key(&device));
+    let _ = std::fs::remove_file(settings_path);
 }
 
 // ---------------------------------------------------------------------------
