@@ -1,7 +1,7 @@
 // Rust guideline compliant 2026-03-03
 
 use crate::error::Result;
-use crate::types::{DeviceId, DeviceInfo, InputEvent};
+use crate::types::{DeviceDiagnostics, DeviceId, DeviceInfo, InputEvent};
 
 /// Reads physical input devices (joysticks, pedals, throttles).
 ///
@@ -72,6 +72,9 @@ pub trait DeviceHider {
 /// Device connection or disconnection notification.
 #[derive(Debug, Clone)]
 pub enum HotplugEvent {
-    Connected(DeviceInfo),
+    Connected {
+        info: DeviceInfo,
+        diagnostics: DeviceDiagnostics,
+    },
     Disconnected(DeviceId),
 }

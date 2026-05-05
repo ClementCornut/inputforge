@@ -18,7 +18,7 @@ use crate::error::Result;
 use crate::pipeline::{self, PipelineContext};
 use crate::profile::{CalibrationEntry, Profile};
 use crate::state::{AppState, DeviceCalibrationStore, DeviceState, EngineStatus, InputCacheEntry};
-use crate::types::{DeviceDiagnostics, InputAddress, InputEvent, InputId, InputValue};
+use crate::types::{DeviceDiagnostics, DeviceInfo, InputAddress, InputEvent, InputId, InputValue};
 
 use super::Engine;
 use super::command::EngineCommand;
@@ -1031,30 +1031,34 @@ impl Engine {
     }
 
     /// Update device list in shared state from hotplug events.
-    fn handle_hotplug(&self, events: &[HotplugEvent]) {
-        let mut state = self.state.write();
+    fn handle_hotplug(&mut self, events: &[HotplugEvent]) {
         for event in events {
             match event {
-                HotplugEvent::Connected(info) => {
+                HotplugEvent::Connected { info, diagnostics } => {
                     // Skip vJoy virtual HID devices, InputForge controls
                     // them through the output system, not as input devices.
                     if info.name.to_ascii_lowercase().contains("vjoy") {
                         continue;
                     }
 
+                    let record = self.upsert_device_record(info, diagnostics);
+                    let mut state = self.state.write();
+                    state.device_registry.insert(info.id.clone(), record);
                     // Update existing or add new.
                     if let Some(dev) = state.devices.iter_mut().find(|d| d.info.id == info.id) {
                         dev.info = info.clone();
                         dev.connected = true;
+                        dev.diagnostics = diagnostics.clone();
                     } else {
                         state.devices.push(DeviceState {
                             info: info.clone(),
                             connected: true,
-                            diagnostics: DeviceDiagnostics::default(),
+                            diagnostics: diagnostics.clone(),
                         });
                     }
                 }
                 HotplugEvent::Disconnected(id) => {
+                    let mut state = self.state.write();
                     if let Some(dev) = state.devices.iter_mut().find(|d| d.info.id == *id) {
                         dev.connected = false;
                     }
@@ -1063,6 +1067,38 @@ impl Engine {
             }
         }
     }
+
+    fn upsert_device_record(
+        &mut self,
+        info: &DeviceInfo,
+        diagnostics: &DeviceDiagnostics,
+    ) -> crate::settings::DeviceRecord {
+        let record = crate::settings::DeviceRecord {
+            info: info.clone(),
+            diagnostics: diagnostics.clone(),
+            last_seen_unix_ms: Some(current_unix_ms()),
+        };
+        self.settings
+            .device_registry
+            .insert(info.id.clone(), record.clone());
+        if let Err(error) = self.settings.save_to(&self.settings_path) {
+            tracing::warn!(
+                target: "engine",
+                error = %error,
+                device = %info.id.0,
+                "failed to persist remembered device registry"
+            );
+        }
+        record
+    }
+}
+
+fn current_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| {
+            duration.as_millis().try_into().unwrap_or(u64::MAX)
+        })
 }
 
 fn pipeline_input_for_mapping(

@@ -11,8 +11,8 @@ use sdl3::{EventPump, JoystickSubsystem, Sdl};
 
 use crate::error::{EngineError, Result};
 use crate::types::{
-    AxisPolarity, AxisValue, DeviceId, DeviceInfo, HatDirection, InputAddress, InputEvent, InputId,
-    InputValue,
+    AxisPolarity, AxisValue, DeviceConnectionState, DeviceDiagnostics, DeviceId, DeviceInfo,
+    HatDirection, InputAddress, InputEvent, InputId, InputValue,
 };
 
 use super::traits::{HotplugEvent, InputSource};
@@ -76,6 +76,7 @@ struct OpenDevice {
     joystick: Joystick,
     device_id: DeviceId,
     info: DeviceInfo,
+    diagnostics: DeviceDiagnostics,
 }
 
 impl Sdl3Input {
@@ -136,14 +137,18 @@ impl Sdl3Input {
                 let guid = joystick.guid();
                 let device_id = DeviceId(guid.string());
                 let info = device_info_from_joystick(&joystick, &device_id);
-                self.hotplug_buffer
-                    .push(HotplugEvent::Connected(info.clone()));
+                let diagnostics = diagnostics_from_joystick(&joystick);
+                self.hotplug_buffer.push(HotplugEvent::Connected {
+                    info: info.clone(),
+                    diagnostics: diagnostics.clone(),
+                });
                 self.open_devices.insert(
                     instance_id,
                     OpenDevice {
                         joystick,
                         device_id,
                         info,
+                        diagnostics,
                     },
                 );
             }
@@ -248,8 +253,10 @@ impl Sdl3Input {
                 }
             }
             if changed {
-                self.hotplug_buffer
-                    .push(HotplugEvent::Connected(device.info.clone()));
+                self.hotplug_buffer.push(HotplugEvent::Connected {
+                    info: device.info.clone(),
+                    diagnostics: device.diagnostics.clone(),
+                });
             }
         }
     }
@@ -323,8 +330,10 @@ impl Sdl3Input {
                                 "reclassified axis polarity from first event"
                             );
                             device.info.axis_polarities[idx] = polarity;
-                            self.hotplug_buffer
-                                .push(HotplugEvent::Connected(device.info.clone()));
+                            self.hotplug_buffer.push(HotplugEvent::Connected {
+                                info: device.info.clone(),
+                                diagnostics: device.diagnostics.clone(),
+                            });
                         }
                     }
                     // Mark this axis as having received a real event so
@@ -525,6 +534,104 @@ fn device_info_from_joystick(joystick: &Joystick, device_id: &DeviceId) -> Devic
         hats: u8::try_from(joystick.num_hats()).unwrap_or(u8::MAX),
         instance_path,
         axis_polarities,
+    }
+}
+
+#[expect(
+    unsafe_code,
+    reason = "SDL3 FFI exposes diagnostics not wrapped by sdl3 0.17"
+)]
+fn diagnostics_from_joystick(joystick: &Joystick) -> DeviceDiagnostics {
+    let instance_id = sdl3::sys::joystick::SDL_JoystickID(joystick.id());
+    // SAFETY: `instance_id` was obtained from an open joystick via `id()`.
+    let raw_joystick = unsafe { sdl3::sys::joystick::SDL_GetJoystickFromID(instance_id) };
+
+    if raw_joystick.is_null() {
+        return DeviceDiagnostics::default();
+    }
+
+    // SAFETY: `raw_joystick` is non-null and belongs to the open joystick handle.
+    let vendor_id =
+        nonzero_u16(unsafe { sdl3::sys::joystick::SDL_GetJoystickVendor(raw_joystick) });
+    // SAFETY: `raw_joystick` is non-null and belongs to the open joystick handle.
+    let product_id =
+        nonzero_u16(unsafe { sdl3::sys::joystick::SDL_GetJoystickProduct(raw_joystick) });
+    // SAFETY: `raw_joystick` is non-null and belongs to the open joystick handle.
+    let product_version =
+        nonzero_u16(unsafe { sdl3::sys::joystick::SDL_GetJoystickProductVersion(raw_joystick) });
+    // SAFETY: `raw_joystick` is non-null and belongs to the open joystick handle.
+    let firmware_version =
+        nonzero_u16(unsafe { sdl3::sys::joystick::SDL_GetJoystickFirmwareVersion(raw_joystick) });
+    // SAFETY: `raw_joystick` is non-null and belongs to the open joystick handle.
+    let serial =
+        serial_from_ptr(unsafe { sdl3::sys::joystick::SDL_GetJoystickSerial(raw_joystick) });
+    // SAFETY: `raw_joystick` is non-null and belongs to the open joystick handle.
+    let joystick_type = Some(joystick_type_label(unsafe {
+        sdl3::sys::joystick::SDL_GetJoystickType(raw_joystick)
+    }));
+    // SAFETY: `raw_joystick` is non-null and belongs to the open joystick handle.
+    let connection_state = Some(connection_state_from_sdl(unsafe {
+        sdl3::sys::joystick::SDL_GetJoystickConnectionState(raw_joystick)
+    }));
+
+    DeviceDiagnostics {
+        vendor_id,
+        product_id,
+        product_version,
+        firmware_version,
+        serial,
+        joystick_type,
+        connection_state,
+        battery_percent: None,
+        battery_state: None,
+        is_virtual: None,
+    }
+}
+
+fn nonzero_u16(value: u16) -> Option<u16> {
+    if value == 0 { None } else { Some(value) }
+}
+
+#[expect(unsafe_code, reason = "SDL3 returns serial as a C string pointer")]
+fn serial_from_ptr(ptr: *const std::ffi::c_char) -> Option<String> {
+    if ptr.is_null() {
+        return None;
+    }
+    // SAFETY: SDL returns a null-terminated C string pointer or null.
+    Some(
+        unsafe { std::ffi::CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
+fn joystick_type_label(value: sdl3::sys::joystick::SDL_JoystickType) -> String {
+    match value {
+        sdl3::sys::joystick::SDL_JoystickType::UNKNOWN => "unknown",
+        sdl3::sys::joystick::SDL_JoystickType::GAMEPAD => "gamepad",
+        sdl3::sys::joystick::SDL_JoystickType::WHEEL => "wheel",
+        sdl3::sys::joystick::SDL_JoystickType::ARCADE_STICK => "arcade_stick",
+        sdl3::sys::joystick::SDL_JoystickType::FLIGHT_STICK => "flight_stick",
+        sdl3::sys::joystick::SDL_JoystickType::DANCE_PAD => "dance_pad",
+        sdl3::sys::joystick::SDL_JoystickType::GUITAR => "guitar",
+        sdl3::sys::joystick::SDL_JoystickType::DRUM_KIT => "drum_kit",
+        sdl3::sys::joystick::SDL_JoystickType::ARCADE_PAD => "arcade_pad",
+        sdl3::sys::joystick::SDL_JoystickType::THROTTLE => "throttle",
+        _ => "other",
+    }
+    .to_owned()
+}
+
+fn connection_state_from_sdl(
+    value: sdl3::sys::joystick::SDL_JoystickConnectionState,
+) -> DeviceConnectionState {
+    match value {
+        sdl3::sys::joystick::SDL_JoystickConnectionState::WIRED => DeviceConnectionState::Wired,
+        sdl3::sys::joystick::SDL_JoystickConnectionState::WIRELESS => {
+            DeviceConnectionState::Wireless
+        }
+        sdl3::sys::joystick::SDL_JoystickConnectionState::INVALID => DeviceConnectionState::Invalid,
+        _ => DeviceConnectionState::Unknown,
     }
 }
 

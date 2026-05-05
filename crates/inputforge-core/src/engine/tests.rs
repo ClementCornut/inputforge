@@ -25,8 +25,9 @@ use crate::profile::Profile;
 use crate::settings::AppSettings;
 use crate::state::{AppState, DeviceState, EngineStatus, InputCacheStore, OutputCacheStore};
 use crate::types::{
-    AxisPolarity, AxisValue, DeviceDiagnostics, DeviceId, DeviceInfo, HatDirection, InputAddress,
-    InputEvent, InputId, InputValue, KeyCombo, MergeOp, OutputAddress, OutputId, VJoyAxis,
+    AxisPolarity, AxisValue, DeviceConnectionState, DeviceDiagnostics, DeviceId, DeviceInfo,
+    HatDirection, InputAddress, InputEvent, InputId, InputValue, KeyCombo, MergeOp, OutputAddress,
+    OutputId, VJoyAxis,
 };
 
 use super::Engine;
@@ -763,7 +764,10 @@ fn tick_hotplug_connected_adds_device() {
     };
 
     let mut input = MockInputSource::default();
-    input.hotplug.push(HotplugEvent::Connected(device_info));
+    input.hotplug.push(HotplugEvent::Connected {
+        info: device_info,
+        diagnostics: DeviceDiagnostics::default(),
+    });
 
     let (mut engine, state, _tx) = make_engine(input, profile);
     engine.tick().unwrap();
@@ -772,6 +776,56 @@ fn tick_hotplug_connected_adds_device() {
     assert_eq!(s.devices.len(), 1);
     assert!(s.devices[0].connected);
     assert_eq!(s.devices[0].info.name, "Test Stick");
+}
+
+#[test]
+fn connected_hotplug_upserts_device_registry() {
+    let profile = make_profile(simple_mode_tree(), vec![]);
+    let device = DeviceId("dev-1".to_owned());
+    let info = DeviceInfo {
+        id: device.clone(),
+        name: "Wheel".to_owned(),
+        axes: 4,
+        buttons: 12,
+        hats: 1,
+        instance_path: Some("hid-path".to_owned()),
+        axis_polarities: vec![],
+    };
+    let diagnostics = DeviceDiagnostics {
+        vendor_id: Some(0x045e),
+        product_id: Some(0x028e),
+        connection_state: Some(DeviceConnectionState::Wired),
+        ..DeviceDiagnostics::default()
+    };
+
+    let settings_dir = tempfile::tempdir().expect("settings tempdir");
+    let settings_path = settings_dir.path().join("settings.toml");
+    let mut input = MockInputSource::default();
+    input.hotplug.push(HotplugEvent::Connected {
+        info: info.clone(),
+        diagnostics: diagnostics.clone(),
+    });
+    let (mut engine, state, _tx) = make_engine(input, profile);
+    engine.settings_path = settings_path.clone();
+
+    engine.tick().expect("hotplug tick succeeds");
+
+    let loaded = AppSettings::load_from(&settings_path);
+    let record = loaded
+        .device_registry
+        .get(&device)
+        .expect("registry record");
+    assert_eq!(record.info, info);
+    assert_eq!(record.diagnostics, diagnostics);
+    assert!(record.last_seen_unix_ms.is_some());
+    assert!(state.read().device_registry.contains_key(&device));
+    assert!(
+        state
+            .read()
+            .devices
+            .iter()
+            .any(|row| row.info.id == device && row.connected)
+    );
 }
 
 #[test]
@@ -1318,9 +1372,10 @@ fn tick_hotplug_reconnect_updates_existing() {
     };
 
     let mut input = MockInputSource::default();
-    input
-        .hotplug
-        .push(HotplugEvent::Connected(updated_info.clone()));
+    input.hotplug.push(HotplugEvent::Connected {
+        info: updated_info.clone(),
+        diagnostics: DeviceDiagnostics::default(),
+    });
 
     let (mut engine, state, _tx) = make_engine(input, profile);
 
@@ -2294,6 +2349,7 @@ fn sequential_eight_then_ninth_evicts_oldest() {
             max_count: 8,
             skip_if_unchanged: false,
         },
+        ..Default::default()
     };
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
