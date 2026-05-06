@@ -30,3 +30,28 @@
 .profiles-panel__snapshot-toggle {
     color: var(--color-text-muted);
 }
+
+.snapshot-drawer {
+    display: grid;
+    gap: var(--space-2);
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--space-3);
+}
+
+.snapshot-drawer__header,
+.snapshot-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.snapshot-drawer__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.snapshot-drawer__ledger {
+    display: grid;
+    gap: var(--space-2);
+}

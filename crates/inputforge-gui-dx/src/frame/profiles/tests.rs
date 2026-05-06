@@ -14,7 +14,7 @@ use inputforge_core::snapshot::{SnapshotConfig, SnapshotId, SnapshotKind, create
 use inputforge_core::state::AppState;
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
-use crate::context::{ProfileRowOrigin, ProfileRowView};
+use crate::context::{ProfileRowOrigin, ProfileRowView, SnapshotRowView};
 use crate::frame::layout::EmptyState;
 use crate::frame::profiles::ProfilesPanel;
 use crate::frame::profiles::actions::{
@@ -25,6 +25,9 @@ use crate::frame::profiles::new_profile::{
     open_file_load_once_command,
 };
 use crate::frame::profiles::projection::project_profile_rows;
+use crate::frame::profiles::snapshot_drawer::{
+    FocusScope, SnapshotDrawer, should_handle_snapshot_shortcut,
+};
 
 fn simple_profile(name: &str) -> Profile {
     let map = HashMap::from([("Default".to_owned(), vec![])]);
@@ -75,6 +78,37 @@ fn render_profiles_panel(state: AppState) -> String {
 
 fn render_no_profile_frame() -> String {
     let mut vdom = VirtualDom::new(EmptyHarness);
+    vdom.rebuild_in_place();
+    render(&vdom)
+}
+
+fn sample_snapshot_context() -> Vec<SnapshotRowView> {
+    vec![SnapshotRowView {
+        id: sample_snapshot_id().to_string(),
+        kind_label: "Manual".to_owned(),
+        label: Some("Before trim".to_owned()),
+        time_label: "2026-05-06T20:00:00Z".to_owned(),
+        sort_key: 1,
+        pinned: true,
+    }]
+}
+
+#[component]
+fn SnapshotDrawerHarness(rows: Vec<SnapshotRowView>, open: bool) -> Element {
+    rsx! {
+        SnapshotDrawer {
+            active_profile_name: "Bravo".to_owned(),
+            rows,
+            open,
+        }
+    }
+}
+
+fn render_snapshot_drawer(rows: Vec<SnapshotRowView>, open: bool) -> String {
+    let mut vdom = VirtualDom::new_with_props(
+        SnapshotDrawerHarness,
+        SnapshotDrawerHarnessProps { rows, open },
+    );
     vdom.rebuild_in_place();
     render(&vdom)
 }
@@ -229,4 +263,24 @@ fn add_external_to_library_dispatches_import_command() {
             name: "Imported".to_owned()
         }
     );
+}
+
+#[test]
+fn drawer_header_uses_sibling_toggle_and_snapshot_now_button() {
+    let html = render_snapshot_drawer(sample_snapshot_context(), true);
+
+    assert!(html.contains("class=\"snapshot-drawer__header\""));
+    assert!(html.contains("class=\"snapshot-drawer__toggle\""));
+    assert!(html.contains("aria-label=\"Snapshot now\""));
+    assert!(!html.contains("<button class=\"snapshot-drawer__toggle\"><button"));
+}
+
+#[test]
+fn ctrl_s_is_suppressed_inside_editable_or_modal_context() {
+    assert!(!should_handle_snapshot_shortcut(FocusScope::TextInput));
+    assert!(!should_handle_snapshot_shortcut(FocusScope::InlineRename));
+    assert!(!should_handle_snapshot_shortcut(FocusScope::Menu));
+    assert!(!should_handle_snapshot_shortcut(FocusScope::Dialog));
+    assert!(!should_handle_snapshot_shortcut(FocusScope::OsPickerReturn));
+    assert!(should_handle_snapshot_shortcut(FocusScope::Panel));
 }

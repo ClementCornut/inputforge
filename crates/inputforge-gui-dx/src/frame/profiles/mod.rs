@@ -10,6 +10,7 @@ pub(crate) mod library;
 pub(crate) mod new_profile;
 pub(crate) mod no_profile;
 pub(crate) mod projection;
+pub(crate) mod snapshot_drawer;
 
 const PROFILES_CSS: Asset = asset!("/assets/frame/profiles.css");
 
