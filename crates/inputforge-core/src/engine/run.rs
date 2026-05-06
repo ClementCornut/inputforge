@@ -7,7 +7,7 @@
 //! logic into `tick` makes unit testing straightforward without
 //! dealing with the loop or sleep.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -16,8 +16,17 @@ use crate::callbacks::ReleaseCallback;
 use crate::device::traits::HotplugEvent;
 use crate::error::Result;
 use crate::pipeline::{self, PipelineContext};
+use crate::profile::library::{
+    add_external_profile_to_library, duplicate_library_profile, rename_library_profile,
+};
+use crate::profile::manager::{
+    create_profile_in, delete_profile, list_profiles_in, sanitize_filename,
+};
 use crate::profile::{CalibrationEntry, Profile};
-use crate::state::{AppState, DeviceCalibrationStore, DeviceState, EngineStatus, InputCacheEntry};
+use crate::state::{
+    ActiveSnapshotRow, AppState, DeviceCalibrationStore, DeviceState, EngineStatus,
+    InputCacheEntry, ProfileLibraryRow, ProfileOrigin,
+};
 use crate::types::{DeviceDiagnostics, DeviceInfo, InputAddress, InputEvent, InputId, InputValue};
 
 use super::Engine;
@@ -318,6 +327,8 @@ impl Engine {
         match cmd {
             EngineCommand::LoadProfile(path) => {
                 self.reload_profile_from_disk(&path)?;
+                self.state.write().active_profile_origin =
+                    Some(self.profile_origin_for_path(&path));
                 // A forced-mode override should not survive a profile change.
                 self.state.write().mode_force = None;
                 let _ = crate::snapshot::create(
@@ -327,6 +338,87 @@ impl Engine {
                     &self.settings.snapshot,
                 )?;
                 let _ = crate::snapshot::prune(&path, &self.settings.snapshot)?;
+                self.refresh_profile_library_rows()?;
+                self.refresh_active_snapshot_rows()?;
+            }
+            EngineCommand::CreateProfile { name } => {
+                let path = create_profile_in(&name, &self.profile_library_dir())?;
+                self.reload_profile_from_disk(&path)?;
+                self.mark_profile_loaded(ProfileOrigin::Library);
+                self.refresh_profile_library_rows()?;
+                self.refresh_active_snapshot_rows()?;
+            }
+            EngineCommand::LoadExternalProfileOnce(path) => {
+                self.reload_profile_from_disk(&path)?;
+                self.mark_profile_loaded(ProfileOrigin::External);
+                let _ = crate::snapshot::create(
+                    &path,
+                    crate::snapshot::SnapshotKind::AutoSessionStart,
+                    None,
+                    &self.settings.snapshot,
+                )?;
+                let _ = crate::snapshot::prune(&path, &self.settings.snapshot)?;
+                self.refresh_profile_library_rows()?;
+                self.refresh_active_snapshot_rows()?;
+            }
+            EngineCommand::AddExternalProfileToLibrary { path, name } => {
+                let imported =
+                    add_external_profile_to_library(&path, &name, &self.profile_library_dir())?;
+                self.reload_profile_from_disk(&imported.path)?;
+                self.mark_profile_loaded(ProfileOrigin::Library);
+                self.refresh_profile_library_rows()?;
+                self.refresh_active_snapshot_rows()?;
+            }
+            EngineCommand::RenameProfile { old_name, new_name } => {
+                let old_path = self.profile_path_for_name(&old_name);
+                let was_active = self
+                    .state
+                    .read()
+                    .profile_path
+                    .as_ref()
+                    .is_some_and(|path| path == &old_path);
+                let renamed = rename_library_profile(&old_path, &new_name)?;
+                if was_active {
+                    self.reload_profile_from_disk(&renamed.path)?;
+                    self.state.write().active_profile_origin = Some(ProfileOrigin::Library);
+                    self.refresh_active_snapshot_rows()?;
+                }
+                self.refresh_profile_library_rows()?;
+            }
+            EngineCommand::DuplicateProfile { source_path, name } => {
+                let _ =
+                    duplicate_library_profile(&source_path, &name, &self.profile_library_dir())?;
+                self.refresh_profile_library_rows()?;
+            }
+            EngineCommand::DeleteProfile { name } => {
+                let path = self.profile_path_for_name(&name);
+                delete_profile(&path)?;
+                let was_active = self
+                    .state
+                    .read()
+                    .profile_path
+                    .as_ref()
+                    .is_some_and(|profile_path| profile_path == &path);
+                if was_active {
+                    let mut state = self.state.write();
+                    state.active_profile = None;
+                    state.profile_path = None;
+                    state.active_profile_origin = None;
+                    state.mode_force = None;
+                    state.active_snapshot_rows.clear();
+                    state.engine_status = EngineStatus::Stopped;
+                    drop(state);
+                    self.mode_state = crate::mode::ModeState::new("Default".to_owned());
+                    self.callbacks.clear();
+                }
+                self.refresh_profile_library_rows()?;
+            }
+            EngineCommand::RevealProfile { path } => {
+                tracing::info!(
+                    target: "engine",
+                    path = %path.display(),
+                    "RevealProfile requested"
+                );
             }
             EngineCommand::Activate | EngineCommand::Resume => {
                 let mut state = self.state.write();
@@ -428,6 +520,7 @@ impl Engine {
                 if let Some(path) = path {
                     let _ = crate::snapshot::create(&path, kind, label, &self.settings.snapshot)?;
                     let _ = crate::snapshot::prune(&path, &self.settings.snapshot)?;
+                    self.refresh_active_snapshot_rows()?;
                 } else {
                     tracing::warn!(
                         target: "snapshot",
@@ -439,6 +532,7 @@ impl Engine {
                 let path = self.state.read().profile_path.clone();
                 if let Some(path) = path {
                     crate::snapshot::delete(&path, &id)?;
+                    self.refresh_active_snapshot_rows()?;
                 } else {
                     tracing::warn!(
                         target: "snapshot",
@@ -450,6 +544,7 @@ impl Engine {
                 let path = self.state.read().profile_path.clone();
                 if let Some(path) = path {
                     crate::snapshot::pin(&path, &id, pinned)?;
+                    self.refresh_active_snapshot_rows()?;
                 } else {
                     tracing::warn!(
                         target: "snapshot",
@@ -461,6 +556,7 @@ impl Engine {
                 let path = self.state.read().profile_path.clone();
                 if let Some(path) = path {
                     crate::snapshot::rename(&path, &id, label)?;
+                    self.refresh_active_snapshot_rows()?;
                 } else {
                     tracing::warn!(
                         target: "snapshot",
@@ -738,12 +834,16 @@ impl Engine {
 
                 // Successful restore clears mode_force (snapshot's mode tree may differ).
                 self.state.write().mode_force = None;
+                self.refresh_active_snapshot_rows()?;
 
                 tracing::info!(
                     target: "snapshot",
                     id = %id,
                     "RestoreSnapshot complete"
                 );
+            }
+            EngineCommand::UndoSnapshotDelete { id } => {
+                tracing::info!(target: "snapshot", id = %id, "UndoSnapshotDelete requested");
             }
 
             EngineCommand::RemoveMapping { input, mode } => {
@@ -803,6 +903,78 @@ impl Engine {
         state.active_profile = Some(profile);
         state.profile_path = Some(path.to_path_buf());
         state.current_mode = startup_mode;
+        Ok(())
+    }
+
+    fn profile_library_dir(&self) -> PathBuf {
+        if self.settings_path.as_os_str().is_empty() {
+            return crate::settings::AppSettings::profiles_dir();
+        }
+        self.settings_path
+            .parent()
+            .map_or_else(crate::settings::AppSettings::profiles_dir, |dir| {
+                dir.join("profiles")
+            })
+    }
+
+    fn mark_profile_loaded(&self, origin: ProfileOrigin) {
+        let mut state = self.state.write();
+        state.active_profile_origin = Some(origin);
+        state.engine_status = EngineStatus::Stopped;
+        state.mode_force = None;
+    }
+
+    fn profile_path_for_name(&self, name: &str) -> PathBuf {
+        self.profile_library_dir()
+            .join(format!("{}.toml", sanitize_filename(name)))
+    }
+
+    fn profile_origin_for_path(&self, path: &Path) -> ProfileOrigin {
+        if path.starts_with(self.profile_library_dir()) {
+            ProfileOrigin::Library
+        } else {
+            ProfileOrigin::External
+        }
+    }
+
+    fn refresh_profile_library_rows(&self) -> Result<()> {
+        let library_dir = self.profile_library_dir();
+        let active_path = self.state.read().profile_path.clone();
+        let rows = list_profiles_in(&library_dir)?
+            .into_iter()
+            .map(|profile| {
+                let is_active = active_path
+                    .as_ref()
+                    .is_some_and(|path| path == &profile.path);
+                ProfileLibraryRow {
+                    name: profile.name,
+                    path: profile.path,
+                    origin: ProfileOrigin::Library,
+                    is_active,
+                }
+            })
+            .collect();
+        self.state.write().profile_library_rows = rows;
+        Ok(())
+    }
+
+    fn refresh_active_snapshot_rows(&self) -> Result<()> {
+        let profile_path = self.state.read().profile_path.clone();
+        let rows = if let Some(path) = profile_path {
+            crate::snapshot::list(&path)?
+                .into_iter()
+                .map(|snapshot| ActiveSnapshotRow {
+                    id: snapshot.id,
+                    kind: snapshot.kind,
+                    label: snapshot.label,
+                    taken_at: snapshot.taken_at,
+                    pinned: snapshot.pinned,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        self.state.write().active_snapshot_rows = rows;
         Ok(())
     }
 

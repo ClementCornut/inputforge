@@ -27,6 +27,43 @@ use crate::profile::Profile;
 use crate::settings::DeviceRecord;
 use crate::types::{DeviceId, VirtualDeviceConfig};
 
+/// Origin of the currently loaded profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProfileOrigin {
+    /// Profile is stored in the app profile library.
+    Library,
+    /// Profile was loaded from an arbitrary external path.
+    External,
+}
+
+/// Engine-projected profile library row for UI presentation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProfileLibraryRow {
+    /// Profile display name.
+    pub name: String,
+    /// Absolute profile path.
+    pub path: PathBuf,
+    /// Profile origin.
+    pub origin: ProfileOrigin,
+    /// Whether this row is the active profile.
+    pub is_active: bool,
+}
+
+/// Engine-projected snapshot row for the active profile.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActiveSnapshotRow {
+    /// Snapshot identifier.
+    pub id: crate::snapshot::SnapshotId,
+    /// Snapshot creation kind.
+    pub kind: crate::snapshot::SnapshotKind,
+    /// Optional user-facing label.
+    pub label: Option<String>,
+    /// Snapshot creation timestamp.
+    pub taken_at: chrono::DateTime<chrono::Utc>,
+    /// Whether the snapshot is pinned.
+    pub pinned: bool,
+}
+
 /// Sticky forced-mode override.
 ///
 /// While `Some` on `AppState`, mode-change rules are paused: pipeline
@@ -70,6 +107,12 @@ pub struct AppState {
     pub calibrations: DeviceCalibrationStore,
     /// File path of the currently loaded profile, if loaded from disk.
     pub profile_path: Option<PathBuf>,
+    /// Origin of the currently loaded profile, if any.
+    pub active_profile_origin: Option<ProfileOrigin>,
+    /// Engine-projected rows for the profile library.
+    pub profile_library_rows: Vec<ProfileLibraryRow>,
+    /// Engine-projected snapshot rows for the active profile.
+    pub active_snapshot_rows: Vec<ActiveSnapshotRow>,
     /// Warnings surfaced to the user (e.g., `HidHide` unavailable).
     pub warnings: Vec<String>,
     /// When `Some`, the engine is in a forced-mode override; mode-change
@@ -93,6 +136,9 @@ impl AppState {
             virtual_devices: Vec::new(),
             calibrations: DeviceCalibrationStore::new(),
             profile_path: None,
+            active_profile_origin: None,
+            profile_library_rows: Vec::new(),
+            active_snapshot_rows: Vec::new(),
             warnings: Vec::new(),
             mode_force: None,
         }
@@ -133,6 +179,9 @@ impl AppState {
             virtual_devices: Vec::new(),
             calibrations,
             profile_path: None,
+            active_profile_origin: None,
+            profile_library_rows: Vec::new(),
+            active_snapshot_rows: Vec::new(),
             warnings: Vec::new(),
             mode_force: None,
         }

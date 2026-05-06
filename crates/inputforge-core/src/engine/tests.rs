@@ -22,8 +22,11 @@ use crate::mode::{ModeState, ModeTree};
 use crate::output::mock::{KeyboardCall, MockKeyboardSink, MockOutputSink, OutputCall};
 use crate::pipeline::PipelineOutput;
 use crate::profile::Profile;
+use crate::profile::manager::{create_profile_in, sanitize_filename};
 use crate::settings::AppSettings;
-use crate::state::{AppState, DeviceState, EngineStatus, InputCacheStore, OutputCacheStore};
+use crate::state::{
+    AppState, DeviceState, EngineStatus, InputCacheStore, OutputCacheStore, ProfileOrigin,
+};
 use crate::types::{
     AxisPolarity, AxisValue, DeviceConnectionState, DeviceDiagnostics, DeviceId, DeviceInfo,
     HatDirection, InputAddress, InputEvent, InputId, InputValue, KeyCombo, MergeOp, OutputAddress,
@@ -1000,6 +1003,142 @@ fn make_engine_no_profile(
     );
 
     (engine, state, tx)
+}
+
+struct EngineHarness {
+    engine: Engine,
+    state: Arc<RwLock<AppState>>,
+    _settings_dir: tempfile::TempDir,
+    library_dir: PathBuf,
+}
+
+impl EngineHarness {
+    fn new() -> Self {
+        let settings_dir = tempfile::tempdir().unwrap();
+        let settings_path = settings_dir.path().join("settings.toml");
+        let library_dir = settings_dir.path().join("profiles");
+        let settings = AppSettings::default();
+        settings.save_to(&settings_path).unwrap();
+
+        let state = Arc::new(RwLock::new(AppState::new()));
+        let (_tx, rx) = mpsc::channel();
+        let engine = Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockDeviceHider::default()),
+            Arc::clone(&state),
+            rx,
+            settings,
+            settings_path,
+        );
+
+        Self {
+            engine,
+            state,
+            _settings_dir: settings_dir,
+            library_dir,
+        }
+    }
+
+    fn dispatch(&mut self, command: EngineCommand) -> crate::error::Result<()> {
+        self.engine.handle_command(command)
+    }
+
+    fn state(&self) -> parking_lot::RwLockReadGuard<'_, AppState> {
+        self.state.read()
+    }
+
+    fn write_external_profile(&self, name: &str) -> PathBuf {
+        let path = self
+            ._settings_dir
+            .path()
+            .join(format!("{}.toml", sanitize_filename(name)));
+        make_profile(simple_mode_tree(), vec![])
+            .save(&path)
+            .unwrap();
+        path
+    }
+
+    fn create_and_load_profile(&mut self, name: &str) -> crate::error::Result<()> {
+        let path = create_profile_in(name, &self.library_dir)?;
+        self.dispatch(EngineCommand::LoadProfile(path))
+    }
+
+    fn profile_path(&self, name: &str) -> PathBuf {
+        self.library_dir
+            .join(format!("{}.toml", sanitize_filename(name)))
+    }
+}
+
+#[test]
+fn load_external_profile_once_marks_origin_external_and_does_not_add_library_row() {
+    let mut harness = EngineHarness::new();
+    let external = harness.write_external_profile("External");
+
+    harness
+        .dispatch(EngineCommand::LoadExternalProfileOnce(external.clone()))
+        .unwrap();
+
+    let state = harness.state();
+    assert_eq!(state.profile_path.as_ref(), Some(&external));
+    assert_eq!(state.active_profile_origin, Some(ProfileOrigin::External));
+    assert!(
+        state
+            .profile_library_rows
+            .iter()
+            .all(|row| row.path != external)
+    );
+    assert_eq!(state.engine_status, EngineStatus::Stopped);
+}
+
+#[test]
+fn delete_active_library_profile_enters_no_profile_state_and_refreshes_rows() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+
+    harness
+        .dispatch(EngineCommand::DeleteProfile {
+            name: "Alpha".to_owned(),
+        })
+        .unwrap();
+
+    let state = harness.state();
+    assert!(state.active_profile.is_none());
+    assert!(state.profile_path.is_none());
+    assert!(state.active_profile_origin.is_none());
+    assert!(state.active_snapshot_rows.is_empty());
+    assert!(
+        state
+            .profile_library_rows
+            .iter()
+            .all(|row| row.name != "Alpha")
+    );
+    assert_eq!(state.engine_status, EngineStatus::Stopped);
+}
+
+#[test]
+fn profile_lifecycle_commands_refresh_projected_library_rows() {
+    let mut harness = EngineHarness::new();
+    harness
+        .dispatch(EngineCommand::CreateProfile {
+            name: "Alpha".to_owned(),
+        })
+        .unwrap();
+    harness
+        .dispatch(EngineCommand::DuplicateProfile {
+            source_path: harness.profile_path("Alpha"),
+            name: "Bravo".to_owned(),
+        })
+        .unwrap();
+
+    let state = harness.state();
+    let names = state
+        .profile_library_rows
+        .iter()
+        .map(|row| row.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(names, vec!["Alpha", "Bravo"]);
 }
 
 // ---------------------------------------------------------------------------

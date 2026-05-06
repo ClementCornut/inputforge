@@ -12,6 +12,20 @@ use crate::types::{DeviceId, InputAddress};
 pub enum EngineCommand {
     /// Load a profile from the given path.
     LoadProfile(PathBuf),
+    /// Create a new library profile and load it.
+    CreateProfile { name: String },
+    /// Load an external profile without adding it to the library.
+    LoadExternalProfileOnce(PathBuf),
+    /// Copy an external profile into the library and load it.
+    AddExternalProfileToLibrary { path: PathBuf, name: String },
+    /// Rename a library profile.
+    RenameProfile { old_name: String, new_name: String },
+    /// Duplicate a profile into the library without changing the active profile.
+    DuplicateProfile { source_path: PathBuf, name: String },
+    /// Delete a profile from the library.
+    DeleteProfile { name: String },
+    /// Reveal a profile path in the OS shell.
+    RevealProfile { path: PathBuf },
     /// Start processing input events.
     Activate,
     /// Stop processing and flush pending output.
@@ -107,6 +121,9 @@ pub enum EngineCommand {
 
     /// Delete a snapshot by id.
     DeleteSnapshot { id: SnapshotId },
+
+    /// Undo a staged snapshot delete by id.
+    UndoSnapshotDelete { id: SnapshotId },
 
     /// Pin or unpin a snapshot.
     PinSnapshot { id: SnapshotId, pinned: bool },
