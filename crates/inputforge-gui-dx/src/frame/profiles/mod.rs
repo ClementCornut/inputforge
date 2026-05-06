@@ -4,6 +4,7 @@ use crate::context::AppContext;
 use crate::context::MetaSnapshot;
 use crate::frame::profiles::library::ProfileLibrary;
 use crate::frame::profiles::no_profile::NoProfileBar;
+use crate::frame::profiles::snapshot_drawer::SnapshotDrawer;
 
 pub(crate) mod actions;
 pub(crate) mod library;
@@ -20,6 +21,11 @@ pub(crate) fn ProfilesPanel() -> Element {
     let state = ctx.state.read();
     let snapshot_count = state.active_snapshot_rows.len();
     let has_profile = state.active_profile.is_some();
+    let active_profile_name = state
+        .active_profile
+        .as_ref()
+        .map(|profile| profile.name().to_owned())
+        .unwrap_or_default();
     let meta = MetaSnapshot::from_state(&state);
     drop(state);
 
@@ -41,7 +47,15 @@ pub(crate) fn ProfilesPanel() -> Element {
                     NoProfileBar {}
                 }
             }
-            footer { class: "profiles-panel__snapshot-toggle", "Snapshots - {snapshot_count}" }
+            if has_profile {
+                SnapshotDrawer {
+                    active_profile_name,
+                    rows: meta.snapshot_rows.clone(),
+                    open: true,
+                }
+            } else {
+                footer { class: "profiles-panel__snapshot-toggle", "Snapshots - {snapshot_count}" }
+            }
         }
     }
 }

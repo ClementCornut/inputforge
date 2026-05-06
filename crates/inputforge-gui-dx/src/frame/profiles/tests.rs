@@ -305,3 +305,19 @@ fn undo_toast_dispatches_undo_snapshot_delete() {
         EngineCommand::UndoSnapshotDelete { id }
     );
 }
+
+#[test]
+fn profiles_surface_never_renders_mapping_counts() {
+    let html = render_profiles_panel(sample_profiles_context());
+
+    assert!(!html.contains("mapping"));
+    assert!(!html.contains("mappings"));
+}
+
+#[test]
+fn drawer_is_panel_scoped_not_global_drawer() {
+    let html = render_profiles_panel(sample_profiles_context());
+
+    assert!(html.contains("snapshot-drawer"));
+    assert!(!html.contains("app-global-drawer"));
+}
