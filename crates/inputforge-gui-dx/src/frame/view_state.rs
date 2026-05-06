@@ -40,6 +40,46 @@ pub(crate) enum MainSurface {
     BulkMap,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[allow(dead_code, reason = "New profile sub-mode is wired in Task 7")]
+pub(crate) enum ProfilesPanelMode {
+    #[default]
+    Library,
+    NewProfile,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct InlineRenameDraft {
+    pub id: String,
+    pub value: String,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProfilesPanelState {
+    pub filter: String,
+    pub mode: ProfilesPanelMode,
+    pub open_row_menu_id: Option<String>,
+    pub profile_rename: Option<InlineRenameDraft>,
+    pub snapshot_drawer_open: bool,
+    pub snapshot_rename: Option<InlineRenameDraft>,
+    pub pending_snapshot_delete_toast_id: Option<String>,
+}
+
+impl Default for ProfilesPanelState {
+    fn default() -> Self {
+        Self {
+            filter: String::new(),
+            mode: ProfilesPanelMode::Library,
+            open_row_menu_id: None,
+            profile_rename: None,
+            snapshot_drawer_open: false,
+            snapshot_rename: None,
+            pending_snapshot_delete_toast_id: None,
+        }
+    }
+}
+
 /// GUI-only chrome state, provided once in `app_root`.
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code, reason = "Used in app_root context provider (Task 18)")]
@@ -53,6 +93,7 @@ pub(crate) struct ViewState {
     /// Reset to `None` on profile flip and on editing-mode flip so that
     /// stale selection state never leaks across context boundaries.
     pub selected_mapping: Signal<Option<MappingKey>>,
+    pub profiles_panel: Signal<ProfilesPanelState>,
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +220,7 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
     let panel_slot = use_signal(PanelSlot::default);
     let via_calibration = use_signal(|| false);
     let selected_mapping: Signal<Option<MappingKey>> = use_signal(|| None);
+    let profiles_panel = use_signal(ProfilesPanelState::default);
 
     let mut last_profile_name: Signal<Option<String>> =
         use_signal(|| meta.peek().profile_name.clone());
@@ -234,6 +276,7 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
         panel_slot,
         via_calibration,
         selected_mapping,
+        profiles_panel,
     }
 }
 

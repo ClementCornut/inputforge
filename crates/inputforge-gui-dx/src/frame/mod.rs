@@ -6,6 +6,7 @@ mod layout;
 mod mapping_editor;
 mod mapping_list;
 mod panel_slot;
+mod profiles;
 mod status_bar;
 mod top_bar;
 mod view_state;

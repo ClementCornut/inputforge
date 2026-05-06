@@ -8,7 +8,9 @@ use parking_lot::RwLock;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::pipeline::InputCache;
 use inputforge_core::settings::AppSettings;
-use inputforge_core::state::{AppState, DeviceState, EngineStatus, ForcedMode};
+use inputforge_core::state::{
+    AppState, DeviceState, EngineStatus, ForcedMode, ProfileOrigin as CoreProfileOrigin,
+};
 use inputforge_core::types::{
     AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, HatDirection, InputAddress, InputId,
     OutputAddress, VJoyAxis, VirtualDeviceConfig,
@@ -56,6 +58,45 @@ pub(crate) struct MetaSnapshot {
     /// not to warrant projecting an `Arc<ModeTree>` here.
     pub modes: Vec<String>,
     pub startup_mode: Option<String>,
+    pub active_profile_id: Option<String>,
+    pub profile_rows: Vec<ProfileRowView>,
+    pub snapshot_rows: Vec<SnapshotRowView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ProfileRowOrigin {
+    Library,
+    External,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "profile row capabilities are explicit UI affordance flags"
+)]
+pub(crate) struct ProfileRowView {
+    pub id: String,
+    pub name: String,
+    pub path_label: String,
+    pub is_active: bool,
+    pub origin: ProfileRowOrigin,
+    pub can_open: bool,
+    pub can_rename: bool,
+    pub can_duplicate: bool,
+    pub can_reveal: bool,
+    pub can_delete: bool,
+    pub can_add_to_library: bool,
+    pub can_snapshot_now: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SnapshotRowView {
+    pub id: String,
+    pub kind_label: String,
+    pub label: Option<String>,
+    pub time_label: String,
+    pub sort_key: i64,
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -161,6 +202,69 @@ pub(crate) struct VjoyOutputValues {
 
 impl MetaSnapshot {
     pub(crate) fn from_state(s: &AppState) -> Self {
+        let active_profile_id = s
+            .profile_path
+            .as_ref()
+            .map(|path| path.display().to_string());
+        let mut profile_rows = s
+            .profile_library_rows
+            .iter()
+            .map(|row| {
+                let id = row.path.display().to_string();
+                ProfileRowView {
+                    id,
+                    name: row.name.clone(),
+                    path_label: row.path.display().to_string(),
+                    is_active: row.is_active,
+                    origin: ProfileRowOrigin::Library,
+                    can_open: true,
+                    can_rename: true,
+                    can_duplicate: true,
+                    can_reveal: true,
+                    can_delete: true,
+                    can_add_to_library: false,
+                    can_snapshot_now: row.is_active,
+                }
+            })
+            .collect::<Vec<_>>();
+        if s.active_profile_origin == Some(CoreProfileOrigin::External) {
+            if let (Some(path), Some(profile)) =
+                (s.profile_path.as_ref(), s.active_profile.as_ref())
+            {
+                profile_rows.push(ProfileRowView {
+                    id: path.display().to_string(),
+                    name: profile.name().to_owned(),
+                    path_label: path.display().to_string(),
+                    is_active: true,
+                    origin: ProfileRowOrigin::External,
+                    can_open: false,
+                    can_rename: false,
+                    can_duplicate: false,
+                    can_reveal: true,
+                    can_delete: false,
+                    can_add_to_library: true,
+                    can_snapshot_now: true,
+                });
+            }
+        }
+        let snapshot_rows = s
+            .active_snapshot_rows
+            .iter()
+            .map(|row| SnapshotRowView {
+                id: row.id.to_string(),
+                kind_label: match row.kind {
+                    inputforge_core::snapshot::SnapshotKind::AutoSessionStart => "Session start",
+                    inputforge_core::snapshot::SnapshotKind::AutoBeforeRestore => "Before restore",
+                    inputforge_core::snapshot::SnapshotKind::AutoBeforeBulkMap => "Before bulk map",
+                    inputforge_core::snapshot::SnapshotKind::Manual => "Manual",
+                }
+                .to_owned(),
+                label: row.label.clone(),
+                time_label: row.taken_at.to_rfc3339(),
+                sort_key: row.taken_at.timestamp_millis(),
+                pinned: row.pinned,
+            })
+            .collect();
         Self {
             engine_status: s.engine_status,
             current_mode: s.current_mode.clone(),
@@ -183,6 +287,9 @@ impl MetaSnapshot {
                 .active_profile
                 .as_ref()
                 .map(|p| p.settings().startup_mode().to_owned()),
+            active_profile_id,
+            profile_rows,
+            snapshot_rows,
         }
     }
 }
