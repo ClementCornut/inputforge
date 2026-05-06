@@ -16,6 +16,10 @@ pub(crate) fn EmptyState() -> Element {
             div { class: "if-empty-state__heading", "No profile loaded" }
             div { class: "if-empty-state__rule", "aria-hidden": "true" }
             div { class: "if-empty-state__hint", "F13 owns this surface." }
+            div { class: "if-empty-state__actions",
+                button { class: "button button--primary", "data-action": "new-profile", "New profile" }
+                button { class: "button", "data-action": "open-profile", "Open file" }
+            }
         }
     }
 }

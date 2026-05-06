@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 
+use crate::frame::profiles::ProfilesPanel;
 use crate::frame::view_state::{PanelSlot as PanelSlotEnum, ViewState};
 
 mod device_panel;
@@ -34,13 +35,14 @@ pub(crate) fn PanelSlot() -> Element {
             aria: "Devices panel",
         },
         PanelSlotEnum::Profiles => PanelSpec {
-            body: "F13 owns content",
+            body: "",
             aria: "Profiles panel",
         },
         PanelSlotEnum::None => unreachable!("None branch returned above"),
     };
     let body = match s {
         PanelSlotEnum::Devices if !calib => rsx! { device_panel::DevicePanel {} },
+        PanelSlotEnum::Profiles => rsx! { ProfilesPanel {} },
         _ => rsx! { "{spec.body}" },
     };
 

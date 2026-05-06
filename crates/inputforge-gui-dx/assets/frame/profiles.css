@@ -1,0 +1,32 @@
+.profiles-panel {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.profiles-panel__header,
+.profiles-no-profile__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.profiles-panel__header {
+    justify-content: space-between;
+}
+
+.profiles-panel__body {
+    min-height: 10rem;
+}
+
+.profiles-no-profile {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-elevated);
+}
+
+.profiles-panel__snapshot-toggle {
+    color: var(--color-text-muted);
+}
