@@ -1,4 +1,8 @@
 use super::*;
+use crate::snapshot::pending_delete::{
+    list_visible, pending_manifest_path, purge_expired_pending_deletes, stage_delete,
+    undo_delete_by_id,
+};
 use std::path::PathBuf;
 
 /// Write a minimal valid profile to `profile_path` and return its
@@ -103,6 +107,62 @@ fn snapshot_kind_auto_before_bulk_map_always_fires_never_deduped() {
         a.is_some() && b.is_some(),
         "AutoBeforeBulkMap must never dedup"
     );
+}
+
+#[test]
+fn pending_delete_hides_row_until_undo_restores_it() {
+    let (dir, profile) = fresh_profile_dir();
+    let snapshot = create(
+        &profile,
+        SnapshotKind::Manual,
+        Some("before trim".to_owned()),
+        &SnapshotConfig::default(),
+    )
+    .unwrap()
+    .unwrap();
+    let pending_dir = dir.path().join("pending");
+
+    let staged = stage_delete(&profile, &snapshot.id, &pending_dir).unwrap();
+    assert!(
+        list_visible(&profile, &pending_dir)
+            .unwrap()
+            .iter()
+            .all(|row| row.id != snapshot.id)
+    );
+
+    undo_delete_by_id(&pending_dir, &snapshot.id).unwrap();
+    assert!(
+        list_visible(&profile, &pending_dir)
+            .unwrap()
+            .iter()
+            .any(|row| row.id == snapshot.id)
+    );
+    assert!(!staged.manifest_path.exists());
+}
+
+#[test]
+fn expired_pending_delete_purges_on_startup_cleanup() {
+    let (dir, profile) = fresh_profile_dir();
+    let snapshot = create(
+        &profile,
+        SnapshotKind::Manual,
+        Some("delete me".to_owned()),
+        &SnapshotConfig::default(),
+    )
+    .unwrap()
+    .unwrap();
+    let pending_dir = dir.path().join("pending");
+
+    stage_delete(&profile, &snapshot.id, &pending_dir).unwrap();
+    purge_expired_pending_deletes(&pending_dir, chrono::Duration::zero()).unwrap();
+
+    assert!(
+        list_visible(&profile, &pending_dir)
+            .unwrap()
+            .iter()
+            .all(|row| row.id != snapshot.id)
+    );
+    assert!(!pending_manifest_path(&pending_dir, &snapshot.id).exists());
 }
 
 #[test]

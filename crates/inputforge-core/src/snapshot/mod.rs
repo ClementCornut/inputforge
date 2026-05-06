@@ -4,7 +4,7 @@
 //! for the full design.
 
 pub use self::config::SnapshotConfig;
-pub use self::types::{Snapshot, SnapshotId, SnapshotKind};
+pub use self::types::{PendingSnapshotDelete, Snapshot, SnapshotId, SnapshotKind};
 
 #[cfg(test)]
 #[allow(
@@ -17,6 +17,7 @@ pub(crate) mod config;
 pub(crate) mod fs;
 pub(crate) mod hash;
 pub(crate) mod index;
+pub mod pending_delete;
 pub(crate) mod types;
 
 use std::path::Path;

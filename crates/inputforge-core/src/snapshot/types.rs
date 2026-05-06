@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use ulid::Ulid;
 
 /// A unique, sortable snapshot identifier (ULID-based).
@@ -55,6 +56,23 @@ pub struct Snapshot {
     #[serde(with = "hex_array_32")]
     pub content_hash: [u8; 32],
     pub pinned: bool,
+}
+
+/// Persistent metadata for a snapshot staged for deletion.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingSnapshotDelete {
+    /// Snapshot id staged for deletion.
+    pub id: SnapshotId,
+    /// Profile that owns the snapshot.
+    pub profile_path: PathBuf,
+    /// Original snapshot TOML path.
+    pub original_path: PathBuf,
+    /// Staged snapshot TOML path.
+    pub staged_path: PathBuf,
+    /// Persistent manifest path.
+    pub manifest_path: PathBuf,
+    /// Time the delete was staged.
+    pub deleted_at: DateTime<Utc>,
 }
 
 mod hex_array_32 {

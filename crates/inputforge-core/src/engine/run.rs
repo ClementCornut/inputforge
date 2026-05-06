@@ -23,6 +23,9 @@ use crate::profile::manager::{
     create_profile_in, delete_profile, list_profiles_in, sanitize_filename,
 };
 use crate::profile::{CalibrationEntry, Profile};
+use crate::snapshot::pending_delete::{
+    list_visible, purge_expired_pending_deletes, stage_delete, undo_delete_by_id,
+};
 use crate::state::{
     ActiveSnapshotRow, AppState, DeviceCalibrationStore, DeviceState, EngineStatus,
     InputCacheEntry, ProfileLibraryRow, ProfileOrigin,
@@ -326,6 +329,10 @@ impl Engine {
     pub(crate) fn handle_command(&mut self, cmd: EngineCommand) -> Result<()> {
         match cmd {
             EngineCommand::LoadProfile(path) => {
+                purge_expired_pending_deletes(
+                    &self.snapshot_pending_delete_dir(),
+                    chrono::Duration::days(7),
+                )?;
                 self.reload_profile_from_disk(&path)?;
                 self.state.write().active_profile_origin =
                     Some(self.profile_origin_for_path(&path));
@@ -349,6 +356,10 @@ impl Engine {
                 self.refresh_active_snapshot_rows()?;
             }
             EngineCommand::LoadExternalProfileOnce(path) => {
+                purge_expired_pending_deletes(
+                    &self.snapshot_pending_delete_dir(),
+                    chrono::Duration::days(7),
+                )?;
                 self.reload_profile_from_disk(&path)?;
                 self.mark_profile_loaded(ProfileOrigin::External);
                 let _ = crate::snapshot::create(
@@ -531,7 +542,7 @@ impl Engine {
             EngineCommand::DeleteSnapshot { id } => {
                 let path = self.state.read().profile_path.clone();
                 if let Some(path) = path {
-                    crate::snapshot::delete(&path, &id)?;
+                    let _ = stage_delete(&path, &id, &self.snapshot_pending_delete_dir())?;
                     self.refresh_active_snapshot_rows()?;
                 } else {
                     tracing::warn!(
@@ -843,7 +854,15 @@ impl Engine {
                 );
             }
             EngineCommand::UndoSnapshotDelete { id } => {
-                tracing::info!(target: "snapshot", id = %id, "UndoSnapshotDelete requested");
+                if self.state.read().profile_path.is_some() {
+                    undo_delete_by_id(&self.snapshot_pending_delete_dir(), &id)?;
+                    self.refresh_active_snapshot_rows()?;
+                } else {
+                    tracing::warn!(
+                        target: "snapshot",
+                        "UndoSnapshotDelete dispatched with no profile loaded"
+                    );
+                }
             }
 
             EngineCommand::RemoveMapping { input, mode } => {
@@ -917,6 +936,16 @@ impl Engine {
             })
     }
 
+    fn snapshot_pending_delete_dir(&self) -> PathBuf {
+        if self.settings_path.as_os_str().is_empty() {
+            return crate::settings::AppSettings::config_dir().join("pending-snapshot-deletes");
+        }
+        self.settings_path.parent().map_or_else(
+            || crate::settings::AppSettings::config_dir().join("pending-snapshot-deletes"),
+            |dir| dir.join("pending-snapshot-deletes"),
+        )
+    }
+
     fn mark_profile_loaded(&self, origin: ProfileOrigin) {
         let mut state = self.state.write();
         state.active_profile_origin = Some(origin);
@@ -961,7 +990,7 @@ impl Engine {
     fn refresh_active_snapshot_rows(&self) -> Result<()> {
         let profile_path = self.state.read().profile_path.clone();
         let rows = if let Some(path) = profile_path {
-            crate::snapshot::list(&path)?
+            list_visible(&path, &self.snapshot_pending_delete_dir())?
                 .into_iter()
                 .map(|snapshot| ActiveSnapshotRow {
                     id: snapshot.id,
