@@ -5,15 +5,20 @@ use dioxus::prelude::*;
 use dioxus_ssr::render;
 use parking_lot::RwLock;
 
+use inputforge_core::engine::EngineCommand;
 use inputforge_core::mode::ModeTree;
 use inputforge_core::profile::Profile;
 use inputforge_core::settings::AppSettings;
+use inputforge_core::snapshot::{SnapshotConfig, SnapshotId, SnapshotKind, create};
 use inputforge_core::state::AppState;
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
 use crate::context::{ProfileRowOrigin, ProfileRowView};
 use crate::frame::layout::EmptyState;
 use crate::frame::profiles::ProfilesPanel;
+use crate::frame::profiles::actions::{
+    ConfirmationKind, ToastAction, profile_delete_action, snapshot_delete_action,
+};
 use crate::frame::profiles::projection::project_profile_rows;
 
 fn simple_profile(name: &str) -> Profile {
@@ -67,6 +72,30 @@ fn render_no_profile_frame() -> String {
     let mut vdom = VirtualDom::new(EmptyHarness);
     vdom.rebuild_in_place();
     render(&vdom)
+}
+
+fn sample_snapshot_id() -> SnapshotId {
+    let dir = std::env::temp_dir().join(format!(
+        "inputforge-gui-snapshot-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("profile.toml");
+    simple_profile("Snapshot").save(&path).unwrap();
+    let id = create(
+        &path,
+        SnapshotKind::Manual,
+        None,
+        &SnapshotConfig::default(),
+    )
+    .unwrap()
+    .unwrap()
+    .id;
+    let _ = std::fs::remove_dir_all(&dir);
+    id
 }
 
 fn sample_profile_rows(active: &str, names: &[&str]) -> Vec<ProfileRowView> {
@@ -136,4 +165,29 @@ fn no_profile_state_shows_center_explanation_and_panel_actions() {
     assert!(html.contains("New profile"));
     assert!(html.contains("Open file"));
     assert!(!html.contains("mapping-list"));
+}
+
+#[test]
+fn profile_delete_action_dispatches_real_engine_command() {
+    let action = profile_delete_action("Alpha");
+
+    assert_eq!(
+        action.command,
+        EngineCommand::DeleteProfile {
+            name: "Alpha".to_owned()
+        }
+    );
+    assert_eq!(action.confirmation, Some(ConfirmationKind::DestructiveF4));
+}
+
+#[test]
+fn snapshot_delete_action_dispatches_real_engine_command_and_undo_toast() {
+    let id = sample_snapshot_id();
+    let action = snapshot_delete_action(id);
+
+    assert_eq!(action.command, EngineCommand::DeleteSnapshot { id });
+    assert_eq!(
+        action.toast_action,
+        Some(ToastAction::UndoSnapshotDelete { id })
+    );
 }

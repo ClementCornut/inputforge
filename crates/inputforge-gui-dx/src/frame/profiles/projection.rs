@@ -1,9 +1,5 @@
 use crate::context::ProfileRowView;
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "consumed by ProfilesPanel in the next task")
-)]
 pub(crate) fn project_profile_rows(
     rows: &[ProfileRowView],
     active_id: &str,

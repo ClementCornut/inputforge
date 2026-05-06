@@ -1,8 +1,12 @@
 use dioxus::prelude::*;
 
 use crate::context::AppContext;
+use crate::context::MetaSnapshot;
+use crate::frame::profiles::library::ProfileLibrary;
 use crate::frame::profiles::no_profile::NoProfileBar;
 
+pub(crate) mod actions;
+pub(crate) mod library;
 pub(crate) mod no_profile;
 pub(crate) mod projection;
 
@@ -14,6 +18,7 @@ pub(crate) fn ProfilesPanel() -> Element {
     let state = ctx.state.read();
     let snapshot_count = state.active_snapshot_rows.len();
     let has_profile = state.active_profile.is_some();
+    let meta = MetaSnapshot::from_state(&state);
     drop(state);
 
     rsx! {
@@ -26,7 +31,10 @@ pub(crate) fn ProfilesPanel() -> Element {
             }
             div { class: "profiles-panel__body",
                 if has_profile {
-                    div { class: "profiles-panel__library", "Profile library" }
+                    ProfileLibrary {
+                        rows: meta.profile_rows.clone(),
+                        active_id: meta.active_profile_id.clone().unwrap_or_default(),
+                    }
                 } else {
                     NoProfileBar {}
                 }
