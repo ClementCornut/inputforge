@@ -19,6 +19,7 @@ use crate::frame::layout::EmptyState;
 use crate::frame::profiles::ProfilesPanel;
 use crate::frame::profiles::actions::{
     ConfirmationKind, ToastAction, profile_delete_action, snapshot_delete_action,
+    snapshot_restore_action,
 };
 use crate::frame::profiles::new_profile::{
     NewProfileSource, add_external_to_library_command, create_new_profile_command,
@@ -283,4 +284,24 @@ fn ctrl_s_is_suppressed_inside_editable_or_modal_context() {
     assert!(!should_handle_snapshot_shortcut(FocusScope::Dialog));
     assert!(!should_handle_snapshot_shortcut(FocusScope::OsPickerReturn));
     assert!(should_handle_snapshot_shortcut(FocusScope::Panel));
+}
+
+#[test]
+fn snapshot_restore_uses_f4_confirmation() {
+    let id = sample_snapshot_id();
+    let action = snapshot_restore_action(id);
+
+    assert_eq!(action.confirmation, Some(ConfirmationKind::DestructiveF4));
+    assert_eq!(action.command, EngineCommand::RestoreSnapshot { id });
+}
+
+#[test]
+fn undo_toast_dispatches_undo_snapshot_delete() {
+    let id = sample_snapshot_id();
+    let toast_action = ToastAction::UndoSnapshotDelete { id };
+
+    assert_eq!(
+        toast_action.command(),
+        EngineCommand::UndoSnapshotDelete { id }
+    );
 }

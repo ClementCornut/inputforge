@@ -16,6 +16,14 @@ pub(crate) enum ToastAction {
     UndoSnapshotDelete { id: SnapshotId },
 }
 
+impl ToastAction {
+    pub(crate) fn command(&self) -> EngineCommand {
+        match self {
+            Self::UndoSnapshotDelete { id } => EngineCommand::UndoSnapshotDelete { id: *id },
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub(crate) struct ProfilesAction {
     pub command: EngineCommand,
@@ -38,5 +46,13 @@ pub(crate) fn snapshot_delete_action(id: SnapshotId) -> ProfilesAction {
         command: EngineCommand::DeleteSnapshot { id },
         confirmation: None,
         toast_action: Some(ToastAction::UndoSnapshotDelete { id }),
+    }
+}
+
+pub(crate) fn snapshot_restore_action(id: SnapshotId) -> ProfilesAction {
+    ProfilesAction {
+        command: EngineCommand::RestoreSnapshot { id },
+        confirmation: Some(ConfirmationKind::DestructiveF4),
+        toast_action: None,
     }
 }
