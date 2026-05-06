@@ -7,6 +7,7 @@ use crate::frame::profiles::no_profile::NoProfileBar;
 
 pub(crate) mod actions;
 pub(crate) mod library;
+pub(crate) mod new_profile;
 pub(crate) mod no_profile;
 pub(crate) mod projection;
 

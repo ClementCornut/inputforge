@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
 
 use dioxus::prelude::*;
@@ -18,6 +19,10 @@ use crate::frame::layout::EmptyState;
 use crate::frame::profiles::ProfilesPanel;
 use crate::frame::profiles::actions::{
     ConfirmationKind, ToastAction, profile_delete_action, snapshot_delete_action,
+};
+use crate::frame::profiles::new_profile::{
+    NewProfileSource, add_external_to_library_command, create_new_profile_command,
+    open_file_load_once_command,
 };
 use crate::frame::profiles::projection::project_profile_rows;
 
@@ -189,5 +194,39 @@ fn snapshot_delete_action_dispatches_real_engine_command_and_undo_toast() {
     assert_eq!(
         action.toast_action,
         Some(ToastAction::UndoSnapshotDelete { id })
+    );
+}
+
+#[test]
+fn new_blank_profile_dispatches_create_profile() {
+    let command = create_new_profile_command(NewProfileSource::Blank, "Alpha", None).unwrap();
+
+    assert_eq!(
+        command,
+        EngineCommand::CreateProfile {
+            name: "Alpha".to_owned()
+        }
+    );
+}
+
+#[test]
+fn open_file_load_once_dispatches_external_load() {
+    let path = PathBuf::from("E:/Profiles/external.toml");
+    let command = open_file_load_once_command(path.clone());
+
+    assert_eq!(command, EngineCommand::LoadExternalProfileOnce(path));
+}
+
+#[test]
+fn add_external_to_library_dispatches_import_command() {
+    let path = PathBuf::from("E:/Profiles/external.toml");
+    let command = add_external_to_library_command(path.clone(), "Imported").unwrap();
+
+    assert_eq!(
+        command,
+        EngineCommand::AddExternalProfileToLibrary {
+            path,
+            name: "Imported".to_owned()
+        }
     );
 }
