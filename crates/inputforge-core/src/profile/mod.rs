@@ -1,8 +1,14 @@
 // Rust guideline compliant 2026-03-06
 
+pub mod library;
 pub mod manager;
 mod types;
 
+#[doc(inline)]
+pub use library::{
+    LibraryProfile, add_external_profile_to_library, duplicate_library_profile,
+    rename_library_profile,
+};
 pub use types::{CalibrationEntry, DeviceEntry, ProfileId, ProfileSettings};
 
 use std::path::Path;
