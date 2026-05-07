@@ -11,15 +11,14 @@ use crate::frame::profiles::actions::{
 };
 use crate::frame::profiles::new_profile::add_external_to_library_command;
 use crate::frame::profiles::projection::project_profile_rows;
+use crate::frame::view_state::ViewState;
 use crate::icons::Icon as IconKind;
 
 #[component]
-pub(crate) fn ProfileLibrary(
-    rows: Vec<ProfileRowView>,
-    active_id: String,
-    filter: String,
-) -> Element {
+pub(crate) fn ProfileLibrary(rows: Vec<ProfileRowView>, active_id: String) -> Element {
     let ctx = use_context::<AppContext>();
+    let view = use_context::<ViewState>();
+    let filter = view.profiles_panel.read().filter.clone();
     let projected = project_profile_rows(&rows, &active_id, &filter);
     let mut rename_profile = use_signal(|| None::<String>);
     let mut rename_value = use_signal(String::new);
@@ -29,8 +28,24 @@ pub(crate) fn ProfileLibrary(
     let filter_active = !filter.trim().is_empty();
     let show_filtered_empty = filter_active && !inactive_visible;
 
+    let view_for_memo = view;
+    let filter_memo = use_memo(move || view_for_memo.profiles_panel.read().filter.clone());
+    let filter_read: ReadSignal<String> = filter_memo.into();
+    let mut view_for_filter = view;
+
     rsx! {
         div { class: "profiles-panel__library",
+            div { class: "profiles-panel__filter",
+                TextInput {
+                    value: filter_read,
+                    size: InputSize::Sm,
+                    placeholder: "Filter profiles".to_owned(),
+                    oninput: move |evt: FormEvent| {
+                        let value = evt.value();
+                        view_for_filter.profiles_panel.write().filter = value;
+                    },
+                }
+            }
             for row in projected {
                 {
                     let commands = ctx.commands.clone();
@@ -99,7 +114,11 @@ pub(crate) fn ProfileLibrary(
                         }
                         rename_profile.set(None);
                     };
-                    let mode_label = if row.mode_count == 1 { "1 mode".to_owned() } else { format!("{} modes", row.mode_count) };
+                    let mode_label = if row.mode_count == 1 {
+                        "1 mode".to_owned()
+                    } else {
+                        format!("{} modes", row.mode_count)
+                    };
                     let last_edited_label = row.last_edited_label.clone();
                     rsx! {
                 article {

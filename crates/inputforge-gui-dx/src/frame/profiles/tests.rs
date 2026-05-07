@@ -30,6 +30,9 @@ use crate::frame::profiles::projection::project_profile_rows;
 use crate::frame::profiles::snapshot_drawer::{
     FocusScope, SnapshotDrawer, should_handle_snapshot_shortcut,
 };
+use crate::frame::view_state::{
+    MainSurface, PanelSlot, ProfilesPanelMode, ProfilesPanelState, ViewState,
+};
 
 fn simple_profile(name: &str) -> Profile {
     let map = HashMap::from([("Default".to_owned(), vec![])]);
@@ -58,6 +61,12 @@ fn ProfilesHarness() -> Element {
     let meta = use_signal(MetaSnapshot::default);
     let config = use_signal(ConfigSnapshot::default);
     let live = use_signal(LiveSnapshot::default);
+    let main_surface = use_signal(MainSurface::default);
+    let editing_mode = use_signal(|| "Default".to_owned());
+    let panel_slot = use_signal(|| PanelSlot::Profiles);
+    let via_calibration = use_signal(|| false);
+    let selected_mapping = use_signal(|| None);
+    let profiles_panel = use_signal(ProfilesPanelState::default);
     use_context_provider(|| AppContext {
         state,
         commands,
@@ -65,6 +74,14 @@ fn ProfilesHarness() -> Element {
         meta,
         config,
         live,
+    });
+    use_context_provider(|| ViewState {
+        main_surface,
+        editing_mode,
+        panel_slot,
+        via_calibration,
+        selected_mapping,
+        profiles_panel,
     });
     rsx! { ProfilesPanel {} }
 }
@@ -105,6 +122,12 @@ fn SnapshotDrawerHarness(rows: Vec<SnapshotRowView>, open: bool) -> Element {
     let meta = use_signal(MetaSnapshot::default);
     let config = use_signal(ConfigSnapshot::default);
     let live = use_signal(LiveSnapshot::default);
+    let main_surface = use_signal(MainSurface::default);
+    let editing_mode = use_signal(|| "Default".to_owned());
+    let panel_slot = use_signal(|| PanelSlot::Profiles);
+    let via_calibration = use_signal(|| false);
+    let selected_mapping = use_signal(|| None);
+    let profiles_panel = use_signal(ProfilesPanelState::default);
     use_context_provider(|| AppContext {
         state,
         commands,
@@ -112,6 +135,14 @@ fn SnapshotDrawerHarness(rows: Vec<SnapshotRowView>, open: bool) -> Element {
         meta,
         config,
         live,
+    });
+    use_context_provider(|| ViewState {
+        main_surface,
+        editing_mode,
+        panel_slot,
+        via_calibration,
+        selected_mapping,
+        profiles_panel,
     });
 
     rsx! {
@@ -176,6 +207,116 @@ fn sample_profile_rows(active: &str, names: &[&str]) -> Vec<ProfileRowView> {
             can_snapshot_now: true,
         })
         .collect()
+}
+
+#[component]
+fn ProfilesHarnessWithMode(mode: ProfilesPanelMode) -> Element {
+    let state = Arc::new(RwLock::new(sample_profiles_context()));
+    let (commands, _rx) = mpsc::channel();
+    let meta = use_signal(MetaSnapshot::default);
+    let config = use_signal(ConfigSnapshot::default);
+    let live = use_signal(LiveSnapshot::default);
+    let main_surface = use_signal(MainSurface::default);
+    let editing_mode = use_signal(|| "Default".to_owned());
+    let panel_slot = use_signal(|| PanelSlot::Profiles);
+    let via_calibration = use_signal(|| false);
+    let selected_mapping = use_signal(|| None);
+    let profiles_panel = use_signal(|| ProfilesPanelState {
+        mode: mode.clone(),
+        ..ProfilesPanelState::default()
+    });
+    use_context_provider(|| AppContext {
+        state,
+        commands,
+        settings: Arc::new(AppSettings::default()),
+        meta,
+        config,
+        live,
+    });
+    use_context_provider(|| ViewState {
+        main_surface,
+        editing_mode,
+        panel_slot,
+        via_calibration,
+        selected_mapping,
+        profiles_panel,
+    });
+    rsx! { ProfilesPanel {} }
+}
+
+fn render_profiles_panel_with_mode(mode: ProfilesPanelMode) -> String {
+    let mut vdom = VirtualDom::new_with_props(
+        ProfilesHarnessWithMode,
+        ProfilesHarnessWithModeProps { mode },
+    );
+    vdom.rebuild_in_place();
+    render(&vdom)
+}
+
+#[test]
+fn new_profile_submode_replaces_library_region() {
+    let html = render_profiles_panel_with_mode(ProfilesPanelMode::NewProfile);
+
+    assert!(html.contains("profiles-panel__submode"));
+    assert!(html.contains("New profile"));
+    assert!(html.contains("profiles-panel__source-group"));
+    assert!(html.contains("Blank"));
+    assert!(html.contains("Copy active"));
+    assert!(html.contains("Copy from library"));
+    assert!(html.contains("Open existing file"));
+    // Library list header is not rendered while in sub-mode.
+    assert!(!html.contains("profile-row__menu-trigger"));
+}
+
+#[test]
+fn open_choice_submode_replaces_library_region() {
+    let mode = ProfilesPanelMode::OpenChoice {
+        path: PathBuf::from("E:/Profiles/external.toml"),
+        suggested_name: "external".to_owned(),
+    };
+    let html = render_profiles_panel_with_mode(mode);
+
+    assert!(html.contains("profiles-panel__submode"));
+    assert!(html.contains("Open profile"));
+    assert!(
+        html.contains("E:/Profiles/external.toml") || html.contains("E:\\Profiles\\external.toml")
+    );
+    assert!(html.contains("Load once"));
+    assert!(html.contains("Add to library"));
+    assert!(!html.contains("profile-row__menu-trigger"));
+}
+
+#[test]
+fn submode_back_button_renders_with_chevron_text() {
+    let html = render_profiles_panel_with_mode(ProfilesPanelMode::NewProfile);
+
+    assert!(html.contains("profiles-panel__submode-back"));
+    assert!(html.contains("Back to library"));
+}
+
+#[test]
+fn new_profile_source_radios_render_all_four_options() {
+    let html = render_profiles_panel_with_mode(ProfilesPanelMode::NewProfile);
+
+    let radio_count = html.matches("name=\"new-profile-source\"").count();
+    assert_eq!(
+        radio_count, 4,
+        "expected 4 source radios, got {radio_count} in: {html}"
+    );
+}
+
+#[test]
+fn library_filter_renders_inside_library_with_sticky_class() {
+    let html = render_profiles_panel(sample_profiles_context());
+
+    assert!(html.contains("profiles-panel__filter"));
+    // Filter sits inside the library, not in the panel header.
+    let filter_idx = html.find("profiles-panel__filter").unwrap();
+    let library_idx = html.find("profiles-panel__library").unwrap();
+    assert!(
+        library_idx < filter_idx,
+        "filter must render inside library region, after .profiles-panel__library opens"
+    );
 }
 
 #[test]

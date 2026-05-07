@@ -8,6 +8,8 @@
 //! `selected_mapping` (the currently highlighted mapping row, cleared on
 //! profile flip or editing-mode flip).
 
+use std::path::PathBuf;
+
 use dioxus::prelude::*;
 use inputforge_core::types::InputAddress;
 
@@ -41,11 +43,20 @@ pub(crate) enum MainSurface {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[allow(dead_code, reason = "New profile sub-mode is wired in Task 7")]
 pub(crate) enum ProfilesPanelMode {
+    /// Default mode: render the profile library list and filter.
     #[default]
     Library,
+    /// Sub-mode for creating a new profile (Blank / Copy active /
+    /// Copy from library / Open existing file).
     NewProfile,
+    /// Sub-mode reached after the OS picker resolves with a profile
+    /// path. Carries the picked path and a default library-name
+    /// suggestion derived from the file stem.
+    OpenChoice {
+        path: PathBuf,
+        suggested_name: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
