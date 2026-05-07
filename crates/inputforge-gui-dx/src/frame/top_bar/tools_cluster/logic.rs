@@ -5,6 +5,10 @@ use crate::frame::view_state::PanelSlot;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Tool {
     Devices,
+    // Button hidden until calibration UI is implemented; matcher arms and
+    // tests below still exercise this variant so the state machine stays
+    // intact for restoration.
+    #[allow(dead_code)]
     Calibration,
     Profiles,
 }

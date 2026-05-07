@@ -30,7 +30,6 @@ pub(crate) fn ToolsCluster() -> Element {
     // matcher the buttons display, so visual + behavioral state stay
     // synchronized.
     let devices_active = tool_active(s, v, Tool::Devices);
-    let calibration_active = tool_active(s, v, Tool::Calibration);
     let profiles_active = tool_active(s, v, Tool::Profiles);
 
     rsx! {
@@ -49,22 +48,6 @@ pub(crate) fn ToolsCluster() -> Element {
                     } else {
                         panel.set(PanelSlot::Devices);
                         via.set(false);
-                    }
-                },
-            }
-            ToolButton {
-                label: "Calibration",
-                active: calibration_active,
-                disabled: !p,
-                disabled_reason: "Load a profile to calibrate axes.",
-                onclick: move |_| {
-                    if calibration_active {
-                        // Toggle off. Leave via_calibration true so the
-                        // next Devices-open returns to Calibration view.
-                        panel.set(PanelSlot::None);
-                    } else {
-                        panel.set(PanelSlot::Devices);
-                        via.set(true);
                     }
                 },
             }
