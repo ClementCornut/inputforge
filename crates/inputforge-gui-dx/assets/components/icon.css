@@ -7,19 +7,35 @@
 }
 
 /*
- * Phosphor v2.0.8 regular-weight icons are STROKE-based: every shape uses
- * fill="none" stroke="currentColor" stroke-width="16" on a 256x256 viewBox.
- * We do NOT override fill or stroke at the CSS level, the SVG's built-in
- * stroke="currentColor" inherits color from this `.if-icon` parent
- * (which inherits from the surrounding element).
+ * Phosphor v2.0.8 regular-weight icons ship in two shapes:
  *
- * If the icon set is later swapped to "fill"-weight Phosphor icons (those
- * use fill="currentColor" without strokes), this rule still works because
- * `currentColor` resolution is identical for either attribute.
+ *   1. Stroked icons (paths, polylines, lines) carry
+ *      `stroke="currentColor" stroke-width="16"` on a 256x256 viewBox and
+ *      inherit color naturally from this `.if-icon` parent's cascade.
+ *   2. Bare-shape icons (circle-only families like `dots-three-vertical`,
+ *      `dots-six` aka drag-handle) ship NEITHER `fill` nor `stroke` on
+ *      the shape elements. Phosphor's framework wrappers (React, Vue)
+ *      inject `currentColor` programmatically, but our `Icon` component
+ *      inlines the raw SVG via `dangerous_inner_html`, so the bare
+ *      circles fall through to the SVG painting default of `fill="black"`.
+ *
+ * The local SVG files MUST stay byte-for-byte identical to upstream
+ * Phosphor (verifiable against `phosphor-icons/core/raw/regular/<name>.svg`),
+ * so the routing happens here in CSS rather than as a hand-edit to vendored
+ * assets.
+ *
+ * `circle:not([fill])` is narrowly scoped to the bare-circle pattern. The
+ * leading viewport `<rect width="256" height="256" fill="none"/>` that
+ * every Phosphor icon ships with is unaffected (different element type
+ * and it explicitly sets `fill="none"`, so `:not([fill])` excludes it).
  */
 .if-icon svg {
     width:  100%;
     height: 100%;
+}
+
+.if-icon svg circle:not([fill]) {
+    fill: currentColor;
 }
 
 .if-icon--sm { width: 14px; height: 14px; }
