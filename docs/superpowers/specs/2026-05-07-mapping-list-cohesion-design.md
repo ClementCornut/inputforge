@@ -5,16 +5,20 @@
 The mapping-list rail (F8) carries the most surface area of any region in the
 GUI but predates the cohesion pass that recently aligned the right-side
 panels (Profiles, Devices). It still uses ad-hoc chips, a hand-rolled output
-badge, a non-canonical selected-row treatment, and a hover that paints the
-seam color over the seams.
+badge, a selected-row treatment using primary 18% on transparent
+(`mapping_list.css:141`) against the right-panel canon at 8% on bg, and a
+hover that paints the seam color over the seams.
 
 This pass raises the rail's visual floor to match the right panels without
 changing its information architecture or interaction semantics. It treats
-the rail as one surface region: the mode tabs, the device filter chips, and
-the selected row all read as the same shape (one signal: `border-focus` +
-`primary 8% on bg`). Ad-hoc chip CSS is replaced by extensions to the
-`Badge` primitive. The output identifier moves from a right-floating mono
-pill to an inline echo on the source line (name → trigger → vJoy out).
+the rail as one surface region: the device filter chips and the selected
+row read as the same shape (one signal: `border-focus` +
+`primary 8% on bg`). Mode tabs keep the canonical 3px primary
+bottom-underline per DESIGN.md section 7; tabs read as navigation, not
+selection, and the unified treatment does not extend to them. Ad-hoc chip
+CSS is replaced by a new `Chip` primitive. The output identifier moves
+from a right-floating mono pill to an inline echo on the source line
+(name, trigger, vJoy out, separated by an arrow glyph).
 
 The pass is anchored by Approach 2 from the brainstorming session
 (interpretive mirror): port the right-panel idioms, plus the targeted
@@ -23,18 +27,23 @@ layout adjustments where the rail's role differs from the panels.
 ## Goals
 
 - Align row chrome (radius, padding, base, hover, selected, focus-visible)
-  with `.profile-row` and `.device-row`.
+  with `.if-device-row`. Profile-row has no hover and uses a different
+  focus-offset, so it is not the alignment target.
 - Replace `.if-row__output-badge`, `.if-rail__device-chip`, `.if-row__chip`
-  with `Badge` primitive variants. Codify the new variants in
-  `components/badge.rs` with regression tests.
+  with a new `Chip` primitive (`components/chip.rs`, new). Badge stays at
+  five status variants per DESIGN.md section 7; classification chips with
+  mono fonts and `data-kind` hues belong on Chip, not Badge.
 - Unify the selected/active treatment across the rail: row, device chip,
-  mode tab, "Add mapping" hover all read as the same shape
-  (`1px var(--color-border-focus)` + `color-mix(--color-primary 8%, --color-bg)`).
+  "Add mapping" hover all read as the same shape
+  (`1px var(--color-border-focus)` + `color-mix(--color-primary var(--tint-selected), --color-bg)`).
+  Mode tabs are excluded; they keep the canonical 3px primary bottom-underline
+  per DESIGN.md section 7.
 - Move the vJoy output identifier from a right-floating pill to the source
-  line as a quieter inline badge after a `→` separator.
+  line as a quieter inline chip after an arrow glyph separator.
 - Migrate the mode tab strip to the canonical `Tabs` primitive
-  (`components/tabs.rs`) where a clean migration is possible; preserve the
-  running-mode pip and the trailing "+" affordance.
+  (`components/tabs.rs`); add a `running: bool` extension to `TabItem` for
+  the running-mode pip, and place the trailing "+" outside the
+  `role="tablist"` container.
 - Codify the new contracts as tests parallel to the right-panel pass:
   one row-tokens test, one device-chip-active-class test, one tab-shell test.
 
@@ -50,16 +59,23 @@ layout adjustments where the rail's role differs from the panels.
   rendering corrections happen at `icon.css` or `Icon` component level.
 - No effort estimates. Sequencing is implicit in the implementation plan
   (separate doc), not in the design.
+- PrimaryNav (`top_bar/primary_nav.rs`) is hand-rolled `<nav>` plus
+  buttons; not a Tabs consumer; not in scope. Response-curve toolbar
+  (`mapping_editor/pipeline/stage_body/response_curve/toolbar.rs:172`)
+  uses the Tabs primitive and stays on the canonical underline; no fill
+  change there.
 
 ## Foundations
 
 ### Inherited contracts
 
-The Pinned-Inspector vs Collapsible-Drawer rule (DESIGN.md §6) does not
-directly apply: the rail is its own region owned by `.if-layout__rail` in
+The Pinned-Inspector vs Collapsible-Drawer rule (DESIGN.md section 6)
+does not apply to the rail: the rule scopes side-panel anchored regions,
+and the rail is its own region owned by `.if-layout__rail` in
 `assets/frame/layout.css`, not a panel slot. The rail keeps its existing
-`--color-bg-elevated` surface. The status bar (region H, see below) is the
-one place where the Drawer rule does fire, and it fires Drawer.
+`--color-bg-elevated` surface. The status bar is shell-level, governed by
+DESIGN.md section 7 Status Bar (`DESIGN.md:441-446`); its surface
+contract is locked separately from the Drawer rule (see region H).
 
 The F8 "hardware as protagonist" line stays. The trigger (device + input)
 remains the protagonist of the source line; the mapping name stays as the
@@ -67,26 +83,31 @@ row's label anchor. This pass does not flip those weights.
 
 ### Banned
 
-Side-stripe `border-left` accents on rows. DESIGN.md §8 names this pattern
-as banned (Toast accent stripe is the documented exception, since toasts
-sit in the user's peripheral field; rows sit foveal). The selected state
-relies on a 1px inset border + tint, not an accent stripe.
+Side-stripe `border-left` accents on rows. DESIGN.md section 8 names
+this pattern as banned (Toast accent stripe is the documented exception,
+since toasts sit in the user's peripheral field; rows sit foveal). The
+selected state relies on a 1px inset border + tint, not an accent
+stripe.
 
 ### Token map
 
-| Use                     | Token                                                                  |
-| ----------------------- | ---------------------------------------------------------------------- |
-| Rail surface            | `--color-bg-elevated` (owned by `.if-layout__rail`, unchanged)         |
-| Row base                | `--color-bg`                                                           |
-| Row hover               | `--color-bg-elevated`                                                  |
-| Row selected fill       | `color-mix(in srgb, var(--color-primary) 8%, var(--color-bg))`         |
-| Row selected border     | `1px solid var(--color-border-focus)`                                  |
-| Focus-visible outline   | `2px solid var(--color-border-focus)`, offset 1px                      |
-| Drag-source dim         | `opacity: 0.4`                                                         |
-| Seam hairline           | `1px solid var(--color-border)`                                        |
-| Strong-tier hairline    | `1px solid var(--color-border-strong)`                                 |
-| Status bar surface      | `--color-bg-sunken`                                                    |
-| Output mono color       | `--color-output`                                                       |
+| Use                     | Token                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------ |
+| Rail surface            | `--color-bg-elevated` (owned by `.if-layout__rail`, unchanged)                       |
+| Row base                | `--color-bg`                                                                         |
+| Row hover background    | `--color-bg-elevated`                                                                |
+| Row hover border        | `1px solid var(--color-border-strong)`                                               |
+| Row selected fill       | `color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg))`     |
+| Row selected border     | `1px solid var(--color-border-focus)`                                                |
+| Focus-visible outline   | `2px solid var(--color-border-focus)`, offset -2px (inset)                           |
+| Selected tint percent   | `--tint-selected` (= 8%, new token in `assets/tokens/colors.css`)                    |
+| Create tint percent     | `--tint-create` (= 5%, new token in `assets/tokens/colors.css`)                      |
+| Drag-source dim         | `opacity: 0.4`                                                                       |
+| Seam hairline           | `1px solid var(--color-border)`                                                      |
+| Strong-tier hairline    | `1px solid var(--color-border-strong)`                                               |
+| Status bar surface      | `--color-bg-sunken`                                                                  |
+| Status bar top hairline | `1px solid var(--color-border-strong)`                                               |
+| Output mono color       | `--color-output`                                                                     |
 
 The previous CSS used `--color-border` (the seam color) as the hover
 background by substitution comment ("substituted --color-border for missing
@@ -95,57 +116,77 @@ background by substitution comment ("substituted --color-border for missing
 
 ### Active treatment, parent-surface-relative
 
-The "unified active treatment" used by rows, device chips, mode tabs, and
-the dashed-row hover all share the same shape:
+The unified active treatment used by rows, device chips, and the
+dashed-row hover all share the same shape:
 
 ```
 1px solid var(--color-border-focus)
-+ color-mix(in srgb, var(--color-primary) 8%, <parent-surface>)
++ color-mix(in srgb, var(--color-primary) var(--tint-selected), <parent-surface>)
 ```
 
 `<parent-surface>` is whatever the element sits on:
 
 - Rows sit on `--color-bg`, so row-selected mixes with `--color-bg`.
-- Chips and tabs sit on the rail's `--color-bg-elevated`, so chip-active
-  and tab-active mix with `--color-bg-elevated`.
-- The dashed-row footer hover uses 5% (not 8%) on `--color-bg`, so it
-  reads as "create" rather than "selected", but the border idiom is the
-  same.
+- Chips sit on the rail's `--color-bg-elevated`, so chip-active mixes
+  with `--color-bg-elevated`.
+- The dashed-row footer hover swaps `var(--tint-selected)` for
+  `var(--tint-create)` (5% instead of 8%) on `--color-bg`, so it reads
+  as "create" rather than "selected", but the border idiom is the same.
 
 This is one rule, not three; the visual outcomes look slightly different
 because they paint over different parent surfaces, which is correct.
+The tint percentages live in `--tint-selected` (= 8%) and
+`--tint-create` (= 5%) tokens added to
+`crates/inputforge-gui-dx/assets/tokens/colors.css`, so any future
+intensity tweak ships from one file.
+
+Mode tabs do NOT participate in this rule. They keep the canonical 3px
+primary bottom-underline per DESIGN.md section 7. Tabs read as
+navigation, not selection.
 
 ## Region Designs
 
 ### A · Mode tabs (`Default | Combat | +`)
 
 Today the strip is a hand-rolled flex container in
-`crates/inputforge-gui-dx/src/frame/top_bar/` (mode tab cluster) with custom
-underline/active treatment.
+`crates/inputforge-gui-dx/src/frame/top_bar/mode_tabs/` (siblings:
+`mod.rs`, `add_inline.rs`, `context_menu.rs`, `delete_dialog.rs`,
+`logic.rs`, `rename_inline.rs`) with a custom underline/active
+treatment.
 
 Migrate to the canonical `Tabs` primitive
-(`crates/inputforge-gui-dx/src/components/tabs.rs:38`) with two
-deviations from a vanilla tab strip, both encoded as either `class` overrides
-or new optional props on `TabItem`:
+(`crates/inputforge-gui-dx/src/components/tabs.rs:38`). The active tab
+keeps the canonical `.if-tab--active` shape per DESIGN.md section 7:
+3px primary bottom-underline, no fill, transparent background
+(`assets/components/tabs.css:48-51`). Hover on inactive tabs raises
+text color to `--color-text` only (no fill, no background change),
+per `assets/components/tabs.css:44-46`. Mode tabs are excluded from
+the unified row/chip/create-row treatment because tabs read as
+navigation, not selection.
+
+Two deviations from a vanilla tab strip:
 
 - A leading 6px `--color-live` pip on the tab whose mode is the runtime
-  live one. Implemented as an optional `running: bool` prop on `TabItem`,
-  rendered before the label. The pip is independent of the active tab:
-  the user can be editing Combat while Default is the runtime live mode,
-  and the pip stays on Default.
-- A trailing "+" affordance to add a mode. Rendered as a separate ghost
-  dashed-bordered tab cell that sits outside the canonical tab list,
-  styled to mirror the rail footer's "+ Add mapping" dashed row so the
-  "create" gesture reads as one shape across the rail.
+  live one. Implemented as a new `running: bool` prop on `TabItem`,
+  rendered inside the tab button, before the label. The pip is
+  independent of the active tab: the user can be editing Combat while
+  Default is the runtime live mode, and the pip stays on Default. Other
+  Tabs consumers (notably
+  `mapping_editor/pipeline/stage_body/response_curve/toolbar.rs:172`)
+  ignore the field by leaving it at its default `false`.
+- A trailing "+" affordance to add a mode. Rendered as a SIBLING
+  element of the `Tabs` primitive, OUTSIDE the `role="tablist"`
+  container, with `role="button"` and `aria-label="Add mode"`. Reachable
+  by Tab key, NOT by ArrowRight from the last tab so screen-reader tab
+  counts stay honest. Visually styled to mirror the rail footer's
+  `+ Add mapping` dashed row so the "create" gesture reads as one shape
+  across the rail.
 
-The active tab uses the unified active treatment (`1px border-focus` +
-`primary 8% on bg-elevated`). Hover on inactive tabs uses
-`--color-bg-elevated`.
-
-Tab tests already exist in `components/tabs.rs`; this pass adds a regression
-test in the rail's tests confirming the tab cluster's active class equals
-the row-selected class shape (a value-by-value contract test on the
-computed class string, not a snapshot).
+Tab tests already exist in `components/tabs.rs`; this pass adds a
+regression test in the rail's tests confirming the mode-tab cluster
+renders the canonical `.if-tab--active` class for the active tab
+(value-by-value contract test on the computed class string, not a
+snapshot).
 
 ### B · Filter input
 
@@ -164,31 +205,34 @@ Esc-clears-query and ⌘F-focus-filter behavior is unchanged
 ### C · Device filter chips (emphasis)
 
 Today, `.if-rail__device-chip` is a hand-rolled chip in
-`assets/frame/mapping_list.css` lines 52-76. Idle is bordered, active flips
-border + text color to `--color-primary`. The row uses
-`overflow-x: auto, flex-wrap: nowrap` (line 43-45).
+`assets/frame/mapping_list.css` lines 52-76. Idle is bordered, active
+flips border + text color to `--color-primary`. The row uses
+`overflow-x: auto, flex-wrap: nowrap` at line 45 specifically.
 
-Migrate to the `Badge` primitive
-(`crates/inputforge-gui-dx/src/components/badge.rs:15`). The Badge primitive
-needs two new variants for this and the next region; see "Badge primitive
-extensions" below.
+Migrate to the new `Chip` primitive
+(`crates/inputforge-gui-dx/src/components/chip.rs`, new file; see "Chip
+Primitive" below).
 
-Idle chip: `Badge variant=Outline`. Active chip: visual matches the row
-selected state (1px `--color-border-focus` border, `primary 8% on
-bg-elevated` fill, label color `--color-primary`).
+Idle chip: `Chip variant=Outline`. Active chip: visual matches the row
+selected state, sourced from the parent surface `--color-bg-elevated`:
+1px `--color-border-focus` border,
+`color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg-elevated))`
+fill, label color `--color-primary`.
 
 Active chips today are conveyed by the `is-active` class. After the
-migration, the chip is a button wrapping a Badge, and the active variant
-swap happens at the call site in
-`mapping_list/mod.rs::DeviceFilterRow`. The `aria-pressed` attribute stays
-on the wrapping button (Badge does not own ARIA state).
+migration, the chip is a button wrapping a `Chip`, and the active
+variant swap happens at the call site in
+`mapping_list/mod.rs::DeviceFilterRow`. The `aria-pressed` attribute
+stays on the wrapping button (Chip does not own ARIA state).
 
 Wrap behavior: the chip row becomes `flex-wrap: wrap` instead of
-`nowrap + overflow-x: auto`. Rationale: typical rigs run 2-4 devices, where
-horizontal scroll is wasted scroll-discoverability. For 6+ devices the
-wrap may push the rows down by one line, which is acceptable; if this
-becomes load-bearing later, a follow-up can introduce a "+N more"
-overflow chip. Not in this pass.
+`nowrap + overflow-x: auto`. At rail width (~280px) the practical wrap
+threshold is 2 to 3 chips; a multi-row chip area is the common case,
+not the exception, and group headers shift down accordingly. The
+trade-off preserves discoverability (no hidden chips behind a scroll)
+at the cost of vertical real estate. A future `+N more` overflow chip
+can replace this if the multi-row footprint becomes load-bearing. Not
+in this pass.
 
 ### D · Group headers (`AXES`, `BUTTONS`, `HATS`)
 
@@ -209,18 +253,19 @@ matching what the user sees scrolling. Empty groups still drop entirely
 
 Row token contract:
 
-| Property         | Value                                                      |
-| ---------------- | ---------------------------------------------------------- |
-| Padding          | `var(--space-3)` all sides                                 |
-| Border-radius    | `var(--radius-md)`                                         |
-| Base background  | `var(--color-bg)`                                          |
-| Hover background | `var(--color-bg-elevated)`                                 |
-| Selected fill    | `color-mix(in srgb, var(--color-primary) 8%, var(--color-bg))` |
-| Selected border  | `1px solid var(--color-border-focus)` inset                |
-| Focus-visible    | `2px solid var(--color-border-focus)`, offset 1px          |
-| Selected name    | `font-weight: 700`                                         |
-| Drag-source     | `opacity: 0.4` (sortable primitive owns this)              |
-| Row gap          | `2px` between rows (CSS gap on the group container)        |
+| Property         | Value                                                                                          |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| Padding          | `var(--space-3)` all sides                                                                     |
+| Border-radius    | `var(--radius-md)`                                                                             |
+| Base background  | `var(--color-bg)`                                                                              |
+| Hover background | `var(--color-bg-elevated)`                                                                     |
+| Hover border     | `1px solid var(--color-border-strong)` (matches `.if-device-row:hover`, `panel_slot.css:135-138`) |
+| Selected fill    | `color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg))`               |
+| Selected border  | `1px solid var(--color-border-focus)` inset                                                    |
+| Focus-visible    | `2px solid var(--color-border-focus)`, offset -2px (inset, matches `.if-device-row:focus-visible`, `panel_slot.css:140-143`) |
+| Selected name    | `font-weight: 700`                                                                             |
+| Drag-source      | `opacity: 0.4` (sortable primitive owns this)                                                  |
+| Row gap          | `2px` between rows (CSS gap on the group container)                                            |
 
 The 10px reserved-left gutter for the drag handle (today's
 `calc(var(--space-3) + 10px)` left padding) is dropped. The
@@ -230,25 +275,28 @@ hover-only handle affordance.
 
 #### Source line
 
-Today the source line is a flex column with two cells (device, input id),
-with the output mono pill as a separate right-anchored child of the row.
-After the pass, the source line becomes a single horizontal flow:
+Today the source line is a flex column with two cells (device, input
+id), with the output mono pill as a separate right-anchored child of
+the row. After the pass, the source line becomes a single horizontal
+flow:
 
 ```
-{device-label}  {input-id}  →  {output-badge}
+{device-label}  {input-id}  →  {output-chip}
 ```
 
-`→` is a `--color-border-strong` arrow glyph (`\u{2192}`), separating
-trigger from output. The output is a `Badge variant=Output`, see Badge
-primitive extensions.
+The arrow is a `--color-border-strong` glyph (`\u{2192}`) wrapped in
+`<span aria-hidden="true">→</span>`, separating trigger from output
+visually. Screen readers skip the glyph and rely on label sequence
+(device, input id, vJoy out) for semantics. The output is a
+`Chip variant=Output`, see "Chip Primitive" below.
 
-The right-anchored `.if-row__output-badge` is removed. Truncation of the
-device label happens within the source-line flow as today; the output
-badge is `flex: 0 0 auto` and never wraps or truncates (output identifiers
-are short).
+The right-anchored `.if-row__output-badge` is removed. Truncation of
+the device label happens within the source-line flow as today; the
+output chip is `flex: 0 0 auto` and never wraps or truncates (output
+identifiers are short).
 
-The unnamed-row case (no `summary.name`) renders no name line, only the
-source line, identical to today.
+The unnamed-row case (no `summary.name`) renders no name line, only
+the source line, identical to today.
 
 #### Qualifier chips (region F)
 
@@ -256,7 +304,7 @@ Today merge and conditional qualifiers render as `.if-row__chip` spans on
 a `.if-row__source-qualifiers` line below the source line. They use
 italic text and a leading mono glyph (`+` for merge, `⊕` for conditional).
 
-After the pass, qualifier chips become `Badge variant=Outline` with:
+After the pass, qualifier chips become `Chip variant=Outline` with:
 
 - a leading mono glyph (`+` or `⊕`) in `--color-output` (merge) or
   `--color-control-badge-text` (conditional), as today
@@ -280,10 +328,10 @@ bottom of the rail and has the right copy and shape (commit
 - Dashed border: `1px dashed var(--color-border-strong)` matches profiles'
   `+ New profile` row exactly.
 - Hover: `border-color: var(--color-border-focus)` plus
-  `color-mix(in srgb, var(--color-primary) 5%, var(--color-bg))` tint. This
-  is the same hover idiom as the device chip and the mode tab, just at a
-  different intensity (5% vs 8%) so the footer reads as "create" rather
-  than "selected".
+  `color-mix(in srgb, var(--color-primary) var(--tint-create), var(--color-bg))`
+  tint. Same border idiom as the device chip's active state, but the
+  tint percentage swaps from `--tint-selected` (8%) to `--tint-create`
+  (5%) so the footer reads as "create" rather than "selected".
 - Border-radius: bumps from `var(--radius-sm)` to `var(--radius-md)` for
   parity with rows.
 
@@ -294,24 +342,30 @@ spans below the entire window. The bar contains: the warning chip
 (`1 warning`), the device count (`3/3 devices`), and the active profile
 path (right-aligned).
 
-This is the one region where the Collapsible-Drawer rule from DESIGN.md §6
-fires: the status bar is a different region from the workspace above it,
-and a luminance shift is the codified signal for region change. Surface
-flips to `--color-bg-sunken` with a `1px var(--color-border)` top hairline.
+The status bar is shell-level and governed by DESIGN.md section 7
+Status Bar (`DESIGN.md:441-446`), not by the Pinned-Inspector vs
+Collapsible-Drawer rule (which scopes side-panel anchored regions). The
+bar already uses `--color-bg-sunken` with a
+`1px solid var(--color-border-strong)` top hairline
+(`assets/components/status-bar.css:20-21`). This pass locks that
+contract via a new test mirroring profiles'
+`_collapsible_drawer_surface_contract` idiom; it does not change the
+surface.
 
 Sub-element treatments:
 
-- `1 warning`: migrate the hand-rolled chip to `Badge variant=Warning
-  size=Sm` with a leading `⚠` glyph. The Badge primitive does not currently
-  own a `size` prop; see Badge primitive extensions.
+- `1 warning`: the warning chip is already a `Badge variant=Warning`
+  at `frame/status_bar/mod.rs:46`. Add a leading `⚠` glyph inside the
+  existing Badge. The default Badge size already fits the bar's 28px
+  height; no `size` prop addition is needed.
 - `3/3 devices`: the `3/3` numerator becomes `--font-mono` with
-  `--color-text` (today is plain `--color-text-muted`), so the count reads
-  as data instead of chrome. The trailing `devices` label stays muted.
-- Path: right-aligned mono `--color-border-strong`. Front-ellipsis is a
-  polish nicety (CSS `direction: rtl` on the inner span) but not a hard
-  requirement; if it ships unstable on Windows WebView2, drop it back to
-  back-ellipsis. Tracked as a follow-up on the implementation side, not a
-  spec mandate.
+  `--color-text` (today is plain `--color-text-muted`), so the count
+  reads as data instead of chrome. The trailing `devices` label stays
+  muted.
+- Path: right-aligned mono `--color-border-strong`. Path slot
+  truncates with standard `text-overflow: ellipsis`. Existing
+  `truncate_path` helper at `frame/status_bar/logic.rs` continues to
+  gate label length.
 
 ### I · Empty states
 
@@ -330,11 +384,11 @@ are already simplified by commit `63cf2e9`. Cohesion-only deltas:
 `mapping_list/add_inline.rs` owns the state machine. Cohesion-only deltas:
 
 - Migrate `.if-add-inline__chip` (axis/button/hat tinted chip) to
-  `Badge variant=Capture` with a `data-kind` attr driving the hue. See
-  Badge primitive extensions.
+  `Chip variant=Capture` with a `data-kind` attr driving the hue. See
+  "Chip Primitive" below.
 - Listening modifier (`.if-add-inline__chip--listening` and the
-  `if-add-pulse-dot` keyframes) stays as a class override on Badge.
-  Animation lives on the Badge's `::before` pseudo-element; this is one
+  `if-add-pulse-dot` keyframes) stays as a class override on Chip.
+  Animation lives on the Chip's `::before` pseudo-element; this is one
   of the cases where a class override on the primitive beats a new
   variant.
 - Pad shell: idle Capturing state border drops from
@@ -344,131 +398,173 @@ are already simplified by commit `63cf2e9`. Cohesion-only deltas:
 - Collision: keep the warning bg + border. Switch the inline em/strong
   collision text to a leading `Badge variant=Warning` followed by the
   collision sentence, for visual scan parity with the status bar's
-  `1 warning` badge. Existing strings unchanged.
+  `1 warning` badge (Warning stays on Badge per DESIGN.md section 7;
+  it is a status badge, not a classification chip). Existing strings
+  unchanged.
 - Action-row footer hairline migrates to `1px solid var(--color-border)`
   directly. The existing negative-horizontal-margin trick that extends the
   hairline to the panel inner edge stays (it is a deliberate F4 dialog-
   footer parallel and the radius-md bump does not conflict with it).
 
-## Badge Primitive Extensions
+## Chip Primitive
 
-The pass adds three variants to `BadgeVariant` in
-`crates/inputforge-gui-dx/src/components/badge.rs:6` and one new prop:
+Per DESIGN.md section 7 (`DESIGN.md:411-418`), Badge is scoped to
+status, count, and classification with five fixed variants and label
+typography (medium weight, no mono fonts). The rail's chip-like
+surfaces (idle device chip, qualifier chip, output identifier, capture
+chip) are not status indicators, and several need mono fonts or
+`data-kind` hues. Adding those uses to Badge would silently widen its
+documented scope, so this pass introduces a separate `Chip` primitive.
+
+New files:
+
+- `crates/inputforge-gui-dx/src/components/chip.rs`
+- `crates/inputforge-gui-dx/assets/components/chip.css`
+
+Initial API:
 
 ```rust
-pub enum BadgeVariant {
-    Neutral,    // existing
-    Info,       // existing
-    Success,    // existing
-    Warning,    // existing
-    Error,      // existing
-    Outline,    // new: transparent fill, --color-border-strong border,
-                //      --color-text-muted label. Used by device chip idle,
-                //      qualifier chips.
-    Output,     // new: --color-output label, --font-mono, faint
-                //      output-tinted surface. Used by row's vJoy out.
-    Capture,    // new: kind-tinted via data-kind="axis|button|hat",
-                //      mono, used by add-inline chip.
+pub enum ChipVariant {
+    Outline,    // transparent fill, --color-border-strong border,
+                // --color-text-muted label. Used by device chip idle,
+                // qualifier chips.
+    Output,     // --color-output label, --font-mono, faint
+                // output-tinted surface. Used by row's vJoy out.
+    Capture,    // kind-tinted via data-kind="axis|button|hat", mono.
+                // Used by add-inline chip.
 }
 
 #[component]
-pub fn Badge(
-    #[props(default = BadgeVariant::Neutral)] variant: BadgeVariant,
-    #[props(default = BadgeSize::Md)] size: BadgeSize,  // new prop
+pub fn Chip(
+    #[props(default = ChipVariant::Outline)] variant: ChipVariant,
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element { ... }
-
-pub enum BadgeSize {
-    Sm,  // 11px font, 1px/6px padding. Used by status bar.
-    Md,  // existing visual default. Used everywhere else.
-}
 ```
 
-Each new variant ships with a CSS rule in
-`assets/components/badge.css` and a unit test in `components/badge.rs`
-asserting the rendered class includes the variant token. The Capture
-variant's `data-kind` hue logic is already present in
-`assets/frame/mapping_list.css` lines 367-370; that block migrates into
-`assets/components/badge.css` keyed on
-`.badge--capture[data-kind="axis|button|hat"]`.
+No `size` prop on Chip; density variants ship later if a real consumer
+demands one. The Capture variant's `data-kind` hue logic is already
+present in `assets/frame/mapping_list.css` lines 367-370; that block
+migrates into `assets/components/chip.css` keyed on
+`.chip--capture[data-kind="axis|button|hat"]`.
+
+Each Chip variant ships with a CSS rule in
+`assets/components/chip.css` and a unit test in `components/chip.rs`
+asserting the rendered class includes the variant token. A
+component-gallery entry parallel to Badge's lands in
+`examples/component_gallery.rs`.
+
+Badge stays untouched: still five status variants (`Neutral`, `Info`,
+`Success`, `Warning`, `Error`), no `size` prop, no new variants. The
+status bar's existing `Badge variant=Warning` use at
+`frame/status_bar/mod.rs:46` continues to fit per DESIGN.md section 7.
 
 ## Tabs Primitive Usage
 
-The mode tab strip in `frame/top_bar/` migrates to the `Tabs` primitive
-at `components/tabs.rs:38`. The two deviations (running-mode pip and
-trailing "+") require:
+The mode tab strip in `frame/top_bar/mode_tabs/` migrates to the
+`Tabs` primitive at `components/tabs.rs:38`. The active treatment is
+the canonical `.if-tab--active` underline per DESIGN.md section 7
+(3px primary bottom-border, no fill,
+`assets/components/tabs.css:48-51`). The two deviations from a vanilla
+tab strip:
 
-- Adding an optional `running: bool` field to `TabItem`. The Tabs primitive
-  renders a 6px `--color-live` pip before the label when `running == true`.
-  Independent of `value` (the active tab id).
-- Rendering the trailing "+" outside the `Tabs` items, as a sibling
-  element styled with the existing rail footer's dashed-row class, so the
-  affordance reads as the same shape across the rail.
+- Adding a `running: bool` field to `TabItem`. The Tabs primitive
+  renders a 6px `--color-live` pip before the label when
+  `running == true`. Independent of `value` (the active tab id).
+  Other Tabs consumers (notably
+  `mapping_editor/pipeline/stage_body/response_curve/toolbar.rs:172`)
+  leave the field at its default `false`.
+- Rendering the trailing "+" OUTSIDE the `Tabs` primitive's
+  `role="tablist"` container, as a sibling `role="button"` element
+  with `aria-label="Add mode"`. Reachable by Tab key only, NOT by
+  ArrowRight from the last tab (so screen-reader tab counts stay
+  honest). Visually styled with the existing rail footer's dashed-row
+  class so the "create" affordance reads as one shape across the
+  rail.
 
-If the migration uncovers tab cases that the primitive does not cover (for
-example, a confirm-before-switch hook), this spec defers to keeping the
-hand-rolled cluster and noting the gap in a follow-up. The migration is
-opportunistic; the cohesion of the tab visuals is the load-bearing goal.
+The `running` pip is a legitimate Tabs primitive extension; any
+multi-mode UI in the future may need a similar live-state indicator.
+The trailing "+" stays outside the primitive because it is not a tab,
+and putting non-tab children inside `role="tablist"` violates
+WAI-ARIA tab semantics.
 
 ## Test Contracts
 
 New tests, parallel to the right-panel pass:
 
-1. **Row tokens contract** (`mapping_list/tests.rs`): asserts the row class
-   string is exactly the contract above (one explicit value per property,
-   not a snapshot). Mirrors the devices-panel Pinned-Inspector test.
-2. **Active treatment unification** (`mapping_list/tests.rs`): asserts the
-   selected row, the active device chip, and the active mode tab all
-   resolve to the same class shape, encoded as a shared constant.
-3. **Output badge migration** (`mapping_list/tests.rs`): asserts the
-   `if-row__output-badge` class is no longer rendered and the row contains
-   exactly one `badge badge--output` element when the mapping has a
-   `first_vjoy_output`.
-4. **Status bar surface** (`status_bar/tests.rs`, new file): asserts the
-   bar's computed class implies `--color-bg-sunken` and a top hairline,
-   locking the Collapsible-Drawer surface contract for this region.
-5. **Badge variant smoke tests** (`components/badge.rs`): one test per new
-   variant asserting the variant token reaches the DOM class.
+1. **Row tokens contract** (`mapping_list/tests.rs`): asserts the row
+   class string is exactly the contract above (one explicit value per
+   property, not a snapshot). Mirrors the devices-panel hover and
+   focus-visible rules at `panel_slot.css:117-143`.
+2. **Active treatment unification** (`mapping_list/tests.rs`): asserts
+   the selected row, the active device chip, and the create-row hover
+   all resolve to the same class shape (border + tint), encoded as a
+   shared constant. Mode tabs are NOT part of this contract; they
+   keep the canonical `.if-tab--active` underline, asserted in the
+   tab regression test below.
+3. **Mode tab canonical class** (`mapping_list/tests.rs` or
+   `mode_tabs/tests.rs`): asserts the active mode tab renders the
+   canonical `.if-tab--active` class and does NOT render any
+   unified-treatment class. Locks the decision that mode tabs read as
+   navigation, not selection.
+4. **Output chip migration** (`mapping_list/tests.rs`): asserts the
+   `if-row__output-badge` class is no longer rendered and the row
+   contains exactly one `chip chip--output` element when the mapping
+   has a `first_vjoy_output`.
+5. **Status bar surface** (`status_bar/tests.rs`, new file): asserts
+   the bar's computed class implies `--color-bg-sunken` and a
+   `1px solid var(--color-border-strong)` top hairline, locking the
+   existing DESIGN.md section 7 Status Bar surface contract against
+   regression. Mirrors profiles'
+   `_collapsible_drawer_surface_contract` idiom in shape, even though
+   the bar's contract does not stem from the Drawer rule.
+6. **Chip variant smoke tests** (`components/chip.rs`): one test per
+   Chip variant asserting the variant token reaches the DOM class.
 
-The existing `mapping_list/tests.rs::*` snapshot tests get refreshed for
-the markup changes; nothing semantically asserted there should regress.
-
-## Open Questions
-
-- **Front-ellipsis on the path**: WebView2 on Windows has had quirks with
-  `direction: rtl` text layout in the past. If the implementation finds a
-  rendering glitch (RTL flipping punctuation, or ellipsis on the wrong
-  side), we drop back to back-ellipsis silently. Not a spec-blocking
-  decision.
-- **Mode tab migration scope**: if the `Tabs` primitive does not support a
-  per-item `running` pip cleanly, the implementation either (a) extends
-  the primitive (preferred, since the running pip is a candidate for any
-  multi-mode UI), or (b) keeps the hand-rolled mode strip and applies the
-  cohesion class shape there directly. (a) is the implementation default;
-  (b) is the documented fallback.
-- **Group header counts**: if the implementation finds the post-filter
-  count flickers under rapid filter typing, the count switches to "total
-  in mode" instead of "visible after filter". Document the choice on
-  whichever variant ships.
+The existing `mapping_list/tests.rs::*` snapshot tests get refreshed
+for the markup changes; nothing semantically asserted there should
+regress.
 
 ## Audit Trail
 
 Real source references confirmed before writing:
 
-- `crates/inputforge-gui-dx/src/components/badge.rs:6` (`BadgeVariant` enum)
-- `crates/inputforge-gui-dx/src/components/badge.rs:15` (`Badge` component)
-- `crates/inputforge-gui-dx/src/components/tabs.rs:38` (`Tabs` component)
+Primitives:
+- `crates/inputforge-gui-dx/src/components/badge.rs:6` (`BadgeVariant` enum, five status variants)
+- `crates/inputforge-gui-dx/src/components/badge.rs:15` (`Badge` component, no `size` prop)
+- `crates/inputforge-gui-dx/src/components/tabs.rs:14-47` (`TabItem`, `Tabs` component, no `running` prop today)
+- `crates/inputforge-gui-dx/assets/components/tabs.css:48-51` (`.if-tab--active` canonical underline)
+- `crates/inputforge-gui-dx/assets/components/badge.css:1-20` (current Badge CSS)
+- `crates/inputforge-gui-dx/assets/components/status-bar.css:20-21` (existing `--color-bg-sunken` surface and `--color-border-strong` top hairline)
+
+Rail and panels:
 - `crates/inputforge-gui-dx/src/frame/mapping_list/mod.rs` (rail orchestrator)
 - `crates/inputforge-gui-dx/src/frame/mapping_list/row.rs` (row component)
 - `crates/inputforge-gui-dx/src/frame/mapping_list/empty.rs` (empty states)
 - `crates/inputforge-gui-dx/src/frame/mapping_list/add_inline.rs` (pad)
-- `crates/inputforge-gui-dx/src/frame/status_bar/mod.rs` (status bar)
+- `crates/inputforge-gui-dx/src/frame/status_bar/mod.rs:46` (`Badge variant=Warning` already in place)
+- `crates/inputforge-gui-dx/src/frame/top_bar/mode_tabs/` (hand-rolled mode tab cluster, current home)
 - `crates/inputforge-gui-dx/assets/frame/mapping_list.css` (current CSS)
+- `crates/inputforge-gui-dx/assets/frame/panel_slot.css:117-143` (`.if-device-row` row contract: hover, selected, focus-visible)
+- `crates/inputforge-gui-dx/assets/frame/profiles.css:240-284` (`.profile-row` and `.profile-row--create`, no hover, focus-offset 2px positive)
+
+Tokens (existence confirmed):
+- `crates/inputforge-gui-dx/assets/tokens/colors.css` (all color tokens; `--tint-selected` and `--tint-create` are new)
+- `crates/inputforge-gui-dx/assets/tokens/spacing.css` (`--space-1` through `--space-3`)
+- `crates/inputforge-gui-dx/assets/tokens/radii.css` (`--radius-sm`, `--radius-md`)
+- `crates/inputforge-gui-dx/assets/tokens/typography.css` (`--font-mono`)
+
+Companion specs:
 - `docs/superpowers/specs/2026-04-30-f8-mapping-list-design.md` (parent spec)
 - `docs/superpowers/specs/2026-05-04-mapping-list-device-filter-vjoy-badges-design.md` (device filter pass)
-- `DESIGN.md §6` (Pinned-Inspector vs Collapsible-Drawer rule)
-- `DESIGN.md §8` (banned side-stripe accent)
-- Recent commits: `caf7848` (profiles inline affordances), `6bd4b83`
-  (devices Badge alignment), `9e9097f` (anchored regions codified),
-  `63cf2e9` (mapping-list footer pin + empty-state copy).
+
+Design references:
+- `DESIGN.md` section 6 (Pinned-Inspector vs Collapsible-Drawer rule, scopes side-panel anchored regions; does NOT apply to the rail or the status bar)
+- `DESIGN.md` section 7 (codified contracts for Status Bar, Tabs, Badge)
+- `DESIGN.md` section 8 (banned side-stripe accent, toast as named exception)
+
+Recent cohesion lineage:
+- `caf7848` (profiles inline affordances)
+- `6bd4b83` (devices Badge alignment + row-token contract test idiom)
+- `9e9097f` (anchored regions codified + surface-lock contract test idiom)
+- `63cf2e9` (mapping-list footer pin + empty-state copy)
