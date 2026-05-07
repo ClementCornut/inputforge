@@ -3,6 +3,82 @@ use std::path::PathBuf;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::snapshot::{SnapshotId, SnapshotKind};
 
+/// Filesystem-illegal characters mirrored from
+/// `inputforge_core::profile::manager::ILLEGAL_CHARS`. Centralizing the
+/// list in the GUI lets us reject names inline before dispatching a
+/// command, so the user sees the same rejection messages whether the
+/// engine returns or the GUI catches them.
+const ILLEGAL_NAME_CHARS: &[char] = &[':', '\\', '/', '*', '?', '"', '<', '>', '|'];
+
+/// Reasons a New Profile name or rename can be rejected before any
+/// command is dispatched.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum NewProfileValidationError {
+    EmptyName,
+    IllegalCharacter(char),
+    DuplicateName,
+    MissingPath,
+}
+
+impl NewProfileValidationError {
+    pub(crate) fn user_message(&self) -> String {
+        match self {
+            Self::EmptyName => "Name cannot be empty.".to_owned(),
+            Self::IllegalCharacter(c) => format!("Name cannot contain '{c}'."),
+            Self::DuplicateName => "A profile with this name already exists.".to_owned(),
+            Self::MissingPath => "Pick a profile file first.".to_owned(),
+        }
+    }
+}
+
+/// Validate a new profile name against the user's library.
+///
+/// Returns the trimmed name on success.
+pub(crate) fn validate_new_profile_name(
+    name: &str,
+    existing_names: &[String],
+) -> Result<String, NewProfileValidationError> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(NewProfileValidationError::EmptyName);
+    }
+    if let Some(c) = trimmed.chars().find(|c| ILLEGAL_NAME_CHARS.contains(c)) {
+        return Err(NewProfileValidationError::IllegalCharacter(c));
+    }
+    if existing_names
+        .iter()
+        .any(|existing| existing.eq_ignore_ascii_case(trimmed))
+    {
+        return Err(NewProfileValidationError::DuplicateName);
+    }
+    Ok(trimmed.to_owned())
+}
+
+/// Validate an inline rename. Case-only renames (e.g., "Alpha" -> "ALPHA")
+/// are accepted even when the name appears in `existing_names`, since the
+/// engine routes them as a same-row rename.
+pub(crate) fn validate_rename(
+    old: &str,
+    new: &str,
+    existing_names: &[String],
+) -> Result<String, NewProfileValidationError> {
+    let trimmed = new.trim();
+    if trimmed.is_empty() {
+        return Err(NewProfileValidationError::EmptyName);
+    }
+    if let Some(c) = trimmed.chars().find(|c| ILLEGAL_NAME_CHARS.contains(c)) {
+        return Err(NewProfileValidationError::IllegalCharacter(c));
+    }
+    if !trimmed.eq_ignore_ascii_case(old)
+        && existing_names
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(trimmed))
+    {
+        return Err(NewProfileValidationError::DuplicateName);
+    }
+    Ok(trimmed.to_owned())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ConfirmationKind {
     DestructiveF4,

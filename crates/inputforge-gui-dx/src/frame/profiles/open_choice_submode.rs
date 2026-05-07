@@ -18,6 +18,7 @@ use dioxus::prelude::*;
 
 use crate::components::{Button, ButtonSize, ButtonVariant, InputSize, TextInput};
 use crate::context::AppContext;
+use crate::frame::profiles::actions::NewProfileValidationError;
 use crate::frame::profiles::new_profile::{
     add_external_to_library_command, open_file_load_once_command,
 };
@@ -29,6 +30,15 @@ pub(crate) fn OpenChoiceSubMode(path: PathBuf, suggested_name: String) -> Elemen
     let view = use_context::<ViewState>();
     let mut name = use_signal(|| suggested_name.clone());
     let name_read: ReadSignal<String> = name.into();
+    let mut error = use_signal(|| None::<NewProfileValidationError>);
+
+    let existing_names: Vec<String> = ctx
+        .state
+        .read()
+        .profile_library_rows
+        .iter()
+        .map(|row| row.name.clone())
+        .collect();
 
     let mut view_for_back = view;
     let go_to_library = move || {
@@ -40,22 +50,29 @@ pub(crate) fn OpenChoiceSubMode(path: PathBuf, suggested_name: String) -> Elemen
     let path_for_load = path.clone();
     let commands_load = ctx.commands.clone();
     let mut view_for_load = view;
-    let load_once_click = move |_| {
-        let _ = commands_load.send(open_file_load_once_command(path_for_load.clone()));
-        view_for_load.profiles_panel.write().mode = ProfilesPanelMode::Library;
+    let load_once_click = move |_| match open_file_load_once_command(path_for_load.clone()) {
+        Ok(cmd) => {
+            error.set(None);
+            let _ = commands_load.send(cmd);
+            view_for_load.profiles_panel.write().mode = ProfilesPanelMode::Library;
+        }
+        Err(err) => error.set(Some(err)),
     };
 
     let path_for_add = path.clone();
     let commands_add = ctx.commands.clone();
     let mut view_for_add = view;
+    let existing_for_add = existing_names.clone();
     let add_to_library_click = move |_| {
-        let name_value = name.read().trim().to_owned();
-        if name_value.is_empty() {
-            return;
-        }
-        if let Ok(cmd) = add_external_to_library_command(path_for_add.clone(), &name_value) {
-            let _ = commands_add.send(cmd);
-            view_for_add.profiles_panel.write().mode = ProfilesPanelMode::Library;
+        let name_value = name.read().clone();
+        match add_external_to_library_command(path_for_add.clone(), &name_value, &existing_for_add)
+        {
+            Ok(cmd) => {
+                error.set(None);
+                let _ = commands_add.send(cmd);
+                view_for_add.profiles_panel.write().mode = ProfilesPanelMode::Library;
+            }
+            Err(err) => error.set(Some(err)),
         }
     };
 
@@ -79,7 +96,15 @@ pub(crate) fn OpenChoiceSubMode(path: PathBuf, suggested_name: String) -> Elemen
                     value: name_read,
                     size: InputSize::Sm,
                     placeholder: "Library name".to_owned(),
-                    oninput: move |evt: FormEvent| name.set(evt.value()),
+                    oninput: move |evt: FormEvent| {
+                        name.set(evt.value());
+                        if error.read().is_some() {
+                            error.set(None);
+                        }
+                    },
+                }
+                if let Some(err) = error.read().as_ref() {
+                    div { class: "profiles-panel__submode-error", "{err.user_message()}" }
                 }
                 p { class: "profiles-panel__submode-hint",
                     "Used only when adding to library. Load once keeps the file in place."

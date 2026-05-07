@@ -498,7 +498,7 @@ fn snapshot_delete_action_dispatches_real_engine_command_and_undo_toast() {
 
 #[test]
 fn new_blank_profile_dispatches_create_profile() {
-    let command = create_new_profile_command(NewProfileSource::Blank, "Alpha", None).unwrap();
+    let command = create_new_profile_command(NewProfileSource::Blank, "Alpha", None, &[]).unwrap();
 
     assert_eq!(
         command,
@@ -511,7 +511,7 @@ fn new_blank_profile_dispatches_create_profile() {
 #[test]
 fn open_file_load_once_dispatches_external_load() {
     let path = PathBuf::from("E:/Profiles/external.toml");
-    let command = open_file_load_once_command(path.clone());
+    let command = open_file_load_once_command(path.clone()).unwrap();
 
     assert_eq!(command, EngineCommand::LoadExternalProfileOnce(path));
 }
@@ -519,7 +519,7 @@ fn open_file_load_once_dispatches_external_load() {
 #[test]
 fn add_external_to_library_dispatches_import_command() {
     let path = PathBuf::from("E:/Profiles/external.toml");
-    let command = add_external_to_library_command(path.clone(), "Imported").unwrap();
+    let command = add_external_to_library_command(path.clone(), "Imported", &[]).unwrap();
 
     assert_eq!(
         command,
@@ -528,6 +528,53 @@ fn add_external_to_library_dispatches_import_command() {
             name: "Imported".to_owned()
         }
     );
+}
+
+#[test]
+fn empty_or_whitespace_name_is_rejected_inline() {
+    use crate::frame::profiles::actions::{NewProfileValidationError, validate_new_profile_name};
+    assert_eq!(
+        validate_new_profile_name("   ", &[]).unwrap_err(),
+        NewProfileValidationError::EmptyName
+    );
+}
+
+#[test]
+fn duplicate_library_name_is_rejected_inline() {
+    use crate::frame::profiles::actions::{NewProfileValidationError, validate_new_profile_name};
+    let existing = vec!["Alpha".to_owned()];
+    assert_eq!(
+        validate_new_profile_name("Alpha", &existing).unwrap_err(),
+        NewProfileValidationError::DuplicateName
+    );
+}
+
+#[test]
+fn case_only_duplicate_rename_is_allowed() {
+    use crate::frame::profiles::actions::validate_rename;
+    let existing = vec!["Alpha".to_owned()];
+    let validated = validate_rename("Alpha", "ALPHA", &existing).unwrap();
+    assert_eq!(validated, "ALPHA");
+}
+
+#[test]
+fn illegal_filename_char_is_rejected_inline() {
+    use crate::frame::profiles::actions::{NewProfileValidationError, validate_new_profile_name};
+    assert!(matches!(
+        validate_new_profile_name("bad/name", &[]).unwrap_err(),
+        NewProfileValidationError::IllegalCharacter(_)
+    ));
+}
+
+#[test]
+fn missing_external_path_is_rejected_inline() {
+    use crate::frame::profiles::actions::NewProfileValidationError;
+    use crate::frame::profiles::new_profile::open_file_load_once_command;
+    let result = open_file_load_once_command(PathBuf::new());
+    assert!(matches!(
+        result,
+        Err(NewProfileValidationError::MissingPath)
+    ));
 }
 
 #[test]

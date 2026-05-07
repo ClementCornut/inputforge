@@ -17,6 +17,7 @@ use dioxus::prelude::*;
 
 use crate::components::{Button, ButtonSize, ButtonVariant, InputSize, TextInput};
 use crate::context::AppContext;
+use crate::frame::profiles::actions::NewProfileValidationError;
 use crate::frame::profiles::new_profile::{NewProfileSource, create_new_profile_command};
 use crate::frame::view_state::{ProfilesPanelMode, ViewState};
 use inputforge_core::engine::EngineCommand;
@@ -65,6 +66,7 @@ pub(crate) fn NewProfileSubMode() -> Element {
     let name_read: ReadSignal<String> = name.into();
     let mut source = use_signal(|| SourceChoice::Blank);
     let mut copy_source_path = use_signal(|| None::<PathBuf>);
+    let mut error = use_signal(|| None::<NewProfileValidationError>);
 
     let library_rows = ctx
         .state
@@ -73,6 +75,10 @@ pub(crate) fn NewProfileSubMode() -> Element {
         .iter()
         .map(|row| (row.path.clone(), row.name.clone()))
         .collect::<Vec<_>>();
+    let existing_names: Vec<String> = library_rows
+        .iter()
+        .map(|(_, label)| label.clone())
+        .collect();
     let active_path = ctx.state.read().profile_path.clone();
 
     let mut view_for_back = view;
@@ -95,35 +101,45 @@ pub(crate) fn NewProfileSubMode() -> Element {
     let commands = ctx.commands.clone();
     let mut view_for_create = view;
     let active_path_for_create = active_path.clone();
+    let existing_for_create = existing_names.clone();
     let create_click = move |_| {
-        let name_value = name.read().trim().to_owned();
-        if name_value.is_empty() {
-            return;
-        }
+        let name_value = name.read().clone();
         let result = match *source.read() {
-            SourceChoice::Blank => {
-                create_new_profile_command(NewProfileSource::Blank, &name_value, None)
-            }
+            SourceChoice::Blank => create_new_profile_command(
+                NewProfileSource::Blank,
+                &name_value,
+                None,
+                &existing_for_create,
+            ),
             SourceChoice::CopyActive => create_new_profile_command(
                 NewProfileSource::CopyActive,
                 &name_value,
                 active_path_for_create.clone(),
+                &existing_for_create,
             ),
-            SourceChoice::CopyFromLibrary => copy_source_path.read().clone().map_or_else(
-                || Err("pick a source profile".to_owned()),
+            SourceChoice::CopyFromLibrary => copy_source_path.read().clone().map_or(
+                Err(NewProfileValidationError::MissingPath),
                 |path| {
                     create_new_profile_command(
                         NewProfileSource::CopyProfile(path),
                         &name_value,
                         None,
+                        &existing_for_create,
                     )
                 },
             ),
-            SourceChoice::OpenExistingFile => Err("use the picker to choose a path".to_owned()),
+            // Open existing file is dispatched from the file picker
+            // callback below, which routes through the OpenChoice
+            // sub-mode rather than the Create button.
+            SourceChoice::OpenExistingFile => Err(NewProfileValidationError::MissingPath),
         };
-        if let Ok(command) = result {
-            let _ = commands.send(command);
-            view_for_create.profiles_panel.write().mode = ProfilesPanelMode::Library;
+        match result {
+            Ok(command) => {
+                error.set(None);
+                let _ = commands.send(command);
+                view_for_create.profiles_panel.write().mode = ProfilesPanelMode::Library;
+            }
+            Err(err) => error.set(Some(err)),
         }
     };
 
@@ -142,7 +158,17 @@ pub(crate) fn NewProfileSubMode() -> Element {
                     value: name_read,
                     size: InputSize::Sm,
                     placeholder: "Profile name".to_owned(),
-                    oninput: move |evt: FormEvent| name.set(evt.value()),
+                    oninput: move |evt: FormEvent| {
+                        name.set(evt.value());
+                        // Clear stale errors so the user does not see
+                        // a rejection that no longer matches the field.
+                        if error.read().is_some() {
+                            error.set(None);
+                        }
+                    },
+                }
+                if let Some(err) = error.read().as_ref() {
+                    div { class: "profiles-panel__submode-error", "{err.user_message()}" }
                 }
             }
             fieldset { class: "profiles-panel__source-group",

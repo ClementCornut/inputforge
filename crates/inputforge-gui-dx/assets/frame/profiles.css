@@ -154,6 +154,13 @@
   line-height: var(--leading-snug);
 }
 
+.profiles-panel__submode-error,
+.profile-row__rename-error {
+  color: var(--color-error);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
 .profiles-panel__submode-actions {
   display: flex;
   flex-wrap: wrap;
