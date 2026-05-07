@@ -17,3 +17,6 @@ lcov.info
 __pycache__/
 *.pyc
 .review-screenshots/
+
+# Claude Code agent isolation worktrees
+.claude/worktrees/
