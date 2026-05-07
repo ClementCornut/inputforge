@@ -9,7 +9,6 @@ use dioxus::prelude::*;
 const LAYOUT_CSS: Asset = asset!("/assets/frame/layout.css");
 
 use crate::context::AppContext;
-use crate::frame::banner::Banner;
 use crate::frame::panel_slot::PanelSlot as PanelSlotComponent;
 use crate::frame::status_bar::StatusBar;
 use crate::frame::top_bar::{ModeDeleteDialog, ModeDeleteSignal, ModeTabs, TopBar};
@@ -17,16 +16,16 @@ use crate::frame::view_state::{MainSurface, ViewState};
 
 pub(crate) use empty_state::EmptyState;
 
-/// F7 layout shell: top bar, conditional banner, primary workspace plus
-/// optional right panel, or empty-state, status bar.
+/// F7 layout shell: top bar, primary workspace plus optional right panel,
+/// or empty-state, status bar.
 #[component]
 pub(crate) fn Layout() -> Element {
     tracing::trace!(target: "frame::render", region = "layout");
     let ctx = use_context::<AppContext>();
     // Calling `use_context::<ViewState>()` here is a structural panic guard:
-    // every region component (Banner, ModeTabs, ToolsCluster, etc.) reads
-    // ViewState via `use_context`, and Dioxus panics with an opaque error
-    // if no provider is in scope. Failing here keeps the panic readable
+    // every region component (ModeTabs, ToolsCluster, etc.) reads ViewState
+    // via `use_context`, and Dioxus panics with an opaque error if no
+    // provider is in scope. Failing here keeps the panic readable
     // ("ViewState provider missing in app_root") and centralized.
     let view = use_context::<ViewState>();
     let has_profile = use_memo(move || ctx.meta.read().profile_name.is_some());
@@ -41,7 +40,6 @@ pub(crate) fn Layout() -> Element {
             Stylesheet { href: LAYOUT_CSS }
             TopBar {}
             ModeDeleteDialog {}
-            Banner {}
             if p {
                 div { class: "if-layout__main",
                     div { class: "if-layout__surface",

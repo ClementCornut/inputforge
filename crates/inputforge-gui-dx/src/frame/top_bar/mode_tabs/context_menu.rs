@@ -85,7 +85,7 @@ pub(crate) fn ModeTabContextMenu(
     let default_name = tab_name.clone();
 
     let activate_onclick = move |_| {
-        let _ = cmd_activate.send(EngineCommand::ForceMode {
+        let _ = cmd_activate.send(EngineCommand::SwitchMode {
             mode: activate_name.clone(),
         });
     };
@@ -157,15 +157,15 @@ mod tests {
         name: &str,
         modes: &[String],
         startup: Option<&str>,
-        force: Option<&str>,
+        current: &str,
         has_profile: bool,
         descendants_of_name_contains_startup: bool,
     ) -> ContextMenuFlags {
         let is_root = modes.first().is_some_and(|first| first == name);
         let is_startup = startup.is_some_and(|s| s == name);
-        let already_forced = force.is_some_and(|m| m == name);
+        let already_current = current == name;
         ContextMenuFlags {
-            activate_disabled: already_forced,
+            activate_disabled: already_current,
             rename_disabled: !has_profile,
             delete_disabled: is_root || is_startup || descendants_of_name_contains_startup,
             set_default_disabled: is_startup,
@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn delete_disabled_when_subtree_contains_startup() {
         let modes = vec!["Combat".to_owned(), "Default".to_owned()];
-        let f = flags_for("Combat", &modes, Some("Default"), None, true, true);
+        let f = flags_for("Combat", &modes, Some("Default"), "Default", true, true);
         assert!(
             f.delete_disabled,
             "must reject delete when subtree holds startup"
@@ -185,7 +185,7 @@ mod tests {
     #[test]
     fn delete_enabled_for_leaf_unrelated_to_startup() {
         let modes = vec!["Default".to_owned(), "Landing".to_owned()];
-        let f = flags_for("Landing", &modes, Some("Default"), None, true, false);
+        let f = flags_for("Landing", &modes, Some("Default"), "Default", true, false);
         assert!(!f.delete_disabled);
     }
 
@@ -195,7 +195,7 @@ mod tests {
             "Default",
             &["Default".to_owned()],
             Some("Default"),
-            None,
+            "Default",
             false,
             false,
         );
@@ -203,23 +203,16 @@ mod tests {
     }
 
     #[test]
-    fn activate_disabled_when_already_forced() {
+    fn activate_disabled_when_already_current() {
         let modes = vec!["Default".to_owned(), "Combat".to_owned()];
-        let f = flags_for(
-            "Combat",
-            &modes,
-            Some("Default"),
-            Some("Combat"),
-            true,
-            false,
-        );
+        let f = flags_for("Combat", &modes, Some("Default"), "Combat", true, false);
         assert!(f.activate_disabled);
     }
 
     #[test]
     fn set_default_disabled_when_already_startup() {
         let modes = vec!["Default".to_owned()];
-        let f = flags_for("Default", &modes, Some("Default"), None, true, false);
+        let f = flags_for("Default", &modes, Some("Default"), "Default", true, false);
         assert!(f.set_default_disabled);
     }
 }

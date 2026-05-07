@@ -10,7 +10,7 @@ use inputforge_core::pipeline::InputCache;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::snapshot::SnapshotId;
 use inputforge_core::state::{
-    AppState, DeviceState, EngineStatus, ForcedMode, ProfileOrigin as CoreProfileOrigin,
+    AppState, DeviceState, EngineStatus, ProfileOrigin as CoreProfileOrigin,
 };
 use inputforge_core::types::{
     AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, HatDirection, InputAddress, InputId,
@@ -49,7 +49,6 @@ pub(crate) struct MetaSnapshot {
     pub profile_name: Option<String>,
     pub profile_path: Option<PathBuf>,
     pub warnings: Vec<String>,
-    pub mode_force: Option<ForcedMode>,
     /// DFS pre-order names. Hierarchy queries (parent, descendants) are
     /// not surfaced through this field, components requiring tree shape
     /// read `ctx.state.active_profile.modes()` directly. The split is
@@ -308,7 +307,6 @@ impl MetaSnapshot {
             profile_name: s.active_profile.as_ref().map(|p| p.name().to_owned()),
             profile_path: s.profile_path.clone(),
             warnings: s.warnings.clone(),
-            mode_force: s.mode_force.clone(),
             modes: s
                 .active_profile
                 .as_ref()
@@ -1007,7 +1005,6 @@ mod tests {
         assert!(m.profile_name.is_none());
         assert!(m.profile_path.is_none());
         assert!(m.warnings.is_empty());
-        assert!(m.mode_force.is_none());
         assert!(m.modes.is_empty());
         assert!(m.startup_mode.is_none());
     }
@@ -1393,21 +1390,6 @@ mod tests {
         assert_eq!(cfg.devices.len(), 1);
         assert_eq!(cfg.virtual_devices.len(), 1);
         assert_eq!(meta.warnings.len(), 1);
-    }
-
-    #[test]
-    fn meta_from_state_projects_mode_force() {
-        use inputforge_core::state::ForcedMode;
-
-        let mut state = AppState::new();
-        state.mode_force = Some(ForcedMode {
-            mode: "Combat".to_owned(),
-        });
-        let meta = MetaSnapshot::from_state(&state);
-        assert_eq!(
-            meta.mode_force.as_ref().map(|f| f.mode.as_str()),
-            Some("Combat")
-        );
     }
 
     #[test]

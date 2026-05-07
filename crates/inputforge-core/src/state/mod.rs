@@ -75,18 +75,6 @@ pub struct ActiveSnapshotRow {
     pub pinned: bool,
 }
 
-/// Sticky forced-mode override.
-///
-/// While `Some` on `AppState`, mode-change rules are paused: pipeline
-/// `Action::ChangeMode` outputs and `ReleaseCallback::PopTemporaryMode`
-/// are no-ops. Cleared by `EngineCommand::ReleaseMode` or by a
-/// `LoadProfile` (which always resets the override).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ForcedMode {
-    /// Name of the mode held by the override.
-    pub mode: String,
-}
-
 /// Top-level shared state for the application.
 ///
 /// Wrapped in `Arc<RwLock<AppState>>` for thread-safe access
@@ -126,9 +114,6 @@ pub struct AppState {
     pub active_snapshot_rows: Vec<ActiveSnapshotRow>,
     /// Warnings surfaced to the user (e.g., `HidHide` unavailable).
     pub warnings: Vec<String>,
-    /// When `Some`, the engine is in a forced-mode override; mode-change
-    /// rules are paused.
-    pub mode_force: Option<ForcedMode>,
 }
 
 impl AppState {
@@ -151,7 +136,6 @@ impl AppState {
             profile_library_rows: Vec::new(),
             active_snapshot_rows: Vec::new(),
             warnings: Vec::new(),
-            mode_force: None,
         }
     }
 
@@ -194,7 +178,6 @@ impl AppState {
             profile_library_rows: Vec::new(),
             active_snapshot_rows: Vec::new(),
             warnings: Vec::new(),
-            mode_force: None,
         }
     }
 }
@@ -230,21 +213,5 @@ mod tests {
         let debug = format!("{state:?}");
         assert!(debug.contains("AppState"));
         assert!(debug.contains("current_mode"));
-    }
-
-    #[test]
-    fn app_state_new_mode_force_is_none() {
-        let state = AppState::new();
-        assert!(state.mode_force.is_none());
-    }
-
-    #[test]
-    fn forced_mode_serde_round_trip() {
-        let f = ForcedMode {
-            mode: "Combat".to_owned(),
-        };
-        let s = toml::to_string(&f).unwrap();
-        let back: ForcedMode = toml::from_str(&s).unwrap();
-        assert_eq!(f, back);
     }
 }

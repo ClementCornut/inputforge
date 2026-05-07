@@ -12,7 +12,7 @@ use crate::context::AppContext;
 use crate::frame::view_state::ViewState;
 
 pub(crate) use delete_dialog::{ModeDeleteDialog, ModeDeleteSignal};
-use logic::{MarkerColor, runtime_marker};
+use logic::runtime_marker;
 
 #[component]
 #[allow(
@@ -27,21 +27,17 @@ pub(crate) fn ModeTabs() -> Element {
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
 
-    // Combine the three meta reads into one memo so a single read-lock
-    // acquisition serves all three values per tick. PartialEq on the
-    // tuple gates re-runs to actual changes.
+    // Combine the two meta reads into one memo so a single read-lock
+    // acquisition serves both values per tick. PartialEq on the tuple
+    // gates re-runs to actual changes.
     let mode_data = use_memo(move || {
         let m = ctx.meta.read();
-        (
-            m.modes.clone(),
-            m.current_mode.clone(),
-            m.mode_force.clone(),
-        )
+        (m.modes.clone(), m.current_mode.clone())
     });
 
     let editing = view.editing_mode;
-    let (modes_now, cur, force) = mode_data.read().clone();
-    let marker = runtime_marker(&modes_now, &cur, force.as_ref());
+    let (modes_now, cur) = mode_data.read().clone();
+    let marker = runtime_marker(&modes_now, &cur);
 
     // Per-tab MountedData refs for keyboard focus movement.
     // Resized via use_effect on length change, never in render.
@@ -118,7 +114,7 @@ pub(crate) fn ModeTabs() -> Element {
             for (idx, name) in modes_now.iter().cloned().enumerate() {
                 {
                     let is_active = name == editing_now;
-                    let marker_for_tab = (marker.tab_index == Some(idx)).then_some(marker.color);
+                    let show_marker = marker.tab_index == Some(idx);
                     // DOM ids are derived from the tab's index, not the
                     // mode name, so they're guaranteed HTML5-valid AND safe
                     // to interpolate into JS-eval strings (see kb_tab_id
@@ -316,24 +312,18 @@ pub(crate) fn ModeTabs() -> Element {
                                 onkeydown,
                                 onmounted,
                                 "{name}"
-                                if let Some(color) = marker_for_tab {
+                                if show_marker {
                                     // Visual marker dot.
                                     span {
-                                        class: match color {
-                                            MarkerColor::Natural => "if-mode-tab__marker if-mode-tab__marker--natural",
-                                            MarkerColor::Forced  => "if-mode-tab__marker if-mode-tab__marker--forced",
-                                        },
+                                        class: "if-mode-tab__marker",
                                         "aria-hidden": "true",
                                     }
                                     // sr-only sibling so AT users get the
-                                    // semantic ("Engine running" / "forced")
-                                    // that color alone cannot convey.
+                                    // semantic that the visual dot alone
+                                    // cannot convey.
                                     span {
                                         class: "if-sr-only",
-                                        {match color {
-                                            MarkerColor::Natural => "Engine running",
-                                            MarkerColor::Forced  => "Engine running (forced)",
-                                        }}
+                                        "Engine running"
                                     }
                                 }
                             }
@@ -350,7 +340,7 @@ pub(crate) fn ModeTabs() -> Element {
                     let modes_for_flags = modes_now.clone();
                     let m = ctx.meta.read();
                     let startup = m.startup_mode.clone();
-                    let force_mode = m.mode_force.as_ref().map(|f| f.mode.clone());
+                    let current_mode = m.current_mode.clone();
                     let has_profile = m.profile_name.is_some();
                     drop(m);
 
@@ -366,8 +356,7 @@ pub(crate) fn ModeTabs() -> Element {
                     };
 
                     let is_startup = startup.as_ref().is_some_and(|s| s == &open_name);
-                    let already_forced =
-                        force_mode.is_some_and(|m| m == open_name);
+                    let already_current = current_mode == open_name;
                     // Numeric index of the open tab. Used by the context
                     // menu to derive its DOM id and aria-labelledby target
                     // (which point at the integer-derived tab id, never
@@ -378,7 +367,7 @@ pub(crate) fn ModeTabs() -> Element {
                         .unwrap_or(0);
 
                     let flags = context_menu::ContextMenuFlags {
-                        activate_disabled: already_forced,
+                        activate_disabled: already_current,
                         rename_disabled: !has_profile,
                         delete_disabled: logic::delete_disabled_for_tab(
                             &open_name,

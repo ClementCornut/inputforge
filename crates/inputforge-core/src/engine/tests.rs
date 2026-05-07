@@ -2037,114 +2037,81 @@ fn make_engine_with_simple_disk_profile() -> (
 }
 
 // ---------------------------------------------------------------------------
-// F6 forced-mode tests
+// SwitchMode command tests
 // ---------------------------------------------------------------------------
 
 #[test]
-fn force_mode_from_unforced_switches_and_sets_force() {
+fn switch_mode_changes_current_mode() {
     let profile = make_profile(three_mode_tree(), vec![]);
     let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
 
-    tx.send(EngineCommand::ForceMode {
+    tx.send(EngineCommand::SwitchMode {
         mode: "Combat".to_owned(),
     })
     .unwrap();
     engine.tick().unwrap();
 
-    let s = state.read();
-    assert_eq!(s.current_mode, "Combat");
-    assert_eq!(
-        s.mode_force.as_ref().map(|f| f.mode.as_str()),
-        Some("Combat")
-    );
+    assert_eq!(state.read().current_mode, "Combat");
 }
 
 #[test]
-fn release_mode_clears_force_keeps_current_mode() {
-    let profile = make_profile(three_mode_tree(), vec![]);
-    let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
-
-    tx.send(EngineCommand::ForceMode {
-        mode: "Combat".to_owned(),
-    })
-    .unwrap();
-    engine.tick().unwrap();
-
-    tx.send(EngineCommand::ReleaseMode).unwrap();
-    engine.tick().unwrap();
-
-    let s = state.read();
-    assert!(s.mode_force.is_none());
-    assert_eq!(
-        s.current_mode, "Combat",
-        "release does not change current mode"
-    );
-}
-
-#[test]
-fn force_mode_unknown_mode_returns_mode_not_found() {
+fn switch_mode_unknown_returns_mode_not_found() {
     let profile = make_profile(three_mode_tree(), vec![]);
     let (mut engine, state, _tx) = make_engine(MockInputSource::default(), profile);
 
-    let err = engine.handle_command(EngineCommand::ForceMode {
+    let err = engine.handle_command(EngineCommand::SwitchMode {
         mode: "Nope".to_owned(),
     });
     assert!(
         matches!(err, Err(crate::error::EngineError::ModeNotFound { .. })),
         "expected ModeNotFound, got {err:?}"
     );
-    assert!(
-        state.read().mode_force.is_none(),
+    assert_eq!(
+        state.read().current_mode,
+        "Default",
         "state must be unchanged on error"
     );
 }
 
 #[test]
-fn force_mode_idempotent_on_same_mode() {
+fn switch_mode_idempotent_on_same_mode() {
     let profile = make_profile(three_mode_tree(), vec![]);
     let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
 
-    tx.send(EngineCommand::ForceMode {
+    tx.send(EngineCommand::SwitchMode {
+        mode: "Combat".to_owned(),
+    })
+    .unwrap();
+    engine.tick().unwrap();
+    let current_before = state.read().current_mode.clone();
+
+    tx.send(EngineCommand::SwitchMode {
         mode: "Combat".to_owned(),
     })
     .unwrap();
     engine.tick().unwrap();
 
-    let force_before = state.read().mode_force.clone();
-
-    tx.send(EngineCommand::ForceMode {
-        mode: "Combat".to_owned(),
-    })
-    .unwrap();
-    engine.tick().unwrap();
-
-    let force_after = state.read().mode_force.clone();
-    assert_eq!(force_before, force_after);
+    assert_eq!(state.read().current_mode, current_before);
 }
 
 #[test]
-fn force_mode_rotates_on_different_mode() {
+fn switch_mode_rotates_to_different_mode() {
     let profile = make_profile(three_mode_tree(), vec![]);
     let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
 
-    tx.send(EngineCommand::ForceMode {
+    tx.send(EngineCommand::SwitchMode {
         mode: "Combat".to_owned(),
     })
     .unwrap();
     engine.tick().unwrap();
 
-    tx.send(EngineCommand::ForceMode {
+    tx.send(EngineCommand::SwitchMode {
         mode: "Landing".to_owned(),
     })
     .unwrap();
     engine.tick().unwrap();
 
-    let s = state.read();
-    assert_eq!(s.current_mode, "Landing");
-    assert_eq!(
-        s.mode_force.as_ref().map(|f| f.mode.as_str()),
-        Some("Landing")
-    );
+    assert_eq!(state.read().current_mode, "Landing");
 }
 
 // ---------------------------------------------------------------------------
@@ -2440,56 +2407,6 @@ fn restore_snapshot_round_trip() {
     );
 }
 
-#[test]
-fn restore_snapshot_clears_mode_force() {
-    // Use a profile that includes "Combat" so ForceMode succeeds.
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("TFM_Throttle.toml");
-    let profile = make_profile(two_mode_tree(), vec![]);
-    profile.save(&path).unwrap();
-
-    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut s = state.write();
-        s.profile_path = Some(path.clone());
-        s.engine_status = EngineStatus::Running;
-    };
-    let (tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockDeviceHider::default()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-    );
-
-    tx.send(EngineCommand::CreateSnapshot {
-        kind: crate::snapshot::SnapshotKind::Manual,
-        label: None,
-    })
-    .unwrap();
-    engine.tick().unwrap();
-    tx.send(EngineCommand::ForceMode {
-        mode: "Combat".to_owned(),
-    })
-    .unwrap();
-    engine.tick().unwrap();
-    assert!(state.read().mode_force.is_some());
-
-    let snap_id = crate::snapshot::list(&path).unwrap()[0].id;
-    tx.send(EngineCommand::RestoreSnapshot { id: snap_id })
-        .unwrap();
-    engine.tick().unwrap();
-
-    assert!(
-        state.read().mode_force.is_none(),
-        "restore must clear mode_force"
-    );
-}
-
 // ---------------------------------------------------------------------------
 // F8 RemoveMapping handler tests (Task 3)
 // ---------------------------------------------------------------------------
@@ -2595,52 +2512,6 @@ fn remove_mapping_no_op_for_unknown_input_does_not_panic() {
 
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_dir(&dir);
-}
-
-// ---------------------------------------------------------------------------
-// F6 Task 24: mode-pause gate tests
-// ---------------------------------------------------------------------------
-
-#[test]
-fn forced_mode_blocks_change_mode_pipeline_output() {
-    // Mapping: button press → ChangeMode SwitchTo("Combat").
-    let mapping = Mapping {
-        input: button_addr(0),
-        mode: "Default".to_owned(),
-        name: None,
-        actions: vec![Action::ChangeMode {
-            strategy: ModeChangeStrategy::SwitchTo {
-                mode: "Combat".to_owned(),
-            },
-        }],
-    };
-    let profile = make_profile(three_mode_tree(), vec![mapping]);
-    let mut input = MockInputSource::default();
-    input.events.push(button_event(0, true));
-
-    let (mut engine, state, tx) = make_engine(input, profile);
-
-    // Force into Landing first.
-    tx.send(EngineCommand::ForceMode {
-        mode: "Landing".to_owned(),
-    })
-    .unwrap();
-    engine.tick().unwrap();
-    assert_eq!(state.read().current_mode, "Landing");
-
-    // Tick processes the button event; ChangeMode would normally switch to
-    // Combat, but the gate must block it.
-    engine.input = Box::new({
-        let mut src = MockInputSource::default();
-        src.events.push(button_event(0, true));
-        src
-    });
-    engine.tick().unwrap();
-    assert_eq!(
-        state.read().current_mode,
-        "Landing",
-        "forced mode must block ChangeMode pipeline output"
-    );
 }
 
 #[test]
@@ -3088,8 +2959,8 @@ fn rename_mode_cascades_into_startup_mode() {
 #[test]
 fn rename_mode_cascades_into_runtime_state() {
     let (mut engine, state, tx, _dir, _path) = make_engine_with_disk_profile();
-    // Force into Combat first; this populates current_mode + mode_force.
-    tx.send(EngineCommand::ForceMode {
+    // Switch into Combat first so current_mode tracks the rename.
+    tx.send(EngineCommand::SwitchMode {
         mode: "Combat".to_owned(),
     })
     .unwrap();
@@ -3102,15 +2973,10 @@ fn rename_mode_cascades_into_runtime_state() {
     .unwrap();
     engine.tick().unwrap();
 
-    let s = state.read();
     assert_eq!(
-        s.current_mode, "Fighter",
+        state.read().current_mode,
+        "Fighter",
         "current_mode should track rename"
-    );
-    assert_eq!(
-        s.mode_force.as_ref().map(|f| f.mode.as_str()),
-        Some("Fighter"),
-        "mode_force should track rename"
     );
 }
 
@@ -3676,10 +3542,9 @@ fn delete_mode_rejects_when_subtree_contains_startup_mode() {
 }
 
 #[test]
-fn delete_mode_resets_current_and_clears_force_when_referenced() {
+fn delete_mode_resets_current_when_referenced() {
     let (mut engine, state, tx, _dir, _path) = make_engine_with_disk_profile();
-    // Force into Combat.
-    tx.send(EngineCommand::ForceMode {
+    tx.send(EngineCommand::SwitchMode {
         mode: "Combat".to_owned(),
     })
     .unwrap();
@@ -3691,11 +3556,10 @@ fn delete_mode_resets_current_and_clears_force_when_referenced() {
     .unwrap();
     engine.tick().unwrap();
 
-    let s = state.read();
-    assert_eq!(s.current_mode, "Default", "current_mode resets to startup");
-    assert!(
-        s.mode_force.is_none(),
-        "mode_force cleared by delete cascade"
+    assert_eq!(
+        state.read().current_mode,
+        "Default",
+        "current_mode resets to startup"
     );
 }
 
@@ -3746,8 +3610,8 @@ fn delete_mode_resets_when_active_is_descendant() {
         PathBuf::new(),
     );
 
-    // Force into Missiles (descendant of Combat).
-    tx.send(EngineCommand::ForceMode {
+    // Switch into Missiles (descendant of Combat).
+    tx.send(EngineCommand::SwitchMode {
         mode: "Missiles".to_owned(),
     })
     .unwrap();
@@ -3775,7 +3639,6 @@ fn delete_mode_resets_when_active_is_descendant() {
         s.current_mode, "Default",
         "current_mode must reset to startup"
     );
-    assert!(s.mode_force.is_none(), "mode_force must be cleared");
     assert_eq!(
         engine.mode_state.current(),
         "Default",

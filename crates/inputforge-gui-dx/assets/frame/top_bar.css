@@ -483,9 +483,8 @@
 }
 
 /* Runtime marker, the LED-face idiom established by .if-engine-pill
-   in 32b: currentColor carries the variant hue to both the dot fill
-   and the surrounding flat halo, so a single shadow rule serves both
-   --natural and --forced. The 0/0/0-spread shadow at 24% reads as
+   in 32b: currentColor carries the live hue to both the dot fill and
+   the surrounding flat halo. The 0/0/0-spread shadow at 24% reads as
    light leaking around a panel-mounted indicator, not a glow effect.
    Aligns the mode-tabs with the engine-pill as one LED family across
    the top bar. */
@@ -498,12 +497,10 @@
        reading. flex on the dot itself would force a separate layout box
        that fights the parent's `align-items: center` baseline. */
     display: inline-block;
+    color: var(--color-live);
     background: currentColor;
     box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 24%, transparent);
 }
-
-.if-mode-tab__marker--natural { color: var(--color-live); }
-.if-mode-tab__marker--forced  { color: var(--color-warning); }
 
 /* Mode-tab context menu, AnchoredMenu consumer. Surface and items
    come from the shared primitive (.if-menu__list, .if-menu__item).

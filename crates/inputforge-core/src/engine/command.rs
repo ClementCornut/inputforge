@@ -91,14 +91,12 @@ pub enum EngineCommand {
         target_index_in_group: usize,
     },
 
-    /// Force the engine into the named mode and pause mode-change rules.
+    /// Manually switch the engine to the named mode.
     ///
-    /// Idempotent on the same mode (per design decision D15); rotates the
-    /// override when called with a different mode.
-    ForceMode { mode: String },
-
-    /// Release any active forced-mode override. Current mode is preserved.
-    ReleaseMode,
+    /// Idempotent when the engine is already running `mode`. Subsequent
+    /// rule-driven mode changes (`Action::ChangeMode` outputs, temporary-mode
+    /// pop callbacks) are unaffected: rules win after a manual switch.
+    SwitchMode { mode: String },
 
     /// Re-read `settings.toml` and update in-memory `AppSettings`.
     ///
@@ -167,13 +165,10 @@ mod tests {
 
     #[test]
     fn debug_format_contains_variant_name() {
-        let c = EngineCommand::ForceMode {
+        let c = EngineCommand::SwitchMode {
             mode: "Combat".to_owned(),
         };
-        assert!(format!("{c:?}").contains("ForceMode"));
-
-        let c = EngineCommand::ReleaseMode;
-        assert!(format!("{c:?}").contains("ReleaseMode"));
+        assert!(format!("{c:?}").contains("SwitchMode"));
 
         let c = EngineCommand::ReloadSettings;
         assert!(format!("{c:?}").contains("ReloadSettings"));

@@ -1,19 +1,11 @@
 //! Pure logic for mode-tabs runtime-marker derivation and name validation.
 
 use inputforge_core::engine::MAX_MODE_NAME_GRAPHEMES;
-use inputforge_core::state::ForcedMode;
 use unicode_segmentation::UnicodeSegmentation;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MarkerColor {
-    Natural,
-    Forced,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RuntimeMarker {
     pub tab_index: Option<usize>,
-    pub color: MarkerColor,
 }
 
 /// Compute where the runtime-marker dot should render.
@@ -21,18 +13,9 @@ pub(crate) struct RuntimeMarker {
 /// `tab_index = None` when no profile is loaded or `current_mode` does not
 /// match any tab (e.g., engine is running a mode that was renamed mid-flight).
 /// In that case the renderer omits the dot entirely.
-pub(crate) fn runtime_marker(
-    modes: &[String],
-    current_mode: &str,
-    mode_force: Option<&ForcedMode>,
-) -> RuntimeMarker {
+pub(crate) fn runtime_marker(modes: &[String], current_mode: &str) -> RuntimeMarker {
     let tab_index = modes.iter().position(|m| m == current_mode);
-    let color = if mode_force.is_some() {
-        MarkerColor::Forced
-    } else {
-        MarkerColor::Natural
-    };
-    RuntimeMarker { tab_index, color }
+    RuntimeMarker { tab_index }
 }
 
 /// Whether the Delete action should be disabled for the named tab.
@@ -129,31 +112,20 @@ mod tests {
     }
 
     #[test]
-    fn runtime_marker_no_force_with_match_returns_natural() {
-        let m = runtime_marker(&modes(), "Combat", None);
+    fn runtime_marker_returns_index_for_match() {
+        let m = runtime_marker(&modes(), "Combat");
         assert_eq!(m.tab_index, Some(1));
-        assert_eq!(m.color, MarkerColor::Natural);
-    }
-
-    #[test]
-    fn runtime_marker_with_force_returns_forced_color() {
-        let f = ForcedMode {
-            mode: "Combat".to_owned(),
-        };
-        let m = runtime_marker(&modes(), "Combat", Some(&f));
-        assert_eq!(m.tab_index, Some(1));
-        assert_eq!(m.color, MarkerColor::Forced);
     }
 
     #[test]
     fn runtime_marker_no_match_returns_none_index() {
-        let m = runtime_marker(&modes(), "Mystery", None);
+        let m = runtime_marker(&modes(), "Mystery");
         assert!(m.tab_index.is_none());
     }
 
     #[test]
     fn runtime_marker_empty_modes_returns_none_index() {
-        let m = runtime_marker(&[], "anything", None);
+        let m = runtime_marker(&[], "anything");
         assert!(m.tab_index.is_none());
     }
 

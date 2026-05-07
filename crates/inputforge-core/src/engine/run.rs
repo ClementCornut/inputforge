@@ -191,14 +191,10 @@ impl Engine {
 
         // Get profile data needed for this frame.
         // Clone mappings + mode tree to avoid holding the lock during processing.
-        let (mappings, mode_tree, mode_forced) = {
+        let (mappings, mode_tree) = {
             let state = self.state.read();
             match &state.active_profile {
-                Some(profile) => (
-                    profile.mappings().to_vec(),
-                    profile.modes().clone(),
-                    state.mode_force.is_some(),
-                ),
+                Some(profile) => (profile.mappings().to_vec(), profile.modes().clone()),
                 None => return Ok(()),
             }
         };
@@ -234,9 +230,7 @@ impl Engine {
                 for callback in callbacks {
                     match callback {
                         ReleaseCallback::PopTemporaryMode => {
-                            if !mode_forced {
-                                self.mode_state.pop_temporary();
-                            }
+                            self.mode_state.pop_temporary();
                         }
                         ReleaseCallback::Custom(f) => f(),
                     }
@@ -282,7 +276,6 @@ impl Engine {
                     &mode_tree,
                     &mut self.callbacks,
                     &event.source,
-                    mode_forced,
                 )?;
 
                 self.output_buffer.extend_from_slice(&outputs);
@@ -385,8 +378,6 @@ impl Engine {
                 {
                     let mut state = self.state.write();
                     state.active_profile_origin = Some(origin);
-                    // A forced-mode override should not survive a profile change.
-                    state.mode_force = None;
                 };
                 if let Some((profile_path, namespace_dir)) = self.resolved_snapshot_target() {
                     let _ = crate::snapshot::create_in(
@@ -472,7 +463,6 @@ impl Engine {
                     state.active_profile = None;
                     state.profile_path = None;
                     state.active_profile_origin = None;
-                    state.mode_force = None;
                     state.active_snapshot_rows.clear();
                     state.engine_status = EngineStatus::Stopped;
                     drop(state);
@@ -537,38 +527,25 @@ impl Engine {
             EngineCommand::Shutdown => {
                 self.shutdown = true;
             }
-            EngineCommand::ForceMode { mode } => {
-                // D15: idempotent same-mode; rotate on different-mode.
-                let already_same = self
-                    .state
-                    .read()
-                    .mode_force
-                    .as_ref()
-                    .is_some_and(|f| f.mode == mode);
-                if already_same {
+            EngineCommand::SwitchMode { mode } => {
+                if self.mode_state.current() == mode {
                     return Ok(());
                 }
-                // Read mode tree from active_profile (may be absent, return early).
                 let tree = if let Some(p) = self.state.read().active_profile.as_ref() {
                     p.modes().clone()
                 } else {
                     tracing::warn!(
                         target: "engine",
-                        "ForceMode dispatched with no profile; ignoring"
+                        "SwitchMode dispatched with no profile; ignoring"
                     );
                     return Ok(());
                 };
                 self.mode_state.switch_to(&mode, &tree)?;
                 let mut state = self.state.write();
-                state.mode_force = Some(crate::state::ForcedMode { mode: mode.clone() });
                 mode.clone_into(&mut state.current_mode);
                 drop(state);
                 self.pending_output_refresh = true;
-                tracing::info!(target: "engine", mode = %mode, "ForceMode applied");
-            }
-            EngineCommand::ReleaseMode => {
-                self.state.write().mode_force = None;
-                tracing::info!(target: "engine", "ReleaseMode applied");
+                tracing::info!(target: "engine", mode = %mode, "SwitchMode applied");
             }
             EngineCommand::ReloadSettings => {
                 self.settings = crate::settings::AppSettings::load_from(&self.settings_path);
@@ -719,11 +696,6 @@ impl Engine {
                 if state.current_mode == from {
                     to.clone_into(&mut state.current_mode);
                 }
-                if let Some(force) = state.mode_force.as_mut() {
-                    if force.mode == from {
-                        to.clone_into(&mut force.mode);
-                    }
-                }
                 drop(state);
 
                 self.mode_state.rename_in_place(&from, &to);
@@ -805,13 +777,6 @@ impl Engine {
                 // Runtime state cascade.
                 if deleted.iter().any(|m| m == &state.current_mode) {
                     startup.clone_into(&mut state.current_mode);
-                }
-                if state
-                    .mode_force
-                    .as_ref()
-                    .is_some_and(|f| deleted.iter().any(|m| m == &f.mode))
-                {
-                    state.mode_force = None;
                 }
                 drop(state);
 
@@ -911,8 +876,6 @@ impl Engine {
                     return Err(reload_err);
                 }
 
-                // Successful restore clears mode_force (snapshot's mode tree may differ).
-                self.state.write().mode_force = None;
                 self.refresh_active_snapshot_rows()?;
 
                 tracing::info!(
@@ -954,9 +917,6 @@ impl Engine {
     ///
     /// Resets calibrations, mode state, callbacks, and the active profile to
     /// match `path` on disk. Shared between `LoadProfile` and `RestoreSnapshot`.
-    ///
-    /// **Does not** touch `state.mode_force`, the caller is responsible for
-    /// that policy decision.
     ///
     /// # Errors
     ///
@@ -1010,7 +970,6 @@ impl Engine {
         let mut state = self.state.write();
         state.active_profile_origin = Some(origin);
         state.engine_status = EngineStatus::Stopped;
-        state.mode_force = None;
     }
 
     /// Mirror `state.profile_path` into `settings.last_profile` and

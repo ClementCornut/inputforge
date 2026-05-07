@@ -23,14 +23,12 @@
     color: var(--color-text);
 }
 
-/* Top bar / banner / main / status are direct children. The 40px and
-   28px tracks become explicit `flex-basis`; the banner is content-sized
-   and collapses to 0 when its component renders `rsx!{}`; main grows to
-   fill remaining space. `min-height: 0` lets `__main` shrink past its
-   intrinsic min-content (required for the inner overflow-y: auto on
-   rail and center to engage). */
+/* Top bar / main / status are direct children. The 40px and 28px
+   tracks become explicit `flex-basis`; main grows to fill remaining
+   space. `min-height: 0` lets `__main` shrink past its intrinsic
+   min-content (required for the inner overflow-y: auto on rail and
+   center to engage). */
 .if-top-bar         { flex: 0 0 40px; }
-.if-banner          { flex: 0 0 auto; }
 .if-layout__main    { flex: 1 1 auto; min-height: 0; }
 .if-status-bar      { flex: 0 0 28px; }
 
