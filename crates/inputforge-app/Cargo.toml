@@ -21,6 +21,7 @@ mimalloc          = { workspace = true }
 clap              = { workspace = true }
 tray-icon         = { workspace = true }
 windows           = { workspace = true }
+chrono            = { workspace = true }
 
 [lints]
 workspace = true
