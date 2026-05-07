@@ -1142,6 +1142,169 @@ fn profile_lifecycle_commands_refresh_projected_library_rows() {
 }
 
 // ---------------------------------------------------------------------------
+// `settings.last_profile` persistence: every command that changes which
+// profile is active must mirror `state.profile_path` into
+// `settings.last_profile` and persist via `AppSettings::save_to()`,
+// otherwise next launch reloads a stale path. `LoadExternalProfileOnce`
+// is intentionally exempt: the "Once" semantic is transient by design.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn load_profile_persists_path_to_settings_last_profile() {
+    let mut harness = EngineHarness::new();
+    let path = create_profile_in("Alpha", &harness.library_dir).unwrap();
+    harness
+        .dispatch(EngineCommand::LoadProfile(path.clone()))
+        .unwrap();
+
+    assert_eq!(harness.engine.settings.last_profile.as_ref(), Some(&path));
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert_eq!(on_disk.last_profile.as_ref(), Some(&path));
+}
+
+#[test]
+fn create_profile_persists_path_to_settings_last_profile() {
+    let mut harness = EngineHarness::new();
+    harness
+        .dispatch(EngineCommand::CreateProfile {
+            name: "Alpha".to_owned(),
+        })
+        .unwrap();
+
+    let expected = harness.profile_path("Alpha");
+    assert_eq!(
+        harness.engine.settings.last_profile.as_ref(),
+        Some(&expected)
+    );
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert_eq!(on_disk.last_profile.as_ref(), Some(&expected));
+}
+
+#[test]
+fn rename_active_profile_persists_new_path_to_settings_last_profile() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+
+    harness
+        .dispatch(EngineCommand::RenameProfile {
+            old_name: "Alpha".to_owned(),
+            new_name: "Bravo".to_owned(),
+        })
+        .unwrap();
+
+    let renamed_path = harness.profile_path("Bravo");
+    assert_eq!(
+        harness.engine.settings.last_profile.as_ref(),
+        Some(&renamed_path)
+    );
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert_eq!(on_disk.last_profile.as_ref(), Some(&renamed_path));
+}
+
+#[test]
+fn rename_inactive_profile_does_not_change_settings_last_profile() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+    let _bravo = create_profile_in("Bravo", &harness.library_dir).unwrap();
+    let alpha_path = harness.profile_path("Alpha");
+
+    // Renaming the INACTIVE Bravo must not touch the persisted path.
+    harness
+        .dispatch(EngineCommand::RenameProfile {
+            old_name: "Bravo".to_owned(),
+            new_name: "Charlie".to_owned(),
+        })
+        .unwrap();
+
+    assert_eq!(
+        harness.engine.settings.last_profile.as_ref(),
+        Some(&alpha_path)
+    );
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert_eq!(on_disk.last_profile.as_ref(), Some(&alpha_path));
+}
+
+#[test]
+fn delete_active_profile_clears_settings_last_profile() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+
+    harness
+        .dispatch(EngineCommand::DeleteProfile {
+            name: "Alpha".to_owned(),
+        })
+        .unwrap();
+
+    assert!(harness.engine.settings.last_profile.is_none());
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert!(on_disk.last_profile.is_none());
+}
+
+#[test]
+fn delete_inactive_profile_does_not_change_settings_last_profile() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+    let _bravo = create_profile_in("Bravo", &harness.library_dir).unwrap();
+    let alpha_path = harness.profile_path("Alpha");
+
+    harness
+        .dispatch(EngineCommand::DeleteProfile {
+            name: "Bravo".to_owned(),
+        })
+        .unwrap();
+
+    assert_eq!(
+        harness.engine.settings.last_profile.as_ref(),
+        Some(&alpha_path)
+    );
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert_eq!(on_disk.last_profile.as_ref(), Some(&alpha_path));
+}
+
+#[test]
+fn load_external_profile_once_does_not_change_settings_last_profile() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+    let alpha_path = harness.profile_path("Alpha");
+    let external = harness.write_external_profile("External");
+
+    harness
+        .dispatch(EngineCommand::LoadExternalProfileOnce(external))
+        .unwrap();
+
+    // The external profile is now active in `state.profile_path`, but
+    // the persisted `last_profile` must stay pointed at Alpha because
+    // "Once" is transient by design.
+    assert_eq!(
+        harness.engine.settings.last_profile.as_ref(),
+        Some(&alpha_path)
+    );
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert_eq!(on_disk.last_profile.as_ref(), Some(&alpha_path));
+}
+
+#[test]
+fn add_external_profile_to_library_persists_path_to_settings_last_profile() {
+    let mut harness = EngineHarness::new();
+    let external = harness.write_external_profile("External");
+
+    harness
+        .dispatch(EngineCommand::AddExternalProfileToLibrary {
+            path: external,
+            name: "Imported".to_owned(),
+        })
+        .unwrap();
+
+    let imported_path = harness.profile_path("Imported");
+    assert_eq!(
+        harness.engine.settings.last_profile.as_ref(),
+        Some(&imported_path)
+    );
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert_eq!(on_disk.last_profile.as_ref(), Some(&imported_path));
+}
+
+// ---------------------------------------------------------------------------
 // T17-T22: Output handler unit tests (coverage round 2)
 // ---------------------------------------------------------------------------
 

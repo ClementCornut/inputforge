@@ -400,6 +400,7 @@ impl Engine {
                 }
                 self.refresh_profile_library_rows()?;
                 self.refresh_active_snapshot_rows()?;
+                self.persist_last_profile()?;
             }
             EngineCommand::CreateProfile { name } => {
                 let path = create_profile_in(&name, &self.profile_library_dir())?;
@@ -407,6 +408,7 @@ impl Engine {
                 self.mark_profile_loaded(ProfileOrigin::Library);
                 self.refresh_profile_library_rows()?;
                 self.refresh_active_snapshot_rows()?;
+                self.persist_last_profile()?;
             }
             EngineCommand::LoadExternalProfileOnce(path) => {
                 self.purge_all_namespaces();
@@ -432,6 +434,7 @@ impl Engine {
                 self.mark_profile_loaded(ProfileOrigin::Library);
                 self.refresh_profile_library_rows()?;
                 self.refresh_active_snapshot_rows()?;
+                self.persist_last_profile()?;
             }
             EngineCommand::RenameProfile { old_name, new_name } => {
                 let old_path = self.profile_path_for_name(&old_name);
@@ -446,6 +449,7 @@ impl Engine {
                     self.reload_profile_from_disk(&renamed.path)?;
                     self.state.write().active_profile_origin = Some(ProfileOrigin::Library);
                     self.refresh_active_snapshot_rows()?;
+                    self.persist_last_profile()?;
                 }
                 self.refresh_profile_library_rows()?;
             }
@@ -474,6 +478,7 @@ impl Engine {
                     drop(state);
                     self.mode_state = crate::mode::ModeState::new("Default".to_owned());
                     self.callbacks.clear();
+                    self.persist_last_profile()?;
                 }
                 self.refresh_profile_library_rows()?;
             }
@@ -1006,6 +1011,27 @@ impl Engine {
         state.active_profile_origin = Some(origin);
         state.engine_status = EngineStatus::Stopped;
         state.mode_force = None;
+    }
+
+    /// Mirror `state.profile_path` into `settings.last_profile` and
+    /// persist to `settings_path`. Called from every profile-lifecycle
+    /// command that changes which profile is active, so a fresh launch
+    /// reopens whichever profile the user had last. `LoadExternalProfileOnce`
+    /// deliberately skips this: the "Once" semantic means transient by
+    /// design (the `OpenChoice` dialog's two branches are "Add to library"
+    /// for sticky import vs "Load once" for one-shot use).
+    ///
+    /// Test harnesses that don't care about settings persistence pass an
+    /// empty `settings_path` (`PathBuf::new()`); mirror the same
+    /// empty-path sentinel honoured by [`Self::profile_library_dir`] so
+    /// those harnesses don't trip on a `save_to` write to nowhere.
+    fn persist_last_profile(&mut self) -> Result<()> {
+        if self.settings_path.as_os_str().is_empty() {
+            return Ok(());
+        }
+        self.settings.last_profile = self.state.read().profile_path.clone();
+        self.settings.save_to(&self.settings_path)?;
+        Ok(())
     }
 
     fn profile_path_for_name(&self, name: &str) -> PathBuf {
