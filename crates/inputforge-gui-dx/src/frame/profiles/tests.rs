@@ -465,6 +465,45 @@ fn profiles_css_uses_flex_layout_and_flush_drawer_contract() {
 }
 
 #[test]
+fn profiles_css_locks_collapsible_drawer_surface_contract() {
+    // DESIGN.md §6 "Collapsible Drawer" contract: flips to bg-sunken,
+    // 44px header bar, strong-border-top on the bar. The luminance shift
+    // is the signal that this is a different region from the list above.
+    let css = include_str!("../../../assets/frame/profiles.css");
+
+    let drawer_block = css
+        .split(".snapshot-drawer {")
+        .nth(1)
+        .expect("snapshot-drawer rule present")
+        .split('}')
+        .next()
+        .expect("snapshot-drawer rule closed");
+    assert!(
+        drawer_block.contains("background: var(--color-bg-sunken);"),
+        ".snapshot-drawer must declare bg-sunken per DESIGN.md §6 Collapsible \
+         Drawer contract. Found: {drawer_block}"
+    );
+
+    let bar_block = css
+        .split(".snapshot-drawer__bar {")
+        .nth(1)
+        .expect("snapshot-drawer__bar rule present")
+        .split('}')
+        .next()
+        .expect("snapshot-drawer__bar rule closed");
+    assert!(
+        bar_block.contains("min-height: 44px;"),
+        ".snapshot-drawer__bar must hold the 44px header height per \
+         DESIGN.md §6. Found: {bar_block}"
+    );
+    assert!(
+        bar_block.contains("border-top: 1px solid var(--color-border-strong);"),
+        ".snapshot-drawer__bar must use strong-border-top per DESIGN.md §6. \
+         Found: {bar_block}"
+    );
+}
+
+#[test]
 fn panel_slot_css_keeps_chrome_only_consumers_own_padding() {
     let css = include_str!("../../../assets/frame/panel_slot.css");
 

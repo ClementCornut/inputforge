@@ -322,6 +322,11 @@ Tabular data (the input list, the action list, the binding list) can expand a si
 
 For multi-field edits that warrant their own scrollable surface (a complex action's full pipeline, a profile's mode tree), a side panel slides in from the right edge of the workspace. The panel does *not* dim the underlying canvas, does *not* trap focus from the underlying list, and does *not* block keyboard navigation outside its boundary. It is a second region, not a modal layer.
 
+A side panel may anchor a secondary region at its bottom edge. The system specifies two such regions, each with a different surface contract because each carries a different meaning:
+
+- **Pinned Inspector.** Stays on the panel surface (`--color-bg-elevated`), separated from the list above by a 1px `--color-border-strong` top border and `--space-3` padding. Always visible while a list item is selected; never collapsible. Reads as "more detail about the selected item." Used by the Devices panel for the alias edit + hardware/usage facts.
+- **Collapsible Drawer.** Flips to `--color-bg-sunken`, with a 44px header bar that carries the title, a count badge, and the open/close affordance. The bar's top edge is `--color-border-strong`; the body slides via the Drawer primitive's persistent variant (see section 7). Reads as "a different region or mode inside the panel." Used by the Profiles panel for snapshots.
+
 ### Dialog (rare)
 
 The Dialog primitive (section 7) is reserved for surfaces where the alternative is data loss or destructive action. Permitted uses:
@@ -343,6 +348,8 @@ Forbidden uses (each is a slide back toward the Tk anti-reference):
 **The Inline-First Rule.** If a property has a single editable value, it is edited where it is displayed. The dialog opening on click is the canonical Tk failure; the system rejects it as a default. A dialog is justified only when this rule has been actively considered and rejected for a stated reason.
 
 **The No Modal-On-Modal Rule.** A Dialog never opens another Dialog. If a confirmation is needed inside a flow already inside a Dialog, the flow itself is too deep; flatten it to an in-shell surface.
+
+**The Inspector Vs Drawer Rule.** A side-panel anchored region is a Pinned Inspector when its content is *more detail about the currently selected item*; it is a Collapsible Drawer when its content is *a different region or mode inside the panel*. The surface treatment follows from this distinction: Inspector keeps the panel surface so the eye reads continuity; Drawer flips to sunken so the luminance shift signals a different region. If a region is undecided between the two, the question is not "which surface should it use" but "what is this region for"; answer that first, then the surface assignment follows.
 
 ## 7. Components
 
