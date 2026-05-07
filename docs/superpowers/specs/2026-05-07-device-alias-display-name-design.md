@@ -43,16 +43,27 @@ Two helpers, no duplication.
 
 ### Core canonical resolver
 
-`AppSettings::display_name_for(&self, info: &DeviceInfo) -> String` already
-exists at `crates/inputforge-core/src/settings.rs:140`. It is the single
-source of truth for the resolution rule:
+Add a free function in `crates/inputforge-core/src/settings.rs` next to
+`AppSettings::display_name_for`:
+
+```rust
+pub fn display_name_for_device(
+    aliases: &HashMap<DeviceId, String>,
+    info: &DeviceInfo,
+) -> String
+```
+
+This is the single source of truth for the resolution rule:
 
 1. Use the alias from `device_aliases` when present and non-blank after trim.
 2. Otherwise use `info.name` when non-blank after trim.
 3. Otherwise fall back to `info.id.0`.
 
-The body does not change. This stays the building block for any caller that
-already holds a `DeviceInfo`.
+`AppSettings::display_name_for(&self, info: &DeviceInfo) -> String` at
+`crates/inputforge-core/src/settings.rs:140` delegates to
+`display_name_for_device(&self.device_aliases, info)`. GUI snapshot code uses
+the same free function with the mirrored `AppState.device_aliases` map instead
+of keeping a duplicate resolver in the GUI crate.
 
 ### GUI by-id projection
 
@@ -79,20 +90,29 @@ Add to `ConfigSnapshot`:
 pub device_display_names: HashMap<DeviceId, String>,
 ```
 
-Populated in `ConfigSnapshot::from_state`. The map is built by iterating
-`state.devices` (connected) and `state.settings.device_registry` (remembered)
-and resolving each entry through `state.settings.display_name_for(&info)`.
-Connected entries take precedence over registry entries on key collision. This
-mirrors the existing logic the snapshot already uses to assemble
-`DevicePanelRow` rows for both connected and remembered devices at
-`crates/inputforge-gui-dx/src/context.rs:408` and `:432`.
+Populated in `ConfigSnapshot::from_state`. Build a mutable
+`HashMap<DeviceId, String>` by inserting remembered devices from
+`s.device_registry` first, then connected devices from `s.devices`, so a live
+connected entry overwrites a stale remembered entry on key collision. Resolve
+each entry through `display_name_for_device(&s.device_aliases, &info)`.
+
+This mirrors the existing `build_device_panel_rows` logic in
+`crates/inputforge-gui-dx/src/context.rs`, which currently assembles connected
+rows around line 528 and remembered rows around line 552.
 
 ### Cleanup
 
 The duplicate private helper `display_name_for(aliases: &HashMap<DeviceId, String>, info: &DeviceInfo) -> String`
-at `crates/inputforge-gui-dx/src/context.rs:453` is deleted. Its two existing
-callers (lines 408 and 432) switch to `s.settings.display_name_for(&info)`,
-calling the engine helper directly.
+at `crates/inputforge-gui-dx/src/context.rs:573` is deleted. Its existing
+`build_device_panel_rows` callers around lines 528 and 552 switch to
+`display_name_for_device(&s.device_aliases, &info)`, calling the shared core
+helper directly.
+
+Because `ConfigSnapshot` gains a required `device_display_names` field, update
+existing explicit `ConfigSnapshot { ... }` test literals to compile. Prefer
+`..Default::default()` for tests that only care about a subset of fields. Tests
+that assert alias behavior should populate `device_display_names` directly or
+construct the snapshot through `ConfigSnapshot::from_state`.
 
 The `DevicePanelRow.display_name` field stays as is. The device panel already
 consumes it correctly at `crates/inputforge-gui-dx/src/frame/panel_slot/device_panel.rs:90`
@@ -141,7 +161,8 @@ Dioxus runtime needed.
 New unit tests added in `crates/inputforge-gui-dx/src/context.rs`:
 
 1. `device_display_name_returns_alias_when_present`: snapshot built with one
-   connected device that has an alias in settings; helper returns the alias.
+   connected device that has an alias in `s.device_aliases`; helper returns the
+   alias.
 2. `device_display_name_falls_back_to_hardware_name_when_alias_blank`: alias is
    empty or whitespace; helper returns `info.name`.
 3. `device_display_name_returns_alias_for_remembered_disconnected_device`:
@@ -149,16 +170,32 @@ New unit tests added in `crates/inputforge-gui-dx/src/context.rs`:
    returns the alias.
 4. `device_display_name_returns_id_for_unknown_device`: helper called with a
    `DeviceId` not in the snapshot; returns `id.0`.
+5. `device_display_name_connected_device_overrides_registry_record`: the same
+   `DeviceId` exists in both `s.device_registry` and `s.devices`; helper uses
+   the connected device's resolved display name.
+
+Add or extend call-site regression tests so the migrated surfaces cannot
+silently regress to `info.name`:
+
+- `crates/inputforge-gui-dx/src/frame/mapping_list/source_label.rs`: source
+  labels use `cfg.device_display_name(device)`.
+- `crates/inputforge-gui-dx/src/frame/mapping_list/filter.rs`: device filter
+  chips use aliases and still append the raw id when two chips share the same
+  display label.
+- `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage.rs` or its
+  existing pipeline tests: merge-axis and conditional stage labels use aliases.
+- `crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs`: source dropdown options
+  use aliases. If needed, extract the option-building expression into a small
+  pure helper so this behavior is unit-testable without a Dioxus runtime.
 
 Existing `device_panel_*` tests in
 `crates/inputforge-gui-dx/src/frame/panel_slot/device_panel.rs` cover the
 device panel's use of `DevicePanelRow.display_name` and do not change.
 
-Engine-side tests do not change. `AppSettings::display_name_for` semantics are
-locked in by `set_device_alias_persists_trimmed_alias` at
-`crates/inputforge-core/src/engine/tests.rs:2029` and
-`set_device_alias_with_blank_value_clears_alias` at
-`crates/inputforge-core/src/engine/tests.rs:2049`.
+Add core resolver tests in `crates/inputforge-core/src/settings.rs` for alias,
+blank alias fallback, hardware-name fallback, and id fallback. Existing
+engine-side persistence tests for `EngineCommand::SetDeviceAlias` remain in
+place.
 
 ### Manual (dx run)
 

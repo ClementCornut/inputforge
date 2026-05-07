@@ -97,9 +97,15 @@ pub(crate) struct ProfileRowView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SnapshotRowView {
     pub id: SnapshotId,
+    pub kind: inputforge_core::snapshot::SnapshotKind,
     pub kind_label: String,
     pub label: Option<String>,
-    pub time_label: String,
+    /// Glanceable relative time ("just now", "12m ago", "2d ago", or
+    /// `YYYY-MM-DD` for older). Re-computed each projection cycle.
+    pub time_relative: String,
+    /// Tooltip / `<time datetime>` value. `YYYY-MM-DD HH:MM UTC`,
+    /// no sub-second precision, no `T` separator.
+    pub time_absolute: String,
     pub sort_key: i64,
     pub pinned: bool,
 }
@@ -119,6 +125,30 @@ pub(crate) struct ConfigSnapshot {
     /// that the engine no longer holds.
     pub selected_mapping_key: Option<crate::frame::MappingKey>,
     pub device_panel_rows: Vec<DevicePanelRow>,
+    /// Pre-resolved display name for every device the user might
+    /// reference (connected devices first, then remembered devices
+    /// from `device_registry`). Built once per snapshot tick so call
+    /// sites collapse to a single map lookup; see
+    /// [`ConfigSnapshot::device_display_name`].
+    pub device_display_names: HashMap<DeviceId, String>,
+}
+
+impl ConfigSnapshot {
+    /// Resolve a `DeviceId` to its user-facing display name (alias if
+    /// set, else hardware name, else the raw id string). Falls back to
+    /// `id.0` when the snapshot has not seen the device at all
+    /// (deterministic behaviour for stale references).
+    ///
+    /// This is the single accessor every user-facing surface should
+    /// use; never read `info.name` directly. The precedence rule
+    /// itself lives in
+    /// [`inputforge_core::settings::display_name_for_device`].
+    pub(crate) fn device_display_name(&self, id: &DeviceId) -> String {
+        self.device_display_names
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| id.0.clone())
+    }
 }
 
 /// One row's worth of state for the F8 mapping list. Populated by
@@ -244,20 +274,30 @@ impl MetaSnapshot {
                 profile_rows.push(row);
             }
         }
+        let now_for_snapshots = chrono::Utc::now();
         let snapshot_rows = s
             .active_snapshot_rows
             .iter()
             .map(|row| SnapshotRowView {
                 id: row.id,
+                kind: row.kind,
                 kind_label: match row.kind {
                     inputforge_core::snapshot::SnapshotKind::AutoSessionStart => "Session start",
                     inputforge_core::snapshot::SnapshotKind::AutoBeforeRestore => "Before restore",
-                    inputforge_core::snapshot::SnapshotKind::AutoBeforeBulkMap => "Before bulk map",
+                    // The user-visible surface that creates this kind is the
+                    // "Batch map" tab; "bulk map" is engine vocabulary. Match
+                    // the label to the surface so the kind badge does not
+                    // stutter against the snapshot's own label which already
+                    // says "Before batch map".
+                    inputforge_core::snapshot::SnapshotKind::AutoBeforeBulkMap => {
+                        "Before batch map"
+                    }
                     inputforge_core::snapshot::SnapshotKind::Manual => "Manual",
                 }
                 .to_owned(),
                 label: row.label.clone(),
-                time_label: row.taken_at.to_rfc3339(),
+                time_relative: format_relative_at(row.taken_at, now_for_snapshots),
+                time_absolute: format_absolute_time(row.taken_at),
                 sort_key: row.taken_at.timestamp_millis(),
                 pinned: row.pinned,
             })
@@ -333,12 +373,21 @@ fn profile_library_row_last_edited_label(
     row.last_edited_at.map(format_chrono_time_relative)
 }
 
-/// Format a `DateTime<Utc>` as a short relative-time label.
-fn format_chrono_time_relative(datetime: chrono::DateTime<chrono::Utc>) -> String {
-    let now = chrono::Utc::now();
-    let delta = now.signed_duration_since(datetime);
+/// Format a `DateTime<Utc>` as a short relative-time label, using
+/// `now` as the reference. Pure function so tests can pin behaviour
+/// deterministically without reading the wall clock.
+///
+/// Buckets: "just now" (under 1 min), "Nm ago" (under 1 hour),
+/// "Nh ago" (under 1 day), "Nd ago" (under 1 week), `YYYY-MM-DD`
+/// otherwise. Negative deltas (`taken_at` in the future, e.g. clock
+/// skew) collapse to the date form so the user never sees "in 2m".
+pub(crate) fn format_relative_at(
+    taken_at: chrono::DateTime<chrono::Utc>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> String {
+    let delta = now.signed_duration_since(taken_at);
     if delta.num_seconds() < 0 {
-        return datetime.format("%Y-%m-%d").to_string();
+        return taken_at.format("%Y-%m-%d").to_string();
     }
     let mins = delta.num_minutes();
     let hours = delta.num_hours();
@@ -352,8 +401,22 @@ fn format_chrono_time_relative(datetime: chrono::DateTime<chrono::Utc>) -> Strin
     } else if days < 7 {
         format!("{days}d ago")
     } else {
-        datetime.format("%Y-%m-%d").to_string()
+        taken_at.format("%Y-%m-%d").to_string()
     }
+}
+
+/// Wall-clock variant of [`format_relative_at`]. Production callers
+/// pass through here; tests prefer the pure form.
+fn format_chrono_time_relative(datetime: chrono::DateTime<chrono::Utc>) -> String {
+    format_relative_at(datetime, chrono::Utc::now())
+}
+
+/// Format a `DateTime<Utc>` as a glanceable absolute timestamp suitable
+/// for a tooltip / `<time datetime>` value. Drops sub-second precision
+/// and the `T` separator; appends `UTC` so the user reads timezone
+/// without parsing an offset string.
+pub(crate) fn format_absolute_time(taken_at: chrono::DateTime<chrono::Utc>) -> String {
+    taken_at.format("%Y-%m-%d %H:%M UTC").to_string()
 }
 
 /// Format a `SystemTime` as a short relative-time label suitable for a
@@ -362,25 +425,7 @@ fn format_chrono_time_relative(datetime: chrono::DateTime<chrono::Utc>) -> Strin
 /// clock disagrees with the file mtime.
 fn format_system_time_relative(time: std::time::SystemTime) -> String {
     let datetime: chrono::DateTime<chrono::Utc> = time.into();
-    let now = chrono::Utc::now();
-    let delta = now.signed_duration_since(datetime);
-    if delta.num_seconds() < 0 {
-        return datetime.format("%Y-%m-%d").to_string();
-    }
-    let mins = delta.num_minutes();
-    let hours = delta.num_hours();
-    let days = delta.num_days();
-    if mins < 1 {
-        "just now".to_owned()
-    } else if mins < 60 {
-        format!("{mins}m ago")
-    } else if hours < 24 {
-        format!("{hours}h ago")
-    } else if days < 7 {
-        format!("{days}d ago")
-    } else {
-        datetime.format("%Y-%m-%d").to_string()
-    }
+    format_relative_at(datetime, chrono::Utc::now())
 }
 
 impl LiveSnapshot {
@@ -601,7 +646,10 @@ fn build_device_panel_rows(s: &AppState) -> Vec<DevicePanelRow> {
         live_ids.insert(device.info.id.clone());
         rows.push(DevicePanelRow {
             device_id: device.info.id.clone(),
-            display_name: display_name_for(&s.device_aliases, &device.info),
+            display_name: inputforge_core::settings::display_name_for_device(
+                &s.device_aliases,
+                &device.info,
+            ),
             alias: s
                 .device_aliases
                 .get(&device.info.id)
@@ -625,7 +673,10 @@ fn build_device_panel_rows(s: &AppState) -> Vec<DevicePanelRow> {
         }
         rows.push(DevicePanelRow {
             device_id: device_id.clone(),
-            display_name: display_name_for(&s.device_aliases, &record.info),
+            display_name: inputforge_core::settings::display_name_for_device(
+                &s.device_aliases,
+                &record.info,
+            ),
             alias: s.device_aliases.get(device_id).cloned().unwrap_or_default(),
             hardware_name: record.info.name.clone(),
             connected: false,
@@ -644,20 +695,6 @@ fn build_device_panel_rows(s: &AppState) -> Vec<DevicePanelRow> {
         })
     });
     rows
-}
-
-fn display_name_for(aliases: &HashMap<DeviceId, String>, info: &DeviceInfo) -> String {
-    aliases
-        .get(&info.id)
-        .filter(|alias| !alias.trim().is_empty())
-        .cloned()
-        .unwrap_or_else(|| {
-            if info.name.trim().is_empty() {
-                info.id.0.clone()
-            } else {
-                info.name.clone()
-            }
-        })
 }
 
 fn usage_for_device(device_id: &DeviceId, info: &DeviceInfo, s: &AppState) -> DeviceUsageSummary {
@@ -854,8 +891,31 @@ impl ConfigSnapshot {
             selected_mapping_actions,
             selected_mapping_key: selection.cloned(),
             device_panel_rows: build_device_panel_rows(s),
+            device_display_names: build_device_display_names(s),
         }
     }
+}
+
+/// Build the precomputed `DeviceId -> display_name` map. Inserts
+/// remembered devices first (`s.device_registry`), then connected
+/// devices (`s.devices`), so a live entry overwrites a stale
+/// remembered entry on key collision. The same device can therefore
+/// appear in both maps; live identity wins.
+fn build_device_display_names(s: &AppState) -> HashMap<DeviceId, String> {
+    let mut out = HashMap::new();
+    for (id, record) in &s.device_registry {
+        out.insert(
+            id.clone(),
+            inputforge_core::settings::display_name_for_device(&s.device_aliases, &record.info),
+        );
+    }
+    for device in &s.devices {
+        out.insert(
+            device.info.id.clone(),
+            inputforge_core::settings::display_name_for_device(&s.device_aliases, &device.info),
+        );
+    }
+    out
 }
 
 #[cfg(test)]
@@ -1854,5 +1914,179 @@ mod tests {
         let cfg = ConfigSnapshot::from_state(&app, stale_sel.as_ref());
         assert!(cfg.selected_mapping_actions.is_none());
         assert_eq!(cfg.selected_mapping_key, stale_sel);
+    }
+
+    fn at(s: &str) -> chrono::DateTime<chrono::Utc> {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .expect("rfc3339 timestamp")
+            .with_timezone(&chrono::Utc)
+    }
+
+    #[test]
+    fn relative_time_under_one_minute_is_just_now() {
+        let now = at("2026-05-07T12:00:00Z");
+        let taken = at("2026-05-07T11:59:30Z");
+        assert_eq!(format_relative_at(taken, now), "just now");
+    }
+
+    #[test]
+    fn relative_time_under_one_hour_is_minutes_ago() {
+        let now = at("2026-05-07T12:00:00Z");
+        assert_eq!(
+            format_relative_at(at("2026-05-07T11:55:00Z"), now),
+            "5m ago"
+        );
+        assert_eq!(
+            format_relative_at(at("2026-05-07T11:00:30Z"), now),
+            "59m ago"
+        );
+    }
+
+    #[test]
+    fn relative_time_under_one_day_is_hours_ago() {
+        let now = at("2026-05-07T12:00:00Z");
+        assert_eq!(
+            format_relative_at(at("2026-05-07T10:00:00Z"), now),
+            "2h ago"
+        );
+        assert_eq!(
+            format_relative_at(at("2026-05-06T12:30:00Z"), now),
+            "23h ago"
+        );
+    }
+
+    #[test]
+    fn relative_time_under_one_week_is_days_ago() {
+        let now = at("2026-05-07T12:00:00Z");
+        assert_eq!(
+            format_relative_at(at("2026-05-05T12:00:00Z"), now),
+            "2d ago"
+        );
+        assert_eq!(
+            format_relative_at(at("2026-05-01T12:00:00Z"), now),
+            "6d ago"
+        );
+    }
+
+    #[test]
+    fn relative_time_one_week_or_older_falls_back_to_iso_date() {
+        let now = at("2026-05-07T12:00:00Z");
+        assert_eq!(
+            format_relative_at(at("2026-04-30T12:00:00Z"), now),
+            "2026-04-30"
+        );
+    }
+
+    #[test]
+    fn relative_time_negative_delta_collapses_to_iso_date() {
+        // Clock skew: snapshot timestamp is in the future relative to
+        // `now`. We avoid showing "in 2m" (jarring); we show the date.
+        let now = at("2026-05-07T12:00:00Z");
+        assert_eq!(
+            format_relative_at(at("2026-05-07T12:02:00Z"), now),
+            "2026-05-07"
+        );
+    }
+
+    #[test]
+    fn absolute_time_drops_subseconds_and_offset_string() {
+        let taken = at("2026-05-07T14:42:59.659262500Z");
+        assert_eq!(format_absolute_time(taken), "2026-05-07 14:42 UTC");
+    }
+
+    #[test]
+    fn device_display_name_returns_alias_when_present() {
+        let mut state = AppState::new();
+        state.devices.push(DeviceState {
+            info: test_device("dev-live", "Generic Joystick", 4, 16, 0),
+            connected: true,
+            diagnostics: DeviceDiagnostics::default(),
+        });
+        state
+            .device_aliases
+            .insert(DeviceId("dev-live".to_owned()), "Rig Wheel".to_owned());
+        let snapshot = ConfigSnapshot::from_state(&state, None);
+        assert_eq!(
+            snapshot.device_display_name(&DeviceId("dev-live".to_owned())),
+            "Rig Wheel"
+        );
+    }
+
+    #[test]
+    fn device_display_name_falls_back_to_hardware_name_when_alias_blank() {
+        let mut state = AppState::new();
+        state.devices.push(DeviceState {
+            info: test_device("dev-1", "Generic HID Joystick", 0, 0, 0),
+            connected: true,
+            diagnostics: DeviceDiagnostics::default(),
+        });
+        state
+            .device_aliases
+            .insert(DeviceId("dev-1".to_owned()), "   ".to_owned());
+        let snapshot = ConfigSnapshot::from_state(&state, None);
+        assert_eq!(
+            snapshot.device_display_name(&DeviceId("dev-1".to_owned())),
+            "Generic HID Joystick"
+        );
+    }
+
+    #[test]
+    fn device_display_name_returns_alias_for_remembered_disconnected_device() {
+        let mut state = AppState::new();
+        state.device_registry.insert(
+            DeviceId("dev-old".to_owned()),
+            inputforge_core::settings::DeviceRecord {
+                info: test_device("dev-old", "Old Pedals", 0, 0, 0),
+                diagnostics: DeviceDiagnostics::default(),
+                last_seen_unix_ms: Some(1),
+            },
+        );
+        state
+            .device_aliases
+            .insert(DeviceId("dev-old".to_owned()), "Track Pedals".to_owned());
+        // Not in s.devices: the device is remembered but disconnected.
+        let snapshot = ConfigSnapshot::from_state(&state, None);
+        assert_eq!(
+            snapshot.device_display_name(&DeviceId("dev-old".to_owned())),
+            "Track Pedals"
+        );
+    }
+
+    #[test]
+    fn device_display_name_returns_id_for_unknown_device() {
+        let state = AppState::new();
+        let snapshot = ConfigSnapshot::from_state(&state, None);
+        // Snapshot has not seen this device anywhere; fall back to id.
+        assert_eq!(
+            snapshot.device_display_name(&DeviceId("ghost".to_owned())),
+            "ghost"
+        );
+    }
+
+    #[test]
+    fn device_display_name_connected_device_overrides_registry_record() {
+        // Same DeviceId in both `device_registry` (with stale name)
+        // and `s.devices` (live with current name). The connected
+        // entry must win on collision so the user sees the
+        // up-to-date hardware identity, not the stale one.
+        let mut state = AppState::new();
+        state.devices.push(DeviceState {
+            info: test_device("dev-1", "Live Stick", 0, 0, 0),
+            connected: true,
+            diagnostics: DeviceDiagnostics::default(),
+        });
+        state.device_registry.insert(
+            DeviceId("dev-1".to_owned()),
+            inputforge_core::settings::DeviceRecord {
+                info: test_device("dev-1", "Stale Stick", 0, 0, 0),
+                diagnostics: DeviceDiagnostics::default(),
+                last_seen_unix_ms: Some(1),
+            },
+        );
+        let snapshot = ConfigSnapshot::from_state(&state, None);
+        assert_eq!(
+            snapshot.device_display_name(&DeviceId("dev-1".to_owned())),
+            "Live Stick"
+        );
     }
 }

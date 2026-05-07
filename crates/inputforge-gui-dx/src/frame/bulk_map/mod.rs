@@ -21,7 +21,7 @@ use inputforge_core::types::{
 };
 
 use crate::components::{Button, ButtonVariant, Checkbox, Field, Select};
-use crate::context::AppContext;
+use crate::context::{AppContext, ConfigSnapshot};
 use crate::frame::bulk_map::auto_map::{auto_axis_target, auto_button_target, auto_hat_target};
 use crate::frame::bulk_map::empty_state::NoVjoyEmptyState;
 use crate::frame::bulk_map::group_actions::{
@@ -33,6 +33,28 @@ use crate::frame::view_state::{MainSurface, ViewState};
 use crate::toast::{ToastLevel, ToastQueue};
 
 const BULK_MAP_CSS: Asset = asset!("/assets/frame/bulk_map.css");
+
+/// Build the `(id_string, display_label)` pairs for the source-device
+/// dropdown. The label routes through
+/// [`ConfigSnapshot::device_display_name`] so the user sees their
+/// alias, falling through to the hardware name and then the id
+/// string per the standard precedence. Extracted as a pure helper so
+/// the alias contract can be unit-tested without a Dioxus runtime,
+/// per the device-alias display-name spec.
+pub(crate) fn build_source_options(
+    connected: &[DeviceState],
+    cfg: &ConfigSnapshot,
+) -> Vec<(String, String)> {
+    connected
+        .iter()
+        .map(|device| {
+            (
+                device.info.id.0.clone(),
+                cfg.device_display_name(&device.info.id),
+            )
+        })
+        .collect()
+}
 
 #[component]
 pub(crate) fn BulkMapPanel() -> Element {
@@ -188,10 +210,7 @@ fn BulkMapReadyPanel() -> Element {
     let mode_ro: ReadSignal<String> = mode_value.into();
     let apply_to_all_ro: ReadSignal<bool> = apply_to_all.into();
 
-    let source_options = connected_devices
-        .iter()
-        .map(|device| (device.info.id.0.clone(), device.info.name.clone()))
-        .collect::<Vec<_>>();
+    let source_options = build_source_options(&connected_devices, &ctx.config.read());
     let target_options = virtual_devices
         .iter()
         .map(|device| {
@@ -317,12 +336,13 @@ fn BulkMapReadyPanel() -> Element {
                 let profile = app_state.active_profile.as_ref().expect("profile loaded");
                 apply::build_entries(profile, &state.rows, &active_modes)
             };
+            let source_display_name = state.source_device_id.as_ref().map_or_else(
+                || "source".to_owned(),
+                |id| ctx.config.read().device_display_name(id),
+            );
             let count = entries.len();
             let snapshot_label = apply::format_snapshot_label(
-                state
-                    .source_device_id
-                    .as_ref()
-                    .map_or("source", |device| device.0.as_str()),
+                &source_display_name,
                 state.target_vjoy_id.unwrap_or(0),
             );
             let _ = cmd_tx.send(EngineCommand::SetMappingsBulk {
@@ -1063,13 +1083,17 @@ fn apply_for_test(
 ) {
     let profile = state.active_profile.as_ref().expect("profile loaded");
     let entries = apply::build_entries(profile, &wizard.rows, modes);
-    let snapshot_label = apply::format_snapshot_label(
-        wizard
-            .source_device_id
-            .as_ref()
-            .map_or("source", |device| device.0.as_str()),
-        wizard.target_vjoy_id.unwrap_or(0),
-    );
+    // Mirror the production handler: resolve via the snapshot
+    // accessor so the test exercises the same alias lookup path
+    // (alias > hardware > id, with disconnected-but-remembered
+    // devices covered through `device_registry`).
+    let cfg = ConfigSnapshot::from_state(state, None);
+    let source_display_name = wizard
+        .source_device_id
+        .as_ref()
+        .map_or_else(|| "source".to_owned(), |id| cfg.device_display_name(id));
+    let snapshot_label =
+        apply::format_snapshot_label(&source_display_name, wizard.target_vjoy_id.unwrap_or(0));
     let _ = command_tx.send(EngineCommand::SetMappingsBulk {
         entries,
         snapshot_label,

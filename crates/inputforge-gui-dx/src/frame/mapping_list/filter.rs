@@ -56,11 +56,7 @@ pub(crate) fn device_chips_for_mode(
     let mut chips: Vec<DeviceChip> = ids
         .into_iter()
         .map(|id| {
-            let label = cfg
-                .devices
-                .iter()
-                .find(|device| device.info.id == id)
-                .map_or_else(|| id.0.clone(), |device| device.info.name.clone());
+            let label = cfg.device_display_name(&id);
             DeviceChip { id, label }
         })
         .collect();
@@ -89,20 +85,24 @@ mod tests {
     use crate::context::GlyphFlags;
 
     fn cfg_with_device() -> ConfigSnapshot {
+        let device = DeviceState {
+            info: DeviceInfo {
+                id: DeviceId("tfm".to_owned()),
+                name: "TFM Throttle".to_owned(),
+                axes: 4,
+                buttons: 32,
+                hats: 1,
+                instance_path: None,
+                axis_polarities: vec![AxisPolarity::Bipolar; 4],
+            },
+            connected: true,
+            diagnostics: DeviceDiagnostics::default(),
+        };
+        let device_display_names =
+            std::collections::HashMap::from([(device.info.id.clone(), device.info.name.clone())]);
         ConfigSnapshot {
-            devices: vec![DeviceState {
-                info: DeviceInfo {
-                    id: DeviceId("tfm".to_owned()),
-                    name: "TFM Throttle".to_owned(),
-                    axes: 4,
-                    buttons: 32,
-                    hats: 1,
-                    instance_path: None,
-                    axis_polarities: vec![AxisPolarity::Bipolar; 4],
-                },
-                connected: true,
-                diagnostics: DeviceDiagnostics::default(),
-            }],
+            devices: vec![device],
+            device_display_names,
             ..ConfigSnapshot::default()
         }
     }
@@ -122,23 +122,29 @@ mod tests {
     }
 
     fn cfg_with_named_devices<const N: usize>(devices: [(&str, &str); N]) -> ConfigSnapshot {
+        let device_states: Vec<DeviceState> = devices
+            .into_iter()
+            .map(|(id, name)| DeviceState {
+                info: DeviceInfo {
+                    id: DeviceId(id.to_owned()),
+                    name: name.to_owned(),
+                    axes: 1,
+                    buttons: 1,
+                    hats: 0,
+                    instance_path: None,
+                    axis_polarities: vec![AxisPolarity::Bipolar],
+                },
+                connected: true,
+                diagnostics: DeviceDiagnostics::default(),
+            })
+            .collect();
+        let device_display_names = device_states
+            .iter()
+            .map(|d| (d.info.id.clone(), d.info.name.clone()))
+            .collect();
         ConfigSnapshot {
-            devices: devices
-                .into_iter()
-                .map(|(id, name)| DeviceState {
-                    info: DeviceInfo {
-                        id: DeviceId(id.to_owned()),
-                        name: name.to_owned(),
-                        axes: 1,
-                        buttons: 1,
-                        hats: 0,
-                        instance_path: None,
-                        axis_polarities: vec![AxisPolarity::Bipolar],
-                    },
-                    connected: true,
-                    diagnostics: DeviceDiagnostics::default(),
-                })
-                .collect(),
+            devices: device_states,
+            device_display_names,
             ..ConfigSnapshot::default()
         }
     }

@@ -124,6 +124,10 @@ fn mapping_list_renders_single_row_device_filter_chips() {
                         first_vjoy_output: None,
                     },
                 ],
+                device_display_names: std::collections::HashMap::from([
+                    (DeviceId("stick".to_owned()), "Twin Stick".to_owned()),
+                    (DeviceId("pedals".to_owned()), "Pedals".to_owned()),
+                ]),
                 ..ConfigSnapshot::default()
             });
         });
@@ -187,6 +191,10 @@ fn mapping_list_device_chips_are_toggle_buttons() {
                     referenced_devices: vec![DeviceId("stick".to_owned())],
                     first_vjoy_output: None,
                 }],
+                device_display_names: std::collections::HashMap::from([(
+                    DeviceId("stick".to_owned()),
+                    "Twin Stick".to_owned(),
+                )]),
                 ..ConfigSnapshot::default()
             });
         });

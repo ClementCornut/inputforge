@@ -138,17 +138,7 @@ impl AppSettings {
 
     #[must_use]
     pub fn display_name_for(&self, info: &DeviceInfo) -> String {
-        self.device_aliases
-            .get(&info.id)
-            .filter(|alias| !alias.trim().is_empty())
-            .cloned()
-            .unwrap_or_else(|| {
-                if info.name.trim().is_empty() {
-                    info.id.0.clone()
-                } else {
-                    info.name.clone()
-                }
-            })
+        display_name_for_device(&self.device_aliases, info)
     }
 
     pub fn set_device_alias(&mut self, device: DeviceId, alias: Option<String>) {
@@ -164,6 +154,38 @@ impl AppSettings {
             }
         }
     }
+}
+
+/// Resolve a device's user-facing display name.
+///
+/// Single source of truth for the alias / hardware-name / id-fallback
+/// rule. Used by `AppSettings::display_name_for` (the engine-side
+/// owner of `device_aliases`) and by GUI snapshot code that mirrors
+/// the same map onto `AppState.device_aliases`. Keep both call sites
+/// delegating here so the rule never drifts.
+///
+/// Precedence:
+///
+/// 1. `aliases.get(&info.id)` when present and non-blank after trim.
+/// 2. `info.name` when non-blank after trim.
+/// 3. `info.id.0` as a last-resort identifier so the returned string
+///    is never empty.
+#[must_use]
+pub fn display_name_for_device<S: std::hash::BuildHasher>(
+    aliases: &HashMap<DeviceId, String, S>,
+    info: &DeviceInfo,
+) -> String {
+    aliases
+        .get(&info.id)
+        .filter(|alias| !alias.trim().is_empty())
+        .cloned()
+        .unwrap_or_else(|| {
+            if info.name.trim().is_empty() {
+                info.id.0.clone()
+            } else {
+                info.name.clone()
+            }
+        })
 }
 
 #[cfg(test)]
@@ -371,5 +393,71 @@ mod tests {
 
         let loaded = AppSettings::load_from(&path);
         assert_eq!(loaded, s);
+    }
+
+    fn info_with(id: &str, name: &str) -> DeviceInfo {
+        DeviceInfo {
+            id: DeviceId(id.to_owned()),
+            name: name.to_owned(),
+            axes: 0,
+            buttons: 0,
+            hats: 0,
+            instance_path: None,
+            axis_polarities: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn display_name_for_device_returns_alias_when_present() {
+        let mut aliases = HashMap::new();
+        aliases.insert(DeviceId("dev-1".to_owned()), "Throttle Quadrant".to_owned());
+        let info = info_with("dev-1", "Generic HID Joystick");
+        assert_eq!(
+            display_name_for_device(&aliases, &info),
+            "Throttle Quadrant"
+        );
+    }
+
+    #[test]
+    fn display_name_for_device_falls_back_to_hardware_name_when_alias_blank() {
+        let mut aliases = HashMap::new();
+        aliases.insert(DeviceId("dev-1".to_owned()), "   ".to_owned());
+        let info = info_with("dev-1", "Generic HID Joystick");
+        assert_eq!(
+            display_name_for_device(&aliases, &info),
+            "Generic HID Joystick"
+        );
+    }
+
+    #[test]
+    fn display_name_for_device_falls_back_to_hardware_name_when_no_alias() {
+        let aliases = HashMap::new();
+        let info = info_with("dev-1", "Generic HID Joystick");
+        assert_eq!(
+            display_name_for_device(&aliases, &info),
+            "Generic HID Joystick"
+        );
+    }
+
+    #[test]
+    fn display_name_for_device_falls_back_to_id_when_alias_and_name_blank() {
+        let aliases = HashMap::new();
+        let info = info_with("dev-1", "   ");
+        assert_eq!(display_name_for_device(&aliases, &info), "dev-1");
+    }
+
+    #[test]
+    fn app_settings_display_name_for_delegates_to_free_function() {
+        let mut s = AppSettings::default();
+        s.device_aliases
+            .insert(DeviceId("dev-1".to_owned()), "Pedals".to_owned());
+        let info = info_with("dev-1", "VKB Wheel Pedals");
+        // The method MUST produce the same value the free function
+        // would; this guards against the duplication ever drifting.
+        assert_eq!(
+            s.display_name_for(&info),
+            display_name_for_device(&s.device_aliases, &info)
+        );
+        assert_eq!(s.display_name_for(&info), "Pedals");
     }
 }

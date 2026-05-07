@@ -285,11 +285,7 @@ pub(crate) fn stage_summary_for(action: &Action, cfg: &ConfigSnapshot) -> String
             operation,
         } => match second_input.device() {
             Some(device_id) => {
-                let device_name = cfg
-                    .devices
-                    .iter()
-                    .find(|d| &d.info.id == device_id)
-                    .map_or_else(|| device_id.0.as_str(), |d| d.info.name.as_str());
+                let device_name = cfg.device_display_name(device_id);
                 format!("{operation:?} \u{00b7} {device_name}")
             }
             None => format!("{operation:?} \u{00b7} Unbound"),
@@ -388,12 +384,13 @@ fn format_condition(condition: &Condition, cfg: &ConfigSnapshot) -> String {
     }
 }
 
-/// Resolve a predicate's input address to a device-name label, falling back to
-/// the literal `"Unbound"` when the predicate has no binding selected yet.
-fn predicate_device_label<'a>(cfg: &'a ConfigSnapshot, addr: &'a InputAddress) -> &'a str {
+/// Resolve a predicate's input address to a device-display label,
+/// falling back to the literal `"Unbound"` when the predicate has no
+/// binding selected yet.
+fn predicate_device_label(cfg: &ConfigSnapshot, addr: &InputAddress) -> String {
     match addr.device() {
         Some(id) => device_label(cfg, id),
-        None => "Unbound",
+        None => "Unbound".to_owned(),
     }
 }
 
@@ -418,13 +415,12 @@ fn format_response_curve_summary(curve: &ResponseCurve) -> String {
     }
 }
 
-/// Look up the human-readable name for a device ID in the config snapshot.
-///
-/// Falls back to the raw device ID string when the device is not present in
-/// the snapshot (e.g. disconnected devices whose actions are still persisted).
-fn device_label<'a>(cfg: &'a ConfigSnapshot, id: &'a inputforge_core::types::DeviceId) -> &'a str {
-    cfg.devices
-        .iter()
-        .find(|d| &d.info.id == id)
-        .map_or(id.0.as_str(), |d| d.info.name.as_str())
+/// Look up the human-readable display name for a device id in the
+/// config snapshot. Honors the user's alias via
+/// [`ConfigSnapshot::device_display_name`] (alias > hardware name >
+/// id-string). Covers connected devices and remembered (disconnected)
+/// devices alike, so a predicate or merge-axis stage referencing an
+/// unplugged device still shows the alias rather than the raw id.
+fn device_label(cfg: &ConfigSnapshot, id: &inputforge_core::types::DeviceId) -> String {
+    cfg.device_display_name(id)
 }

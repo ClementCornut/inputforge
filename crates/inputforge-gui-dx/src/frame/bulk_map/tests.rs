@@ -31,6 +31,11 @@ use crate::toast::{ToastQueue, ToastState};
 
 pub(super) fn provide(state: AppState) -> (AppContext, mpsc::Receiver<EngineCommand>) {
     let (tx, rx) = mpsc::channel();
+    // Mirror production wiring: ctx.config is populated from state via
+    // `ConfigSnapshot::from_state`, so the bulk-map panel sees the
+    // resolved `device_display_names` map without each test having to
+    // build it by hand.
+    let initial_config = ConfigSnapshot::from_state(&state, None);
     let ctx = AppContext {
         state: Arc::new(RwLock::new(state)),
         commands: tx,
@@ -41,7 +46,7 @@ pub(super) fn provide(state: AppState) -> (AppContext, mpsc::Receiver<EngineComm
             modes: vec!["Default".to_owned()],
             ..MetaSnapshot::default()
         }),
-        config: use_signal(ConfigSnapshot::default),
+        config: use_signal(|| initial_config),
         live: use_signal(LiveSnapshot::default),
     };
     use_context_provider(|| ctx.clone());
@@ -836,8 +841,76 @@ fn panel_apply_for_test_dispatches_set_mappings_bulk_with_snapshot_label() {
             snapshot_label,
         } => {
             assert_eq!(entries.len(), 1);
-            assert_eq!(snapshot_label, "Before batch map: dev-1 to vJoy 1");
+            // The kind badge in the snapshot row already says "Before
+            // batch map", so the recovery label carries only the
+            // resolved source-device display name and the destination
+            // vJoy slot. With no alias / hardware name registered for
+            // "dev-1", the resolver falls through to the raw id string
+            // (last-resort behaviour of `display_name_for`).
+            assert_eq!(snapshot_label, "dev-1 \u{00b7} vJoy 1");
         }
         _ => panic!("expected SetMappingsBulk"),
     }
+}
+
+#[test]
+fn source_options_use_alias_via_snapshot_accessor() {
+    use crate::frame::bulk_map::build_source_options;
+    let device = DeviceState {
+        info: DeviceInfo {
+            id: DeviceId("dev-1".to_owned()),
+            name: "Generic HID Joystick".to_owned(),
+            axes: 4,
+            buttons: 16,
+            hats: 1,
+            instance_path: None,
+            axis_polarities: vec![AxisPolarity::Bipolar; 4],
+        },
+        connected: true,
+        diagnostics: DeviceDiagnostics::default(),
+    };
+    let mut device_display_names = HashMap::new();
+    device_display_names.insert(DeviceId("dev-1".to_owned()), "Throttle Quadrant".to_owned());
+    let cfg = ConfigSnapshot {
+        devices: vec![device.clone()],
+        device_display_names,
+        ..ConfigSnapshot::default()
+    };
+
+    let opts = build_source_options(&[device], &cfg);
+    // The label cell shows the alias, never the raw hardware name.
+    assert_eq!(opts.len(), 1);
+    assert_eq!(opts[0].0, "dev-1");
+    assert_eq!(opts[0].1, "Throttle Quadrant");
+}
+
+#[test]
+fn source_options_fall_back_to_hardware_name_when_no_alias() {
+    use crate::frame::bulk_map::build_source_options;
+    let device = DeviceState {
+        info: DeviceInfo {
+            id: DeviceId("dev-1".to_owned()),
+            name: "Generic HID Joystick".to_owned(),
+            axes: 4,
+            buttons: 16,
+            hats: 1,
+            instance_path: None,
+            axis_polarities: vec![AxisPolarity::Bipolar; 4],
+        },
+        connected: true,
+        diagnostics: DeviceDiagnostics::default(),
+    };
+    let mut device_display_names = HashMap::new();
+    device_display_names.insert(
+        DeviceId("dev-1".to_owned()),
+        "Generic HID Joystick".to_owned(),
+    );
+    let cfg = ConfigSnapshot {
+        devices: vec![device.clone()],
+        device_display_names,
+        ..ConfigSnapshot::default()
+    };
+
+    let opts = build_source_options(&[device], &cfg);
+    assert_eq!(opts[0].1, "Generic HID Joystick");
 }

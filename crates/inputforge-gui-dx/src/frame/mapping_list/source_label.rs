@@ -55,10 +55,7 @@ pub(crate) fn split_label(addr: &InputAddress, cfg: &ConfigSnapshot) -> (String,
         InputAddress::Bound { device, input } => (device, input),
         InputAddress::Unbound => return (String::new(), UNBOUND_PLACEHOLDER.to_owned()),
     };
-    let device_label = match cfg.devices.iter().find(|d| &d.info.id == device) {
-        Some(dev) => dev.info.name.clone(),
-        None => device.0.clone(),
-    };
+    let device_label = cfg.device_display_name(device);
     let input_label = match input {
         InputId::Axis { index } => axis_label(*index).into_owned(),
         InputId::Button { index } => format!("Btn {}", index + 1),
@@ -75,20 +72,24 @@ mod tests {
     use inputforge_core::types::{AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo};
 
     fn cfg_with_device(name: &str, did: &str) -> ConfigSnapshot {
+        let device = DeviceState {
+            info: DeviceInfo {
+                id: DeviceId(did.to_owned()),
+                name: name.to_owned(),
+                axes: 8,
+                buttons: 32,
+                hats: 1,
+                instance_path: None,
+                axis_polarities: vec![AxisPolarity::Bipolar; 8],
+            },
+            connected: true,
+            diagnostics: DeviceDiagnostics::default(),
+        };
+        let device_display_names =
+            std::collections::HashMap::from([(device.info.id.clone(), device.info.name.clone())]);
         ConfigSnapshot {
-            devices: vec![DeviceState {
-                info: DeviceInfo {
-                    id: DeviceId(did.to_owned()),
-                    name: name.to_owned(),
-                    axes: 8,
-                    buttons: 32,
-                    hats: 1,
-                    instance_path: None,
-                    axis_polarities: vec![AxisPolarity::Bipolar; 8],
-                },
-                connected: true,
-                diagnostics: DeviceDiagnostics::default(),
-            }],
+            devices: vec![device],
+            device_display_names,
             ..ConfigSnapshot::default()
         }
     }

@@ -585,20 +585,23 @@ use crate::frame::mapping_editor::pipeline::stage::{stage_summary_for, stage_tit
 
 /// Build a minimal [`ConfigSnapshot`] containing a single device named "Stick".
 fn synth_cfg() -> ConfigSnapshot {
+    let device = inputforge_core::state::DeviceState {
+        info: DeviceInfo {
+            id: DeviceId("dev-1".to_owned()),
+            name: "Stick".to_owned(),
+            axes: 2,
+            buttons: 4,
+            hats: 0,
+            instance_path: None,
+            axis_polarities: vec![AxisPolarity::Bipolar; 2],
+        },
+        connected: true,
+        diagnostics: inputforge_core::types::DeviceDiagnostics::default(),
+    };
+    let device_display_names = HashMap::from([(device.info.id.clone(), device.info.name.clone())]);
     ConfigSnapshot {
-        devices: vec![inputforge_core::state::DeviceState {
-            info: DeviceInfo {
-                id: DeviceId("dev-1".to_owned()),
-                name: "Stick".to_owned(),
-                axes: 2,
-                buttons: 4,
-                hats: 0,
-                instance_path: None,
-                axis_polarities: vec![AxisPolarity::Bipolar; 2],
-            },
-            connected: true,
-            diagnostics: inputforge_core::types::DeviceDiagnostics::default(),
-        }],
+        devices: vec![device],
+        device_display_names,
         ..ConfigSnapshot::default()
     }
 }

@@ -3,9 +3,10 @@
 //! Right-click stage actions menu (Move up / Move down / Delete).
 //!
 //! Built on the shared `AnchoredMenu` primitive (`crate::components::menu`),
-//! which owns the backdrop, cursor-anchored positioning, and keyboard /
-//! focus handling. This module supplies the three action handlers, the
-//! disabled-state derivation, and the `on_close` callback that clears
+//! which owns click-outside dismissal (via `ClickAwayListener`),
+//! cursor-anchored positioning, and keyboard / focus handling. This
+//! module supplies the three action handlers, the disabled-state
+//! derivation, and the `on_close` callback that clears
 //! `EditorState::stage_menu`.
 //!
 //! # Structural-mutation contract
