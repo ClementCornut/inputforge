@@ -196,4 +196,46 @@ mod tests {
         assert_eq!(device, "");
         assert_eq!(input, "Unbound");
     }
+
+    #[test]
+    fn split_label_uses_alias_over_hardware_name() {
+        // Regression guard for the device-alias display-name spec: this
+        // call site must read `cfg.device_display_name(...)` (alias),
+        // not `info.name` (hardware). Set both to clearly-distinct
+        // strings so a silent revert to `info.name` would fail this
+        // test.
+        let device = DeviceState {
+            info: DeviceInfo {
+                id: DeviceId("dev-1".to_owned()),
+                name: "Generic HID Joystick".to_owned(),
+                axes: 4,
+                buttons: 16,
+                hats: 0,
+                instance_path: None,
+                axis_polarities: vec![AxisPolarity::Bipolar; 4],
+            },
+            connected: true,
+            diagnostics: DeviceDiagnostics::default(),
+        };
+        let device_display_names = std::collections::HashMap::from([(
+            device.info.id.clone(),
+            "Throttle Quadrant".to_owned(),
+        )]);
+        let cfg = ConfigSnapshot {
+            devices: vec![device],
+            device_display_names,
+            ..ConfigSnapshot::default()
+        };
+        let addr = InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+
+        let (device_label, input_label) = split_label(&addr, &cfg);
+        assert_eq!(device_label, "Throttle Quadrant");
+        assert_ne!(device_label, "Generic HID Joystick");
+        assert_eq!(input_label, "X");
+
+        assert_eq!(format(&addr, &cfg), "Throttle Quadrant \u{00b7} X");
+    }
 }

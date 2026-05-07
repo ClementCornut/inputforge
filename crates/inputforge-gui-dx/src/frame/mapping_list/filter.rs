@@ -252,4 +252,62 @@ mod tests {
         );
         assert_ne!(chips[0].label, chips[1].label);
     }
+
+    #[test]
+    fn device_chips_use_alias_when_display_name_differs_from_hardware_name() {
+        // Regression guard: the filter chip label must come from
+        // `cfg.device_display_name(...)`, not `info.name`. Build a cfg
+        // where `device_display_names` contains aliases distinct from
+        // every device's hardware name, then assert chip labels echo
+        // the aliases (and exclude both the hardware name and the raw
+        // id, which would surface only on a regression).
+        let device_states: Vec<DeviceState> = [
+            ("dev-a", "Generic HID Joystick"),
+            ("dev-b", "Generic HID Joystick"),
+        ]
+        .into_iter()
+        .map(|(id, hardware_name)| DeviceState {
+            info: DeviceInfo {
+                id: DeviceId(id.to_owned()),
+                name: hardware_name.to_owned(),
+                axes: 1,
+                buttons: 1,
+                hats: 0,
+                instance_path: None,
+                axis_polarities: vec![AxisPolarity::Bipolar],
+            },
+            connected: true,
+            diagnostics: DeviceDiagnostics::default(),
+        })
+        .collect();
+        let device_display_names = std::collections::HashMap::from([
+            (DeviceId("dev-a".to_owned()), "Rig Wheel".to_owned()),
+            (DeviceId("dev-b".to_owned()), "Track Pedals".to_owned()),
+        ]);
+        let cfg = ConfigSnapshot {
+            devices: device_states,
+            device_display_names,
+            ..ConfigSnapshot::default()
+        };
+        let rows = vec![
+            row_in_mode_with_refs("Default", "A", vec!["dev-a"]),
+            row_in_mode_with_refs("Default", "B", vec!["dev-b"]),
+        ];
+
+        let chips = device_chips_for_mode(&rows, "Default", &cfg);
+        let labels: Vec<&str> = chips.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.contains(&"Rig Wheel"),
+            "expected 'Rig Wheel' chip label, got {labels:?}"
+        );
+        assert!(
+            labels.contains(&"Track Pedals"),
+            "expected 'Track Pedals' chip label, got {labels:?}"
+        );
+        for label in &labels {
+            assert_ne!(*label, "Generic HID Joystick");
+            assert_ne!(*label, "dev-a");
+            assert_ne!(*label, "dev-b");
+        }
+    }
 }

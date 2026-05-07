@@ -606,6 +606,33 @@ fn synth_cfg() -> ConfigSnapshot {
     }
 }
 
+/// Variant of [`synth_cfg`] whose `device_display_names` entry is an
+/// alias deliberately distinct from `info.name`. Used by the alias
+/// regression tests below: a silent revert of the call site to
+/// `info.name` flips the asserted substring from the alias back to
+/// `"Stick"` and the test fails.
+fn synth_cfg_with_alias(alias: &str) -> ConfigSnapshot {
+    let device = inputforge_core::state::DeviceState {
+        info: DeviceInfo {
+            id: DeviceId("dev-1".to_owned()),
+            name: "Stick".to_owned(),
+            axes: 2,
+            buttons: 4,
+            hats: 0,
+            instance_path: None,
+            axis_polarities: vec![AxisPolarity::Bipolar; 2],
+        },
+        connected: true,
+        diagnostics: inputforge_core::types::DeviceDiagnostics::default(),
+    };
+    let device_display_names = HashMap::from([(device.info.id.clone(), alias.to_owned())]);
+    ConfigSnapshot {
+        devices: vec![device],
+        device_display_names,
+        ..ConfigSnapshot::default()
+    }
+}
+
 #[test]
 fn title_for_each_variant() {
     assert_eq!(stage_title_for(&Action::Invert), "Invert");
@@ -650,6 +677,50 @@ fn summary_merge_axis_lists_op_and_secondary() {
     );
     assert!(s.contains("Average"), "expected op in summary: {s}");
     assert!(s.contains("Stick"), "expected device in summary: {s}");
+}
+
+#[test]
+fn summary_merge_axis_uses_alias_for_secondary_device() {
+    // Regression guard: MergeAxis stage labels must route through
+    // `cfg.device_display_name(...)`. The cfg below maps `dev-1` to
+    // alias "Rig Wheel" while keeping `info.name = "Stick"`, so a
+    // revert to `info.name` would flip the summary back to "Stick"
+    // and trip the negated assertion.
+    let s = stage_summary_for(
+        &Action::MergeAxis {
+            second_input: synth_addr(),
+            operation: MergeOp::Average,
+        },
+        &synth_cfg_with_alias("Rig Wheel"),
+    );
+    assert!(s.contains("Rig Wheel"), "expected alias in summary: {s}");
+    assert!(
+        !s.contains("Stick"),
+        "summary leaked hardware name instead of alias: {s}"
+    );
+}
+
+#[test]
+fn summary_conditional_button_pressed_uses_alias() {
+    // Regression guard for the `format_condition` ->
+    // `predicate_device_label` -> `device_label` chain. Same alias
+    // contract as above, exercised through the Conditional /
+    // ButtonPressed predicate.
+    let s = stage_summary_for(
+        &Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: synth_addr(),
+            },
+            if_true: vec![],
+            if_false: vec![],
+        },
+        &synth_cfg_with_alias("Rig Wheel"),
+    );
+    assert!(s.contains("Rig Wheel"), "expected alias in summary: {s}");
+    assert!(
+        !s.contains("Stick"),
+        "summary leaked hardware name instead of alias: {s}"
+    );
 }
 
 #[test]
