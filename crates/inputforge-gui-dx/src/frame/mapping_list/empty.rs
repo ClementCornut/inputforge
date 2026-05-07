@@ -1,8 +1,8 @@
 //! Empty-state renderers for the F8 mapping list rail.
 //!
 //! State A, zero mappings overall (profile loaded, mode has none):
-//!   title + helper + primary `+ Add mapping` button that expands directly
-//!   into `CapturingArmed` (skips Resting -> click).
+//!   title + helper. The dashed `+ Add mapping` footer in the rail
+//!   itself is the only affordance to start a mapping.
 //!
 //! State B, zero filter results: title naming active filters + helper +
 //!   independent ghost clear buttons.
@@ -12,18 +12,13 @@ use dioxus::prelude::*;
 use crate::components::{Button, ButtonVariant};
 
 #[component]
-pub(crate) fn EmptyZeroMappings(on_start_capture: EventHandler<()>) -> Element {
+pub(crate) fn EmptyZeroMappings() -> Element {
     tracing::trace!(target: "frame::render", region = "mapping_list::empty_zero_mappings");
     rsx! {
         div { class: "if-rail-empty if-rail-empty--zero-mappings",
             div { class: "if-rail-empty__title", "No mappings yet" }
             div { class: "if-rail-empty__helper",
-                "Press an input on any connected device, or name a mapping below."
-            }
-            Button {
-                variant: ButtonVariant::Primary,
-                onclick: move |_| on_start_capture.call(()),
-                "+ Add mapping"
+                "Click + Add mapping below to start one."
             }
         }
     }

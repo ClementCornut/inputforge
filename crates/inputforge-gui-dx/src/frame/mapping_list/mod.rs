@@ -344,12 +344,7 @@ pub(crate) fn MappingList() -> Element {
         return rsx! {
             Stylesheet { href: MAPPING_LIST_CSS }
             div { class: "if-rail",
-                EmptyZeroMappings {
-                    on_start_capture: move |()| {
-                        let mut force = force_expand_add;
-                        force.set(true);
-                    }
-                }
+                EmptyZeroMappings {}
                 div { class: "if-rail__add-sticky",
                     AddInline {
                         force_expanded: force_expand_add,

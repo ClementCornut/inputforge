@@ -630,13 +630,13 @@ fn row_renders_resting_when_renaming_is_none() {
 }
 
 #[test]
-fn empty_zero_mappings_renders_title_and_button() {
+fn empty_zero_mappings_renders_title_and_class() {
     use crate::frame::mapping_list::empty::EmptyZeroMappings;
 
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         rsx! {
-            EmptyZeroMappings { on_start_capture: move |()| {} }
+            EmptyZeroMappings {}
         }
     }
     let mut vdom = VirtualDom::new(TestComponent);
@@ -1001,7 +1001,7 @@ fn empty_zero_mappings_renders_full_anatomy() {
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         rsx! {
-            EmptyZeroMappings { on_start_capture: move |()| {} }
+            EmptyZeroMappings {}
         }
     }
     let mut vdom = VirtualDom::new(TestComponent);
@@ -1009,13 +1009,8 @@ fn empty_zero_mappings_renders_full_anatomy() {
     let html = render(&vdom);
     assert!(html.contains("No mappings yet"), "title missing: {html}");
     assert!(
-        html.contains("Press an input on any connected device")
-            || html.contains("name a mapping below"),
+        html.contains("Click + Add mapping below to start one."),
         "helper text missing: {html}",
-    );
-    assert!(
-        html.contains("+ Add mapping"),
-        "primary button missing: {html}"
     );
     assert!(
         html.contains("if-rail-empty"),

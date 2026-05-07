@@ -52,10 +52,12 @@
    stack vertically. */
 .if-layout__rail {
     flex: 0 0 280px;
+    display: flex;
+    flex-direction: column;
     background: var(--color-bg-elevated);
     border-right: 1px solid var(--color-border-strong);
     box-shadow: var(--shadow-1);
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 /* The center is the working surface, sunken, with horizontal padding
