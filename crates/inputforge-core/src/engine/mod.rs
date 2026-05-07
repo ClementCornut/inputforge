@@ -149,6 +149,20 @@ impl Engine {
             settings_path,
         };
 
+        // Classify the startup-loaded profile's origin if main.rs left
+        // it unset. Without this, a fixture loaded from outside the
+        // library dir (e.g. a dev `--profile` path) projects with
+        // `active_profile_origin == None`, so the GUI's External branch
+        // never fires and the row stays invisible. Done before the
+        // snapshot refresh so namespace resolution sees the right
+        // origin.
+        if let Some(path) = engine.state.read().profile_path.clone() {
+            let mut state_guard = engine.state.write();
+            if state_guard.active_profile_origin.is_none() {
+                state_guard.active_profile_origin = Some(engine.profile_origin_for_path(&path));
+            }
+        }
+
         // Populate projection rows from the on-disk library and the active
         // profile's snapshot history so the GUI has data to render before
         // the first command lands. Failures are logged and ignored: a

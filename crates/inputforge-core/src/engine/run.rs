@@ -1013,7 +1013,7 @@ impl Engine {
             .join(format!("{}.toml", sanitize_filename(name)))
     }
 
-    fn profile_origin_for_path(&self, path: &Path) -> ProfileOrigin {
+    pub(super) fn profile_origin_for_path(&self, path: &Path) -> ProfileOrigin {
         if path.starts_with(self.profile_library_dir()) {
             ProfileOrigin::Library
         } else {
