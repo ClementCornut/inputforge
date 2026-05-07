@@ -3,6 +3,8 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use sha2::{Digest, Sha256};
+
 use crate::error::{EngineError, Result};
 
 /// Compute the snapshots directory for a profile.
@@ -30,6 +32,24 @@ pub(crate) fn snapshots_dir_for(profile_path: &Path) -> Result<PathBuf> {
     let mut dir = parent.join(stem);
     dir.as_mut_os_string().push(".snapshots");
     Ok(dir)
+}
+
+/// Compute the snapshots directory for an externally loaded profile.
+///
+/// External profiles do not live in the `InputForge` profile library; their
+/// snapshot history is namespaced by a deterministic SHA-256 hex of the
+/// canonical path under `<config_dir>/external_snapshots/<hash>/`. This
+/// keeps the snapshot store inside `InputForge`'s config directory rather
+/// than next to user-owned files, and reloading the same external path
+/// always resolves to the same namespace.
+pub(crate) fn external_snapshots_dir_for(canonical_path: &Path) -> PathBuf {
+    let path_str = canonical_path.as_os_str().to_string_lossy();
+    let mut hasher = Sha256::new();
+    hasher.update(path_str.as_bytes());
+    let hash = hex::encode(hasher.finalize());
+    crate::settings::AppSettings::config_dir()
+        .join("external_snapshots")
+        .join(hash)
 }
 
 /// Atomically write `bytes` to `dest`.

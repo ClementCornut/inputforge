@@ -8,6 +8,7 @@ use parking_lot::RwLock;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::pipeline::InputCache;
 use inputforge_core::settings::AppSettings;
+use inputforge_core::snapshot::SnapshotId;
 use inputforge_core::state::{
     AppState, DeviceState, EngineStatus, ForcedMode, ProfileOrigin as CoreProfileOrigin,
 };
@@ -80,6 +81,10 @@ pub(crate) struct ProfileRowView {
     pub path_label: String,
     pub is_active: bool,
     pub origin: ProfileRowOrigin,
+    /// Number of modes defined in the profile.
+    pub mode_count: u32,
+    /// Pre-formatted "last edited" label for display, when known.
+    pub last_edited_label: Option<String>,
     pub can_open: bool,
     pub can_rename: bool,
     pub can_duplicate: bool,
@@ -91,7 +96,7 @@ pub(crate) struct ProfileRowView {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SnapshotRowView {
-    pub id: String,
+    pub id: SnapshotId,
     pub kind_label: String,
     pub label: Option<String>,
     pub time_label: String,
@@ -217,6 +222,8 @@ impl MetaSnapshot {
                     path_label: row.path.display().to_string(),
                     is_active: row.is_active,
                     origin: ProfileRowOrigin::Library,
+                    mode_count: profile_library_row_mode_count(row),
+                    last_edited_label: profile_library_row_last_edited_label(row),
                     can_open: true,
                     can_rename: true,
                     can_duplicate: true,
@@ -228,30 +235,20 @@ impl MetaSnapshot {
             })
             .collect::<Vec<_>>();
         if s.active_profile_origin == Some(CoreProfileOrigin::External) {
-            if let (Some(path), Some(profile)) =
-                (s.profile_path.as_ref(), s.active_profile.as_ref())
-            {
-                profile_rows.push(ProfileRowView {
-                    id: path.display().to_string(),
-                    name: profile.name().to_owned(),
-                    path_label: path.display().to_string(),
-                    is_active: true,
-                    origin: ProfileRowOrigin::External,
-                    can_open: false,
-                    can_rename: false,
-                    can_duplicate: false,
-                    can_reveal: true,
-                    can_delete: false,
-                    can_add_to_library: true,
-                    can_snapshot_now: true,
-                });
+            if let Some(row) = active_profile_row_from_state(s, ProfileRowOrigin::External) {
+                profile_rows.push(row);
+            }
+        }
+        if profile_rows.is_empty() {
+            if let Some(row) = active_profile_row_from_state(s, ProfileRowOrigin::Library) {
+                profile_rows.push(row);
             }
         }
         let snapshot_rows = s
             .active_snapshot_rows
             .iter()
             .map(|row| SnapshotRowView {
-                id: row.id.to_string(),
+                id: row.id,
                 kind_label: match row.kind {
                     inputforge_core::snapshot::SnapshotKind::AutoSessionStart => "Session start",
                     inputforge_core::snapshot::SnapshotKind::AutoBeforeRestore => "Before restore",
@@ -291,6 +288,98 @@ impl MetaSnapshot {
             profile_rows,
             snapshot_rows,
         }
+    }
+}
+
+fn active_profile_row_from_state(s: &AppState, origin: ProfileRowOrigin) -> Option<ProfileRowView> {
+    let path = s.profile_path.as_ref()?;
+    let profile = s.active_profile.as_ref()?;
+    let path_label = path.display().to_string();
+    let is_external = origin == ProfileRowOrigin::External;
+    let mode_count = u32::try_from(profile.modes().all_modes().len()).unwrap_or(u32::MAX);
+    let last_edited_label = std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .map(format_system_time_relative);
+
+    Some(ProfileRowView {
+        id: path_label.clone(),
+        name: profile.name().to_owned(),
+        path_label,
+        is_active: true,
+        origin,
+        mode_count,
+        last_edited_label,
+        can_open: false,
+        can_rename: !is_external,
+        can_duplicate: !is_external,
+        can_reveal: true,
+        can_delete: !is_external,
+        can_add_to_library: is_external,
+        can_snapshot_now: true,
+    })
+}
+
+/// Mode count for a `ProfileLibraryRow`. Adapter from the core
+/// projection field into the GUI view model.
+fn profile_library_row_mode_count(row: &inputforge_core::state::ProfileLibraryRow) -> u32 {
+    row.mode_count
+}
+
+/// Pre-formatted "last edited" label for a `ProfileLibraryRow`.
+fn profile_library_row_last_edited_label(
+    row: &inputforge_core::state::ProfileLibraryRow,
+) -> Option<String> {
+    row.last_edited_at.map(format_chrono_time_relative)
+}
+
+/// Format a `DateTime<Utc>` as a short relative-time label.
+fn format_chrono_time_relative(datetime: chrono::DateTime<chrono::Utc>) -> String {
+    let now = chrono::Utc::now();
+    let delta = now.signed_duration_since(datetime);
+    if delta.num_seconds() < 0 {
+        return datetime.format("%Y-%m-%d").to_string();
+    }
+    let mins = delta.num_minutes();
+    let hours = delta.num_hours();
+    let days = delta.num_days();
+    if mins < 1 {
+        "just now".to_owned()
+    } else if mins < 60 {
+        format!("{mins}m ago")
+    } else if hours < 24 {
+        format!("{hours}h ago")
+    } else if days < 7 {
+        format!("{days}d ago")
+    } else {
+        datetime.format("%Y-%m-%d").to_string()
+    }
+}
+
+/// Format a `SystemTime` as a short relative-time label suitable for a
+/// dense profile row (e.g. "3m ago", "yesterday", "2026-04-01"). Falls
+/// back to ISO 8601 date when the elapsed delta is large or the system
+/// clock disagrees with the file mtime.
+fn format_system_time_relative(time: std::time::SystemTime) -> String {
+    let datetime: chrono::DateTime<chrono::Utc> = time.into();
+    let now = chrono::Utc::now();
+    let delta = now.signed_duration_since(datetime);
+    if delta.num_seconds() < 0 {
+        return datetime.format("%Y-%m-%d").to_string();
+    }
+    let mins = delta.num_minutes();
+    let hours = delta.num_hours();
+    let days = delta.num_days();
+    if mins < 1 {
+        "just now".to_owned()
+    } else if mins < 60 {
+        format!("{mins}m ago")
+    } else if hours < 24 {
+        format!("{hours}h ago")
+    } else if days < 7 {
+        format!("{days}d ago")
+    } else {
+        datetime.format("%Y-%m-%d").to_string()
     }
 }
 

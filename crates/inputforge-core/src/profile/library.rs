@@ -107,6 +107,21 @@ fn save_profile_copy_with_name(
     })
 }
 
+/// Reveal `path` in the platform OS file manager.
+///
+/// Best-effort UX, the caller decides how to surface a failure. On Windows
+/// this selects the file in Explorer; on macOS Finder selects the file;
+/// on Linux the parent directory is opened by the desktop's default file
+/// manager.
+///
+/// # Errors
+///
+/// Returns [`EngineError::Io`] when the underlying [`opener`] call fails
+/// (e.g., no file manager configured, invalid path, OS error).
+pub fn reveal_profile_in_explorer(path: &Path) -> Result<()> {
+    opener::reveal(path).map_err(|e| EngineError::Io(std::io::Error::other(e)))
+}
+
 fn destination_path_for_name(path: &Path, name: &str) -> Result<PathBuf> {
     let parent = path.parent().ok_or_else(|| EngineError::InvalidConfig {
         reason: "profile path has no parent directory".to_owned(),

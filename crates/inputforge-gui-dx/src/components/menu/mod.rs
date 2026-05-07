@@ -395,7 +395,18 @@ pub fn MenuItems(
 
     let is_open = *open_signal.read();
     if !is_open {
-        return rsx! {};
+        let combined = merge_class("if-menu__list", "", class.as_deref());
+        return rsx! {
+            div {
+                class: "{combined}",
+                id: "{menu_id}",
+                role: "menu",
+                tabindex: "-1",
+                "aria-hidden": "true",
+                style: "display: none;",
+                {children}
+            }
+        };
     }
 
     // Pass-1 vs pass-2 inline style. Pass 1 keeps the menu invisible at

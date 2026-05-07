@@ -47,6 +47,17 @@ pub struct ProfileLibraryRow {
     pub origin: ProfileOrigin,
     /// Whether this row is the active profile.
     pub is_active: bool,
+    /// Number of modes declared by the profile.
+    ///
+    /// Projected by the engine from `profile.modes().all_modes().len()`.
+    /// Defaults to `0` when the profile cannot be loaded for projection.
+    pub mode_count: u32,
+    /// Last filesystem modification time of the profile file.
+    ///
+    /// Projected from `std::fs::metadata(path)?.modified()?`. `None` when
+    /// the platform does not expose mtime, when the conversion to UTC fails,
+    /// or when the metadata read fails.
+    pub last_edited_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Engine-projected snapshot row for the active profile.

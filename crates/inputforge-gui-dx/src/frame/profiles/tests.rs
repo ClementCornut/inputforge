@@ -11,15 +11,16 @@ use inputforge_core::mode::ModeTree;
 use inputforge_core::profile::Profile;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::snapshot::{SnapshotConfig, SnapshotId, SnapshotKind, create};
-use inputforge_core::state::AppState;
+use inputforge_core::state::{AppState, ProfileOrigin};
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
 use crate::context::{ProfileRowOrigin, ProfileRowView, SnapshotRowView};
 use crate::frame::layout::EmptyState;
 use crate::frame::profiles::ProfilesPanel;
 use crate::frame::profiles::actions::{
-    ConfirmationKind, ToastAction, profile_delete_action, snapshot_delete_action,
-    snapshot_restore_action,
+    ConfirmationKind, ToastAction, create_manual_snapshot_action, profile_delete_action,
+    profile_duplicate_action, profile_open_action, profile_rename_action, profile_reveal_action,
+    snapshot_delete_action, snapshot_restore_action,
 };
 use crate::frame::profiles::new_profile::{
     NewProfileSource, add_external_to_library_command, create_new_profile_command,
@@ -44,7 +45,10 @@ fn simple_profile(name: &str) -> Profile {
 }
 
 fn sample_profiles_context() -> AppState {
-    AppState::with_profile(simple_profile("Bravo"))
+    let mut state = AppState::with_profile(simple_profile("Default"));
+    state.profile_path = Some(PathBuf::from("C:/Profiles/Default.toml"));
+    state.active_profile_origin = Some(ProfileOrigin::Library);
+    state
 }
 
 #[component]
@@ -85,7 +89,7 @@ fn render_no_profile_frame() -> String {
 
 fn sample_snapshot_context() -> Vec<SnapshotRowView> {
     vec![SnapshotRowView {
-        id: sample_snapshot_id().to_string(),
+        id: sample_snapshot_id(),
         kind_label: "Manual".to_owned(),
         label: Some("Before trim".to_owned()),
         time_label: "2026-05-06T20:00:00Z".to_owned(),
@@ -96,9 +100,23 @@ fn sample_snapshot_context() -> Vec<SnapshotRowView> {
 
 #[component]
 fn SnapshotDrawerHarness(rows: Vec<SnapshotRowView>, open: bool) -> Element {
+    let state = Arc::new(RwLock::new(sample_profiles_context()));
+    let (commands, _rx) = mpsc::channel();
+    let meta = use_signal(MetaSnapshot::default);
+    let config = use_signal(ConfigSnapshot::default);
+    let live = use_signal(LiveSnapshot::default);
+    use_context_provider(|| AppContext {
+        state,
+        commands,
+        settings: Arc::new(AppSettings::default()),
+        meta,
+        config,
+        live,
+    });
+
     rsx! {
         SnapshotDrawer {
-            active_profile_name: "Bravo".to_owned(),
+            active_profile_name: "Default".to_owned(),
             rows,
             open,
         }
@@ -147,6 +165,8 @@ fn sample_profile_rows(active: &str, names: &[&str]) -> Vec<ProfileRowView> {
             path_label: format!("C:/Profiles/{name}.toml"),
             is_active: *name == active,
             origin: ProfileRowOrigin::Library,
+            mode_count: 1,
+            last_edited_label: None,
             can_open: true,
             can_rename: true,
             can_duplicate: true,
@@ -198,6 +218,68 @@ fn profiles_panel_replaces_placeholder_copy() {
 }
 
 #[test]
+fn active_profile_row_renders_when_library_rows_are_empty() {
+    let html = render_profiles_panel(sample_profiles_context());
+
+    assert!(html.contains("Default"));
+    assert!(html.contains("profile-row--active"));
+    // Spec column contract: name + active pill + mode count + last-edited;
+    // path label is intentionally absent.
+    assert!(!html.contains("profile-row__path"));
+}
+
+#[test]
+fn profiles_panel_uses_design_system_components() {
+    let html = render_profiles_panel(sample_profiles_context());
+
+    assert!(html.contains("if-button"));
+    assert!(html.contains("if-icon-button"));
+    assert!(html.contains("if-badge"));
+    assert!(html.contains("if-bottom-drawer"));
+    assert!(html.contains("if-menu"));
+    assert!(html.contains("if-menu__trigger"));
+    assert!(html.contains("if-menu__item"));
+    assert!(html.contains("aria-haspopup=\"true\""));
+    assert!(!html.contains("button button--primary"));
+    assert!(!html.contains("class=\"button\""));
+    assert!(!html.contains("class=\"icon-button\""));
+    assert!(!html.contains("class=\"badge\""));
+    assert!(!html.contains("profile-row__actions"));
+    assert!(!html.contains(">v<"));
+}
+
+#[test]
+fn profiles_css_uses_flex_layout_and_flush_drawer_contract() {
+    let css = include_str!("../../../assets/frame/profiles.css");
+
+    assert!(css.contains(".profiles-panel {\n  display: flex;"));
+    assert!(css.contains("flex-direction: column;"));
+    assert!(css.contains(".profiles-panel__body {\n  flex: 1 1 auto;"));
+    assert!(css.contains(".profile-row {\n  display: flex;"));
+    assert!(css.contains(".snapshot-drawer {\n  margin-top: auto;"));
+    assert!(css.contains("margin: calc(-1 * var(--space-3));"));
+    assert!(css.contains("width: calc(100% + (2 * var(--space-3)));"));
+    assert!(css.contains("scrollbar-gutter: auto;"));
+    assert!(!css.contains("margin-bottom: calc(-1 * var(--space-3));"));
+    assert!(!css.contains("grid-template-rows"));
+    assert!(!css.contains("grid-row"));
+}
+
+#[test]
+fn bottom_drawer_css_uses_flex_and_scrollable_body() {
+    let css = include_str!("../../../assets/components/bottom-drawer.css");
+
+    assert!(css.contains(".if-bottom-drawer {\n  display: flex;"));
+    assert!(css.contains("flex-direction: column;"));
+    assert!(css.contains("width: 100%;"));
+    assert!(css.contains(".if-bottom-drawer__header {\n  flex: 0 0 auto;"));
+    assert!(css.contains(".if-bottom-drawer__body {\n  flex: 1 1 auto;"));
+    assert!(css.contains("overflow: auto;"));
+    assert!(!css.contains("display: grid"));
+    assert!(!css.contains("grid-template"));
+}
+
+#[test]
 fn no_profile_state_shows_center_explanation_and_panel_actions() {
     let html = render_no_profile_frame();
 
@@ -218,6 +300,41 @@ fn profile_delete_action_dispatches_real_engine_command() {
         }
     );
     assert_eq!(action.confirmation, Some(ConfirmationKind::DestructiveF4));
+}
+
+#[test]
+fn profile_row_actions_dispatch_expected_commands() {
+    let path = PathBuf::from("C:/Profiles/Alpha.toml");
+
+    assert_eq!(
+        profile_open_action(path.clone()),
+        EngineCommand::LoadProfile(path.clone())
+    );
+    assert_eq!(
+        profile_rename_action("Alpha", "Bravo"),
+        Some(EngineCommand::RenameProfile {
+            old_name: "Alpha".to_owned(),
+            new_name: "Bravo".to_owned(),
+        })
+    );
+    assert_eq!(
+        profile_duplicate_action(path.clone(), "Alpha Copy"),
+        Some(EngineCommand::DuplicateProfile {
+            source_path: path.clone(),
+            name: "Alpha Copy".to_owned(),
+        })
+    );
+    assert_eq!(
+        profile_reveal_action(path.clone()),
+        EngineCommand::RevealProfile { path }
+    );
+    assert_eq!(
+        create_manual_snapshot_action(),
+        EngineCommand::CreateSnapshot {
+            kind: SnapshotKind::Manual,
+            label: None,
+        }
+    );
 }
 
 #[test]
@@ -270,10 +387,10 @@ fn add_external_to_library_dispatches_import_command() {
 fn drawer_header_uses_sibling_toggle_and_snapshot_now_button() {
     let html = render_snapshot_drawer(sample_snapshot_context(), true);
 
-    assert!(html.contains("class=\"snapshot-drawer__header\""));
-    assert!(html.contains("class=\"snapshot-drawer__toggle\""));
+    assert!(html.contains("class=\"if-bottom-drawer__header\""));
+    assert!(html.contains("if-bottom-drawer__toggle"));
     assert!(html.contains("aria-label=\"Snapshot now\""));
-    assert!(!html.contains("<button class=\"snapshot-drawer__toggle\"><button"));
+    assert!(!html.contains("<button class=\"if-bottom-drawer__toggle\"><button"));
 }
 
 #[test]
@@ -318,6 +435,6 @@ fn profiles_surface_never_renders_mapping_counts() {
 fn drawer_is_panel_scoped_not_global_drawer() {
     let html = render_profiles_panel(sample_profiles_context());
 
-    assert!(html.contains("snapshot-drawer"));
+    assert!(html.contains("if-bottom-drawer"));
     assert!(!html.contains("app-global-drawer"));
 }

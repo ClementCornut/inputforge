@@ -48,16 +48,37 @@ pub fn create(
     label: Option<String>,
     cfg: &SnapshotConfig,
 ) -> Result<Option<Snapshot>> {
+    let snap_dir = fs::snapshots_dir_for(profile_path)?;
+    create_in(profile_path, &snap_dir, kind, label, cfg)
+}
+
+/// Create a snapshot using an explicit namespace directory.
+///
+/// See [`create`] for the full contract; this variant lets the caller
+/// pick the snapshot namespace, allowing externally loaded profiles to
+/// store history under `<config_dir>/external_snapshots/<hash>/` rather
+/// than next to the user-owned profile file.
+///
+/// # Errors
+///
+/// I/O failure, profile parse failure, or serialization failure.
+pub fn create_in(
+    profile_path: &Path,
+    snap_dir: &Path,
+    kind: SnapshotKind,
+    label: Option<String>,
+    cfg: &SnapshotConfig,
+) -> Result<Option<Snapshot>> {
     // 1. Read live profile bytes.
     let body = std::fs::read_to_string(profile_path)?;
     // 2. Compute canonical content hash (D14).
     let content_hash = hash::hash_canonical_toml(&body)?;
     // 3. Read prior entries ONCE, before any disk write. We must not call
-    //    list() after writing the snapshot file: the orphan-recovery path
-    //    in list() would pick up the just-written file and return a Vec
-    //    that already contains our snapshot, causing a duplicate when we
+    //    list_in() after writing the snapshot file: the orphan-recovery
+    //    path would pick up the just-written file and return a Vec that
+    //    already contains our snapshot, causing a duplicate when we
     //    prepend below.
-    let prior = list(profile_path)?;
+    let prior = list_in(snap_dir)?;
     // 4. AutoSessionStart dedup: skip if hash matches latest existing entry.
     if matches!(kind, SnapshotKind::AutoSessionStart) && cfg.skip_if_unchanged {
         if let Some(latest) = prior.first() {
@@ -81,10 +102,9 @@ pub fn create(
         pinned: matches!(kind, SnapshotKind::Manual),
     };
     // 6. Compose snapshot file body: [snapshot_meta] + profile body.
-    let snap_dir = fs::snapshots_dir_for(profile_path)?;
     if !snap_dir.exists() {
-        std::fs::create_dir_all(&snap_dir).map_err(|source| EngineError::SnapshotDirCreate {
-            path: snap_dir.clone(),
+        std::fs::create_dir_all(snap_dir).map_err(|source| EngineError::SnapshotDirCreate {
+            path: snap_dir.to_path_buf(),
             source,
         })?;
     }
@@ -96,7 +116,7 @@ pub fn create(
     fs::atomic_write(&snap_path, combined.as_bytes())?;
 
     // 7. Compose updated index from `prior` + the new entry; do NOT re-call
-    //    list() here.
+    //    list_in() here.
     let mut entries = prior;
     entries.insert(0, snap.clone());
     index::write_index(&snap_dir.join("index.toml"), &entries)?;
@@ -128,6 +148,21 @@ struct MetaWrapper {
 /// read failure.
 pub fn list(profile_path: &Path) -> Result<Vec<Snapshot>> {
     let snap_dir = fs::snapshots_dir_for(profile_path)?;
+    list_in(&snap_dir)
+}
+
+/// List snapshots in the given namespace directory, newest first.
+///
+/// See [`list`] for the verification/rebuild contract; this variant
+/// drives the listing from an explicit namespace dir, allowing the
+/// engine to read external-namespace history without computing a
+/// sibling directory next to the live profile path.
+///
+/// # Errors
+///
+/// Returns [`crate::error::EngineError::SnapshotDirIo`] on directory
+/// read failure.
+pub fn list_in(snap_dir: &Path) -> Result<Vec<Snapshot>> {
     let index_path = snap_dir.join("index.toml");
 
     // Try cached path first.
@@ -148,14 +183,14 @@ pub fn list(profile_path: &Path) -> Result<Vec<Snapshot>> {
         }
         if entries_match {
             // Detect orphan files (present on disk, missing from index).
-            count_orphans(&snap_dir, &cached)? > 0
+            count_orphans(snap_dir, &cached)? > 0
         } else {
             true
         }
     };
 
     let mut entries = if needs_rebuild {
-        let rebuilt = index::rebuild_from_dir(&snap_dir)?;
+        let rebuilt = index::rebuild_from_dir(snap_dir)?;
         // Persist the rebuilt index only when it differs from the cached
         // contents, a redundant write would just rewrite the same bytes.
         // Don't propagate write errors: a failed write is recoverable on
@@ -177,7 +212,7 @@ pub fn list(profile_path: &Path) -> Result<Vec<Snapshot>> {
     index::ensure_sorted_newest_first(&mut entries);
     tracing::debug!(
         target: "snapshot",
-        profile_path = %profile_path.display(),
+        snap_dir = %snap_dir.display(),
         count = entries.len(),
         rebuilt = needs_rebuild,
         "snapshot list returned"
@@ -193,14 +228,29 @@ pub fn list(profile_path: &Path) -> Result<Vec<Snapshot>> {
 /// exists, or [`EngineError::Io`] on filesystem failure.
 pub fn delete(profile_path: &Path, id: &SnapshotId) -> Result<()> {
     let snap_dir = fs::snapshots_dir_for(profile_path)?;
+    delete_in(&snap_dir, id)
+}
+
+/// Delete a snapshot by id from the given namespace directory.
+///
+/// See [`delete`] for the contract; this variant accepts the namespace
+/// dir directly so external-snapshot history can be deleted without
+/// touching files next to the user-owned profile.
+///
+/// # Errors
+///
+/// Returns [`EngineError::SnapshotNotFound`] if no snapshot with `id`
+/// exists, or [`EngineError::Io`] on filesystem failure.
+pub fn delete_in(snap_dir: &Path, id: &SnapshotId) -> Result<()> {
     let snap_path = snap_dir.join(format!("{id}.toml"));
     if !snap_path.exists() {
         return Err(EngineError::SnapshotNotFound { id: id.to_string() });
     }
 
-    // Read the index BEFORE the destructive op so a transient list() failure
-    // leaves the snapshot file intact and the caller's Err matches reality.
-    let mut entries = list(profile_path)?;
+    // Read the index BEFORE the destructive op so a transient list_in()
+    // failure leaves the snapshot file intact and the caller's Err matches
+    // reality.
+    let mut entries = list_in(snap_dir)?;
     std::fs::remove_file(&snap_path)?;
     entries.retain(|s| s.id != *id);
     index::write_index(&snap_dir.join("index.toml"), &entries)?;
@@ -208,7 +258,7 @@ pub fn delete(profile_path: &Path, id: &SnapshotId) -> Result<()> {
     tracing::info!(
         target: "snapshot",
         id = %id,
-        profile_path = %profile_path.display(),
+        snap_dir = %snap_dir.display(),
         "snapshot deleted"
     );
     Ok(())
@@ -221,7 +271,22 @@ pub fn delete(profile_path: &Path, id: &SnapshotId) -> Result<()> {
 /// Returns [`EngineError::SnapshotNotFound`] when `id` is unknown,
 /// [`EngineError::Io`] on filesystem failure.
 pub fn pin(profile_path: &Path, id: &SnapshotId, pinned: bool) -> Result<()> {
-    mutate_meta(profile_path, id, |snap| snap.pinned = pinned)?;
+    let snap_dir = fs::snapshots_dir_for(profile_path)?;
+    pin_in(&snap_dir, id, pinned)
+}
+
+/// Pin or unpin a snapshot in the given namespace directory.
+///
+/// See [`pin`] for the contract; this variant accepts the namespace
+/// directory directly so external-snapshot history can be pinned without
+/// computing a sibling directory next to the user-owned profile.
+///
+/// # Errors
+///
+/// Returns [`EngineError::SnapshotNotFound`] when `id` is unknown,
+/// [`EngineError::Io`] on filesystem failure.
+pub fn pin_in(snap_dir: &Path, id: &SnapshotId, pinned: bool) -> Result<()> {
+    mutate_meta_in(snap_dir, id, |snap| snap.pinned = pinned)?;
     tracing::info!(
         target: "snapshot",
         id = %id,
@@ -238,8 +303,24 @@ pub fn pin(profile_path: &Path, id: &SnapshotId, pinned: bool) -> Result<()> {
 /// Returns [`EngineError::SnapshotNotFound`] when `id` is unknown,
 /// [`EngineError::Io`] on filesystem failure.
 pub fn rename(profile_path: &Path, id: &SnapshotId, label: Option<String>) -> Result<()> {
+    let snap_dir = fs::snapshots_dir_for(profile_path)?;
+    rename_in(&snap_dir, id, label)
+}
+
+/// Rename a snapshot's display label in the given namespace directory.
+///
+/// See [`rename`] for the contract; this variant accepts the namespace
+/// directory directly so external-snapshot history can be renamed
+/// without computing a sibling directory next to the user-owned profile.
+/// Pass `None` to clear the label.
+///
+/// # Errors
+///
+/// Returns [`EngineError::SnapshotNotFound`] when `id` is unknown,
+/// [`EngineError::Io`] on filesystem failure.
+pub fn rename_in(snap_dir: &Path, id: &SnapshotId, label: Option<String>) -> Result<()> {
     let log_label = label.clone();
-    mutate_meta(profile_path, id, |snap| snap.label = label)?;
+    mutate_meta_in(snap_dir, id, |snap| snap.label = label)?;
     tracing::info!(
         target: "snapshot",
         id = %id,
@@ -249,8 +330,7 @@ pub fn rename(profile_path: &Path, id: &SnapshotId, label: Option<String>) -> Re
     Ok(())
 }
 
-fn mutate_meta(profile_path: &Path, id: &SnapshotId, f: impl FnOnce(&mut Snapshot)) -> Result<()> {
-    let snap_dir = fs::snapshots_dir_for(profile_path)?;
+fn mutate_meta_in(snap_dir: &Path, id: &SnapshotId, f: impl FnOnce(&mut Snapshot)) -> Result<()> {
     let snap_path = snap_dir.join(format!("{id}.toml"));
     if !snap_path.exists() {
         return Err(EngineError::SnapshotNotFound { id: id.to_string() });
@@ -285,9 +365,9 @@ fn mutate_meta(profile_path: &Path, id: &SnapshotId, f: impl FnOnce(&mut Snapsho
     let rest_str = toml::to_string(&value)?;
     let combined = format!("{meta_str}\n{rest_str}");
 
-    // Read the index BEFORE the destructive op so a transient list() failure
-    // leaves the snapshot file's meta untouched.
-    let mut entries = list(profile_path)?;
+    // Read the index BEFORE the destructive op so a transient list_in()
+    // failure leaves the snapshot file's meta untouched.
+    let mut entries = list_in(snap_dir)?;
     fs::atomic_write(&snap_path, combined.as_bytes())?;
     if let Some(slot) = entries.iter_mut().find(|s| s.id == *id) {
         *slot = snap;
@@ -346,6 +426,24 @@ fn count_orphans(snap_dir: &Path, cached: &[Snapshot]) -> Result<usize> {
 /// filesystem failure.
 pub fn restore(profile_path: &Path, id: &SnapshotId) -> Result<()> {
     let snap_dir = fs::snapshots_dir_for(profile_path)?;
+    restore_in(profile_path, &snap_dir, id)
+}
+
+/// Restore the live profile to the content of a snapshot in the given
+/// namespace directory.
+///
+/// See [`restore`] for the contract; this variant lets the engine pick
+/// the snapshot namespace, allowing externally loaded profiles to roll
+/// back from `<config_dir>/external_snapshots/<hash>/` rather than from
+/// a sibling directory next to the user-owned profile.
+///
+/// # Errors
+///
+/// [`EngineError::SnapshotNotFound`] when `id` is unknown,
+/// [`EngineError::SnapshotCorrupt`] when the snapshot file lacks a
+/// parseable `[snapshot_meta]` header, or [`EngineError::Io`] on
+/// filesystem failure.
+pub fn restore_in(profile_path: &Path, snap_dir: &Path, id: &SnapshotId) -> Result<()> {
     let snap_path = snap_dir.join(format!("{id}.toml"));
     if !snap_path.exists() {
         return Err(EngineError::SnapshotNotFound { id: id.to_string() });
@@ -388,7 +486,25 @@ pub fn restore(profile_path: &Path, id: &SnapshotId) -> Result<()> {
 /// Returns [`EngineError::SnapshotDirIo`] on directory read failure,
 /// or [`EngineError::Io`] on file delete failure.
 pub fn prune(profile_path: &Path, cfg: &SnapshotConfig) -> Result<usize> {
-    let entries = list(profile_path)?;
+    let snap_dir = fs::snapshots_dir_for(profile_path)?;
+    prune_in(&snap_dir, cfg)
+}
+
+/// Apply FIFO eviction down to `cfg.max_count` in the given namespace
+/// directory, skipping pinned snapshots. Returns the number of
+/// snapshots evicted.
+///
+/// See [`prune`] for the contract; this variant accepts an explicit
+/// namespace dir so the engine can prune external-snapshot history
+/// without computing a sibling directory next to the user-owned
+/// profile.
+///
+/// # Errors
+///
+/// Returns [`EngineError::SnapshotDirIo`] on directory read failure,
+/// or [`EngineError::Io`] on file delete failure.
+pub fn prune_in(snap_dir: &Path, cfg: &SnapshotConfig) -> Result<usize> {
+    let entries = list_in(snap_dir)?;
     let unpinned_count = entries.iter().filter(|s| !s.pinned).count();
     if unpinned_count <= cfg.max_count {
         return Ok(0);
@@ -405,7 +521,7 @@ pub fn prune(profile_path: &Path, cfg: &SnapshotConfig) -> Result<usize> {
 
     let mut evicted = 0usize;
     while let Some(id) = victims.pop() {
-        match delete(profile_path, &id) {
+        match delete_in(snap_dir, &id) {
             Ok(()) => evicted += 1,
             Err(e) => {
                 tracing::warn!(
@@ -426,7 +542,7 @@ pub fn prune(profile_path: &Path, cfg: &SnapshotConfig) -> Result<usize> {
     } else {
         tracing::debug!(
             target: "snapshot",
-            profile_path = %profile_path.display(),
+            snap_dir = %snap_dir.display(),
             "prune: nothing to evict"
         );
     }

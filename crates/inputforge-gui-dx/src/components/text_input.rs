@@ -44,6 +44,14 @@ pub fn TextInput(
     /// focus to it on appearance (e.g., inline-rename / inline-add open).
     #[props(default)]
     onmounted: Option<EventHandler<MountedEvent>>,
+    /// Forwarded to the inner <input>'s `onkeydown` so inline editors
+    /// (rename / new-profile) can implement Enter-commits and Esc-cancels.
+    #[props(default)]
+    onkeydown: Option<EventHandler<KeyboardEvent>>,
+    /// Forwarded to the inner <input>'s `onblur` so inline editors can
+    /// implement blur-commits.
+    #[props(default)]
+    onblur: Option<EventHandler<FocusEvent>>,
 ) -> Element {
     let variant_class = if invalid {
         format!("{} if-text-input--invalid", size.class())
@@ -58,6 +66,16 @@ pub fn TextInput(
     };
     let mounted_handler = move |evt: MountedEvent| {
         if let Some(handler) = &onmounted {
+            handler.call(evt);
+        }
+    };
+    let keydown_handler = move |evt: KeyboardEvent| {
+        if let Some(handler) = &onkeydown {
+            handler.call(evt);
+        }
+    };
+    let blur_handler = move |evt: FocusEvent| {
+        if let Some(handler) = &onblur {
             handler.call(evt);
         }
     };
@@ -78,6 +96,8 @@ pub fn TextInput(
                 "aria-describedby": described_by,
                 oninput: input_handler,
                 onmounted: mounted_handler,
+                onkeydown: keydown_handler,
+                onblur: blur_handler,
             }
         } else {
             input {
@@ -89,6 +109,8 @@ pub fn TextInput(
                 "aria-describedby": described_by,
                 oninput: input_handler,
                 onmounted: mounted_handler,
+                onkeydown: keydown_handler,
+                onblur: blur_handler,
             }
         }
     }

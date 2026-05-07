@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
 
+use chrono::{DateTime, Utc};
+
 use crate::action::{Action, Mapping};
 use crate::callbacks::ReleaseCallback;
 use crate::device::traits::HotplugEvent;
@@ -24,7 +26,8 @@ use crate::profile::manager::{
 };
 use crate::profile::{CalibrationEntry, Profile};
 use crate::snapshot::pending_delete::{
-    list_visible, purge_expired_pending_deletes, stage_delete, undo_delete_by_id,
+    PENDING_SUBDIR, list_visible, purge_expired_pending_deletes, resolve_snapshot_namespace,
+    stage_delete_in, undo_delete_by_id,
 };
 use crate::state::{
     ActiveSnapshotRow, AppState, DeviceCalibrationStore, DeviceState, EngineStatus,
@@ -44,6 +47,13 @@ use super::output_handler::{
 /// 1 ms provides responsive input handling at ~1000 Hz without
 /// excessive CPU usage. The OS scheduler may add jitter.
 const POLL_INTERVAL: Duration = Duration::from_millis(1);
+
+/// Retention window for snapshot pending-delete manifests.
+///
+/// Manifests older than this are purged on every profile load. Seven
+/// days keeps the user's undo affordance alive across a typical week-long
+/// pause without indefinitely keeping deleted snapshot bytes on disk.
+const PENDING_DELETE_RETENTION_DAYS: i64 = 7;
 
 /// Maximum mode-name length, measured in extended grapheme clusters
 /// (UAX #29 extended).
@@ -78,6 +88,46 @@ fn validate_mode_name_for_engine(
         });
     }
     Ok(())
+}
+
+/// Read mode count and last-edit timestamp for the profile file at `path`.
+///
+/// Best-effort: any I/O or parse failure surfaces as a warning log and
+/// produces `(0, None)` so the projection always has a row to show.
+/// Used by `refresh_profile_library_rows` and never by command paths.
+fn read_profile_metadata(path: &Path) -> (u32, Option<DateTime<Utc>>) {
+    let mode_count = match Profile::load(path) {
+        Ok(profile) => {
+            // The mode count is bounded by tree depth caps elsewhere in
+            // the engine; saturating to u32::MAX keeps the cast lossless
+            // for any plausible tree size.
+            u32::try_from(profile.modes().all_modes().len()).unwrap_or(u32::MAX)
+        }
+        Err(e) => {
+            tracing::warn!(
+                target: "engine",
+                profile_path = %path.display(),
+                error = %e,
+                "engine.profile_library.load_failure"
+            );
+            0
+        }
+    };
+
+    let last_edited_at = match std::fs::metadata(path).and_then(|meta| meta.modified()) {
+        Ok(modified) => Some(DateTime::<Utc>::from(modified)),
+        Err(e) => {
+            tracing::warn!(
+                target: "engine",
+                profile_path = %path.display(),
+                error = %e,
+                "engine.profile_library.mtime_failure"
+            );
+            None
+        }
+    };
+
+    (mode_count, last_edited_at)
 }
 
 impl Engine {
@@ -329,22 +379,25 @@ impl Engine {
     pub(crate) fn handle_command(&mut self, cmd: EngineCommand) -> Result<()> {
         match cmd {
             EngineCommand::LoadProfile(path) => {
-                purge_expired_pending_deletes(
-                    &self.snapshot_pending_delete_dir(),
-                    chrono::Duration::days(7),
-                )?;
+                self.purge_all_namespaces();
                 self.reload_profile_from_disk(&path)?;
-                self.state.write().active_profile_origin =
-                    Some(self.profile_origin_for_path(&path));
-                // A forced-mode override should not survive a profile change.
-                self.state.write().mode_force = None;
-                let _ = crate::snapshot::create(
-                    &path,
-                    crate::snapshot::SnapshotKind::AutoSessionStart,
-                    None,
-                    &self.settings.snapshot,
-                )?;
-                let _ = crate::snapshot::prune(&path, &self.settings.snapshot)?;
+                let origin = self.profile_origin_for_path(&path);
+                {
+                    let mut state = self.state.write();
+                    state.active_profile_origin = Some(origin);
+                    // A forced-mode override should not survive a profile change.
+                    state.mode_force = None;
+                };
+                if let Some((profile_path, namespace_dir)) = self.resolved_snapshot_target() {
+                    let _ = crate::snapshot::create_in(
+                        &profile_path,
+                        &namespace_dir,
+                        crate::snapshot::SnapshotKind::AutoSessionStart,
+                        None,
+                        &self.settings.snapshot,
+                    )?;
+                    let _ = crate::snapshot::prune_in(&namespace_dir, &self.settings.snapshot)?;
+                }
                 self.refresh_profile_library_rows()?;
                 self.refresh_active_snapshot_rows()?;
             }
@@ -356,19 +409,19 @@ impl Engine {
                 self.refresh_active_snapshot_rows()?;
             }
             EngineCommand::LoadExternalProfileOnce(path) => {
-                purge_expired_pending_deletes(
-                    &self.snapshot_pending_delete_dir(),
-                    chrono::Duration::days(7),
-                )?;
+                self.purge_all_namespaces();
                 self.reload_profile_from_disk(&path)?;
                 self.mark_profile_loaded(ProfileOrigin::External);
-                let _ = crate::snapshot::create(
-                    &path,
-                    crate::snapshot::SnapshotKind::AutoSessionStart,
-                    None,
-                    &self.settings.snapshot,
-                )?;
-                let _ = crate::snapshot::prune(&path, &self.settings.snapshot)?;
+                if let Some((profile_path, namespace_dir)) = self.resolved_snapshot_target() {
+                    let _ = crate::snapshot::create_in(
+                        &profile_path,
+                        &namespace_dir,
+                        crate::snapshot::SnapshotKind::AutoSessionStart,
+                        None,
+                        &self.settings.snapshot,
+                    )?;
+                    let _ = crate::snapshot::prune_in(&namespace_dir, &self.settings.snapshot)?;
+                }
                 self.refresh_profile_library_rows()?;
                 self.refresh_active_snapshot_rows()?;
             }
@@ -425,11 +478,14 @@ impl Engine {
                 self.refresh_profile_library_rows()?;
             }
             EngineCommand::RevealProfile { path } => {
-                tracing::info!(
-                    target: "engine",
-                    path = %path.display(),
-                    "RevealProfile requested"
-                );
+                if let Err(e) = crate::profile::library::reveal_profile_in_explorer(&path) {
+                    tracing::warn!(
+                        target: "engine",
+                        profile_path = %path.display(),
+                        error = %e,
+                        "engine.profile.reveal_failed"
+                    );
+                }
             }
             EngineCommand::Activate | EngineCommand::Resume => {
                 let mut state = self.state.write();
@@ -527,10 +583,16 @@ impl Engine {
                 );
             }
             EngineCommand::CreateSnapshot { kind, label } => {
-                let path = self.state.read().profile_path.clone();
-                if let Some(path) = path {
-                    let _ = crate::snapshot::create(&path, kind, label, &self.settings.snapshot)?;
-                    let _ = crate::snapshot::prune(&path, &self.settings.snapshot)?;
+                let resolved = self.resolved_snapshot_target();
+                if let Some((path, namespace_dir)) = resolved {
+                    let _ = crate::snapshot::create_in(
+                        &path,
+                        &namespace_dir,
+                        kind,
+                        label,
+                        &self.settings.snapshot,
+                    )?;
+                    let _ = crate::snapshot::prune_in(&namespace_dir, &self.settings.snapshot)?;
                     self.refresh_active_snapshot_rows()?;
                 } else {
                     tracing::warn!(
@@ -540,9 +602,10 @@ impl Engine {
                 }
             }
             EngineCommand::DeleteSnapshot { id } => {
-                let path = self.state.read().profile_path.clone();
-                if let Some(path) = path {
-                    let _ = stage_delete(&path, &id, &self.snapshot_pending_delete_dir())?;
+                let resolved = self.resolved_snapshot_target();
+                if let Some((path, namespace_dir)) = resolved {
+                    let pending_dir = namespace_dir.join(PENDING_SUBDIR);
+                    let _ = stage_delete_in(&path, &namespace_dir, &id, &pending_dir)?;
                     self.refresh_active_snapshot_rows()?;
                 } else {
                     tracing::warn!(
@@ -552,9 +615,9 @@ impl Engine {
                 }
             }
             EngineCommand::PinSnapshot { id, pinned } => {
-                let path = self.state.read().profile_path.clone();
-                if let Some(path) = path {
-                    crate::snapshot::pin(&path, &id, pinned)?;
+                let resolved = self.resolved_snapshot_target();
+                if let Some((_, namespace_dir)) = resolved {
+                    crate::snapshot::pin_in(&namespace_dir, &id, pinned)?;
                     self.refresh_active_snapshot_rows()?;
                 } else {
                     tracing::warn!(
@@ -564,9 +627,9 @@ impl Engine {
                 }
             }
             EngineCommand::RenameSnapshot { id, label } => {
-                let path = self.state.read().profile_path.clone();
-                if let Some(path) = path {
-                    crate::snapshot::rename(&path, &id, label)?;
+                let resolved = self.resolved_snapshot_target();
+                if let Some((_, namespace_dir)) = resolved {
+                    crate::snapshot::rename_in(&namespace_dir, &id, label)?;
                     self.refresh_active_snapshot_rows()?;
                 } else {
                     tracing::warn!(
@@ -811,23 +874,23 @@ impl Engine {
                 tracing::info!(target: "engine", mode = %name, "SetDefaultMode applied");
             }
             EngineCommand::RestoreSnapshot { id } => {
-                let path = self.state.read().profile_path.clone();
-                let Some(path) = path else {
+                let Some((path, namespace_dir)) = self.resolved_snapshot_target() else {
                     tracing::warn!(target: "snapshot", "RestoreSnapshot dispatched with no profile loaded");
                     return Ok(());
                 };
 
                 // Step 1, capture AutoBeforeRestore (always fires; never deduped).
-                let auto = crate::snapshot::create(
+                let auto = crate::snapshot::create_in(
                     &path,
+                    &namespace_dir,
                     crate::snapshot::SnapshotKind::AutoBeforeRestore,
                     None,
                     &self.settings.snapshot,
                 )?;
-                let _ = crate::snapshot::prune(&path, &self.settings.snapshot)?;
+                let _ = crate::snapshot::prune_in(&namespace_dir, &self.settings.snapshot)?;
 
                 // Step 2, strip meta + atomically write target body to live path.
-                crate::snapshot::restore(&path, &id)?;
+                crate::snapshot::restore_in(&path, &namespace_dir, &id)?;
 
                 // Step 3, reload from disk; auto-rollback on failure.
                 if let Err(reload_err) = self.reload_profile_from_disk(&path) {
@@ -837,7 +900,7 @@ impl Engine {
                         "restore reload failed; rolling back to AutoBeforeRestore"
                     );
                     if let Some(auto_snap) = auto {
-                        crate::snapshot::restore(&path, &auto_snap.id)?;
+                        crate::snapshot::restore_in(&path, &namespace_dir, &auto_snap.id)?;
                         self.reload_profile_from_disk(&path)?;
                     }
                     return Err(reload_err);
@@ -854,8 +917,10 @@ impl Engine {
                 );
             }
             EngineCommand::UndoSnapshotDelete { id } => {
-                if self.state.read().profile_path.is_some() {
-                    undo_delete_by_id(&self.snapshot_pending_delete_dir(), &id)?;
+                let resolved = self.resolved_snapshot_target();
+                if let Some((_, namespace_dir)) = resolved {
+                    let pending_dir = namespace_dir.join(PENDING_SUBDIR);
+                    undo_delete_by_id(&pending_dir, &id)?;
                     self.refresh_active_snapshot_rows()?;
                 } else {
                     tracing::warn!(
@@ -936,16 +1001,6 @@ impl Engine {
             })
     }
 
-    fn snapshot_pending_delete_dir(&self) -> PathBuf {
-        if self.settings_path.as_os_str().is_empty() {
-            return crate::settings::AppSettings::config_dir().join("pending-snapshot-deletes");
-        }
-        self.settings_path.parent().map_or_else(
-            || crate::settings::AppSettings::config_dir().join("pending-snapshot-deletes"),
-            |dir| dir.join("pending-snapshot-deletes"),
-        )
-    }
-
     fn mark_profile_loaded(&self, origin: ProfileOrigin) {
         let mut state = self.state.write();
         state.active_profile_origin = Some(origin);
@@ -975,11 +1030,14 @@ impl Engine {
                 let is_active = active_path
                     .as_ref()
                     .is_some_and(|path| path == &profile.path);
+                let (mode_count, last_edited_at) = read_profile_metadata(&profile.path);
                 ProfileLibraryRow {
                     name: profile.name,
                     path: profile.path,
                     origin: ProfileOrigin::Library,
                     is_active,
+                    mode_count,
+                    last_edited_at,
                 }
             })
             .collect();
@@ -987,10 +1045,104 @@ impl Engine {
         Ok(())
     }
 
+    /// Sweep every snapshot namespace's pending-delete subdir for
+    /// expired entries.
+    ///
+    /// Library namespaces come from listing `<library_dir>/*.toml` and
+    /// resolving each via `snapshots_dir_for`. External namespaces come
+    /// from listing `<config_dir>/external_snapshots/`. A failure on a
+    /// single namespace is logged and skipped so one corrupt namespace
+    /// cannot block startup or profile load.
+    fn purge_all_namespaces(&self) {
+        let max_age = chrono::Duration::days(PENDING_DELETE_RETENTION_DAYS);
+        let library_dir = self.profile_library_dir();
+        if let Ok(entries) = std::fs::read_dir(&library_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let is_toml = path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"));
+                if !is_toml {
+                    continue;
+                }
+                match crate::snapshot::fs::snapshots_dir_for(&path) {
+                    Ok(snap_dir) => {
+                        let pending_dir = snap_dir.join(PENDING_SUBDIR);
+                        if let Err(e) = purge_expired_pending_deletes(&pending_dir, max_age) {
+                            tracing::warn!(
+                                target: "snapshot",
+                                profile_path = %path.display(),
+                                error = %e,
+                                "snapshot.purge.library_failure"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            target: "snapshot",
+                            profile_path = %path.display(),
+                            error = %e,
+                            "snapshot.purge.library_resolve_failure"
+                        );
+                    }
+                }
+            }
+        }
+        let external_root = crate::settings::AppSettings::config_dir().join("external_snapshots");
+        if let Ok(entries) = std::fs::read_dir(&external_root) {
+            for entry in entries.flatten() {
+                let snap_dir = entry.path();
+                if !snap_dir.is_dir() {
+                    continue;
+                }
+                let pending_dir = snap_dir.join(PENDING_SUBDIR);
+                if let Err(e) = purge_expired_pending_deletes(&pending_dir, max_age) {
+                    tracing::warn!(
+                        target: "snapshot",
+                        snap_dir = %snap_dir.display(),
+                        error = %e,
+                        "snapshot.purge.external_failure"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Resolve the active profile's snapshot target tuple
+    /// `(profile_path, namespace_dir)` for snapshot lifecycle commands.
+    ///
+    /// Returns `None` when no profile is loaded; the caller should log
+    /// and skip the command in that case rather than treating the
+    /// missing target as an error.
+    fn resolved_snapshot_target(&self) -> Option<(PathBuf, PathBuf)> {
+        let state = self.state.read();
+        let path = state.profile_path.as_ref()?.clone();
+        let namespace_dir = match resolve_snapshot_namespace(&state) {
+            Ok(dir) => dir,
+            Err(e) => {
+                tracing::warn!(
+                    target: "snapshot",
+                    profile_path = %path.display(),
+                    error = %e,
+                    "snapshot.namespace.resolution_failed"
+                );
+                return None;
+            }
+        };
+        Some((path, namespace_dir))
+    }
+
     fn refresh_active_snapshot_rows(&self) -> Result<()> {
-        let profile_path = self.state.read().profile_path.clone();
-        let rows = if let Some(path) = profile_path {
-            list_visible(&path, &self.snapshot_pending_delete_dir())?
+        let namespace_dir = {
+            let state = self.state.read();
+            if state.profile_path.is_none() {
+                None
+            } else {
+                Some(resolve_snapshot_namespace(&state)?)
+            }
+        };
+        let rows = if let Some(namespace_dir) = namespace_dir {
+            list_visible(&namespace_dir)?
                 .into_iter()
                 .map(|snapshot| ActiveSnapshotRow {
                     id: snapshot.id,
@@ -1116,12 +1268,12 @@ impl Engine {
     /// and the user's recovery path is a manual Restore via the
     /// snapshot index UI.
     fn set_mappings_bulk(&self, entries: &[crate::action::BulkMapEntry], snapshot_label: String) {
-        // Step 0: clone the profile path. The read guard drops at the
-        // end of this `let`. Do not hold any state lock during
-        // `crate::snapshot::create` and `crate::snapshot::prune`,
+        // Step 0: clone the profile path and namespace dir. The read guard
+        // drops at the end of this block. Do not hold any state lock
+        // during `crate::snapshot::create_in` and `crate::snapshot::prune_in`,
         // which perform disk I/O that must run lock-free (mirrors
         // `engine/run.rs` RestoreSnapshot at lines 687-700).
-        let Some(path) = self.state.read().profile_path.clone() else {
+        let Some((path, namespace_dir)) = self.resolved_snapshot_target() else {
             tracing::warn!(target: "bulk_map", "SetMappingsBulk: no profile loaded, ignoring");
             self.state
                 .write()
@@ -1159,14 +1311,15 @@ impl Engine {
         // Step 2: take the recovery snapshot. Abort if it fails so the
         // user never ends up with bulk-applied mappings and no
         // snapshot to roll back to.
-        match crate::snapshot::create(
+        match crate::snapshot::create_in(
             &path,
+            &namespace_dir,
             crate::snapshot::SnapshotKind::AutoBeforeBulkMap,
             Some(snapshot_label),
             &self.settings.snapshot,
         ) {
             Ok(_) => {
-                let _ = crate::snapshot::prune(&path, &self.settings.snapshot);
+                let _ = crate::snapshot::prune_in(&namespace_dir, &self.settings.snapshot);
             }
             Err(e) => {
                 tracing::warn!(

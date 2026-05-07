@@ -1,7 +1,8 @@
 use super::*;
+use crate::snapshot::fs::snapshots_dir_for;
 use crate::snapshot::pending_delete::{
-    list_visible, pending_manifest_path, purge_expired_pending_deletes, stage_delete,
-    undo_delete_by_id,
+    PENDING_SUBDIR, list_visible, pending_manifest_path, purge_expired_pending_deletes,
+    stage_delete, undo_delete_by_id,
 };
 use std::path::PathBuf;
 
@@ -111,7 +112,7 @@ fn snapshot_kind_auto_before_bulk_map_always_fires_never_deduped() {
 
 #[test]
 fn pending_delete_hides_row_until_undo_restores_it() {
-    let (dir, profile) = fresh_profile_dir();
+    let (_dir, profile) = fresh_profile_dir();
     let snapshot = create(
         &profile,
         SnapshotKind::Manual,
@@ -120,11 +121,15 @@ fn pending_delete_hides_row_until_undo_restores_it() {
     )
     .unwrap()
     .unwrap();
-    let pending_dir = dir.path().join("pending");
+    // The new namespace API derives pending location from the namespace
+    // dir, so the test needs to stage delete inside `<namespace>/.pending/`
+    // and list visible against the namespace dir itself.
+    let namespace = snapshots_dir_for(&profile).unwrap();
+    let pending_dir = namespace.join(PENDING_SUBDIR);
 
     let staged = stage_delete(&profile, &snapshot.id, &pending_dir).unwrap();
     assert!(
-        list_visible(&profile, &pending_dir)
+        list_visible(&namespace)
             .unwrap()
             .iter()
             .all(|row| row.id != snapshot.id)
@@ -132,7 +137,7 @@ fn pending_delete_hides_row_until_undo_restores_it() {
 
     undo_delete_by_id(&pending_dir, &snapshot.id).unwrap();
     assert!(
-        list_visible(&profile, &pending_dir)
+        list_visible(&namespace)
             .unwrap()
             .iter()
             .any(|row| row.id == snapshot.id)
@@ -142,7 +147,7 @@ fn pending_delete_hides_row_until_undo_restores_it() {
 
 #[test]
 fn expired_pending_delete_purges_on_startup_cleanup() {
-    let (dir, profile) = fresh_profile_dir();
+    let (_dir, profile) = fresh_profile_dir();
     let snapshot = create(
         &profile,
         SnapshotKind::Manual,
@@ -151,13 +156,14 @@ fn expired_pending_delete_purges_on_startup_cleanup() {
     )
     .unwrap()
     .unwrap();
-    let pending_dir = dir.path().join("pending");
+    let namespace = snapshots_dir_for(&profile).unwrap();
+    let pending_dir = namespace.join(PENDING_SUBDIR);
 
     stage_delete(&profile, &snapshot.id, &pending_dir).unwrap();
     purge_expired_pending_deletes(&pending_dir, chrono::Duration::zero()).unwrap();
 
     assert!(
-        list_visible(&profile, &pending_dir)
+        list_visible(&namespace)
             .unwrap()
             .iter()
             .all(|row| row.id != snapshot.id)
@@ -221,7 +227,7 @@ fn list_rebuilds_when_index_missing() {
         .unwrap();
 
     // Delete index.toml; the snapshot file remains.
-    let snap_dir = fs::snapshots_dir_for(&path).unwrap();
+    let snap_dir = snapshots_dir_for(&path).unwrap();
     std::fs::remove_file(snap_dir.join("index.toml")).unwrap();
 
     let listed = list(&path).unwrap();
@@ -237,7 +243,7 @@ fn list_skips_files_with_malformed_meta() {
         .unwrap()
         .unwrap();
 
-    let snap_dir = fs::snapshots_dir_for(&path).unwrap();
+    let snap_dir = snapshots_dir_for(&path).unwrap();
     // Drop a garbage TOML file; rebuild must skip it without erroring.
     std::fs::write(snap_dir.join("garbage.toml"), "not [valid] toml = =").unwrap();
     // Force rebuild path.
@@ -258,7 +264,7 @@ fn delete_removes_file_and_index_entry() {
         .unwrap();
     delete(&path, &snap.id).unwrap();
 
-    let snap_dir = fs::snapshots_dir_for(&path).unwrap();
+    let snap_dir = snapshots_dir_for(&path).unwrap();
     assert!(!snap_dir.join(format!("{}.toml", snap.id)).exists());
     assert!(list(&path).unwrap().is_empty());
 }
@@ -365,7 +371,7 @@ fn restore_unknown_id_returns_not_found() {
 #[test]
 fn restore_errors_when_meta_table_missing() {
     let (_dir, path) = fresh_profile_dir();
-    let snap_dir = fs::snapshots_dir_for(&path).unwrap();
+    let snap_dir = snapshots_dir_for(&path).unwrap();
     std::fs::create_dir_all(&snap_dir).unwrap();
     let id = SnapshotId(Ulid::new());
     let snap_path = snap_dir.join(format!("{id}.toml"));

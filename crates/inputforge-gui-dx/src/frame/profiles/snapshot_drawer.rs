@@ -5,7 +5,15 @@
 
 use dioxus::prelude::*;
 
+use crate::components::{
+    Badge, BadgeVariant, BottomDrawer, Button, ButtonSize, ButtonVariant, IconButton,
+};
+use crate::context::AppContext;
 use crate::context::SnapshotRowView;
+use crate::frame::profiles::actions::{
+    create_manual_snapshot_action, snapshot_delete_action, snapshot_restore_action,
+};
+use crate::icons::Icon as IconKind;
 
 #[component]
 pub(crate) fn SnapshotDrawer(
@@ -13,33 +21,59 @@ pub(crate) fn SnapshotDrawer(
     rows: Vec<SnapshotRowView>,
     open: bool,
 ) -> Element {
+    let ctx = use_context::<AppContext>();
+    let mut drawer_open = use_signal(|| open);
     let count = rows.len();
+    let commands = ctx.commands.clone();
+    let snapshot_now = move |_| {
+        let _ = commands.send(create_manual_snapshot_action());
+    };
     rsx! {
         section { class: "snapshot-drawer",
-            div { class: "snapshot-drawer__header",
-                button {
-                    class: "snapshot-drawer__toggle",
-                    "aria-expanded": "{open}",
-                    span { class: "snapshot-drawer__chevron", if open { "v" } else { ">" } }
-                    span { "Snapshots - {active_profile_name}" }
-                    span { class: "badge", "{count}" }
-                }
-                button {
-                    class: "icon-button",
-                    "aria-label": "Snapshot now",
-                    title: "Snapshot now",
-                    "+"
-                }
-            }
-            if open {
-                div { class: "snapshot-drawer__ledger",
-                    for row in rows {
-                        article { class: "snapshot-row", "data-snapshot-id": "{row.id}",
-                            span { class: "snapshot-row__kind", "{row.kind_label}" }
-                            span { class: "snapshot-row__time", "{row.time_label}" }
-                            if let Some(label) = &row.label { strong { "{label}" } }
-                            if row.pinned { span { class: "badge", "Pinned" } }
-                            button { class: "button button--primary", "Restore" }
+            BottomDrawer {
+                open: *drawer_open.read(),
+                title: format!("Snapshots · {active_profile_name}"),
+                count,
+                on_toggle: move |_| {
+                    let next = !*drawer_open.read();
+                    drawer_open.set(next);
+                },
+                actions: rsx! {
+                    IconButton {
+                        icon: IconKind::Plus,
+                        label: "Snapshot now",
+                        variant: ButtonVariant::Primary,
+                        size: ButtonSize::Sm,
+                        onclick: snapshot_now,
+                    }
+                },
+                for row in rows {
+                    {
+                        let commands = ctx.commands.clone();
+                        let restore_id = row.id;
+                        let restore_click = move |_| {
+                            let _ = commands.send(snapshot_restore_action(restore_id).command);
+                        };
+                        let commands = ctx.commands.clone();
+                        let delete_id = row.id;
+                        let delete_click = move |_| {
+                            let _ = commands.send(snapshot_delete_action(delete_id).command);
+                        };
+                        rsx! {
+                            article { class: "snapshot-row", "data-snapshot-id": "{row.id}",
+                                div { class: "snapshot-row__main",
+                                    div { class: "snapshot-row__title",
+                                        Badge { variant: BadgeVariant::Info, "{row.kind_label}" }
+                                        if row.pinned { Badge { variant: BadgeVariant::Success, "Pinned" } }
+                                        if let Some(label) = &row.label { strong { "{label}" } }
+                                    }
+                                    span { class: "snapshot-row__time", "{row.time_label}" }
+                                }
+                                div { class: "snapshot-row__actions",
+                                    Button { variant: ButtonVariant::Primary, size: ButtonSize::Sm, onclick: restore_click, "Restore" }
+                                    Button { variant: ButtonVariant::Danger, size: ButtonSize::Sm, onclick: delete_click, "Delete" }
+                                }
+                            }
                         }
                     }
                 }
