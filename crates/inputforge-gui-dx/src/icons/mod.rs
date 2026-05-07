@@ -35,6 +35,11 @@ pub enum Icon {
     Play,
     Pause,
     Refresh,
+    /// Phosphor `clock-counter-clockwise`. Used as the "restore from
+    /// history" affordance on snapshot rows. Distinct glyph from
+    /// `Refresh` (two-arrow cycle) so it does not collide with the
+    /// `AutoBeforeRestore` kind icon when rendered side-by-side.
+    ClockCounterClockwise,
     DragHandle,
     DotsVertical,
 }
@@ -71,6 +76,7 @@ impl Icon {
             Icon::Play => include_str!("svg/play.svg"),
             Icon::Pause => include_str!("svg/pause.svg"),
             Icon::Refresh => include_str!("svg/refresh.svg"),
+            Icon::ClockCounterClockwise => include_str!("svg/clock-counter-clockwise.svg"),
             Icon::DragHandle => include_str!("svg/drag-handle.svg"),
             Icon::DotsVertical => include_str!("svg/dots-vertical.svg"),
         }

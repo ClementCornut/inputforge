@@ -505,10 +505,11 @@
 .if-mode-tab__marker--natural { color: var(--color-live); }
 .if-mode-tab__marker--forced  { color: var(--color-warning); }
 
-/* Mode-tab context menu, AnchoredMenu consumer. Surface, items, and
-   backdrop come from the shared primitive (.if-menu__list,
-   .if-menu__item, .if-menu__backdrop). The 12rem min-width here
-   documents the structural constraint that the longest action label
+/* Mode-tab context menu, AnchoredMenu consumer. Surface and items
+   come from the shared primitive (.if-menu__list, .if-menu__item).
+   Click-outside dismissal is handled by ClickAwayListener (no
+   backdrop element). The 12rem min-width here documents the
+   structural constraint that the longest action label
    ("Set as default") fits without per-locale recalculation. */
 .if-modetab-context-menu {
     min-width: 12rem;

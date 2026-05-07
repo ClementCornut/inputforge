@@ -1,6 +1,6 @@
 //! Right-click / Shift+F10 menu for a mode tab. Adopts the shared
-//! `AnchoredMenu` primitive for surface, backdrop, keyboard handling, and
-//! auto-focus on open.
+//! `AnchoredMenu` primitive for surface, click-outside dismissal
+//! (via `ClickAwayListener`), keyboard handling, and auto-focus on open.
 
 use dioxus::prelude::*;
 

@@ -4,14 +4,18 @@
 
    The aside is the right cockpit panel, same structural-seam vocabulary
    as the rail (`border-strong` seam, top inset highlight, elevated
-   surface). The header treatment lifts the placeholder text into a
-   proper section-title rhythm so future content (F12/F13) inherits a
-   real visual hierarchy instead of bare strings. */
+   surface). The slot owns CHROME ONLY (border, animation, basis,
+   overflow-clip). Each consumer panel handles its own internal padding
+   and layout, so consumers that need full-bleed children (e.g. the F13
+   snapshot drawer reaching the slot's structural seams) get it without
+   an override mechanism. The 12px breathing ring lives on consumer
+   panel rules below (.if-device-panel, .if-panel-slot__placeholder,
+   etc.); .profiles-panel chooses to bleed and handles its own internal
+   padding via .profiles-panel__header / .profiles-panel__body. */
 .if-panel-slot {
     flex: 0 0 320px;
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
     background: var(--color-bg-elevated);
     border-left: 1px solid var(--color-border-strong);
     border-top: 1px solid var(--color-border-strong);
@@ -26,7 +30,6 @@
        primitive uses (dialog.css: panel `overflow:hidden`, body owns
        scroll). */
     overflow: hidden;
-    padding: var(--space-3);
     color: var(--color-text);
     font-size: var(--text-base);
 
@@ -38,15 +41,29 @@
     animation: if-panel-slot-enter var(--duration-slow) var(--easing-standard) both;
 }
 
+/* Default placeholder wrapper for slot bodies that haven't been
+   replaced by a real consumer panel yet (calibration today, future
+   stub bodies). Consumes the 12px breathing ring the slot used to
+   provide so the placeholder text doesn't touch the chrome edges. */
+.if-panel-slot__placeholder {
+    padding: var(--space-3);
+    color: var(--color-text-muted);
+}
+
 @keyframes if-panel-slot-enter {
-    from {
-        opacity: 0;
-        transform: translateX(var(--space-2));
-    }
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
+    /* Pure opacity fade. No transform anywhere in the keyframes, so
+       the slot is never a containing block for descendants and never
+       acquires the BCR-shift quirk on its static descendants that
+       Chromium/WebView2 applies when an element retains a transform
+       (even an identity matrix) under animation-fill-mode: both.
+       The 8px slide affordance the slot used to carry was decorative
+       per DESIGN.md M5 ("motion confirms causality, never performs");
+       the fade alone signals causality. Floating overlays inside the
+       slot now portal to document.body via the `Portal` helper
+       (see `components/portal.rs`), so they would be safe even with
+       a transformed slot, but defense in depth is cheap here. */
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
 
 /* Reduced-motion gate per motion.css section 5, see banner.css for the
@@ -61,14 +78,19 @@
 .if-panel-slot__body {
     /* Body claims leftover space, but the mounted panel owns its own scroll
        regions. The F12 device ledger scrolls above a fixed inspector, so a
-       body-level scrollbar would hide the inspector below the fold. */
+       body-level scrollbar would hide the inspector below the fold. The
+       F13 profile list scrolls inside .profiles-panel__body. The slot
+       body itself never scrolls; therefore no scrollbar-gutter reservation
+       is needed (an `overflow: hidden` element with `scrollbar-gutter:
+       stable` still reserves phantom gutter space because it counts as a
+       scroll container, which would inset the snapshot drawer's right edge
+       by ~15px). */
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
     overflow-y: hidden;
     overflow-x: hidden;
-    scrollbar-gutter: stable;
     color: var(--color-text-muted);
     font-size: var(--text-base);
 }
@@ -80,6 +102,7 @@
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto;
     gap: var(--space-3);
+    padding: var(--space-3);
 }
 
 .if-device-panel__ledger {
@@ -303,4 +326,5 @@
     display: flex;
     justify-content: center;
     gap: var(--space-1);
+    padding: var(--space-3);
 }

@@ -1,15 +1,14 @@
+/* Profiles wants the snapshot drawer flush with the slot's structural
+ * seams. Since panel_slot.css now keeps the slot chrome-only (no
+ * padding ring), .profiles-panel just fills the slot body edge-to-edge
+ * and owns its own internal padding via __header and __body. */
 .profiles-panel {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  width: calc(100% + (2 * var(--space-3)));
-  height: calc(100% + (2 * var(--space-3)));
-  margin: calc(-1 * var(--space-3));
+  width: 100%;
+  height: 100%;
   background: var(--color-bg-elevated);
-}
-
-.if-panel-slot__body:has(> .profiles-panel) {
-  scrollbar-gutter: auto;
 }
 
 .profiles-panel__header,
@@ -17,7 +16,6 @@
 .profiles-panel__new-profile,
 .profile-row__title,
 .profile-row__rename,
-.snapshot-row__title,
 .snapshot-row__actions {
   display: flex;
   align-items: center;
@@ -25,7 +23,10 @@
 }
 
 .profiles-panel__header {
-  justify-content: space-between;
+  /* Action-row strip: the surface label is owned by the slot tab in the
+   * top-right cluster, so the in-panel <h2> was removed and the row now
+   * anchors its actions to the right edge instead of bracketing a title. */
+  justify-content: flex-end;
   padding: var(--space-4) var(--space-4) var(--space-3);
   flex-wrap: wrap;
 }
@@ -35,13 +36,6 @@
   flex-wrap: wrap;
   gap: var(--space-2);
   justify-content: flex-end;
-}
-
-.profiles-panel__header h2 {
-  color: var(--color-text);
-  font-size: var(--text-xl);
-  font-weight: 600;
-  line-height: var(--leading-tight);
 }
 
 .profiles-panel__new-profile {
@@ -336,6 +330,19 @@
   flex: 0 0 auto;
 }
 
+/* Toolbar idiom: a quiet hairline edge at rest so the trigger reads as
+ * a button-shape affordance from across the row, without filled chrome
+ * that would compete with the row's own surface; row-hover then lifts
+ * the chrome (filled background plus stronger border plus brighter
+ * icon color) to signal active intent. aria-expanded latches the lift
+ * while the menu is open. The default .if-menu__trigger styling
+ * (secondary-button surface) is overridden here because it would over-
+ * furnish dense rows.
+ *
+ * Earlier iteration used `border-color: transparent` at rest; the
+ * three-dot glyph is sub-pixel-feeling on a dense card and disappeared
+ * unless the user already knew where the affordance lived (a recall
+ * failure, not recognition). The hairline ring restores recognition. */
 .profile-row__menu-trigger {
   width: 28px;
   height: 28px;
@@ -343,6 +350,21 @@
   align-items: center;
   justify-content: center;
   padding: 0;
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+  transition:
+    background var(--duration-fast) var(--easing-fast),
+    border-color var(--duration-fast) var(--easing-fast),
+    color var(--duration-fast) var(--easing-fast);
+}
+
+.profile-row:hover .profile-row__menu-trigger,
+.profile-row__menu-trigger:hover,
+.profile-row__menu-trigger[aria-expanded="true"] {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
 }
 
 .profile-row__menu-label {
@@ -365,45 +387,255 @@
   color: var(--color-error);
 }
 
+/* Snapshot drawer region: docks at the bottom of the Profiles panel.
+ * Composes the new Drawer primitive (Persistent + Bottom anchor) with
+ * an always-visible toggle bar above. The bar stays put so the count
+ * and "Snapshot now" action remain accessible when the drawer body is
+ * collapsed; the Drawer body slides up/down via the wrapper's max-height
+ * collapse defined in components/drawer.css.
+ *
+ * --if-drawer-size sets the open-state height (read by the Drawer's
+ * persistent transition). Viewport-relative on purpose: the snapshot-
+ * drawer parent has flex: 0 0 auto and no explicit height, so a `%`
+ * value would not resolve, leaving the drawer effectively uncapped.
+ * 40vh gives a real upper bound regardless of the panel's measured
+ * height, while still scaling with window resizes. */
 .snapshot-drawer {
-  margin-top: auto;
+  --if-drawer-size: 40vh;
+  display: flex;
   flex: 0 0 auto;
+  flex-direction: column;
   min-height: 0;
+  margin-top: auto;
+  background: var(--color-bg-sunken);
 }
 
-.snapshot-row {
+.snapshot-drawer__bar {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg);
+  justify-content: space-between;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-border-strong);
 }
 
-.snapshot-row__main {
-  display: flex;
+/* Toggle is a raw <button> with the standard ghost-button class chain
+ * plus this layout override. Left-aligns icon + title, allows the
+ * title to shrink, and gives the chevron an aria-expanded-driven
+ * rotation in place of swapping ChevronUp/ChevronDown glyphs. */
+.snapshot-drawer__toggle {
   flex: 1 1 auto;
-  flex-direction: column;
   min-width: 0;
-  gap: var(--space-1);
+  justify-content: flex-start;
 }
 
-.snapshot-row__title {
-  min-width: 0;
+.snapshot-drawer__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--duration-fast) var(--easing-fast);
 }
 
-.snapshot-row__title strong {
+.snapshot-drawer__toggle[aria-expanded="true"] .snapshot-drawer__chevron {
+  transform: rotate(180deg);
+}
+
+.snapshot-drawer__title {
   min-width: 0;
   overflow: hidden;
-  color: var(--color-text);
-  font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.snapshot-drawer__actions {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+}
+
+.snapshot-drawer__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  padding: var(--space-3);
+}
+
+/* Empty state: when the active profile has no snapshots, opening the
+ * drawer should communicate that explicitly instead of revealing a
+ * blank cap. Two-line eyebrow + hint, centered in the body. The text
+ * doubles as the surface that explains how to create the first
+ * snapshot, so the drawer remains useful even before any content
+ * lands in it. */
+.snapshot-drawer__empty {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3);
+  text-align: center;
+}
+
+.snapshot-drawer__empty-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+  color: var(--color-text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+.snapshot-drawer__empty-hint {
+  max-width: 36ch;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+/* Flat-row contract: snapshot rows are list items inside a sunken
+ * panel region (the drawer body). They do not carry their own card
+ * chrome (border / radius / background); the drawer's surface
+ * luminance carries the panel-region read, and a 1px hairline at the
+ * bottom of each row provides rhythm. This is the same nested-card
+ * avoidance applied across the rest of the profile rows.
+ *
+ * Two-line layout: the 320px-wide drawer cannot fit kind-icon, label,
+ * time, and two action buttons on a single line without starving the
+ * label down to ~85px (where ellipsis kicks in immediately). Splitting
+ * into a primary line (label + Pinned badge) and a secondary line
+ * (muted time + icon-only Restore + ghost trash) gives the label
+ * ~280px of breathing room while keeping every cell in the row
+ * always reachable. */
+.snapshot-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--space-2);
+  align-items: start;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.snapshot-row:last-child {
+  border-bottom: 0;
+}
+
+.snapshot-row__kind-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  margin-top: 3px;
+  color: var(--color-text-muted);
+}
+
+.snapshot-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Line 1. Label is the row's anchor: strong-weight, ellipsis on
+ * overflow, full-text tooltip via the inline `title` attribute. */
+.snapshot-row__primary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.snapshot-row__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Line 2. Time on the left, action icons on the right. */
+.snapshot-row__secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* Time renders as a `<time>` element so the absolute timestamp lives
+ * in `datetime` (and a native tooltip via title) while the visible
+ * text is the glanceable relative form. */
+.snapshot-row__time {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .snapshot-row__actions {
-  justify-content: flex-end;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Asymmetric icon-button visibility:
+ *   Restore stays always visible because it is the row's primary
+ *   affordance (the user opened the drawer to roll back to a
+ *   snapshot). Hover/focus tints the glyph in the action color so the
+ *   row reads "this is the action" without painting a full filled
+ *   button next to muted chrome.
+ *   Delete fades in on row-hover or keyboard focus only, the same
+ *   pattern as the profile row's three-dots trigger. Hover/focus
+ *   tints it error-red. The session-start row's Delete is disabled
+ *   at the markup layer (the row is the recovery anchor); CSS keeps
+ *   the disabled state visible at low opacity instead of hiding it
+ *   entirely so the user can still see the affordance and tooltip
+ *   the disabled reason. */
+.snapshot-row__restore,
+.snapshot-row__delete {
+  transition:
+    opacity var(--duration-fast) var(--easing-fast),
+    background var(--duration-fast) var(--easing-fast),
+    border-color var(--duration-fast) var(--easing-fast),
+    color var(--duration-fast) var(--easing-fast);
+}
+
+.snapshot-row:hover .snapshot-row__restore:hover,
+.snapshot-row__restore:focus-visible {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.snapshot-row__delete {
+  opacity: 0;
+}
+
+.snapshot-row:hover .snapshot-row__delete,
+.snapshot-row:focus-within .snapshot-row__delete,
+.snapshot-row__delete:focus-visible {
+  opacity: 1;
+}
+
+.snapshot-row__delete:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.snapshot-row:hover .snapshot-row__delete:not(:disabled):hover,
+.snapshot-row__delete:not(:disabled):focus-visible {
+  color: var(--color-error);
+  border-color: var(--color-error);
 }
 
 @media (prefers-reduced-motion: reduce) {

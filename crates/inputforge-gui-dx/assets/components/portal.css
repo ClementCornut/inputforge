@@ -1,0 +1,12 @@
+/* The Portal wrapper has no layout impact: its children control their
+   own positioning (typically position: fixed). display: block + zero
+   dimensions means the wrapper itself is invisible and non-interactive
+   while its children float on top of any ancestor surface. After JS
+   moves the wrapper to document.body, no panel/slot/row CSS scope
+   applies, which is the whole point of the portal escape. */
+.if-portal {
+    display: block;
+    position: static;
+    width: 0;
+    height: 0;
+}

@@ -13,18 +13,17 @@
 .if-menu__trigger:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
 
 /* Both `MenuItems` (trigger-attached, computed-coords) and `AnchoredMenu`
-   (cursor-anchored) render the backdrop and the list as siblings under
-   the document tree, both `position: fixed`. The backdrop must escape
-   any ancestor stacking context (transformed editor frames, scroll
-   containers, etc.), so z-index 1000 lives on the base class; the list
-   carries z-index 1001 inline so it paints above the (transparent)
-   backdrop within the same stacking layer. Clicks outside the list fall
-   through to the backdrop's outside-click handler. */
-.if-menu__backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 1000;
-}
+   (cursor-anchored) render the list inside a `Portal`
+   (see `components/portal.rs`), which teleports the wrapper to
+   `document.body` on mount, escaping any ancestor's containing
+   block, overflow clip, and stacking context. The list carries
+   z-index 1001 inline. Click-outside dismissal is handled by the
+   `ClickAwayListener` primitive (`components/click_away_listener.rs`,
+   mirroring MUI's pattern): a document-level mousedown listener that
+   uses `event.composedPath().includes(menuList)` to determine inside
+   vs. outside. NO backdrop element is rendered, so other UI remains
+   interactive while the menu is open and clicks on outside elements
+   activate them in the same gesture that closes the menu. */
 .if-menu__list {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);

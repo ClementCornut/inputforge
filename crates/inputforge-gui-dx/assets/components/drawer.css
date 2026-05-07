@@ -1,0 +1,107 @@
+/* Drawer: docked panel that animates in from one of the four edges of
+ * its parent container.
+ *
+ * Two variants ship today:
+ *   .if-drawer--permanent : always at full size, no animation.
+ *   .if-drawer--persistent: collapses on the cross-axis when closed,
+ *                           animates between open and closed states.
+ *
+ * Sizing: the open-state cross-axis size is read from --if-drawer-size
+ * on any ancestor. Defaults are 50% for Top/Bottom anchors and 320px
+ * for Left/Right. Set the property at the consumer's wrapper element
+ * (e.g. .snapshot-drawer { --if-drawer-size: 40%; }) to size per
+ * surface.
+ *
+ * Motion: --duration-slow + --easing-standard, per DESIGN.md M5
+ * cockpit-brisk container enter/exit. Tokens collapse to 0ms under
+ * prefers-reduced-motion automatically; the explicit reduced-motion
+ * block below ALSO swaps the animated property to opacity, so the
+ * paper visibly fades instead of teleporting between states.
+ *
+ * The Paper carries a 1px hairline on the inward edge per anchor
+ * (DESIGN.md M4 borders-over-shadows: a drawer is a panel region, not
+ * a floating overlay, so no shadow-3 here). */
+
+.if-drawer {
+    display: flex;
+}
+
+.if-drawer--docked {
+    overflow: hidden;
+    min-height: 0;
+    min-width: 0;
+}
+
+/* Paper: the visible drawer surface. Children live inside. */
+.if-drawer__paper {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--color-bg-sunken);
+    outline: 0;
+}
+
+/* Anchor-side hairline. The seam sits on the side of the Paper that
+ * faces the rest of the panel (i.e. the inward edge), so a
+ * Bottom-anchored drawer puts the divider on its top edge. */
+.if-drawer--anchor-bottom > .if-drawer__paper {
+    border-top: 1px solid var(--color-border-strong);
+}
+.if-drawer--anchor-top > .if-drawer__paper {
+    border-bottom: 1px solid var(--color-border-strong);
+}
+.if-drawer--anchor-left > .if-drawer__paper {
+    border-right: 1px solid var(--color-border-strong);
+}
+.if-drawer--anchor-right > .if-drawer__paper {
+    border-left: 1px solid var(--color-border-strong);
+}
+
+/* Persistent: the docked wrapper drives the size animation. The Paper
+ * is full-size; the wrapper's overflow:hidden masks it as the wrapper
+ * shrinks. */
+.if-drawer--persistent {
+    transition:
+        max-height var(--duration-slow) var(--easing-standard),
+        max-width var(--duration-slow) var(--easing-standard);
+}
+
+.if-drawer--persistent.if-drawer--anchor-top.if-drawer--open,
+.if-drawer--persistent.if-drawer--anchor-bottom.if-drawer--open {
+    max-height: var(--if-drawer-size, 50%);
+}
+.if-drawer--persistent.if-drawer--anchor-top.if-drawer--closed,
+.if-drawer--persistent.if-drawer--anchor-bottom.if-drawer--closed {
+    max-height: 0;
+}
+
+.if-drawer--persistent.if-drawer--anchor-left.if-drawer--open,
+.if-drawer--persistent.if-drawer--anchor-right.if-drawer--open {
+    max-width: var(--if-drawer-size, 320px);
+}
+.if-drawer--persistent.if-drawer--anchor-left.if-drawer--closed,
+.if-drawer--persistent.if-drawer--anchor-right.if-drawer--closed {
+    max-width: 0;
+}
+
+/* Reduced motion: drop the spatial size transition (it would still
+ * collapse, but with --duration-slow already 0ms via the token, the
+ * change would be an instant teleport). Animate paper opacity instead
+ * so the user sees a visible state change rather than a blink. */
+@media (prefers-reduced-motion: reduce) {
+    .if-drawer--persistent {
+        transition: none;
+    }
+    .if-drawer--persistent > .if-drawer__paper {
+        transition: opacity var(--duration-slow) var(--easing-linear);
+    }
+    .if-drawer--persistent.if-drawer--closed > .if-drawer__paper {
+        opacity: 0;
+    }
+    .if-drawer--persistent.if-drawer--open > .if-drawer__paper {
+        opacity: 1;
+    }
+}

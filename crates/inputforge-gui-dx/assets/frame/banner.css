@@ -51,14 +51,15 @@
 }
 
 @keyframes if-banner-enter {
-    from {
-        opacity: 0;
-        transform: translateY(-2px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    /* Pure opacity fade, same rationale as if-panel-slot-enter in
+       panel_slot.css. No transform anywhere prevents the banner from
+       acquiring containing-block / BCR-shift quirks for any future
+       descendant (a toast or alert that might live inline with the
+       banner copy). Floating overlays should also portal via the
+       `Portal` helper, but the fade-only animation is the cheaper
+       belt-and-braces. */
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
 
 /* Reduced-motion gate per motion.css section 5, keyframes that animate

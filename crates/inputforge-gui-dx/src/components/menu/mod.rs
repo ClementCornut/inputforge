@@ -2,7 +2,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use dioxus::prelude::*;
 
+use super::click_away_listener::ClickAwayListener;
 use super::merge_class;
+use super::portal::Portal;
 
 pub(crate) mod focus_walker;
 
@@ -248,10 +250,10 @@ pub fn MenuTrigger(
 }
 
 #[component]
-#[expect(
+#[allow(
     unused_qualifications,
-    reason = "Dioxus 0.7 RSX macro emits redundant `dioxus_elements::*` qualifications \
-              on per-element event listeners with bound closures."
+    reason = "Dioxus 0.7 RSX macro may emit redundant `dioxus_elements::*` qualifications \
+              on per-element event listeners with bound closures; defensive allow."
 )]
 pub fn MenuItems(
     /// Class extension for the floating list surface (`.if-menu__list`).
@@ -277,7 +279,7 @@ pub fn MenuItems(
     children: Element,
 ) -> Element {
     let state = use_context::<MenuState>();
-    let mut open_signal = state.open;
+    let open_signal = state.open;
     let menu_id = state.menu_id.read().clone();
     let trigger_id = state.trigger_id.read().clone();
 
@@ -376,10 +378,6 @@ pub fn MenuItems(
         };
         focus_menu_item(&target_id_for_keydown, action);
     };
-    let backdrop_onclick = move |_| {
-        open_signal.set(false);
-    };
-
     // Auto-focus the first menuitem once the menu is mounted with a
     // committed placement. Tracks both `open` and `placement` so it
     // fires exactly once per open, on the placement None -> Some
@@ -426,24 +424,33 @@ pub fn MenuItems(
     };
 
     let combined = merge_class("if-menu__list", "", class.as_deref());
+    let menu_id_for_caw = menu_id.clone();
+    let trigger_id_for_caw = trigger_id.clone();
+    let mut close_signal = open_signal;
     rsx! {
-        // Backdrop: full-viewport pointer-event sink at z-index 1000.
-        // Renders BEFORE the list in document order so the list paints on
-        // top within the same z-index layer; any click outside the list
-        // hits the backdrop and closes the menu.
-        div {
-            class: "if-menu__backdrop",
-            "aria-hidden": "true",
-            onclick: backdrop_onclick,
-        }
-        div {
-            class: "{combined}",
-            id: "{menu_id}",
-            role: "menu",
-            tabindex: "-1",
-            style: "{style}",
-            onkeydown,
-            {children}
+        // List teleports to document.body via Portal so its
+        // popper-computed, viewport-relative coords resolve correctly
+        // against the viewport regardless of where the trigger row
+        // lives in the DOM tree. Click-outside dismissal is handled
+        // by ClickAwayListener (a document-level mousedown listener
+        // mirroring MUI's primitive), with the trigger id excluded
+        // so the same mousedown that opened the menu does not
+        // immediately close it.
+        Portal {
+            ClickAwayListener {
+                target_id: menu_id_for_caw,
+                exclude_id: Some(trigger_id_for_caw),
+                on_click_away: move |()| close_signal.set(false),
+                div {
+                    class: "{combined}",
+                    id: "{menu_id}",
+                    role: "menu",
+                    tabindex: "-1",
+                    style: "{style}",
+                    onkeydown,
+                    {children}
+                }
+            }
         }
     }
 }
@@ -491,9 +498,10 @@ pub fn MenuItem(
 /// the originating element based on the `CloseReason`).
 ///
 /// Inside, render `MenuItem`s as children; they auto-close via the same
-/// `MenuState` mechanism `MenuRoot` uses. The wrapper handles backdrop,
-/// keyboard navigation (Arrow keys, Home, End), Escape, Tab, and
-/// auto-focuses the first non-disabled item on open. Space and Enter
+/// `MenuState` mechanism `MenuRoot` uses. The wrapper handles
+/// click-outside dismissal (via `ClickAwayListener`), keyboard
+/// navigation (Arrow keys, Home, End), Escape, Tab, and auto-focuses
+/// the first non-disabled item on open. Space and Enter
 /// activation on items works via native `<button>` semantics (each
 /// `MenuItem` is a `<button>`); the keydown handler does not need to
 /// handle them explicitly.
@@ -522,10 +530,10 @@ pub fn MenuItem(
 /// (an empty `aria-labelledby` would point to a nonexistent element and
 /// is invalid ARIA).
 #[component]
-#[expect(
+#[allow(
     unused_qualifications,
-    reason = "Dioxus 0.7 RSX macro emits redundant `dioxus_elements::*` qualifications \
-              on per-element event listeners with bound closures."
+    reason = "Dioxus 0.7 RSX macro may emit redundant `dioxus_elements::*` qualifications \
+              on per-element event listeners with bound closures; defensive allow."
 )]
 pub fn AnchoredMenu(
     /// Anchor coordinates and open-state, fused into one Option so an
@@ -641,34 +649,37 @@ pub fn AnchoredMenu(
         _ => {}
     };
 
-    let backdrop_onclick = move |_| {
-        close.call(CloseReason::ClickOutside);
-    };
-
     let combined = merge_class("if-menu__list", "", class.as_deref());
     let style = format!(
         "position: fixed; left: {}px; top: {}px; z-index: 1001;",
         coords.x, coords.y
     );
+    let menu_id_for_caw = menu_id_str.clone();
+    let close_for_caw = close;
 
     rsx! {
-        // Backdrop sits at z-index 1000 (set on `.if-menu__backdrop`),
-        // list at z-index 1001 (inline). Both fixed so they escape any
-        // ancestor stacking context.
-        div {
-            class: "if-menu__backdrop",
-            "aria-hidden": "true",
-            onclick: backdrop_onclick,
-        }
-        div {
-            class: "{combined}",
-            id: "{menu_id_str}",
-            role: "menu",
-            tabindex: "-1",
-            "aria-labelledby": aria_labelledby,
-            style: "{style}",
-            onkeydown,
-            {children}
+        // Portal: teleport list to document.body to escape any
+        // ancestor's containing block, overflow clip, or stacking
+        // context. Click-outside dismissal is handled by
+        // ClickAwayListener (document-level mousedown). AnchoredMenu
+        // has no DOM trigger to exclude; the cursor click that
+        // produced its anchor coords is past by the time the
+        // listener installs.
+        Portal {
+            ClickAwayListener {
+                target_id: menu_id_for_caw,
+                on_click_away: move |()| close_for_caw.call(CloseReason::ClickOutside),
+                div {
+                    class: "{combined}",
+                    id: "{menu_id_str}",
+                    role: "menu",
+                    tabindex: "-1",
+                    "aria-labelledby": aria_labelledby,
+                    style: "{style}",
+                    onkeydown,
+                    {children}
+                }
+            }
         }
     }
 }

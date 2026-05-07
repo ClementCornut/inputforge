@@ -21,7 +21,7 @@ const MOTION_CSS: Asset = asset!("/assets/tokens/motion.css");
 const INSTRUMENTS_TOKENS_CSS: Asset = asset!("/assets/tokens/instruments.css");
 const GLOBAL_CSS: Asset = asset!("/assets/global.css");
 const ICON_CSS: Asset = asset!("/assets/components/icon.css");
-const BOTTOM_DRAWER_CSS: Asset = asset!("/assets/components/bottom-drawer.css");
+const DRAWER_CSS: Asset = asset!("/assets/components/drawer.css");
 const BUTTON_CSS: Asset = asset!("/assets/components/button.css");
 const ICON_BUTTON_CSS: Asset = asset!("/assets/components/icon-button.css");
 const TEXT_INPUT_CSS: Asset = asset!("/assets/components/text-input.css");
@@ -78,7 +78,7 @@ pub fn ThemeProvider(children: Element) -> Element {
 
         // Component CSS will be appended here as primitives land (Tasks 13-20).
         Stylesheet { href: ICON_CSS }
-        Stylesheet { href: BOTTOM_DRAWER_CSS }
+        Stylesheet { href: DRAWER_CSS }
         Stylesheet { href: BUTTON_CSS }
         Stylesheet { href: ICON_BUTTON_CSS }
         Stylesheet { href: TEXT_INPUT_CSS }

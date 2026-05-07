@@ -1,11 +1,12 @@
 //! Re-exports for the F2 component primitives.
 
 pub mod badge;
-pub mod bottom_drawer;
 pub mod button;
 pub mod card;
 pub mod checkbox;
+pub mod click_away_listener;
 pub mod dialog;
+pub mod drawer;
 pub mod field;
 pub mod icon;
 pub mod icon_button;
@@ -13,6 +14,7 @@ pub mod label;
 pub mod layout;
 pub mod menu;
 pub mod number_input;
+pub mod portal;
 pub mod select;
 pub mod separator;
 pub mod slider;
@@ -25,11 +27,12 @@ pub mod text_input;
 pub mod tooltip;
 
 pub use badge::{Badge, BadgeVariant};
-pub use bottom_drawer::BottomDrawer;
 pub use button::{Button, ButtonSize, ButtonVariant};
 pub use card::{Card, CardPadding};
 pub use checkbox::Checkbox;
+pub use click_away_listener::ClickAwayListener;
 pub use dialog::{DialogBody, DialogDescription, DialogFooter, DialogRoot, DialogTitle};
+pub use drawer::{Drawer, DrawerAnchor, DrawerVariant};
 pub use field::Field;
 pub use icon::Icon;
 pub use icon_button::IconButton;
@@ -39,6 +42,7 @@ pub use menu::{
     Anchor, AnchoredMenu, CloseReason, MenuAnchor, MenuItem, MenuItems, MenuRoot, MenuTrigger,
 };
 pub use number_input::NumberInput;
+pub use portal::Portal;
 pub use select::Select;
 pub use separator::{Separator, SeparatorOrientation};
 pub use slider::Slider;
@@ -95,73 +99,5 @@ mod tests {
     #[test]
     fn no_trailing_space() {
         assert!(!merge_class("a", "b", None).ends_with(' '));
-    }
-
-    #[test]
-    fn bottom_drawer_renders_design_system_shell() {
-        use crate::components::button::{ButtonSize, ButtonVariant};
-        use crate::components::{BottomDrawer, IconButton};
-        use crate::icons::Icon as IconKind;
-        use dioxus::prelude::*;
-        use dioxus_ssr::render;
-
-        fn harness() -> Element {
-            rsx! {
-                BottomDrawer {
-                    open: true,
-                    title: "Snapshots - Default".to_owned(),
-                    count: 2,
-                    on_toggle: move |_| {},
-                    actions: rsx! {
-                        IconButton {
-                            icon: IconKind::Plus,
-                            label: "Snapshot now",
-                            size: ButtonSize::Sm,
-                            variant: ButtonVariant::Primary,
-                            onclick: move |_| {},
-                        }
-                    },
-                    div { "snapshot row" }
-                }
-            }
-        }
-
-        let mut vdom = VirtualDom::new(harness);
-        vdom.rebuild_in_place();
-        let html = render(&vdom);
-
-        assert!(html.contains("if-bottom-drawer"));
-        assert!(html.contains("if-icon-button"));
-        assert!(html.contains("if-badge"));
-        assert!(html.contains("snapshot row"));
-        assert!(!html.contains("class=\"icon-button\""));
-        assert!(!html.contains("class=\"badge\""));
-    }
-
-    #[test]
-    fn bottom_drawer_closed_omits_body() {
-        use crate::components::BottomDrawer;
-        use dioxus::prelude::*;
-        use dioxus_ssr::render;
-
-        fn harness() -> Element {
-            rsx! {
-                BottomDrawer {
-                    open: false,
-                    title: "Snapshots - Default".to_owned(),
-                    count: 0,
-                    on_toggle: move |_| {},
-                    actions: rsx! {},
-                    div { "hidden snapshot row" }
-                }
-            }
-        }
-
-        let mut vdom = VirtualDom::new(harness);
-        vdom.rebuild_in_place();
-        let html = render(&vdom);
-
-        assert!(html.contains("if-bottom-drawer"));
-        assert!(!html.contains("hidden snapshot row"));
     }
 }

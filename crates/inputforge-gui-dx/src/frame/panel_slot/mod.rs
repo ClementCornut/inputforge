@@ -43,7 +43,7 @@ pub(crate) fn PanelSlot() -> Element {
     let body = match s {
         PanelSlotEnum::Devices if !calib => rsx! { device_panel::DevicePanel {} },
         PanelSlotEnum::Profiles => rsx! { ProfilesPanel {} },
-        _ => rsx! { "{spec.body}" },
+        _ => rsx! { div { class: "if-panel-slot__placeholder", "{spec.body}" } },
     };
 
     rsx! {

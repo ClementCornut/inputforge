@@ -12,6 +12,7 @@ use inputforge_core::engine::EngineCommand;
 use inputforge_core::settings::AppSettings;
 
 pub(crate) mod actions;
+pub(crate) mod delete_dialog;
 pub(crate) mod library;
 pub(crate) mod new_profile;
 pub(crate) mod new_profile_submode;
@@ -19,6 +20,8 @@ pub(crate) mod no_profile;
 pub(crate) mod open_choice_submode;
 pub(crate) mod projection;
 pub(crate) mod snapshot_drawer;
+
+pub(crate) use delete_dialog::{ProfileDeleteDialog, ProfileDeleteSignal};
 
 const PROFILES_CSS: Asset = asset!("/assets/frame/profiles.css");
 
@@ -68,6 +71,16 @@ pub(crate) fn ProfilesPanel() -> Element {
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
 
+    // Panel-scoped destructive-confirm signal. The library row's
+    // Delete onclick writes the target profile name here; the
+    // sibling `ProfileDeleteDialog` reads it as its open-state +
+    // dispatches `profile_delete_action(...).command` only when the
+    // user confirms. Provided here so the trigger (inside
+    // `ProfileLibrary`) and the dialog (sibling of the panel body)
+    // share one source of truth.
+    let delete_target = use_signal(|| Option::<String>::None);
+    use_context_provider(|| ProfileDeleteSignal(delete_target));
+
     // Read from the reactive Signal published by the bridge polling
     // task at 60Hz so the panel re-renders on profile, snapshot, and
     // origin changes without forcing the user to switch sub-modes.
@@ -89,8 +102,11 @@ pub(crate) fn ProfilesPanel() -> Element {
     rsx! {
         Stylesheet { href: PROFILES_CSS }
         section { class: "profiles-panel", "data-testid": "profile-library",
+            // The slot tab cluster already labels this surface
+            // "Profiles"; an in-panel `<h2>` would restate it. Mirrors
+            // the same removal applied to the Devices slot, locked by
+            // `panel_slot/mod.rs::panel_header_omits_placeholder_caption`.
             header { class: "profiles-panel__header",
-                h2 { "Profiles" }
                 div { class: "profiles-panel__header-actions",
                     Button {
                         variant: ButtonVariant::Primary,
@@ -99,7 +115,7 @@ pub(crate) fn ProfilesPanel() -> Element {
                         "+ New profile"
                     }
                     Button {
-                        variant: ButtonVariant::Ghost,
+                        variant: ButtonVariant::Secondary,
                         size: ButtonSize::Sm,
                         onclick: header_open_file_click,
                         "Open file..."
@@ -137,6 +153,12 @@ pub(crate) fn ProfilesPanel() -> Element {
                     "Load a profile to view snapshots ({snapshot_count})"
                 }
             }
+            // Destructive-confirm dialog. Lives at panel scope so it
+            // shares the trigger's `ProfileDeleteSignal` context but
+            // is not nested inside the row flex (a native `<dialog>`
+            // renders on the browser's top layer regardless, so this
+            // is purely organisational).
+            ProfileDeleteDialog {}
         }
     }
 }

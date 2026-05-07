@@ -109,12 +109,27 @@ fn render_no_profile_frame() -> String {
 fn sample_snapshot_context() -> Vec<SnapshotRowView> {
     vec![SnapshotRowView {
         id: sample_snapshot_id(),
+        kind: SnapshotKind::Manual,
         kind_label: "Manual".to_owned(),
         label: Some("Before trim".to_owned()),
-        time_label: "2026-05-06T20:00:00Z".to_owned(),
+        time_relative: "12m ago".to_owned(),
+        time_absolute: "2026-05-06 20:00 UTC".to_owned(),
         sort_key: 1,
         pinned: true,
     }]
+}
+
+fn sample_session_start_row() -> SnapshotRowView {
+    SnapshotRowView {
+        id: sample_snapshot_id(),
+        kind: SnapshotKind::AutoSessionStart,
+        kind_label: "Session start".to_owned(),
+        label: None,
+        time_relative: "just now".to_owned(),
+        time_absolute: "2026-05-07 14:42 UTC".to_owned(),
+        sort_key: 0,
+        pinned: false,
+    }
 }
 
 #[component]
@@ -364,6 +379,25 @@ fn profiles_panel_replaces_placeholder_copy() {
     assert!(!html.contains("Placeholder"));
 }
 
+/// Mirrors `panel_slot::tests::panel_header_omits_placeholder_caption`:
+/// the slot tab cluster already labels this surface "Profiles", so
+/// the panel must NOT restate that label as in-panel heading text.
+/// Locks parity with the Devices slot, which dropped its equivalent
+/// caption. The assertion targets the literal label between tags
+/// (`>Profiles<`); generic `<h2` is intentionally not asserted here
+/// because `ProfilesPanel` mounts the destructive-confirm
+/// `ProfileDeleteDialog`, whose `DialogTitle` correctly renders an
+/// `<h2>Delete profile</h2>` as the modal's accessible title.
+#[test]
+fn profiles_panel_header_omits_duplicate_title() {
+    let html = render_profiles_panel(sample_profiles_context());
+
+    assert!(
+        !html.contains(">Profiles<"),
+        "the literal 'Profiles' label belongs to the slot tab, not the panel"
+    );
+}
+
 #[test]
 fn active_profile_row_renders_when_library_rows_are_empty() {
     let html = render_profiles_panel(sample_profiles_context());
@@ -382,7 +416,8 @@ fn profiles_panel_uses_design_system_components() {
     assert!(html.contains("if-button"));
     assert!(html.contains("if-icon-button"));
     assert!(html.contains("if-badge"));
-    assert!(html.contains("if-bottom-drawer"));
+    assert!(html.contains("if-drawer"));
+    assert!(html.contains("snapshot-drawer__bar"));
     assert!(html.contains("if-menu"));
     assert!(html.contains("if-menu__trigger"));
     assert!(html.contains("if-menu__item"));
@@ -403,27 +438,78 @@ fn profiles_css_uses_flex_layout_and_flush_drawer_contract() {
     assert!(css.contains("flex-direction: column;"));
     assert!(css.contains(".profiles-panel__body {\n  flex: 1 1 auto;"));
     assert!(css.contains(".profile-row {\n  display: flex;"));
-    assert!(css.contains(".snapshot-drawer {\n  margin-top: auto;"));
-    assert!(css.contains("margin: calc(-1 * var(--space-3));"));
-    assert!(css.contains("width: calc(100% + (2 * var(--space-3)));"));
-    assert!(css.contains("scrollbar-gutter: auto;"));
+    // Snapshot region docks at the bottom of the panel body and feeds
+    // the Drawer primitive its open-state size via --if-drawer-size.
+    let snapshot_block = css
+        .split(".snapshot-drawer {")
+        .nth(1)
+        .expect("snapshot-drawer rule present")
+        .split('}')
+        .next()
+        .expect("snapshot-drawer rule closed");
+    assert!(snapshot_block.contains("--if-drawer-size:"));
+    assert!(snapshot_block.contains("margin-top: auto;"));
+    // Flush drawer contract: panel fills the slot directly (no
+    // negative-margin bleed-out hack); the slot itself is now
+    // chrome-only so the panel reaches structural seams without
+    // escaping a padding ring.
+    assert!(css.contains(".profiles-panel {\n  display: flex;"));
+    assert!(css.contains("width: 100%;"));
+    assert!(css.contains("height: 100%;"));
+    assert!(!css.contains("margin: calc(-1 * var(--space-3));"));
+    assert!(!css.contains("width: calc(100% + (2 * var(--space-3)));"));
+    assert!(!css.contains("scrollbar-gutter: auto;"));
     assert!(!css.contains("margin-bottom: calc(-1 * var(--space-3));"));
     assert!(!css.contains("grid-template-rows"));
     assert!(!css.contains("grid-row"));
 }
 
 #[test]
-fn bottom_drawer_css_uses_flex_and_scrollable_body() {
-    let css = include_str!("../../../assets/components/bottom-drawer.css");
+fn panel_slot_css_keeps_chrome_only_consumers_own_padding() {
+    let css = include_str!("../../../assets/frame/panel_slot.css");
 
-    assert!(css.contains(".if-bottom-drawer {\n  display: flex;"));
-    assert!(css.contains("flex-direction: column;"));
-    assert!(css.contains("width: 100%;"));
-    assert!(css.contains(".if-bottom-drawer__header {\n  flex: 0 0 auto;"));
-    assert!(css.contains(".if-bottom-drawer__body {\n  flex: 1 1 auto;"));
-    assert!(css.contains("overflow: auto;"));
-    assert!(!css.contains("display: grid"));
-    assert!(!css.contains("grid-template"));
+    // Slot itself should not impose padding on consumers.
+    let slot_block = css
+        .split(".if-panel-slot {")
+        .nth(1)
+        .expect("panel slot rule present")
+        .split('}')
+        .next()
+        .expect("panel slot rule closed");
+    assert!(
+        !slot_block.contains("padding:"),
+        "panel slot must not impose padding on consumers, found: {slot_block}"
+    );
+
+    // Each consumer carries its own breathing-ring padding.
+    assert!(css.contains(".if-device-panel {"));
+    assert!(css.contains(".if-device-panel--empty {"));
+    assert!(css.contains(".if-panel-slot__placeholder {"));
+}
+
+#[test]
+fn drawer_css_collapses_persistent_and_uses_motion_tokens() {
+    let css = include_str!("../../../assets/components/drawer.css");
+
+    // Persistent variant collapses the docked wrapper on the cross-axis
+    // when closed and animates with the cockpit-brisk container tokens
+    // (DESIGN.md M5: --duration-slow + --easing-standard for >=240ms
+    // container enter/exit).
+    assert!(css.contains(".if-drawer--persistent"));
+    assert!(css.contains("var(--duration-slow)"));
+    assert!(css.contains("var(--easing-standard)"));
+    // Open state reads --if-drawer-size; closed state collapses to 0.
+    assert!(css.contains("max-height: var(--if-drawer-size"));
+    assert!(css.contains("max-width: var(--if-drawer-size"));
+    assert!(css.contains("max-height: 0;"));
+    assert!(css.contains("max-width: 0;"));
+    // All four anchors carry their own hairline rule on the inward edge.
+    assert!(css.contains(".if-drawer--anchor-bottom > .if-drawer__paper"));
+    assert!(css.contains(".if-drawer--anchor-top > .if-drawer__paper"));
+    assert!(css.contains(".if-drawer--anchor-left > .if-drawer__paper"));
+    assert!(css.contains(".if-drawer--anchor-right > .if-drawer__paper"));
+    // Reduced-motion drops the spatial transition to opacity-only.
+    assert!(css.contains("@media (prefers-reduced-motion: reduce)"));
 }
 
 #[test]
@@ -557,6 +643,77 @@ fn case_only_duplicate_rename_is_allowed() {
     assert_eq!(validated, "ALPHA");
 }
 
+/// Regression: when an external profile is active and shares its name
+/// with a library entry, `meta.profile_rows` contains both rows. The
+/// inline rename in `library.rs` keys the active rename target by
+/// `row.id` (the file path) and filters `existing_names` to library
+/// origin so the external row does NOT pollute collision checks. Locks
+/// both invariants at the data layer (the rendering integration cannot
+/// be exercised through SSR because the rename signal toggles on a
+/// click handler).
+#[test]
+fn rename_filters_external_active_profile_from_collision_namespace() {
+    use crate::frame::profiles::actions::validate_rename;
+
+    let library_default = ProfileRowView {
+        id: "C:/Profiles/Default.toml".to_owned(),
+        name: "Default".to_owned(),
+        path_label: "C:/Profiles/Default.toml".to_owned(),
+        is_active: false,
+        origin: ProfileRowOrigin::Library,
+        mode_count: 1,
+        last_edited_label: None,
+        can_open: true,
+        can_rename: true,
+        can_duplicate: true,
+        can_reveal: true,
+        can_delete: true,
+        can_add_to_library: false,
+        can_snapshot_now: false,
+    };
+    let external_default = ProfileRowView {
+        id: "D:/External/Default.toml".to_owned(),
+        name: "Default".to_owned(),
+        path_label: "D:/External/Default.toml".to_owned(),
+        is_active: true,
+        origin: ProfileRowOrigin::External,
+        mode_count: 1,
+        last_edited_label: None,
+        can_open: false,
+        can_rename: false,
+        can_duplicate: false,
+        can_reveal: true,
+        can_delete: false,
+        can_add_to_library: true,
+        can_snapshot_now: true,
+    };
+    let rows = [library_default.clone(), external_default.clone()];
+
+    // Mirrors the inline filter at `library.rs:40-44`.
+    let existing_names: Vec<String> = rows
+        .iter()
+        .filter(|r| r.origin == ProfileRowOrigin::Library)
+        .map(|r| r.name.clone())
+        .collect();
+    assert_eq!(existing_names, vec!["Default".to_owned()]);
+
+    // Renaming the library "Default" to a brand-new name must succeed
+    // even though an external profile named "Default" is also active.
+    validate_rename("Default", "Renamed", &existing_names).unwrap();
+
+    // Path-keyed rename target matches the library row only; the
+    // external row of the same name must not flag as renaming.
+    let rename_target: Option<String> = Some(library_default.id.clone());
+    assert!(
+        rename_target.as_deref() == Some(library_default.id.as_str()),
+        "library row should match the rename target by id"
+    );
+    assert!(
+        rename_target.as_deref() != Some(external_default.id.as_str()),
+        "external row must not match a library-targeted rename"
+    );
+}
+
 #[test]
 fn illegal_filename_char_is_rejected_inline() {
     use crate::frame::profiles::actions::{NewProfileValidationError, validate_new_profile_name};
@@ -578,13 +735,151 @@ fn missing_external_path_is_rejected_inline() {
 }
 
 #[test]
+fn snapshot_drawer_renders_empty_state_when_no_snapshots() {
+    // Opening the drawer with zero snapshots must not reveal a blank
+    // cap of --if-drawer-size. The empty-state placeholder explains
+    // that no snapshots exist and how to create one, so the open
+    // state is always meaningful regardless of profile state.
+    let html = render_snapshot_drawer(Vec::new(), true);
+
+    assert!(html.contains("snapshot-drawer__empty"));
+    assert!(html.contains("No snapshots yet"));
+    assert!(html.contains("Ctrl+S"));
+    // The empty branch replaces row markup; no .snapshot-row article
+    // should appear when rows is empty.
+    assert!(!html.contains("class=\"snapshot-row\""));
+}
+
+#[test]
+fn snapshot_drawer_omits_empty_state_when_rows_present() {
+    let html = render_snapshot_drawer(sample_snapshot_context(), true);
+
+    assert!(!html.contains("snapshot-drawer__empty"));
+    assert!(html.contains("class=\"snapshot-row\""));
+}
+
+#[test]
+fn snapshot_drawer_caps_open_size_via_viewport_unit() {
+    // Percentage --if-drawer-size would not resolve against the
+    // snapshot-drawer's flex:0 0 auto parent, leaving the drawer
+    // effectively uncapped. Viewport units bypass that resolution
+    // problem; this asserts the consumer wires it that way.
+    let css = include_str!("../../../assets/frame/profiles.css");
+    let snapshot_block = css
+        .split(".snapshot-drawer {")
+        .nth(1)
+        .expect("snapshot-drawer rule present")
+        .split('}')
+        .next()
+        .expect("snapshot-drawer rule closed");
+    assert!(
+        snapshot_block.contains("--if-drawer-size: 40vh;"),
+        "snapshot-drawer must set --if-drawer-size with a viewport-relative \
+         unit so the Drawer's max-height resolves; got: {snapshot_block}"
+    );
+}
+
+#[test]
+fn snapshot_row_renders_two_line_layout_with_icon_only_actions() {
+    let html = render_snapshot_drawer(sample_snapshot_context(), true);
+
+    // Two-line structure: leading kind-icon, primary line carrying
+    // the strong-label (with `title` attribute for full-text tooltip
+    // on truncation), secondary line carrying the relative time and
+    // the icon-only action pair (Restore + Ghost trash for Delete).
+    assert!(html.contains("class=\"snapshot-row__kind-icon\""));
+    assert!(html.contains("class=\"snapshot-row__primary\""));
+    assert!(html.contains("class=\"snapshot-row__secondary\""));
+    assert!(html.contains("class=\"snapshot-row__label\""));
+    assert!(html.contains("title=\"Before trim\""));
+    assert!(html.contains("<time"));
+    assert!(html.contains("datetime=\"2026-05-06 20:00 UTC\""));
+    assert!(html.contains("12m ago"));
+    // The old single-line grouping is retired.
+    assert!(!html.contains("snapshot-row__title"));
+    // Restore is now an icon-only Ghost IconButton with the
+    // ClockCounterClockwise glyph (Phosphor "restore from history"),
+    // aria-label "Restore snapshot", and the .snapshot-row__restore
+    // class so CSS can apply the always-visible primary tint on
+    // hover. Delete is a Ghost trash IconButton with aria-label
+    // "Delete snapshot" behind the .snapshot-row__delete hover-reveal
+    // class.
+    assert!(html.contains("snapshot-row__restore"));
+    assert!(html.contains("aria-label=\"Restore snapshot\""));
+    assert!(html.contains("snapshot-row__delete"));
+    assert!(html.contains("aria-label=\"Delete snapshot\""));
+    // No textual "Restore" button anywhere in the row markup; the
+    // icon carries the affordance now (the aria-label is the
+    // accessible name for screen readers).
+    assert!(!html.contains(">Restore<"));
+    // Neither action button uses the danger variant; the destructive
+    // read comes from the ghost-on-error-tint CSS state, not from a
+    // saturated red surface.
+    assert!(!html.contains("if-icon-button--danger"));
+}
+
+#[test]
+fn snapshot_row_disables_delete_on_session_start() {
+    // Session start is the recovery anchor. Deleting it strands the
+    // user's "go back to where I was when I opened the app" lifeline.
+    // Lock that the Delete affordance is rendered disabled on this row.
+    let html = render_snapshot_drawer(vec![sample_session_start_row()], true);
+
+    // The Delete IconButton stays in the markup so the user can see
+    // the affordance and reason about it; the disabled attribute and
+    // CSS opacity-0.35 make it non-interactive.
+    assert!(html.contains("snapshot-row__delete"));
+    // The Trash IconButton renders a `<button ... disabled>` for this
+    // row. Walk the row's actions block to confirm the disabled
+    // attribute is on the delete button.
+    let delete_marker =
+        "class=\"if-icon-button if-icon-button--ghost if-icon-button--sm snapshot-row__delete\"";
+    let after_class = html
+        .split(delete_marker)
+        .nth(1)
+        .expect("session start row must render the snapshot-row__delete button");
+    let inside_tag = after_class
+        .split('>')
+        .next()
+        .expect("button tag must close");
+    assert!(
+        inside_tag.contains("disabled"),
+        "session-start row's Delete must be disabled; got tag: {inside_tag}"
+    );
+}
+
+#[test]
+fn snapshot_row_label_never_leaks_hid_hash() {
+    // Regression check on the projection contract: the row's user-
+    // facing label must never render the raw 32-char SDL HID hash.
+    // The bulk-map label producer resolves the source DeviceId to a
+    // display name (alias, hardware name, or id-string fallback)
+    // before formatting; this test pins that the renderer faithfully
+    // displays whatever string came in, and that no test fixture or
+    // production projection would smuggle the hash through.
+    let html = render_snapshot_drawer(sample_snapshot_context(), true);
+    assert!(!html.contains("030037c344330000f483000000000000"));
+}
+
+#[test]
 fn drawer_header_uses_sibling_toggle_and_snapshot_now_button() {
     let html = render_snapshot_drawer(sample_snapshot_context(), true);
 
-    assert!(html.contains("class=\"if-bottom-drawer__header\""));
-    assert!(html.contains("if-bottom-drawer__toggle"));
+    // Toggle bar is a sibling of the Drawer, both inside the
+    // snapshot-drawer section. The toggle button carries
+    // aria-expanded so CSS can rotate the chevron in place of swapping
+    // glyphs, and aria-controls points at the body inside the Drawer.
+    assert!(html.contains("class=\"snapshot-drawer__bar\""));
+    assert!(html.contains("snapshot-drawer__toggle"));
+    assert!(html.contains("aria-expanded=\"true\""));
+    assert!(html.contains("aria-controls=\"snapshot-drawer-body\""));
     assert!(html.contains("aria-label=\"Snapshot now\""));
-    assert!(!html.contains("<button class=\"if-bottom-drawer__toggle\"><button"));
+    // The Drawer primitive labels its Paper region by the toggle's id.
+    assert!(html.contains("aria-labelledby=\"snapshot-drawer-bar-title\""));
+    // Rule out a regression where the Button primitive is nested inside
+    // the toggle button (the toggle is now a raw <button>, not a
+    // wrapping Button).
+    assert!(!html.contains("<button class=\"snapshot-drawer__toggle\"><button"));
 }
 
 #[test]
@@ -774,6 +1069,7 @@ fn profiles_surface_never_renders_mapping_counts() {
 fn drawer_is_panel_scoped_not_global_drawer() {
     let html = render_profiles_panel(sample_profiles_context());
 
-    assert!(html.contains("if-bottom-drawer"));
+    assert!(html.contains("if-drawer"));
+    assert!(html.contains("snapshot-drawer"));
     assert!(!html.contains("app-global-drawer"));
 }

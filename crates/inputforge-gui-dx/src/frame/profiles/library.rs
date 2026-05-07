@@ -5,10 +5,10 @@ use crate::components::{
 };
 use crate::context::AppContext;
 use crate::context::{ProfileRowOrigin, ProfileRowView};
+use crate::frame::profiles::ProfileDeleteSignal;
 use crate::frame::profiles::actions::{
-    NewProfileValidationError, create_manual_snapshot_action, profile_delete_action,
-    profile_duplicate_action, profile_open_action, profile_rename_action, profile_reveal_action,
-    validate_rename,
+    NewProfileValidationError, create_manual_snapshot_action, profile_duplicate_action,
+    profile_open_action, profile_rename_action, profile_reveal_action, validate_rename,
 };
 use crate::frame::profiles::new_profile::add_external_to_library_command;
 use crate::frame::profiles::projection::project_profile_rows;
@@ -19,6 +19,11 @@ use crate::icons::Icon as IconKind;
 pub(crate) fn ProfileLibrary(rows: Vec<ProfileRowView>, active_id: String) -> Element {
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
+    // Hoisted before the per-row loop so `use_context` runs exactly
+    // once per render regardless of how many rows are projected.
+    // Inside each row, the captured signal is mutated via `set` (no
+    // additional hook calls).
+    let delete_target = use_context::<ProfileDeleteSignal>().0;
     let filter = view.profiles_panel.read().filter.clone();
     let projected = project_profile_rows(&rows, &active_id, &filter);
     let mut rename_profile = use_signal(|| None::<String>);
@@ -26,9 +31,17 @@ pub(crate) fn ProfileLibrary(rows: Vec<ProfileRowView>, active_id: String) -> El
     let rename_value_read: ReadSignal<String> = rename_value.into();
     let mut rename_error = use_signal(|| None::<NewProfileValidationError>);
 
-    // Existing names for inline rename collision checks. Sourced from
-    // the projected library list so we match exactly what the user sees.
-    let existing_names: Vec<String> = rows.iter().map(|r| r.name.clone()).collect();
+    // Existing names for inline rename collision checks. Filtered to
+    // library-origin rows because the library and an active external
+    // profile do not share a namespace on disk: when the user is on an
+    // external profile that happens to be named the same as a library
+    // entry, the external row is appended to `meta.profile_rows` and
+    // would otherwise pollute collision checks for unrelated renames.
+    let existing_names: Vec<String> = rows
+        .iter()
+        .filter(|r| r.origin == ProfileRowOrigin::Library)
+        .map(|r| r.name.clone())
+        .collect();
 
     let inactive_visible = projected.iter().any(|row| !row.is_active);
     let filter_active = !filter.trim().is_empty();
@@ -85,19 +98,37 @@ pub(crate) fn ProfileLibrary(rows: Vec<ProfileRowView>, active_id: String) -> El
                             let _ = commands.send(command);
                         }
                     };
-                    let commands = ctx.commands.clone();
+                    // The Delete onclick does NOT dispatch the engine
+                    // command itself. `profile_delete_action` declares
+                    // `ConfirmationKind::DestructiveF4`; routing through
+                    // the panel-scoped `ProfileDeleteSignal` opens the
+                    // F4 destructive-confirm dialog (see
+                    // `frame::profiles::delete_dialog::ProfileDeleteDialog`),
+                    // which posts the command only after the user
+                    // confirms.
                     let delete_name = row.name.clone();
+                    let mut delete_target = delete_target;
                     let delete_click = move |_| {
-                        let _ = commands.send(profile_delete_action(&delete_name).command);
+                        delete_target.set(Some(delete_name.clone()));
                     };
                     let commands = ctx.commands.clone();
                     let snapshot_click = move |_| {
                         let _ = commands.send(create_manual_snapshot_action());
                     };
                     let row_name_for_rename = row.name.clone();
+                    // Key the active-rename target by `row.id` (the file
+                    // path). When an external profile shares its name with
+                    // a library profile, name-keying matches both rows
+                    // because the external row is appended to
+                    // `meta.profile_rows` (`context.rs:267-271`). Two
+                    // simultaneous rename inputs steal focus from each
+                    // other and the loser's `onblur` clears
+                    // `rename_profile`, so the click looks like it does
+                    // nothing. Path-keying never collides.
+                    let row_id_for_rename = row.id.clone();
                     let rename_click = move |_| {
                         rename_value.set(row_name_for_rename.clone());
-                        rename_profile.set(Some(row_name_for_rename.clone()));
+                        rename_profile.set(Some(row_id_for_rename.clone()));
                         rename_error.set(None);
                     };
                     let commands_keydown = ctx.commands.clone();
@@ -159,7 +190,7 @@ pub(crate) fn ProfileLibrary(rows: Vec<ProfileRowView>, active_id: String) -> El
                             rename_error.set(None);
                         }
                     };
-                    let row_is_renaming = rename_profile.read().as_deref() == Some(row.name.as_str());
+                    let row_is_renaming = rename_profile.read().as_deref() == Some(row.id.as_str());
                     let row_rename_error_msg = if row_is_renaming {
                         rename_error
                             .read()
