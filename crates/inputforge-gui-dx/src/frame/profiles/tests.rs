@@ -28,7 +28,7 @@ use crate::frame::profiles::new_profile::{
 };
 use crate::frame::profiles::projection::project_profile_rows;
 use crate::frame::profiles::snapshot_drawer::{
-    FocusScope, SnapshotDrawer, should_handle_snapshot_shortcut,
+    FocusContext, FocusScope, SnapshotDrawer, classify_focus_scope, should_handle_snapshot_shortcut,
 };
 use crate::frame::view_state::{
     MainSurface, PanelSlot, ProfilesPanelMode, ProfilesPanelState, ViewState,
@@ -595,6 +595,151 @@ fn ctrl_s_is_suppressed_inside_editable_or_modal_context() {
     assert!(!should_handle_snapshot_shortcut(FocusScope::Dialog));
     assert!(!should_handle_snapshot_shortcut(FocusScope::OsPickerReturn));
     assert!(should_handle_snapshot_shortcut(FocusScope::Panel));
+}
+
+#[test]
+fn ctrl_s_dispatches_create_manual_snapshot_when_focus_is_panel() {
+    // The window-level keydown listener routes Ctrl+S through
+    // `should_handle_snapshot_shortcut(scope)`; on the allow path it sends
+    // exactly the command produced by `create_manual_snapshot_action()`.
+    // Locking that command shape here protects the listener from a silent
+    // drift where the action helper grows new fields or a different
+    // `SnapshotKind` variant.
+    assert_eq!(
+        create_manual_snapshot_action(),
+        EngineCommand::CreateSnapshot {
+            kind: SnapshotKind::Manual,
+            label: None,
+        },
+    );
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "exhaustive table-driven test, each row encodes one focus-context \
+              shape and asserts the resulting FocusScope; splitting it would \
+              hide the precedence pattern"
+)]
+fn focus_scope_detection_classifies_dom_elements() {
+    // Pure-Rust dispatch table that mirrors the JS-side classification
+    // performed inside the keydown listener. Each row encodes the
+    // observable inputs (tag, content-editable flag, ancestor matches)
+    // and asserts the resulting `FocusScope`. Precedence: dialog beats
+    // menu beats inline-rename beats text-input beats panel.
+    let cases: &[(FocusContext<'_>, FocusScope)] = &[
+        (
+            FocusContext {
+                tag: "BUTTON",
+                is_content_editable: false,
+                in_inline_rename: false,
+                in_menu: false,
+                in_dialog: false,
+            },
+            FocusScope::Panel,
+        ),
+        (
+            FocusContext {
+                tag: "INPUT",
+                is_content_editable: false,
+                in_inline_rename: false,
+                in_menu: false,
+                in_dialog: false,
+            },
+            FocusScope::TextInput,
+        ),
+        (
+            FocusContext {
+                tag: "TEXTAREA",
+                is_content_editable: false,
+                in_inline_rename: false,
+                in_menu: false,
+                in_dialog: false,
+            },
+            FocusScope::TextInput,
+        ),
+        (
+            FocusContext {
+                tag: "DIV",
+                is_content_editable: true,
+                in_inline_rename: false,
+                in_menu: false,
+                in_dialog: false,
+            },
+            FocusScope::TextInput,
+        ),
+        (
+            FocusContext {
+                tag: "INPUT",
+                is_content_editable: false,
+                in_inline_rename: true,
+                in_menu: false,
+                in_dialog: false,
+            },
+            FocusScope::InlineRename,
+        ),
+        (
+            FocusContext {
+                tag: "BUTTON",
+                is_content_editable: false,
+                in_inline_rename: false,
+                in_menu: true,
+                in_dialog: false,
+            },
+            FocusScope::Menu,
+        ),
+        (
+            FocusContext {
+                tag: "INPUT",
+                is_content_editable: false,
+                in_inline_rename: false,
+                in_menu: false,
+                in_dialog: true,
+            },
+            FocusScope::Dialog,
+        ),
+        // Dialog wins over menu / inline rename / text input.
+        (
+            FocusContext {
+                tag: "INPUT",
+                is_content_editable: true,
+                in_inline_rename: true,
+                in_menu: true,
+                in_dialog: true,
+            },
+            FocusScope::Dialog,
+        ),
+        // Menu wins over inline rename + text input.
+        (
+            FocusContext {
+                tag: "INPUT",
+                is_content_editable: false,
+                in_inline_rename: true,
+                in_menu: true,
+                in_dialog: false,
+            },
+            FocusScope::Menu,
+        ),
+        // Lowercase tag still classifies as text input (case-insensitive).
+        (
+            FocusContext {
+                tag: "input",
+                is_content_editable: false,
+                in_inline_rename: false,
+                in_menu: false,
+                in_dialog: false,
+            },
+            FocusScope::TextInput,
+        ),
+    ];
+
+    for (ctx, expected) in cases {
+        let actual = classify_focus_scope(*ctx);
+        assert_eq!(
+            actual, *expected,
+            "classify_focus_scope({ctx:?}) = {actual:?}, expected {expected:?}",
+        );
+    }
 }
 
 #[test]

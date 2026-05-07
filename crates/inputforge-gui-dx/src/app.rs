@@ -61,6 +61,14 @@ pub(crate) fn app_root() -> Element {
     // mount; auto-cancelled when the runtime tears down.
     use_hook(|| spawn_polling_task(ctx.clone(), view));
 
+    // F13: window-level Ctrl+S handler that dispatches the manual snapshot
+    // command when focus is outside editable or modal UI. Installed at the
+    // app root so the shortcut is live on every screen, gated server-side
+    // (Rust) on a focus-scope tuple computed in JS from
+    // `document.activeElement`. See
+    // `frame::profiles::snapshot_drawer::install_snapshot_shortcut_listener`.
+    frame::install_snapshot_shortcut_listener(ctx.commands.clone());
+
     // Tray bridge, channel + listener task created once; the handler is
     // installed at the top level (it's itself a hook).
     //

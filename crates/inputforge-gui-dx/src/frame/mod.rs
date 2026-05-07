@@ -14,6 +14,7 @@ mod view_state;
 pub(crate) use layout::Layout;
 pub(crate) use mapping_editor::{MappingEditor, use_editor_state_provider};
 pub(crate) use mapping_list::MappingList;
+pub(crate) use profiles::snapshot_drawer::install_snapshot_shortcut_listener;
 // `PanelSlot` and `ViewState` are not re-exported here, every consumer
 // imports them directly via `crate::frame::view_state::*` so a single
 // path style stays consistent across regions.
