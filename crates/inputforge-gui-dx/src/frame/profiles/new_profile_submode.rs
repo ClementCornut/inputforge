@@ -19,6 +19,8 @@ use crate::components::{Button, ButtonSize, ButtonVariant, InputSize, TextInput}
 use crate::context::AppContext;
 use crate::frame::profiles::new_profile::{NewProfileSource, create_new_profile_command};
 use crate::frame::view_state::{ProfilesPanelMode, ViewState};
+use inputforge_core::engine::EngineCommand;
+use inputforge_core::settings::AppSettings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SourceChoice {
@@ -149,7 +151,9 @@ pub(crate) fn NewProfileSubMode() -> Element {
                     {
                         let library_for_iter = library_rows.clone();
                         let mut view_for_pick = view;
+                        let commands_for_pick = ctx.commands.clone();
                         let pick_existing = move |_| {
+                            let commands = commands_for_pick.clone();
                             spawn(async move {
                                 if let Some(handle) = rfd::AsyncFileDialog::new()
                                     .add_filter("Profile (TOML)", &["toml"])
@@ -158,16 +162,24 @@ pub(crate) fn NewProfileSubMode() -> Element {
                                     .await
                                 {
                                     let path = handle.path().to_path_buf();
-                                    let suggested = path
-                                        .file_stem()
-                                        .and_then(|s| s.to_str())
-                                        .unwrap_or("Imported")
-                                        .to_owned();
-                                    view_for_pick.profiles_panel.write().mode =
-                                        ProfilesPanelMode::OpenChoice {
-                                            path,
-                                            suggested_name: suggested,
-                                        };
+                                    // C3: in-library picks load directly.
+                                    let library_dir = AppSettings::profiles_dir();
+                                    if path.starts_with(&library_dir) {
+                                        let _ = commands.send(EngineCommand::LoadProfile(path));
+                                        view_for_pick.profiles_panel.write().mode =
+                                            ProfilesPanelMode::Library;
+                                    } else {
+                                        let suggested = path
+                                            .file_stem()
+                                            .and_then(|s| s.to_str())
+                                            .unwrap_or("Imported")
+                                            .to_owned();
+                                        view_for_pick.profiles_panel.write().mode =
+                                            ProfilesPanelMode::OpenChoice {
+                                                path,
+                                                suggested_name: suggested,
+                                            };
+                                    }
                                 }
                             });
                         };

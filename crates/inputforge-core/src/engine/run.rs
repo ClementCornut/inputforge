@@ -1021,7 +1021,7 @@ impl Engine {
         }
     }
 
-    fn refresh_profile_library_rows(&self) -> Result<()> {
+    pub(super) fn refresh_profile_library_rows(&self) -> Result<()> {
         let library_dir = self.profile_library_dir();
         let active_path = self.state.read().profile_path.clone();
         let rows = list_profiles_in(&library_dir)?
@@ -1132,7 +1132,7 @@ impl Engine {
         Some((path, namespace_dir))
     }
 
-    fn refresh_active_snapshot_rows(&self) -> Result<()> {
+    pub(super) fn refresh_active_snapshot_rows(&self) -> Result<()> {
         let namespace_dir = {
             let state = self.state.read();
             if state.profile_path.is_none() {

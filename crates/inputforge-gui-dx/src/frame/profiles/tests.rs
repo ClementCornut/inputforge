@@ -56,9 +56,11 @@ fn sample_profiles_context() -> AppState {
 
 #[component]
 fn ProfilesHarness() -> Element {
-    let state = Arc::new(RwLock::new(sample_profiles_context()));
+    let app_state = sample_profiles_context();
+    let initial_meta = MetaSnapshot::from_state(&app_state);
+    let state = Arc::new(RwLock::new(app_state));
     let (commands, _rx) = mpsc::channel();
-    let meta = use_signal(MetaSnapshot::default);
+    let meta = use_signal(|| initial_meta.clone());
     let config = use_signal(ConfigSnapshot::default);
     let live = use_signal(LiveSnapshot::default);
     let main_surface = use_signal(MainSurface::default);
@@ -117,9 +119,11 @@ fn sample_snapshot_context() -> Vec<SnapshotRowView> {
 
 #[component]
 fn SnapshotDrawerHarness(rows: Vec<SnapshotRowView>, open: bool) -> Element {
-    let state = Arc::new(RwLock::new(sample_profiles_context()));
+    let app_state = sample_profiles_context();
+    let initial_meta = MetaSnapshot::from_state(&app_state);
+    let state = Arc::new(RwLock::new(app_state));
     let (commands, _rx) = mpsc::channel();
-    let meta = use_signal(MetaSnapshot::default);
+    let meta = use_signal(|| initial_meta.clone());
     let config = use_signal(ConfigSnapshot::default);
     let live = use_signal(LiveSnapshot::default);
     let main_surface = use_signal(MainSurface::default);
@@ -211,9 +215,11 @@ fn sample_profile_rows(active: &str, names: &[&str]) -> Vec<ProfileRowView> {
 
 #[component]
 fn ProfilesHarnessWithMode(mode: ProfilesPanelMode) -> Element {
-    let state = Arc::new(RwLock::new(sample_profiles_context()));
+    let app_state = sample_profiles_context();
+    let initial_meta = MetaSnapshot::from_state(&app_state);
+    let state = Arc::new(RwLock::new(app_state));
     let (commands, _rx) = mpsc::channel();
-    let meta = use_signal(MetaSnapshot::default);
+    let meta = use_signal(|| initial_meta.clone());
     let config = use_signal(ConfigSnapshot::default);
     let live = use_signal(LiveSnapshot::default);
     let main_surface = use_signal(MainSurface::default);

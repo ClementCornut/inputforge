@@ -132,7 +132,7 @@ impl Engine {
             state.device_registry.clone_from(&settings.device_registry);
         };
 
-        Self {
+        let engine = Self {
             input,
             output,
             keyboard,
@@ -147,7 +147,28 @@ impl Engine {
             pending_output_refresh: false,
             settings,
             settings_path,
+        };
+
+        // Populate projection rows from the on-disk library and the active
+        // profile's snapshot history so the GUI has data to render before
+        // the first command lands. Failures are logged and ignored: a
+        // missing library directory is normal on first launch.
+        if let Err(e) = engine.refresh_profile_library_rows() {
+            tracing::warn!(
+                target: "engine",
+                error = %e,
+                "engine.startup.library_refresh_failed"
+            );
         }
+        if let Err(e) = engine.refresh_active_snapshot_rows() {
+            tracing::warn!(
+                target: "engine",
+                error = %e,
+                "engine.startup.snapshot_refresh_failed"
+            );
+        }
+
+        engine
     }
 }
 
