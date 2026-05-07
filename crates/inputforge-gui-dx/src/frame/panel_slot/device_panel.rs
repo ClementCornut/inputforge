@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::DeviceId;
 
+use crate::components::{Badge, BadgeVariant};
 use crate::context::{AppContext, DevicePanelRow};
 
 #[component]
@@ -77,6 +78,11 @@ fn DeviceLedgerRow(
     } else {
         "Disconnected"
     };
+    let state_variant = if row.connected {
+        BadgeVariant::Success
+    } else {
+        BadgeVariant::Neutral
+    };
     let row_for_select = row.clone();
     let onclick = move |_| onselect.call(row_for_select.clone());
     rsx! {
@@ -88,19 +94,15 @@ fn DeviceLedgerRow(
             span { class: "if-device-row__names",
                 span { class: "if-device-row__headline",
                     span { class: "if-device-row__display", "{row.display_name}" }
-                    span { class: "if-device-row__state", "data-connected": "{row.connected}",
-                        span { class: "if-device-row__state-dot", "aria-hidden": "true" }
-                        span { class: "if-device-row__state-label", "{state_label}" }
-                    }
+                    Badge { variant: state_variant, "{state_label}" }
                 }
                 span { class: "if-device-row__hardware", title: "{row.hardware_name}", "{row.hardware_name}" }
             }
             if !usage_items.is_empty() {
                 span { class: "if-device-row__counts",
                     for item in usage_items {
-                        span {
-                            class: "if-device-row__count-chip",
-                            "data-complete": "{item.complete}",
+                        Badge {
+                            variant: if item.complete { BadgeVariant::Success } else { BadgeVariant::Neutral },
                             "{item.label}"
                         }
                     }
@@ -620,21 +622,30 @@ mod tests {
         let html = render_device_panel(vec![panel_row("dev-1", "Wheel Base", true)]);
 
         assert!(html.contains("if-device-row__headline"));
-        assert!(html.contains("if-device-row__state-dot"));
-        assert!(html.contains("if-device-row__state-label"));
+        assert!(html.contains("if-badge--success"));
+        assert!(html.contains(">Connected<"));
         let headline_index = html
             .find("if-device-row__headline")
             .expect("headline class");
         let display_index = html.find("if-device-row__display").expect("display class");
-        let state_index = html.find("if-device-row__state").expect("state class");
+        let badge_index = html.find("if-badge--success").expect("state badge class");
         let hardware_index = html
             .find("if-device-row__hardware")
             .expect("hardware class");
 
         assert!(headline_index < display_index);
-        assert!(display_index < state_index);
-        assert!(state_index < hardware_index);
+        assert!(display_index < badge_index);
+        assert!(badge_index < hardware_index);
         assert!(!html.contains("CONNECTED"));
+    }
+
+    #[test]
+    fn disconnected_row_renders_neutral_state_badge() {
+        let html = render_device_panel(vec![panel_row("dev-old", "Old Pedals", false)]);
+
+        assert!(html.contains("if-badge--neutral"));
+        assert!(html.contains(">Disconnected<"));
+        assert!(!html.contains("if-badge--success"));
     }
 
     #[test]
@@ -646,15 +657,19 @@ mod tests {
     }
 
     #[test]
-    fn device_panel_renders_usage_count_chips_with_completion_state() {
+    fn device_panel_renders_usage_count_badges_with_completion_state() {
         let mut row = panel_row("dev-1", "Wheel Base", true);
         row.usage.axes.mapped = 4;
         row.usage.buttons.mapped = 6;
         let html = render_device_panel(vec![row]);
 
-        assert!(html.contains("if-device-row__count-chip"));
-        assert!(html.contains("data-complete=\"true\""));
-        assert!(html.contains("data-complete=\"false\""));
+        // The fully-mapped Axes badge uses Success; the partial Buttons
+        // badge uses Neutral. The connection state also uses Success, so
+        // assert the Neutral variant alongside the count text to lock the
+        // mapping between completeness and badge variant.
+        assert!(html.contains("if-device-row__counts"));
+        assert!(html.contains("if-badge--success"));
+        assert!(html.contains("if-badge--neutral"));
         assert!(html.contains("Axes 4/4"));
         assert!(html.contains("Buttons 6/12"));
     }
@@ -680,23 +695,85 @@ mod tests {
     fn panel_slot_css_keeps_device_row_status_on_name_line() {
         let css = include_str!("../../../assets/frame/panel_slot.css");
 
+        // The headline flex container is what places the state badge to
+        // the right of the display name without a custom selector for
+        // the badge itself (Badge owns its own intrinsic styling).
         assert!(css.contains(".if-device-row__headline {\n"));
         assert!(css.contains("justify-content: space-between;"));
-        assert!(css.contains("align-items: baseline;"));
-        assert!(css.contains(".if-device-row__state {\n"));
-        assert!(css.contains("flex: 0 0 auto;"));
-        assert!(css.contains(".if-device-row__state-dot {\n"));
-        assert!(css.contains(".if-device-row__state-label {\n"));
+        // Bespoke state-dot / state-label / state CSS were removed when
+        // the hand-rolled indicator was replaced by Badge; their absence
+        // is part of the contract.
+        assert!(!css.contains(".if-device-row__state {\n"));
+        assert!(!css.contains(".if-device-row__state-dot {\n"));
+        assert!(!css.contains(".if-device-row__state-label {\n"));
     }
 
     #[test]
-    fn panel_slot_css_defines_device_row_count_chips_and_hardware_clamp() {
+    fn panel_slot_css_drops_count_chip_styling_in_favor_of_badge() {
         let css = include_str!("../../../assets/frame/panel_slot.css");
 
-        assert!(css.contains(".if-device-row__count-chip {\n"));
-        assert!(css.contains(".if-device-row__count-chip[data-complete=\"true\"]"));
+        // Counts wrapper still defines the flex+gap rhythm for the row of
+        // badges, but the chip-specific surface styling moved to Badge.
+        assert!(css.contains(".if-device-row__counts {\n"));
+        assert!(!css.contains(".if-device-row__count-chip"));
+    }
+
+    #[test]
+    fn panel_slot_css_keeps_hardware_clamp() {
+        let css = include_str!("../../../assets/frame/panel_slot.css");
+
         assert!(css.contains(".if-device-row__hardware {\n"));
         assert!(css.contains("-webkit-line-clamp: 2;"));
+    }
+
+    #[test]
+    fn panel_slot_css_uses_documented_tokens_for_selected_row() {
+        let css = include_str!("../../../assets/frame/panel_slot.css");
+
+        // The previous --color-accent name had no token definition; the
+        // selected-state surface is now anchored to the documented
+        // border-focus + primary pair, mirroring .profile-row--active.
+        assert!(!css.contains("--color-accent"));
+        assert!(css.contains(".if-device-row--selected {\n"));
+        assert!(css.contains(
+            "    border-color: var(--color-border-focus);\n    background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));"
+        ));
+    }
+
+    #[test]
+    fn panel_slot_css_pins_device_inspector_on_panel_surface() {
+        // DESIGN.md §6 "Pinned Inspector" contract: stays on the
+        // panel surface, separated by a 1px strong-border-top and
+        // space-3 padding-top. No background declaration on the
+        // inspector, so it inherits the panel's bg-elevated.
+        let css = include_str!("../../../assets/frame/panel_slot.css");
+        let block_start = css
+            .find(".if-device-panel__inspector {\n")
+            .expect("inspector rule");
+        let block_end = block_start + css[block_start..].find('}').expect("inspector rule close");
+        let inspector_block = &css[block_start..=block_end];
+
+        assert!(inspector_block.contains("padding-top: var(--space-3);"));
+        assert!(inspector_block.contains("border-top: 1px solid var(--color-border-strong);"));
+        assert!(
+            !inspector_block.contains("background:"),
+            "Pinned Inspector inherits the panel surface (DESIGN.md §6); no background \
+             declaration belongs on .if-device-panel__inspector. Found block:\n{inspector_block}"
+        );
+    }
+
+    #[test]
+    fn panel_slot_css_aligns_device_row_shape_with_profile_row() {
+        let css = include_str!("../../../assets/frame/panel_slot.css");
+
+        // DESIGN.md §1: 4px is the default radius; 2px is reserved for
+        // checkbox-class controls. The Devices and Profiles rows share
+        // the same row-in-side-panel shape, so they share the same
+        // radius+padding tokens.
+        assert!(css.contains(".if-device-row {\n"));
+        assert!(css.contains("    padding: var(--space-3);\n"));
+        assert!(css.contains("    border-radius: var(--radius-md);\n"));
+        assert!(!css.contains("    border-radius: var(--radius-sm);\n"));
     }
 
     #[test]
