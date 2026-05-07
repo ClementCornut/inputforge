@@ -21,9 +21,9 @@ use inputforge_core::device::{DeviceHider, HidHideManager, NoOpDeviceHider, Sdl3
 use inputforge_core::engine::{Engine, EngineCommand};
 use inputforge_core::output::{KeyboardOutput, VJoyOutput};
 use inputforge_core::profile::Profile;
-use inputforge_core::profile::manager::{ensure_default_profile, list_profiles_in};
+use inputforge_core::profile::manager::ensure_default_profile;
 use inputforge_core::settings::AppSettings;
-use inputforge_core::state::{AppState, ProfileLibraryRow, ProfileOrigin};
+use inputforge_core::state::AppState;
 
 use crate::cli::Cli;
 use crate::tray::AppTray;
@@ -88,13 +88,6 @@ fn main() -> Result<()> {
         }
     };
 
-    // Pre-populate origin and library rows on the main thread so the
-    // Profiles panel renders correct projections immediately, even if
-    // the engine thread is slow to initialize or fails to acquire its
-    // I/O resources. The engine's Engine::new repeats this work as a
-    // refresh once it spins up; the writes are idempotent.
-    populate_initial_library_state(&state);
-
     // Persist the loaded profile path as last-used.
     settings.last_profile = Some(profile_path);
     if let Err(e) = settings.save() {
@@ -134,84 +127,6 @@ fn main() -> Result<()> {
     shutdown(cmd_tx, engine_handle);
 
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Initial library state
-// ---------------------------------------------------------------------------
-
-/// Populate `active_profile_origin` and `profile_library_rows` from
-/// the on-disk library directory before the engine thread spins up.
-///
-/// Without this, a fresh `AppState::with_profile(...)` leaves origin
-/// as `None` and library rows empty until the engine refreshes them.
-/// If the engine thread fails to acquire `SDL3` / `vJoy` / `HidHide`
-/// resources, the GUI would otherwise show the active profile
-/// without an `External` badge and an empty library list.
-///
-/// Best-effort: filesystem failures log and produce defaults.
-fn populate_initial_library_state(state: &Arc<RwLock<AppState>>) {
-    let library_dir = AppSettings::profiles_dir();
-
-    let mut guard = state.write();
-
-    // Origin classification.
-    if guard.active_profile_origin.is_none()
-        && let Some(path) = guard.profile_path.clone()
-    {
-        let origin = if path.starts_with(&library_dir) {
-            ProfileOrigin::Library
-        } else {
-            ProfileOrigin::External
-        };
-        guard.active_profile_origin = Some(origin);
-    }
-
-    // Library row scan.
-    let active_path = guard.profile_path.clone();
-    match list_profiles_in(&library_dir) {
-        Ok(profiles) => {
-            let rows: Vec<ProfileLibraryRow> = profiles
-                .into_iter()
-                .map(|profile| {
-                    let is_active = active_path
-                        .as_ref()
-                        .is_some_and(|active| active == &profile.path);
-                    let (mode_count, last_edited_at) = read_profile_metadata(&profile.path);
-                    ProfileLibraryRow {
-                        name: profile.name,
-                        path: profile.path,
-                        origin: ProfileOrigin::Library,
-                        is_active,
-                        mode_count,
-                        last_edited_at,
-                    }
-                })
-                .collect();
-            guard.profile_library_rows = rows;
-        }
-        Err(e) => {
-            tracing::warn!(
-                error = %e,
-                library_dir = %library_dir.display(),
-                "failed to scan profile library at startup"
-            );
-        }
-    }
-}
-
-/// Read mode count and last-edit timestamp for a profile file. Mirrors
-/// the engine-side helper so main.rs can populate library rows without
-/// crossing crate visibility boundaries.
-fn read_profile_metadata(path: &std::path::Path) -> (u32, Option<chrono::DateTime<chrono::Utc>>) {
-    let mode_count = Profile::load(path)
-        .map(|p| u32::try_from(p.modes().all_modes().len()).unwrap_or(u32::MAX))
-        .unwrap_or(0);
-    let last_edited_at = std::fs::metadata(path)
-        .and_then(|m| m.modified())
-        .ok()
-        .map(chrono::DateTime::<chrono::Utc>::from);
-    (mode_count, last_edited_at)
 }
 
 // ---------------------------------------------------------------------------

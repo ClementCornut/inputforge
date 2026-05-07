@@ -84,7 +84,7 @@ pub fn list_profiles() -> Result<Vec<ProfileSummary>> {
 ///
 /// Returns [`EngineError::Io`] if the directory cannot be read.
 /// Returns an empty list (not an error) if the directory does not exist.
-pub fn list_profiles_in(dir: &Path) -> Result<Vec<ProfileSummary>> {
+pub(crate) fn list_profiles_in(dir: &Path) -> Result<Vec<ProfileSummary>> {
     if !dir.exists() {
         return Ok(vec![]);
     }
