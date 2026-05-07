@@ -156,7 +156,17 @@ impl Engine {
         // never fires and the row stays invisible. Done before the
         // snapshot refresh so namespace resolution sees the right
         // origin.
-        if let Some(path) = engine.state.read().profile_path.clone() {
+        //
+        // The path clone is bound to a separate `let` so the read
+        // guard's temporary scope ends at the statement terminator,
+        // not at the end of the `if let` body. Otherwise the
+        // subsequent `engine.state.write()` would deadlock against
+        // the still-live read guard (parking_lot's RwLock is not
+        // reentrant), and the engine thread would hang inside
+        // Engine::new with SDL3 already initialized but no further
+        // state updates ever published.
+        let startup_profile_path = engine.state.read().profile_path.clone();
+        if let Some(path) = startup_profile_path {
             let mut state_guard = engine.state.write();
             if state_guard.active_profile_origin.is_none() {
                 state_guard.active_profile_origin = Some(engine.profile_origin_for_path(&path));
