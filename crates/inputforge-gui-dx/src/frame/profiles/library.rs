@@ -1,7 +1,8 @@
 use dioxus::prelude::*;
 
 use crate::components::{
-    Badge, BadgeVariant, Icon, InputSize, MenuItem, MenuItems, MenuRoot, MenuTrigger, TextInput,
+    Badge, BadgeVariant, ButtonSize, ButtonVariant, Icon, IconButton, InputSize, MenuItem,
+    MenuItems, MenuRoot, MenuTrigger, TextInput,
 };
 use crate::context::AppContext;
 use crate::context::{ProfileRowOrigin, ProfileRowView};
@@ -16,7 +17,19 @@ use crate::frame::view_state::ViewState;
 use crate::icons::Icon as IconKind;
 
 #[component]
-pub(crate) fn ProfileLibrary(rows: Vec<ProfileRowView>, active_id: String) -> Element {
+#[expect(
+    unused_qualifications,
+    reason = "Dioxus 0.7 RSX macro emits redundant `dioxus_elements::*` qualifications \
+              on per-element event listeners with bound closures (the macro suggests \
+              shorthand-with-no-prop-name as a fix, which would erase the intent). \
+              This is a macro-level artifact, not authored qualifications."
+)]
+pub(crate) fn ProfileLibrary(
+    rows: Vec<ProfileRowView>,
+    active_id: String,
+    on_new_profile: EventHandler<MouseEvent>,
+    on_open_file: EventHandler<MouseEvent>,
+) -> Element {
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
     // Hoisted before the per-row loop so `use_context` runs exactly
@@ -63,6 +76,14 @@ pub(crate) fn ProfileLibrary(rows: Vec<ProfileRowView>, active_id: String) -> El
                         let value = evt.value();
                         view_for_filter.profiles_panel.write().filter = value;
                     },
+                }
+                IconButton {
+                    icon: IconKind::FolderOpen,
+                    label: "Open profile from file",
+                    variant: ButtonVariant::Ghost,
+                    size: ButtonSize::Sm,
+                    class: "profiles-panel__open-file".to_owned(),
+                    onclick: move |evt: MouseEvent| on_open_file.call(evt),
                 }
             }
             for row in projected {
@@ -270,6 +291,20 @@ pub(crate) fn ProfileLibrary(rows: Vec<ProfileRowView>, active_id: String) -> El
                 div { class: "profile-row__filtered-empty",
                     "No matching profiles."
                 }
+            }
+            // Trailing creation affordance. Replaces the previous primary
+            // "+ New profile" button that lived in the panel header. Reads
+            // as "the next row you could create" rather than a top-of-panel
+            // toolbar action — closer to PRODUCT.md "power-user defaults"
+            // and DESIGN.md §6 Inline-First framing (the create-flow
+            // continues to live in NewProfileSubMode, this row is just the
+            // trigger).
+            button {
+                r#type: "button",
+                class: "profile-row profile-row--create",
+                onclick: move |evt: MouseEvent| on_new_profile.call(evt),
+                Icon { name: IconKind::Plus }
+                span { class: "profile-row--create__label", "New profile" }
             }
         }
     }

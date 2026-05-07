@@ -11,7 +11,6 @@
   background: var(--color-bg-elevated);
 }
 
-.profiles-panel__header,
 .profiles-no-profile__actions,
 .profiles-panel__new-profile,
 .profile-row__title,
@@ -20,22 +19,6 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-
-.profiles-panel__header {
-  /* Action-row strip: the surface label is owned by the slot tab in the
-   * top-right cluster, so the in-panel <h2> was removed and the row now
-   * anchors its actions to the right edge instead of bracketing a title. */
-  justify-content: flex-end;
-  padding: var(--space-4) var(--space-4) var(--space-3);
-  flex-wrap: wrap;
-}
-
-.profiles-panel__header-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  justify-content: flex-end;
 }
 
 .profiles-panel__new-profile {
@@ -56,7 +39,10 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 0 var(--space-3) var(--space-3);
+  /* Top padding restores the breathing-ring lost when the panel header
+   * was removed; the filter row would otherwise butt against the slot's
+   * structural seam. */
+  padding: var(--space-3);
 }
 
 .profiles-panel__library {
@@ -65,16 +51,28 @@
   gap: var(--space-2);
 }
 
+/* Filter strip: input grows to fill, file-import IconButton anchors on
+ * the right. The previous version was just the input; the trailing
+ * IconButton replaces the panel-level "Open file..." button that lived
+ * in the removed header. */
 .profiles-panel__filter {
   position: sticky;
   top: 0;
   z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding-bottom: var(--space-2);
   background: var(--color-bg-elevated);
 }
 
 .profiles-panel__filter .if-text-input {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.profiles-panel__open-file {
+  flex: 0 0 auto;
 }
 
 .profiles-panel__submode {
@@ -252,6 +250,42 @@
 .profile-row--active {
   border-color: var(--color-border-focus);
   background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
+}
+
+/* Trailing creation affordance: rendered as a <button> with the same
+ * .profile-row shape but a dashed border + transparent surface, signalling
+ * "the next row you could create" rather than an existing row. The
+ * leading + icon plus the muted label tell the user this is a creator,
+ * not a record. Hover/focus raise the border to the strong/focus tones
+ * the system uses everywhere else for interactive intent. The flow
+ * itself still routes through ProfilesPanelMode::NewProfile so the
+ * existing source-choice step is unchanged. */
+.profile-row--create {
+  align-items: center;
+  background: transparent;
+  border-style: dashed;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition:
+    border-color var(--duration-fast) var(--easing-fast),
+    color var(--duration-fast) var(--easing-fast);
+}
+
+.profile-row--create:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.profile-row--create:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.profile-row--create__label {
+  font-size: var(--text-sm);
+  font-weight: 500;
 }
 
 .profile-row__main {

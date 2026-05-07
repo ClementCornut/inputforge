@@ -399,6 +399,82 @@ fn profiles_panel_header_omits_duplicate_title() {
 }
 
 #[test]
+fn profiles_panel_drops_panel_level_header() {
+    // The two-button panel header was removed; the create/import
+    // affordances now live inline in the filter row and as a trailing
+    // row in the library list. This test guards against the header
+    // creeping back as a regression.
+    let html = render_profiles_panel(sample_profiles_context());
+
+    assert!(!html.contains("profiles-panel__header"));
+    assert!(!html.contains("profiles-panel__header-actions"));
+}
+
+#[test]
+fn profiles_filter_row_anchors_open_file_icon_button() {
+    // The filter region is now a flex row holding the input plus an
+    // Open-file IconButton; the previous panel-level "Open file..."
+    // text button is gone.
+    let html = render_profiles_panel(sample_profiles_context());
+
+    assert!(html.contains("profiles-panel__filter"));
+    assert!(html.contains("profiles-panel__open-file"));
+    assert!(html.contains("aria-label=\"Open profile from file\""));
+    // The icon-button hosts the FolderOpen glyph (currentColor strokes
+    // means we look for the path data unique to the Phosphor SVG).
+    assert!(html.contains("M32,208V64"));
+    // No header-level text button surfaces ">Open file...<" text any
+    // more (the no-profile empty-state bar still renders that label,
+    // but only when there is no active profile, which is not the case
+    // in the default sample context).
+    assert!(!html.contains(">Open file...<"));
+}
+
+#[test]
+fn profiles_library_appends_trailing_create_row() {
+    // The "+ New profile" trigger now lives at the end of the library
+    // list as a dashed-border button row, replacing the primary header
+    // button. Locks both the rendering and its onclick affordance.
+    let html = render_profiles_panel(sample_profiles_context());
+
+    assert!(html.contains("profile-row profile-row--create"));
+    assert!(html.contains("profile-row--create__label"));
+    assert!(html.contains(">New profile<"));
+    // Order check: the create row is the LAST .profile-row in the list,
+    // so its index must be greater than every other profile-row index.
+    let create_idx = html
+        .find("profile-row--create")
+        .expect("create row present");
+    let active_idx = html
+        .find("profile-row--active")
+        .expect("active row present");
+    assert!(
+        active_idx < create_idx,
+        "create row must trail active/inactive rows"
+    );
+}
+
+#[test]
+fn profiles_css_locks_create_row_dashed_contract() {
+    // The trailing create row uses .profile-row's shape but a dashed
+    // border + transparent surface so it reads as a creator, not a
+    // record. Hover/focus raise the border to the strong/focus tones
+    // the rest of the system uses for interactive intent.
+    let css = include_str!("../../../assets/frame/profiles.css");
+
+    let create_block = css
+        .split(".profile-row--create {")
+        .nth(1)
+        .expect(".profile-row--create rule present")
+        .split('}')
+        .next()
+        .expect(".profile-row--create rule closed");
+    assert!(create_block.contains("background: transparent;"));
+    assert!(create_block.contains("border-style: dashed;"));
+    assert!(create_block.contains("cursor: pointer;"));
+}
+
+#[test]
 fn active_profile_row_renders_when_library_rows_are_empty() {
     let html = render_profiles_panel(sample_profiles_context());
 

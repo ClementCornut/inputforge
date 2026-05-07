@@ -1,6 +1,5 @@
 use dioxus::prelude::*;
 
-use crate::components::{Button, ButtonSize, ButtonVariant};
 use crate::context::AppContext;
 use crate::frame::profiles::library::ProfileLibrary;
 use crate::frame::profiles::new_profile_submode::NewProfileSubMode;
@@ -96,32 +95,19 @@ pub(crate) fn ProfilesPanel() -> Element {
         view_for_new.profiles_panel.write().mode = ProfilesPanelMode::NewProfile;
     };
 
-    let header_open_file_click = make_open_file_click(ctx.commands.clone(), view);
+    let library_open_file_click = make_open_file_click(ctx.commands.clone(), view);
     let no_profile_open_file_click = make_open_file_click(ctx.commands.clone(), view);
 
     rsx! {
         Stylesheet { href: PROFILES_CSS }
         section { class: "profiles-panel", "data-testid": "profile-library",
-            // The slot tab cluster already labels this surface
-            // "Profiles"; an in-panel `<h2>` would restate it. Mirrors
-            // the same removal applied to the Devices slot, locked by
+            // No panel-level <header>: the create/import affordances now
+            // live inline next to the filter (Open file...) and as a
+            // trailing row in the list (+ New profile). The slot tab
+            // cluster already labels the surface "Profiles"; an in-panel
+            // <h2> would restate it. The Devices panel already follows
+            // the same header-less rule, locked by
             // `panel_slot/mod.rs::panel_header_omits_placeholder_caption`.
-            header { class: "profiles-panel__header",
-                div { class: "profiles-panel__header-actions",
-                    Button {
-                        variant: ButtonVariant::Primary,
-                        size: ButtonSize::Sm,
-                        onclick: open_new_profile,
-                        "+ New profile"
-                    }
-                    Button {
-                        variant: ButtonVariant::Secondary,
-                        size: ButtonSize::Sm,
-                        onclick: header_open_file_click,
-                        "Open file..."
-                    }
-                }
-            }
             div { class: "profiles-panel__body",
                 match panel_mode {
                     ProfilesPanelMode::NewProfile => rsx! { NewProfileSubMode {} },
@@ -134,6 +120,8 @@ pub(crate) fn ProfilesPanel() -> Element {
                                 ProfileLibrary {
                                     rows: meta.profile_rows.clone(),
                                     active_id: meta.active_profile_id.clone().unwrap_or_default(),
+                                    on_new_profile: open_new_profile,
+                                    on_open_file: library_open_file_click,
                                 }
                             }
                         } else {

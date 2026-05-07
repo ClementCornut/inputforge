@@ -42,6 +42,11 @@ pub enum Icon {
     ClockCounterClockwise,
     DragHandle,
     DotsVertical,
+    /// Phosphor `folder-open`. Used as the "Open file..." affordance
+    /// trailing the Profiles filter input. The folder-with-open-flap
+    /// glyph reads as "load from disk" without conflating with `Profile`
+    /// (single profile glyph) or `Plus` (create-new affordance).
+    FolderOpen,
 }
 
 impl Icon {
@@ -79,6 +84,7 @@ impl Icon {
             Icon::ClockCounterClockwise => include_str!("svg/clock-counter-clockwise.svg"),
             Icon::DragHandle => include_str!("svg/drag-handle.svg"),
             Icon::DotsVertical => include_str!("svg/dots-vertical.svg"),
+            Icon::FolderOpen => include_str!("svg/folder-open.svg"),
         }
     }
 }
@@ -136,6 +142,7 @@ mod tests {
         Icon::Refresh,
         Icon::DragHandle,
         Icon::DotsVertical,
+        Icon::FolderOpen,
     ];
 
     #[test]
