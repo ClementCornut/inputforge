@@ -8,7 +8,10 @@ pub(crate) enum Tool {
     // Button hidden until calibration UI is implemented; matcher arms and
     // tests below still exercise this variant so the state machine stays
     // intact for restoration.
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "Calibration variant retained for the upcoming calibration UI; matcher arms + tests keep the state machine intact"
+    )]
     Calibration,
     Profiles,
 }
