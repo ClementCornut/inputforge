@@ -81,7 +81,11 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
-    scrollbar-gutter: stable;
+    /* `both-edges` reserves an equal gutter on the left as the
+       scrollbar reserves on the right, so rows inset symmetrically and
+       their rounded corners read on both sides. Bare `stable` shipped
+       left-flush vs right-inset which made the radius asymmetric. */
+    scrollbar-gutter: stable both-edges;
 }
 
 .if-rail__add-sticky {
