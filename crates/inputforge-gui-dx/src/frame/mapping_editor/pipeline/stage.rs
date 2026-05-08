@@ -346,11 +346,6 @@ fn format_mode_strategy(strategy: &ModeChangeStrategy) -> String {
     match strategy {
         ModeChangeStrategy::SwitchTo { mode } => format!("Set {mode}"),
         ModeChangeStrategy::Temporary { mode } => format!("Hold {mode}"),
-        ModeChangeStrategy::Previous => "Pop".to_owned(),
-        ModeChangeStrategy::Cycle { modes } => {
-            let labels = modes.modes().join(" \u{2192} ");
-            format!("Cycle {labels}")
-        }
     }
 }
 

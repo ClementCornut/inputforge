@@ -1024,25 +1024,6 @@ fn add_palette_button_renders_for_non_empty_pipeline() {
 }
 
 // ---------------------------------------------------------------------------
-// Task 27: Placeholder bodies for ResponseCurve / Deadzone / ChangeMode
-// ---------------------------------------------------------------------------
-
-#[test]
-fn placeholder_bodies_show_spec_caption() {
-    // ResponseCurve (F10) and Deadzone (F11) no longer use placeholders;
-    // verify ChangeMode (F14) still does.
-    let actions = vec![Action::ChangeMode {
-        strategy: inputforge_core::action::ModeChangeStrategy::Previous,
-    }];
-    let (state, addr) = build_state(actions);
-    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
-    assert!(
-        html.contains("F14 owns this body"),
-        "expected placeholder caption: {html}"
-    );
-}
-
-// ---------------------------------------------------------------------------
 // Task 16: F9 dispatcher integration (ResponseCurve body + thumbnail)
 // ---------------------------------------------------------------------------
 
