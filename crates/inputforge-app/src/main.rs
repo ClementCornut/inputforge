@@ -113,6 +113,7 @@ fn main() -> Result<()> {
         Arc::clone(&state),
         cmd_tx.clone(),
         tray.menu_item_ids(),
+        tray.toggle_menu_item(),
         settings.clone(),
         cli.start_minimized,
     ) {

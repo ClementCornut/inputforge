@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-03-06
+// Rust guideline compliant 2026-05-09
 
 //! System tray icon management for `InputForge`.
 //!
@@ -74,6 +74,16 @@ impl AppTray {
             self.toggle_item.id().clone(),
             self.quit_item.id().clone(),
         )
+    }
+
+    /// Return a clone of the toggle `MenuItem`.
+    ///
+    /// `MenuItem` wraps an `Rc<RefCell<...>>` internally so the clone is
+    /// cheap and shares the underlying handle. The GUI uses this clone to
+    /// call `set_text` reactively as the engine status changes, keeping
+    /// the tray label ("Activate" / "Deactivate") in sync.
+    pub(crate) fn toggle_menu_item(&self) -> MenuItem {
+        self.toggle_item.clone()
     }
 }
 

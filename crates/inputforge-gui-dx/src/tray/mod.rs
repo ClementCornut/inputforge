@@ -22,8 +22,11 @@
 
 pub(crate) mod action;
 
+use std::cell::RefCell;
+
 use dioxus::desktop::use_muda_event_handler;
 use dioxus::prelude::*;
+use muda::MenuItem;
 use tokio::sync::mpsc;
 
 use inputforge_core::engine::EngineCommand;
@@ -33,6 +36,35 @@ use crate::context::AppContext;
 use crate::lifecycle;
 
 use self::action::{TrayAction, TrayMenuIds};
+
+thread_local! {
+    /// Hand-off slot for the tray's toggle `MenuItem`.
+    ///
+    /// `MenuItem` wraps `Rc<RefCell<...>>` so it is neither `Send` nor
+    /// `Sync` and cannot ride through `LaunchBuilder::with_context`
+    /// (which bounds its payload by `Send + Sync`). Both `launch_gui`
+    /// and the Dioxus desktop runtime run on the same main thread, so
+    /// we use a thread-local install / take handoff: the app-side caller
+    /// installs the cloned handle, and `app_root`'s first mount takes
+    /// it back out via `take_toggle_menu_item`.
+    static TOGGLE_MENU_ITEM: RefCell<Option<MenuItem>> = const { RefCell::new(None) };
+}
+
+/// Install the tray's toggle `MenuItem` for later pickup by `app_root`.
+///
+/// Must be called on the same thread that will host the Dioxus runtime
+/// (the application's main thread). Overwrites any prior installed value.
+pub(crate) fn install_toggle_menu_item(item: MenuItem) {
+    TOGGLE_MENU_ITEM.with(|cell| *cell.borrow_mut() = Some(item));
+}
+
+/// Take the previously installed toggle `MenuItem`.
+///
+/// Returns `None` if no value was installed (e.g., test harnesses that
+/// do not exercise the tray label sync effect).
+pub(crate) fn take_toggle_menu_item() -> Option<MenuItem> {
+    TOGGLE_MENU_ITEM.with(|cell| cell.borrow_mut().take())
+}
 
 /// Capacity for the tray-action channel.
 ///
@@ -94,4 +126,29 @@ fn dispatch_toggle(ctx: &AppContext) {
         EngineStatus::Paused | EngineStatus::Stopped => EngineCommand::Activate,
     };
     let _ = ctx.commands.send(cmd);
+}
+
+/// Label for the tray's toggle menu item, derived from current engine status.
+///
+/// Mirrors the verb mapping in [`dispatch_toggle`]: when clicking would send
+/// `Deactivate`, the label reads "Deactivate"; when it would send `Activate`,
+/// the label reads "Activate". The two functions must agree, otherwise the
+/// label says one thing and the click does another.
+pub(crate) fn toggle_label(status: EngineStatus) -> &'static str {
+    match status {
+        EngineStatus::Running => "Deactivate",
+        EngineStatus::Paused | EngineStatus::Stopped => "Activate",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn toggle_label_matches_dispatch_mapping() {
+        assert_eq!(toggle_label(EngineStatus::Running), "Deactivate");
+        assert_eq!(toggle_label(EngineStatus::Paused), "Activate");
+        assert_eq!(toggle_label(EngineStatus::Stopped), "Activate");
+    }
 }

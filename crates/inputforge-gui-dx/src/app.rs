@@ -84,6 +84,25 @@ pub(crate) fn app_root() -> Element {
     });
     tray::install_event_handler(params.tray_menu_ids.clone(), tx);
 
+    // Keep the tray's "Activate / Deactivate" label in sync with the engine
+    // status. The handle to the toggle `MenuItem` is taken once on first
+    // mount via the `tray::take_toggle_menu_item` thread-local handoff
+    // (the test harness does not install one and is skipped). The effect
+    // re-runs whenever `ctx.meta` changes, including on first render, so
+    // the initial label is reconciled with the actual status, robust
+    // against `--enable` racing GUI startup. `MenuItem` is `!Send`/
+    // `!Sync`, but the effect closure runs on the Dioxus desktop thread,
+    // the same thread that owns the underlying menu, so mutation through
+    // the cheap `Rc` clone is safe.
+    let toggle_item = use_hook(tray::take_toggle_menu_item);
+    if let Some(toggle_item) = toggle_item {
+        let meta = ctx.meta;
+        use_effect(move || {
+            let status = meta.read().engine_status;
+            toggle_item.set_text(tray::toggle_label(status));
+        });
+    }
+
     // --start-minimized, applied once on first mount.
     use_hook(|| lifecycle::apply_start_minimized(params.start_minimized));
 

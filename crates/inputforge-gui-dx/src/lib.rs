@@ -21,7 +21,7 @@ use std::sync::{Arc, mpsc};
 
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder, WindowCloseBehaviour};
 use dioxus::prelude::*;
-use muda::MenuId;
+use muda::{MenuId, MenuItem};
 use parking_lot::RwLock;
 
 use inputforge_core::engine::EngineCommand;
@@ -73,6 +73,7 @@ pub fn launch_gui(
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Sender<EngineCommand>,
     tray_menu_ids: (MenuId, MenuId, MenuId),
+    toggle_menu_item: MenuItem,
     settings: AppSettings,
     start_minimized: bool,
 ) -> anyhow::Result<()> {
@@ -88,6 +89,15 @@ pub fn launch_gui(
         start_minimized,
         tray_menu_ids: menu_ids,
     };
+
+    // Install the tray's toggle `MenuItem` into a thread-local for
+    // `app_root` to pick up via `tray::take_toggle_menu_item`. We cannot
+    // pass it through `LaunchBuilder::with_context` because that bounds
+    // its argument by `Send + Sync`, and `muda::MenuItem` is `Rc`-based
+    // (neither). Both `launch_gui` and the Dioxus desktop runtime run on
+    // the same main thread, so the thread-local handoff is safe and the
+    // value is taken exactly once, on `app_root`'s first mount.
+    tray::install_toggle_menu_item(toggle_menu_item);
 
     let window = WindowBuilder::new()
         .with_title("InputForge")

@@ -68,5 +68,16 @@ fn main() -> anyhow::Result<()> {
         muda::MenuId::new("quit"),
     );
 
-    inputforge_gui_dx::launch_gui(state, commands, menu_ids, AppSettings::default(), false)
+    // Stub toggle item; no real tray exists in this example, so the label
+    // sync effect just mutates a detached `MenuItem` that nothing renders.
+    let toggle_item = muda::MenuItem::new("Activate", true, None);
+
+    inputforge_gui_dx::launch_gui(
+        state,
+        commands,
+        menu_ids,
+        toggle_item,
+        AppSettings::default(),
+        false,
+    )
 }
