@@ -52,6 +52,27 @@ impl InputAddress {
             Self::Unbound => None,
         }
     }
+
+    /// Returns `true` when this address points at a button-shaped input.
+    ///
+    /// `Unbound` returns `false`. See [`InputId::is_button_shaped`].
+    #[must_use]
+    pub const fn is_button_shaped(&self) -> bool {
+        matches!(self, Self::Bound { input, .. } if input.is_button_shaped())
+    }
+}
+
+impl InputId {
+    /// Returns `true` when this input is button-shaped (discrete press/release).
+    ///
+    /// `Hat` and `Axis` return `false`. The runtime auto-release lifecycle for
+    /// [`crate::action::ModeChangeStrategy::Temporary`] (`PopTemporaryMode`)
+    /// only fires on real button releases, so this predicate is the gate that
+    /// keeps Hold from being authored on inputs that would never auto-revert.
+    #[must_use]
+    pub const fn is_button_shaped(&self) -> bool {
+        matches!(self, Self::Button { .. })
+    }
 }
 
 // Helper structs for serialise. Cannot collapse to an enum because the
@@ -318,6 +339,35 @@ index = 0
         let unbound = InputAddress::Unbound;
         assert!(unbound.is_unbound() && !unbound.is_bound());
         assert!(unbound.device().is_none() && unbound.input_id().is_none());
+    }
+
+    #[test]
+    fn input_id_button_shaped_only_for_button_variant() {
+        assert!(InputId::Button { index: 0 }.is_button_shaped());
+        assert!(!InputId::Axis { index: 0 }.is_button_shaped());
+        assert!(!InputId::Hat { index: 0 }.is_button_shaped());
+    }
+
+    #[test]
+    fn input_address_button_shaped_for_bound_button_only() {
+        let bound_button = InputAddress::Bound {
+            device: DeviceId("d".to_owned()),
+            input: InputId::Button { index: 0 },
+        };
+        let bound_axis = InputAddress::Bound {
+            device: DeviceId("d".to_owned()),
+            input: InputId::Axis { index: 0 },
+        };
+        let bound_hat = InputAddress::Bound {
+            device: DeviceId("d".to_owned()),
+            input: InputId::Hat { index: 0 },
+        };
+        let unbound = InputAddress::Unbound;
+
+        assert!(bound_button.is_button_shaped());
+        assert!(!bound_axis.is_button_shaped());
+        assert!(!bound_hat.is_button_shaped());
+        assert!(!unbound.is_button_shaped());
     }
 
     #[test]
