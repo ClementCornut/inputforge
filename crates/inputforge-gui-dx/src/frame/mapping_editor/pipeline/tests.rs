@@ -479,6 +479,57 @@ pub(crate) fn simulate_dispatch_strategy_change(
     (commands, label)
 }
 
+/// Drive the F14 target-mode dispatch helper from a test. Mirrors
+/// [`simulate_dispatch_strategy_change`] but exercises the `Select` onchange
+/// path: takes the strategy at-rest, the chosen new mode, and returns the
+/// emitted [`EngineCommand`]s plus the formatted undo label.
+pub(crate) fn simulate_dispatch_target_change(
+    strategy_before: inputforge_core::action::ModeChangeStrategy,
+    primary: &str,
+    modes: &[&str],
+    new_mode: &str,
+) -> (Vec<inputforge_core::engine::EngineCommand>, Option<String>) {
+    use crate::frame::MappingKey;
+    use crate::frame::mapping_editor::pipeline::stage_body::change_mode::dispatch_target_change_into;
+    use crate::frame::mapping_editor::undo_log::UndoLog;
+    use inputforge_core::engine::EngineCommand;
+
+    let addr = parse_primary_for_test(primary);
+    let mapping_key: MappingKey = ("Default".to_owned(), addr.clone());
+    let stage_id = StageId(vec![StageIdSegment::Index(0)]);
+    // Build root_actions from the by-value strategy (consumes it), then
+    // re-borrow the action's inner strategy when calling the helper. Avoids
+    // cloning the strategy and keeps `simulate_*` ownership symmetric with
+    // `simulate_dispatch_strategy_change`.
+    let root_actions = vec![Action::ChangeMode {
+        strategy: strategy_before,
+    }];
+    let Action::ChangeMode {
+        strategy: strategy_ref,
+    } = &root_actions[0]
+    else {
+        unreachable!("just constructed above");
+    };
+    let names: HashMap<InputAddress, String> = HashMap::new();
+    let _ = modes;
+
+    let (tx, rx) = mpsc::channel::<EngineCommand>();
+    let mut undo_log = UndoLog::default();
+    let label = dispatch_target_change_into(
+        new_mode,
+        strategy_ref,
+        &mapping_key,
+        &stage_id,
+        &root_actions,
+        &names,
+        &tx,
+        &mut undo_log,
+    );
+    drop(tx);
+    let commands: Vec<EngineCommand> = rx.try_iter().collect();
+    (commands, label)
+}
+
 // ---------------------------------------------------------------------------
 // Harness (VirtualDom::new_with_props pattern matching mapping_editor::tests)
 // ---------------------------------------------------------------------------

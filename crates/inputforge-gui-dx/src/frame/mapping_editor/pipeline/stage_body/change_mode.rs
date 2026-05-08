@@ -159,6 +159,103 @@ pub(crate) fn dispatch_strategy_change(
     )
 }
 
+/// Dispatch a target-mode change. Pure form takes `&mut UndoLog` for tests;
+/// see [`dispatch_target_change`] for the Signal-wrapping component form.
+/// Returns the formatted undo label that was committed (`None` when the
+/// new mode equals the current mode, i.e. picking the same option twice).
+///
+/// The `<unset>` token in the undo label preserves the empty-mode signal
+/// to the user (prior strategy with `mode: ""` becomes `target <unset> -> X`).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "matches dispatch_strategy_change_into argument set"
+)]
+pub(crate) fn dispatch_target_change_into(
+    new_mode: &str,
+    current_strategy: &ModeChangeStrategy,
+    mapping_key: &MappingKey,
+    stage_id: &StageId,
+    root_actions: &[Action],
+    mapping_names: &HashMap<InputAddress, String>,
+    cmd_tx: &Sender<EngineCommand>,
+    undo_log: &mut UndoLog,
+) -> Option<String> {
+    let mode_before = match current_strategy {
+        ModeChangeStrategy::SwitchTo { mode } | ModeChangeStrategy::Temporary { mode } => {
+            mode.as_str()
+        }
+    };
+    if new_mode == mode_before {
+        return None;
+    }
+    let new_strategy = match current_strategy {
+        ModeChangeStrategy::SwitchTo { .. } => ModeChangeStrategy::SwitchTo {
+            mode: new_mode.to_owned(),
+        },
+        ModeChangeStrategy::Temporary { .. } => ModeChangeStrategy::Temporary {
+            mode: new_mode.to_owned(),
+        },
+    };
+    let new_action = Action::ChangeMode {
+        strategy: new_strategy,
+    };
+    let before_label = if mode_before.is_empty() {
+        "<unset>"
+    } else {
+        mode_before
+    };
+    let label = format_undo_label(
+        UndoKind::StageEdit,
+        LabelArgs {
+            stage_name: Some("Change mode"),
+            field: Some("target"),
+            before_after: Some((before_label, new_mode)),
+            ..LabelArgs::default()
+        },
+    );
+    let name = mapping_names.get(&mapping_key.1).cloned();
+    dispatch_stage_edit_into(
+        undo_log,
+        root_actions,
+        stage_id,
+        new_action,
+        mapping_key,
+        name,
+        cmd_tx,
+        label.clone(),
+    );
+    Some(label)
+}
+
+/// Signal-wrapping form for the target-mode change. Body call sites pass
+/// their `Signal<UndoLog>` here; same shape as `dispatch_strategy_change`.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "matches dispatch_target_change_into plus the Signal handle"
+)]
+pub(crate) fn dispatch_target_change(
+    new_mode: &str,
+    current_strategy: &ModeChangeStrategy,
+    mapping_key: &MappingKey,
+    stage_id: &StageId,
+    root_actions: &[Action],
+    mapping_names: &HashMap<InputAddress, String>,
+    cmd_tx: &Sender<EngineCommand>,
+    undo_log: &mut Signal<UndoLog>,
+) -> Option<String> {
+    let mut guard = undo_log.write();
+    dispatch_target_change_into(
+        new_mode,
+        current_strategy,
+        mapping_key,
+        stage_id,
+        root_actions,
+        mapping_names,
+        cmd_tx,
+        &mut guard,
+    )
+}
+
 #[component]
 #[allow(
     unused_qualifications,
@@ -263,6 +360,31 @@ pub(crate) fn ChangeModeBody(
         );
     };
 
+    // Target-mode Select onchange. Thin closure: pull `evt.value()` and
+    // forward to `dispatch_target_change`. The helper guards the no-op case
+    // (`new_mode == current`) so picking the same option twice is silent.
+    let mapping_key_t = mapping_key.clone();
+    let stage_id_t = stage_id.clone();
+    let root_actions_t = root_actions.clone();
+    let strategy_for_t = strategy.clone();
+    let cmd_tx_t = ctx.commands.clone();
+    let mut undo_log_t = editor.undo_log;
+    let on_target_change = move |evt: FormEvent| {
+        let cfg = cfg_signal.read();
+        let names = cfg.mapping_names.clone();
+        drop(cfg);
+        let _ = dispatch_target_change(
+            &evt.value(),
+            &strategy_for_t,
+            &mapping_key_t,
+            &stage_id_t,
+            &root_actions_t,
+            &names,
+            &cmd_tx_t,
+            &mut undo_log_t,
+        );
+    };
+
     let hold_pill = rsx! {
         button {
             r#type: "button",
@@ -308,7 +430,7 @@ pub(crate) fn ChangeModeBody(
                 Select {
                     value: target_value,
                     options: target_options,
-                    onchange: move |_evt: FormEvent| {},
+                    onchange: on_target_change,
                 }
             }
         }
@@ -401,6 +523,57 @@ mod tests {
         assert_eq!(
             undo_label.as_deref(),
             Some("Change mode: strategy Set -> Hold")
+        );
+    }
+
+    #[test]
+    fn dispatches_target_change_with_unset_before_label() {
+        use inputforge_core::action::Action;
+        use inputforge_core::engine::EngineCommand;
+
+        let strategy_before = ModeChangeStrategy::SwitchTo {
+            mode: String::new(), // empty -> "<unset>"
+        };
+        let (commands, undo_label) =
+            crate::frame::mapping_editor::pipeline::tests::simulate_dispatch_target_change(
+                strategy_before,
+                "btn0",
+                &["Default", "Combat"],
+                "Combat",
+            );
+        let first = commands.into_iter().next().expect("expected SetMapping");
+        match first {
+            EngineCommand::SetMapping { actions, .. } => {
+                assert!(matches!(
+                    actions.first(),
+                    Some(Action::ChangeMode {
+                        strategy: ModeChangeStrategy::SwitchTo { mode }
+                    }) if mode == "Combat"
+                ));
+            }
+            other => panic!("expected SetMapping, got {other:?}"),
+        }
+        assert_eq!(
+            undo_label.as_deref(),
+            Some("Change mode: target <unset> -> Combat")
+        );
+    }
+
+    #[test]
+    fn dispatches_target_change_with_explicit_before_label() {
+        let strategy_before = ModeChangeStrategy::SwitchTo {
+            mode: "Default".to_owned(),
+        };
+        let (_commands, undo_label) =
+            crate::frame::mapping_editor::pipeline::tests::simulate_dispatch_target_change(
+                strategy_before,
+                "btn0",
+                &["Default", "Combat"],
+                "Combat",
+            );
+        assert_eq!(
+            undo_label.as_deref(),
+            Some("Change mode: target Default -> Combat")
         );
     }
 }
