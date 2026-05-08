@@ -8,17 +8,16 @@ use std::rc::Rc;
 
 use dioxus::prelude::*;
 
-use inputforge_core::types::{AxisPolarity, HatDirection, OutputId};
+use inputforge_core::types::OutputId;
 
 use crate::components::Icon;
 use crate::context::AppContext;
 use crate::icons::{Icon as IconKind, IconSize};
 
 use super::analyzer::{LiveReadoutModel, OutputDescriptor, OutputDestination};
-use super::in_block::ReadoutRow;
+use super::in_block::{ButtonReadoutRow, HatReadoutRow, ReadoutRow};
 use super::value_helpers::{
-    AxisDisplay, format_key_combo, format_output_label, read_output_button, read_output_display,
-    read_output_hat,
+    ReadoutDisplay, format_key_combo, format_output_label, read_output_typed_display,
 };
 
 const READOUT_SECTION_CLASS: &str = "if-editor__readout-section";
@@ -96,7 +95,11 @@ pub(super) fn OutRow(
                 let live = ctx.live.read();
                 let cfg = ctx.config.read();
                 let tag = format_output_label(out);
-                let display = read_output_display(out, &live, &cfg, descriptor.polarity);
+                let ReadoutDisplay::Axis(display) =
+                    read_output_typed_display(out, &live, &cfg, descriptor.polarity)
+                else {
+                    unreachable!("axis output should produce axis readout display");
+                };
 
                 rsx! {
                     ReadoutRow {
@@ -111,17 +114,17 @@ pub(super) fn OutRow(
                 let live = ctx.live.read();
                 let cfg = ctx.config.read();
                 let tag = format_output_label(out);
-                let pressed = read_output_button(out, &live, &cfg);
-                let display = AxisDisplay {
-                    value: if pressed { 1.0 } else { 0.0 },
-                    polarity: AxisPolarity::Unipolar,
+                let ReadoutDisplay::Button { pressed } =
+                    read_output_typed_display(out, &live, &cfg, descriptor.polarity)
+                else {
+                    unreachable!("button output should produce button readout display");
                 };
 
                 rsx! {
-                    ReadoutRow {
+                    ButtonReadoutRow {
                         label: row_label.clone(),
                         tag,
-                        display,
+                        pressed,
                         frozen,
                     }
                 }
@@ -130,16 +133,18 @@ pub(super) fn OutRow(
                 let live = ctx.live.read();
                 let cfg = ctx.config.read();
                 let tag = format_output_label(out);
-                let glyph = hat_glyph_for(read_output_hat(out, &live, &cfg));
-                let row_class = hat_row_class(frozen);
-                let label = row_label.clone();
+                let ReadoutDisplay::Hat { direction } =
+                    read_output_typed_display(out, &live, &cfg, descriptor.polarity)
+                else {
+                    unreachable!("hat output should produce hat readout display");
+                };
 
                 rsx! {
-                    div { class: "{row_class}",
-                        div { class: "if-editor__readout-label", "{label}" }
-                        div { class: "if-editor__readout-tag", "{tag}" }
-                        div { class: "if-editor__readout-hat-glyph", "{glyph}" }
-                        div { class: "if-editor__readout-pct" }
+                    HatReadoutRow {
+                        label: row_label.clone(),
+                        tag,
+                        direction,
+                        frozen,
                     }
                 }
             }
@@ -250,14 +255,6 @@ fn chevron_label(expanded: bool) -> &'static str {
     }
 }
 
-fn hat_row_class(frozen: bool) -> &'static str {
-    if frozen {
-        "if-editor__readout-row if-editor__readout-row--hat if-editor__readout-row--frozen"
-    } else {
-        "if-editor__readout-row if-editor__readout-row--hat"
-    }
-}
-
 fn keyboard_row_class(frozen: bool) -> &'static str {
     if frozen {
         "if-editor__readout-row if-editor__readout-row--kb if-editor__readout-row--frozen"
@@ -274,23 +271,11 @@ fn keyboard_chip_class(live: bool) -> &'static str {
     }
 }
 
-fn hat_glyph_for(direction: HatDirection) -> char {
-    match direction {
-        HatDirection::N => '\u{2191}',
-        HatDirection::NE => '\u{2197}',
-        HatDirection::E => '\u{2192}',
-        HatDirection::SE => '\u{2198}',
-        HatDirection::S => '\u{2193}',
-        HatDirection::SW => '\u{2199}',
-        HatDirection::W => '\u{2190}',
-        HatDirection::NW => '\u{2196}',
-        HatDirection::Center => '\u{00b7}',
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use super::super::value_helpers::hat_glyph_for;
     use super::*;
+    use inputforge_core::types::HatDirection;
 
     #[test]
     fn hat_glyph_for_maps_all_directions() {
@@ -306,15 +291,7 @@ mod tests {
     }
 
     #[test]
-    fn hat_and_keyboard_row_classes_include_kind_and_frozen_state() {
-        assert_eq!(
-            hat_row_class(false),
-            "if-editor__readout-row if-editor__readout-row--hat"
-        );
-        assert_eq!(
-            hat_row_class(true),
-            "if-editor__readout-row if-editor__readout-row--hat if-editor__readout-row--frozen"
-        );
+    fn keyboard_row_classes_include_kind_and_frozen_state() {
         assert_eq!(
             keyboard_row_class(false),
             "if-editor__readout-row if-editor__readout-row--kb"

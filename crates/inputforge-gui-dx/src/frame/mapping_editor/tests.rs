@@ -14,8 +14,8 @@ use inputforge_core::profile::Profile;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, EngineStatus};
 use inputforge_core::types::{
-    AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId, VJoyAxis,
-    VirtualDeviceConfig,
+    AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId, OutputAddress,
+    OutputId, VJoyAxis, VirtualDeviceConfig,
 };
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
@@ -188,6 +188,63 @@ fn add_vjoy_device(state: &mut AppState, device_id: u8, axes: Vec<VJoyAxis>) {
     });
 }
 
+fn add_vjoy_device_with_controls(
+    state: &mut AppState,
+    device_id: u8,
+    axes: Vec<VJoyAxis>,
+    button_count: u8,
+    hat_count: u8,
+) {
+    state.virtual_devices.push(VirtualDeviceConfig {
+        device_id,
+        axes,
+        button_count,
+        hat_count,
+    });
+}
+
+fn seeded_profile_with_input_mapping(
+    input: InputAddress,
+    actions: Vec<Action>,
+    axes: u8,
+    buttons: u8,
+    hats: u8,
+) -> AppState {
+    use std::collections::HashMap;
+
+    let map = HashMap::from([("Default".to_owned(), vec![])]);
+    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let mappings = vec![Mapping {
+        input,
+        mode: "Default".to_owned(),
+        name: Some("Typed input".to_owned()),
+        actions,
+    }];
+    let profile = Profile::new(
+        "P".to_owned(),
+        vec![],
+        modes,
+        mappings,
+        vec![],
+        "Default".to_owned(),
+    );
+    let mut state = AppState::with_profile(profile);
+    state.devices.push(inputforge_core::state::DeviceState {
+        info: DeviceInfo {
+            id: DeviceId("dev-1".to_owned()),
+            name: "Stick".to_owned(),
+            axes,
+            buttons,
+            hats,
+            instance_path: None,
+            axis_polarities: vec![AxisPolarity::Bipolar; usize::from(axes)],
+        },
+        connected: true,
+        diagnostics: DeviceDiagnostics::default(),
+    });
+    state
+}
+
 fn seeded_profile_with_pipeline(
     actions: Vec<Action>,
     axis_polarities: Vec<AxisPolarity>,
@@ -240,19 +297,31 @@ fn hat_addr(index: u8) -> InputAddress {
     }
 }
 
-fn vjoy_x() -> inputforge_core::types::OutputAddress {
-    use inputforge_core::types::{OutputAddress, OutputId};
+fn vjoy_x() -> OutputAddress {
     OutputAddress {
         device: 1,
         output: OutputId::Axis { id: VJoyAxis::X },
     }
 }
 
-fn vjoy_y() -> inputforge_core::types::OutputAddress {
-    use inputforge_core::types::{OutputAddress, OutputId};
+fn vjoy_y() -> OutputAddress {
     OutputAddress {
         device: 1,
         output: OutputId::Axis { id: VJoyAxis::Y },
+    }
+}
+
+fn vjoy_button(id: u8) -> OutputAddress {
+    OutputAddress {
+        device: 1,
+        output: OutputId::Button { id },
+    }
+}
+
+fn vjoy_hat(id: u8) -> OutputAddress {
+    OutputAddress {
+        device: 1,
+        output: OutputId::Hat { id },
     }
 }
 
@@ -1159,6 +1228,181 @@ fn editor_live_readout_renders_out_when_map_to_vjoy_present() {
     assert!(
         html.contains("OUT"),
         "OUT row should render with MapToVJoy: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_button_mapping_uses_binary_in_and_out_rows() {
+    let primary = btn_addr(0);
+    let actions = vec![Action::MapToVJoy {
+        output: vjoy_button(1),
+    }];
+    let mut state = seeded_profile_with_input_mapping(primary.clone(), actions.clone(), 0, 1, 0);
+    add_vjoy_device_with_controls(&mut state, 1, vec![], 1, 0);
+    let live = LiveSnapshot {
+        device_inputs: vec![crate::context::DeviceInputValues {
+            axes: vec![],
+            buttons: vec![false],
+            hats: vec![],
+        }],
+        output_values: vec![crate::context::VjoyOutputValues {
+            axes: vec![],
+            buttons: vec![false],
+            hats: vec![],
+        }],
+    };
+    let mut vdom = harness_with_live(state, primary.clone(), live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(
+        html.contains("if-editor__readout-button-cell"),
+        "button mappings must render a binary button cell instead of an axis bar: {html}"
+    );
+    assert!(html.contains("Released"), "idle button state: {html}");
+    assert!(
+        !html.contains("+0.00") && !html.contains(">0.00<"),
+        "button mappings must not expose axis-style numeric readouts: {html}"
+    );
+
+    let mut state = seeded_profile_with_input_mapping(primary.clone(), actions, 0, 1, 0);
+    add_vjoy_device_with_controls(&mut state, 1, vec![], 1, 0);
+    let live = LiveSnapshot {
+        device_inputs: vec![crate::context::DeviceInputValues {
+            axes: vec![],
+            buttons: vec![true],
+            hats: vec![],
+        }],
+        output_values: vec![crate::context::VjoyOutputValues {
+            axes: vec![],
+            buttons: vec![true],
+            hats: vec![],
+        }],
+    };
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(html.contains("Pressed"), "pressed button state: {html}");
+    assert!(
+        html.contains("if-editor__readout-button-pill--live"),
+        "pressed buttons need the live state treatment: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_hat_mapping_uses_compass_rows() {
+    use inputforge_core::types::HatDirection;
+
+    let primary = hat_addr(0);
+    let actions = vec![Action::MapToVJoy {
+        output: vjoy_hat(1),
+    }];
+    let mut state = seeded_profile_with_input_mapping(primary.clone(), actions, 0, 0, 1);
+    add_vjoy_device_with_controls(&mut state, 1, vec![], 0, 1);
+    let live = LiveSnapshot {
+        device_inputs: vec![crate::context::DeviceInputValues {
+            axes: vec![],
+            buttons: vec![],
+            hats: vec![HatDirection::SE],
+        }],
+        output_values: vec![crate::context::VjoyOutputValues {
+            axes: vec![],
+            buttons: vec![],
+            hats: vec![HatDirection::NW],
+        }],
+    };
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(
+        html.contains("if-editor__readout-hat-compass"),
+        "hat mappings must render a compact compass instead of an axis fallback: {html}"
+    );
+    assert!(
+        html.contains("SE"),
+        "direction label should name the live hat direction: {html}"
+    );
+    assert!(
+        html.contains("if-editor__readout-hat-spoke\">\u{00b7}</span>"),
+        "center hat input spoke should stay present through its compact glyph: {html}"
+    );
+    assert!(
+        html.contains("NW"),
+        "OUT hat direction should read the live output snapshot instead of falling back to Center: {html}"
+    );
+    assert!(
+        !html.contains("+0.00") && !html.contains(">0.00<"),
+        "hat mappings must not expose axis-style numeric readouts: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_output_button_freezes_binary_state_when_engine_stopped() {
+    let primary = btn_addr(0);
+    let actions = vec![Action::MapToVJoy {
+        output: vjoy_button(1),
+    }];
+    let mut state = seeded_profile_with_input_mapping(primary.clone(), actions, 0, 1, 0);
+    add_vjoy_device_with_controls(&mut state, 1, vec![], 1, 0);
+    let live = LiveSnapshot {
+        device_inputs: vec![crate::context::DeviceInputValues {
+            axes: vec![],
+            buttons: vec![true],
+            hats: vec![],
+        }],
+        output_values: vec![crate::context::VjoyOutputValues {
+            axes: vec![],
+            buttons: vec![true],
+            hats: vec![],
+        }],
+    };
+    let mut vdom = harness_with_live_and_status(state, primary, live, EngineStatus::Stopped);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(
+        html.contains("if-editor__readout-row-wrap--frozen"),
+        "stopped engine should freeze the OUT button row: {html}"
+    );
+    assert!(
+        html.contains("if-editor__readout-button-cell--frozen"),
+        "frozen OUT button indicators should dim like frozen axis values: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_axis_mapping_keeps_existing_axis_bar_contract() {
+    let primary = axis_addr(0);
+    let actions = vec![Action::MapToVJoy { output: vjoy_x() }];
+    let mut state = seeded_profile_with_polarities_and_axes(
+        actions,
+        vec![AxisPolarity::Bipolar],
+        &[(0, 0.5, AxisPolarity::Bipolar)],
+    );
+    add_vjoy_device(&mut state, 1, vec![VJoyAxis::X]);
+    let live = live_snapshot_with_axes_and_outputs(
+        vec![(0.5, AxisPolarity::Bipolar)],
+        vec![(VJoyAxis::X, 0.2)],
+    );
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(html.contains("if-editor__readout-bar--bipolar"));
+    assert!(
+        html.contains("+0.50"),
+        "IN axis value should stay signed: {html}"
+    );
+    assert!(
+        html.contains("+0.20"),
+        "OUT axis value should stay signed: {html}"
+    );
+    assert!(
+        !html.contains("if-editor__readout-button-cell")
+            && !html.contains("if-editor__readout-hat-compass"),
+        "axis mappings must not switch to typed non-axis instruments: {html}"
     );
 }
 

@@ -24,6 +24,35 @@ pub(crate) struct AxisDisplay {
     pub polarity: AxisPolarity,
 }
 
+/// Typed display value carried by top-level live readout rows.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum ReadoutDisplay {
+    Axis(AxisDisplay),
+    Button { pressed: bool },
+    Hat { direction: HatDirection },
+}
+
+/// Read the typed input value for `addr` from the live snapshot.
+pub(crate) fn read_input_display(
+    addr: &InputAddress,
+    live: &LiveSnapshot,
+    cfg: &ConfigSnapshot,
+) -> ReadoutDisplay {
+    match addr.input_id() {
+        Some(InputId::Axis { .. }) => ReadoutDisplay::Axis(read_axis_display(addr, live, cfg)),
+        Some(InputId::Button { .. }) => ReadoutDisplay::Button {
+            pressed: read_button_pressed(addr, live, cfg),
+        },
+        Some(InputId::Hat { .. }) => ReadoutDisplay::Hat {
+            direction: read_hat_direction(addr, live, cfg),
+        },
+        None => ReadoutDisplay::Axis(AxisDisplay {
+            value: 0.0,
+            polarity: AxisPolarity::Bipolar,
+        }),
+    }
+}
+
 /// Read the raw axis value and polarity for `addr` from the live snapshot.
 ///
 /// Falls back to `(0.0, Bipolar)` when the device or axis index is not
@@ -160,15 +189,43 @@ pub(super) fn read_output_button(
 }
 
 /// Read the current direction emitted to a vJoy hat output.
-///
-/// The engine does not write hat outputs yet, so this currently returns
-/// `Center`. Future hat-output engine support can replace this hook.
 pub(super) fn read_output_hat(
-    _out: &OutputAddress,
-    _live: &LiveSnapshot,
-    _cfg: &ConfigSnapshot,
+    out: &OutputAddress,
+    live: &LiveSnapshot,
+    cfg: &ConfigSnapshot,
 ) -> HatDirection {
-    HatDirection::Center
+    let OutputId::Hat { id } = out.output else {
+        return HatDirection::Center;
+    };
+    let Some(idx) = id.checked_sub(1) else {
+        return HatDirection::Center;
+    };
+    cfg.virtual_devices
+        .iter()
+        .position(|v| v.device_id == out.device)
+        .and_then(|di| live.output_values.get(di))
+        .and_then(|vals| vals.hats.get(usize::from(idx)).copied())
+        .unwrap_or(HatDirection::Center)
+}
+
+/// Read the typed output value for a vJoy destination from the live snapshot.
+pub(super) fn read_output_typed_display(
+    out: &OutputAddress,
+    live: &LiveSnapshot,
+    cfg: &ConfigSnapshot,
+    polarity: AxisPolarity,
+) -> ReadoutDisplay {
+    match out.output {
+        OutputId::Axis { .. } => {
+            ReadoutDisplay::Axis(read_output_display(out, live, cfg, polarity))
+        }
+        OutputId::Button { .. } => ReadoutDisplay::Button {
+            pressed: read_output_button(out, live, cfg),
+        },
+        OutputId::Hat { .. } => ReadoutDisplay::Hat {
+            direction: read_output_hat(out, live, cfg),
+        },
+    }
 }
 
 /// Extract a scalar f64 from any `InputValue`.
@@ -183,6 +240,34 @@ pub(super) fn axis_f64(v: &InputValue) -> f64 {
             }
         }
         InputValue::Hat { .. } => 0.0,
+    }
+}
+
+pub(super) fn hat_direction_label(direction: HatDirection) -> &'static str {
+    match direction {
+        HatDirection::Center => "Center",
+        HatDirection::N => "N",
+        HatDirection::NE => "NE",
+        HatDirection::E => "E",
+        HatDirection::SE => "SE",
+        HatDirection::S => "S",
+        HatDirection::SW => "SW",
+        HatDirection::W => "W",
+        HatDirection::NW => "NW",
+    }
+}
+
+pub(super) fn hat_glyph_for(direction: HatDirection) -> char {
+    match direction {
+        HatDirection::N => '\u{2191}',
+        HatDirection::NE => '\u{2197}',
+        HatDirection::E => '\u{2192}',
+        HatDirection::SE => '\u{2198}',
+        HatDirection::S => '\u{2193}',
+        HatDirection::SW => '\u{2199}',
+        HatDirection::W => '\u{2190}',
+        HatDirection::NW => '\u{2196}',
+        HatDirection::Center => '\u{00b7}',
     }
 }
 
@@ -278,6 +363,40 @@ pub(super) fn infer_output_polarity(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::VjoyOutputValues;
+    use inputforge_core::types::VirtualDeviceConfig;
+
+    #[test]
+    fn read_output_typed_display_reads_one_based_hat_output() {
+        let cfg = ConfigSnapshot {
+            virtual_devices: vec![VirtualDeviceConfig {
+                device_id: 1,
+                axes: vec![],
+                button_count: 0,
+                hat_count: 1,
+            }],
+            ..ConfigSnapshot::default()
+        };
+        let live = LiveSnapshot {
+            device_inputs: vec![],
+            output_values: vec![VjoyOutputValues {
+                axes: vec![],
+                buttons: vec![],
+                hats: vec![HatDirection::SE],
+            }],
+        };
+        let out = OutputAddress {
+            device: 1,
+            output: OutputId::Hat { id: 1 },
+        };
+
+        assert_eq!(
+            read_output_typed_display(&out, &live, &cfg, AxisPolarity::Bipolar),
+            ReadoutDisplay::Hat {
+                direction: HatDirection::SE,
+            }
+        );
+    }
 
     #[test]
     fn merge_output_polarity_bidirectional_always_bipolar() {

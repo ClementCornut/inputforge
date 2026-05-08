@@ -1,13 +1,16 @@
 use dioxus::prelude::*;
 
-use inputforge_core::types::AxisPolarity;
+use inputforge_core::types::{AxisPolarity, HatDirection};
 
 use crate::context::AppContext;
 use crate::frame::mapping_list::source_label;
 
 use super::analyzer::{LiveReadoutModel, PredicateDescriptor, PredicateKind};
 use super::predicate::render_hat_glyphs;
-use super::value_helpers::{AxisDisplay, format_percentage, read_axis_display};
+use super::value_helpers::{
+    AxisDisplay, ReadoutDisplay, format_percentage, hat_direction_label, hat_glyph_for,
+    read_input_display,
+};
 
 const READOUT_SECTION_CLASS: &str = "if-editor__readout-section";
 const READOUT_SECTION_LABEL_CLASS: &str = "if-editor__readout-section-label";
@@ -34,12 +37,38 @@ pub(super) fn InBlock(model: LiveReadoutModel) -> Element {
             }
             div { class: "{READOUT_GROUP_CLASS}",
                 for (idx, addr) in model.pipeline_inputs.iter().enumerate() {
-                    ReadoutRow {
-                        key: "pipeline-{idx}",
-                        label: input_row_label(idx, has_multiple_inputs),
-                        tag: source_label::format(addr, &cfg),
-                        display: read_axis_display(addr, &live, &cfg),
-                        frozen: false,
+                    {
+                        let label = input_row_label(idx, has_multiple_inputs);
+                        let tag = source_label::format(addr, &cfg);
+                        match read_input_display(addr, &live, &cfg) {
+                            ReadoutDisplay::Axis(display) => rsx! {
+                                ReadoutRow {
+                                    key: "pipeline-{idx}",
+                                    label,
+                                    tag,
+                                    display,
+                                    frozen: false,
+                                }
+                            },
+                            ReadoutDisplay::Button { pressed } => rsx! {
+                                ButtonReadoutRow {
+                                    key: "pipeline-{idx}",
+                                    label,
+                                    tag,
+                                    pressed,
+                                    frozen: false,
+                                }
+                            },
+                            ReadoutDisplay::Hat { direction } => rsx! {
+                                HatReadoutRow {
+                                    key: "pipeline-{idx}",
+                                    label,
+                                    tag,
+                                    direction,
+                                    frozen: false,
+                                }
+                            },
+                        }
                     }
                 }
             }
@@ -72,6 +101,63 @@ pub(super) fn InBlock(model: LiveReadoutModel) -> Element {
     }
 }
 
+/// One binary button row in the readout grid.
+#[component]
+pub(super) fn ButtonReadoutRow(label: String, tag: String, pressed: bool, frozen: bool) -> Element {
+    let row_class = button_row_class(frozen);
+    let cell_class = button_cell_class(frozen);
+    let dot_class = button_dot_class(pressed);
+    let pill_class = button_pill_class(pressed);
+    let state_label = button_state_label(pressed);
+
+    rsx! {
+        div { class: "{row_class}",
+            div { class: "if-editor__readout-label", "{label}" }
+            div { class: "if-editor__readout-tag", "{tag}" }
+            div { class: "{cell_class}",
+                span { class: "{dot_class}" }
+                span { class: "{pill_class}", "{state_label}" }
+            }
+            div { class: "if-editor__readout-pct" }
+        }
+    }
+}
+
+/// One 8-way hat row in the readout grid.
+#[component]
+pub(super) fn HatReadoutRow(
+    label: String,
+    tag: String,
+    direction: HatDirection,
+    frozen: bool,
+) -> Element {
+    let row_class = hat_row_class(frozen);
+    let compass_class = hat_compass_class(frozen);
+    let direction_label = hat_direction_label(direction);
+    let direction_glyph = hat_glyph_for(direction);
+    let center_glyph = hat_glyph_for(HatDirection::Center);
+
+    rsx! {
+        div { class: "{row_class}",
+            div { class: "if-editor__readout-label", "{label}" }
+            div { class: "if-editor__readout-tag", "{tag}" }
+            div { class: "{compass_class}", "aria-label": "Hat direction {direction_label}",
+                span { class: "{hat_spoke_class(direction, HatDirection::NW)}", "\u{2196}" }
+                span { class: "{hat_spoke_class(direction, HatDirection::N)}", "\u{2191}" }
+                span { class: "{hat_spoke_class(direction, HatDirection::NE)}", "\u{2197}" }
+                span { class: "{hat_spoke_class(direction, HatDirection::W)}", "\u{2190}" }
+                span { class: "{hat_spoke_class(direction, HatDirection::Center)}", "{center_glyph}" }
+                span { class: "{hat_spoke_class(direction, HatDirection::E)}", "\u{2192}" }
+                span { class: "{hat_spoke_class(direction, HatDirection::SW)}", "\u{2199}" }
+                span { class: "{hat_spoke_class(direction, HatDirection::S)}", "\u{2193}" }
+                span { class: "{hat_spoke_class(direction, HatDirection::SE)}", "\u{2198}" }
+                span { class: "if-editor__readout-hat-state", "{direction_label} {direction_glyph}" }
+            }
+            div { class: "if-editor__readout-pct" }
+        }
+    }
+}
+
 fn input_row_label(index: usize, has_multiple_inputs: bool) -> String {
     if has_multiple_inputs {
         format!("IN {}", index + 1)
@@ -93,6 +179,66 @@ fn predicate_dot_class(state: bool) -> &'static str {
         "if-editor__readout-chip-dot"
     } else {
         "if-editor__readout-chip-dot if-editor__readout-chip-dot--hollow"
+    }
+}
+
+fn button_row_class(frozen: bool) -> &'static str {
+    if frozen {
+        "if-editor__readout-row if-editor__readout-row--button if-editor__readout-row--frozen"
+    } else {
+        "if-editor__readout-row if-editor__readout-row--button"
+    }
+}
+
+fn button_cell_class(frozen: bool) -> &'static str {
+    if frozen {
+        "if-editor__readout-button-cell if-editor__readout-button-cell--frozen"
+    } else {
+        "if-editor__readout-button-cell"
+    }
+}
+
+fn button_dot_class(pressed: bool) -> &'static str {
+    if pressed {
+        "if-editor__readout-button-dot if-editor__readout-button-dot--live"
+    } else {
+        "if-editor__readout-button-dot"
+    }
+}
+
+fn button_pill_class(pressed: bool) -> &'static str {
+    if pressed {
+        "if-editor__readout-button-pill if-editor__readout-button-pill--live"
+    } else {
+        "if-editor__readout-button-pill if-editor__readout-button-pill--idle"
+    }
+}
+
+fn button_state_label(pressed: bool) -> &'static str {
+    if pressed { "Pressed" } else { "Released" }
+}
+
+fn hat_row_class(frozen: bool) -> &'static str {
+    if frozen {
+        "if-editor__readout-row if-editor__readout-row--hat if-editor__readout-row--frozen"
+    } else {
+        "if-editor__readout-row if-editor__readout-row--hat"
+    }
+}
+
+fn hat_compass_class(frozen: bool) -> &'static str {
+    if frozen {
+        "if-editor__readout-hat-compass if-editor__readout-hat-compass--frozen"
+    } else {
+        "if-editor__readout-hat-compass"
+    }
+}
+
+fn hat_spoke_class(current: HatDirection, spoke: HatDirection) -> &'static str {
+    if current == spoke {
+        "if-editor__readout-hat-spoke if-editor__readout-hat-spoke--live"
+    } else {
+        "if-editor__readout-hat-spoke"
     }
 }
 
@@ -183,8 +329,6 @@ pub(super) fn ReadoutRow(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use inputforge_core::types::HatDirection;
 
     fn predicate(kind: PredicateKind) -> PredicateDescriptor {
         PredicateDescriptor {
@@ -323,6 +467,34 @@ mod tests {
         assert!(
             css_rule_contains(css, ".if-editor__readout-tag", "min-width: 0;"),
             ".if-editor__readout-tag must truncate inside the shared tag column instead of expanding the scale"
+        );
+    }
+
+    #[test]
+    fn hat_compass_center_spoke_uses_compact_glyph() {
+        let html = dioxus_ssr::render_element(rsx! {
+            HatReadoutRow {
+                label: "IN".to_owned(),
+                tag: "Stick · Hat 0".to_owned(),
+                direction: HatDirection::Center,
+                frozen: false,
+            }
+        });
+
+        assert!(
+            html.contains("if-editor__readout-hat-state"),
+            "hat row should keep the readable direction label outside the 3x3 spokes: {html}"
+        );
+        assert!(
+            html.contains("Center \u{00b7}"),
+            "readable state text should still name the centered direction: {html}"
+        );
+        assert!(
+            !html.contains("if-editor__readout-hat-spoke\">Center</span>")
+                && !html.contains(
+                    "if-editor__readout-hat-spoke if-editor__readout-hat-spoke--live\">Center</span>"
+                ),
+            "the fixed 20px center spoke must not render the full Center label: {html}"
         );
     }
 
