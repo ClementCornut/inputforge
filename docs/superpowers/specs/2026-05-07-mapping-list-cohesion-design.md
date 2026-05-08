@@ -324,7 +324,13 @@ Row token contract:
 | Focus-visible    | `2px solid var(--color-border-focus)`, offset -2px (inset, matches `.if-device-row:focus-visible`, `panel_slot.css:140-143`) |
 | Selected name    | `font-weight: 700`                                                                             |
 | Drag-source      | `opacity: 0.4` (sortable primitive owns this)                                                  |
-| Row gap          | `2px` between rows (CSS gap on the group container)                                            |
+| Row gap          | `8px` between rows (rendered by `.if-sortable-gap` at `var(--space-2)`)                        |
+
+The earlier `2px` value on the group container was redundant: the
+8 px `.if-sortable-gap` between rows already owns drop-target hit
+zone and visual separation. Stacking the two contributions broke the
+4-px-grid token scale. The single 8 px contributor at
+`var(--space-2)` is the row-to-row spacing of record.
 
 The 10px reserved-left gutter for the drag handle (today's
 `calc(var(--space-3) + 10px)` left padding) is dropped. The

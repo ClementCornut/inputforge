@@ -1835,8 +1835,13 @@ fn qualifier_chips_render_as_chip_outline_with_glyph_class() {
     );
 }
 
+/// Row-to-row spacing is owned by `.if-sortable-gap` (height
+/// `var(--space-2)`); the previous bare 2 px gap on the group
+/// container stacked on top and shipped ~12 px of dead air per row,
+/// missing the 4-px-grid scale. Lock the gap-free group container so
+/// the only contributor is the sortable gap.
 #[test]
-fn mapping_list_css_uses_row_gap_2px_inside_groups() {
+fn mapping_list_css_locks_rail_group_drops_inter_row_flex_gap() {
     let css = include_str!("../../../assets/frame/mapping_list.css");
     let block = css
         .split(".if-rail__group {")
@@ -1845,15 +1850,40 @@ fn mapping_list_css_uses_row_gap_2px_inside_groups() {
         .split('}')
         .next()
         .expect(".if-rail__group rule closed");
+    let block_no_comments = strip_css_block_comments(block);
     assert!(
-        block.contains("display: flex;") && block.contains("flex-direction: column;"),
-        ".if-rail__group must be a column flex container so `gap` applies \
-         between rows: {block}",
+        block_no_comments.contains("display: flex;")
+            && block_no_comments.contains("flex-direction: column;"),
+        ".if-rail__group must remain a column flex container so the \
+         sortable gap stacks vertically: {block_no_comments}",
     );
     assert!(
-        block.contains("gap: 2px;"),
-        ".if-rail__group must use a 2px gap between rows; got: {block}",
+        !block_no_comments.contains("gap:"),
+        ".if-rail__group must not declare a `gap` property; row-to-row \
+         spacing is owned by .if-sortable-gap height: {block_no_comments}",
     );
+}
+
+/// Helper: strip `/* ... */` comment spans from a CSS block so contract
+/// assertions see only declarations, not commentary that may quote
+/// historical values for context.
+fn strip_css_block_comments(block: &str) -> String {
+    let mut out = String::with_capacity(block.len());
+    let mut chars = block.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '/' && chars.peek() == Some(&'*') {
+            chars.next();
+            while let Some(d) = chars.next() {
+                if d == '*' && chars.peek() == Some(&'/') {
+                    chars.next();
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 #[test]

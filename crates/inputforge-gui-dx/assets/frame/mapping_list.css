@@ -36,7 +36,10 @@
 .if-rail__group {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    /* No flex gap: row-to-row spacing is owned by `.if-sortable-gap`
+       (height: var(--space-2)). The previous bare `gap: 2px` stacked
+       on top of the 8 px sortable gap and shipped ~12 px of dead air
+       per row, missing the 4-px-grid scale. */
     margin-bottom: var(--space-2);
 }
 
