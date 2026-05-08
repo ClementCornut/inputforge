@@ -242,35 +242,29 @@
     overflow: hidden;
 }
 
-.if-row__chip {
-    display: flex;
-    align-items: baseline;
-    gap: 4px;
-    min-width: 0;
-    overflow: hidden;
+.if-row__qualifier {
+    /* Qualifier chips inherit Chip Outline base. Override only what
+       differs from a generic outline chip: italic body text + a
+       per-kind glyph hue carried by `.glyph-merge` / `.glyph-cond`. */
+    font-style: italic;
+    font-size: 10px;
 }
 
-.if-row__chip-glyph {
+.if-row__qualifier .if-row__chip-glyph {
     flex: 0 0 auto;
     font-family: var(--font-mono);
     font-weight: 600;
+    font-style: normal;
 }
 
-.glyph-merge .if-row__chip-glyph {
-    color: var(--color-output);
-}
+.if-row__qualifier.glyph-merge .if-row__chip-glyph { color: var(--color-output); }
+.if-row__qualifier.glyph-cond  .if-row__chip-glyph { color: var(--color-control-badge-text); }
 
-.glyph-cond .if-row__chip-glyph {
-    color: var(--color-control-badge-text);
-}
-
-.if-row__chip-text {
+.if-row__qualifier .if-row__chip-text {
     flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-    font-style: italic;
 }
 
 .if-rail-empty {

@@ -1629,6 +1629,68 @@ fn mapping_list_css_locks_row_token_contract() {
 }
 
 #[test]
+fn qualifier_chips_render_as_chip_outline_with_glyph_class() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::frame::mapping_list::row::Row;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let summary = MappingSummary {
+            input: InputAddress::Bound {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Axis { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Throttle".to_owned()),
+            glyphs: GlyphFlags {
+                merge_secondary: Some(InputAddress::Bound {
+                    device: DeviceId("dev".to_owned()),
+                    input: InputId::Axis { index: 1 },
+                }),
+                first_input_predicate: Some(InputAddress::Bound {
+                    device: DeviceId("dev".to_owned()),
+                    input: InputId::Button { index: 3 },
+                }),
+            },
+            referenced_devices: vec![DeviceId("dev".to_owned())],
+            first_vjoy_output: None,
+        };
+        let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
+        let sortable = use_sortable_state::<u32>();
+        rsx! {
+            Row {
+                summary: summary,
+                is_active: false,
+                renaming: renaming,
+                sortable: sortable,
+                filter_active: false,
+                on_open_menu: move |_: (InputAddress, f64, f64)| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-chip--outline"),
+        "qualifier chips must use Chip Outline variant: {html}",
+    );
+    assert!(
+        html.contains("glyph-merge"),
+        "merge glyph class must remain so the leading glyph keeps its --color-output hue: {html}",
+    );
+    assert!(
+        html.contains("glyph-cond"),
+        "conditional glyph class must remain so the leading glyph keeps its --color-control-badge-text hue: {html}",
+    );
+    assert!(
+        !html.contains("if-row__chip\""),
+        "legacy .if-row__chip class (without the chip-glyph suffix) must be retired: {html}",
+    );
+}
+
+#[test]
 fn mapping_list_css_uses_row_gap_2px_inside_groups() {
     let css = include_str!("../../../assets/frame/mapping_list.css");
     let block = css

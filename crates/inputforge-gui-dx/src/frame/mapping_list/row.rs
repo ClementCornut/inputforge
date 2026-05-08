@@ -193,17 +193,17 @@ pub(crate) fn Row(
                 if merge_glyph.is_some() || cond_glyph.is_some() {
                     div { class: "if-row__source-qualifiers",
                         if let Some(secondary_label) = merge_glyph {
-                            span {
-                                class: "if-row__chip glyph-merge",
-                                title: "Merge: {secondary_label}",
+                            Chip {
+                                variant: ChipVariant::Outline,
+                                class: "if-row__qualifier glyph-merge".to_owned(),
                                 span { class: "if-row__chip-glyph", "+" }
                                 span { class: "if-row__chip-text", "{secondary_label}" }
                             }
                         }
                         if let Some(predicate_label) = cond_glyph {
-                            span {
-                                class: "if-row__chip glyph-cond",
-                                title: "Condition: {predicate_label}",
+                            Chip {
+                                variant: ChipVariant::Outline,
+                                class: "if-row__qualifier glyph-cond".to_owned(),
                                 span { class: "if-row__chip-glyph", "\u{2295}" }
                                 span { class: "if-row__chip-text", "{predicate_label}" }
                             }
