@@ -194,6 +194,26 @@
     border-color: var(--color-border-focus);
 }
 
+/* Ambient row-tint: signals that this row's bound input is currently
+   active. Painted as an inset 1 px ring in --color-live so it layers
+   under hover / .is-active / :focus-visible borders without clobbering
+   them. Intensity (0..1) carried by --row-live-intensity, written
+   inline by row.rs on every snapshot tick; idle rows drop the
+   modifier class entirely and pay nothing.
+
+   Token: --color-live is "this is the engine's truth"
+   (DESIGN.md sec.5). Existing precedents for tinted halos via
+   color-mix in srgb are at tabs.css:84 (running pip) and
+   top_bar.css:191-192 (engine pill); this is the first ambient row
+   surface for the token. */
+.if-row.is-live-active {
+    box-shadow: inset 0 0 0 1px
+        color-mix(in srgb,
+            var(--color-live)
+            calc(var(--row-live-intensity, 0) * 100%),
+            transparent);
+}
+
 .if-row.is-active .if-row__name {
     font-weight: 700;
 }

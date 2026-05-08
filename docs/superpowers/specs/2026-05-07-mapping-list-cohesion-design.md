@@ -379,6 +379,38 @@ After the pass, qualifier chips become `Chip variant=Outline` with:
 The qualifier line stays under the source line, only when at least one
 qualifier exists. Layout shape (gap, baseline) unchanged.
 
+#### Row live indicator
+
+Each row carries an ambient signal that its bound input is currently
+active: an inset 1 px ring in `--color-live`, intensity proportional
+to the bound input's current magnitude. Painted as `box-shadow` so
+it layers under the row's hover / `is-active` / `:focus-visible`
+border states without clobbering them. Idle rows drop the modifier
+class entirely and pay nothing.
+
+Idiom (matches the existing `.is-active` / `.is-dragging` precedent):
+
+- Gating selector: `.if-row.is-live-active`. The class is appended
+  by `row.rs` whenever the derived intensity is greater than zero.
+- Magnitude: `--row-live-intensity` (a unitless float in `[0, 1]`),
+  written inline by `row.rs` on every 60 Hz tick. The CSS resolves
+  it via `color-mix(in srgb, var(--color-live) calc(var(--row-live-intensity) * 100%), transparent)`.
+  An inline custom property is used here, not a discrete tier
+  modifier, because axes need continuous magnitude (a class-only
+  solution would step a smooth stick deflection into a few visible
+  bands).
+- Magnitude semantics: `|value|` in the natural domain for axes
+  (matches `live_readout`'s `read_axis_display`), `1.0` for pressed
+  buttons and off-center hats, `0.0` otherwise.
+
+This is the first ambient surface for `--color-live`. Prior uses are
+explicit indicator widgets: `tabs.css:84` (running pip),
+`top_bar.css:191-192` (engine pill), the F8 capture chip's listening
+dot, and the `.if-badge--success` family. Hardware-as-protagonist
+(PRODUCT.md #2) is reinforced: the trigger that names the device
+also pulses with the device's current state, without displacing any
+text on the row.
+
 ### F · Qualifier chips
 
 Folded into E above.

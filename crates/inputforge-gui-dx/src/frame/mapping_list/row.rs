@@ -7,11 +7,16 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::types::{InputAddress, OutputAddress, OutputId, VJoyAxis};
+use inputforge_core::types::{
+    HatDirection, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis,
+};
 
 use crate::components::sortable::{SortableHandle, SortableState};
 use crate::components::{Chip, ChipVariant};
-use crate::context::{AppContext, MappingSummary};
+use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MappingSummary};
+use crate::frame::mapping_editor::live_readout::{
+    read_axis_display, read_button_pressed, read_hat_direction,
+};
 use crate::frame::mapping_list::group::{GroupKind, group_of};
 use crate::frame::mapping_list::source_label;
 use crate::frame::view_state::ViewState;
@@ -24,6 +29,37 @@ pub(crate) fn group_to_u32(group: GroupKind) -> u32 {
         GroupKind::Axes => 0,
         GroupKind::Buttons => 1,
         GroupKind::Hats => 2,
+    }
+}
+
+/// Live-input magnitude for `addr` in `[0.0, 1.0]`, drives the row's
+/// `--row-live-intensity` custom property and gates `is-live-active`.
+///
+/// Axis intensity is `|value|` in the natural domain (bipolar
+/// `[-1, 1]` -> `[0, 1]`; unipolar already `[0, 1]`). Buttons and hats
+/// are binary: `1.0` when pressed / off-center, else `0.0`. Returns
+/// `0.0` for `Unbound` or when the device or input index is missing
+/// from the snapshot.
+fn live_intensity_for(addr: &InputAddress, live: &LiveSnapshot, cfg: &ConfigSnapshot) -> f64 {
+    match addr {
+        InputAddress::Unbound => 0.0,
+        InputAddress::Bound { input, .. } => match input {
+            InputId::Axis { .. } => read_axis_display(addr, live, cfg)
+                .value
+                .abs()
+                .clamp(0.0, 1.0),
+            InputId::Button { .. } => {
+                if read_button_pressed(addr, live, cfg) {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            InputId::Hat { .. } => match read_hat_direction(addr, live, cfg) {
+                HatDirection::Center => 0.0,
+                _ => 1.0,
+            },
+        },
     }
 }
 
@@ -70,6 +106,17 @@ pub(crate) fn Row(
     tracing::trace!(target: "frame::render", region = "mapping_list::row");
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
+
+    // Subscribe to the 60 Hz live snapshot and derive this row's input
+    // intensity in `[0.0, 1.0]`. Drives the `is-live-active` class and
+    // the `--row-live-intensity` inline custom property; the CSS layers
+    // an inset 1 px `--color-live` ring proportional to that value.
+    let live_intensity = {
+        let live = ctx.live.read();
+        let cfg = ctx.config.read();
+        live_intensity_for(&summary.input, &live, &cfg)
+    };
+    let is_live_active = live_intensity > 0.0;
 
     // Rename branch: when this row's input matches the parent's rename
     // selector, swap the name area for the inline editor while keeping
@@ -134,9 +181,13 @@ pub(crate) fn Row(
     if is_active {
         class.push_str(" is-active");
     }
+    if is_live_active {
+        class.push_str(" is-live-active");
+    }
     if is_drag_source {
         class.push_str(" if-sortable--dragging");
     }
+    let live_style = format!("--row-live-intensity: {live_intensity:.3};");
 
     let merge_glyph = summary.glyphs.merge_secondary.as_ref().map(|secondary| {
         let cfg = ctx.config.read();
@@ -156,6 +207,7 @@ pub(crate) fn Row(
             class: "{class}",
             role: "button",
             tabindex: if is_active { "0" } else { "-1" },
+            style: "{live_style}",
             onclick,
             oncontextmenu,
             SortableHandle {
