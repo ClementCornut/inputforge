@@ -1041,6 +1041,11 @@ fn make_engine_no_profile(
 struct EngineHarness {
     engine: Engine,
     state: Arc<RwLock<AppState>>,
+    #[expect(
+        clippy::used_underscore_binding,
+        reason = "field is held only to keep the tempdir alive for the harness lifetime; \
+                  the underscore prefix signals the binding is intentionally not read"
+    )]
     _settings_dir: tempfile::TempDir,
     library_dir: PathBuf,
 }
@@ -1970,10 +1975,21 @@ fn make_engine_with_simple_disk_profile() -> (
     tempfile::TempDir,
     PathBuf,
 ) {
+    // Lay out a real library-style directory under tempdir so the engine's
+    // path classifier (`profile_origin_for_path`) flags this profile as
+    // Library origin, not External. Without this, snapshots route into
+    // %APPDATA%\Roaming\inputforge\external_snapshots\<hash>, but every
+    // caller of this fixture asserts the dir-next-to-profile layout.
+    // Wiring `settings_path` to a sibling makes `profile_library_dir()`
+    // resolve to `<tempdir>/profiles`, which the saved profile sits inside.
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("TFM_Throttle.toml");
+    let settings_path = dir.path().join("settings.toml");
+    let library_dir = dir.path().join("profiles");
+    std::fs::create_dir_all(&library_dir).unwrap();
+    let path = library_dir.join("TFM_Throttle.toml");
     let profile = make_profile(simple_mode_tree(), vec![]);
     profile.save(&path).unwrap();
+    AppSettings::default().save_to(&settings_path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
     {
@@ -1991,7 +2007,7 @@ fn make_engine_with_simple_disk_profile() -> (
         Arc::clone(&state),
         rx,
         AppSettings::default(),
-        PathBuf::new(),
+        settings_path,
     );
     (engine, state, tx, dir, path)
 }
@@ -2256,10 +2272,17 @@ fn delete_snapshot_via_command_removes() {
 
 #[test]
 fn load_profile_creates_auto_session_start_snapshot() {
+    // Library-style layout: settings_path makes `profile_library_dir()`
+    // resolve to <tempdir>/profiles so the LoadProfile classifier flags
+    // origin as Library and snapshots write next to the profile.
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("TFM_Throttle.toml");
+    let settings_path = dir.path().join("settings.toml");
+    let library_dir = dir.path().join("profiles");
+    std::fs::create_dir_all(&library_dir).unwrap();
+    let path = library_dir.join("TFM_Throttle.toml");
     let profile = make_profile(simple_mode_tree(), vec![]);
     profile.save(&path).unwrap();
+    AppSettings::default().save_to(&settings_path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::new()));
     state.write().engine_status = EngineStatus::Running;
@@ -2272,7 +2295,7 @@ fn load_profile_creates_auto_session_start_snapshot() {
         Arc::clone(&state),
         rx,
         AppSettings::default(),
-        PathBuf::new(),
+        settings_path,
     );
 
     tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
@@ -2293,9 +2316,13 @@ fn load_profile_creates_auto_session_start_snapshot() {
 #[test]
 fn load_profile_dedupes_auto_session_start_on_identical_content() {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("TFM_Throttle.toml");
+    let settings_path = dir.path().join("settings.toml");
+    let library_dir = dir.path().join("profiles");
+    std::fs::create_dir_all(&library_dir).unwrap();
+    let path = library_dir.join("TFM_Throttle.toml");
     let profile = make_profile(simple_mode_tree(), vec![]);
     profile.save(&path).unwrap();
+    AppSettings::default().save_to(&settings_path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::new()));
     state.write().engine_status = EngineStatus::Running;
@@ -2308,7 +2335,7 @@ fn load_profile_dedupes_auto_session_start_on_identical_content() {
         Arc::clone(&state),
         rx,
         AppSettings::default(),
-        PathBuf::new(),
+        settings_path,
     );
 
     tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
@@ -2528,7 +2555,10 @@ fn restore_snapshot_auto_rollback_on_reload_failure() {
 #[test]
 fn sequential_eight_then_ninth_evicts_oldest() {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("TFM_Throttle.toml");
+    let settings_path = dir.path().join("settings.toml");
+    let library_dir = dir.path().join("profiles");
+    std::fs::create_dir_all(&library_dir).unwrap();
+    let path = library_dir.join("TFM_Throttle.toml");
     let profile = make_profile(simple_mode_tree(), vec![]);
     profile.save(&path).unwrap();
 
@@ -2548,6 +2578,7 @@ fn sequential_eight_then_ninth_evicts_oldest() {
         },
         ..Default::default()
     };
+    settings.save_to(&settings_path).unwrap();
     let mut engine = Engine::new(
         Box::new(MockInputSource::default()),
         Box::new(MockOutputSink::new()),
@@ -2556,7 +2587,7 @@ fn sequential_eight_then_ninth_evicts_oldest() {
         Arc::clone(&state),
         rx,
         settings,
-        PathBuf::new(),
+        settings_path,
     );
 
     let mut ids = Vec::new();
