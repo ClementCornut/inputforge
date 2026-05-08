@@ -1723,6 +1723,56 @@ fn mapping_list_css_locks_row_token_contract() {
     );
 }
 
+/// Rounded row corners read symmetrically only when both inline edges
+/// reserve equal gutter space. Bare `scrollbar-gutter: stable` shipped
+/// rows flush left vs ~10px-inset right, making the radius read
+/// asymmetric. Lock `both-edges` so a future bare `stable` cannot
+/// silently regress.
+#[test]
+fn mapping_list_css_locks_scroll_container_uses_stable_both_edges_gutter() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+    let block = css
+        .split(".if-rail__scroll {")
+        .nth(1)
+        .expect(".if-rail__scroll rule present")
+        .split('}')
+        .next()
+        .expect(".if-rail__scroll rule closed");
+    assert!(
+        block.contains("scrollbar-gutter: stable both-edges;"),
+        ".if-rail__scroll must declare `scrollbar-gutter: stable both-edges` \
+         so rows inset symmetrically and rounded corners read on both \
+         sides: {block}",
+    );
+}
+
+/// `--color-border-strong` is a border tier (#424766) and produced
+/// ~1.5:1 contrast on the rail's --color-bg-elevated surface,
+/// rendering the post-filter count practically invisible. Lock the
+/// text-muted tier so the count stays legible alongside the eyebrow
+/// label.
+#[test]
+fn mapping_list_css_locks_group_header_count_uses_text_tier() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+    let block = css
+        .split(".if-rail__group-header__count {")
+        .nth(1)
+        .expect(".if-rail__group-header__count rule present")
+        .split('}')
+        .next()
+        .expect(".if-rail__group-header__count rule closed");
+    assert!(
+        block.contains("color: var(--color-text-muted);"),
+        ".if-rail__group-header__count must use --color-text-muted (a text \
+         tier) so contrast stays legible; --color-border-strong is a \
+         border tier and produced ~1.5:1 on the rail surface: {block}",
+    );
+    assert!(
+        !block.contains("color: var(--color-border-strong);"),
+        ".if-rail__group-header__count must NOT use --color-border-strong: {block}",
+    );
+}
+
 #[test]
 fn qualifier_chips_render_as_chip_outline_with_glyph_class() {
     use crate::context::{GlyphFlags, MappingSummary};
