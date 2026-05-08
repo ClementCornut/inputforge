@@ -5,11 +5,23 @@ use std::path::Path;
 
 use inputforge_core::state::DeviceState;
 
+/// Numerator + label split so the count digits can render with their
+/// own typography (mono, --color-text) while the trailing prose stays
+/// muted.
+#[allow(dead_code, reason = "consumed by StatusBar component")]
+pub(crate) fn device_count_parts(devices: &[DeviceState]) -> (String, String) {
+    let connected = devices.iter().filter(|d| d.connected).count();
+    (
+        format!("{}/{}", connected, devices.len()),
+        "devices".to_owned(),
+    )
+}
+
 /// "N/M devices", count connected vs total. Stable label for the middle slot.
 #[allow(dead_code, reason = "consumed by StatusBar component in Task 20")]
 pub(crate) fn device_count_label(devices: &[DeviceState]) -> String {
-    let connected = devices.iter().filter(|d| d.connected).count();
-    format!("{}/{} devices", connected, devices.len())
+    let (numerator, label) = device_count_parts(devices);
+    format!("{numerator} {label}")
 }
 
 /// Optional warning-count badge label. `None` when zero (slot collapses).

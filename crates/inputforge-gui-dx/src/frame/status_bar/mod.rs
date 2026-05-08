@@ -1,11 +1,14 @@
 mod logic;
 
+#[cfg(test)]
+mod tests;
+
 use dioxus::prelude::*;
 
 use crate::components::{Badge, BadgeVariant, StatusBar as StatusBarPrimitive};
 use crate::context::AppContext;
 
-use logic::{device_count_label, truncate_path, warning_count_label};
+use logic::{device_count_parts, truncate_path, warning_count_label};
 
 #[allow(
     dead_code,
@@ -23,7 +26,7 @@ pub(crate) fn StatusBar() -> Element {
     tracing::trace!(target: "frame::render", region = "status_bar");
     let ctx = use_context::<AppContext>();
 
-    let devices_label = use_memo(move || device_count_label(&ctx.config.read().devices));
+    let devices_parts = use_memo(move || device_count_parts(&ctx.config.read().devices));
     let warning_label = use_memo(move || warning_count_label(ctx.meta.read().warnings.len()));
     let path_label = use_memo(move || {
         ctx.meta
@@ -33,7 +36,7 @@ pub(crate) fn StatusBar() -> Element {
             .map(|p| truncate_path(p, PATH_TRUNCATE_BUDGET))
     });
 
-    let d = devices_label.read().clone();
+    let (numerator, suffix) = devices_parts.read().clone();
     let w = warning_label.read().clone();
     let p = path_label.read().clone();
 
@@ -43,10 +46,18 @@ pub(crate) fn StatusBar() -> Element {
             class: "if-frame-status-bar".to_owned(),
             start: rsx! {
                 if let Some(text) = w.as_ref() {
-                    Badge { variant: BadgeVariant::Warning, "{text}" }
+                    Badge { variant: BadgeVariant::Warning,
+                        span { class: "if-frame-status-bar__warning-glyph", "aria-hidden": "true", "\u{26A0}" }
+                        " {text}"
+                    }
                 }
             },
-            middle: rsx! { span { "{d}" } },
+            middle: rsx! {
+                span {
+                    span { class: "if-frame-status-bar__count-numerator", "{numerator}" }
+                    " {suffix}"
+                }
+            },
             end: rsx! {
                 match p {
                     Some(s) => rsx! { span { class: "if-frame-status-bar__path", "{s}" } },

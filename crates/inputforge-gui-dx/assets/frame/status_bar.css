@@ -33,3 +33,13 @@
     font-family: var(--font-mono);
     font-size: var(--text-xs);
 }
+
+.if-frame-status-bar__count-numerator {
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.if-frame-status-bar__warning-glyph {
+    margin-right: var(--space-1);
+}
