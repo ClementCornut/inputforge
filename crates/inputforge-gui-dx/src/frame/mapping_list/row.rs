@@ -233,11 +233,6 @@ pub(crate) fn Row(
                 div { class: "if-row__source-primary",
                     if !device_label.is_empty() {
                         span { class: "if-row__source-device", "{device_label}" }
-                        span {
-                            class: "if-row__source-sep",
-                            "aria-hidden": "true",
-                            "\u{00b7}"
-                        }
                     }
                     span { class: "if-row__source-input", "{input_label}" }
                     if let Some(output) = &summary.first_vjoy_output {

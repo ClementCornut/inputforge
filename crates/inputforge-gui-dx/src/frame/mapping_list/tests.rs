@@ -1850,9 +1850,8 @@ fn mapping_list_css_locks_row_live_active_uses_color_live() {
 /// `row.rs:82` previously discarded `split_label`'s input half. Lock
 /// the contract that all three input kinds (Axis / Button / Hat) make
 /// it onto the source-primary line, the device cell is followed by
-/// the middle-dot separator + the input cell, and the input cell text
-/// matches `split_label`'s output (HID axis label, 1-indexed `Btn N`,
-/// 0-indexed `Hat N`).
+/// the input cell, and the input cell text matches `split_label`'s
+/// output (HID axis label, 1-indexed `Btn N`, 0-indexed `Hat N`).
 #[test]
 fn row_renders_input_identity_after_device_for_each_input_kind() {
     use inputforge_core::types::InputId;
@@ -1934,25 +1933,17 @@ fn assert_input_cell_renders(component: fn() -> Element, expected_text: &str, ki
     let device_pos = html
         .find("if-row__source-device")
         .unwrap_or_else(|| panic!("device cell missing for {kind_label}: {html}"));
-    let sep_pos = html
-        .find("if-row__source-sep")
-        .unwrap_or_else(|| panic!("separator missing for {kind_label}: {html}"));
     let input_pos = html
         .find("if-row__source-input")
         .unwrap_or_else(|| panic!("input cell missing for {kind_label}: {html}"));
     assert!(
-        device_pos < sep_pos && sep_pos < input_pos,
-        "source-primary cell order must be device, separator, input \
+        device_pos < input_pos,
+        "source-primary cell order must be device then input \
          for {kind_label}: {html}",
     );
     assert!(
         html.contains(&format!(">{expected_text}<")),
         "input cell must render `{expected_text}` for {kind_label}: {html}",
-    );
-    assert!(
-        html.contains("\u{00b7}"),
-        "middle-dot separator glyph must render between device and input \
-         cells for {kind_label}: {html}",
     );
 }
 

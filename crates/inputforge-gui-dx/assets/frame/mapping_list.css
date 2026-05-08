@@ -287,20 +287,6 @@
     white-space: nowrap;
 }
 
-/* Middle-dot separator between the device and input cells. Same
-   visual idiom as `source_label::format`'s printed string and the
-   qualifier-glyph format calls; promoted to its own span here so it
-   can collapse cleanly when the device cell is empty (the Unbound
-   placeholder case). */
-.if-row__source-sep {
-    flex: 0 0 auto;
-    color: var(--color-text-subtle);
-    /* `space-1` on each side keeps the dot off the device's trailing
-       ellipsis and the input identifier's leading char without
-       growing the source-primary's gap rhythm. */
-    margin: 0 var(--space-1);
-}
-
 /* The input identifier never truncates. It is the second half of
    the trigger (PRODUCT.md #2 hardware-as-protagonist) and
    `split_label`'s docstring exists specifically to keep this cell
