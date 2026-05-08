@@ -157,6 +157,22 @@
     border-color: var(--color-border-strong);
 }
 
+/* Halo behind the hover-revealed drag handle so it visually lifts
+   off the row content instead of reading as overlapping the labels.
+   Section E of the cohesion spec drops the reserved gutter for
+   density; the halo is the lightweight alternative that preserves
+   density while giving the handle its own surface layer. The handle
+   is `position: absolute` (sortable.css:28-40), so growing its own
+   padding does not reflow row siblings. Tokens-only: bg-elevated
+   matches the row's hover background, radius-sm + 1px hairline are
+   the chip idiom. */
+.if-row:hover .if-sortable-handle {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 1px 2px;
+}
+
 /* DnD chrome (drag handle, dragging dim, drop-target bar) lives in the
    reusable sortable primitive at `assets/components/sortable.css`. The
    gutter is dropped: SortableHandle absolute-positions over the source
