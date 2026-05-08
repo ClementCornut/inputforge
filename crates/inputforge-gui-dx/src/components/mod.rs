@@ -48,7 +48,7 @@ pub use menu::{
 };
 pub use number_input::NumberInput;
 pub use portal::Portal;
-pub use select::Select;
+pub use select::{Select, SelectOption};
 pub use separator::{Separator, SeparatorOrientation};
 pub use slider::Slider;
 pub use spinner::{Spinner, SpinnerSize};

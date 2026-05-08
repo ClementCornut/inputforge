@@ -15,8 +15,8 @@ use inputforge_gui_dx::components::{
     Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Card, CardPadding, Checkbox, Chip,
     ChipVariant, Cluster, DialogBody, DialogDescription, DialogFooter, DialogRoot, DialogTitle,
     Field, Icon, IconButton, InputSize, Label, MenuItem, MenuItems, MenuRoot, MenuTrigger,
-    NumberInput, Select, Separator, SeparatorOrientation, Slider, Spinner, SpinnerSize, Stack,
-    StatusBar, Switch, TabItem, Tabs, TextInput, Tooltip, TooltipPlacement,
+    NumberInput, Select, SelectOption, Separator, SeparatorOrientation, Slider, Spinner,
+    SpinnerSize, Stack, StatusBar, Switch, TabItem, Tabs, TextInput, Tooltip, TooltipPlacement,
 };
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
 use inputforge_gui_dx::patterns::DirtyConfirmDialog;
@@ -364,31 +364,66 @@ fn gallery_root() -> Element {
                                     Select {
                                         value: "alpha".to_owned(),
                                         options: vec![
-                                            ("alpha".to_owned(),   "Alpha".to_owned()),
-                                            ("beta".to_owned(),    "Beta".to_owned()),
-                                            ("gamma".to_owned(),   "Gamma".to_owned()),
+                                            SelectOption {
+                                                value: "alpha".to_owned(),
+                                                label: "Alpha".to_owned(),
+                                                disabled: false,
+                                                class: None,
+                                            },
+                                            SelectOption {
+                                                value: "beta".to_owned(),
+                                                label: "Beta".to_owned(),
+                                                disabled: false,
+                                                class: None,
+                                            },
+                                            SelectOption {
+                                                value: "gamma".to_owned(),
+                                                label: "Gamma".to_owned(),
+                                                disabled: false,
+                                                class: None,
+                                            },
                                         ],
                                     }
                                     Select {
                                         value: "alpha".to_owned(),
-                                        options: vec![("alpha".to_owned(), "Alpha".to_owned())],
+                                        options: vec![SelectOption {
+                                            value: "alpha".to_owned(),
+                                            label: "Alpha".to_owned(),
+                                            disabled: false,
+                                            class: None,
+                                        }],
                                         disabled: true,
                                     }
                                 }
                                 Cluster { gap: "--space-3".to_owned(),
                                     Select {
                                         value: "alpha".to_owned(),
-                                        options: vec![("alpha".to_owned(), "Small".to_owned())],
+                                        options: vec![SelectOption {
+                                            value: "alpha".to_owned(),
+                                            label: "Small".to_owned(),
+                                            disabled: false,
+                                            class: None,
+                                        }],
                                         size: InputSize::Sm,
                                     }
                                     Select {
                                         value: "alpha".to_owned(),
-                                        options: vec![("alpha".to_owned(), "Medium".to_owned())],
+                                        options: vec![SelectOption {
+                                            value: "alpha".to_owned(),
+                                            label: "Medium".to_owned(),
+                                            disabled: false,
+                                            class: None,
+                                        }],
                                         size: InputSize::Md,
                                     }
                                     Select {
                                         value: "alpha".to_owned(),
-                                        options: vec![("alpha".to_owned(), "Large".to_owned())],
+                                        options: vec![SelectOption {
+                                            value: "alpha".to_owned(),
+                                            label: "Large".to_owned(),
+                                            disabled: false,
+                                            class: None,
+                                        }],
                                         size: InputSize::Lg,
                                     }
                                 }

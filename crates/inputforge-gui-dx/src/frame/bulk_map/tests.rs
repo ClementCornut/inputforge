@@ -880,8 +880,8 @@ fn source_options_use_alias_via_snapshot_accessor() {
     let opts = build_source_options(&[device], &cfg);
     // The label cell shows the alias, never the raw hardware name.
     assert_eq!(opts.len(), 1);
-    assert_eq!(opts[0].0, "dev-1");
-    assert_eq!(opts[0].1, "Throttle Quadrant");
+    assert_eq!(opts[0].value, "dev-1");
+    assert_eq!(opts[0].label, "Throttle Quadrant");
 }
 
 #[test]
@@ -912,5 +912,5 @@ fn source_options_fall_back_to_hardware_name_when_no_alias() {
     };
 
     let opts = build_source_options(&[device], &cfg);
-    assert_eq!(opts[0].1, "Generic HID Joystick");
+    assert_eq!(opts[0].label, "Generic HID Joystick");
 }

@@ -35,7 +35,7 @@ use inputforge_core::action::{Action, Mapping};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{OutputAddress, OutputId, VJoyAxis};
 
-use crate::components::Select;
+use crate::components::{Select, SelectOption};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
@@ -145,14 +145,14 @@ pub(crate) fn MapToVJoyBody(
     // --- Build device picker options ---
     // Each option is ("N", "vJoy device N") so the value is the device_id
     // as a decimal string, which is compact and unambiguous.
-    let device_options: Vec<(String, String)> = cfg
+    let device_options: Vec<SelectOption> = cfg
         .virtual_devices
         .iter()
-        .map(|v| {
-            (
-                v.device_id.to_string(),
-                format!("vJoy device {}", v.device_id),
-            )
+        .map(|v| SelectOption {
+            value: v.device_id.to_string(),
+            label: format!("vJoy device {}", v.device_id),
+            disabled: false,
+            class: None,
         })
         .collect();
 
@@ -170,24 +170,34 @@ pub(crate) fn MapToVJoyBody(
     // If the device exists in the snapshot, list its outputs; otherwise fall
     // back to showing only the current (possibly stale) output so the UI
     // does not collapse entirely while the snapshot catches up.
-    let output_options: Vec<(String, String)> = if let Some(vd) = device_cfg {
-        let mut opts: Vec<(String, String)> = vd
+    let output_options: Vec<SelectOption> = if let Some(vd) = device_cfg {
+        let mut opts: Vec<SelectOption> = vd
             .axes
             .iter()
-            .map(|&a| {
-                (
-                    output_id_key(&OutputId::Axis { id: a }),
-                    axis_label(a).to_owned(),
-                )
+            .map(|&a| SelectOption {
+                value: output_id_key(&OutputId::Axis { id: a }),
+                label: axis_label(a).to_owned(),
+                disabled: false,
+                class: None,
             })
             .collect();
         for i in 0..vd.button_count {
             let id = OutputId::Button { id: i };
-            opts.push((output_id_key(&id), format!("Button {i}")));
+            opts.push(SelectOption {
+                value: output_id_key(&id),
+                label: format!("Button {i}"),
+                disabled: false,
+                class: None,
+            });
         }
         for i in 0..vd.hat_count {
             let id = OutputId::Hat { id: i };
-            opts.push((output_id_key(&id), format!("Hat {i}")));
+            opts.push(SelectOption {
+                value: output_id_key(&id),
+                label: format!("Hat {i}"),
+                disabled: false,
+                class: None,
+            });
         }
         opts
     } else {
@@ -198,7 +208,12 @@ pub(crate) fn MapToVJoyBody(
             OutputId::Button { id } => format!("Button {id}"),
             OutputId::Hat { id } => format!("Hat {id}"),
         };
-        vec![(key, label)]
+        vec![SelectOption {
+            value: key,
+            label,
+            disabled: false,
+            class: None,
+        }]
     };
 
     // Current output value for the Select. Same prop-sync rationale as

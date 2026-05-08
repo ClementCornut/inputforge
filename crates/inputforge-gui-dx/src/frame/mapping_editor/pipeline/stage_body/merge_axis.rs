@@ -50,7 +50,7 @@ use inputforge_core::action::{Action, Mapping};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{InputAddress, MergeOp};
 
-use crate::components::Select;
+use crate::components::{Select, SelectOption};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
@@ -360,11 +360,16 @@ pub(crate) fn MergeAxisBody(
     if *op_value.peek() != op_str {
         op_value.set(op_str);
     }
-    let op_options: Vec<(String, String)> = ALL_OPS
+    let op_options: Vec<SelectOption> = ALL_OPS
         .iter()
         .map(|&op| {
             let s = op_to_str(op).to_owned();
-            (s.clone(), s)
+            SelectOption {
+                value: s.clone(),
+                label: s,
+                disabled: false,
+                class: None,
+            }
         })
         .collect();
 

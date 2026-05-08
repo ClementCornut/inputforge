@@ -20,7 +20,7 @@ use inputforge_core::types::{
     DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis, VirtualDeviceConfig,
 };
 
-use crate::components::{Button, ButtonVariant, Checkbox, Field, Select};
+use crate::components::{Button, ButtonVariant, Checkbox, Field, Select, SelectOption};
 use crate::context::{AppContext, ConfigSnapshot};
 use crate::frame::bulk_map::auto_map::{auto_axis_target, auto_button_target, auto_hat_target};
 use crate::frame::bulk_map::empty_state::NoVjoyEmptyState;
@@ -44,14 +44,14 @@ const BULK_MAP_CSS: Asset = asset!("/assets/frame/bulk_map.css");
 pub(crate) fn build_source_options(
     connected: &[DeviceState],
     cfg: &ConfigSnapshot,
-) -> Vec<(String, String)> {
+) -> Vec<SelectOption> {
     connected
         .iter()
-        .map(|device| {
-            (
-                device.info.id.0.clone(),
-                cfg.device_display_name(&device.info.id),
-            )
+        .map(|device| SelectOption {
+            value: device.info.id.0.clone(),
+            label: cfg.device_display_name(&device.info.id),
+            disabled: false,
+            class: None,
         })
         .collect()
 }
@@ -213,23 +213,28 @@ fn BulkMapReadyPanel() -> Element {
     let source_options = build_source_options(&connected_devices, &ctx.config.read());
     let target_options = virtual_devices
         .iter()
-        .map(|device| {
-            (
-                device.device_id.to_string(),
-                format!(
-                    "vJoy {}: {} axes, {} buttons, {} hat{}",
-                    device.device_id,
-                    device.axes.len(),
-                    device.button_count,
-                    device.hat_count,
-                    if device.hat_count == 1 { "" } else { "s" },
-                ),
-            )
+        .map(|device| SelectOption {
+            value: device.device_id.to_string(),
+            label: format!(
+                "vJoy {}: {} axes, {} buttons, {} hat{}",
+                device.device_id,
+                device.axes.len(),
+                device.button_count,
+                device.hat_count,
+                if device.hat_count == 1 { "" } else { "s" },
+            ),
+            disabled: false,
+            class: None,
         })
         .collect::<Vec<_>>();
     let mode_options = modes
         .iter()
-        .map(|mode| (mode.clone(), mode.clone()))
+        .map(|mode| SelectOption {
+            value: mode.clone(),
+            label: mode.clone(),
+            disabled: false,
+            class: None,
+        })
         .collect::<Vec<_>>();
     let snapshot_caption = "Snapshot taken before apply.";
     let target_for_groups = wizard.peek().target_vjoy_id.and_then(|id| {
@@ -974,11 +979,13 @@ fn auto_target_for(
     }
 }
 
-fn build_target_options(
-    kind: RowKind,
-    target: Option<&VirtualDeviceConfig>,
-) -> Vec<(String, String)> {
-    let mut options = vec![(DO_NOT_MAP_VALUE.to_owned(), DO_NOT_MAP_VALUE.to_owned())];
+fn build_target_options(kind: RowKind, target: Option<&VirtualDeviceConfig>) -> Vec<SelectOption> {
+    let mut options = vec![SelectOption {
+        value: DO_NOT_MAP_VALUE.to_owned(),
+        label: DO_NOT_MAP_VALUE.to_owned(),
+        disabled: false,
+        class: None,
+    }];
     let Some(target) = target else {
         return options;
     };
@@ -986,17 +993,32 @@ fn build_target_options(
     match kind {
         RowKind::Axis => {
             for axis in &target.axes {
-                options.push((format!("axis:{axis:?}"), format_axis_label(*axis)));
+                options.push(SelectOption {
+                    value: format!("axis:{axis:?}"),
+                    label: format_axis_label(*axis),
+                    disabled: false,
+                    class: None,
+                });
             }
         }
         RowKind::Button => {
             for id in 1..=target.button_count {
-                options.push((format!("button:{id}"), format!("Button {id}")));
+                options.push(SelectOption {
+                    value: format!("button:{id}"),
+                    label: format!("Button {id}"),
+                    disabled: false,
+                    class: None,
+                });
             }
         }
         RowKind::Hat => {
             for id in 1..=target.hat_count {
-                options.push((format!("hat:{id}"), format!("Hat {id}")));
+                options.push(SelectOption {
+                    value: format!("hat:{id}"),
+                    label: format!("Hat {id}"),
+                    disabled: false,
+                    class: None,
+                });
             }
         }
     }

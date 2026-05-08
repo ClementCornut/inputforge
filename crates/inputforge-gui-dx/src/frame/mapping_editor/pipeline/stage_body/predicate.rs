@@ -52,7 +52,7 @@ use inputforge_core::action::{Action, Condition, Mapping};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{HatDirection, InputAddress};
 
-use crate::components::{NumberInput, Select};
+use crate::components::{NumberInput, Select, SelectOption};
 use crate::context::{AppContext, ConfigSnapshot};
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
@@ -433,20 +433,49 @@ pub(crate) fn PredicateEditor(
     let cfg = ctx.config;
 
     // Build the 7-option kind picker options vec.
-    let kind_options: Vec<(String, String)> = vec![
-        (
-            KIND_BUTTON_PRESSED.to_owned(),
-            KIND_BUTTON_PRESSED.to_owned(),
-        ),
-        (
-            KIND_BUTTON_RELEASED.to_owned(),
-            KIND_BUTTON_RELEASED.to_owned(),
-        ),
-        (KIND_AXIS_IN_RANGE.to_owned(), KIND_AXIS_IN_RANGE.to_owned()),
-        (KIND_HAT_DIRECTION.to_owned(), KIND_HAT_DIRECTION.to_owned()),
-        (KIND_ALL.to_owned(), "All".to_owned()),
-        (KIND_ANY.to_owned(), "Any".to_owned()),
-        (KIND_NOT.to_owned(), "Not".to_owned()),
+    let kind_options: Vec<SelectOption> = vec![
+        SelectOption {
+            value: KIND_BUTTON_PRESSED.to_owned(),
+            label: KIND_BUTTON_PRESSED.to_owned(),
+            disabled: false,
+            class: None,
+        },
+        SelectOption {
+            value: KIND_BUTTON_RELEASED.to_owned(),
+            label: KIND_BUTTON_RELEASED.to_owned(),
+            disabled: false,
+            class: None,
+        },
+        SelectOption {
+            value: KIND_AXIS_IN_RANGE.to_owned(),
+            label: KIND_AXIS_IN_RANGE.to_owned(),
+            disabled: false,
+            class: None,
+        },
+        SelectOption {
+            value: KIND_HAT_DIRECTION.to_owned(),
+            label: KIND_HAT_DIRECTION.to_owned(),
+            disabled: false,
+            class: None,
+        },
+        SelectOption {
+            value: KIND_ALL.to_owned(),
+            label: "All".to_owned(),
+            disabled: false,
+            class: None,
+        },
+        SelectOption {
+            value: KIND_ANY.to_owned(),
+            label: "Any".to_owned(),
+            disabled: false,
+            class: None,
+        },
+        SelectOption {
+            value: KIND_NOT.to_owned(),
+            label: "Not".to_owned(),
+            disabled: false,
+            class: None,
+        },
     ];
 
     let current_kind = condition_kind(&condition).to_owned();
