@@ -17,10 +17,10 @@
  * the legacy `--color-surface-hover` placeholder is no longer used. */
 
 /* The rail's surface (elevated background, right-border seam, scroll
- * container, fixed 280px width) is owned by the `.if-layout__rail`
+ * container, fixed 320px width) is owned by the `.if-layout__rail`
  * slot in `layout.css`, F8 fills that slot as a pure flex column.
  * Duplicating those properties here causes a width mismatch (the
- * slot's content-box is narrower than 280px once any padding is
+ * slot's content-box is narrower than 320px once any padding is
  * applied) and a double-painted background/border. */
 .if-rail {
     display: flex;
@@ -269,7 +269,7 @@
 
 .if-row__output-chip {
     /* Output chips never wrap or truncate; vJoy identifiers are short.
-       Rail row at 280px width fits the chip without ellipsis. */
+       Rail row at 320px width fits the chip without ellipsis. */
     max-width: none;
     flex: 0 0 auto;
 }
