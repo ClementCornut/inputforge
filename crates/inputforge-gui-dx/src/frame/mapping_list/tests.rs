@@ -238,19 +238,6 @@ fn mapping_list_add_inline_is_in_sticky_footer() {
 }
 
 #[test]
-fn mapping_list_css_keeps_device_chips_one_row() {
-    let css = include_str!("../../../assets/frame/mapping_list.css");
-    assert!(css.contains(".if-rail__device-filter"));
-    assert!(css.contains("overflow-x: auto"));
-    assert!(css.contains("overflow-y: hidden"));
-    assert!(css.contains("flex-wrap: nowrap"));
-    assert!(css.contains(".if-rail__device-chip"));
-    assert!(css.contains("flex: 0 0 auto"));
-    assert!(css.contains("white-space: nowrap"));
-    assert!(css.contains(".if-rail__device-chip:focus-visible"));
-}
-
-#[test]
 fn row_renders_name_and_source_line() {
     use crate::context::{GlyphFlags, MappingSummary};
     use crate::frame::mapping_list::row::Row;
@@ -1581,5 +1568,98 @@ fn mapping_list_css_uses_row_gap_2px_inside_groups() {
     assert!(
         block.contains("gap: 2px;"),
         ".if-rail__group must use a 2px gap between rows; got: {block}",
+    );
+}
+
+#[test]
+fn device_filter_active_chip_emits_unified_active_class() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use inputforge_core::state::DeviceState;
+    use inputforge_core::types::{
+        AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId,
+    };
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let ctx = use_context::<AppContext>();
+        let mut cfg_signal = ctx.config;
+        let view = use_context::<crate::frame::view_state::ViewState>();
+        let _ = view;
+        use_hook(move || {
+            cfg_signal.set(ConfigSnapshot {
+                devices: vec![DeviceState {
+                    info: DeviceInfo {
+                        id: DeviceId("stick".to_owned()),
+                        name: "Twin Stick".to_owned(),
+                        axes: 1,
+                        buttons: 1,
+                        hats: 0,
+                        instance_path: None,
+                        axis_polarities: vec![AxisPolarity::Bipolar],
+                    },
+                    connected: true,
+                    diagnostics: DeviceDiagnostics::default(),
+                }],
+                mappings: vec![MappingSummary {
+                    input: InputAddress::Bound {
+                        device: DeviceId("stick".to_owned()),
+                        input: InputId::Button { index: 0 },
+                    },
+                    mode: "Default".to_owned(),
+                    name: Some("Boost".to_owned()),
+                    glyphs: GlyphFlags::default(),
+                    referenced_devices: vec![DeviceId("stick".to_owned())],
+                    first_vjoy_output: None,
+                }],
+                device_display_names: std::collections::HashMap::from([(
+                    DeviceId("stick".to_owned()),
+                    "Twin Stick".to_owned(),
+                )]),
+                ..ConfigSnapshot::default()
+            });
+        });
+        rsx! { MappingList {} }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-chip"),
+        "device filter chip must render the canonical .if-chip class \
+         (Chip primitive): {html}",
+    );
+    assert!(
+        html.contains("if-chip--outline"),
+        "idle device chip must use the Outline variant: {html}",
+    );
+    // The wrapping button keeps the .if-rail__device-chip class as a CSS
+    // hook for the click target reset; the chip's visual chrome lives on
+    // the inner .if-chip element. The legacy active-state class
+    // .if-rail__device-chip.is-active is what we are retiring.
+    assert!(
+        !html.contains("if-rail__device-chip is-active")
+            && !html.contains("if-rail__device-chip.is-active"),
+        "legacy .if-rail__device-chip.is-active active-state class must be retired: {html}",
+    );
+}
+
+#[test]
+fn mapping_list_css_wraps_device_filter_chips_into_multiple_rows() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+    let block = css
+        .split(".if-rail__device-filter {")
+        .nth(1)
+        .expect(".if-rail__device-filter rule present")
+        .split('}')
+        .next()
+        .expect(".if-rail__device-filter rule closed");
+    assert!(
+        block.contains("flex-wrap: wrap;"),
+        "device filter strip must wrap to a multi-row layout (no scroll-x); got: {block}",
+    );
+    assert!(
+        !block.contains("overflow-x: auto;"),
+        "device filter strip must NOT use overflow-x scrolling after the wrap migration; got: {block}",
     );
 }

@@ -37,7 +37,7 @@ use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{DeviceId, InputAddress};
 
 use crate::components::sortable::{SortableGap, SortableLiveRegion, use_sortable_state};
-use crate::components::{InputSize, TextInput};
+use crate::components::{Chip, ChipVariant, InputSize, TextInput};
 use crate::context::{AppContext, MappingSummary};
 use crate::frame::mapping_list::add_inline::AddInline;
 use crate::frame::mapping_list::empty::{EmptyZeroFilterResults, EmptyZeroMappings};
@@ -586,8 +586,8 @@ fn DeviceFilterRow(chips: Vec<DeviceChip>, selected: Signal<Option<DeviceId>>) -
                     let label = chip.label.clone();
                     rsx! {
                         button {
-                            class: if active { "if-rail__device-chip is-active" } else { "if-rail__device-chip" },
                             r#type: "button",
+                            class: "if-rail__device-chip",
                             "aria-pressed": if active { "true" } else { "false" },
                             title: "{label}",
                             onclick: move |_| {
@@ -598,7 +598,10 @@ fn DeviceFilterRow(chips: Vec<DeviceChip>, selected: Signal<Option<DeviceId>>) -
                                     selected.set(Some(id.clone()));
                                 }
                             },
-                            "{label}"
+                            Chip {
+                                variant: ChipVariant::Outline,
+                                "{label}"
+                            }
                         }
                     }
                 }
