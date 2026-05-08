@@ -1902,3 +1902,28 @@ fn mapping_list_css_locks_dashed_add_row_cohesion() {
          (reads as create rather than selected): {hover}",
     );
 }
+
+#[test]
+fn add_inline_collision_arm_leads_with_warning_badge() {
+    let src = include_str!("../../../src/frame/mapping_list/add_inline.rs");
+    let arm_start = src
+        .rfind("AddState::Collision {")
+        .expect("Collision arm must exist in add_inline.rs");
+    let arm_window_end = (arm_start + 2000).min(src.len());
+    let arm_window = &src[arm_start..arm_window_end];
+
+    let badge_pos = arm_window.find("BadgeVariant::Warning").unwrap_or_else(|| {
+        panic!(
+            "Collision arm must reference Badge variant=Warning so the visual \
+             scan parity with the status bar's `1 warning` badge holds. Window:\n{arm_window}",
+        )
+    });
+    let prose_pos = arm_window
+        .find("already mapped to")
+        .expect("Collision arm must keep the existing prose sentence");
+    assert!(
+        badge_pos < prose_pos,
+        "Badge Warning must render BEFORE the `already mapped to` prose. \
+         badge_pos={badge_pos}, prose_pos={prose_pos}",
+    );
+}

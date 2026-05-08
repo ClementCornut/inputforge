@@ -43,7 +43,8 @@ use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{InputAddress, InputId};
 
 use crate::components::{
-    Button, ButtonSize, ButtonVariant, Chip, ChipVariant, IconButton, InputSize, TextInput,
+    Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Chip, ChipVariant, IconButton,
+    InputSize, TextInput,
 };
 use crate::context::{AppContext, MappingSummary};
 use crate::frame::mapping_list::source_label;
@@ -589,9 +590,12 @@ pub(crate) fn AddInline(
             rsx! {
                 div { class: "if-add-inline if-add-inline--collision",
                     div { class: "if-add-inline__collision-text",
-                        em { "{captured_label} already mapped to " }
-                        strong { "{existing_name}" }
-                        "."
+                        Badge { variant: BadgeVariant::Warning, "Collision" }
+                        span { class: "if-add-inline__collision-text-body",
+                            " {captured_label} already mapped to "
+                            strong { "{existing_name}" }
+                            "."
+                        }
                     }
                     Button {
                         variant: ButtonVariant::Secondary,
