@@ -408,9 +408,9 @@ impl Profile {
     ///
     /// Caller (`RenameMode` handler) composes this with
     /// `ModeTree::with_renamed` and `set_modes` for the full cascade.
-    pub fn rename_mode_refs(&mut self, from: &str, to: &str) -> Result<usize> {
+    pub fn rename_mode_refs(&mut self, from: &str, to: &str) -> usize {
         if from == to {
-            return Ok(0);
+            return 0;
         }
         let mut touched = 0usize;
         for mapping in &mut self.mappings {
@@ -431,7 +431,7 @@ impl Profile {
             self.settings.set_startup_mode(to.to_owned());
         }
 
-        Ok(touched)
+        touched
     }
 
     /// Update the profile display name.
@@ -1446,13 +1446,13 @@ enabled = true
             "Default".to_owned(),
         );
 
-        let touched = profile.rename_mode_refs("Combat", "Fighter").unwrap();
+        let touched = profile.rename_mode_refs("Combat", "Fighter");
         assert_eq!(touched, 1);
         assert_eq!(profile.mappings()[0].mode, "Fighter");
         // startup_mode unchanged because it referenced Default, not Combat.
         assert_eq!(profile.settings().startup_mode(), "Default");
 
-        let touched_default = profile.rename_mode_refs("Default", "Root").unwrap();
+        let touched_default = profile.rename_mode_refs("Default", "Root");
         assert_eq!(touched_default, 0, "no mapping referenced Default");
         assert_eq!(profile.settings().startup_mode(), "Root");
     }
@@ -1487,7 +1487,7 @@ enabled = true
             "Default".to_owned(),
         );
 
-        let touched = profile.rename_mode_refs("Combat", "Fighter").unwrap();
+        let touched = profile.rename_mode_refs("Combat", "Fighter");
         assert_eq!(touched, 1);
         let actions = &profile.mappings()[0].actions;
         match &actions[0] {
@@ -1537,7 +1537,7 @@ enabled = true
             "Default".to_owned(),
         );
 
-        let touched = profile.rename_mode_refs("Combat", "Fighter").unwrap();
+        let touched = profile.rename_mode_refs("Combat", "Fighter");
         assert_eq!(touched, 1);
     }
 

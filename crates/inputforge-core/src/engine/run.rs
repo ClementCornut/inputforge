@@ -673,22 +673,18 @@ impl Engine {
                 //      collision (returns Err without mutating). Must run
                 //      first so a name collision doesn't leave a partial
                 //      mapping rewrite behind.
-                //   2. `rename_mode_refs` pre-validates cycles across all
-                //      mappings (using its internal `check_cycle_rename`)
-                //      then mutates mappings + startup_mode in one pass.
-                //      Atomic on Err via the pre-validation pass.
+                //   2. `rename_mode_refs` mutates mappings + startup_mode
+                //      in one pass. Infallible, no rollback path needed.
                 //   3. `set_modes` swaps in the new tree last. Single-shot,
                 //      infallible, once the cascade has succeeded the
                 //      tree replacement cannot fail partway.
-                // Reordering risks: (1)→(3)→(2) commits a tree against
-                // stale mapping references if cycle-validation later
-                // rejects; (2)→(1)→(3) mutates mappings before the tree
-                // is validated against the new name, which would orphan
-                // mappings on collision.
+                // Reordering risks: (2)/(3) before (1) mutates mappings
+                // before the tree is validated against the new name, which
+                // would orphan mappings on collision.
                 // Step 1: tree rewrite (errors on missing-from / collision).
                 let new_tree = profile.modes().with_renamed(&from, &to)?;
-                // Step 2: pre-validate + cascade across mappings + startup.
-                let touched = profile.rename_mode_refs(&from, &to)?;
+                // Step 2: cascade across mappings + startup.
+                let touched = profile.rename_mode_refs(&from, &to);
                 // Step 3: swap the new tree in last.
                 profile.set_modes(new_tree);
 
