@@ -325,8 +325,16 @@ The dashed footer row (`.if-add-inline__dashed-row` in
 bottom of the rail and has the right copy and shape (commit
 `63cf2e9`). Cohesion delta:
 
-- Dashed border: `1px dashed var(--color-border-strong)` matches profiles'
-  `+ New profile` row exactly.
+- Dashed border: `1px dashed var(--color-border-strong)`. Profiles'
+  `+ New profile` row baseline (`profiles.css:263-274`) uses the lighter
+  `--color-border` tier and only raises to `--color-border-strong` on
+  hover. The rail's footer goes one tier brighter than profiles at
+  baseline, deliberately, for two reasons: (a) it sits on the rail's
+  elevated surface where the lighter border tier washes out, and (b)
+  the unified hover treatment below (focus-cyan plus tint-create) needs
+  a baseline border strong enough that the hover reads as a tier change,
+  not a color change. This is a deliberate departure from profiles, not
+  an attempt to mirror them.
 - Hover: `border-color: var(--color-border-focus)` plus
   `color-mix(in srgb, var(--color-primary) var(--tint-create), var(--color-bg))`
   tint. Same border idiom as the device chip's active state, but the
