@@ -38,6 +38,16 @@ pub(crate) struct ContextMenuFlags {
     pub set_default_disabled: bool,
 }
 
+/// Free-function dispatch path for the "Set as default" menu item. Keeps the
+/// per-arm closure lean and gives tests a target they can drive without
+/// mounting Dioxus state. Mirrors the closure-extraction pattern used by
+/// `dispatch_add_helper` in `mapping_list::add_inline`.
+fn dispatch_set_default(commands: &std::sync::mpsc::Sender<EngineCommand>, name: &str) {
+    let _ = commands.send(EngineCommand::SetDefaultMode {
+        name: name.to_owned(),
+    });
+}
+
 #[component]
 #[allow(
     unused_qualifications,
@@ -105,9 +115,7 @@ pub(crate) fn ModeTabContextMenu(
     };
 
     let default_onclick = move |_| {
-        let _ = cmd_default.send(EngineCommand::SetDefaultMode {
-            name: default_name.clone(),
-        });
+        dispatch_set_default(&cmd_default, &default_name);
     };
 
     let anchor = MenuAnchor {
@@ -214,5 +222,95 @@ mod tests {
         let modes = vec!["Default".to_owned()];
         let f = flags_for("Default", &modes, Some("Default"), "Default", true, false);
         assert!(f.set_default_disabled);
+    }
+
+    #[test]
+    fn dispatch_set_default_sends_set_default_mode_command() {
+        use std::sync::mpsc;
+
+        let (tx, rx) = mpsc::channel::<EngineCommand>();
+        dispatch_set_default(&tx, "Combat");
+        match rx.try_recv() {
+            Ok(EngineCommand::SetDefaultMode { name }) => assert_eq!(name, "Combat"),
+            other => panic!("expected SetDefaultMode {{ name: \"Combat\" }}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn set_as_default_item_renders_when_flag_is_enabled() {
+        use std::sync::{Arc, mpsc};
+
+        use dioxus_ssr::render;
+        use inputforge_core::settings::AppSettings;
+        use inputforge_core::state::AppState;
+        use parking_lot::RwLock;
+
+        use crate::context::{ConfigSnapshot, LiveSnapshot, MetaSnapshot};
+
+        #[expect(
+            non_snake_case,
+            reason = "Dioxus components are PascalCase by convention"
+        )]
+        fn Harness() -> Element {
+            let (tx, _rx) = mpsc::channel();
+            let ctx = AppContext {
+                state: Arc::new(RwLock::new(AppState::new())),
+                commands: tx,
+                settings: Arc::new(AppSettings::default()),
+                meta: use_signal(MetaSnapshot::default),
+                config: use_signal(ConfigSnapshot::default),
+                live: use_signal(LiveSnapshot::default),
+            };
+            use_context_provider(|| ctx);
+
+            let open = use_signal(|| {
+                Some((
+                    "Combat".to_owned(),
+                    AnchorRect {
+                        left: 0.0,
+                        bottom: 0.0,
+                    },
+                ))
+            });
+
+            rsx! {
+                ModeTabContextMenu {
+                    tab_name: "Combat".to_owned(),
+                    tab_idx: 0_usize,
+                    open,
+                    flags: ContextMenuFlags {
+                        activate_disabled: false,
+                        rename_disabled: false,
+                        delete_disabled: false,
+                        set_default_disabled: false,
+                    },
+                    on_close: |_| {},
+                    on_rename: |_| {},
+                    on_delete: |_| {},
+                }
+            }
+        }
+
+        let mut vdom = VirtualDom::new(Harness);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+
+        assert!(
+            html.contains("Set as default"),
+            "menu must surface the 'Set as default' item: {html}"
+        );
+
+        let item_idx = html
+            .find("Set as default")
+            .expect("Set as default item must be present in rendered html");
+        let preceding = &html[..item_idx];
+        let item_open = preceding
+            .rfind("<button")
+            .expect("Set as default item must be wrapped in a <button> menuitem");
+        let item_slice = &html[item_open..item_idx];
+        assert!(
+            !item_slice.contains(r#"aria-disabled="true""#),
+            "the Set as default item must not be aria-disabled when flag is false: {item_slice}"
+        );
     }
 }
