@@ -74,7 +74,15 @@ pub(crate) fn device_chips_for_mode(
     // the appended `· {id}` suffix breaks duplicate-name ties
     // deterministically. Insertion order (which equals row scan order)
     // would shift the filter strip whenever rows are reordered.
-    chips.sort_by(|a, b| a.label.to_lowercase().cmp(&b.label.to_lowercase()));
+    // `to_ascii_lowercase` matches `matches_filter` at the top of this
+    // module (line 27) so both halves of the filter normalize on the
+    // same casing rule, sidestepping the Unicode Turkic-i / Greek-sigma
+    // / German-eszett corner cases that `to_lowercase` carries.
+    chips.sort_by(|a, b| {
+        a.label
+            .to_ascii_lowercase()
+            .cmp(&b.label.to_ascii_lowercase())
+    });
     chips
 }
 
