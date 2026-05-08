@@ -21,7 +21,7 @@ const STATUS_BAR_CSS: Asset = asset!("/assets/frame/status_bar.css");
 const PATH_TRUNCATE_BUDGET: usize = 64;
 
 /// F7 status bar: device count (middle), optional warning badge (start),
-/// profile path or em-dash (end).
+/// profile path or hyphen placeholder (end).
 #[component]
 pub(crate) fn StatusBar() -> Element {
     tracing::trace!(target: "frame::render", region = "status_bar");

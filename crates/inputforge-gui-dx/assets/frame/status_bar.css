@@ -24,7 +24,7 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* Em-dash placeholder, text-subtle pushes it visually behind the path
+/* Hyphen placeholder, text-subtle pushes it visually behind the path
    text so a "no profile" state reads as quietly absent rather than
    actively reporting nothing. The mono family keeps the slot stable in
    width across the loaded/empty transition. */
