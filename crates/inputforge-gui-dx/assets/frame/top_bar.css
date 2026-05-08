@@ -349,29 +349,27 @@
     border-radius: var(--radius-sm);
 }
 
-/* Mode tabs, the editing-mode selector inherits the canonical
-   .if-tabs vocabulary (assets/components/tabs.css): muted label that
-   raises to bright on hover, 3px underline indicator on the active
-   tab, indicator anchored to the bar seam via margin-bottom: -1px so
-   the active underline overlays the top-bar's --color-border-strong
-   bottom edge rather than floating above it. The 0.875rem horizontal
-   tab padding and 0.375rem inter-element gap are documented off-scale
-   sub-step values (between --space-2 and --space-3) tuned for the
-   bar's 40px height, they keep the tab labels denser than a generic
-   .if-tabs row without breaking the spacing-token convention.
-   Transitions use --duration-base + --easing-fast: same lane the
-   canonical primitive uses, sub-200ms synchronous response.
-   `flex: 1 1 0` absorbs all leftover bar space so the tablist
-   grows to fill, not shrinks to content, keeping the tools cluster
-   pinned at its natural width. `min-width: 0` allows the flex item
-   to shrink below intrinsic content width (prerequisite for
-   overflow-x to engage). `overflow-x: auto` spawns a scrollbar
-   only when tabs overflow; `overflow-y: hidden` suppresses the
-   vertical axis so the active-tab ::after underline at bottom: -1px
-   is not clipped (overflow-x implicitly makes overflow-y auto when
-   unset, which would clip the strip). */
-.if-mode-tabs {
+/* Mode tabs strip. The canonical .if-tab / .if-tab--active visuals come
+   from assets/components/tabs.css (3px primary bottom-underline on
+   active, no fill); the wrapper class below adds bar-specific layout
+   (40px height inheritance, scroll-x at narrow viewports, ellipsis
+   truncation per tab, Webkit scrollbar styling). The .if-tabs base
+   class brings the bottom hairline that doubles as the bar's seam
+   anchor, so margin-bottom: -1px on .if-tab is not required here. */
+.if-mode-tabs-outer {
     display: flex;
+    align-items: stretch;
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+}
+
+/* `.if-tabs` already carries display:flex + flex-direction:row + gap.
+   This rule only adds the bar-specific layout: 40 px height (via 100%
+   inside the outer), gap 0 (override the canonical --space-1 gap so
+   tabs sit shoulder to shoulder under the underline), scroll-x, and
+   the bar's left margin. */
+.if-mode-tabs-wrap {
     align-items: stretch;
     gap: 0;
     margin-left: var(--space-2);
@@ -382,124 +380,49 @@
     overflow-y: hidden;
     scrollbar-width: thin;
     scrollbar-color: var(--color-border-strong) transparent;
+    border-bottom: 0;
+    padding: 0;
 }
 
-/* Chromium / WebKit narrow scrollbar for the tablist. Height ~6px
-   keeps the strip subtle, it reads as a structural rail, not a UI
-   element competing with the tabs. Thumb uses --color-border-strong
-   (the panel-seam token) on a transparent track so the scrollbar
-   blends into the cockpit vocabulary without introducing a raw hex. */
-.if-mode-tabs::-webkit-scrollbar {
-    height: 6px;
-}
+.if-mode-tabs-wrap::-webkit-scrollbar          { height: 6px; }
+.if-mode-tabs-wrap::-webkit-scrollbar-track    { background: transparent; }
+.if-mode-tabs-wrap::-webkit-scrollbar-thumb    { background: var(--color-border-strong); border-radius: var(--radius-full); }
 
-.if-mode-tabs::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.if-mode-tabs::-webkit-scrollbar-thumb {
-    background: var(--color-border-strong);
-    border-radius: var(--radius-full);
-}
-
-.if-mode-tab {
-    position: relative;
-    background: transparent;
-    border: 0;
-    color: var(--color-text-muted);
+/* Density compaction inside the bar. Canonical .if-tab uses
+   --space-2 / --space-3 padding; the bar tightens to keep label rhythm
+   with the engine pill and tools cluster at 40 px height, and pins
+   max-width per tab so long mode names truncate with ellipsis. */
+.if-mode-tabs-wrap > .if-tab {
     padding: 0 0.875rem;
-    font: inherit;
-    font-weight: var(--weight-medium);
-    letter-spacing: 0.01em;
-    cursor: pointer;
-    /* 2px transparent bottom border reserves the indicator strip's
-       geometry so swapping the ::after on/off doesn't reflow the bar.
-       The active accent itself moved to a `::after` pseudo-element
-       (see `.if-mode-tab--active::after` below) so the indicator is
-       layout-immune to the ellipsis-truncation flex shrinking. */
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    /* Long mode names truncate with an ellipsis at 14rem rather than
-       elastically resizing the tab. `min-width: 0` is required so the
-       flex parent permits the tab to shrink below its intrinsic
-       content width on narrow viewports. The native `title` attribute
-       on the per-tab button surfaces the full name on hover.
-       `flex-shrink: 0` is the load-bearing rule for the tablist's
-       horizontal scrollbar: without it, flex-default shrinking
-       compresses tabs to fit the viewport and the parent never reports
-       overflow, so `overflow-x: auto` never spawns a scrollbar. With
-       shrink disabled, tabs hold their max-width and the parent
-       overflows, producing the scrollbar the user actually sees. */
-    flex-shrink: 0;
     max-width: 14rem;
+    flex-shrink: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    min-width: 0;
-    transition:
-        color var(--duration-base) var(--easing-fast),
-        border-color var(--duration-base) var(--easing-fast);
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
 }
 
-.if-mode-tab:hover:not([disabled]) {
-    color: var(--color-text);
+/* Tail "+" add affordance, sibling of the tablist. Mirrors the resting
+   .if-tab visual (muted text raising on hover) so the bar reads as one
+   strip; padding tightened so the `+` sits flush after the last tab. */
+.if-mode-tab--add {
+    background: transparent;
+    border: 0;
+    color: var(--color-text-muted);
+    padding: 0 var(--space-2);
+    font: inherit;
+    font-weight: var(--weight-medium);
+    cursor: pointer;
 }
 
-/* Active tab uses --color-primary (the One Action Color) for the
-   underline, not --color-border-focus, focus-cyan is reserved for
-   focus rings per the token's name and DESIGN.md section 7.
-   The accent strip is rendered as a `::after` pseudo-element rather
-   than a `border-bottom-color` swap so the indicator is independent
-   of the tab's box-model: the ellipsis-truncated label can shrink
-   below its content width without dragging the underline with it. */
-.if-mode-tab--active {
-    color: var(--color-text);
-}
+.if-mode-tab--add:hover { color: var(--color-text); }
 
-.if-mode-tab--active::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    /* Anchored at -1px so the strip overlays the top-bar's
-       --color-border-strong bottom seam, mirroring the previous
-       `margin-bottom: -1px` overlap. */
-    bottom: -1px;
-    height: 3px;
-    background: var(--color-primary);
-}
-
-/* Roving tabindex hands focus to the active tab on arrow nav. Without a
-   focus ring, keyboard users see no indication of focus position, WCAG
-   2.4.7. The -3px inset matches the established pattern in
-   assets/components/tabs.css so the ring sits inside the underline. */
-.if-mode-tab:focus-visible {
+.if-mode-tab--add:focus-visible {
     outline: 2px solid var(--color-border-focus);
     outline-offset: -3px;
     border-radius: var(--radius-sm);
-}
-
-/* Runtime marker, the LED-face idiom established by .if-engine-pill
-   in 32b: currentColor carries the live hue to both the dot fill and
-   the surrounding flat halo. The 0/0/0-spread shadow at 24% reads as
-   light leaking around a panel-mounted indicator, not a glow effect.
-   Aligns the mode-tabs with the engine-pill as one LED family across
-   the top bar. */
-.if-mode-tab__marker {
-    width: 0.375rem;
-    height: 0.375rem;
-    border-radius: var(--radius-full);
-    /* inline-block: the marker sits inline with the tab label text and
-       must align to the label's text baseline for the LED-on-instrument
-       reading. flex on the dot itself would force a separate layout box
-       that fights the parent's `align-items: center` baseline. */
-    display: inline-block;
-    color: var(--color-live);
-    background: currentColor;
-    box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 24%, transparent);
 }
 
 /* Mode-tab context menu, AnchoredMenu consumer. Surface and items
@@ -510,20 +433,6 @@
    ("Set as default") fits without per-locale recalculation. */
 .if-modetab-context-menu {
     min-width: 12rem;
-}
-
-/* Tail `+` add-tab, inherits the .if-mode-tab base (muted text that
-   brightens on hover, the same focus ring); overrides only what makes
-   it read as a tail action rather than a peer mode tab. The glyph is
-   carried at --text-base / --weight-medium (the same as a real tab)
-   so the `+` is discoverable without visually outranking the named
-   tabs; semibold + --text-md previously made the tail louder than its
-   neighbours, which the polish-goal explicitly flagged. The reduced
-   horizontal padding (--space-2 vs the 0.875rem of a named tab) keeps
-   the glyph closer to the last tab so it reads as appended, not as
-   the head of a separate group. */
-.if-mode-tab--add {
-    padding: 0 var(--space-2);
 }
 
 /* Inline editor slot, replaces a tab button (add) or a single tab

@@ -104,231 +104,247 @@ pub(crate) fn ModeTabs() -> Element {
     });
 
     rsx! {
-        // aria-label is required because the tablist has no visible
-        // heading. "Editing mode" matches the F5 spec's chrome name.
-        // aria-controls is intentionally omitted: until F11/F13 mounts a
-        // real tabpanel for the editing surface, half-implementing the
-        // tabpanel relationship would confuse AT.
-        div { class: "if-mode-tabs", role: "tablist",
-            "aria-orientation": "horizontal", "aria-label": "Editing mode",
-            for (idx, name) in modes_now.iter().cloned().enumerate() {
-                {
-                    let is_active = name == editing_now;
-                    let show_marker = marker.tab_index == Some(idx);
-                    // DOM ids are derived from the tab's index, not the
-                    // mode name, so they're guaranteed HTML5-valid AND safe
-                    // to interpolate into JS-eval strings (see kb_tab_id
-                    // below + focus_walker.rs eval). Mode names land on
-                    // `data-mode` for DevTools/CSS hooks.
-                    let tab_id = format!("mode-tab-{idx}");
-                    let menu_id = format!("mode-tab-menu-{idx}");
-                    let menu_open = open_for_tab
-                        .read()
-                        .as_ref()
-                        .is_some_and(|(n, _)| n == &name);
-                    let mut editing_setter = editing;
-                    let select_name = name.clone();
-                    let key_modes = modes_now.clone();
-                    let ctxmenu_name = name.clone();
-                    // Carries the mode name into the open-state signal so
-                    // the matching tab can be identified later. The DOM
-                    // lookup uses the integer-derived `kb_tab_id` instead.
-                    let kb_menu_name = name.clone();
-                    let kb_tab_id = tab_id.clone();
-                    // Plumbing for the Delete keybind: the closure resolves
-                    // the disabled flag at event time (cheap, runs only on
-                    // Delete keystroke) by reading meta + state, so render
-                    // doesn't pay an O(N) descendants_of cost per tab.
-                    let kb_delete_name = name.clone();
-                    let kb_ctx = ctx.clone();
-                    let onclick = move |_| {
-                        editing_setter.set(select_name.clone());
-                    };
-                    let oncontextmenu = move |evt: MouseEvent| {
-                        // Suppress the platform browser menu so our
-                        // hand-rolled list takes over.
-                        evt.prevent_default();
-                        evt.stop_propagation();
-                        let coords = evt.client_coordinates();
-                        open_for_tab.set(Some((
-                            ctxmenu_name.clone(),
-                            context_menu::AnchorRect {
-                                left: coords.x,
-                                bottom: coords.y,
-                            },
-                        )));
-                    };
-                    let onkeydown = move |evt: KeyboardEvent| {
-                        // Roving-tabindex navigation. Shift+F10 opens the
-                        // context menu (this task); Delete opens the F4
-                        // confirm (T31). The remaining arms are the
-                        // minimal navigation contract.
-                        // Skips any index whose name matches `renaming`
-                        // (its button isn't mounted while the inline
-                        // editor occupies that slot).
-
-                        // Shift+F10 → open the context menu anchored to
-                        // this tab's bounding-rect. Dioxus 0.7 doesn't
-                        // expose `get_client_rect` on `MountedData`, so
-                        // we ride the DOM via `document::eval` and parse
-                        // the JSON [left, bottom] result back into the
-                        // open-state signal.
-                        if evt.key() == Key::F10 && evt.modifiers().shift() {
-                            evt.prevent_default();
-                            let target_id = kb_tab_id.clone();
-                            let menu_for_tab = kb_menu_name.clone();
-                            let mut open_for_tab_inner = open_for_tab;
-                            spawn(async move {
-                                let mut handle = document::eval(&format!(
-                                    "var el = document.getElementById('{target_id}');\n\
-                                     if (!el) {{ dioxus.send([0, 0]); return; }}\n\
-                                     var r = el.getBoundingClientRect();\n\
-                                     dioxus.send([r.left, r.bottom]);"
-                                ));
-                                if let Ok(value) = handle.recv::<[f64; 2]>().await {
-                                    let [left, bottom] = value;
-                                    open_for_tab_inner.set(Some((
-                                        menu_for_tab,
-                                        context_menu::AnchorRect { left, bottom },
-                                    )));
-                                }
-                            });
-                            return;
-                        }
-
-                        // Delete → opens F4 destructive-confirm (T31). Same
-                        // disabled rules as the context-menu Delete item:
-                        // root tabs and any tab whose subtree contains the
-                        // startup mode are immune. The existing
-                        // `dialog_open` effect picks up the `delete_target`
-                        // change and mounts the dialog.
-                        if evt.key() == Key::Delete {
-                            evt.prevent_default();
-                            let modes_snapshot = key_modes.clone();
-                            let startup = kb_ctx.meta.read().startup_mode.clone();
-                            let descendants = kb_ctx
-                                .state
-                                .read()
-                                .active_profile
-                                .as_ref()
-                                .and_then(|p| p.modes().descendants_of(&kb_delete_name).ok())
-                                .unwrap_or_default();
-                            if !logic::delete_disabled_for_tab(
-                                &kb_delete_name,
-                                &modes_snapshot,
-                                startup.as_deref(),
-                                &descendants,
-                            ) {
-                                let mut delete_target = delete_target;
-                                delete_target.set(Some(kb_delete_name.clone()));
-                            }
-                            return;
-                        }
-
-                        let len = key_modes.len();
-                        if len == 0 {
-                            return;
-                        }
-                        let renaming_now = renaming.peek().clone();
-                        let is_skippable = |i: usize| -> bool {
-                            renaming_now
-                                .as_ref()
-                                .is_some_and(|r| key_modes.get(i).is_some_and(|n| n == r))
+        div { class: "if-mode-tabs-outer",
+            // aria-label is required because the tablist has no visible
+            // heading. "Editing mode" matches the F5 spec's chrome name.
+            // aria-controls is intentionally omitted: until F11/F13 mounts a
+            // real tabpanel for the editing surface, half-implementing the
+            // tabpanel relationship would confuse AT.
+            div { class: "if-tabs if-mode-tabs-wrap", role: "tablist",
+                "aria-orientation": "horizontal", "aria-label": "Editing mode",
+                for (idx, name) in modes_now.iter().cloned().enumerate() {
+                    {
+                        let is_active = name == editing_now;
+                        let show_marker = marker.tab_index == Some(idx);
+                        // DOM ids are derived from the tab's index, not the
+                        // mode name, so they're guaranteed HTML5-valid AND safe
+                        // to interpolate into JS-eval strings (see kb_tab_id
+                        // below + focus_walker.rs eval). Mode names land on
+                        // `data-mode` for DevTools/CSS hooks.
+                        let tab_id = format!("mode-tab-{idx}");
+                        let menu_id = format!("mode-tab-menu-{idx}");
+                        let menu_open = open_for_tab
+                            .read()
+                            .as_ref()
+                            .is_some_and(|(n, _)| n == &name);
+                        let mut editing_setter = editing;
+                        let select_name = name.clone();
+                        let key_modes = modes_now.clone();
+                        let ctxmenu_name = name.clone();
+                        // Carries the mode name into the open-state signal so
+                        // the matching tab can be identified later. The DOM
+                        // lookup uses the integer-derived `kb_tab_id` instead.
+                        let kb_menu_name = name.clone();
+                        let kb_tab_id = tab_id.clone();
+                        // Plumbing for the Delete keybind: the closure resolves
+                        // the disabled flag at event time (cheap, runs only on
+                        // Delete keystroke) by reading meta + state, so render
+                        // doesn't pay an O(N) descendants_of cost per tab.
+                        let kb_delete_name = name.clone();
+                        let kb_ctx = ctx.clone();
+                        let onclick = move |_| {
+                            editing_setter.set(select_name.clone());
                         };
-                        // Step direction: +1 / -1 / jump-to-bound. For
-                        // jumps, walk forward (or backward) past any
-                        // renaming index.
-                        let raw_next = match evt.key() {
-                            Key::ArrowRight => Some(((idx + 1) % len, 1isize)),
-                            Key::ArrowLeft  => Some(((idx + len - 1) % len, -1isize)),
-                            Key::Home       => Some((0, 1isize)),
-                            Key::End        => Some((len - 1, -1isize)),
-                            _ => None,
+                        let oncontextmenu = move |evt: MouseEvent| {
+                            // Suppress the platform browser menu so our
+                            // hand-rolled list takes over.
+                            evt.prevent_default();
+                            evt.stop_propagation();
+                            let coords = evt.client_coordinates();
+                            open_for_tab.set(Some((
+                                ctxmenu_name.clone(),
+                                context_menu::AnchorRect {
+                                    left: coords.x,
+                                    bottom: coords.y,
+                                },
+                            )));
                         };
-                        let Some((mut target, step)) = raw_next else { return };
-                        // Walk past renaming indexes, bounded by `len`
-                        // iterations so we never infinite-loop even if
-                        // every tab is renaming (impossible in practice).
-                        for _ in 0..len {
-                            if !is_skippable(target) {
-                                break;
-                            }
-                            target = if step > 0 {
-                                (target + 1) % len
-                            } else {
-                                (target + len - 1) % len
-                            };
-                        }
-                        if is_skippable(target) {
-                            return; // Every tab is renaming, no-op.
-                        }
-                        evt.prevent_default();
-                        if let Some(target_name) = key_modes.get(target) {
-                            editing_setter.set(target_name.clone());
-                            let node = tab_refs.read().get(target).and_then(Clone::clone);
-                            if let Some(node) = node {
+                        let onkeydown = move |evt: KeyboardEvent| {
+                            // Roving-tabindex navigation. Shift+F10 opens the
+                            // context menu (this task); Delete opens the F4
+                            // confirm (T31). The remaining arms are the
+                            // minimal navigation contract.
+                            // Skips any index whose name matches `renaming`
+                            // (its button isn't mounted while the inline
+                            // editor occupies that slot).
+
+                            // Shift+F10 → open the context menu anchored to
+                            // this tab's bounding-rect. Dioxus 0.7 doesn't
+                            // expose `get_client_rect` on `MountedData`, so
+                            // we ride the DOM via `document::eval` and parse
+                            // the JSON [left, bottom] result back into the
+                            // open-state signal.
+                            if evt.key() == Key::F10 && evt.modifiers().shift() {
+                                evt.prevent_default();
+                                let target_id = kb_tab_id.clone();
+                                let menu_for_tab = kb_menu_name.clone();
+                                let mut open_for_tab_inner = open_for_tab;
                                 spawn(async move {
-                                    let _ = node.set_focus(true).await;
+                                    let mut handle = document::eval(&format!(
+                                        "var el = document.getElementById('{target_id}');\n\
+                                         if (!el) {{ dioxus.send([0, 0]); return; }}\n\
+                                         var r = el.getBoundingClientRect();\n\
+                                         dioxus.send([r.left, r.bottom]);"
+                                    ));
+                                    if let Ok(value) = handle.recv::<[f64; 2]>().await {
+                                        let [left, bottom] = value;
+                                        open_for_tab_inner.set(Some((
+                                            menu_for_tab,
+                                            context_menu::AnchorRect { left, bottom },
+                                        )));
+                                    }
                                 });
+                                return;
                             }
-                        }
-                    };
-                    let onmounted = move |evt: MountedEvent| {
-                        let mut refs = tab_refs.write();
-                        if refs.len() <= idx {
-                            refs.resize(idx + 1, None);
-                        }
-                        refs[idx] = Some(evt.data());
-                    };
 
-                    if renaming.read().as_deref() == Some(name.as_str()) {
-                        rsx! {
-                            rename_inline::RenameInline {
-                                key: "{name}",
-                                from: name.clone(),
-                                state: renaming,
+                            // Delete → opens F4 destructive-confirm (T31). Same
+                            // disabled rules as the context-menu Delete item:
+                            // root tabs and any tab whose subtree contains the
+                            // startup mode are immune. The existing
+                            // `dialog_open` effect picks up the `delete_target`
+                            // change and mounts the dialog.
+                            if evt.key() == Key::Delete {
+                                evt.prevent_default();
+                                let modes_snapshot = key_modes.clone();
+                                let startup = kb_ctx.meta.read().startup_mode.clone();
+                                let descendants = kb_ctx
+                                    .state
+                                    .read()
+                                    .active_profile
+                                    .as_ref()
+                                    .and_then(|p| p.modes().descendants_of(&kb_delete_name).ok())
+                                    .unwrap_or_default();
+                                if !logic::delete_disabled_for_tab(
+                                    &kb_delete_name,
+                                    &modes_snapshot,
+                                    startup.as_deref(),
+                                    &descendants,
+                                ) {
+                                    let mut delete_target = delete_target;
+                                    delete_target.set(Some(kb_delete_name.clone()));
+                                }
+                                return;
                             }
-                        }
-                    } else {
-                        rsx! {
-                            button {
-                                key: "{name}",
-                                id: "{tab_id}",
-                                "data-mode": "{name}",
-                                r#type: "button",
-                                class: if is_active { "if-mode-tab if-mode-tab--active" } else { "if-mode-tab" },
-                                role: "tab",
-                                title: "{name}",
-                                "aria-selected": "{is_active}",
-                                "aria-haspopup": "menu",
-                                "aria-expanded": "{menu_open}",
-                                // Only emit aria-controls while the menu is
-                                // mounted, pointing at a missing id confuses
-                                // AT.
-                                "aria-controls": menu_open.then(|| menu_id.clone()),
-                                tabindex: if is_active { "0" } else { "-1" },
-                                onclick,
-                                oncontextmenu,
-                                onkeydown,
-                                onmounted,
-                                "{name}"
-                                if show_marker {
-                                    // Visual marker dot.
-                                    span {
-                                        class: "if-mode-tab__marker",
-                                        "aria-hidden": "true",
+
+                            let len = key_modes.len();
+                            if len == 0 {
+                                return;
+                            }
+                            let renaming_now = renaming.peek().clone();
+                            let is_skippable = |i: usize| -> bool {
+                                renaming_now
+                                    .as_ref()
+                                    .is_some_and(|r| key_modes.get(i).is_some_and(|n| n == r))
+                            };
+                            // Step direction: +1 / -1 / jump-to-bound. For
+                            // jumps, walk forward (or backward) past any
+                            // renaming index.
+                            let raw_next = match evt.key() {
+                                Key::ArrowRight => Some(((idx + 1) % len, 1isize)),
+                                Key::ArrowLeft  => Some(((idx + len - 1) % len, -1isize)),
+                                Key::Home       => Some((0, 1isize)),
+                                Key::End        => Some((len - 1, -1isize)),
+                                _ => None,
+                            };
+                            let Some((mut target, step)) = raw_next else { return };
+                            // Walk past renaming indexes, bounded by `len`
+                            // iterations so we never infinite-loop even if
+                            // every tab is renaming (impossible in practice).
+                            for _ in 0..len {
+                                if !is_skippable(target) {
+                                    break;
+                                }
+                                target = if step > 0 {
+                                    (target + 1) % len
+                                } else {
+                                    (target + len - 1) % len
+                                };
+                            }
+                            if is_skippable(target) {
+                                return; // Every tab is renaming, no-op.
+                            }
+                            evt.prevent_default();
+                            if let Some(target_name) = key_modes.get(target) {
+                                editing_setter.set(target_name.clone());
+                                let node = tab_refs.read().get(target).and_then(Clone::clone);
+                                if let Some(node) = node {
+                                    spawn(async move {
+                                        let _ = node.set_focus(true).await;
+                                    });
+                                }
+                            }
+                        };
+                        let onmounted = move |evt: MountedEvent| {
+                            let mut refs = tab_refs.write();
+                            if refs.len() <= idx {
+                                refs.resize(idx + 1, None);
+                            }
+                            refs[idx] = Some(evt.data());
+                        };
+
+                        if renaming.read().as_deref() == Some(name.as_str()) {
+                            rsx! {
+                                rename_inline::RenameInline {
+                                    key: "{name}",
+                                    from: name.clone(),
+                                    state: renaming,
+                                }
+                            }
+                        } else {
+                            rsx! {
+                                button {
+                                    key: "{name}",
+                                    id: "{tab_id}",
+                                    "data-mode": "{name}",
+                                    r#type: "button",
+                                    class: if is_active { "if-tab if-tab--active" } else { "if-tab" },
+                                    role: "tab",
+                                    title: "{name}",
+                                    "aria-selected": "{is_active}",
+                                    "aria-haspopup": "menu",
+                                    "aria-expanded": "{menu_open}",
+                                    // Only emit aria-controls while the menu is
+                                    // mounted, pointing at a missing id confuses
+                                    // AT.
+                                    "aria-controls": menu_open.then(|| menu_id.clone()),
+                                    tabindex: if is_active { "0" } else { "-1" },
+                                    onclick,
+                                    oncontextmenu,
+                                    onkeydown,
+                                    onmounted,
+                                    if show_marker {
+                                        // Visual marker dot, rendered before
+                                        // the label so it leads the text.
+                                        span {
+                                            class: "if-tab__running-pip",
+                                            "aria-hidden": "true",
+                                        }
+                                        // sr-only sibling so AT users get the
+                                        // semantic that the visual dot alone
+                                        // cannot convey.
+                                        span {
+                                            class: "if-sr-only",
+                                            "Engine running"
+                                        }
                                     }
-                                    // sr-only sibling so AT users get the
-                                    // semantic that the visual dot alone
-                                    // cannot convey.
-                                    span {
-                                        class: "if-sr-only",
-                                        "Engine running"
-                                    }
+                                    "{name}"
                                 }
                             }
                         }
                     }
+                }
+            }
+            // T31: tail `+` add tab, sibling of the tablist so AT tab
+            // counts stay honest (the `+` is not a real tab).
+            if *adding.read() {
+                add_inline::AddInline { open: adding, pending_focus }
+            } else {
+                button {
+                    r#type: "button",
+                    class: "if-mode-tab--add",
+                    onclick: move |_| adding.set(true),
+                    "aria-label": "Add mode",
+                    "+"
                 }
             }
             // The context menu lives outside the tablist so it doesn't
@@ -419,18 +435,6 @@ pub(crate) fn ModeTabs() -> Element {
                     }
                 } else {
                     rsx! {}
-                }
-            }
-            // T31: tail `+` add tab, swaps to inline editor when open.
-            if *adding.read() {
-                add_inline::AddInline { open: adding, pending_focus }
-            } else {
-                button {
-                    r#type: "button",
-                    class: "if-mode-tab if-mode-tab--add",
-                    onclick: move |_| adding.set(true),
-                    "aria-label": "Add mode",
-                    "+"
                 }
             }
         }

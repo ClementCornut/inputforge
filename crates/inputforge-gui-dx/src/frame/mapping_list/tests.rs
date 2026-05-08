@@ -1278,3 +1278,192 @@ fn colors_css_declares_tint_selected_and_tint_create() {
          as create rather than selected: {css}",
     );
 }
+
+#[test]
+fn mode_tabs_active_tab_renders_canonical_if_tab_active_class() {
+    use crate::frame::top_bar::mode_tabs::ModeTabs;
+    use inputforge_core::action::Mapping;
+    use inputforge_core::mode::ModeTree;
+    use inputforge_core::profile::Profile;
+    use inputforge_core::state::AppState;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+    use std::collections::HashMap;
+
+    fn TestComponent() -> Element {
+        let map = HashMap::from([("Default".to_owned(), vec!["Combat".to_owned()])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let mappings = vec![Mapping {
+            input: InputAddress::Bound {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Boost".to_owned()),
+            actions: vec![],
+        }];
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+
+        // `provide_minimal_contexts` supplies AppContext, ViewState,
+        // ToastQueue, and live-capture. ModeTabs additionally needs
+        // ModeDeleteSignal, which we provide inline below.
+        provide_minimal_contexts();
+        let ctx_app = use_context::<AppContext>();
+        let mut cfg_signal = ctx_app.config;
+        let mut meta_signal = ctx_app.meta;
+        // ModeDeleteSignal is provided shell-side normally; provide a
+        // local stub so ModeTabs can mount in isolation.
+        let dt: Signal<Option<String>> = use_signal(|| None);
+        use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeDeleteSignal(dt));
+        use_hook(move || {
+            cfg_signal.set(ConfigSnapshot::from_state(&state, None));
+            meta_signal.set(MetaSnapshot::from_state(&state));
+        });
+
+        rsx! { ModeTabs {} }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-tab--active"),
+        "mode tabs must use the canonical .if-tab--active underline class: {html}",
+    );
+    assert!(
+        !html.contains("if-mode-tab--active"),
+        "legacy hand-rolled .if-mode-tab--active class must be retired: {html}",
+    );
+}
+
+#[test]
+fn mode_tabs_add_button_lives_outside_tablist() {
+    use crate::frame::top_bar::mode_tabs::ModeTabs;
+    use inputforge_core::action::Mapping;
+    use inputforge_core::mode::ModeTree;
+    use inputforge_core::profile::Profile;
+    use inputforge_core::state::AppState;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+    use std::collections::HashMap;
+
+    fn TestComponent() -> Element {
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let mappings = vec![Mapping {
+            input: InputAddress::Bound {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Boost".to_owned()),
+            actions: vec![],
+        }];
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+
+        provide_minimal_contexts();
+        let ctx_app = use_context::<AppContext>();
+        let mut cfg_signal = ctx_app.config;
+        let mut meta_signal = ctx_app.meta;
+        let dt: Signal<Option<String>> = use_signal(|| None);
+        use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeDeleteSignal(dt));
+        use_hook(move || {
+            cfg_signal.set(ConfigSnapshot::from_state(&state, None));
+            meta_signal.set(MetaSnapshot::from_state(&state));
+        });
+
+        rsx! { ModeTabs {} }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    let tablist_open = html.find("role=\"tablist\"").expect("tablist must render");
+    let tablist_close_relative = html[tablist_open..].find("</div>").expect("tablist closes");
+    let tablist_close = tablist_open + tablist_close_relative;
+    let plus_idx = html
+        .find("aria-label=\"Add mode\"")
+        .expect("Add mode button must render");
+    assert!(
+        plus_idx > tablist_close,
+        "Add-mode `+` must render OUTSIDE the role=tablist container so AT \
+         tab counts stay honest. tablist_close={tablist_close}, plus_idx={plus_idx}",
+    );
+}
+
+#[test]
+fn mode_tabs_running_pip_uses_canonical_class() {
+    use crate::frame::top_bar::mode_tabs::ModeTabs;
+    use inputforge_core::action::Mapping;
+    use inputforge_core::mode::ModeTree;
+    use inputforge_core::profile::Profile;
+    use inputforge_core::state::AppState;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+    use std::collections::HashMap;
+
+    fn TestComponent() -> Element {
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let mappings = vec![Mapping {
+            input: InputAddress::Bound {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Boost".to_owned()),
+            actions: vec![],
+        }];
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let mut state = AppState::with_profile(profile);
+        // Force the runtime mode to match the only tab so the marker
+        // resolves to tab_index = Some(0).
+        state.current_mode = "Default".to_owned();
+
+        provide_minimal_contexts();
+        let ctx_app = use_context::<AppContext>();
+        let mut cfg_signal = ctx_app.config;
+        let mut meta_signal = ctx_app.meta;
+        let dt: Signal<Option<String>> = use_signal(|| None);
+        use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeDeleteSignal(dt));
+        use_hook(move || {
+            cfg_signal.set(ConfigSnapshot::from_state(&state, None));
+            meta_signal.set(MetaSnapshot::from_state(&state));
+        });
+
+        rsx! { ModeTabs {} }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-tab__running-pip"),
+        "running tab must render the canonical .if-tab__running-pip class so \
+         the live-mode marker is shared with future Tabs primitive consumers: {html}",
+    );
+    assert!(
+        !html.contains("if-mode-tab__marker"),
+        "legacy bespoke .if-mode-tab__marker class must be retired: {html}",
+    );
+}
