@@ -40,10 +40,25 @@ layout adjustments where the rail's role differs from the panels.
   per DESIGN.md section 7.
 - Move the vJoy output identifier from a right-floating pill to the source
   line as a quieter inline chip after an arrow glyph separator.
-- Migrate the mode tab strip to the canonical `Tabs` primitive
-  (`components/tabs.rs`); add a `running: bool` extension to `TabItem` for
-  the running-mode pip, and place the trailing "+" outside the
-  `role="tablist"` container.
+- Decompose the canonical `Tabs` primitive into a compound shape
+  (`TabsRoot` + `TabsList` + `TabButton`, MUI / Base UI / Radix style)
+  and migrate the mode tab strip to consume it directly. The existing
+  `Tabs { items: Vec<TabItem>, ... }` items-array form stays as a thin
+  facade over the compound for simple consumers (response-curve toolbar,
+  component gallery). `TabItem` keeps its `running: bool` field for the
+  running-mode pip; mode_tabs sets it via `TabButton::running` on the
+  live tab. The trailing `+` and the context menu render as siblings
+  of `TabsList` under `TabsRoot`, OUTSIDE the `role="tablist"`
+  container, so AT tab counts stay honest. mode_tabs's per-tab
+  `oncontextmenu` and `onkeydown` (Shift+F10 and Delete) ride on
+  `TabButton` prop slots; the inline rename swap reuses the same slot
+  by rendering `RenameInline` instead of a `TabButton`, and the
+  registry-based keyboard coordinator skips the renaming index for
+  free because `RenameInline` does not register with the tablist
+  context. The `pending_focus` signal feeds into `TabsRoot`'s
+  `focus_request` channel: setting it to a tab id makes `TabsList`
+  focus the matching button, replacing the hand-rolled
+  `use_effect`-driven `tab_refs` that mode_tabs used to maintain.
 - Codify the new contracts as tests parallel to the right-panel pass:
   one row-tokens test, one device-chip-active-class test, one tab-shell test.
 
@@ -148,45 +163,89 @@ navigation, not selection.
 
 ### A · Mode tabs (`Default | Combat | +`)
 
-Today the strip is a hand-rolled flex container in
+Today the strip lives in
 `crates/inputforge-gui-dx/src/frame/top_bar/mode_tabs/` (siblings:
 `mod.rs`, `add_inline.rs`, `context_menu.rs`, `delete_dialog.rs`,
-`logic.rs`, `rename_inline.rs`) with a custom underline/active
-treatment.
+`logic.rs`, `rename_inline.rs`). Pre-cohesion it was a hand-rolled flex
+container with its own underline/active treatment; cohesion landed the
+canonical class shape but kept the strip hand-rolled because the Tabs
+primitive at the time could not absorb mode_tabs's per-tab context
+menu, Shift+F10, Delete keybind, inline rename swap, pending-focus
+effect, sibling `+`, sr-only "Engine running", and integer-derived
+DOM-id rules.
 
-Migrate to the canonical `Tabs` primitive
-(`crates/inputforge-gui-dx/src/components/tabs.rs:38`). The active tab
-keeps the canonical `.if-tab--active` shape per DESIGN.md section 7:
-3px primary bottom-underline, no fill, transparent background
-(`assets/components/tabs.css:48-51`). Hover on inactive tabs raises
-text color to `--color-text` only (no fill, no background change),
-per `assets/components/tabs.css:44-46`. Mode tabs are excluded from
-the unified row/chip/create-row treatment because tabs read as
-navigation, not selection.
+This pass goes further: decompose the `Tabs` primitive into a compound
+shape (MUI / Base UI / Radix style) so mode_tabs can compose the
+headless leaves while the existing items-array call sites keep working
+through a thin facade. The split:
+
+- `TabsRoot` (`components/tabs_root.rs`) owns the active value, the
+  `onchange` handler, the cluster-level `disabled`, the optional
+  `focus_request: Signal<Option<String>>` channel, and the registry of
+  mounted `TabButton` refs. Renders no DOM of its own; siblings of
+  `TabsList` (the `+`, the context menu) sit alongside as additional
+  children.
+- `TabsList` (`components/tabs_list.rs`) owns the `role="tablist"`
+  wrapper, `aria-orientation`, optional `aria-label`, the `if-tabs`
+  class shape, and the WAI-ARIA keyboard coordinator (Arrow / Home /
+  End cycle through the registered TabButtons, skipping disabled).
+  Watches `focus_request`: setting it to `Some(id)` finds the matching
+  registered TabButton and calls `set_focus(true)`, then clears the
+  signal so subsequent requests fire reliably.
+- `TabButton` (`components/tab_button.rs`) is the
+  `<button role="tab">` leaf. Carries the canonical `.if-tab` /
+  `.if-tab--active` shape per DESIGN.md section 7 (3px primary
+  bottom-underline, no fill, transparent background,
+  `assets/components/tabs.css:48-51`), the focus-roving `tabindex`
+  contract, the optional running pip + sr-only sibling, all per-tab
+  ARIA + data attributes, and slots for the consumer's `oncontextmenu`
+  and `onkeydown`. Activation goes through `TabsContext::onchange`, no
+  `onclick` prop is exposed.
+- The existing `Tabs` symbol (`components/tabs.rs`) becomes a thin
+  facade over `TabsRoot` + `TabsList` + `TabButton`, preserving the
+  `Tabs { value, onchange, items: Vec<TabItem> }` API for response-curve
+  toolbar and the component gallery.
+
+Hover on inactive tabs raises text color to `--color-text` only (no
+fill, no background change), per `assets/components/tabs.css:44-46`.
+Mode tabs are excluded from the unified row/chip/create-row treatment
+because tabs read as navigation, not selection.
 
 Two deviations from a vanilla tab strip:
 
 - A leading 6px `--color-live` pip on the tab whose mode is the runtime
-  live one. Implemented as a new `running: bool` prop on `TabItem`,
-  rendered inside the tab button, before the label. The pip is
-  independent of the active tab: the user can be editing Combat while
-  Default is the runtime live mode, and the pip stays on Default. Other
-  Tabs consumers (notably
+  live one. Implemented as a `running: bool` prop on both `TabButton`
+  and the items-array `TabItem`, rendered inside the tab button before
+  the label. The pip is independent of the active tab: the user can be
+  editing Combat while Default is the runtime live mode, and the pip
+  stays on Default. Other Tabs consumers (notably
   `mapping_editor/pipeline/stage_body/response_curve/toolbar.rs:172`)
   ignore the field by leaving it at its default `false`.
-- A trailing "+" affordance to add a mode. Rendered as a SIBLING
-  element of the `Tabs` primitive, OUTSIDE the `role="tablist"`
+  mode_tabs additionally sets `running_sr_label: "Engine running"` so
+  AT users get the semantic that the visual dot alone cannot convey.
+- A trailing `+` affordance to add a mode. Rendered as a SIBLING of
+  `TabsList` under the same `TabsRoot`, OUTSIDE the `role="tablist"`
   container, with `role="button"` and `aria-label="Add mode"`. Reachable
-  by Tab key, NOT by ArrowRight from the last tab so screen-reader tab
-  counts stay honest. Visually styled to mirror the rail footer's
+  by Tab key, NOT by ArrowRight from the last tab, so screen-reader
+  tab counts stay honest. Visually styled to mirror the rail footer's
   `+ Add mapping` dashed row so the "create" gesture reads as one shape
   across the rail.
 
-Tab tests already exist in `components/tabs.rs`; this pass adds a
-regression test in the rail's tests confirming the mode-tab cluster
-renders the canonical `.if-tab--active` class for the active tab
-(value-by-value contract test on the computed class string, not a
-snapshot).
+The inline-rename swap consumes the composition model directly: when a
+mode is being renamed, mode_tabs renders `RenameInline` instead of a
+`TabButton` at that slot. `RenameInline` does not register with the
+tablist context, so the registry shrinks by one for that window and
+`TabsList`'s arrow-key coordinator naturally hops over the renaming
+index without any explicit "skip" flag, the previous hand-rolled
+skip-walk loop in mode_tabs is gone.
+
+Tests cover the decomposed primitives in their own files
+(`components/tabs_root.rs`, `tabs_list.rs`, `tab_button.rs`,
+`tabs.rs` for the facade) and the rail's existing mode-tab contract
+tests in `mapping_list/tests.rs` (`if-tab--active` present, legacy
+`if-mode-tab--active` absent, `+` outside tablist, running pip class
+canonical) continue to lock the rendered HTML regardless of which side
+of the migration owns the render.
 
 ### B · Filter input
 
