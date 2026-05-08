@@ -318,6 +318,115 @@ fn build_state(actions: Vec<Action>) -> (AppState, InputAddress) {
     (state, addr)
 }
 
+/// Variant of [`build_state`] that accepts the primary `InputAddress` rather
+/// than hard-coding axis 0. Used by F14 tests that need to exercise the
+/// button-shaped vs non-button-shaped split for the Hold pill.
+fn build_state_with_mapping(actions: Vec<Action>, addr: InputAddress) -> (AppState, InputAddress) {
+    let map = HashMap::from([("Default".to_owned(), vec![])]);
+    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let mappings = vec![Mapping {
+        input: addr.clone(),
+        mode: "Default".to_owned(),
+        name: Some("Yaw".to_owned()),
+        actions,
+    }];
+    let profile = Profile::new(
+        "P".to_owned(),
+        vec![],
+        modes,
+        mappings,
+        vec![],
+        "Default".to_owned(),
+    );
+    let mut state = AppState::with_profile(profile);
+    state.devices.push(inputforge_core::state::DeviceState {
+        info: DeviceInfo {
+            id: DeviceId("dev-1".to_owned()),
+            name: "Stick".to_owned(),
+            axes: 2,
+            buttons: 4,
+            hats: 0,
+            instance_path: None,
+            axis_polarities: vec![AxisPolarity::Bipolar; 2],
+        },
+        connected: true,
+        diagnostics: inputforge_core::types::DeviceDiagnostics::default(),
+    });
+    (state, addr)
+}
+
+/// Construct an [`InputAddress`] from the F14 test sigil:
+///   - `"btn{N}"`   -> Bound + Button { index: N }
+///   - `"axis{N}"`  -> Bound + Axis { index: N }
+///   - `"hat{N}"`   -> Bound + Hat { index: N }
+///   - `"unbound"`  -> [`InputAddress::Unbound`]
+pub(crate) fn parse_primary_for_test(spec: &str) -> InputAddress {
+    match spec {
+        "unbound" => InputAddress::Unbound,
+        s if s.starts_with("btn") => InputAddress::Bound {
+            device: DeviceId("d".to_owned()),
+            input: InputId::Button {
+                index: s[3..].parse().unwrap_or(0),
+            },
+        },
+        s if s.starts_with("axis") => InputAddress::Bound {
+            device: DeviceId("d".to_owned()),
+            input: InputId::Axis {
+                index: s[4..].parse().unwrap_or(0),
+            },
+        },
+        s if s.starts_with("hat") => InputAddress::Bound {
+            device: DeviceId("d".to_owned()),
+            input: InputId::Hat {
+                index: s[3..].parse().unwrap_or(0),
+            },
+        },
+        _ => panic!("unknown primary spec: {spec}"),
+    }
+}
+
+/// SSR-render a single-stage `ChangeMode` mapping. Stage 0 is pre-expanded
+/// and the harness runs the settled-render path so the body's render-phase
+/// hint write propagates back to the parent before HTML capture. Returns
+/// `(rendered HTML, malformed-hints snapshot)` so tests can observe both
+/// without a thread-local exporter (which races under parallel `cargo test`
+/// worker reuse).
+pub(crate) fn render_change_mode_body_for_test(
+    strategy: inputforge_core::action::ModeChangeStrategy,
+    primary: &str,
+    modes: &[&str],
+) -> (String, HashMap<StageId, String>) {
+    let addr = parse_primary_for_test(primary);
+    let modes_owned: Vec<String> = modes.iter().map(|s| (*s).to_owned()).collect();
+    let actions = vec![Action::ChangeMode { strategy }];
+    let (state, addr_back) = build_state_with_mapping(actions, addr.clone());
+
+    let hints_capture: Arc<RwLock<HashMap<StageId, String>>> =
+        Arc::new(RwLock::new(HashMap::new()));
+
+    let mut vdom = VirtualDom::new_with_props(
+        HarnessComponent,
+        HarnessProps {
+            state: Arc::new(RwLock::new(state)),
+            addr: addr_back,
+            pre_expanded_stages: vec![StageId(vec![StageIdSegment::Index(0)])],
+            virtual_devices: vec![],
+            pre_stage_menu: None,
+            pre_malformed_hints: HashMap::new(),
+            meta_modes: modes_owned,
+            hints_capture: Some(Arc::clone(&hints_capture)),
+        },
+    );
+    vdom.rebuild_in_place();
+    // Second pass: pick up dirty scopes flagged by the child's render-phase
+    // writes to `editor.malformed_hints` so the parent reflects post-write
+    // state, mirroring `render_with_expanded_settled`.
+    vdom.render_immediate(&mut dioxus::core::NoOpMutations);
+    let html = render(&vdom);
+    let hints = hints_capture.read().clone();
+    (html, hints)
+}
+
 // ---------------------------------------------------------------------------
 // Harness (VirtualDom::new_with_props pattern matching mapping_editor::tests)
 // ---------------------------------------------------------------------------
@@ -346,6 +455,16 @@ struct HarnessProps {
     /// hints directly.
     #[props(default)]
     pre_malformed_hints: HashMap<StageId, String>,
+    /// Modes seeded into the synthetic `MetaSnapshot.modes` list. F14's
+    /// `ChangeModeBody` reads this to populate its target-mode `Select`.
+    #[props(default = vec!["Default".to_owned()])]
+    meta_modes: Vec<String>,
+    /// Optional capture for `EditorState::malformed_hints` after the
+    /// settled-render pass. F14 tests inspect hint output without relying
+    /// on a thread-local exporter, which races under parallel `cargo test`
+    /// worker reuse.
+    #[props(default)]
+    hints_capture: Option<Arc<RwLock<HashMap<StageId, String>>>>,
 }
 
 impl PartialEq for HarnessProps {
@@ -356,6 +475,12 @@ impl PartialEq for HarnessProps {
             && self.virtual_devices == other.virtual_devices
             && self.pre_stage_menu == other.pre_stage_menu
             && self.pre_malformed_hints == other.pre_malformed_hints
+            && self.meta_modes == other.meta_modes
+            && match (&self.hints_capture, &other.hints_capture) {
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            }
     }
 }
 
@@ -371,6 +496,8 @@ fn HarnessComponent(props: HarnessProps) -> Element {
         virtual_devices,
         pre_stage_menu,
         pre_malformed_hints,
+        meta_modes,
+        hints_capture,
     } = props;
 
     let (cmd_tx, _) = mpsc::channel();
@@ -388,10 +515,11 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     if !virtual_devices.is_empty() {
         snap.virtual_devices = virtual_devices;
     }
+    let meta_modes_value = meta_modes;
     let meta = use_signal(|| MetaSnapshot {
         engine_status: EngineStatus::Running,
         profile_name: Some("P".to_owned()),
-        modes: vec!["Default".to_owned()],
+        modes: meta_modes_value,
         startup_mode: Some("Default".to_owned()),
         current_mode: "Default".to_owned(),
         ..MetaSnapshot::default()
@@ -427,6 +555,9 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     }
     let toast_state = use_signal(ToastState::default);
     use_context_provider(|| ToastQueue { state: toast_state });
+    if let Some(capture) = hints_capture.as_ref() {
+        *capture.write() = editor.malformed_hints.read().clone();
+    }
     rsx! { MappingEditor {} }
 }
 
@@ -459,6 +590,8 @@ fn render_with_full(
             virtual_devices,
             pre_stage_menu: None,
             pre_malformed_hints: HashMap::new(),
+            meta_modes: vec!["Default".to_owned()],
+            hints_capture: None,
         },
     );
     vdom.rebuild_in_place();
@@ -489,6 +622,8 @@ fn render_with_expanded_settled(
             virtual_devices: vec![],
             pre_stage_menu: None,
             pre_malformed_hints: HashMap::new(),
+            meta_modes: vec!["Default".to_owned()],
+            hints_capture: None,
         },
     );
     vdom.rebuild_in_place();
@@ -519,6 +654,8 @@ fn render_with_malformed_hints(
             virtual_devices: vec![],
             pre_stage_menu: None,
             pre_malformed_hints,
+            meta_modes: vec!["Default".to_owned()],
+            hints_capture: None,
         },
     );
     vdom.rebuild_in_place();
@@ -542,6 +679,8 @@ fn render_with_stage_menu(
             virtual_devices: vec![],
             pre_stage_menu,
             pre_malformed_hints: HashMap::new(),
+            meta_modes: vec!["Default".to_owned()],
+            hints_capture: None,
         },
     );
     vdom.rebuild_in_place();
