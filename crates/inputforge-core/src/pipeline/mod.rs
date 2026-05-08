@@ -189,15 +189,27 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
 
             // Control flow
             Action::ChangeMode { strategy } => {
-                // Rising-edge gate. The action fires only while the input is
-                // active so naked `Action::ChangeMode` does not re-trigger on
-                // release. For `Temporary`, the release is handled by
-                // `ReleaseCallback::PopTemporaryMode` registered when the push
-                // succeeds; without this gate, the pipeline rerun on the
-                // release tick would push the temporary mode back. Conditional
-                // wrappers gate their inner branch independently, so this
-                // check is redundant but harmless inside one.
-                if ctx.current_value > 0.0 {
+                // Strategy-aware rising-edge gate.
+                //
+                // `SwitchTo` is idempotent against `ModeState`, so it is safe
+                // to fire on every tick. Allowing release-tick emission lets
+                // wrappers like `Conditional { ButtonReleased(p), if_true:
+                // [SwitchTo "X"] }` work as authored.
+                //
+                // `Temporary` must keep the rising-edge gate. The engine
+                // registers a `PopTemporaryMode` release callback on the
+                // triggering input when the push succeeds, and pops the
+                // mode before re-running the pipeline on the release tick;
+                // without this gate the post-pop rerun would re-push the
+                // temporary mode and the release callback would have no
+                // future release to fire against. Authoring `Temporary`
+                // inside a release-shaped predicate is semantically broken
+                // for the same reason, so blocking it here is correct.
+                let gate_passes = match strategy {
+                    ModeChangeStrategy::SwitchTo { .. } => true,
+                    ModeChangeStrategy::Temporary { .. } => ctx.current_value > 0.0,
+                };
+                if gate_passes {
                     ctx.outputs.push(PipelineOutput::ChangeMode {
                         strategy: strategy.clone(),
                     });
@@ -913,7 +925,11 @@ mod tests {
     }
 
     #[test]
-    fn change_mode_switch_to_does_not_fire_on_release() {
+    fn change_mode_switch_to_fires_on_release() {
+        // SwitchTo is idempotent against ModeState (apply_mode_change is a
+        // no-op when the target equals current()). Allowing it to fire on
+        // release lets release-shaped predicates dispatch SwitchTo as
+        // authored; see the strategy-aware gate in execute_pipeline.
         let cache = MockCache::new();
         let strategy = ModeChangeStrategy::SwitchTo {
             mode: "combat".to_owned(),
@@ -928,9 +944,89 @@ mod tests {
 
         let mut release_ctx = button_ctx(&cache, false);
         execute_pipeline(&actions, &mut release_ctx);
+        assert_eq!(
+            release_ctx.outputs.len(),
+            1,
+            "SwitchTo is idempotent and must emit on every tick so release-shaped predicates work"
+        );
+        assert_eq!(
+            release_ctx.outputs[0],
+            PipelineOutput::ChangeMode { strategy }
+        );
+    }
+
+    #[test]
+    fn change_mode_switch_to_fires_on_release_inside_button_released_conditional() {
+        // Authoring `Conditional { ButtonReleased(p), if_true: [SwitchTo
+        // "X"] }` is a valid pattern: switch to mode X when the button is
+        // released. With the strategy-aware gate, the inner SwitchTo emits
+        // even when ctx.current_value == 0.0 on the release tick.
+        let mut cache = MockCache::new();
+        let button = button_input_address();
+        let strategy = ModeChangeStrategy::SwitchTo {
+            mode: "combat".to_owned(),
+        };
+        let actions = [Action::Conditional {
+            condition: Condition::ButtonReleased {
+                input: button.clone(),
+            },
+            if_true: vec![Action::ChangeMode {
+                strategy: strategy.clone(),
+            }],
+            if_false: Vec::new(),
+        }];
+
+        // On press the button is held: ButtonReleased is false, no emit.
+        cache.buttons.insert(button.clone(), true);
+        let mut press_ctx = button_ctx(&cache, true);
+        execute_pipeline(&actions, &mut press_ctx);
+        assert!(
+            press_ctx.outputs.is_empty(),
+            "ButtonReleased predicate must be false while the button is held"
+        );
+
+        // On release the button is no longer held: ButtonReleased fires.
+        cache.buttons.insert(button, false);
+        let mut release_ctx = button_ctx(&cache, false);
+        execute_pipeline(&actions, &mut release_ctx);
+        assert_eq!(
+            release_ctx.outputs.len(),
+            1,
+            "SwitchTo wrapped in ButtonReleased must emit on the release tick"
+        );
+        assert_eq!(
+            release_ctx.outputs[0],
+            PipelineOutput::ChangeMode { strategy }
+        );
+    }
+
+    #[test]
+    fn change_mode_temporary_blocked_on_release_inside_button_released_conditional() {
+        // Authoring Temporary inside a release-shaped predicate is broken
+        // by design: the registered PopTemporaryMode callback would have
+        // no future release to fire against. The strategy-aware gate
+        // correctly suppresses the dispatch.
+        let mut cache = MockCache::new();
+        let button = button_input_address();
+        let strategy = ModeChangeStrategy::Temporary {
+            mode: "combat".to_owned(),
+        };
+        let actions = [Action::Conditional {
+            condition: Condition::ButtonReleased {
+                input: button.clone(),
+            },
+            if_true: vec![Action::ChangeMode {
+                strategy: strategy.clone(),
+            }],
+            if_false: Vec::new(),
+        }];
+
+        cache.buttons.insert(button, false);
+        let mut release_ctx = button_ctx(&cache, false);
+        execute_pipeline(&actions, &mut release_ctx);
         assert!(
             release_ctx.outputs.is_empty(),
-            "Set on release must be a no-op so it does not re-emit a redundant SwitchTo"
+            "Temporary in a release-shaped predicate must be gated"
         );
     }
 

@@ -199,7 +199,6 @@ fn process_outputs_set_axis() {
         &tree,
         &mut callbacks,
         &trigger,
-        false,
     )
     .unwrap();
 
@@ -236,7 +235,6 @@ fn process_outputs_set_button() {
         &tree,
         &mut callbacks,
         &trigger,
-        false,
     )
     .unwrap();
 
@@ -283,7 +281,6 @@ fn process_outputs_send_key_only_on_press() {
         &tree,
         &mut callbacks,
         &trigger,
-        false,
     )
     .unwrap();
     assert_eq!(kb.calls(), &[KeyboardCall::SendKey(combo.clone())]);
@@ -302,7 +299,6 @@ fn process_outputs_send_key_only_on_press() {
         &tree,
         &mut callbacks2,
         &trigger,
-        false,
     )
     .unwrap();
     assert!(kb2.calls().is_empty());
@@ -332,7 +328,6 @@ fn process_outputs_change_mode_switch_to() {
         &tree,
         &mut callbacks,
         &trigger,
-        false,
     )
     .unwrap();
 
@@ -364,7 +359,6 @@ fn process_outputs_temporary_mode_registers_callback() {
         &tree,
         &mut callbacks,
         &trigger,
-        false,
     )
     .unwrap();
 
@@ -718,6 +712,54 @@ fn tick_updates_current_mode_in_state() {
     engine.tick().unwrap();
 
     assert_eq!(state.read().current_mode, "Combat");
+}
+
+#[test]
+fn tick_temporary_mode_press_and_release_full_cycle() {
+    // Regression seal for the strategy-aware rising-edge gate
+    // (pipeline/mod.rs Action::ChangeMode arm). Without the gate, the
+    // pipeline rerun on the release tick (after the PopTemporaryMode
+    // callback already popped) would re-push the temporary mode and
+    // leave the user stuck in it. The cycle must end on Default with
+    // an empty temporary stack.
+    let mapping = Mapping {
+        input: button_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::ChangeMode {
+            strategy: ModeChangeStrategy::Temporary {
+                mode: "Shift".to_owned(),
+            },
+        }],
+    };
+    let profile = make_profile(shift_mode_tree(), vec![mapping]);
+
+    let mut input = MockInputSource::default();
+    input.events.push(button_event(0, true));
+
+    let (mut engine, state, _tx) = make_engine(input, profile);
+    engine.tick().unwrap();
+    assert_eq!(
+        state.read().current_mode,
+        "Shift",
+        "press tick must push the temporary mode"
+    );
+
+    input = MockInputSource::default();
+    input.events.push(button_event(0, false));
+    engine.input = Box::new(input);
+    engine.tick().unwrap();
+
+    assert_eq!(
+        state.read().current_mode,
+        "Default",
+        "release tick must pop back to Default and not re-push"
+    );
+    // A second release with no events must remain on Default; this guards
+    // against a leaked callback re-pushing on a subsequent tick.
+    engine.input = Box::new(MockInputSource::default());
+    engine.tick().unwrap();
+    assert_eq!(state.read().current_mode, "Default");
 }
 
 #[test]
@@ -1322,7 +1364,6 @@ fn process_outputs_set_axis_wrong_output_id() {
         &tree,
         &mut callbacks,
         &trigger,
-        false,
     )
     .unwrap();
 
@@ -1352,7 +1393,6 @@ fn process_outputs_set_button_wrong_output_id() {
         &tree,
         &mut callbacks,
         &trigger,
-        false,
     )
     .unwrap();
 
@@ -1384,7 +1424,6 @@ fn process_outputs_mode_change_no_op() {
         &tree,
         &mut callbacks,
         &trigger,
-        false,
     )
     .unwrap();
 
