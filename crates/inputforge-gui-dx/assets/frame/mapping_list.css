@@ -259,17 +259,17 @@
     font-size: 10px;
 }
 
-.if-row__qualifier .if-row__chip-glyph {
+.if-row__qualifier .if-row__qualifier-glyph {
     flex: 0 0 auto;
     font-family: var(--font-mono);
     font-weight: 600;
     font-style: normal;
 }
 
-.if-row__qualifier.glyph-merge .if-row__chip-glyph { color: var(--color-output); }
-.if-row__qualifier.glyph-cond  .if-row__chip-glyph { color: var(--color-control-badge-text); }
+.if-row__qualifier.glyph-merge .if-row__qualifier-glyph { color: var(--color-output); }
+.if-row__qualifier.glyph-cond  .if-row__qualifier-glyph { color: var(--color-control-badge-text); }
 
-.if-row__qualifier .if-row__chip-text {
+.if-row__qualifier .if-row__qualifier-text {
     flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
