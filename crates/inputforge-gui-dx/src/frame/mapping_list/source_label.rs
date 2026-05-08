@@ -9,9 +9,11 @@ use inputforge_core::types::{InputAddress, InputId};
 use crate::context::ConfigSnapshot;
 
 /// Standard HID usage-page ordering. Axes 0-7 map to the names below;
-/// higher indices fall back to `Ax {index}`. Mirrors the conventional HID
-/// usage-page names so axis presentation stays consistent across the GUI.
-const HID_AXIS_LABELS: [&str; 8] = ["X", "Y", "Z", "Rot X", "Rot Y", "Rot Z", "Sldr", "Dial"];
+/// higher indices fall back to `Ax {index}`. The Rx/Ry/Rz form (rather
+/// than `Rot X` / `Rot Y` / `Rot Z`) matches the vJoy output-axis
+/// labels rendered by `format_output_label`, so an inline echo on the
+/// row's source line reads as `Rx -> Rx` instead of `Rot X -> Rx`.
+const HID_AXIS_LABELS: [&str; 8] = ["X", "Y", "Z", "Rx", "Ry", "Rz", "Sldr", "Dial"];
 
 /// Placeholder shown when the address has no binding selected yet
 /// (`InputAddress::Unbound`). Stages added from the palette display this
