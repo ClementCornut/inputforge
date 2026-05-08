@@ -1820,6 +1820,52 @@ fn mapping_list_css_locks_handle_halo_on_row_hover() {
     );
 }
 
+/// The handle halo (`mapping_list_css_locks_handle_halo_on_row_hover`)
+/// floats over the row at `left: 4px` with a 1 px border and 1px 2px
+/// inner padding, putting its outer right edge at row x ~ 20 px. The
+/// row pays no global left-padding (density), so the source-line cells
+/// (`.if-row__name` and `.if-row__source`) each carry a `--space-2`
+/// (8 px) `padding-left` to compensate, ensuring the halo no longer
+/// overlaps the labels on hover. A future "drop redundant padding"
+/// cleanup that strips either declaration would silently regress the
+/// overlap; this test pins both halves of the contract.
+#[test]
+fn mapping_list_css_locks_source_line_gutter() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+
+    // Split on a leading newline so we match the standalone
+    // `.if-row__name {` rule rather than the compound selector
+    // `.if-row.is-active .if-row__name { font-weight: 700; }`, which
+    // contains the same substring at its tail.
+    let name_block = css
+        .split("\n.if-row__name {")
+        .nth(1)
+        .expect("standalone .if-row__name rule present")
+        .split('}')
+        .next()
+        .expect(".if-row__name rule closed");
+    assert!(
+        name_block.contains("padding-left: var(--space-2);"),
+        ".if-row__name must declare padding-left: var(--space-2) so the \
+         hover-revealed drag-handle halo (outer right ~ 20 px) does not \
+         overlap the name label: {name_block}",
+    );
+
+    let source_block = css
+        .split("\n.if-row__source {")
+        .nth(1)
+        .expect("standalone .if-row__source rule present")
+        .split('}')
+        .next()
+        .expect(".if-row__source rule closed");
+    assert!(
+        source_block.contains("padding-left: var(--space-2);"),
+        ".if-row__source must declare padding-left: var(--space-2) so the \
+         hover-revealed drag-handle halo does not overlap the source line \
+         (device + input identity): {source_block}",
+    );
+}
+
 /// The live row-tint is layered as an inset 1 px shadow modulated by
 /// the inline `--row-live-intensity` custom property. Locking the
 /// token (--color-live) and the intensity formula
@@ -2282,6 +2328,57 @@ fn row_output_chip_replaces_legacy_output_badge() {
     assert!(
         html.contains("aria-hidden=\"true\""),
         "arrow glyph must be aria-hidden so screen readers rely on label sequence: {html}",
+    );
+}
+
+/// Negative half of `row_output_chip_replaces_legacy_output_badge`:
+/// when `first_vjoy_output: None`, the row must render no
+/// `.if-chip--output` element and no arrow glyph. Locks the other half
+/// of the conditional render at `row.rs:238` so a future regression
+/// that always renders the chip (or the separator) fails fast.
+#[test]
+fn row_output_chip_absent_when_no_vjoy() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::frame::mapping_list::row::Row;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let summary = MappingSummary {
+            input: InputAddress::Bound {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Axis { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Pitch".to_owned()),
+            glyphs: GlyphFlags::default(),
+            referenced_devices: vec![DeviceId("dev".to_owned())],
+            first_vjoy_output: None,
+        };
+        let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
+        let sortable = use_sortable_state::<u32>();
+        rsx! {
+            Row {
+                summary: summary,
+                is_active: false,
+                renaming: renaming,
+                sortable: sortable,
+                filter_active: false,
+                on_open_menu: move |_: (InputAddress, f64, f64)| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    let chip_count = html.matches("if-chip--output").count();
+    assert_eq!(
+        chip_count, 0,
+        "row without first_vjoy_output must render zero .if-chip--output elements; got {chip_count} in: {html}",
+    );
+    assert!(
+        !html.contains("\u{2192}"),
+        "no arrow glyph U+2192 must paint when there is no output chip to separate to: {html}",
     );
 }
 
