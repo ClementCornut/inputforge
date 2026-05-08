@@ -2269,3 +2269,16 @@ git commit -m "docs(master-plan): mark F14 mode editing shipped"
 - **No effort estimates:** every step here describes a code change, not a duration. Skip if a step turns out to be a no-op (e.g., `rename_mode_refs` does not actually become infallible).
 - **Do not amend commits.** Each task ships in one fresh commit. The conventional-commits skill enforces the `type(scope): subject` format.
 - **Smoke vs manual.** Steps that say `cargo test` or `cargo build` are smoke tests. Steps that say `dx run` are manual verification (Task 18 only).
+
+---
+
+## Post-merge addendum
+
+The original plan did not anticipate that `Action::ChangeMode` would re-fire on the release tick of its triggering input. Without a gate, `Temporary` modes leak (the post-pop pipeline rerun re-pushes), and the F14 Hold strategy is broken end-to-end. Two patches landed after Task 18:
+
+- `6675cd6 fix(core): gate Action::ChangeMode on input rising edge` introduced an unconditional `ctx.current_value > 0.0` gate at `pipeline/mod.rs:191-205` plus three regression tests covering the Temporary/SwitchTo/Conditional paths.
+- A follow-up refinement (post-review) made the gate strategy-aware: `SwitchTo` now fires unconditionally because it is idempotent against `ModeState`, which lets release-shaped predicates (`Conditional { ButtonReleased(p), if_true: [SwitchTo "X"] }`) work as authored. `Temporary` keeps the rising-edge gate. Two additional pipeline tests and one engine end-to-end test (press -> push -> release -> no re-push, in `engine/tests.rs`) seal the regression.
+
+Both fixes belong to F14 because `Temporary` cannot ship without them. Authoring `Temporary` inside a release-shaped predicate is intentionally blocked, since the registered `PopTemporaryMode` callback would have no future release to fire against.
+
+The post-review pass also restored the spec's hint copy verbatim (priorities 1, 2, 3) after the plan-introduced reword; introduced a `malformed_summary_tags` signal to split the compact collapsed-header tag from the body's full-prose hint banner; added `tabindex="-1"` to the disabled Hold pill so it drops out of sequential focus order; prefixed the orphan Select option label with `(removed) ` to communicate stale targets even on the closed `<select>` trigger; added `:focus-visible` plus `min-height: 32px` to the strategy pill row; and cleaned up a stale `false` 8th argument on nine `process_pipeline_outputs` test call sites that had been blocking the `--features test-util` build since the forced-mode removal in commit `300b3b6`.
