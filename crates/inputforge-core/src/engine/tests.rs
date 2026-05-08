@@ -964,15 +964,6 @@ fn hat_event(index: u8, direction: HatDirection) -> InputEvent {
     }
 }
 
-/// Build a `ModeTree` with Default → Combat and Default → Racing.
-fn combat_racing_tree() -> ModeTree {
-    let map = HashMap::from([(
-        "Default".to_owned(),
-        vec!["Combat".to_owned(), "Racing".to_owned()],
-    )]);
-    ModeTree::from_adjacency(&map).unwrap()
-}
-
 /// Build a `ModeTree` with Default → Combat and Default → Landing.
 fn three_mode_tree() -> ModeTree {
     let map = HashMap::from([(
