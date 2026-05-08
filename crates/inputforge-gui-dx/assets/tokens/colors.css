@@ -100,5 +100,5 @@
        trailing `+`. Keeping the percentages here means any future
        intensity tweak ships from one file. */
     --tint-selected: 8%;
-    --tint-create: 5%;
+    --tint-create:   5%;
 }

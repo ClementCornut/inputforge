@@ -1273,7 +1273,7 @@ fn colors_css_declares_tint_selected_and_tint_create() {
          create-row hover can color-mix from one source: {css}",
     );
     assert!(
-        css.contains("--tint-create: 5%;"),
+        css.contains("--tint-create:   5%;"),
         "--tint-create token must be declared so the dashed footer hover reads \
          as create rather than selected: {css}",
     );
