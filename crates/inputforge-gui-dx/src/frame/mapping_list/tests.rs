@@ -1862,3 +1862,43 @@ fn row_output_chip_replaces_legacy_output_badge() {
         "arrow glyph must be aria-hidden so screen readers rely on label sequence: {html}",
     );
 }
+
+#[test]
+fn mapping_list_css_locks_dashed_add_row_cohesion() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+
+    let block = css
+        .split(".if-add-inline__dashed-row {")
+        .nth(1)
+        .expect(".if-add-inline__dashed-row rule present")
+        .split('}')
+        .next()
+        .expect(".if-add-inline__dashed-row rule closed");
+    assert!(
+        block.contains("border: 1px dashed var(--color-border-strong);"),
+        "dashed footer must use --color-border-strong (matches profiles' + New profile): {block}",
+    );
+    assert!(
+        block.contains("border-radius: var(--radius-md);"),
+        "dashed footer must bump radius to --radius-md (parity with rows): {block}",
+    );
+
+    let hover = css
+        .split(".if-add-inline__dashed-row:hover {")
+        .nth(1)
+        .expect(".if-add-inline__dashed-row:hover rule present")
+        .split('}')
+        .next()
+        .expect(".if-add-inline__dashed-row:hover rule closed");
+    assert!(
+        hover.contains("border-color: var(--color-border-focus);"),
+        "dashed footer hover must use --color-border-focus (unified active border idiom): {hover}",
+    );
+    assert!(
+        hover.contains(
+            "background: color-mix(in srgb, var(--color-primary) var(--tint-create), var(--color-bg));"
+        ),
+        "dashed footer hover must mix primary at --tint-create into --color-bg \
+         (reads as create rather than selected): {hover}",
+    );
+}
