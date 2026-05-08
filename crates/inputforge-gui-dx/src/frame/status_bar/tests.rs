@@ -57,8 +57,13 @@ fn status_bar_warning_badge_includes_leading_glyph() {
         "warning slot must remain a Badge Warning: {html}",
     );
     assert!(
-        html.contains("\u{26A0}"),
-        "warning Badge must include the leading U+26A0 glyph for visual scan parity: {html}",
+        html.contains("if-frame-status-bar__warning-glyph"),
+        "warning Badge must include the leading glyph slot for visual scan parity: {html}",
+    );
+    assert!(
+        html.contains("if-icon--sm"),
+        "warning glyph must be the Phosphor warning Icon (currentColor SVG), \
+         not a raw Unicode codepoint that renders as Win11 color emoji: {html}",
     );
 }
 

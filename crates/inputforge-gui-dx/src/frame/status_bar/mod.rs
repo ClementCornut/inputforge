@@ -5,8 +5,9 @@ mod tests;
 
 use dioxus::prelude::*;
 
-use crate::components::{Badge, BadgeVariant, StatusBar as StatusBarPrimitive};
+use crate::components::{Badge, BadgeVariant, Icon, StatusBar as StatusBarPrimitive};
 use crate::context::AppContext;
+use crate::icons::{Icon as IconKind, IconSize};
 
 use logic::{device_count_parts, truncate_path, warning_count_label};
 
@@ -47,7 +48,11 @@ pub(crate) fn StatusBar() -> Element {
             start: rsx! {
                 if let Some(text) = w.as_ref() {
                     Badge { variant: BadgeVariant::Warning,
-                        span { class: "if-frame-status-bar__warning-glyph", "aria-hidden": "true", "\u{26A0}" }
+                        Icon {
+                            name: IconKind::Warning,
+                            size: IconSize::Sm,
+                            class: "if-frame-status-bar__warning-glyph".to_owned(),
+                        }
                         " {text}"
                     }
                 }
