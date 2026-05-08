@@ -2153,6 +2153,50 @@ fn mapping_list_css_wraps_device_filter_chips_into_multiple_rows() {
     );
 }
 
+/// Idle device-filter chips paint a 4% primary tint on hover (lighter
+/// than the 8% active commit), with the bg-color animated via the
+/// canonical fast curve. Locks the round-7 hover affordance so a
+/// future refactor cannot drop it silently or escalate the tint to
+/// the same intensity as the pressed-active state.
+#[test]
+fn mapping_list_css_locks_device_chip_hover_lighter_than_active() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+
+    // Hover block: 4% primary tint over --color-bg-elevated.
+    let hover_block = css
+        .split(".if-rail__device-chip:not([aria-pressed=\"true\"]):hover > .if-chip {")
+        .nth(1)
+        .expect("device-chip hover block present")
+        .split('}')
+        .next()
+        .expect("device-chip hover block closed");
+    assert!(
+        hover_block
+            .contains("color-mix(in srgb, var(--color-primary) 4%, var(--color-bg-elevated))"),
+        "device-chip hover must paint a 4% primary tint over --color-bg-elevated, lighter than the 8% active commit: {hover_block}",
+    );
+
+    // Base transition: declared on the always-present inner chip
+    // selector so hover-in, hover-out, and the active-toggle all
+    // animate symmetrically (DESIGN.md section "Motion": fast curve
+    // for hover, focus, press, colour transitions).
+    let base_block = css
+        .split(".if-rail__device-chip > .if-chip {")
+        .nth(1)
+        .expect("device-chip base block present")
+        .split('}')
+        .next()
+        .expect("device-chip base block closed");
+    assert!(
+        base_block.contains("var(--duration-fast)"),
+        "device-chip base block must declare the canonical fast duration so hover/active swaps animate: {base_block}",
+    );
+    assert!(
+        base_block.contains("var(--easing-fast)"),
+        "device-chip base block must declare the canonical fast easing so hover/active swaps animate: {base_block}",
+    );
+}
+
 #[test]
 fn row_output_chip_replaces_legacy_output_badge() {
     use crate::context::{GlyphFlags, MappingSummary};

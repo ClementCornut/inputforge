@@ -74,6 +74,29 @@
     color: var(--color-primary);
 }
 
+/* Base transition on the inner chip so hover-in / hover-out and the
+ * pressed-active swap all animate via the canonical fast curve
+ * (DESIGN.md section "Motion"). Mirror of the .if-row idle declaration
+ * below that drives both .if-row:hover and .if-row.is-active. */
+.if-rail__device-chip > .if-chip {
+    transition:
+        background var(--duration-fast) var(--easing-fast),
+        border-color var(--duration-fast) var(--easing-fast);
+}
+
+/* Hover affordance on idle chips: lighter primary tint than the
+ * active treatment (4% vs --tint-selected's 8%) so hover reads as a
+ * transient cue distinct from the pressed commit. Border stays at
+ * --color-border-strong (the outline-chip idle border) so :hover and
+ * :focus-visible remain visually separable: focus paints the outer
+ * button outline, hover paints the inner chip background. The
+ * :not([aria-pressed="true"]) guard keeps the active treatment
+ * dominant on pressed chips. */
+.if-rail__device-chip:not([aria-pressed="true"]):hover > .if-chip {
+    background: color-mix(in srgb, var(--color-primary) 4%, var(--color-bg-elevated));
+    border-color: var(--color-border-strong);
+}
+
 .if-rail__device-chip:focus-visible {
     outline: 2px solid var(--color-border-focus);
     outline-offset: 2px;
