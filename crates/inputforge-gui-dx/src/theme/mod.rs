@@ -33,6 +33,7 @@ const CHECKBOX_CSS: Asset = asset!("/assets/components/checkbox.css");
 const DIALOG_CSS: Asset = asset!("/assets/components/dialog.css");
 const CARD_CSS: Asset = asset!("/assets/components/card.css");
 const BADGE_CSS: Asset = asset!("/assets/components/badge.css");
+const CHIP_CSS: Asset = asset!("/assets/components/chip.css");
 const SEPARATOR_CSS: Asset = asset!("/assets/components/separator.css");
 const SPINNER_CSS: Asset = asset!("/assets/components/spinner.css");
 const TOOLTIP_CSS: Asset = asset!("/assets/components/tooltip.css");
@@ -90,6 +91,7 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: DIALOG_CSS }
         Stylesheet { href: CARD_CSS }
         Stylesheet { href: BADGE_CSS }
+        Stylesheet { href: CHIP_CSS }
         Stylesheet { href: SEPARATOR_CSS }
         Stylesheet { href: SPINNER_CSS }
         Stylesheet { href: TOOLTIP_CSS }

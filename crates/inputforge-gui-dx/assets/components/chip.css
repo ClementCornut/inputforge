@@ -1,0 +1,23 @@
+/* Chip primitive. Three variants cover the rail's classification chips,
+   output chips, and capture chips. Status semantics live on Badge per
+   DESIGN.md section 7. */
+
+.if-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 1px var(--space-2);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.if-chip.if-chip--outline {
+    background: transparent;
+    border-color: var(--color-border-strong);
+    color: var(--color-text-muted);
+}
