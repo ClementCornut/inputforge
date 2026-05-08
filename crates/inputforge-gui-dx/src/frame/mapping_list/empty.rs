@@ -9,7 +9,7 @@
 
 use dioxus::prelude::*;
 
-use crate::components::{Button, ButtonVariant};
+use crate::components::{Button, ButtonSize, ButtonVariant};
 
 #[component]
 pub(crate) fn EmptyZeroMappings() -> Element {
@@ -53,6 +53,7 @@ pub(crate) fn EmptyZeroFilterResults(
                 if has_query {
                     Button {
                         variant: ButtonVariant::Ghost,
+                        size: ButtonSize::Sm,
                         onclick: move |_| on_clear_text.call(()),
                         "Clear text"
                     }
@@ -60,6 +61,7 @@ pub(crate) fn EmptyZeroFilterResults(
                 if let Some(clear_device) = on_clear_device {
                     Button {
                         variant: ButtonVariant::Ghost,
+                        size: ButtonSize::Sm,
                         onclick: move |_| clear_device.call(()),
                         "Clear device"
                     }
