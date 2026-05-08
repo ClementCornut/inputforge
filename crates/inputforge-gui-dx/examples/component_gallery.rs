@@ -12,11 +12,11 @@ use dioxus::prelude::*;
     reason = "Label is re-exported for consumers; Field uses it internally"
 )]
 use inputforge_gui_dx::components::{
-    Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Card, CardPadding, Checkbox, Cluster,
-    DialogBody, DialogDescription, DialogFooter, DialogRoot, DialogTitle, Field, Icon, IconButton,
-    InputSize, Label, MenuItem, MenuItems, MenuRoot, MenuTrigger, NumberInput, Select, Separator,
-    SeparatorOrientation, Slider, Spinner, SpinnerSize, Stack, StatusBar, Switch, TabItem, Tabs,
-    TextInput, Tooltip, TooltipPlacement,
+    Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Card, CardPadding, Checkbox, Chip,
+    ChipVariant, Cluster, DialogBody, DialogDescription, DialogFooter, DialogRoot, DialogTitle,
+    Field, Icon, IconButton, InputSize, Label, MenuItem, MenuItems, MenuRoot, MenuTrigger,
+    NumberInput, Select, Separator, SeparatorOrientation, Slider, Spinner, SpinnerSize, Stack,
+    StatusBar, Switch, TabItem, Tabs, TextInput, Tooltip, TooltipPlacement,
 };
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
 use inputforge_gui_dx::patterns::DirtyConfirmDialog;
@@ -448,6 +448,23 @@ fn gallery_root() -> Element {
                             Badge { variant: BadgeVariant::Success, "Success" }
                             Badge { variant: BadgeVariant::Warning, "Warning" }
                             Badge { variant: BadgeVariant::Error,   "Error" }
+                        }
+                    }
+
+                    section {
+                        h2 { "Chip" }
+                        Cluster { gap: "--space-2".to_owned(),
+                            Chip { variant: ChipVariant::Outline, "Outline" }
+                            Chip { variant: ChipVariant::Output, "vJoy 2 . X" }
+                            span { "data-kind": "axis",
+                                Chip { variant: ChipVariant::Capture, "AXIS 0" }
+                            }
+                            span { "data-kind": "button",
+                                Chip { variant: ChipVariant::Capture, "BTN 5" }
+                            }
+                            span { "data-kind": "hat",
+                                Chip { variant: ChipVariant::Capture, "HAT 0" }
+                            }
                         }
                     }
 
