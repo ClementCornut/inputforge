@@ -1467,3 +1467,98 @@ fn mode_tabs_running_pip_uses_canonical_class() {
         "legacy bespoke .if-mode-tab__marker class must be retired: {html}",
     );
 }
+
+#[test]
+fn mapping_list_css_locks_row_token_contract() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+
+    // Row resting block. Padding is uniform var(--space-3) (the 10px
+    // drag-handle gutter is dropped in this pass; the SortableHandle is
+    // a 0-width hover-only overlay). Radius bumps to --radius-md to
+    // match .if-device-row and .profile-row.
+    let block = css
+        .split(".if-row {")
+        .nth(1)
+        .expect(".if-row rule present")
+        .split('}')
+        .next()
+        .expect(".if-row rule closed");
+    assert!(
+        block.contains("padding: var(--space-3);"),
+        ".if-row padding must be uniform var(--space-3): {block}",
+    );
+    assert!(
+        block.contains("border-radius: var(--radius-md);"),
+        ".if-row must use --radius-md (matches .if-device-row): {block}",
+    );
+    assert!(
+        block.contains("background: var(--color-bg);"),
+        ".if-row base must use --color-bg (rows sit on bg, not bg-elevated): {block}",
+    );
+    assert!(
+        block.contains("border: 1px solid transparent;"),
+        ".if-row must reserve a 1px transparent border so hover/selected swaps \
+         do not reflow geometry: {block}",
+    );
+
+    // Hover.
+    let hover = css
+        .split(".if-row:hover {")
+        .nth(1)
+        .expect(".if-row:hover rule present")
+        .split('}')
+        .next()
+        .expect(".if-row:hover rule closed");
+    assert!(
+        hover.contains("background: var(--color-bg-elevated);"),
+        ".if-row:hover background must be --color-bg-elevated (the \
+         --color-border substitution is dropped): {hover}",
+    );
+    assert!(
+        hover.contains("border-color: var(--color-border-strong);"),
+        ".if-row:hover border must be --color-border-strong (matches \
+         .if-device-row:hover): {hover}",
+    );
+
+    // Selected. The active row mixes --color-primary at --tint-selected
+    // into --color-bg, with a --color-border-focus border.
+    let selected = css
+        .split(".if-row.is-active {")
+        .nth(1)
+        .expect(".if-row.is-active rule present")
+        .split('}')
+        .next()
+        .expect(".if-row.is-active rule closed");
+    assert!(
+        selected.contains(
+            "background: color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg));"
+        ),
+        ".if-row.is-active background must mix --color-primary at \
+         --tint-selected into --color-bg (no `transparent` parent): {selected}",
+    );
+    assert!(
+        selected.contains("border-color: var(--color-border-focus);"),
+        ".if-row.is-active must carry the focus border idiom: {selected}",
+    );
+
+    // Focus-visible. Inset 2px to match .if-device-row's offset:-2px.
+    assert!(
+        css.contains(".if-row:focus-visible {"),
+        ".if-row:focus-visible rule must exist: {css}",
+    );
+    let focus = css
+        .split(".if-row:focus-visible {")
+        .nth(1)
+        .expect(".if-row:focus-visible rule present")
+        .split('}')
+        .next()
+        .expect(".if-row:focus-visible rule closed");
+    assert!(
+        focus.contains("outline: 2px solid var(--color-border-focus);"),
+        "row focus ring must be 2px var(--color-border-focus): {focus}",
+    );
+    assert!(
+        focus.contains("outline-offset: -2px;"),
+        "row focus offset must be inset (-2px) per .if-device-row contract: {focus}",
+    );
+}

@@ -99,30 +99,35 @@
     text-transform: uppercase;
 }
 
-/* Row chrome.
+/* Row chrome. Token-aligned with .if-device-row (panel_slot.css) so the
+ * rail and the right panels read as one design system. Selected state
+ * uses surface-tint over the row's --color-bg base, NOT
+ * primary-on-transparent (which composited against the rail's elevated
+ * surface previously). The 1px transparent border reserves geometry so
+ * hover/selected swaps do not reflow.
  *
- * Selection signal: surface-tint only. We deliberately do NOT use a
- * side-stripe `border-left` accent, DESIGN.md §8 names that pattern as
- * banned (the Toast accent stripe is the only documented exception, and
- * only because the toast surfaces in the user's peripheral field; rows
- * sit foveal). Selection legibility comes from the bumped primary tint
- * + the bolder name weight on `.is-active`. */
+ * Selected signal: surface-tint + focus-border. We deliberately do NOT
+ * use a `border-left` accent stripe; DESIGN.md section 8 names that
+ * pattern as banned (Toast accent stripe is the only documented
+ * exception, and only because toasts sit in the user's peripheral
+ * field; rows sit foveal). */
 .if-row {
     position: relative;
-    /* Reserve a 10 px left column for the hover-only drag handle
-       (4 px gutter + 6 px handle visual width, centered as a 10 px
-       SVG box). Hidden at rest so density is preserved when the
-       user is not interacting with this row. The 22 px padding-left
-       holds even when the handle is invisible to avoid layout
-       reflow on hover. */
-    padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) + 10px);
+    padding: var(--space-3);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
     cursor: pointer;
     user-select: none;
+    transition:
+        background var(--duration-fast) var(--easing-fast),
+        border-color var(--duration-fast) var(--easing-fast),
+        color var(--duration-fast) var(--easing-fast);
 }
 
 .if-row:hover {
-    /* substituted --color-border for missing --color-surface-hover */
-    background: var(--color-border);
+    background: var(--color-bg-elevated);
+    border-color: var(--color-border-strong);
 }
 
 /* DnD chrome (drag handle, dragging dim, drop-target bar) lives in the
@@ -138,11 +143,17 @@
 }
 
 .if-row.is-active {
-    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+    background: color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg));
+    border-color: var(--color-border-focus);
 }
 
 .if-row.is-active .if-row__name {
-    font-weight: 600;
+    font-weight: 700;
+}
+
+.if-row:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: -2px;
 }
 
 .if-row__output-badge {
@@ -457,11 +468,9 @@
     width: 100%;
 }
 
-.if-row:focus-visible,
 .if-rail__filter input:focus-visible,
 .if-row-rename:focus-visible,
 .if-add-inline--captured input:focus-visible {
-    /* substituted --color-border-focus for missing --color-focus-ring */
     outline: 2px solid var(--color-border-focus);
     outline-offset: 1px;
 }
