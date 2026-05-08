@@ -155,9 +155,9 @@ Right-side panel that plugs into F7's Replace slot. Owns the device-list section
 
 Right-side panel that plugs into F7's Replace slot. Owns the profile library + Snapshots sub-section; per-row hover-revealed actions; `+ New` inline expanding-row flow with template radio (Blank / Copy from active / Copy from selected); `Open file…` OS picker; per-snapshot actions (Pin/Unpin · Rename · Delete · Restore →) wired to F6's snapshot commands; and the no-profile workspace empty state (`+ New profile`, `Open file…`, library pointer; engine forced Stopped). Profile rename, snapshot rename, and `+ New` name commit on Enter or blur, Esc cancels.
 
-#### F14. Mode editing (beyond tab CRUD)
+#### F14. Mode editing (beyond tab CRUD) [Shipped 2026-05-08]
 
-Downscoped from the old F11 mode editor. Most mode CRUD (create/rename/delete/select/activate, default-mode selection) lives in F7's mode-tab right-click menu. F14 owns what's left: the `ChangeMode { strategy }` action editor inside the pipeline (a mode-change is just a regular `Action`, so it gets pipeline-stage treatment); strategy picker (`SetMode` / `CycleModes`); and any mode-tree visualization if implementation discovers users need one (default plan: do not).
+Downscoped from the old F11 mode editor. Most mode CRUD (create/rename/delete/select/activate, default-mode selection) lives in F7's mode-tab right-click menu. F14 owns what's left: the `ChangeMode { strategy }` action editor inside the pipeline (a mode-change is just a regular `Action`, so it gets pipeline-stage treatment); strategy picker (Set / Hold, mapping to `ModeChangeStrategy::SwitchTo` and `::Temporary`; `Previous` and `Cycle` were cut from the engine as part of this feature); and any mode-tree visualization if implementation discovers users need one (default plan: do not).
 
 #### F15. Settings UI, preferences editor surface
 
