@@ -1928,18 +1928,34 @@ fn add_inline_collision_arm_leads_with_warning_badge() {
     );
 }
 
+/// Border declaration shared by every active-treatment surface in the
+/// rail (row selected, device chip active, dashed-row hover). Encoded
+/// once so a future rename of `--color-border-focus` flows through every
+/// call site of this contract from a single source.
+const EXPECTED_ACTIVE_BORDER: &str = "border-color: var(--color-border-focus);";
+
+/// Build the expected `background:` declaration for the active treatment
+/// at a given (tint percent token, parent surface token) pair. Mirrors the
+/// rule documented in the spec section "Active treatment,
+/// parent-surface-relative".
+fn expected_active_tint_mix(tint: &str, surface: &str) -> String {
+    format!("background: color-mix(in srgb, var(--color-primary) {tint}, {surface});")
+}
+
 #[test]
 fn active_treatment_shape_is_unified_across_row_chip_and_create_row() {
     // Encodes the spec contract: row-selected, chip-active, and the
     // dashed create-row hover all share the same border + tint shape.
     // Differences allowed: parent surface (--color-bg vs
     // --color-bg-elevated) and tint percent (--tint-selected vs
-    // --tint-create). Mode tabs are NOT part of this contract;
-    // they keep the canonical 3px primary bottom-underline asserted in
+    // --tint-create). The shared constant + helper above are the single
+    // source of truth, so a rename in one block cannot drift past this
+    // test. Mode tabs are NOT part of this contract; they keep the
+    // canonical 3px primary bottom-underline asserted in
     // mode_tabs_active_tab_renders_canonical_if_tab_active_class.
     let css = include_str!("../../../assets/frame/mapping_list.css");
 
-    // Row selected.
+    // Row selected (sits on --color-bg, tint = --tint-selected).
     let row_active = css
         .split(".if-row.is-active {")
         .nth(1)
@@ -1947,10 +1963,15 @@ fn active_treatment_shape_is_unified_across_row_chip_and_create_row() {
         .split('}')
         .next()
         .expect(".if-row.is-active closed");
-    assert!(row_active.contains("border-color: var(--color-border-focus);"));
-    assert!(row_active.contains(
-        "background: color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg));"
-    ));
+    let row_expected_bg = expected_active_tint_mix("var(--tint-selected)", "var(--color-bg)");
+    assert!(
+        row_active.contains(EXPECTED_ACTIVE_BORDER),
+        ".if-row.is-active must declare {EXPECTED_ACTIVE_BORDER}: {row_active}",
+    );
+    assert!(
+        row_active.contains(&row_expected_bg),
+        ".if-row.is-active must declare {row_expected_bg}: {row_active}",
+    );
 
     // Device chip active (parent surface = --color-bg-elevated since the
     // chip strip sits on the rail's elevated bar).
@@ -1961,10 +1982,16 @@ fn active_treatment_shape_is_unified_across_row_chip_and_create_row() {
         .split('}')
         .next()
         .expect(".if-rail__device-chip pressed closed");
-    assert!(chip_active.contains("border-color: var(--color-border-focus);"));
-    assert!(chip_active.contains(
-        "background: color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg-elevated));"
-    ));
+    let chip_expected_bg =
+        expected_active_tint_mix("var(--tint-selected)", "var(--color-bg-elevated)");
+    assert!(
+        chip_active.contains(EXPECTED_ACTIVE_BORDER),
+        ".if-rail__device-chip[aria-pressed=true] must declare {EXPECTED_ACTIVE_BORDER}: {chip_active}",
+    );
+    assert!(
+        chip_active.contains(&chip_expected_bg),
+        ".if-rail__device-chip[aria-pressed=true] must declare {chip_expected_bg}: {chip_active}",
+    );
 
     // Dashed footer hover (tint swaps to --tint-create so the affordance
     // reads as `create` rather than `selected`; border idiom matches).
@@ -1975,8 +2002,13 @@ fn active_treatment_shape_is_unified_across_row_chip_and_create_row() {
         .split('}')
         .next()
         .expect(".if-add-inline__dashed-row hover closed");
-    assert!(dashed_hover.contains("border-color: var(--color-border-focus);"));
-    assert!(dashed_hover.contains(
-        "background: color-mix(in srgb, var(--color-primary) var(--tint-create), var(--color-bg));"
-    ));
+    let dashed_expected_bg = expected_active_tint_mix("var(--tint-create)", "var(--color-bg)");
+    assert!(
+        dashed_hover.contains(EXPECTED_ACTIVE_BORDER),
+        ".if-add-inline__dashed-row:hover must declare {EXPECTED_ACTIVE_BORDER}: {dashed_hover}",
+    );
+    assert!(
+        dashed_hover.contains(&dashed_expected_bg),
+        ".if-add-inline__dashed-row:hover must declare {dashed_expected_bg}: {dashed_hover}",
+    );
 }
