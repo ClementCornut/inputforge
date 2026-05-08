@@ -503,15 +503,13 @@ pub(crate) fn AddInline(
                             span { "aria-label": "Listening for input",
                                 Chip {
                                     variant: ChipVariant::Capture,
-                                    class: "if-add-inline__chip if-add-inline__chip--listening"
-                                        .to_owned(),
+                                    class: "if-add-inline__chip--listening".to_owned(),
                                 }
                             }
                         } else {
                             span { "data-kind": "{kind_class}",
                                 Chip {
                                     variant: ChipVariant::Capture,
-                                    class: "if-add-inline__chip".to_owned(),
                                     "{chip_label}"
                                 }
                             }
