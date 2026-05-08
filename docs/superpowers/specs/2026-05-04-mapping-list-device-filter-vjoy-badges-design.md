@@ -69,7 +69,7 @@ Clicking an inactive device chip activates that device. Clicking another chip sw
 
 The filter area contains the existing text filter and a compact device-chip row.
 
-The device-chip row is a single horizontal row. It does not wrap. When many devices are present, the row scrolls horizontally while keeping a stable height, so the mapping rows below do not jump or get pushed into a stacked layout.
+The device-chip strip wraps onto multiple rows when many devices are present. CSS uses `flex-wrap: wrap`, no horizontal scroll. The rail's filter area grows by one chip-row per wrapped row; the mapping list below absorbs the height delta naturally rather than scrolling chips off-screen. (Updated by the 2026-05-07 mapping-list cohesion pass; the contract test `mapping_list_css_wraps_device_filter_chips_into_multiple_rows` locks `flex-wrap: wrap;` is present and `overflow-x: auto;` is absent.)
 
 Device chips are derived from devices referenced by mappings in the current mode. Chip identity is always `DeviceId`. The visible label uses the current connected device name when available, otherwise a cached or profile-known name when available, otherwise the raw device ID. If two chips resolve to the same visible label, append a compact ID suffix so the chips remain distinguishable.
 
@@ -79,15 +79,17 @@ The `Add mapping` control is sticky at the bottom of the rail. The mapping group
 
 Rows keep their current group structure: axes, buttons, hats. Named rows show the mapping name as the primary line. Unnamed rows do not render a fake title; the source line becomes the visible identity.
 
-Rows with `first_vjoy_output` show one compact badge at the row end:
+Rows with `first_vjoy_output` echo the output inline on the source line, after an arrow glyph separator (`→`), as a `Chip Output` primitive instance:
 
-- axes: `vJoy 1 · X`
-- buttons: `vJoy 2 · Btn 4`
-- hats: `vJoy 1 · Hat 1`
+- axes: `Stick · X → vJoy 1 · X`
+- buttons: `Stick · Btn 4 → vJoy 2 · Btn 4`
+- hats: `Stick · Hat 1 → vJoy 1 · Hat 1`
 
-Badge formatting should reuse the existing editor/live-readout output-label convention. Axis labels are compact in the row badge (`X`, `Y`, `Z`, `Rx`, etc.). Button and hat labels use the stored vJoy output IDs consistently with the current `format_output_label` behavior unless a later implementation centralizes a different convention across the GUI.
+(Updated by the 2026-05-07 mapping-list cohesion pass; the legacy right-floating `.if-row__output-badge` was replaced by the inline `Chip Output` rendered immediately after the trigger label, separated by a `→` glyph.)
 
-Rows without a vJoy output do not show the badge.
+Output formatting reuses the existing editor/live-readout output-label convention. Axis labels are compact in the chip (`X`, `Y`, `Z`, `Rx`, etc.). Button and hat labels use the stored vJoy output IDs consistently with the current `format_output_label` behavior unless a later implementation centralizes a different convention across the GUI.
+
+Rows without a vJoy output do not render the chip and the arrow glyph is not painted.
 
 ## Visual Direction
 
@@ -99,7 +101,7 @@ This is product UI for a precision sim-input tool. The design remains sharp, cal
 - stable row heights
 - no decorative cards, side stripes, gradients, or modal interactions
 
-The output badge follows the selected visual direction: one compact badge at the row end, combining vJoy device and output into a single scannable token.
+The output identifier follows the selected visual direction: one compact inline `Chip Output` echo on the source line after the trigger, separated by a `→` glyph, combining vJoy device and output into a single scannable token in the same scan path as the trigger itself.
 
 ## Empty And Edge States
 
@@ -113,7 +115,7 @@ If the selected device disconnects but mappings still reference its ID, keep the
 
 Device chips are toggle buttons in tab order. Each chip has `aria-pressed="true"` when active and `aria-pressed="false"` when inactive, a stable accessible name, and a visible focus ring.
 
-The chip strip is horizontally scrollable without changing rail height. Keyboard users can tab through chips; pointer users can scroll the row when overflow exists. When a visible chip label truncates, provide a `title` or equivalent accessible description with the full label.
+The chip strip wraps onto multiple rows when many devices are present, so all chips remain reachable in tab order without horizontal scrolling. Keyboard users tab through chips in document order across rows. When a visible chip label truncates, provide a `title` or equivalent accessible description with the full label.
 
 Color is not the only state channel: the active chip should carry a class, pressed state, or text/state attribute in addition to color.
 
