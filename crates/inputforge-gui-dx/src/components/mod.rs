@@ -24,6 +24,7 @@ pub mod spinner;
 pub mod status_bar;
 pub mod switch;
 pub mod tabs;
+pub mod tabs_root;
 pub mod text_input;
 pub mod tooltip;
 
@@ -52,6 +53,7 @@ pub use spinner::{Spinner, SpinnerSize};
 pub use status_bar::StatusBar;
 pub use switch::Switch;
 pub use tabs::{TabItem, Tabs};
+pub use tabs_root::TabsRoot;
 pub use text_input::{InputSize, TextInput};
 pub use tooltip::{Tooltip, TooltipPlacement};
 
