@@ -47,23 +47,31 @@ pub fn TabsList(
 ) -> Element {
     let ctx = use_context::<TabsContext>();
 
-    if let Some(mut req) = ctx.focus_request {
-        let registry = ctx.registry;
-        use_effect(move || {
-            let Some(target_id) = req.read().clone() else {
-                return;
-            };
-            let entries = registry.read();
-            if let Some(entry) = entries.iter().find(|e| e.id == target_id) {
-                let node = Rc::clone(&entry.mounted);
-                drop(entries);
-                req.set(None);
-                spawn(async move {
-                    let _ = node.set_focus(true).await;
-                });
-            }
-        });
-    }
+    // Always-call hook: Dioxus, like React, requires hook invocations in
+    // identical order across renders. Hoist the optional channel and
+    // registry to locals so the `use_effect` registers unconditionally;
+    // the body is gated on the focus_request being `Some` and carrying
+    // a target id. Callers that pass `Some(...)` must keep that signal
+    // set for the lifetime of the render tree.
+    let focus_req = ctx.focus_request;
+    let registry = ctx.registry;
+    use_effect(move || {
+        let Some(mut req) = focus_req else {
+            return;
+        };
+        let Some(target_id) = req.read().clone() else {
+            return;
+        };
+        let entries = registry.read();
+        if let Some(entry) = entries.iter().find(|e| e.id == target_id) {
+            let node = Rc::clone(&entry.mounted);
+            drop(entries);
+            req.set(None);
+            spawn(async move {
+                let _ = node.set_focus(true).await;
+            });
+        }
+    });
 
     let combined = merge_class(
         "if-tabs",

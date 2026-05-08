@@ -35,6 +35,13 @@ pub(crate) struct TabsContext {
     /// Caller-owned signal: setting it to `Some(id)` asks `TabsList` to
     /// move focus to that tab. `TabsList` clears the signal once it has
     /// focused (or skipped) the request, so it is safe to set repeatedly.
+    ///
+    /// Once a caller supplies `Some(signal)`, the channel must remain
+    /// `Some` for the lifetime of the render tree. `TabsList` registers
+    /// its `use_effect` watcher unconditionally and gates the body on
+    /// the channel being `Some`, so toggling between `Some`/`None`
+    /// across renders does not violate hook ordering, but a consumer
+    /// that flips the field would lose subsequent focus requests.
     pub focus_request: Option<Signal<Option<String>>>,
     pub registry: Signal<Vec<TabRegistryEntry>>,
 }

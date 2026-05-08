@@ -37,6 +37,12 @@ pub struct TabItem {
 /// Thin wrapper over `TabsRoot` + `TabsList` + `TabButton`; rendered HTML
 /// is identical to the pre-decomposition primitive so existing consumers
 /// require no changes.
+///
+/// `items` is taken as a `ReadSignal<Vec<TabItem>>` so callers that
+/// stabilize the list via `use_memo` (or a static signal) avoid the
+/// O(n) `TabItem` clone the by-value `Vec<TabItem>` form paid on every
+/// parent re-render. Consumers passing a literal `vec![...]` continue
+/// to work via auto-coercion.
 #[component]
 pub fn Tabs(
     /// Stable id of the active tab.
@@ -44,7 +50,7 @@ pub fn Tabs(
     onchange: EventHandler<String>,
     /// Tabs in display order. Each item carries its own id, label, and
     /// optional `controls` panel id.
-    items: Vec<TabItem>,
+    items: ReadSignal<Vec<TabItem>>,
     #[props(default)] class: Option<String>,
     #[props(default)] disabled: bool,
 ) -> Element {
@@ -54,7 +60,7 @@ pub fn Tabs(
             onchange: onchange,
             disabled: disabled,
             TabsList { class: class,
-                for item in items.iter().cloned() {
+                for item in items.read().iter().cloned() {
                     TabButton {
                         key: "{item.id}",
                         id: item.id.clone(),
