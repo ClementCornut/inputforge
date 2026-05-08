@@ -10,7 +10,7 @@ use crate::components::{TabButton, TabsList, TabsRoot};
 use crate::context::AppContext;
 use crate::frame::view_state::ViewState;
 
-pub(crate) use delete_dialog::{ModeDeleteDialog, ModeDeleteSignal};
+pub(crate) use delete_dialog::{ModeDeleteDialog, ModeDeleteSignal, ModeFocusSignal};
 use logic::runtime_marker;
 
 #[component]
@@ -59,10 +59,17 @@ pub(crate) fn ModeTabs() -> Element {
     let editing_now = editing.read().clone();
 
     // T31 Step 3a: focus newly-created tab once it appears in `modes`.
-    // `pending_focus` is set explicitly by `add_inline::run_commit` on a
-    // successful AddMode dispatch. The same signal is also used by the
-    // context-menu `on_close` handler to refocus the tab when the menu
-    // closes via Escape / click-outside / item activation.
+    // `pending_focus` is set by:
+    //   1. `add_inline::run_commit` on successful AddMode dispatch.
+    //   2. The context-menu `on_close` handler to refocus the tab when
+    //      the menu closes via Escape / click-outside / item activation.
+    //   3. `ModeDeleteDialog` to land focus on the surviving tab after
+    //      Confirm or on the originating tab after Cancel / Escape.
+    //
+    // The signal lives in shell-scope (`ModeFocusSignal`) so the
+    // sibling dialog reaches it through context, replacing the prior
+    // `document.querySelectorAll('[role="tab"]').focus()` JS-eval path
+    // with a single canonical channel through `TabsList`.
     //
     // `TabsList` watches this signal: when it is `Some(name)` and a
     // matching `TabButton` has registered its `MountedData` ref, the
@@ -70,7 +77,7 @@ pub(crate) fn ModeTabs() -> Element {
     // requests for not-yet-mounted tabs stay set until the registry
     // grows to include the target, which is exactly the behavior the
     // hand-rolled use_effect used to implement.
-    let pending_focus: Signal<Option<String>> = use_signal(|| None);
+    let pending_focus: Signal<Option<String>> = use_context::<ModeFocusSignal>().0;
 
     rsx! {
         div { class: "if-mode-tabs-outer",
@@ -256,7 +263,12 @@ pub(crate) fn ModeTabs() -> Element {
                 // profile's mode tree to compute "subtree contains
                 // startup" precisely.
                 {
-                    if let Some((open_name, _)) = open_for_tab.read().as_ref().cloned() {
+                    // Bind the read result into an owned Option so the
+                    // signal's read guard drops before any inner branch
+                    // can call `open_for_tab.set(None)` (the stale-name
+                    // recovery path), avoiding a borrow conflict.
+                    let open_snapshot = open_for_tab.read().as_ref().cloned();
+                    if let Some((open_name, _)) = open_snapshot {
                         let modes_for_flags = modes_now.clone();
                         let m = ctx.meta.read();
                         let startup = m.startup_mode.clone();
@@ -281,59 +293,66 @@ pub(crate) fn ModeTabs() -> Element {
                         // context menu to derive its DOM id and
                         // aria-labelledby target (which point at the
                         // integer-derived tab id, never the raw mode
-                        // name, see JS-injection note above).
-                        let open_tab_idx = modes_for_flags
-                            .iter()
-                            .position(|m| m == &open_name)
-                            .unwrap_or(0);
+                        // name, see JS-injection note above). If the
+                        // open name is no longer in the modes list (a
+                        // benign rename/delete race) we clear the signal
+                        // and render nothing rather than fall back to
+                        // index 0, which would point AT at the wrong
+                        // tab.
+                        if let Some(open_tab_idx) =
+                            modes_for_flags.iter().position(|m| m == &open_name)
+                        {
+                            let flags = context_menu::ContextMenuFlags {
+                                activate_disabled: already_current,
+                                rename_disabled: !has_profile,
+                                delete_disabled: logic::delete_disabled_for_tab(
+                                    &open_name,
+                                    &modes_for_flags,
+                                    startup.as_deref(),
+                                    &descendants,
+                                ),
+                                set_default_disabled: is_startup,
+                            };
 
-                        let flags = context_menu::ContextMenuFlags {
-                            activate_disabled: already_current,
-                            rename_disabled: !has_profile,
-                            delete_disabled: logic::delete_disabled_for_tab(
-                                &open_name,
-                                &modes_for_flags,
-                                startup.as_deref(),
-                                &descendants,
-                            ),
-                            set_default_disabled: is_startup,
-                        };
+                            let mut focus_writer = pending_focus;
 
-                        let mut focus_writer = pending_focus;
-
-                        rsx! {
-                            context_menu::ModeTabContextMenu {
-                                tab_name: open_name.clone(),
-                                tab_idx: open_tab_idx,
-                                open: open_for_tab,
-                                flags,
-                                on_close: move |(n, reason): (String, context_menu::CloseReason)| {
-                                    // Tab key: the browser's natural
-                                    // traversal is moving focus to the
-                                    // next focusable element; re-focusing
-                                    // the tab here would fight that
-                                    // intent. For every other close path
-                                    // (Escape / click-outside /
-                                    // ItemActivated) the tab is the
-                                    // natural landing focus, route the
-                                    // request through TabsRoot's
-                                    // focus_request signal so TabsList
-                                    // hits the matching `TabButton`'s
-                                    // ref.
-                                    if matches!(reason, context_menu::CloseReason::Tab) {
-                                        return;
-                                    }
-                                    focus_writer.set(Some(n));
-                                },
-                                on_rename: move |n: String| {
-                                    renaming.set(Some(n));
-                                    open_for_tab.set(None);
-                                },
-                                on_delete: move |n: String| {
-                                    delete_target.set(Some(n));
-                                    open_for_tab.set(None);
-                                },
+                            rsx! {
+                                context_menu::ModeTabContextMenu {
+                                    tab_name: open_name.clone(),
+                                    tab_idx: open_tab_idx,
+                                    open: open_for_tab,
+                                    flags,
+                                    on_close: move |(n, reason): (String, context_menu::CloseReason)| {
+                                        // Tab key: the browser's natural
+                                        // traversal is moving focus to the
+                                        // next focusable element; re-focusing
+                                        // the tab here would fight that
+                                        // intent. For every other close path
+                                        // (Escape / click-outside /
+                                        // ItemActivated) the tab is the
+                                        // natural landing focus, route the
+                                        // request through TabsRoot's
+                                        // focus_request signal so TabsList
+                                        // hits the matching `TabButton`'s
+                                        // ref.
+                                        if matches!(reason, context_menu::CloseReason::Tab) {
+                                            return;
+                                        }
+                                        focus_writer.set(Some(n));
+                                    },
+                                    on_rename: move |n: String| {
+                                        renaming.set(Some(n));
+                                        open_for_tab.set(None);
+                                    },
+                                    on_delete: move |n: String| {
+                                        delete_target.set(Some(n));
+                                        open_for_tab.set(None);
+                                    },
+                                }
                             }
+                        } else {
+                            open_for_tab.set(None);
+                            rsx! {}
                         }
                     } else {
                         rsx! {}

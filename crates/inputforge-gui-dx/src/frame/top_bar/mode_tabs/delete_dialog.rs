@@ -22,10 +22,18 @@ use crate::context::AppContext;
 #[derive(Clone, Copy)]
 pub(crate) struct ModeDeleteSignal(pub Signal<Option<String>>);
 
+/// Imperative tab-focus channel shared between `ModeTabs` (which feeds
+/// it into `TabsRoot::focus_request`) and the dialog (which sets it on
+/// close to land focus back on a tab name). Lifted to context so the
+/// dialog and the tabs are siblings under `Layout`.
+#[derive(Clone, Copy)]
+pub(crate) struct ModeFocusSignal(pub Signal<Option<String>>);
+
 #[component]
 pub(crate) fn ModeDeleteDialog() -> Element {
     let ctx = use_context::<AppContext>();
     let mut delete_target = use_context::<ModeDeleteSignal>().0;
+    let mut mode_focus = use_context::<ModeFocusSignal>().0;
 
     // Mirror `delete_target` into a boolean `dialog_open` so the
     // DialogRoot's `Signal<bool>` contract is satisfied. The reverse
@@ -42,51 +50,65 @@ pub(crate) fn ModeDeleteDialog() -> Element {
     // Pre-compute the blast-radius counts every render, cheap walk.
     // The numeric magnitudes are the dialog body's "what does this
     // affect" readout; mode count includes the target itself plus any
-    // descendants in the active profile's mode tree.
-    let (display_name, modes_count, mappings_count, restore_idx) =
+    // descendants in the active profile's mode tree. `survivor_name`
+    // is the tab the user should land on after a Confirm: take the
+    // current modes list, drop the deleted set, clamp the deleted
+    // tab's old index against the survivors length. For Cancel /
+    // Escape / click-outside, focus simply returns to the tab that
+    // owned the menu (`display_name`).
+    let (display_name, modes_count, mappings_count, survivor_name) =
         match delete_target.read().as_ref() {
             Some(name) => {
                 let s = ctx.state.read();
-                let counts = s.active_profile.as_ref().map_or((1, 0), |p| {
-                    let descendants = p.modes().descendants_of(name).unwrap_or_default();
-                    let modes_count = 1 + descendants.len();
-                    let mut deleted: Vec<String> = descendants;
-                    deleted.push(name.clone());
-                    let mappings_count = p
-                        .mappings()
-                        .iter()
-                        .filter(|m| deleted.iter().any(|d| d == &m.mode))
-                        .count();
-                    (modes_count, mappings_count)
+                let (counts, deleted_set) = s.active_profile.as_ref().map_or_else(
+                    || ((1_usize, 0_usize), vec![name.clone()]),
+                    |p| {
+                        let descendants = p.modes().descendants_of(name).unwrap_or_default();
+                        let modes_count = 1 + descendants.len();
+                        let mut deleted: Vec<String> = descendants;
+                        deleted.push(name.clone());
+                        let mappings_count = p
+                            .mappings()
+                            .iter()
+                            .filter(|m| deleted.iter().any(|d| d == &m.mode))
+                            .count();
+                        ((modes_count, mappings_count), deleted)
+                    },
+                );
+                let modes_now = ctx.meta.read().modes.clone();
+                let restore_idx = modes_now.iter().position(|m| m == name);
+                let survivors: Vec<String> = modes_now
+                    .into_iter()
+                    .filter(|m| !deleted_set.iter().any(|d| d == m))
+                    .collect();
+                let survivor = restore_idx.and_then(|idx| {
+                    if survivors.is_empty() {
+                        None
+                    } else {
+                        let clamped = idx.min(survivors.len() - 1);
+                        Some(survivors[clamped].clone())
+                    }
                 });
-                let restore_idx = ctx.meta.read().modes.iter().position(|m| m == name);
-                (name.clone(), counts.0, counts.1, restore_idx)
+                (name.clone(), counts.0, counts.1, survivor)
             }
             None => (String::new(), 0, 0, None),
         };
 
     let cmd_for_delete = ctx.commands.clone();
     let confirm_name = display_name.clone();
+    let cancel_focus_name = display_name.clone();
+    let confirm_focus_name = survivor_name.clone();
 
-    // Focus-restore callback. After the modes list updates (delete
-    // confirmed) or the user cancels, return focus to the tab at the
-    // remembered index, clamped to the new list length. Uses a DOM
-    // selector keyed off the integer-derived `mode-tab-N` id pattern
-    // emitted by `ModeTabs`, this decouples the dialog from
-    // `ModeTabs`'s local `tab_refs` storage now that the two
-    // components are siblings rather than a parent-child pair.
+    // Focus-restore callback. on_close fires for Escape and
+    // click-outside; both are Cancel-shaped (the modes list is
+    // unchanged), so route focus back to the tab that owned the
+    // dialog via the shared `ModeFocusSignal`. The Cancel and
+    // Confirm button onclick handlers below set the signal explicitly
+    // before clearing `delete_target`, so this callback only matters
+    // when neither button was clicked. Single focus channel,
+    // `TabsList` is the only thing that calls `set_focus(true)`.
     let onclose = move |()| {
-        if let Some(idx) = restore_idx {
-            spawn(async move {
-                let _ = document::eval(&format!(
-                    "var tabs = document.querySelectorAll('[role=\"tab\"]');\n\
-                     if (tabs.length > 0) {{\n\
-                         var i = Math.min({idx}, tabs.length - 1);\n\
-                         tabs[i].focus();\n\
-                     }}"
-                ));
-            });
-        }
+        mode_focus.set(Some(cancel_focus_name.clone()));
         delete_target.set(None);
     };
 
@@ -117,15 +139,29 @@ pub(crate) fn ModeDeleteDialog() -> Element {
                             let _ = evt.data().set_focus(true).await;
                         });
                     },
-                    onclick: move |_| { delete_target.set(None); },
+                    onclick: move |_| {
+                        // Cancel: modes list is unchanged, return
+                        // focus to the tab that owned the dialog.
+                        mode_focus.set(Some(display_name.clone()));
+                        delete_target.set(None);
+                    },
                     "Cancel"
                 }
                 crate::components::Button {
                     variant: crate::components::ButtonVariant::Secondary,
                     onclick: move |_| {
+                        // Confirm: route focus to the survivor at the
+                        // deleted tab's old index (clamped). Computed
+                        // above from the modes list at render time;
+                        // by the time TabsList consumes the signal
+                        // the modes list has updated and the survivor
+                        // name is in the registry.
                         let _ = cmd_for_delete.send(EngineCommand::DeleteMode {
                             name: confirm_name.clone(),
                         });
+                        if let Some(target) = confirm_focus_name.clone() {
+                            mode_focus.set(Some(target));
+                        }
                         delete_target.set(None);
                     },
                     "Confirm"

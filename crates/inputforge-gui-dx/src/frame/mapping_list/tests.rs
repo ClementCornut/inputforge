@@ -1413,10 +1413,13 @@ fn mode_tabs_active_tab_renders_canonical_if_tab_active_class() {
         let ctx_app = use_context::<AppContext>();
         let mut cfg_signal = ctx_app.config;
         let mut meta_signal = ctx_app.meta;
-        // ModeDeleteSignal is provided shell-side normally; provide a
-        // local stub so ModeTabs can mount in isolation.
+        // ModeDeleteSignal + ModeFocusSignal are provided shell-side
+        // normally; provide local stubs so ModeTabs can mount in
+        // isolation.
         let dt: Signal<Option<String>> = use_signal(|| None);
         use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeDeleteSignal(dt));
+        let mf: Signal<Option<String>> = use_signal(|| None);
+        use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeFocusSignal(mf));
         use_hook(move || {
             cfg_signal.set(ConfigSnapshot::from_state(&state, None));
             meta_signal.set(MetaSnapshot::from_state(&state));
@@ -1476,6 +1479,8 @@ fn mode_tabs_add_button_lives_outside_tablist() {
         let mut meta_signal = ctx_app.meta;
         let dt: Signal<Option<String>> = use_signal(|| None);
         use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeDeleteSignal(dt));
+        let mf: Signal<Option<String>> = use_signal(|| None);
+        use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeFocusSignal(mf));
         use_hook(move || {
             cfg_signal.set(ConfigSnapshot::from_state(&state, None));
             meta_signal.set(MetaSnapshot::from_state(&state));
@@ -1541,6 +1546,8 @@ fn mode_tabs_running_pip_uses_canonical_class() {
         let mut meta_signal = ctx_app.meta;
         let dt: Signal<Option<String>> = use_signal(|| None);
         use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeDeleteSignal(dt));
+        let mf: Signal<Option<String>> = use_signal(|| None);
+        use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeFocusSignal(mf));
         use_hook(move || {
             cfg_signal.set(ConfigSnapshot::from_state(&state, None));
             meta_signal.set(MetaSnapshot::from_state(&state));

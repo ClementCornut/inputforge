@@ -11,7 +11,9 @@ const LAYOUT_CSS: Asset = asset!("/assets/frame/layout.css");
 use crate::context::AppContext;
 use crate::frame::panel_slot::PanelSlot as PanelSlotComponent;
 use crate::frame::status_bar::StatusBar;
-use crate::frame::top_bar::{ModeDeleteDialog, ModeDeleteSignal, ModeTabs, TopBar};
+use crate::frame::top_bar::{
+    ModeDeleteDialog, ModeDeleteSignal, ModeFocusSignal, ModeTabs, TopBar,
+};
 use crate::frame::view_state::{MainSurface, ViewState};
 
 pub(crate) use empty_state::EmptyState;
@@ -34,6 +36,8 @@ pub(crate) fn Layout() -> Element {
     let s = *main_surface.read();
     let delete_target = use_signal(|| Option::<String>::None);
     use_context_provider(|| ModeDeleteSignal(delete_target));
+    let mode_focus = use_signal(|| Option::<String>::None);
+    use_context_provider(|| ModeFocusSignal(mode_focus));
 
     rsx! {
         div { class: "if-layout",
