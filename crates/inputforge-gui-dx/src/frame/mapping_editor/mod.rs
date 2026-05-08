@@ -227,10 +227,17 @@ pub(crate) struct EditorState {
     pub expanded_stages: Signal<HashSet<StageId>>,
     /// Right-click menu state (anchor + target stage).
     pub stage_menu: Signal<Option<StageMenuState>>,
-    /// Per-stage validation hints surfaced in the stage header summary
-    /// slot per spec lines 587-589. Bodies write on render; the stage
-    /// header reads. Cleared on every structural mutation: see Task 11.
+    /// Per-stage validation prose surfaced inside the stage body banner
+    /// when the user expands the stage. Bodies write on render; the body
+    /// renderer reads. Cleared on every structural mutation: see Task 11.
     pub malformed_hints: Signal<HashMap<StageId, String>>,
+    /// Per-stage compact tag (<= 24 chars) surfaced in the collapsed-header
+    /// summary slot. Distinct from `malformed_hints` so the right-aligned
+    /// 12px mono summary stays glanceable while the body banner carries
+    /// the full prose. Bodies write a tag whenever they write a hint;
+    /// readers fall back to the prose when a tag is absent (transitional
+    /// safety net for any stage body that has not adopted the tag yet).
+    pub malformed_summary_tags: Signal<HashMap<StageId, String>>,
 }
 
 /// Allocate signals and install `EditorState` in context. Call exactly
@@ -240,12 +247,14 @@ pub(crate) fn use_editor_state_provider() -> EditorState {
     let expanded_stages: Signal<HashSet<StageId>> = use_signal(HashSet::new);
     let stage_menu: Signal<Option<StageMenuState>> = use_signal(|| None);
     let malformed_hints: Signal<HashMap<StageId, String>> = use_signal(HashMap::new);
+    let malformed_summary_tags: Signal<HashMap<StageId, String>> = use_signal(HashMap::new);
 
     let state = EditorState {
         undo_log,
         expanded_stages,
         stage_menu,
         malformed_hints,
+        malformed_summary_tags,
     };
     use_context_provider(|| state);
     state

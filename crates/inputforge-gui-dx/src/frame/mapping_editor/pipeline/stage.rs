@@ -150,13 +150,20 @@ pub(crate) fn Stage(
     }
 
     // Task 35: look up any validation hint written by the body for this stage.
-    // When a hint exists the summary slot shows it instead of the normal
-    // summary, and the title receives an error-tint class.
+    // When a hint (or its compact summary tag) exists the summary slot shows
+    // it instead of the normal summary, and the title receives an error-tint
+    // class. The summary slot prefers the compact tag (<= 24 chars) so the
+    // right-aligned 12px mono slot stays glanceable; the body banner uses
+    // the full prose. Stage bodies that have not adopted the tag fall back
+    // to the prose hint here, with CSS ellipsis as a defense-in-depth.
     let malformed_hint: Option<String> = editor.malformed_hints.read().get(&stage_id).cloned();
-    let is_malformed = malformed_hint.is_some();
+    let summary_tag: Option<String> = editor.malformed_summary_tags.read().get(&stage_id).cloned();
+    let is_malformed = malformed_hint.is_some() || summary_tag.is_some();
 
     let title = stage_title_for(&action).to_owned();
-    let summary = malformed_hint.unwrap_or_else(|| stage_summary_for(&action, &cfg));
+    let summary = summary_tag
+        .or_else(|| malformed_hint.clone())
+        .unwrap_or_else(|| stage_summary_for(&action, &cfg));
     let right_slot = stage_body::header_right_slot(&action, expanded);
     // Provide a richer accessible name for the ResponseCurve header so screen
     // reader users hear the curve summary alongside the toggle affordance.
@@ -342,9 +349,16 @@ fn format_key_combo(key: &KeyCombo) -> String {
 }
 
 /// Format a [`ModeChangeStrategy`] to a concise one-line description.
+///
+/// An empty mode renders as the bare verb ("Set", "Hold") without a
+/// trailing space. The malformed-hint banner preempts this in collapsed
+/// summaries today, but the defensive branch keeps the formatter
+/// well-behaved for any caller that bypasses the preempt.
 fn format_mode_strategy(strategy: &ModeChangeStrategy) -> String {
     match strategy {
+        ModeChangeStrategy::SwitchTo { mode } if mode.is_empty() => "Set".to_owned(),
         ModeChangeStrategy::SwitchTo { mode } => format!("Set {mode}"),
+        ModeChangeStrategy::Temporary { mode } if mode.is_empty() => "Hold".to_owned(),
         ModeChangeStrategy::Temporary { mode } => format!("Hold {mode}"),
     }
 }

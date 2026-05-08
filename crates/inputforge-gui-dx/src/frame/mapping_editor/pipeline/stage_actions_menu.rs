@@ -187,6 +187,7 @@ pub(crate) fn StageActionsMenu(
         let mut undo_log = editor.undo_log;
         let mut expanded = editor.expanded_stages;
         let mut malformed = editor.malformed_hints;
+        let mut tags = editor.malformed_summary_tags;
 
         move |_: MouseEvent| {
             if move_up_disabled {
@@ -268,6 +269,8 @@ pub(crate) fn StageActionsMenu(
             malformed
                 .write()
                 .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, invalidate_from));
+            tags.write()
+                .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, invalidate_from));
         }
     };
 
@@ -285,6 +288,7 @@ pub(crate) fn StageActionsMenu(
         let mut undo_log = editor.undo_log;
         let mut expanded = editor.expanded_stages;
         let mut malformed = editor.malformed_hints;
+        let mut tags = editor.malformed_summary_tags;
 
         move |_: MouseEvent| {
             if move_down_disabled {
@@ -364,6 +368,8 @@ pub(crate) fn StageActionsMenu(
             malformed
                 .write()
                 .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, current_idx));
+            tags.write()
+                .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, current_idx));
         }
     };
 
@@ -380,6 +386,7 @@ pub(crate) fn StageActionsMenu(
         let mut undo_log = editor.undo_log;
         let mut expanded = editor.expanded_stages;
         let mut malformed = editor.malformed_hints;
+        let mut tags = editor.malformed_summary_tags;
 
         move |_: MouseEvent| {
             let Some(new_actions) = remove_at_path(&root, &stage_id) else {
@@ -437,6 +444,8 @@ pub(crate) fn StageActionsMenu(
                 .retain(|p| !path_invalidated_by_mutation(p, &parent_path, current_idx));
             malformed
                 .write()
+                .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, current_idx));
+            tags.write()
                 .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, current_idx));
         }
     };

@@ -362,6 +362,7 @@ pub(crate) fn Pipeline(
     let mut undo_log = editor.undo_log;
     let mut expanded_stages = editor.expanded_stages;
     let mut malformed_hints = editor.malformed_hints;
+    let mut malformed_summary_tags = editor.malformed_summary_tags;
     let drag_from_for_drop = sortable.drag_from;
     let drag_group_for_drop = sortable.drag_group;
     let mut live_writer = sortable.live_announcement;
@@ -493,6 +494,9 @@ pub(crate) fn Pipeline(
         };
         expanded_stages.write().retain(|p| !invalidated(p));
         malformed_hints.write().retain(|p, _| !invalidated(p));
+        malformed_summary_tags
+            .write()
+            .retain(|p, _| !invalidated(p));
 
         // AT live-region announcement.
         live_writer.set(format!(

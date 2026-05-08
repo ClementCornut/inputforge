@@ -213,6 +213,7 @@ pub(crate) fn AddPalette(
         let mut undo_log = editor.undo_log;
         let mut expanded = editor.expanded_stages;
         let mut malformed = editor.malformed_hints;
+        let mut tags = editor.malformed_summary_tags;
         let insert_len = target_len;
 
         move |_: MouseEvent| {
@@ -273,6 +274,8 @@ pub(crate) fn AddPalette(
                 .retain(|p| !path_invalidated_by_mutation(p, &parent_path, insert_idx));
             malformed
                 .write()
+                .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, insert_idx));
+            tags.write()
                 .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, insert_idx));
             expanded.write().insert(insert_path);
         }
