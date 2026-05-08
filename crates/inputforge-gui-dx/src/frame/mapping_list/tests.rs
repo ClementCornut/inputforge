@@ -1927,3 +1927,56 @@ fn add_inline_collision_arm_leads_with_warning_badge() {
          badge_pos={badge_pos}, prose_pos={prose_pos}",
     );
 }
+
+#[test]
+fn active_treatment_shape_is_unified_across_row_chip_and_create_row() {
+    // Encodes the spec contract: row-selected, chip-active, and the
+    // dashed create-row hover all share the same border + tint shape.
+    // Differences allowed: parent surface (--color-bg vs
+    // --color-bg-elevated) and tint percent (--tint-selected vs
+    // --tint-create). Mode tabs are NOT part of this contract;
+    // they keep the canonical 3px primary bottom-underline asserted in
+    // mode_tabs_active_tab_renders_canonical_if_tab_active_class.
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+
+    // Row selected.
+    let row_active = css
+        .split(".if-row.is-active {")
+        .nth(1)
+        .expect(".if-row.is-active block")
+        .split('}')
+        .next()
+        .expect(".if-row.is-active closed");
+    assert!(row_active.contains("border-color: var(--color-border-focus);"));
+    assert!(row_active.contains(
+        "background: color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg));"
+    ));
+
+    // Device chip active (parent surface = --color-bg-elevated since the
+    // chip strip sits on the rail's elevated bar).
+    let chip_active = css
+        .split(".if-rail__device-chip[aria-pressed=\"true\"] > .if-chip {")
+        .nth(1)
+        .expect(".if-rail__device-chip pressed block")
+        .split('}')
+        .next()
+        .expect(".if-rail__device-chip pressed closed");
+    assert!(chip_active.contains("border-color: var(--color-border-focus);"));
+    assert!(chip_active.contains(
+        "background: color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg-elevated));"
+    ));
+
+    // Dashed footer hover (tint swaps to --tint-create so the affordance
+    // reads as `create` rather than `selected`; border idiom matches).
+    let dashed_hover = css
+        .split(".if-add-inline__dashed-row:hover {")
+        .nth(1)
+        .expect(".if-add-inline__dashed-row hover block")
+        .split('}')
+        .next()
+        .expect(".if-add-inline__dashed-row hover closed");
+    assert!(dashed_hover.contains("border-color: var(--color-border-focus);"));
+    assert!(dashed_hover.contains(
+        "background: color-mix(in srgb, var(--color-primary) var(--tint-create), var(--color-bg));"
+    ));
+}
