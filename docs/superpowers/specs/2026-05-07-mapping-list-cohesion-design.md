@@ -370,10 +370,12 @@ Sub-element treatments:
   `--color-text` (today is plain `--color-text-muted`), so the count
   reads as data instead of chrome. The trailing `devices` label stays
   muted.
-- Path: right-aligned mono `--color-border-strong`. Path slot
-  truncates with standard `text-overflow: ellipsis`. Existing
-  `truncate_path` helper at `frame/status_bar/logic.rs` continues to
-  gate label length.
+- Path: right-aligned mono `--color-text-muted`. The earlier draft of
+  this spec called for `--color-border-strong` here, but that is a
+  border tier, not a text color; the path is filesystem readout text
+  and stays on the muted text tier. Path slot truncates with standard
+  `text-overflow: ellipsis`. Existing `truncate_path` helper at
+  `frame/status_bar/logic.rs` continues to gate label length.
 
 ### I · Empty states
 
