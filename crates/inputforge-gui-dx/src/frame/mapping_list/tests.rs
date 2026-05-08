@@ -373,12 +373,16 @@ fn row_renders_compact_vjoy_output_badge() {
     assert!(html.contains("vJoy 2"), "vJoy device missing: {html}");
     assert!(html.contains('X'), "vJoy output missing: {html}");
     assert!(
-        html.contains("if-row__output-badge"),
-        "output badge class missing: {html}"
+        html.contains("if-chip--output"),
+        "output chip class missing: {html}"
     );
     assert!(
         !html.contains("if-row__source-input"),
         "legacy input label must not render beside the output badge: {html}"
+    );
+    assert!(
+        html.contains("\u{2192}"),
+        "source line must include the arrow glyph U+2192 separating trigger from output: {html}",
     );
 }
 
@@ -1735,5 +1739,64 @@ fn mapping_list_css_wraps_device_filter_chips_into_multiple_rows() {
     assert!(
         !block.contains("overflow-x: auto;"),
         "device filter strip must NOT use overflow-x scrolling after the wrap migration; got: {block}",
+    );
+}
+
+#[test]
+fn row_output_chip_replaces_legacy_output_badge() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::frame::mapping_list::row::Row;
+    use inputforge_core::types::{
+        DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis,
+    };
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let summary = MappingSummary {
+            input: InputAddress::Bound {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Axis { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Pitch".to_owned()),
+            glyphs: GlyphFlags::default(),
+            referenced_devices: vec![DeviceId("dev".to_owned())],
+            first_vjoy_output: Some(OutputAddress {
+                device: 2,
+                output: OutputId::Axis { id: VJoyAxis::X },
+            }),
+        };
+        let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
+        let sortable = use_sortable_state::<u32>();
+        rsx! {
+            Row {
+                summary: summary,
+                is_active: false,
+                renaming: renaming,
+                sortable: sortable,
+                filter_active: false,
+                on_open_menu: move |_: (InputAddress, f64, f64)| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        !html.contains("if-row__output-badge"),
+        "legacy .if-row__output-badge class must NOT render after the migration: {html}",
+    );
+    let chip_count = html.matches("if-chip--output").count();
+    assert_eq!(
+        chip_count, 1,
+        "row with first_vjoy_output must render exactly one .if-chip--output element; got {chip_count} in: {html}",
+    );
+    assert!(
+        html.contains("\u{2192}"),
+        "source line must include the arrow glyph U+2192 separating trigger from output: {html}",
+    );
+    assert!(
+        html.contains("aria-hidden=\"true\""),
+        "arrow glyph must be aria-hidden so screen readers rely on label sequence: {html}",
     );
 }

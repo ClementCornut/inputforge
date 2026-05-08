@@ -10,6 +10,7 @@ use dioxus::prelude::*;
 use inputforge_core::types::{InputAddress, OutputAddress, OutputId, VJoyAxis};
 
 use crate::components::sortable::{SortableHandle, SortableState};
+use crate::components::{Chip, ChipVariant};
 use crate::context::{AppContext, MappingSummary};
 use crate::frame::mapping_list::group::{GroupKind, group_of};
 use crate::frame::mapping_list::source_label;
@@ -180,9 +181,11 @@ pub(crate) fn Row(
                 div { class: "if-row__source-primary",
                     span { class: "if-row__source-device", "{device_label}" }
                     if let Some(output) = &summary.first_vjoy_output {
-                        span {
-                            class: "if-row__output-badge",
-                            title: "{compact_output_label(output)}",
+                        span { class: "if-row__source-arrow", "aria-hidden": "true", "\u{2192}" }
+                        Chip {
+                            variant: ChipVariant::Output,
+                            class: "if-row__output-chip".to_owned(),
+                            title: compact_output_label(output),
                             "{compact_output_label(output)}"
                         }
                     }
