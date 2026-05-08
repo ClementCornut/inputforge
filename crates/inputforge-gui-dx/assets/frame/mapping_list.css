@@ -35,6 +35,9 @@
 }
 
 .if-rail__group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
     margin-bottom: var(--space-2);
 }
 
@@ -132,8 +135,9 @@
 
 /* DnD chrome (drag handle, dragging dim, drop-target bar) lives in the
    reusable sortable primitive at `assets/components/sortable.css`. The
-   row keeps the 10 px left-padding gutter (above) so the handle has a
-   place to sit, and the consumer applies the primitive's modifier
+   gutter is dropped: SortableHandle absolute-positions over the source
+   line at left: 4px and floats on hover instead of sitting in a
+   reserved gutter. The consumer applies the primitive's modifier
    classes via the shared `SortableState`. Drop targets are explicit
    gap elements rendered between rows; this rail picks 8 px per gap to
    match the spacing-token scale (`--space-2`) and give a comfortable

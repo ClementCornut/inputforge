@@ -1562,3 +1562,24 @@ fn mapping_list_css_locks_row_token_contract() {
         "row focus offset must be inset (-2px) per .if-device-row contract: {focus}",
     );
 }
+
+#[test]
+fn mapping_list_css_uses_row_gap_2px_inside_groups() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+    let block = css
+        .split(".if-rail__group {")
+        .nth(1)
+        .expect(".if-rail__group rule present")
+        .split('}')
+        .next()
+        .expect(".if-rail__group rule closed");
+    assert!(
+        block.contains("display: flex;") && block.contains("flex-direction: column;"),
+        ".if-rail__group must be a column flex container so `gap` applies \
+         between rows: {block}",
+    );
+    assert!(
+        block.contains("gap: 2px;"),
+        ".if-rail__group must use a 2px gap between rows; got: {block}",
+    );
+}
