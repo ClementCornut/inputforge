@@ -427,6 +427,36 @@ fn gallery_root() -> Element {
                                         size: InputSize::Lg,
                                     }
                                 }
+                                // Per-option disabled + class (orphan pattern from F14
+                                // ChangeMode body). Renders an italic, error-tinted
+                                // option that cannot be picked.
+                                Cluster { gap: "--space-3".to_owned(),
+                                    Select {
+                                        value: "ghost".to_owned(),
+                                        options: vec![
+                                            SelectOption {
+                                                value: "ghost".to_owned(),
+                                                label: "(removed) Ghost".to_owned(),
+                                                disabled: true,
+                                                class: Some(
+                                                    "if-select__option--orphan".to_owned(),
+                                                ),
+                                            },
+                                            SelectOption {
+                                                value: "default".to_owned(),
+                                                label: "Default".to_owned(),
+                                                disabled: false,
+                                                class: None,
+                                            },
+                                            SelectOption {
+                                                value: "combat".to_owned(),
+                                                label: "Combat".to_owned(),
+                                                disabled: false,
+                                                class: None,
+                                            },
+                                        ],
+                                    }
+                                }
                             }
                         }
                     }

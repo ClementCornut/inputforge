@@ -2,6 +2,8 @@
 //! `AnchoredMenu` primitive for surface, click-outside dismissal
 //! (via `ClickAwayListener`), keyboard handling, and auto-focus on open.
 
+use std::sync::mpsc;
+
 use dioxus::prelude::*;
 
 use inputforge_core::engine::EngineCommand;
@@ -42,7 +44,7 @@ pub(crate) struct ContextMenuFlags {
 /// per-arm closure lean and gives tests a target they can drive without
 /// mounting Dioxus state. Mirrors the closure-extraction pattern used by
 /// `dispatch_add_helper` in `mapping_list::add_inline`.
-fn dispatch_set_default(commands: &std::sync::mpsc::Sender<EngineCommand>, name: &str) {
+fn dispatch_set_default(commands: &mpsc::Sender<EngineCommand>, name: &str) {
     let _ = commands.send(EngineCommand::SetDefaultMode {
         name: name.to_owned(),
     });
@@ -226,8 +228,6 @@ mod tests {
 
     #[test]
     fn dispatch_set_default_sends_set_default_mode_command() {
-        use std::sync::mpsc;
-
         let (tx, rx) = mpsc::channel::<EngineCommand>();
         dispatch_set_default(&tx, "Combat");
         match rx.try_recv() {
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn set_as_default_item_renders_when_flag_is_enabled() {
-        use std::sync::{Arc, mpsc};
+        use std::sync::Arc;
 
         use dioxus_ssr::render;
         use inputforge_core::settings::AppSettings;
