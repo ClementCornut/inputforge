@@ -1,6 +1,5 @@
 // Rust guideline compliant 2026-03-02
 
-use crate::action::CycleModes;
 use crate::error::{EngineError, Result};
 
 use super::ModeTree;
@@ -85,11 +84,6 @@ impl ModeState {
         }
     }
 
-    /// Alias for [`pop_temporary`](Self::pop_temporary).
-    pub fn go_previous(&mut self) {
-        self.pop_temporary();
-    }
-
     /// Drop every stack entry whose name is in `removed`. Used by
     /// [`EngineCommand::DeleteMode`] cascade.
     pub fn clear_stack_entries(&mut self, removed: &[String]) {
@@ -108,32 +102,6 @@ impl ModeState {
                 to.clone_into(entry);
             }
         }
-    }
-
-    /// Cycle to the next mode in the list, clearing the temporary stack.
-    ///
-    /// If the current mode is in the list, advances to the next mode
-    /// (wrapping around). If not in the list, jumps to the first mode.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`EngineError::ModeNotFound`] if any mode in the cycle
-    /// does not exist in the tree.
-    pub fn cycle(&mut self, modes: &CycleModes, tree: &ModeTree) -> Result<()> {
-        for mode in modes.modes() {
-            if !tree.contains(mode) {
-                return Err(EngineError::ModeNotFound { name: mode.clone() });
-            }
-        }
-        let mode_list = modes.modes();
-        let next = if let Some(pos) = mode_list.iter().position(|m| m == &self.current) {
-            &mode_list[(pos + 1) % mode_list.len()]
-        } else {
-            &mode_list[0]
-        };
-        next.clone_into(&mut self.current);
-        self.stack.clear();
-        Ok(())
     }
 }
 
@@ -256,17 +224,6 @@ mod tests {
         assert!(err.to_string().contains("cycle"));
     }
 
-    // --- go_previous ---
-
-    #[test]
-    fn go_previous_pops_stack() {
-        let tree = test_tree();
-        let mut state = ModeState::new("Default".to_owned());
-        state.push_temporary("Combat", &tree).unwrap();
-        state.go_previous();
-        assert_eq!(state.current(), "Default");
-    }
-
     // --- rename_in_place ---
 
     #[test]
@@ -287,57 +244,6 @@ mod tests {
         state.push_temporary("Combat", &tree).unwrap();
         state.rename_in_place("Nope", "Whatever");
         assert_eq!(state.current(), "Combat");
-    }
-
-    // --- cycle ---
-
-    #[test]
-    fn cycle_advances() {
-        let tree = test_tree();
-        let mut state = ModeState::new("Default".to_owned());
-        let modes = CycleModes::new(vec!["Default".to_owned(), "Combat".to_owned()]).unwrap();
-        state.cycle(&modes, &tree).unwrap();
-        assert_eq!(state.current(), "Combat");
-    }
-
-    #[test]
-    fn cycle_wraps_around() {
-        let tree = test_tree();
-        let mut state = ModeState::new("Combat".to_owned());
-        let modes = CycleModes::new(vec!["Default".to_owned(), "Combat".to_owned()]).unwrap();
-        state.cycle(&modes, &tree).unwrap();
-        assert_eq!(state.current(), "Default");
-    }
-
-    #[test]
-    fn cycle_from_outside_list() {
-        let tree = test_tree();
-        let mut state = ModeState::new("Landing".to_owned());
-        let modes = CycleModes::new(vec!["Default".to_owned(), "Combat".to_owned()]).unwrap();
-        // Current is not in the cycle list, so jump to first.
-        state.cycle(&modes, &tree).unwrap();
-        assert_eq!(state.current(), "Default");
-    }
-
-    #[test]
-    fn cycle_nonexistent_mode_in_list() {
-        let tree = test_tree();
-        let mut state = ModeState::new("Default".to_owned());
-        let modes = CycleModes::new(vec!["Default".to_owned(), "Space".to_owned()]).unwrap();
-        let err = state.cycle(&modes, &tree).unwrap_err();
-        assert!(err.to_string().contains("Space"));
-    }
-
-    #[test]
-    fn cycle_clears_stack() {
-        let tree = test_tree();
-        let mut state = ModeState::new("Default".to_owned());
-        state.push_temporary("Combat", &tree).unwrap();
-        let modes = CycleModes::new(vec!["Default".to_owned(), "Landing".to_owned()]).unwrap();
-        state.cycle(&modes, &tree).unwrap();
-        // Stack should be cleared.
-        state.pop_temporary();
-        assert_eq!(state.current(), state.current()); // no change
     }
 
     // --- clear_stack_entries ---

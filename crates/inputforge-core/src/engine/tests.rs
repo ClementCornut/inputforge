@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use parking_lot::RwLock;
 
-use crate::action::{Action, Condition, CycleModes, Mapping, ModeChangeStrategy};
+use crate::action::{Action, Condition, Mapping, ModeChangeStrategy};
 use crate::callbacks::{CallbackRegistry, ReleaseCallback};
 use crate::device::mock::{MockDeviceHider, MockInputSource};
 use crate::device::traits::HotplugEvent;
@@ -1399,76 +1399,6 @@ fn process_outputs_mode_change_no_op() {
 
     assert!(!result.mode_changed);
     assert_eq!(mode_state.current(), "Default");
-}
-
-#[test]
-fn process_outputs_previous_mode() {
-    let tree = two_mode_tree();
-    let mut mode_state = ModeState::new("Default".to_owned());
-    mode_state.push_temporary("Combat", &tree).unwrap();
-    assert_eq!(mode_state.current(), "Combat");
-
-    let mut callbacks = CallbackRegistry::new();
-    let trigger = button_addr(0);
-
-    let outputs = vec![PipelineOutput::ChangeMode {
-        strategy: ModeChangeStrategy::Previous,
-    }];
-
-    let mut sink = MockOutputSink::new();
-    let mut kb = MockKeyboardSink::new();
-
-    let result = process_pipeline_outputs(
-        &outputs,
-        &mut sink,
-        &mut kb,
-        &mut mode_state,
-        &tree,
-        &mut callbacks,
-        &trigger,
-        false,
-    )
-    .unwrap();
-
-    assert!(result.mode_changed);
-    assert_eq!(mode_state.current(), "Default");
-}
-
-#[test]
-fn process_outputs_cycle_mode() {
-    let tree = combat_racing_tree();
-    let mut mode_state = ModeState::new("Default".to_owned());
-    let mut callbacks = CallbackRegistry::new();
-    let trigger = button_addr(0);
-
-    let cycle = CycleModes::new(vec![
-        "Default".to_owned(),
-        "Combat".to_owned(),
-        "Racing".to_owned(),
-    ])
-    .unwrap();
-
-    let outputs = vec![PipelineOutput::ChangeMode {
-        strategy: ModeChangeStrategy::Cycle { modes: cycle },
-    }];
-
-    let mut sink = MockOutputSink::new();
-    let mut kb = MockKeyboardSink::new();
-
-    let result = process_pipeline_outputs(
-        &outputs,
-        &mut sink,
-        &mut kb,
-        &mut mode_state,
-        &tree,
-        &mut callbacks,
-        &trigger,
-        false,
-    )
-    .unwrap();
-
-    assert!(result.mode_changed);
-    assert_eq!(mode_state.current(), "Combat");
 }
 
 #[test]
@@ -3089,66 +3019,6 @@ fn delete_mode_rejects_overlong_name_with_invalid_config() {
 }
 
 #[test]
-fn rename_mode_rejects_when_cycle_would_collapse() {
-    use crate::action::{CycleModes, Mapping, ModeChangeStrategy};
-
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("profile.toml");
-    let mappings = vec![Mapping {
-        input: axis_addr(0),
-        mode: "Default".to_owned(),
-        name: None,
-        actions: vec![Action::ChangeMode {
-            strategy: ModeChangeStrategy::Cycle {
-                modes: CycleModes::new(vec!["Combat".to_owned(), "Landing".to_owned()]).unwrap(),
-            },
-        }],
-    }];
-    let profile = make_profile(three_mode_tree(), mappings);
-    profile.save(&path).unwrap();
-
-    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    let mut s = state.write();
-    s.profile_path = Some(path.clone());
-    s.engine_status = EngineStatus::Running;
-    drop(s);
-    let (_tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockDeviceHider::default()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-    );
-
-    let err = engine.handle_command(EngineCommand::RenameMode {
-        from: "Combat".to_owned(),
-        to: "Landing".to_owned(),
-    });
-    assert!(err.is_err(), "rename collapsing the cycle must be rejected");
-
-    // Profile unchanged.
-    let s = state.read();
-    assert!(
-        s.active_profile
-            .as_ref()
-            .unwrap()
-            .modes()
-            .contains("Combat")
-    );
-    assert!(
-        s.active_profile
-            .as_ref()
-            .unwrap()
-            .modes()
-            .contains("Landing")
-    );
-}
-
-#[test]
 fn rename_mode_rewrites_switch_to_action() {
     use crate::action::{Mapping, ModeChangeStrategy};
 
@@ -3249,58 +3119,6 @@ fn rename_mode_rewrites_temporary_action() {
             strategy: ModeChangeStrategy::Temporary { mode },
         } => assert_eq!(mode, "Fighter"),
         other => panic!("expected Temporary with renamed target, got {other:?}"),
-    }
-}
-
-#[test]
-fn rename_mode_rewrites_cycle_action() {
-    use crate::action::{CycleModes, Mapping, ModeChangeStrategy};
-
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("profile.toml");
-    let mappings = vec![Mapping {
-        input: axis_addr(0),
-        mode: "Default".to_owned(),
-        name: None,
-        actions: vec![Action::ChangeMode {
-            strategy: ModeChangeStrategy::Cycle {
-                modes: CycleModes::new(vec!["Combat".to_owned(), "Landing".to_owned()]).unwrap(),
-            },
-        }],
-    }];
-    let profile = make_profile(three_mode_tree(), mappings);
-    profile.save(&path).unwrap();
-    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    let mut s = state.write();
-    s.profile_path = Some(path.clone());
-    s.engine_status = EngineStatus::Running;
-    drop(s);
-    let (tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockDeviceHider::default()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-    );
-
-    tx.send(EngineCommand::RenameMode {
-        from: "Combat".to_owned(),
-        to: "Fighter".to_owned(),
-    })
-    .unwrap();
-    engine.tick().unwrap();
-
-    let s = state.read();
-    let action = &s.active_profile.as_ref().unwrap().mappings()[0].actions[0];
-    match action {
-        Action::ChangeMode {
-            strategy: ModeChangeStrategy::Cycle { modes },
-        } => assert_eq!(modes.modes(), &["Fighter".to_owned(), "Landing".to_owned()]),
-        other => panic!("expected Cycle with renamed target, got {other:?}"),
     }
 }
 

@@ -8,7 +8,7 @@ mod mode_change;
 pub use bulk::BulkMapEntry;
 pub use condition::{Condition, validate_depth};
 pub use mapping::Mapping;
-pub use mode_change::{CycleModes, ModeChangeStrategy};
+pub use mode_change::ModeChangeStrategy;
 
 use serde::{Deserialize, Serialize};
 

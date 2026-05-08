@@ -120,17 +120,6 @@ fn apply_mode_change(
                 );
             }
         },
-        ModeChangeStrategy::Previous => {
-            mode_state.go_previous();
-        }
-        ModeChangeStrategy::Cycle { modes } => {
-            if let Err(e) = mode_state.cycle(modes, tree) {
-                tracing::warn!(
-                    error = %e,
-                    "Cycle failed, skipping"
-                );
-            }
-        }
     }
 }
 

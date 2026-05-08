@@ -406,28 +406,12 @@ impl Profile {
     /// label) is intentionally **not** rewritten; user-authored prose is
     /// preserved across renames.
     ///
-    /// Pre-validates `CycleModes` for the rename. If applying the rename
-    /// would produce a `CycleModes` duplicate, returns the constructor error
-    /// without mutating the profile. Caller (`RenameMode` handler) composes
-    /// this with `ModeTree::with_renamed` and `set_modes` for the full
-    /// cascade.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`EngineError::InvalidConfig`] if any contained `CycleModes`
-    /// would collapse to duplicates after the rename.
+    /// Caller (`RenameMode` handler) composes this with
+    /// `ModeTree::with_renamed` and `set_modes` for the full cascade.
     pub fn rename_mode_refs(&mut self, from: &str, to: &str) -> Result<usize> {
         if from == to {
             return Ok(0);
         }
-        // Pre-validate cycle-rename safety on a clone of the action graphs.
-        // Returns Err early without touching self.
-        for mapping in &self.mappings {
-            for action in &mapping.actions {
-                check_cycle_rename(action, from, to)?;
-            }
-        }
-
         let mut touched = 0usize;
         for mapping in &mut self.mappings {
             let mut mapping_touched = false;
@@ -517,34 +501,8 @@ impl Profile {
     }
 }
 
-/// Walk an action graph; if any cycle action would collapse to duplicates
-/// after applying the rename, return the constructor error.
-fn check_cycle_rename(action: &Action, from: &str, to: &str) -> Result<()> {
-    match action {
-        Action::ChangeMode {
-            strategy: crate::action::ModeChangeStrategy::Cycle { modes },
-        } => {
-            modes.with_renamed(from, to)?;
-            Ok(())
-        }
-        Action::Conditional {
-            if_true, if_false, ..
-        } => {
-            for a in if_true {
-                check_cycle_rename(a, from, to)?;
-            }
-            for a in if_false {
-                check_cycle_rename(a, from, to)?;
-            }
-            Ok(())
-        }
-        _ => Ok(()),
-    }
-}
-
 /// Walk an action graph in place, rewriting every `from` mode-name reference
-/// to `to`. Returns whether any rewrite happened. Cycle pre-validation lives
-/// in `check_cycle_rename`, callers must run that first.
+/// to `to`. Returns whether any rewrite happened.
 fn rewrite_mode_in_action(action: &mut Action, from: &str, to: &str) -> bool {
     use crate::action::ModeChangeStrategy as M;
     match action {
@@ -556,26 +514,6 @@ fn rewrite_mode_in_action(action: &mut Action, from: &str, to: &str) -> bool {
                 true
             } else {
                 false
-            }
-        }
-        Action::ChangeMode {
-            strategy: M::Cycle { modes },
-        } => {
-            // check_cycle_rename pre-validates this rename; the unwrap
-            // below cannot fail provided the caller ran the pre-validation
-            // pass.
-            let updated = modes
-                .with_renamed(from, to)
-                .expect("cycle rename pre-validated");
-            // Only swap the field when the rename actually touched a
-            // member, for profiles with many cycle-bearing mappings that
-            // don't reference `from`, this avoids an unnecessary clone
-            // round-trip per mapping.
-            if updated.modes() == modes.modes() {
-                false
-            } else {
-                *modes = updated;
-                true
             }
         }
         Action::Conditional {
@@ -1564,144 +1502,6 @@ enabled = true
             } => assert_eq!(mode, "Fighter"),
             _ => panic!("expected Temporary Fighter"),
         }
-    }
-
-    #[test]
-    fn rename_mode_refs_rewrites_cycle_entries() {
-        use crate::action::{CycleModes, Mapping, ModeChangeStrategy};
-
-        let modes = test_modes();
-        let mut profile = Profile::new(
-            "Cycler".to_owned(),
-            vec![],
-            modes,
-            vec![Mapping {
-                input: test_input(),
-                mode: "Default".to_owned(),
-                name: None,
-                actions: vec![Action::ChangeMode {
-                    strategy: ModeChangeStrategy::Cycle {
-                        modes: CycleModes::new(vec!["Combat".to_owned(), "Landing".to_owned()])
-                            .unwrap(),
-                    },
-                }],
-            }],
-            vec![],
-            "Default".to_owned(),
-        );
-
-        let touched = profile.rename_mode_refs("Combat", "Fighter").unwrap();
-        assert_eq!(touched, 1);
-        match &profile.mappings()[0].actions[0] {
-            Action::ChangeMode {
-                strategy: ModeChangeStrategy::Cycle { modes },
-            } => assert_eq!(modes.modes(), &["Fighter".to_owned(), "Landing".to_owned()]),
-            _ => panic!("expected Cycle"),
-        }
-    }
-
-    #[test]
-    fn rename_mode_refs_rejects_cycle_collision() {
-        use crate::action::{CycleModes, Mapping, ModeChangeStrategy};
-
-        let modes = test_modes();
-        let mut profile = Profile::new(
-            "BadCycle".to_owned(),
-            vec![],
-            modes,
-            vec![Mapping {
-                input: test_input(),
-                mode: "Default".to_owned(),
-                name: None,
-                actions: vec![Action::ChangeMode {
-                    strategy: ModeChangeStrategy::Cycle {
-                        modes: CycleModes::new(vec!["Combat".to_owned(), "Landing".to_owned()])
-                            .unwrap(),
-                    },
-                }],
-            }],
-            vec![],
-            "Default".to_owned(),
-        );
-
-        // Renaming Combat → Landing would collapse the cycle into a duplicate.
-        let err = profile.rename_mode_refs("Combat", "Landing").unwrap_err();
-        assert!(err.to_string().contains("duplicate"));
-
-        // Profile must be unchanged on error.
-        match &profile.mappings()[0].actions[0] {
-            Action::ChangeMode {
-                strategy: ModeChangeStrategy::Cycle { modes },
-            } => assert_eq!(modes.modes(), &["Combat".to_owned(), "Landing".to_owned()]),
-            _ => panic!("expected unchanged Cycle"),
-        }
-        assert_eq!(profile.mappings()[0].mode, "Default");
-    }
-
-    #[test]
-    fn rename_mode_refs_atomic_when_cycle_collides() {
-        // Locks the contract that pre-validation precedes any mutation. If a
-        // later cycle-mapping would collapse, every prior mapping's `mode`
-        // field AND every prior SwitchTo action must remain byte-identical to
-        // the pre-call clone.
-        use crate::action::{CycleModes, Mapping, ModeChangeStrategy};
-
-        let modes = test_modes();
-        let mappings = vec![
-            // Earlier mappings reference `Combat` so they would be rewritten
-            // if the cascade weren't atomic.
-            Mapping {
-                input: test_input(),
-                mode: "Combat".to_owned(),
-                name: None,
-                actions: vec![Action::ChangeMode {
-                    strategy: ModeChangeStrategy::SwitchTo {
-                        mode: "Combat".to_owned(),
-                    },
-                }],
-            },
-            Mapping {
-                input: test_input(),
-                mode: "Combat".to_owned(),
-                name: None,
-                actions: vec![Action::Invert],
-            },
-            // Last mapping holds the colliding cycle.
-            Mapping {
-                input: test_input(),
-                mode: "Default".to_owned(),
-                name: None,
-                actions: vec![Action::ChangeMode {
-                    strategy: ModeChangeStrategy::Cycle {
-                        modes: CycleModes::new(vec!["Combat".to_owned(), "Landing".to_owned()])
-                            .unwrap(),
-                    },
-                }],
-            },
-        ];
-        let mut profile = Profile::new(
-            "Atomic".to_owned(),
-            vec![],
-            modes,
-            mappings.clone(),
-            vec![],
-            "Default".to_owned(),
-        );
-
-        let err = profile.rename_mode_refs("Combat", "Landing").unwrap_err();
-        assert!(err.to_string().contains("duplicate"));
-
-        // Every prior mapping must be byte-identical to its pre-call clone.
-        assert_eq!(
-            profile.mappings(),
-            &*mappings,
-            "no mapping may be rewritten when pre-validation rejects the rename"
-        );
-        assert_eq!(
-            profile.settings().startup_mode(),
-            "Default",
-            "startup_mode must be unchanged"
-        );
     }
 
     #[test]
