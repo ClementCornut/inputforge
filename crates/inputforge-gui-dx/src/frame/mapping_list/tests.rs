@@ -762,6 +762,40 @@ fn mapping_list_zero_filter_exposes_clear_actions() {
     );
 }
 
+/// Pins the empty-state ghost buttons to `ButtonSize::Sm` so a future
+/// regression to default Md (which would shoulder past the surrounding
+/// helper-text rhythm) is caught at the test layer.
+#[test]
+fn empty_zero_filter_results_pins_buttons_to_sm() {
+    use crate::frame::mapping_list::empty::EmptyZeroFilterResults;
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        rsx! {
+            EmptyZeroFilterResults {
+                query: "throttle".to_owned(),
+                device_label: Some("Twin Stick".to_owned()),
+                on_clear_text: move |()| {},
+                on_clear_device: Some(EventHandler::new(move |()| {})),
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    let sm_count = html.matches("if-button--sm").count();
+    assert!(
+        sm_count >= 2,
+        "both clear-text and clear-device ghost buttons must carry \
+         if-button--sm; found {sm_count} occurrence(s) in: {html}",
+    );
+    assert!(
+        !html.contains("if-button--md"),
+        "ghost buttons in the zero-filter empty state must not fall back to \
+         the default Md size: {html}",
+    );
+}
+
 #[test]
 fn add_inline_resting_renders_dashed_row() {
     use crate::context::MappingSummary;
