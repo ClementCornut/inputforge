@@ -234,4 +234,163 @@ mod tests {
             "vertical orientation must reach aria-orientation: {html}",
         );
     }
+
+    /// An empty `TabsList` (no `TabButton` children) must still render
+    /// the canonical wrapper without panicking, the registry is just
+    /// empty and the keyboard handler short-circuits on len==0.
+    #[test]
+    fn tabs_list_renders_safely_with_no_children() {
+        fn TestComponent() -> Element {
+            rsx! {
+                TabsRoot {
+                    value: "noop".to_owned(),
+                    onchange: move |_: String| {},
+                    TabsList {}
+                }
+            }
+        }
+        let mut vdom = VirtualDom::new(TestComponent);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert!(
+            html.contains("role=\"tablist\""),
+            "empty TabsList still renders the tablist wrapper: {html}",
+        );
+    }
+
+    /// A sibling rendered alongside `TabsList` under the same
+    /// `TabsRoot` must land OUTSIDE the `role="tablist"` container.
+    /// This is the composition pattern mode_tabs's tail `+` and
+    /// context menu rely on so AT tab counts stay honest.
+    #[test]
+    fn tabs_root_sibling_renders_outside_tablist_wrapper() {
+        use super::super::tab_button::TabButton;
+        fn TestComponent() -> Element {
+            rsx! {
+                TabsRoot {
+                    value: "a".to_owned(),
+                    onchange: move |_: String| {},
+                    TabsList {
+                        TabButton { id: "a".to_owned(), label: "A".to_owned() }
+                    }
+                    button {
+                        r#type: "button",
+                        class: "if-mode-tab--add",
+                        "aria-label": "Add mode",
+                        "+"
+                    }
+                }
+            }
+        }
+        let mut vdom = VirtualDom::new(TestComponent);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        let tablist_open = html.find("role=\"tablist\"").expect("tablist must render");
+        let tablist_close_relative = html[tablist_open..].find("</div>").expect("tablist closes");
+        let tablist_close = tablist_open + tablist_close_relative;
+        let plus_idx = html
+            .find("aria-label=\"Add mode\"")
+            .expect("Add mode button must render");
+        assert!(
+            plus_idx > tablist_close,
+            "Sibling-of-tablist composition must place the sibling AFTER the tablist closes. \
+             tablist_close={tablist_close}, plus_idx={plus_idx}",
+        );
+    }
+
+    /// Locks the focus-roving tabindex contract: the active tab gets
+    /// tabindex=0, every other tab gets tabindex=-1. This is what
+    /// keeps Tab key from cycling through every tab when the user
+    /// expects ArrowKeys to handle it.
+    #[test]
+    fn tabs_list_focus_roving_assigns_tabindex_zero_only_to_active_tab() {
+        use super::super::tab_button::TabButton;
+        fn TestComponent() -> Element {
+            rsx! {
+                TabsRoot {
+                    value: "second".to_owned(),
+                    onchange: move |_: String| {},
+                    TabsList {
+                        TabButton { id: "first".to_owned(), label: "First".to_owned() }
+                        TabButton { id: "second".to_owned(), label: "Second".to_owned() }
+                        TabButton { id: "third".to_owned(), label: "Third".to_owned() }
+                    }
+                }
+            }
+        }
+        let mut vdom = VirtualDom::new(TestComponent);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert_eq!(
+            html.matches("tabindex=\"0\"").count(),
+            1,
+            "exactly one tab must carry tabindex=0 (the active one): {html}",
+        );
+        assert_eq!(
+            html.matches("tabindex=\"-1\"").count(),
+            2,
+            "every other tab must carry tabindex=-1: {html}",
+        );
+    }
+
+    /// A disabled `TabButton` carries the HTML `disabled` attribute, so
+    /// click activation and tab-key focus both respect the flag at the
+    /// browser layer (independent of the keyboard coordinator's
+    /// registry-based skip).
+    #[test]
+    fn tabs_list_disabled_tab_button_renders_disabled_attribute() {
+        use super::super::tab_button::TabButton;
+        fn TestComponent() -> Element {
+            rsx! {
+                TabsRoot {
+                    value: "a".to_owned(),
+                    onchange: move |_: String| {},
+                    TabsList {
+                        TabButton { id: "a".to_owned(), label: "A".to_owned() }
+                        TabButton {
+                            id: "b".to_owned(),
+                            label: "B".to_owned(),
+                            disabled: true,
+                        }
+                    }
+                }
+            }
+        }
+        let mut vdom = VirtualDom::new(TestComponent);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert!(
+            html.contains("disabled"),
+            "disabled TabButton must emit the HTML disabled attribute: {html}",
+        );
+    }
+
+    /// Cluster-level `TabsRoot::disabled` must propagate to every
+    /// `TabButton` so the whole strip is non-interactive at the
+    /// browser layer, not just at the keyboard coordinator.
+    #[test]
+    fn tabs_root_cluster_disabled_disables_every_tab_button() {
+        use super::super::tab_button::TabButton;
+        fn TestComponent() -> Element {
+            rsx! {
+                TabsRoot {
+                    value: "a".to_owned(),
+                    onchange: move |_: String| {},
+                    disabled: true,
+                    TabsList {
+                        TabButton { id: "a".to_owned(), label: "A".to_owned() }
+                        TabButton { id: "b".to_owned(), label: "B".to_owned() }
+                    }
+                }
+            }
+        }
+        let mut vdom = VirtualDom::new(TestComponent);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert_eq!(
+            html.matches("disabled").count() >= 2,
+            true,
+            "every TabButton under a disabled TabsRoot must render `disabled`: {html}",
+        );
+    }
 }
