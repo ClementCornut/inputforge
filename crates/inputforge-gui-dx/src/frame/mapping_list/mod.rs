@@ -492,7 +492,10 @@ pub(crate) fn MappingList() -> Element {
         let rail_validator: Option<fn(&u32, &u32) -> bool> = Some(|s, t| s == t);
         Some(rsx! {
             div { class: "if-rail__group",
-                div { class: "if-rail__group-header", {group.header()} }
+                div { class: "if-rail__group-header",
+                    span { class: "if-rail__group-header__label", {group.header()} }
+                    span { class: "if-rail__group-header__count", "{group_len}" }
+                }
                 SortableGap {
                     key: "gap-{group_id}-0",
                     state: sortable,

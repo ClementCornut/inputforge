@@ -1456,6 +1456,80 @@ fn mode_tabs_running_pip_uses_canonical_class() {
 }
 
 #[test]
+fn group_header_renders_post_filter_row_count() {
+    use inputforge_core::action::Mapping;
+    use inputforge_core::mode::ModeTree;
+    use inputforge_core::profile::Profile;
+    use inputforge_core::state::AppState;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+    use std::collections::HashMap;
+
+    fn TestComponent() -> Element {
+        let map = HashMap::from([("Default".to_owned(), vec![])]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let mut mappings = vec![];
+        for i in 0..3 {
+            mappings.push(Mapping {
+                input: InputAddress::Bound {
+                    device: DeviceId("dev".to_owned()),
+                    input: InputId::Axis { index: i },
+                },
+                mode: "Default".to_owned(),
+                name: Some(format!("Axis{i}")),
+                actions: vec![],
+            });
+        }
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        );
+        let state = AppState::with_profile(profile);
+
+        provide_minimal_contexts();
+        let mut cfg_signal = use_context::<AppContext>().config;
+        let mut meta_signal = use_context::<AppContext>().meta;
+        use_hook(move || {
+            cfg_signal.set(ConfigSnapshot::from_state(&state, None));
+            meta_signal.set(MetaSnapshot::from_state(&state));
+        });
+
+        rsx! { MappingList {} }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("if-rail__group-header__count"),
+        "group header must render a count slot class so the count reads as data: {html}",
+    );
+    assert!(
+        html.contains("\"if-rail__group-header__count\">3"),
+        "axes group with 3 mappings must show the count `3` inside the canonical group-header count slot: {html}",
+    );
+}
+
+#[test]
+fn mapping_list_css_aligns_group_header_gutter_with_row_padding() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+    let block = css
+        .split(".if-rail__group-header {")
+        .nth(1)
+        .expect(".if-rail__group-header rule present")
+        .split('}')
+        .next()
+        .expect(".if-rail__group-header rule closed");
+    assert!(
+        block.contains("padding: var(--space-3) var(--space-3) var(--space-1);"),
+        "group header horizontal gutter must match the new row padding (--space-3): {block}",
+    );
+}
+
+#[test]
 fn mapping_list_css_locks_row_token_contract() {
     let css = include_str!("../../../assets/frame/mapping_list.css");
 
