@@ -286,9 +286,47 @@ pub(crate) fn ChangeModeBody(
     let hold_aria_disabled = if hold_disabled { "true" } else { "false" };
 
     let ctx = use_context::<AppContext>();
+    let editor = use_context::<EditorState>();
     let modes: Vec<String> = ctx.meta.read().modes.clone();
 
-    let target_options: Vec<SelectOption> = modes
+    // Hint priority computation (render-phase write, same convention as
+    // MergeAxisBody / MapToVJoyBody so SSR observes the hint the same frame).
+    let target_in_modes = !mode.is_empty() && modes.iter().any(|m| m == &mode);
+    let target_orphaned = !mode.is_empty() && !target_in_modes;
+    let combined = target_orphaned && is_hold && hold_disabled;
+
+    // One owned String per render. Combines the orphan + hold-disabled
+    // failure modes so the user can recover both errors in a single edit
+    // pass instead of fixing one and bouncing back to the next.
+    let dynamic_hint: Option<String> = if mode.is_empty() {
+        Some(HINT_TARGET_EMPTY.to_owned())
+    } else if combined {
+        Some(format!(
+            r#"Mode "{mode}" is not in this profile, and Hold requires a button input. Pick a button-shaped input, then a current mode."#
+        ))
+    } else if target_orphaned {
+        Some(format!(
+            r#"Mode "{mode}" is not in this profile. Pick a current mode."#
+        ))
+    } else if is_hold && hold_disabled {
+        Some(HINT_HOLD_NOT_BUTTON.to_owned())
+    } else {
+        None
+    };
+
+    {
+        let mut malformed = editor.malformed_hints;
+        match dynamic_hint.as_ref() {
+            Some(s) => {
+                malformed.write().insert(stage_id.clone(), s.clone());
+            }
+            None => {
+                malformed.write().remove(&stage_id);
+            }
+        }
+    }
+
+    let mut target_options: Vec<SelectOption> = modes
         .iter()
         .map(|m| SelectOption {
             value: m.clone(),
@@ -297,6 +335,17 @@ pub(crate) fn ChangeModeBody(
             class: None,
         })
         .collect();
+    if target_orphaned {
+        target_options.insert(
+            0,
+            SelectOption {
+                value: mode.clone(),
+                label: mode.clone(),
+                disabled: true,
+                class: Some("if-select__option--orphan".into()),
+            },
+        );
+    }
 
     // Sync the local Signal to the prop on every render so the dropdown
     // follows snapshot echoes; same pattern as `MapToVJoyBody`.
@@ -309,7 +358,6 @@ pub(crate) fn ChangeModeBody(
     // Pill onclick wiring. Each closure is a thin wrapper around
     // `dispatch_strategy_change`; all business logic (gate, label, action
     // construction, target preservation) lives in the helper.
-    let editor = use_context::<EditorState>();
     let cfg_signal = ctx.config;
     let cmd_tx_set = ctx.commands.clone();
     let mut undo_log_set = editor.undo_log;
@@ -442,6 +490,13 @@ mod tests {
     use super::*;
 
     use crate::frame::mapping_editor::pipeline::tests::render_change_mode_body_for_test;
+    use crate::frame::mapping_editor::undo_log::StageIdSegment;
+
+    fn hint_for_stage_zero(hints: &HashMap<StageId, String>) -> Option<&str> {
+        hints
+            .get(&StageId(vec![StageIdSegment::Index(0)]))
+            .map(String::as_str)
+    }
 
     #[test]
     fn renders_strategy_pills_and_target_select_for_switch_to() {
@@ -575,5 +630,170 @@ mod tests {
             undo_label.as_deref(),
             Some("Change mode: target Default -> Combat")
         );
+    }
+
+    #[test]
+    fn priority_1_hint_when_target_empty() {
+        let strategy = ModeChangeStrategy::SwitchTo {
+            mode: String::new(),
+        };
+        let (_html, hints) =
+            render_change_mode_body_for_test(strategy, "btn0", &["Default", "Combat"]);
+        assert_eq!(hint_for_stage_zero(&hints), Some(HINT_TARGET_EMPTY));
+    }
+
+    #[test]
+    fn priority_2_hint_when_target_not_in_modes() {
+        let strategy = ModeChangeStrategy::SwitchTo {
+            mode: "Ghost".to_owned(),
+        };
+        let (html, hints) =
+            render_change_mode_body_for_test(strategy, "btn0", &["Default", "Combat"]);
+        assert_eq!(
+            hint_for_stage_zero(&hints),
+            Some(r#"Mode "Ghost" is not in this profile. Pick a current mode."#)
+        );
+        let ghost_idx = html
+            .find(r#"<option value="Ghost""#)
+            .expect("orphan option must render");
+        let ghost_slice = &html[ghost_idx..ghost_idx + 200];
+        assert!(
+            ghost_slice.contains("disabled=true"),
+            "orphan option must carry disabled=true: {ghost_slice}"
+        );
+        assert!(
+            ghost_slice.contains("if-select__option--orphan"),
+            "orphan option must carry the orphan class: {ghost_slice}"
+        );
+    }
+
+    #[test]
+    fn priority_3_hint_when_hold_on_non_button() {
+        let strategy = ModeChangeStrategy::Temporary {
+            mode: "Combat".to_owned(),
+        };
+        let (html, hints) =
+            render_change_mode_body_for_test(strategy, "axis0", &["Default", "Combat"]);
+        assert_eq!(hint_for_stage_zero(&hints), Some(HINT_HOLD_NOT_BUTTON));
+        let hold_idx = html
+            .find(r#"data-strategy="hold""#)
+            .expect("hold pill must render");
+        let after = &html[hold_idx..hold_idx + 200];
+        assert!(after.contains(r#"aria-pressed="true""#));
+        assert!(after.contains(r#"aria-disabled="true""#));
+    }
+
+    #[test]
+    fn combined_hint_when_orphan_and_hold_disabled() {
+        let strategy = ModeChangeStrategy::Temporary {
+            mode: "Ghost".to_owned(),
+        };
+        let (_html, hints) =
+            render_change_mode_body_for_test(strategy, "axis0", &["Default", "Combat"]);
+        let hint = hint_for_stage_zero(&hints).expect("hint must surface");
+        assert!(
+            hint.contains("not in this profile") && hint.contains("button input"),
+            "combined hint must mention both error conditions: {hint}"
+        );
+    }
+
+    #[test]
+    fn priority_3_disabled_hold_pill_click_is_noop() {
+        let strategy = ModeChangeStrategy::SwitchTo {
+            mode: "Combat".to_owned(),
+        };
+        let (commands, _label) =
+            crate::frame::mapping_editor::pipeline::tests::simulate_dispatch_strategy_change(
+                strategy,
+                "axis0",
+                &["Default", "Combat"],
+                StrategyTarget::Hold,
+            );
+        assert!(
+            commands.is_empty(),
+            "click on aria-disabled Hold pill must not commit, got {commands:?}"
+        );
+    }
+
+    #[test]
+    fn pill_activates_gate_blocks_disabled_and_active() {
+        assert!(
+            pill_activates(false, false),
+            "enabled inactive pill must activate"
+        );
+        assert!(
+            !pill_activates(true, false),
+            "disabled pill must not activate"
+        );
+        assert!(
+            !pill_activates(false, true),
+            "already-active pill must not re-activate"
+        );
+        assert!(
+            !pill_activates(true, true),
+            "selected-but-disabled pill must not activate"
+        );
+    }
+
+    #[test]
+    fn priority_3_set_pill_migration_preserves_target() {
+        use inputforge_core::action::Action;
+        use inputforge_core::engine::EngineCommand;
+        let strategy = ModeChangeStrategy::Temporary {
+            mode: "Combat".to_owned(),
+        };
+        let (commands, _label) =
+            crate::frame::mapping_editor::pipeline::tests::simulate_dispatch_strategy_change(
+                strategy,
+                "axis0",
+                &["Default", "Combat"],
+                StrategyTarget::Set,
+            );
+        let first = commands.into_iter().next().expect("expected SetMapping");
+        match first {
+            EngineCommand::SetMapping { actions, .. } => {
+                assert!(
+                    matches!(
+                        actions.first(),
+                        Some(Action::ChangeMode {
+                            strategy: ModeChangeStrategy::SwitchTo { mode }
+                        }) if mode == "Combat"
+                    ),
+                    "Set click on selected-but-disabled Hold must migrate to SwitchTo with target preserved"
+                );
+            }
+            other => panic!("expected SetMapping, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn orphan_pick_dispatches_action_without_orphan_mode() {
+        use inputforge_core::action::Action;
+        use inputforge_core::engine::EngineCommand;
+        let strategy = ModeChangeStrategy::SwitchTo {
+            mode: "Ghost".to_owned(),
+        };
+        let (commands, _label) =
+            crate::frame::mapping_editor::pipeline::tests::simulate_dispatch_target_change(
+                strategy,
+                "btn0",
+                &["Default", "Combat"],
+                "Combat",
+            );
+        let first = commands.into_iter().next().expect("expected SetMapping");
+        match first {
+            EngineCommand::SetMapping { actions, .. } => {
+                assert!(
+                    matches!(
+                        actions.first(),
+                        Some(Action::ChangeMode {
+                            strategy: ModeChangeStrategy::SwitchTo { mode }
+                        }) if mode == "Combat"
+                    ),
+                    "persisted action must use the picked mode, not the orphan: {actions:?}"
+                );
+            }
+            other => panic!("expected SetMapping, got {other:?}"),
+        }
     }
 }
