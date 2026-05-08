@@ -118,4 +118,32 @@ mod tests {
             "Chip Output CSS rule must land in chip.css: {css}",
         );
     }
+
+    #[test]
+    fn chip_capture_variant_emits_capture_class() {
+        let html = render_with(ChipVariant::Capture);
+        assert!(
+            html.contains("if-chip--capture"),
+            "capture variant class missing: {html}",
+        );
+    }
+
+    #[test]
+    fn chip_css_keys_capture_hues_off_parent_data_kind() {
+        let css = include_str!("../../assets/components/chip.css");
+        assert!(
+            css.contains("[data-kind=\"axis\"]   > .if-chip--capture")
+                || css.contains("[data-kind=\"axis\"] > .if-chip--capture"),
+            "axis hue rule (parent-attribute selector) missing: {css}",
+        );
+        assert!(
+            css.contains("[data-kind=\"button\"] > .if-chip--capture"),
+            "button hue rule (parent-attribute selector) missing: {css}",
+        );
+        assert!(
+            css.contains("[data-kind=\"hat\"]    > .if-chip--capture")
+                || css.contains("[data-kind=\"hat\"] > .if-chip--capture"),
+            "hat hue rule (parent-attribute selector) missing: {css}",
+        );
+    }
 }

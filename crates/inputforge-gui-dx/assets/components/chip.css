@@ -31,3 +31,25 @@
     color: var(--color-output);
     font-family: var(--font-mono);
 }
+
+.if-chip.if-chip--capture {
+    background: color-mix(in srgb, currentColor 14%, transparent);
+    border-color: currentColor;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    line-height: 1.15;
+    min-width: 32px;
+    min-height: 20px;
+    padding: 2px var(--space-1);
+    justify-content: center;
+}
+
+/* Per-input-kind hue. Chip itself does not own a `data-kind` prop
+   (Capture is the only consumer that needs the taxonomy hook); the
+   call site wraps Chip in a parent span carrying `data-kind`, so the
+   selector keys off the parent attribute. Same taxonomy as the legacy
+   .if-add-inline__chip[data-kind=...] block in mapping_list.css; that
+   block is dropped in Task 15 once the Capture chip ships. */
+[data-kind="axis"]   > .if-chip--capture { color: var(--color-output); }
+[data-kind="button"] > .if-chip--capture { color: var(--color-control-badge-text); }
+[data-kind="hat"]    > .if-chip--capture { color: var(--color-processing); }
