@@ -48,7 +48,7 @@ The design stays within the existing left-rail role: fast navigation, dense scan
 
 The device-chip list is derived from current-mode mappings before applying the free-text filter, so typing in the text filter does not make device chips appear or disappear.
 
-Device chips are ordered by first appearance in current-mode mappings. If two devices would otherwise have the same ordering position, `DeviceId` is the tie-break.
+Device chips are sorted alphabetically by display label, case-insensitive. Duplicate-name chips are first disambiguated by appending `· {DeviceId}`, so the appended suffix breaks ties deterministically.
 
 The selected device filter stores and compares `DeviceId`, not the visible device label.
 
