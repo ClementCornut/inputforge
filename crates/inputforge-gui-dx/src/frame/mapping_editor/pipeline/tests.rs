@@ -435,7 +435,6 @@ pub(crate) fn render_change_mode_body_for_test(
 pub(crate) fn simulate_dispatch_strategy_change(
     strategy_before: inputforge_core::action::ModeChangeStrategy,
     primary: &str,
-    modes: &[&str],
     target: crate::frame::mapping_editor::pipeline::stage_body::change_mode::StrategyTarget,
 ) -> (Vec<inputforge_core::engine::EngineCommand>, Option<String>) {
     use crate::frame::MappingKey;
@@ -458,7 +457,6 @@ pub(crate) fn simulate_dispatch_strategy_change(
         strategy: strategy_before,
     }];
     let names: HashMap<InputAddress, String> = HashMap::new();
-    let _ = modes;
 
     let (tx, rx) = mpsc::channel::<EngineCommand>();
     let mut undo_log = UndoLog::default();
@@ -486,7 +484,6 @@ pub(crate) fn simulate_dispatch_strategy_change(
 pub(crate) fn simulate_dispatch_target_change(
     strategy_before: inputforge_core::action::ModeChangeStrategy,
     primary: &str,
-    modes: &[&str],
     new_mode: &str,
 ) -> (Vec<inputforge_core::engine::EngineCommand>, Option<String>) {
     use crate::frame::MappingKey;
@@ -511,7 +508,6 @@ pub(crate) fn simulate_dispatch_target_change(
         unreachable!("just constructed above");
     };
     let names: HashMap<InputAddress, String> = HashMap::new();
-    let _ = modes;
 
     let (tx, rx) = mpsc::channel::<EngineCommand>();
     let mut undo_log = UndoLog::default();
@@ -2469,11 +2465,11 @@ fn change_mode_header_summary_preempted_by_target_empty_hint() {
         vec![StageId(vec![StageIdSegment::Index(0)])],
         &["Default"],
     );
-    // The hint string must appear inside the `if-stage__summary` slot. The
-    // same string also appears in the body, so search for the slot-anchored
-    // substring to assert the F9 preempt actually replaced the summary.
+    // The compact summary tag must appear inside the `if-stage__summary`
+    // slot. The full prose hint also lives in the body banner; the tag is
+    // the glanceable variant that fits the 12px right-aligned mono slot.
     assert!(
-        html.contains(r#"<div class="if-stage__summary">Choose a target mode</div>"#),
-        "expected summary slot to be preempted by hint: {html}"
+        html.contains(r#"<div class="if-stage__summary">Set target mode</div>"#),
+        "expected summary slot to render the compact tag: {html}"
     );
 }

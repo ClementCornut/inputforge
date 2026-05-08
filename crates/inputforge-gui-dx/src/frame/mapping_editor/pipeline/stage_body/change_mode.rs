@@ -4,7 +4,7 @@
 //! (segmented Set/Hold pills) and target-mode `Select`. F14 owner.
 //!
 //! Hint priority (highest first):
-//! 1. Empty target mode -> `"Choose a target mode"`.
+//! 1. Empty target mode -> `"Choose a mode to switch to"`.
 //! 2. Target mode not in `MetaSnapshot.modes` -> orphan option + drift hint.
 //! 3. Hold strategy with non-button primary -> selected-but-disabled Hold.
 //!
@@ -30,9 +30,9 @@ use crate::frame::mapping_editor::undo_log::{
 };
 
 /// Hint copy. Centralised so tests can grep these strings unchanged.
-pub(crate) const HINT_TARGET_EMPTY: &str = "Choose a target mode";
+pub(crate) const HINT_TARGET_EMPTY: &str = "Choose a mode to switch to";
 pub(crate) const HINT_HOLD_NOT_BUTTON: &str =
-    "Hold requires a button input. Pick a button or change the strategy.";
+    "Hold requires a button input. Pick a button on your device, or switch to Set.";
 pub(crate) const TOOLTIP_HOLD_NOT_BUTTON: &str = "Hold requires a button input.";
 
 /// Set / Hold pill activation gate. Returns `false` when the pill is
@@ -284,6 +284,12 @@ pub(crate) fn ChangeModeBody(
     let set_aria_pressed = if is_set { "true" } else { "false" };
     let hold_aria_pressed = if is_hold { "true" } else { "false" };
     let hold_aria_disabled = if hold_disabled { "true" } else { "false" };
+    // Skip the Hold pill in tab order when aria-disabled. The internal
+    // pill_activates gate already no-ops the dispatch; removing the pill
+    // from sequential focus prevents the user-facing impression of a
+    // focusable-but-inert button. Focus via mouse and screen-reader
+    // announcement still work normally.
+    let hold_tabindex = if hold_disabled { "-1" } else { "0" };
 
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
@@ -298,30 +304,73 @@ pub(crate) fn ChangeModeBody(
     // One owned String per render. Combines the orphan + hold-disabled
     // failure modes so the user can recover both errors in a single edit
     // pass instead of fixing one and bouncing back to the next.
-    let dynamic_hint: Option<String> = if mode.is_empty() {
-        Some(HINT_TARGET_EMPTY.to_owned())
+    //
+    // The summary tag is the compact (<= 24 chars) variant rendered in the
+    // collapsed-header summary slot. The body banner uses the full prose;
+    // see the `malformed_summary_tags` field on `EditorState`.
+    let (dynamic_hint, dynamic_tag): (Option<String>, Option<String>) = if mode.is_empty() {
+        (
+            Some(HINT_TARGET_EMPTY.to_owned()),
+            Some("Set target mode".to_owned()),
+        )
     } else if combined {
-        Some(format!(
-            r#"Mode "{mode}" is not in this profile, and Hold requires a button input. Pick a button-shaped input, then a current mode."#
-        ))
+        // Combined priority 2 + 3 hint. The spec defines priorities as
+        // mutually exclusive, but in practice an orphan target paired with
+        // a non-button primary surfaces both failures at once; emitting one
+        // banner that names both lets the user recover in a single edit
+        // pass instead of fixing one and bouncing back to the other.
+        (
+            Some(format!(
+                r#"Mode "{mode}" no longer exists. Hold also requires a button input. Pick a button on your device, then a current mode."#
+            )),
+            Some("Mode missing".to_owned()),
+        )
     } else if target_orphaned {
-        Some(format!(
-            r#"Mode "{mode}" is not in this profile. Pick a current mode."#
-        ))
+        (
+            Some(format!(
+                r#"Mode "{mode}" no longer exists. Pick a current mode."#
+            )),
+            Some("Mode missing".to_owned()),
+        )
     } else if is_hold && hold_disabled {
-        Some(HINT_HOLD_NOT_BUTTON.to_owned())
+        (
+            Some(HINT_HOLD_NOT_BUTTON.to_owned()),
+            Some("Needs button".to_owned()),
+        )
     } else {
-        None
+        (None, None)
     };
 
+    // REACTIVE-LOOP CONCERN (Task 40): dynamic_hint and dynamic_tag are
+    // derived from `mode`, `modes`, `is_hold`, and `hold_disabled`. None
+    // of those originate from `malformed_hints` or `malformed_summary_tags`,
+    // so no read-write cycle forms. The read-then-compare guards skip the
+    // dirty-write on steady-state renders.
     {
         let mut malformed = editor.malformed_hints;
-        match dynamic_hint.as_ref() {
-            Some(s) => {
-                malformed.write().insert(stage_id.clone(), s.clone());
+        let current = malformed.read().get(&stage_id).cloned();
+        if current.as_deref() != dynamic_hint.as_deref() {
+            match dynamic_hint.as_ref() {
+                Some(s) => {
+                    malformed.write().insert(stage_id.clone(), s.clone());
+                }
+                None => {
+                    malformed.write().remove(&stage_id);
+                }
             }
-            None => {
-                malformed.write().remove(&stage_id);
+        }
+    }
+    {
+        let mut tags = editor.malformed_summary_tags;
+        let current = tags.read().get(&stage_id).cloned();
+        if current.as_deref() != dynamic_tag.as_deref() {
+            match dynamic_tag.as_ref() {
+                Some(t) => {
+                    tags.write().insert(stage_id.clone(), t.clone());
+                }
+                None => {
+                    tags.write().remove(&stage_id);
+                }
             }
         }
     }
@@ -336,11 +385,15 @@ pub(crate) fn ChangeModeBody(
         })
         .collect();
     if target_orphaned {
+        // Prefix the orphan label so the closed Select trigger carries the
+        // signal even on Chromium, where native <option> styling (color,
+        // italic) only applies inside the open dropdown listbox and not on
+        // the trigger's display of the selected option.
         target_options.insert(
             0,
             SelectOption {
                 value: mode.clone(),
-                label: mode.clone(),
+                label: format!("(removed) {mode}"),
                 disabled: true,
                 class: Some("if-select__option--orphan".into()),
             },
@@ -440,6 +493,7 @@ pub(crate) fn ChangeModeBody(
             "data-strategy": "hold",
             "aria-pressed": "{hold_aria_pressed}",
             "aria-disabled": "{hold_aria_disabled}",
+            tabindex: "{hold_tabindex}",
             onclick: on_hold_click,
             "Hold"
         }
@@ -556,7 +610,6 @@ mod tests {
             crate::frame::mapping_editor::pipeline::tests::simulate_dispatch_strategy_change(
                 strategy_before,
                 "btn0",
-                &["Default", "Combat"],
                 StrategyTarget::Hold,
             );
 
@@ -593,7 +646,6 @@ mod tests {
             crate::frame::mapping_editor::pipeline::tests::simulate_dispatch_target_change(
                 strategy_before,
                 "btn0",
-                &["Default", "Combat"],
                 "Combat",
             );
         let first = commands.into_iter().next().expect("expected SetMapping");
@@ -623,7 +675,6 @@ mod tests {
             crate::frame::mapping_editor::pipeline::tests::simulate_dispatch_target_change(
                 strategy_before,
                 "btn0",
-                &["Default", "Combat"],
                 "Combat",
             );
         assert_eq!(
@@ -651,7 +702,7 @@ mod tests {
             render_change_mode_body_for_test(strategy, "btn0", &["Default", "Combat"]);
         assert_eq!(
             hint_for_stage_zero(&hints),
-            Some(r#"Mode "Ghost" is not in this profile. Pick a current mode."#)
+            Some(r#"Mode "Ghost" no longer exists. Pick a current mode."#)
         );
         let ghost_idx = html
             .find(r#"<option value="Ghost""#)
@@ -664,6 +715,10 @@ mod tests {
         assert!(
             ghost_slice.contains("if-select__option--orphan"),
             "orphan option must carry the orphan class: {ghost_slice}"
+        );
+        assert!(
+            ghost_slice.contains("(removed) Ghost"),
+            "orphan label must be prefixed with \"(removed) \": {ghost_slice}"
         );
     }
 
@@ -692,8 +747,48 @@ mod tests {
             render_change_mode_body_for_test(strategy, "axis0", &["Default", "Combat"]);
         let hint = hint_for_stage_zero(&hints).expect("hint must surface");
         assert!(
-            hint.contains("not in this profile") && hint.contains("button input"),
+            hint.contains("no longer exists") && hint.contains("button input"),
             "combined hint must mention both error conditions: {hint}"
+        );
+    }
+
+    #[test]
+    fn disabled_hold_pill_carries_tabindex_minus_one() {
+        // When primary is non-button-shaped, the Hold pill is aria-disabled
+        // and must drop out of sequential focus order. The pill_activates
+        // gate already blocks the dispatch; tabindex="-1" hides the visual
+        // "live but inert" misimpression for keyboard users.
+        let strategy = ModeChangeStrategy::SwitchTo {
+            mode: "Combat".to_owned(),
+        };
+        let (html, _hints) =
+            render_change_mode_body_for_test(strategy, "axis0", &["Default", "Combat"]);
+        let hold_idx = html
+            .find(r#"data-strategy="hold""#)
+            .expect("Hold pill must render");
+        // Search a generous window around the data-strategy anchor for the
+        // pill's own tabindex attribute.
+        let window = &html[hold_idx.saturating_sub(200)..(hold_idx + 200).min(html.len())];
+        assert!(
+            window.contains(r#"tabindex="-1""#),
+            "disabled Hold pill must carry tabindex=\"-1\": {window}"
+        );
+    }
+
+    #[test]
+    fn enabled_hold_pill_carries_tabindex_zero() {
+        let strategy = ModeChangeStrategy::SwitchTo {
+            mode: "Combat".to_owned(),
+        };
+        let (html, _hints) =
+            render_change_mode_body_for_test(strategy, "btn0", &["Default", "Combat"]);
+        let hold_idx = html
+            .find(r#"data-strategy="hold""#)
+            .expect("Hold pill must render");
+        let window = &html[hold_idx.saturating_sub(200)..(hold_idx + 200).min(html.len())];
+        assert!(
+            window.contains(r#"tabindex="0""#),
+            "enabled Hold pill must carry tabindex=\"0\": {window}"
         );
     }
 
@@ -706,12 +801,35 @@ mod tests {
             crate::frame::mapping_editor::pipeline::tests::simulate_dispatch_strategy_change(
                 strategy,
                 "axis0",
-                &["Default", "Combat"],
                 StrategyTarget::Hold,
             );
         assert!(
             commands.is_empty(),
             "click on aria-disabled Hold pill must not commit, got {commands:?}"
+        );
+    }
+
+    #[test]
+    fn priority_3_disabled_hold_pill_enter_is_noop() {
+        // Native <button> Enter and Space activations route through onclick.
+        // Since the dispatch helper calls pill_activates and bails when
+        // aria-disabled, the keyboard path is gated by the same predicate as
+        // the click path. The tabindex="-1" attribute (set by the parent
+        // body) keeps the disabled pill out of sequential focus order, but
+        // even if a user reaches it via Shift+Tab focus or programmatic
+        // focus, Enter must remain a no-op. This test pins that contract.
+        let strategy = ModeChangeStrategy::SwitchTo {
+            mode: "Combat".to_owned(),
+        };
+        let (commands, _label) =
+            crate::frame::mapping_editor::pipeline::tests::simulate_dispatch_strategy_change(
+                strategy,
+                "axis0",
+                StrategyTarget::Hold,
+            );
+        assert!(
+            commands.is_empty(),
+            "Enter on aria-disabled Hold pill must not commit, got {commands:?}"
         );
     }
 
@@ -746,7 +864,6 @@ mod tests {
             crate::frame::mapping_editor::pipeline::tests::simulate_dispatch_strategy_change(
                 strategy,
                 "axis0",
-                &["Default", "Combat"],
                 StrategyTarget::Set,
             );
         let first = commands.into_iter().next().expect("expected SetMapping");
@@ -775,10 +892,7 @@ mod tests {
         };
         let (commands, _label) =
             crate::frame::mapping_editor::pipeline::tests::simulate_dispatch_target_change(
-                strategy,
-                "btn0",
-                &["Default", "Combat"],
-                "Combat",
+                strategy, "btn0", "Combat",
             );
         let first = commands.into_iter().next().expect("expected SetMapping");
         match first {

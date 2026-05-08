@@ -315,6 +315,9 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-full);
     background: var(--color-bg-elevated);
+    /* Match Select baseline (32px) on the second row of the change-mode
+       grid. The pill itself stays at 24px; the row absorbs the padding. */
+    min-height: 32px;
 }
 
 .if-stage__body-strategy-pill {
@@ -329,7 +332,13 @@
     font-family: var(--font-sans);
     font-size: 13px;
     cursor: pointer;
-    transition: none; /* prefers-reduced-motion: instant swap */
+    /* Segmented toggle: instant state swap, no easing. */
+    transition: none;
+}
+
+.if-stage__body-strategy-pill:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
 }
 
 .if-stage__body-strategy-pill:hover:not([aria-disabled="true"]) {
@@ -1088,6 +1097,13 @@
     font-size: 12px;
     color: var(--color-text-muted);
     text-align: right;
+    /* Defense-in-depth for any stage body that has not adopted the
+       compact summary tag: clip overlong prose hints rather than letting
+       them spill into the chevron column. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
 }
 
 /* The right slot is the 32px column at the end of every stage header.
