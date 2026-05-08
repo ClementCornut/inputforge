@@ -1263,3 +1263,18 @@ fn inline_rename_swaps_in_for_active_row() {
         "rename-inline class must be present when state is Some: {html}",
     );
 }
+
+#[test]
+fn colors_css_declares_tint_selected_and_tint_create() {
+    let css = include_str!("../../../assets/tokens/colors.css");
+    assert!(
+        css.contains("--tint-selected: 8%;"),
+        "--tint-selected token must be declared so the rail row, device chip, and \
+         create-row hover can color-mix from one source: {css}",
+    );
+    assert!(
+        css.contains("--tint-create: 5%;"),
+        "--tint-create token must be declared so the dashed footer hover reads \
+         as create rather than selected: {css}",
+    );
+}

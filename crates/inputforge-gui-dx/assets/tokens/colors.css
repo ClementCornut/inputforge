@@ -91,4 +91,14 @@
     --color-success-bg:    rgba(46, 224, 160, 0.14);       /* live    text 6.7x on tint */
     --color-warning-bg:    rgba(255, 179, 71, 0.14);       /* warning text 6.6x on tint */
     --color-error-bg:      rgba(242, 85, 85, 0.14);        /* error-hover text 4.9x on tint (canonical fails 3.9x) */
+
+    /* Active-treatment tints (rail cohesion pass).
+       --tint-selected encodes the "selected/active" intensity used by the
+       row, the device-filter chip, and the canonical .if-device-row.
+       --tint-create encodes the slightly cooler "create" intensity used by
+       the dashed `+ Add mapping` row and (visually identical) the mode-tab
+       trailing `+`. Keeping the percentages here means any future
+       intensity tweak ships from one file. */
+    --tint-selected: 8%;
+    --tint-create: 5%;
 }
