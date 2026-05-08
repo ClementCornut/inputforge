@@ -427,6 +427,58 @@ pub(crate) fn render_change_mode_body_for_test(
     (html, hints)
 }
 
+/// Drive the F14 strategy-pill dispatch helper from a test. Builds a
+/// synthetic mapping, channels, and a fresh `UndoLog`; returns the
+/// `EngineCommand`s emitted on the channel and the formatted undo label
+/// (if any). Calls the pure `_into` form so we do not need to construct a
+/// `Signal<UndoLog>` outside a Dioxus runtime.
+pub(crate) fn simulate_dispatch_strategy_change(
+    strategy_before: inputforge_core::action::ModeChangeStrategy,
+    primary: &str,
+    modes: &[&str],
+    target: crate::frame::mapping_editor::pipeline::stage_body::change_mode::StrategyTarget,
+) -> (Vec<inputforge_core::engine::EngineCommand>, Option<String>) {
+    use crate::frame::MappingKey;
+    use crate::frame::mapping_editor::pipeline::stage_body::change_mode::dispatch_strategy_change_into;
+    use crate::frame::mapping_editor::undo_log::UndoLog;
+    use inputforge_core::action::ModeChangeStrategy;
+    use inputforge_core::engine::EngineCommand;
+
+    let addr = parse_primary_for_test(primary);
+    let mode_before = match &strategy_before {
+        ModeChangeStrategy::SwitchTo { mode } | ModeChangeStrategy::Temporary { mode } => {
+            mode.clone()
+        }
+    };
+    let is_hold = matches!(strategy_before, ModeChangeStrategy::Temporary { .. });
+    let hold_disabled = !addr.is_button_shaped();
+    let mapping_key: MappingKey = ("Default".to_owned(), addr.clone());
+    let stage_id = StageId(vec![StageIdSegment::Index(0)]);
+    let root_actions = vec![Action::ChangeMode {
+        strategy: strategy_before,
+    }];
+    let names: HashMap<InputAddress, String> = HashMap::new();
+    let _ = modes;
+
+    let (tx, rx) = mpsc::channel::<EngineCommand>();
+    let mut undo_log = UndoLog::default();
+    let label = dispatch_strategy_change_into(
+        target,
+        &mode_before,
+        is_hold,
+        hold_disabled,
+        &mapping_key,
+        &stage_id,
+        &root_actions,
+        &names,
+        &tx,
+        &mut undo_log,
+    );
+    drop(tx);
+    let commands: Vec<EngineCommand> = rx.try_iter().collect();
+    (commands, label)
+}
+
 // ---------------------------------------------------------------------------
 // Harness (VirtualDom::new_with_props pattern matching mapping_editor::tests)
 // ---------------------------------------------------------------------------

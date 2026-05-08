@@ -15,7 +15,7 @@ use crate::frame::MappingKey;
 use crate::frame::mapping_editor::undo_log::StageId;
 use crate::icons::{Icon as IconKind, IconSize};
 
-mod change_mode;
+pub(crate) mod change_mode;
 mod conditional;
 mod deadzone;
 mod instruments;
