@@ -87,8 +87,8 @@ mod tests {
 
     use super::{TabsContext, TabsRoot};
 
-    /// TabsRoot publishes a TabsContext that descendants can consume.
-    /// The publish-by-context contract is what TabsList and TabButton
+    /// `TabsRoot` publishes a `TabsContext` that descendants can consume.
+    /// The publish-by-context contract is what `TabsList` and `TabButton`
     /// will rely on; lock it here so a future API change cannot drop
     /// the context provider silently.
     #[test]
@@ -118,10 +118,10 @@ mod tests {
         );
     }
 
-    /// TabsRoot itself must NOT render any wrapper DOM. The compound
-    /// shape relies on TabsList being the wrapper; injecting a
-    /// TabsRoot-level div would break the sibling-of-tablist pattern
-    /// callers depend on (e.g. mode_tabs's trailing `+` button).
+    /// `TabsRoot` itself must NOT render any wrapper DOM. The compound
+    /// shape relies on `TabsList` being the wrapper; injecting a
+    /// `TabsRoot`-level div would break the sibling-of-tablist pattern
+    /// callers depend on (e.g. `mode_tabs`'s trailing `+` button).
     #[test]
     fn tabs_root_renders_only_children_with_no_wrapper() {
         fn TestComponent() -> Element {

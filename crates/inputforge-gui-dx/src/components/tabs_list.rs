@@ -153,7 +153,7 @@ mod tests {
 
     /// Renders the canonical class shape, role, and orientation. The
     /// keyboard coordinator and registry-driven nav are exercised in
-    /// the integration suite once TabButton lands.
+    /// the integration suite once `TabButton` lands.
     #[test]
     fn tabs_list_renders_canonical_tablist_shape() {
         fn TestComponent() -> Element {
@@ -214,7 +214,7 @@ mod tests {
     }
 
     /// Vertical orientation flips the aria attribute. Arrow-key axis
-    /// switching is integration-tested with TabButton.
+    /// switching is integration-tested with `TabButton`.
     #[test]
     fn tabs_list_vertical_orientation_propagates_aria() {
         fn TestComponent() -> Element {
@@ -260,7 +260,7 @@ mod tests {
 
     /// A sibling rendered alongside `TabsList` under the same
     /// `TabsRoot` must land OUTSIDE the `role="tablist"` container.
-    /// This is the composition pattern mode_tabs's tail `+` and
+    /// This is the composition pattern `mode_tabs`'s tail `+` and
     /// context menu rely on so AT tab counts stay honest.
     #[test]
     fn tabs_root_sibling_renders_outside_tablist_wrapper() {
@@ -301,7 +301,7 @@ mod tests {
     /// Locks the focus-roving tabindex contract: the active tab gets
     /// tabindex=0, every other tab gets tabindex=-1. This is what
     /// keeps Tab key from cycling through every tab when the user
-    /// expects ArrowKeys to handle it.
+    /// expects `ArrowKeys` to handle it.
     #[test]
     fn tabs_list_focus_roving_assigns_tabindex_zero_only_to_active_tab() {
         use super::super::tab_button::TabButton;
@@ -387,9 +387,8 @@ mod tests {
         let mut vdom = VirtualDom::new(TestComponent);
         vdom.rebuild_in_place();
         let html = render(&vdom);
-        assert_eq!(
+        assert!(
             html.matches("disabled").count() >= 2,
-            true,
             "every TabButton under a disabled TabsRoot must render `disabled`: {html}",
         );
     }

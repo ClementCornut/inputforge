@@ -195,7 +195,7 @@ mod tests {
         vdom.rebuild_in_place();
         let html = render(&vdom);
         // Both buttons carry the base class.
-        assert_eq!(html.matches("if-tab").count() >= 2, true, "{html}");
+        assert!(html.matches("if-tab").count() >= 2, "{html}");
         // Only the active one carries the active modifier.
         assert_eq!(
             html.matches("if-tab--active").count(),
