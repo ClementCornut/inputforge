@@ -196,6 +196,7 @@ pub(crate) fn Row(
                             Chip {
                                 variant: ChipVariant::Outline,
                                 class: "if-row__qualifier glyph-merge".to_owned(),
+                                title: format!("Merge: {secondary_label}"),
                                 span { class: "if-row__chip-glyph", "+" }
                                 span { class: "if-row__chip-text", "{secondary_label}" }
                             }
@@ -204,6 +205,7 @@ pub(crate) fn Row(
                             Chip {
                                 variant: ChipVariant::Outline,
                                 class: "if-row__qualifier glyph-cond".to_owned(),
+                                title: format!("Condition: {predicate_label}"),
                                 span { class: "if-row__chip-glyph", "\u{2295}" }
                                 span { class: "if-row__chip-text", "{predicate_label}" }
                             }
