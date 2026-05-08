@@ -111,7 +111,12 @@
 .if-rail__group-header__count {
     font-family: var(--font-mono);
     font-weight: 500;
-    color: var(--color-border-strong);
+    /* Same tier as the eyebrow label so the count reads as data
+       inside the eyebrow. The mono family + lighter weight (500 vs
+       label's 600) carry the differentiation; the previous
+       `--color-border-strong` is a border tier and produced ~1.5:1
+       contrast on the elevated rail surface. */
+    color: var(--color-text-muted);
     letter-spacing: 0;
     text-transform: none;
 }
