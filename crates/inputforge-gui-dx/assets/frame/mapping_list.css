@@ -446,7 +446,6 @@
     font-size: 12px;
     background: var(--color-bg);
     color: var(--color-text);
-    /* substituted --color-border-focus for missing --color-focus-cyan */
     border: 1px solid var(--color-border-focus);
     border-radius: var(--radius-sm);
     padding: var(--space-1) var(--space-2);
@@ -468,12 +467,9 @@
 
 .if-row-menu {
     z-index: 101;
-    /* substituted --color-bg-elevated for missing --color-surface-2 */
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
-    /* substituted --shadow-3 for missing --shadow-lg
-       (genuine floating-overlay shadow tier per elevation.css) */
     box-shadow: var(--shadow-3);
     min-width: 180px;
     padding: var(--space-1) 0;
@@ -492,7 +488,6 @@
 }
 
 .if-row-menu__item:hover {
-    /* substituted --color-border for missing --color-surface-hover */
     background: var(--color-border);
 }
 
@@ -511,7 +506,6 @@
 }
 
 .if-row-menu__item--danger {
-    /* substituted --color-error for missing --color-danger */
     color: var(--color-error);
 }
 
