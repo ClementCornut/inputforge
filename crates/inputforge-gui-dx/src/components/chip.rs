@@ -104,4 +104,18 @@ mod tests {
             "Chip must not emit a title attribute when prop is None: {html}",
         );
     }
+
+    #[test]
+    fn chip_output_variant_emits_output_class_and_css_rule() {
+        let html = render_with(ChipVariant::Output);
+        assert!(
+            html.contains("if-chip--output"),
+            "output variant class missing: {html}",
+        );
+        let css = include_str!("../../assets/components/chip.css");
+        assert!(
+            css.contains(".if-chip--output"),
+            "Chip Output CSS rule must land in chip.css: {css}",
+        );
+    }
 }

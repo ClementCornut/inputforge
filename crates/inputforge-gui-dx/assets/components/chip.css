@@ -21,3 +21,13 @@
     border-color: var(--color-border-strong);
     color: var(--color-text-muted);
 }
+
+/* No max-width: Output chips have no intrinsic length cap. The rail row
+   consumer (`.if-row__output-chip`) sets `max-width: none` explicitly,
+   and any future consumer that wants truncation pins it locally. */
+.if-chip.if-chip--output {
+    background: var(--color-bg-sunken);
+    border-color: var(--color-border);
+    color: var(--color-output);
+    font-family: var(--font-mono);
+}
