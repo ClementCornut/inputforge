@@ -456,6 +456,15 @@ fn gallery_root() -> Element {
                         Cluster { gap: "--space-2".to_owned(),
                             Chip { variant: ChipVariant::Outline, "Outline" }
                             Chip { variant: ChipVariant::Output, "vJoy 2 . X" }
+                            // Hover this chip to confirm the `title` prop
+                            // forwards to the underlying button (parity with
+                            // Badge `title`, used in the rail's qualifier
+                            // chips and elsewhere).
+                            Chip {
+                                variant: ChipVariant::Outline,
+                                title: "Hover for tooltip".to_owned(),
+                                "Hover me",
+                            }
                             span { "data-kind": "axis",
                                 Chip { variant: ChipVariant::Capture, "AXIS 0" }
                             }
