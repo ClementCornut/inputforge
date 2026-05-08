@@ -4,6 +4,9 @@ mod delete_dialog;
 mod logic;
 mod rename_inline;
 
+#[cfg(test)]
+mod tests;
+
 use dioxus::prelude::*;
 
 use crate::components::{TabButton, TabsList, TabsRoot};
