@@ -18,10 +18,6 @@ use dioxus::prelude::*;
 /// which equals render order for stable consumers and feeds keyboard
 /// navigation in `TabsList`.
 #[derive(Clone)]
-#[allow(
-    dead_code,
-    reason = "Fields read by TabsList + TabButton in subsequent commits of this migration"
-)]
 pub(crate) struct TabRegistryEntry {
     pub id: String,
     pub disabled: bool,
