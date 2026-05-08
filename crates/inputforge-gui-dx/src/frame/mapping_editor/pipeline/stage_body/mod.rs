@@ -15,6 +15,7 @@ use crate::frame::MappingKey;
 use crate::frame::mapping_editor::undo_log::StageId;
 use crate::icons::{Icon as IconKind, IconSize};
 
+mod change_mode;
 mod conditional;
 mod deadzone;
 mod instruments;
@@ -22,7 +23,6 @@ mod invert;
 mod map_to_keyboard;
 mod map_to_vjoy;
 mod merge_axis;
-mod placeholders;
 pub(crate) mod predicate;
 mod response_curve;
 
@@ -112,21 +112,28 @@ pub(crate) fn StageBody(
                 root_actions: root_actions.clone(),
             }
         },
-        Action::ChangeMode { .. } => rsx! { placeholders::ChangeModePlaceholder {} },
+        Action::ChangeMode { strategy } => rsx! {
+            change_mode::ChangeModeBody {
+                mapping_key: mapping_key.clone(),
+                stage_id: stage_id.clone(),
+                strategy: strategy.clone(),
+                root_actions: root_actions.clone(),
+            }
+        },
     }
 }
 
 /// Per-variant `right_slot` for `StageHeader`. Called from `Stage::render`.
 /// F9-owned variants all return the default chevron-down SVG (the visual
-/// affordance for expand/collapse). F10/F11/F14 override their variants
+/// affordance for expand/collapse). F10/F11 override their variants
 /// here to return their 28x14 preview thumbnail. Per spec lines 325-326,
 /// the `IconButton`'s 32x32 hit area, `aria-expanded`, and `aria-controls`
 /// remain invariant: only the visual content of the slot changes.
 #[allow(
     clippy::match_same_arms,
-    reason = "Named arms are the F10/F11/F14 override seam (spec lines 325-326). \
-              Each will return a preview thumbnail when those tasks land; \
-              collapsing into wildcard would erase the seam."
+    reason = "Named arms are the F10/F11 override seam (spec lines 325-326). \
+              Each returns a preview thumbnail; collapsing into wildcard \
+              would erase the seam."
 )]
 pub(crate) fn header_right_slot(action: &Action, expanded: bool) -> Element {
     match action {
@@ -134,8 +141,6 @@ pub(crate) fn header_right_slot(action: &Action, expanded: bool) -> Element {
         Action::ResponseCurve { curve } => response_curve::thumbnail::header_thumbnail(curve),
         // F11: thumbnail replaces the default chevron.
         Action::Deadzone { config } => deadzone::thumbnail::header_thumbnail(config),
-        // F14 will override (preview = mode badge):
-        Action::ChangeMode { .. } => default_chevron(expanded),
         // F9-owned variants: chevron only.
         _ => default_chevron(expanded),
     }
