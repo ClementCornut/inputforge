@@ -5,7 +5,6 @@
  * assets/tokens/colors.css + elevation.css):
  *   --color-surface-1       -> --color-bg            (canonical surface)
  *   --color-surface-2       -> --color-bg-elevated   (elevated surface)
- *   --color-surface-hover   -> --color-border        (top_bar hover idiom)
  *   --color-border-subtle   -> --color-border        (the regular border;
  *                                                    border-strong is the
  *                                                    "strong" tier)
@@ -13,7 +12,9 @@
  *   --color-focus-ring      -> --color-border-focus  (canonical focus ring)
  *   --color-danger          -> --color-error         (error in this catalog)
  *   --shadow-lg             -> --shadow-3            (genuine floating
- *                                                    overlay shadow tier) */
+ *                                                    overlay shadow tier)
+ * Row hover uses --color-bg-elevated directly (cohesion pass);
+ * the legacy `--color-surface-hover` placeholder is no longer used. */
 
 /* The rail's surface (elevated background, right-border seam, scroll
  * container, fixed 280px width) is owned by the `.if-layout__rail`
@@ -336,8 +337,9 @@
    `split_label`'s docstring exists specifically to keep this cell
    visible when the device label runs out of room. The cell inherits
    color and font-size from `.if-row__source` so it reads as
-   continuous text on the source-primary line, distinguished only
-   by the leading middle-dot. */
+   continuous text on the source-primary line, sitting in its own
+   flex cell with `flex: 0 0 auto` so it never shrinks below its
+   intrinsic width. */
 .if-row__source-input {
     flex: 0 0 auto;
     white-space: nowrap;
