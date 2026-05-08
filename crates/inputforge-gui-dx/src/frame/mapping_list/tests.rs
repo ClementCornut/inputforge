@@ -1782,6 +1782,180 @@ fn mapping_list_css_locks_group_header_count_uses_text_tier() {
     );
 }
 
+/// The `SortableHandle` (6-dot grip) is `position: absolute; left: 4px`
+/// and the row pays no left-padding gutter (Section E of the cohesion
+/// spec drops it for density). Without a halo the hover-revealed
+/// handle reads as glued to the labels behind it. Lock the chip-like
+/// halo so a future regression cannot strip it back to a transparent
+/// overlay.
+#[test]
+fn mapping_list_css_locks_handle_halo_on_row_hover() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+    let block = css
+        .split(".if-row:hover .if-sortable-handle {")
+        .nth(1)
+        .expect(".if-row:hover .if-sortable-handle rule present")
+        .split('}')
+        .next()
+        .expect(".if-row:hover .if-sortable-handle rule closed");
+    assert!(
+        block.contains("background: var(--color-bg-elevated);"),
+        "handle halo must use --color-bg-elevated so it matches the row's \
+         hover background and reads as a chip-like surface: {block}",
+    );
+    assert!(
+        block.contains("border: 1px solid var(--color-border);"),
+        "handle halo must carry a 1 px --color-border hairline (chip idiom): {block}",
+    );
+    assert!(
+        block.contains("border-radius: var(--radius-sm);"),
+        "handle halo must use --radius-sm to match the dense-chip idiom: {block}",
+    );
+}
+
+/// The live row-tint is layered as an inset 1 px shadow modulated by
+/// the inline `--row-live-intensity` custom property. Locking the
+/// token (--color-live) and the intensity formula
+/// (`calc(var(--row-live-intensity, 0) * 100%)`) prevents a regression
+/// from silently muting the signal or swapping the token tier.
+#[test]
+fn mapping_list_css_locks_row_live_active_uses_color_live() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+    let block = css
+        .split(".if-row.is-live-active {")
+        .nth(1)
+        .expect(".if-row.is-live-active rule present")
+        .split('}')
+        .next()
+        .expect(".if-row.is-live-active rule closed");
+    assert!(
+        block.contains("var(--color-live)"),
+        ".if-row.is-live-active must paint with --color-live (the engine's \
+         truth signal); other tier swaps would dilute the semantic: {block}",
+    );
+    assert!(
+        block.contains("calc(var(--row-live-intensity, 0) * 100%)"),
+        ".if-row.is-live-active must modulate intensity via \
+         calc(var(--row-live-intensity, 0) * 100%); the inline custom \
+         property is the only way to carry continuous axis magnitude: {block}",
+    );
+    assert!(
+        block.contains("box-shadow: inset 0 0 0 1px"),
+        ".if-row.is-live-active must use inset 1 px box-shadow so the \
+         live signal layers under hover / .is-active / focus border \
+         states without clobbering them: {block}",
+    );
+}
+
+/// `row.rs:82` previously discarded `split_label`'s input half. Lock
+/// the contract that all three input kinds (Axis / Button / Hat) make
+/// it onto the source-primary line, the device cell is followed by
+/// the middle-dot separator + the input cell, and the input cell text
+/// matches `split_label`'s output (HID axis label, 1-indexed `Btn N`,
+/// 0-indexed `Hat N`).
+#[test]
+fn row_renders_input_identity_after_device_for_each_input_kind() {
+    use inputforge_core::types::InputId;
+
+    fn axis_test() -> Element {
+        row_input_identity_test_component(InputId::Axis { index: 0 })
+    }
+    fn button_test() -> Element {
+        row_input_identity_test_component(InputId::Button { index: 3 })
+    }
+    fn hat_test() -> Element {
+        row_input_identity_test_component(InputId::Hat { index: 0 })
+    }
+
+    assert_input_cell_renders(axis_test, "X", "axis 0");
+    assert_input_cell_renders(button_test, "Btn 4", "button index 3");
+    assert_input_cell_renders(hat_test, "Hat 0", "hat 0");
+}
+
+fn row_input_identity_test_component(input: inputforge_core::types::InputId) -> Element {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::frame::mapping_list::row::Row;
+    use inputforge_core::state::DeviceState;
+    use inputforge_core::types::{
+        AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress,
+    };
+
+    provide_minimal_contexts();
+    let ctx = use_context::<AppContext>();
+    let mut cfg_signal = ctx.config;
+    use_hook(move || {
+        cfg_signal.set(ConfigSnapshot {
+            devices: vec![DeviceState {
+                info: DeviceInfo {
+                    id: DeviceId("dev".to_owned()),
+                    name: "TFM Throttle".to_owned(),
+                    axes: 4,
+                    buttons: 8,
+                    hats: 1,
+                    instance_path: None,
+                    axis_polarities: vec![AxisPolarity::Bipolar; 4],
+                },
+                connected: true,
+                diagnostics: DeviceDiagnostics::default(),
+            }],
+            ..ConfigSnapshot::default()
+        });
+    });
+    let summary = MappingSummary {
+        input: InputAddress::Bound {
+            device: DeviceId("dev".to_owned()),
+            input,
+        },
+        mode: "Default".to_owned(),
+        name: None,
+        glyphs: GlyphFlags::default(),
+        referenced_devices: vec![DeviceId("dev".to_owned())],
+        first_vjoy_output: None,
+    };
+    let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
+    let sortable = use_sortable_state::<u32>();
+    rsx! {
+        Row {
+            summary: summary,
+            is_active: false,
+            renaming: renaming,
+            sortable: sortable,
+            filter_active: false,
+            on_open_menu: move |_: (InputAddress, f64, f64)| {},
+        }
+    }
+}
+
+fn assert_input_cell_renders(component: fn() -> Element, expected_text: &str, kind_label: &str) {
+    let mut vdom = VirtualDom::new(component);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    let device_pos = html
+        .find("if-row__source-device")
+        .unwrap_or_else(|| panic!("device cell missing for {kind_label}: {html}"));
+    let sep_pos = html
+        .find("if-row__source-sep")
+        .unwrap_or_else(|| panic!("separator missing for {kind_label}: {html}"));
+    let input_pos = html
+        .find("if-row__source-input")
+        .unwrap_or_else(|| panic!("input cell missing for {kind_label}: {html}"));
+    assert!(
+        device_pos < sep_pos && sep_pos < input_pos,
+        "source-primary cell order must be device, separator, input \
+         for {kind_label}: {html}",
+    );
+    assert!(
+        html.contains(&format!(">{expected_text}<")),
+        "input cell must render `{expected_text}` for {kind_label}: {html}",
+    );
+    assert!(
+        html.contains("\u{00b7}"),
+        "middle-dot separator glyph must render between device and input \
+         cells for {kind_label}: {html}",
+    );
+}
+
 #[test]
 fn qualifier_chips_render_as_chip_outline_with_glyph_class() {
     use crate::context::{GlyphFlags, MappingSummary};
