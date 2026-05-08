@@ -313,9 +313,14 @@
 
 .if-row__qualifier {
     /* Qualifier chips inherit Chip Outline base. Override only what
-       differs from a generic outline chip: italic body text + a
-       per-kind glyph hue carried by `.glyph-merge` / `.glyph-cond`. */
-    font-style: italic;
+       differs from a generic outline chip: smaller font-size, plus a
+       per-kind glyph hue carried by `.glyph-merge` / `.glyph-cond`.
+       Italic was the fourth differentiation channel from primary
+       chips but its forward-slant ink projected past the glyph
+       bounding-box right and read as a clipped trailing letter
+       inside the chip's hairline border; the leading `+` / `+`
+       glyph + Outline variant + 10 px font already differentiate
+       qualifier chips from output chips. */
     font-size: 10px;
 }
 
