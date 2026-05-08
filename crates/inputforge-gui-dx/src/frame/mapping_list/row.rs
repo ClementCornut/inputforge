@@ -126,7 +126,7 @@ pub(crate) fn Row(
         .as_ref()
         .is_some_and(|a| a == &summary.input);
 
-    let (device_label, _) = source_label::split_label(&summary.input, &ctx.config.read());
+    let (device_label, input_label) = source_label::split_label(&summary.input, &ctx.config.read());
 
     let mut sel = view.selected_mapping;
     let summary_for_click = summary.clone();
@@ -231,7 +231,15 @@ pub(crate) fn Row(
             }
             div { class: "if-row__source",
                 div { class: "if-row__source-primary",
-                    span { class: "if-row__source-device", "{device_label}" }
+                    if !device_label.is_empty() {
+                        span { class: "if-row__source-device", "{device_label}" }
+                        span {
+                            class: "if-row__source-sep",
+                            "aria-hidden": "true",
+                            "\u{00b7}"
+                        }
+                    }
+                    span { class: "if-row__source-input", "{input_label}" }
                     if let Some(output) = &summary.first_vjoy_output {
                         span { class: "if-row__source-arrow", "aria-hidden": "true", "\u{2192}" }
                         Chip {

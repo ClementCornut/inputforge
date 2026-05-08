@@ -275,8 +275,14 @@ fn row_renders_name_and_source_line() {
     assert!(html.contains("Boost"), "name must render: {html}");
     assert!(html.contains("dev"), "source device must render: {html}");
     assert!(
-        !html.contains("if-row__source-input"),
-        "legacy input label must not render: {html}"
+        html.contains("if-row__source-input"),
+        "input identity cell must render alongside the device cell so the \
+         second half of the trigger stays visible per source_label::split_label's \
+         docstring: {html}",
+    );
+    assert!(
+        html.contains("Btn 1"),
+        "button index must render in 1-indexed form (`Btn 1` for InputId::Button {{ index: 0 }}): {html}",
     );
     assert!(html.contains("if-row"), "row root class missing: {html}");
 }
@@ -325,8 +331,9 @@ fn row_omits_unnamed_placeholder_when_not_renaming() {
         "source device must remain visible: {html}"
     );
     assert!(
-        !html.contains("if-row__source-input"),
-        "legacy input label must not render: {html}"
+        html.contains("if-row__source-input"),
+        "input identity cell must render even when the row has no name, \
+         so the trigger reads as `<device> . <input id>`: {html}",
     );
 }
 
@@ -377,8 +384,9 @@ fn row_renders_compact_vjoy_output_badge() {
         "output chip class missing: {html}"
     );
     assert!(
-        !html.contains("if-row__source-input"),
-        "legacy input label must not render beside the output badge: {html}"
+        html.contains("if-row__source-input"),
+        "input identity cell must render alongside the output chip so the \
+         row reads as `<device> . <input id> -> <output>`: {html}",
     );
     assert!(
         html.contains("\u{2192}"),
@@ -631,8 +639,9 @@ fn row_swaps_in_rename_inline_when_renaming_matches_input() {
         "Source device text must remain visible during rename: {html}",
     );
     assert!(
-        !html.contains("if-row__source-input"),
-        "legacy input label must not render during rename: {html}",
+        html.contains("if-row__source-input"),
+        "Input identity cell must remain visible during rename so the \
+         user keeps a handle on which physical input they are renaming: {html}",
     );
 }
 
