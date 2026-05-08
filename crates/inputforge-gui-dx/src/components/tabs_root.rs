@@ -32,10 +32,6 @@ pub(crate) struct TabRegistryEntry {
 /// coordinator + `focus_request` watcher) and `TabButton` (renders
 /// aria-selected, registers its mount ref, calls `onchange` on click).
 #[derive(Clone, Copy)]
-#[allow(
-    dead_code,
-    reason = "Fields consumed by TabsList + TabButton in subsequent commits of this migration"
-)]
 pub(crate) struct TabsContext {
     pub value: ReadSignal<String>,
     pub onchange: EventHandler<String>,

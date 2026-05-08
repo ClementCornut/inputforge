@@ -24,6 +24,7 @@ pub mod spinner;
 pub mod status_bar;
 pub mod switch;
 pub mod tabs;
+pub mod tabs_list;
 pub mod tabs_root;
 pub mod text_input;
 pub mod tooltip;
