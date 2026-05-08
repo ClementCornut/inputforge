@@ -70,6 +70,11 @@ pub(crate) fn device_chips_for_mode(
             chip.label = format!("{} · {}", chip.label, chip.id.0);
         }
     }
+    // Sort by display label, case-insensitive, after disambiguation so
+    // the appended `· {id}` suffix breaks duplicate-name ties
+    // deterministically. Insertion order (which equals row scan order)
+    // would shift the filter strip whenever rows are reordered.
+    chips.sort_by(|a, b| a.label.to_lowercase().cmp(&b.label.to_lowercase()));
     chips
 }
 
@@ -232,7 +237,13 @@ mod tests {
     }
 
     #[test]
-    fn device_chips_are_current_mode_first_seen_and_disambiguated() {
+    fn device_chips_sort_alphabetically_by_label_after_disambiguation() {
+        // Two "Twin Stick" devices in Default mode get disambiguated to
+        // "Twin Stick · dev-a" and "Twin Stick · dev-b"; sorting by the
+        // disambiguated label puts dev-a before dev-b regardless of
+        // first-appearance order in the row scan. The "Pedals" device
+        // is referenced only in the "Other" mode, so it must NOT
+        // surface in the Default-mode chip set.
         let cfg = cfg_with_named_devices([
             ("dev-a", "Twin Stick"),
             ("dev-b", "Twin Stick"),
@@ -248,9 +259,14 @@ mod tests {
         let chips = device_chips_for_mode(&rows, "Default", &cfg);
         assert_eq!(
             chips.iter().map(|c| c.id.0.as_str()).collect::<Vec<_>>(),
-            vec!["dev-b", "dev-a"]
+            vec!["dev-a", "dev-b"],
+            "chips must sort alphabetically by disambiguated label, not by first-seen order",
         );
         assert_ne!(chips[0].label, chips[1].label);
+        assert!(
+            !chips.iter().any(|c| c.id.0 == "dev-c"),
+            "the Other-mode-only device must not surface in the Default chip set: {chips:?}",
+        );
     }
 
     #[test]
