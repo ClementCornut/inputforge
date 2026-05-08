@@ -189,9 +189,19 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
 
             // Control flow
             Action::ChangeMode { strategy } => {
-                ctx.outputs.push(PipelineOutput::ChangeMode {
-                    strategy: strategy.clone(),
-                });
+                // Rising-edge gate. The action fires only while the input is
+                // active so naked `Action::ChangeMode` does not re-trigger on
+                // release. For `Temporary`, the release is handled by
+                // `ReleaseCallback::PopTemporaryMode` registered when the push
+                // succeeds; without this gate, the pipeline rerun on the
+                // release tick would push the temporary mode back. Conditional
+                // wrappers gate their inner branch independently, so this
+                // check is redundant but harmless inside one.
+                if ctx.current_value > 0.0 {
+                    ctx.outputs.push(PipelineOutput::ChangeMode {
+                        strategy: strategy.clone(),
+                    });
+                }
             }
             Action::Conditional {
                 condition,
@@ -868,6 +878,99 @@ mod tests {
         execute_pipeline(&actions, &mut ctx);
         assert_eq!(ctx.outputs.len(), 1);
         assert_eq!(ctx.outputs[0], PipelineOutput::ChangeMode { strategy });
+    }
+
+    #[test]
+    fn change_mode_temporary_does_not_fire_on_release() {
+        let cache = MockCache::new();
+        let strategy = ModeChangeStrategy::Temporary {
+            mode: "combat".to_owned(),
+        };
+        let actions = [Action::ChangeMode {
+            strategy: strategy.clone(),
+        }];
+
+        let mut press_ctx = button_ctx(&cache, true);
+        execute_pipeline(&actions, &mut press_ctx);
+        assert_eq!(
+            press_ctx.outputs.len(),
+            1,
+            "press tick must produce one ChangeMode output"
+        );
+        assert_eq!(
+            press_ctx.outputs[0],
+            PipelineOutput::ChangeMode {
+                strategy: strategy.clone()
+            }
+        );
+
+        let mut release_ctx = button_ctx(&cache, false);
+        execute_pipeline(&actions, &mut release_ctx);
+        assert!(
+            release_ctx.outputs.is_empty(),
+            "release tick must not re-fire ChangeMode (regression: Hold stuck in temporary mode)"
+        );
+    }
+
+    #[test]
+    fn change_mode_switch_to_does_not_fire_on_release() {
+        let cache = MockCache::new();
+        let strategy = ModeChangeStrategy::SwitchTo {
+            mode: "combat".to_owned(),
+        };
+        let actions = [Action::ChangeMode {
+            strategy: strategy.clone(),
+        }];
+
+        let mut press_ctx = button_ctx(&cache, true);
+        execute_pipeline(&actions, &mut press_ctx);
+        assert_eq!(press_ctx.outputs.len(), 1);
+
+        let mut release_ctx = button_ctx(&cache, false);
+        execute_pipeline(&actions, &mut release_ctx);
+        assert!(
+            release_ctx.outputs.is_empty(),
+            "Set on release must be a no-op so it does not re-emit a redundant SwitchTo"
+        );
+    }
+
+    #[test]
+    fn change_mode_inside_conditional_button_pressed_still_gates_correctly() {
+        // Regression guard: even with the engine-level rising-edge gate,
+        // a Conditional wrapper around ChangeMode must keep working as
+        // before. The Conditional's `if_false` is empty, so release must
+        // produce zero outputs whether the inner gate exists or not.
+        let mut cache = MockCache::new();
+        let button = button_input_address();
+        let strategy = ModeChangeStrategy::Temporary {
+            mode: "combat".to_owned(),
+        };
+        let actions = [Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: button.clone(),
+            },
+            if_true: vec![Action::ChangeMode {
+                strategy: strategy.clone(),
+            }],
+            if_false: Vec::new(),
+        }];
+
+        cache.buttons.insert(button.clone(), true);
+        let mut press_ctx = button_ctx(&cache, true);
+        execute_pipeline(&actions, &mut press_ctx);
+        assert_eq!(
+            press_ctx.outputs.len(),
+            1,
+            "Conditional press path must still emit ChangeMode"
+        );
+
+        cache.buttons.insert(button, false);
+        let mut release_ctx = button_ctx(&cache, false);
+        execute_pipeline(&actions, &mut release_ctx);
+        assert!(
+            release_ctx.outputs.is_empty(),
+            "Conditional release path's if_false is empty, so no output"
+        );
     }
 
     // -- Multiple outputs -----------------------------------------------------
