@@ -10,7 +10,6 @@ const LAYOUT_CSS: Asset = asset!("/assets/frame/layout.css");
 
 use crate::context::AppContext;
 use crate::frame::panel_slot::PanelSlot as PanelSlotComponent;
-use crate::frame::status_bar::StatusBar;
 use crate::frame::top_bar::{
     ModeDeleteDialog, ModeDeleteSignal, ModeFocusSignal, ModeTabs, TopBar,
 };
@@ -19,7 +18,7 @@ use crate::frame::view_state::{MainSurface, ViewState};
 pub(crate) use empty_state::EmptyState;
 
 /// F7 layout shell: top bar, primary workspace plus optional right panel,
-/// or empty-state, status bar.
+/// or empty-state.
 #[component]
 pub(crate) fn Layout() -> Element {
     tracing::trace!(target: "frame::render", region = "layout");
@@ -57,7 +56,6 @@ pub(crate) fn Layout() -> Element {
             } else {
                 EmptyState {}
             }
-            StatusBar {}
         }
     }
 }

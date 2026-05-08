@@ -154,10 +154,6 @@ components:
     textColor: "{colors.text}"
   tab-inactive:
     textColor: "{colors.text-muted}"
-  status-bar:
-    backgroundColor: "{colors.bg-sunken}"
-    textColor: "{colors.text-muted}"
-    typography: "{typography.label}"
   dialog-panel:
     backgroundColor: "{colors.bg-elevated}"
     rounded: "{rounded.md}"
@@ -210,12 +206,12 @@ These are taxonomy markers, not alerts. They get ~30% less chroma than the actio
 
 - **Hangar Navy** (`#14172A`): the default surface (`bg`). Cooler and slightly deeper than the egui prototype's `#1A1A2E` for cleaner layering.
 - **Panel Navy** (`#1E223A`): elevated surfaces (`bg-elevated`). Cards, dialogs, menus, button defaults. Reads as "lifted" purely through luminance against `bg`.
-- **Recess Navy** (`#0E1020`): sunken surfaces (`bg-sunken`). Inputs, selects, switch tracks, status bar. Reads as "set into the panel".
+- **Recess Navy** (`#0E1020`): sunken surfaces (`bg-sunken`). Inputs, selects, switch tracks. Reads as "set into the panel".
 - **Overlay Indigo** (`rgba(8, 10, 22, 0.78)`): backdrop and tooltip surface. The only place where partial transparency is intentional.
 - **Instrument Text** (`#E4E6F0`): body / primary text. Pulled cool to harmonize with the navy.
-- **Telemetry Text** (`#9CA0BC`): muted secondary text. Used in the status bar, helper text, inactive tabs, captions.
+- **Telemetry Text** (`#9CA0BC`): muted secondary text. Used in helper text, inactive tabs, captions.
 - **Subtle Text** (`#8589A7`): tertiary / placeholder text. Tuned to clear WCAG 2.2 AA on `bg` (5.2×) and `bg-elevated` (4.6×); the prior value (`#686C88`) failed AA at 3.0× on `bg-elevated` and was lifted in line with the 1.4.3 commitment for placeholder text.
-- **Hairline Border** (`#2A2E48`) and **Strong Border** (`#424766`): the panel seams. Strong is reserved for "this is a real surface boundary" (status bar top, dialog panel edge, tablist baseline). Hairline is for sub-divisions inside a surface.
+- **Hairline Border** (`#2A2E48`) and **Strong Border** (`#424766`): the panel seams. Strong is reserved for "this is a real surface boundary" (dialog panel edge, tablist baseline). Hairline is for sub-divisions inside a surface.
 - **Focus Cyan** (`#5AB0FF`): focus-ring outlines. One step lighter than the primary so the ring stays distinct against primary surfaces.
 
 ### Named Rules
@@ -242,7 +238,7 @@ Seven sizes, hand-tuned for the dense instrument-cluster range (11-16px) and a m
 - **Title** (semibold 600, 20px, leading 1.45): section headings, panel titles, dialog title.
 - **Emphasized Body** (semibold 600, 16px, leading 1.45): button labels, card titles, dialog description.
 - **Body** (regular 400, 14px, leading 1.45): default inputs, default labels, default prose. Cap line length at 65-75ch where prose runs.
-- **Label** (medium 500, 12px, leading 1.45): helper text, badges, dense cells, status-bar text. Adjacent to a `caption` at 11/400, the +500 weight delta carries the hierarchy.
+- **Label** (medium 500, 12px, leading 1.45): helper text, badges, dense cells. Adjacent to a `caption` at 11/400, the +500 weight delta carries the hierarchy.
 - **Caption** (regular 400, 11px, leading 1.45): tabular captions, tick labels, kbd chips. The smallest legitimate text in the system. Adjacent to a `label` at 12/500, the −500 weight delta is the perceptual difference, not the 1px size delta.
 
 ### Named Rules
@@ -437,13 +433,6 @@ A pill with five color modes. Each mode uses a composited background tint (~14% 
 - **Bubble:** overlay-indigo surface with `backdrop-filter: blur(8px)` (the system's only `backdrop-filter`, see Elevation rules). 1px hairline border. Caption-size text. Padding 4/8.
 - **Position:** four sides, set by modifier class.
 - **Motion:** 100ms opacity fade on hover or focus-within.
-
-### Status Bar
-
-- **Surface:** sunken navy with a 1px **strong** border on top, 28px tall, padding 0 / 12.
-- **Type:** label size (12px), muted-text color. The status bar is for *glancing*, not acting; consumers raise specific badges or pills to bright text via their own component, never through the status-bar text color.
-- **Layout:** three slots (start / middle / end). Middle claims `flex: 1` so the end slot anchors to the right.
-- **Overflow:** the middle slot's text truncates with ellipsis when the window is too narrow for start + middle + end to coexist. No marquee, no horizontal scroll, no wrap to a second line; the bar's height is fixed at 28px.
 
 ### Dialog
 

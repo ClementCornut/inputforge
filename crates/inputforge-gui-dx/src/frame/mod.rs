@@ -1,4 +1,4 @@
-//! F7 application frame: top bar, status bar, panel slot, layout.
+//! F7 application frame: top bar, panel slot, layout.
 
 mod bulk_map;
 mod layout;
@@ -6,7 +6,6 @@ mod mapping_editor;
 mod mapping_list;
 mod panel_slot;
 mod profiles;
-mod status_bar;
 mod top_bar;
 mod view_state;
 

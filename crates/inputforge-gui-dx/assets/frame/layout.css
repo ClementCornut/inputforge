@@ -1,9 +1,9 @@
 /* Project rule: every `display` defaults to flex; grid only for true 2D
    layouts where rows AND columns must align across siblings. F7's chrome
-   is a 1D column-stack (top bar / banner / main / status) with one
-   growing element, and the inner main row is a 1D row-flow (rail /
-   center / panel slot) with one growing element, canonical flex use
-   cases. (Memory: feedback_dialog_flexbox.) */
+   is a 1D column-stack (top bar / banner / main) with one growing
+   element, and the inner main row is a 1D row-flow (rail / center /
+   panel slot) with one growing element, canonical flex use cases.
+   (Memory: feedback_dialog_flexbox.) */
 .if-layout {
     display: flex;
     flex-direction: column;
@@ -23,14 +23,13 @@
     color: var(--color-text);
 }
 
-/* Top bar / main / status are direct children. The 40px and 28px
-   tracks become explicit `flex-basis`; main grows to fill remaining
-   space. `min-height: 0` lets `__main` shrink past its intrinsic
-   min-content (required for the inner overflow-y: auto on rail and
-   center to engage). */
+/* Top bar and main are direct children. The 40px top-bar track is an
+   explicit `flex-basis`; main grows to fill remaining space.
+   `min-height: 0` lets `__main` shrink past its intrinsic min-content
+   (required for the inner overflow-y: auto on rail and center to
+   engage). */
 .if-top-bar         { flex: 0 0 40px; }
 .if-layout__main    { flex: 1 1 auto; min-height: 0; }
-.if-status-bar      { flex: 0 0 28px; }
 
 /* The instrument-cluster reading: the working surface (center) is
    recessed between two elevated cockpit rails. `__main` sits on the

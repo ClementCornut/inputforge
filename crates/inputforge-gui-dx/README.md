@@ -200,15 +200,16 @@ Note the dioxus-desktop 0.7.6 API spelling asymmetry:
   for the canonical full-pattern wiring.
 - `StatusBar`: three-slot horizontal bar (start / middle / end). Fixed
   28px height. ARIA-neutral wrapper; consumers add `role="status"` /
-  `aria-live` only on the specific elements they want announced (e.g.,
-  the engine-status badge in `frame::status_bar::StatusBar`).
+  `aria-live` only on the specific elements they want announced.
+  Currently exercised only by the component gallery example; the
+  application frame mounts no status bar of its own.
 
 ### F7 frame layout
 
 The application chrome lives under `frame/`: top bar (engine pill,
 profile name, mode tabs, tools cluster), conditional banner
-(Diverged / Forced / ForcedAndDiverged), main row (mapping list rail
-+ editor center + right panel slot), and the three-slot status bar.
+(Diverged / Forced / ForcedAndDiverged), and main row (mapping list
+rail + editor center + right panel slot).
 Each region is a Dioxus `#[component]` with paired pure-logic in
 `frame/<region>/logic.rs` so render-free unit tests cover state
 derivation. The shared chrome state (`editing_mode`, `panel_slot`,
