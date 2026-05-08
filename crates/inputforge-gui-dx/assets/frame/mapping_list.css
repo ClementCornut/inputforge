@@ -127,6 +127,11 @@
 .if-row {
     position: relative;
     padding: var(--space-3);
+    /* `transparent` baseline (not `--color-border` like .if-device-row's
+       baseline in panel_slot.css) so rows reserve the geometry of the
+       hover/selected border without painting a resting hairline. The
+       rail's row-vs-row separation comes from the 2px row gap, not from
+       per-row borders. */
     border: 1px solid transparent;
     border-radius: var(--radius-md);
     background: var(--color-bg);
