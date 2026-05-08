@@ -1,8 +1,19 @@
-use std::rc::Rc;
+//! Items-array facade over the decomposed `TabsRoot` + `TabsList` +
+//! `TabButton` primitives. Lets simple consumers (response-curve
+//! toolbar, component gallery) keep the original
+//! `Tabs { value, onchange, items: Vec<TabItem> }` call shape while
+//! the underlying canon lives in the headless leaves.
+//!
+//! For consumers that need per-tab event handlers, dom-id overrides,
+//! ARIA menu attributes, or the rename-swap pattern, compose the
+//! decomposed primitives directly (see `mode_tabs` for the canonical
+//! example).
 
 use dioxus::prelude::*;
 
-use super::merge_class;
+use super::tab_button::TabButton;
+use super::tabs_list::TabsList;
+use super::tabs_root::TabsRoot;
 
 /// One entry in a `Tabs` tablist.
 ///
@@ -16,29 +27,16 @@ pub struct TabItem {
     pub label: String,
     pub controls: Option<String>,
     /// `true` marks this tab as the runtime-live one (orthogonal to
-    /// `value`/`is_active`). The Tabs primitive renders a 6px
-    /// `--color-live` pip before the label when set. Default `false`
-    /// for consumers that do not need the indicator.
+    /// `value`/`is_active`). Renders a 6px `--color-live` pip before
+    /// the label when set. Default `false` for consumers that do not
+    /// need the indicator.
     pub running: bool,
 }
 
 /// WAI-ARIA Tabs primitive with focus-roving and automatic activation.
-///
-/// - `role="tablist"` on the wrapper, `role="tab"` per item.
-/// - Each tab button gets `id="tab-{id}"`; when `TabItem::controls` is set,
-///   `aria-controls` points at the caller's tabpanel id.
-/// - Arrow Left / Right cycles focus AND activates (automatic activation -
-///   panel swaps are synchronous and cheap).
-/// - Home / End jumps to first / last (and activates).
-/// - `tabindex` is `0` for the active tab and `-1` for the rest (focus-roving).
-///   Focus is moved imperatively via `MountedData::set_focus` after each
-///   keyboard activation so the focus ring follows the active tab.
-/// - `disabled` short-circuits keyboard and click; visible state via
-///   `.if-tabs--disabled`.
-///
-/// The component is stateless: the caller owns `value` and renders panel
-/// content based on it. F11 (Modes) reuses this, keeping it stateless avoids
-/// over-coupling.
+/// Thin wrapper over `TabsRoot` + `TabsList` + `TabButton`; rendered HTML
+/// is identical to the pre-decomposition primitive so existing consumers
+/// require no changes.
 #[component]
 pub fn Tabs(
     /// Stable id of the active tab.
@@ -50,105 +48,19 @@ pub fn Tabs(
     #[props(default)] class: Option<String>,
     #[props(default)] disabled: bool,
 ) -> Element {
-    let combined = merge_class(
-        "if-tabs",
-        if disabled { "if-tabs--disabled" } else { "" },
-        class.as_deref(),
-    );
-
-    // Per-tab mounted-element refs, indexed by position. Populated by the
-    // `onmounted` callback on each button; consumed by `onkeydown` to call
-    // `set_focus(true)` on the newly-active tab so the browser's focus
-    // follows the selection (WAI-ARIA APG: automatic-activation tablists
-    // require focus and selection to move together).
-    let mut tab_refs: Signal<Vec<Option<Rc<MountedData>>>> = use_signal(|| vec![None; items.len()]);
-
     rsx! {
-        div {
-            class: "{combined}",
-            role: "tablist",
-            "aria-orientation": "horizontal",
-            for (idx, item) in items.iter().cloned().enumerate() {
-                {
-                    let TabItem { id, label, controls, running } = item;
-                    let is_active = id == value;
-                    let id_for_click = id.clone();
-                    let items_for_key = items.clone();
-                    let tab_id = format!("tab-{id}");
-                    let onclick = move |_| {
-                        if !disabled {
-                            onchange.call(id_for_click.clone());
-                        }
-                    };
-                    let onkeydown = move |evt: KeyboardEvent| {
-                        if disabled { return; }
-                        let key = evt.key();
-                        let len = items_for_key.len();
-                        if len == 0 { return; }
-                        let next_idx: Option<usize> = match key {
-                            Key::ArrowRight => Some((idx + 1) % len),
-                            Key::ArrowLeft  => Some((idx + len - 1) % len),
-                            Key::Home       => Some(0),
-                            Key::End        => Some(len - 1),
-                            Key::Character(ref s) if s == " " => {
-                                evt.prevent_default();
-                                None
-                            }
-                            Key::Enter => {
-                                evt.prevent_default();
-                                None
-                            }
-                            _ => None,
-                        };
-                        if let Some(i) = next_idx {
-                            evt.prevent_default();
-                            if let Some(next) = items_for_key.get(i) {
-                                onchange.call(next.id.clone());
-                                // Move focus to the new tab so the focus
-                                // ring tracks selection. Reads/clones the
-                                // Rc<MountedData> before awaiting so the
-                                // signal's read borrow is dropped first.
-                                let target = tab_refs
-                                    .read()
-                                    .get(i)
-                                    .and_then(Clone::clone);
-                                if let Some(node) = target {
-                                    spawn(async move {
-                                        let _ = node.set_focus(true).await;
-                                    });
-                                }
-                            }
-                        }
-                    };
-                    let onmounted = move |evt: MountedEvent| {
-                        let mut refs = tab_refs.write();
-                        if refs.len() <= idx {
-                            refs.resize(idx + 1, None);
-                        }
-                        refs[idx] = Some(evt.data());
-                    };
-                    rsx! {
-                        button {
-                            key: "{id}",
-                            id: "{tab_id}",
-                            r#type: "button",
-                            class: if is_active { "if-tab if-tab--active" } else { "if-tab" },
-                            role: "tab",
-                            "aria-selected": "{is_active}",
-                            "aria-controls": controls,
-                            tabindex: if is_active { "0" } else { "-1" },
-                            disabled,
-                            onclick,
-                            onkeydown,
-                            onmounted,
-                            if running {
-                                span {
-                                    class: "if-tab__running-pip",
-                                    "aria-hidden": "true",
-                                }
-                            }
-                            "{label}"
-                        }
+        TabsRoot {
+            value: value,
+            onchange: onchange,
+            disabled: disabled,
+            TabsList { class: class,
+                for item in items.iter().cloned() {
+                    TabButton {
+                        key: "{item.id}",
+                        id: item.id.clone(),
+                        label: item.label,
+                        running: item.running,
+                        aria_controls: item.controls,
                     }
                 }
             }
