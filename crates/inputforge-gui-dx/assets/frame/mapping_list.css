@@ -74,11 +74,20 @@
     color: var(--color-primary);
 }
 
-/* Base transition on the inner chip so hover-in / hover-out and the
- * pressed-active swap all animate via the canonical fast curve
- * (DESIGN.md section "Motion"). Mirror of the .if-row idle declaration
+/* Recess idle chips one luminance tier below the rail
+ * (--color-bg-elevated) so the chip body is visibly distinct from its
+ * parent surface. Mirrors the .if-chip--output and
+ * .if-add-inline__chip--listening idioms for chips on bg-elevated
+ * rails. Without this, idle chips read as just a 1px hairline floating
+ * on the rail and the hover tint (which mixes onto bg-elevated) has no
+ * luminance contrast to push against.
+ *
+ * The transition lives on this base selector so hover-in / hover-out
+ * and the pressed-active swap all animate via the canonical fast curve
+ * (DESIGN.md section "Motion"), mirroring the .if-row idle declaration
  * below that drives both .if-row:hover and .if-row.is-active. */
 .if-rail__device-chip > .if-chip {
+    background: var(--color-bg-sunken);
     transition:
         background var(--duration-fast) var(--easing-fast),
         border-color var(--duration-fast) var(--easing-fast);

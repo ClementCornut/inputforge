@@ -2197,6 +2197,28 @@ fn mapping_list_css_locks_device_chip_hover_lighter_than_active() {
     );
 }
 
+/// Idle device-filter chips paint --color-bg-sunken so the chip body
+/// sits one luminance tier below the rail's --color-bg-elevated.
+/// Mirrors the .if-chip--output and .if-add-inline__chip--listening
+/// idioms; without it the chip body reads as just a 1px hairline
+/// floating on the rail and hover tints (which mix onto bg-elevated)
+/// lose perceptual contrast.
+#[test]
+fn mapping_list_css_locks_device_chip_idle_recessed_to_bg_sunken() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+    let block = css
+        .split(".if-rail__device-chip > .if-chip {")
+        .nth(1)
+        .expect("device-chip base block present")
+        .split('}')
+        .next()
+        .expect("device-chip base block closed");
+    assert!(
+        block.contains("background: var(--color-bg-sunken);"),
+        "idle device-filter chip must paint --color-bg-sunken so it sits one luminance tier below the rail's --color-bg-elevated: {block}",
+    );
+}
+
 #[test]
 fn row_output_chip_replaces_legacy_output_badge() {
     use crate::context::{GlyphFlags, MappingSummary};
