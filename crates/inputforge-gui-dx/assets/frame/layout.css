@@ -97,8 +97,7 @@
     box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-text) 4%, transparent);
 }
 
-.if-layout__mode-strip .if-mode-tabs {
-    height: 100%;
+.if-layout__mode-strip .if-mode-tabs-wrap {
     margin-left: 0;
     padding-left: var(--space-2);
 }
