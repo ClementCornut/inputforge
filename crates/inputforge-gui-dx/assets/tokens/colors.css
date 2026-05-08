@@ -96,8 +96,10 @@
        --tint-selected encodes the "selected/active" intensity used by the
        row, the device-filter chip, and the canonical .if-device-row.
        --tint-create encodes the slightly cooler "create" intensity used by
-       the dashed `+ Add mapping` row and (visually identical) the mode-tab
-       trailing `+`. Keeping the percentages here means any future
+       the rail's dashed `+ Add mapping` row on hover. The mode-tab
+       trailing `+` lives on the bar surface and uses text-tone only;
+       a tint there would compete with the canonical 3px primary
+       underline. Keeping the percentages here means any future
        intensity tweak ships from one file. */
     --tint-selected: 8%;
     --tint-create:   5%;
