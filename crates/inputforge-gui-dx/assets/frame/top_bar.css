@@ -380,7 +380,6 @@
     overflow-y: hidden;
     scrollbar-width: thin;
     scrollbar-color: var(--color-border-strong) transparent;
-    border-bottom: 0;
     padding: 0;
 }
 
