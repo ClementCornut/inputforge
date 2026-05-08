@@ -22,6 +22,8 @@
 }
 
 .if-tab {
+    display: inline-flex;
+    align-items: center;
     appearance: none;
     background: transparent;
     border: 0;
