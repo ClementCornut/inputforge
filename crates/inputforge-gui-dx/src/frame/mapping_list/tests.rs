@@ -481,6 +481,67 @@ fn row_glyphs_render_for_merge_and_conditional() {
     );
 }
 
+/// Locks the row consumer's plumbing of the qualifier tooltip after the
+/// 27c9445 fix that restored the lost-on-Chip-migration tooltip. Chip's
+/// own tests cover the primitive's title-prop forwarding; this asserts
+/// the row actually feeds `Merge: ...` / `Condition: ...` titles to
+/// the qualifier Chips.
+#[test]
+fn row_qualifier_chips_render_with_tooltip_titles() {
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::frame::mapping_list::row::Row;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    fn TestComponent() -> Element {
+        provide_minimal_contexts();
+        let summary = MappingSummary {
+            input: InputAddress::Bound {
+                device: DeviceId("dev".to_owned()),
+                input: InputId::Axis { index: 0 },
+            },
+            mode: "Default".to_owned(),
+            name: Some("Throttle".to_owned()),
+            glyphs: GlyphFlags {
+                merge_secondary: Some(InputAddress::Bound {
+                    device: DeviceId("dev".to_owned()),
+                    input: InputId::Axis { index: 1 },
+                }),
+                first_input_predicate: Some(InputAddress::Bound {
+                    device: DeviceId("dev".to_owned()),
+                    input: InputId::Button { index: 3 },
+                }),
+            },
+            referenced_devices: vec![DeviceId("dev".to_owned())],
+            first_vjoy_output: None,
+        };
+        let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
+        let sortable = use_sortable_state::<u32>();
+        rsx! {
+            Row {
+                summary: summary,
+                is_active: false,
+                renaming: renaming,
+                sortable: sortable,
+                filter_active: false,
+                on_open_menu: move |_: (InputAddress, f64, f64)| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(TestComponent);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+    assert!(
+        html.contains("title=\"Merge: "),
+        "merge qualifier Chip must carry a `Merge: ...` tooltip title \
+         (regression guard for the 27c9445 Chip-migration tooltip fix): {html}",
+    );
+    assert!(
+        html.contains("title=\"Condition: "),
+        "conditional qualifier Chip must carry a `Condition: ...` tooltip title \
+         (regression guard for the 27c9445 Chip-migration tooltip fix): {html}",
+    );
+}
+
 #[test]
 fn rename_inline_renders_input_with_initial_value() {
     use crate::context::{GlyphFlags, MappingSummary};
