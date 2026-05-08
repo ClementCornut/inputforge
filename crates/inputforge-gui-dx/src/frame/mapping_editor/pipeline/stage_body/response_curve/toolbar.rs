@@ -172,9 +172,9 @@ pub(crate) fn Toolbar(
             Tabs {
                 value: current_kind_id,
                 items: vec![
-                    TabItem { id: "linear".to_owned(), label: "Linear".to_owned(), controls: None },
-                    TabItem { id: "spline".to_owned(), label: "Spline".to_owned(), controls: None },
-                    TabItem { id: "bezier".to_owned(), label: "Bezier".to_owned(), controls: None },
+                    TabItem { id: "linear".to_owned(), label: "Linear".to_owned(), controls: None, running: false },
+                    TabItem { id: "spline".to_owned(), label: "Spline".to_owned(), controls: None, running: false },
+                    TabItem { id: "bezier".to_owned(), label: "Bezier".to_owned(), controls: None, running: false },
                 ],
                 onchange: on_type_change,
             }

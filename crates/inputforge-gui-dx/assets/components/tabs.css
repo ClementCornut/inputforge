@@ -69,3 +69,18 @@
 .if-tabs--disabled .if-tab--active {
     border-bottom-color: color-mix(in oklch, var(--color-primary), var(--color-bg) 60%);
 }
+
+/* Runtime-live pip. Independent of the active-tab indicator (a tab can
+   be running while another tab is currently being edited). Carries the
+   --color-live LED hue idiom established by the engine pill, with a
+   flat halo at low alpha for the panel-mounted indicator reading. */
+.if-tab__running-pip {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: var(--color-live);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-live) 24%, transparent);
+    margin-right: var(--space-1);
+    flex: 0 0 auto;
+    align-self: center;
+}

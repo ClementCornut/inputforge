@@ -15,6 +15,11 @@ pub struct TabItem {
     pub id: String,
     pub label: String,
     pub controls: Option<String>,
+    /// `true` marks this tab as the runtime-live one (orthogonal to
+    /// `value`/`is_active`). The Tabs primitive renders a 6px
+    /// `--color-live` pip before the label when set. Default `false`
+    /// for consumers that do not need the indicator.
+    pub running: bool,
 }
 
 /// WAI-ARIA Tabs primitive with focus-roving and automatic activation.
@@ -65,7 +70,7 @@ pub fn Tabs(
             "aria-orientation": "horizontal",
             for (idx, item) in items.iter().cloned().enumerate() {
                 {
-                    let TabItem { id, label, controls } = item;
+                    let TabItem { id, label, controls, running } = item;
                     let is_active = id == value;
                     let id_for_click = id.clone();
                     let items_for_key = items.clone();
@@ -136,11 +141,87 @@ pub fn Tabs(
                             onclick,
                             onkeydown,
                             onmounted,
+                            if running {
+                                span {
+                                    class: "if-tab__running-pip",
+                                    "aria-hidden": "true",
+                                }
+                            }
                             "{label}"
                         }
                     }
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(non_snake_case, reason = "Dioxus components are PascalCase")]
+
+    use dioxus::prelude::*;
+    use dioxus_ssr::render;
+
+    use super::{TabItem, Tabs};
+
+    #[test]
+    fn tabs_renders_running_pip_when_tab_running_is_true() {
+        fn TestComponent() -> Element {
+            let items = vec![
+                TabItem {
+                    id: "default".to_owned(),
+                    label: "Default".to_owned(),
+                    controls: None,
+                    running: true,
+                },
+                TabItem {
+                    id: "combat".to_owned(),
+                    label: "Combat".to_owned(),
+                    controls: None,
+                    running: false,
+                },
+            ];
+            rsx! {
+                Tabs {
+                    value: "combat".to_owned(),
+                    onchange: move |_: String| {},
+                    items,
+                }
+            }
+        }
+        let mut vdom = VirtualDom::new(TestComponent);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert!(
+            html.contains("if-tab__running-pip"),
+            "running pip element missing on the running tab: {html}",
+        );
+    }
+
+    #[test]
+    fn tabs_does_not_render_running_pip_for_non_running_tabs() {
+        fn TestComponent() -> Element {
+            let items = vec![TabItem {
+                id: "default".to_owned(),
+                label: "Default".to_owned(),
+                controls: None,
+                running: false,
+            }];
+            rsx! {
+                Tabs {
+                    value: "default".to_owned(),
+                    onchange: move |_: String| {},
+                    items,
+                }
+            }
+        }
+        let mut vdom = VirtualDom::new(TestComponent);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert!(
+            !html.contains("if-tab__running-pip"),
+            "running pip must NOT appear when no tab is running: {html}",
+        );
     }
 }
