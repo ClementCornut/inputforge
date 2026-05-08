@@ -335,8 +335,8 @@
  * typed name and focus position carry through. */
 .if-add-inline--pad {
     background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border-focus);
-    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
     padding: var(--space-2);
     display: flex;
     flex-direction: column;
@@ -364,42 +364,23 @@
     min-width: 0;
 }
 
-/* Chip is a flex container in both phases, text is centered when
- * captured, the listening dot is centered while capturing. min-height
- * is fixed so the cell does not jitter on phase flips. */
-.if-add-inline__chip {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    min-width: 32px;
-    min-height: 20px;
-    padding: 2px var(--space-1);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 1.15;
-    border-radius: var(--radius-sm);
-    border: 1px solid currentColor;
-    background: color-mix(in srgb, currentColor 14%, transparent);
+@keyframes if-add-pulse-dot {
+    0%, 100% { opacity: 0.45; }
+    50%      { opacity: 1; }
 }
 
-/* Per-input-kind hue: same taxonomy already in use on F8 row glyphs. */
-.if-add-inline__chip[data-kind="axis"]   { color: var(--color-output); }
-.if-add-inline__chip[data-kind="button"] { color: var(--color-control-badge-text); }
-.if-add-inline__chip[data-kind="hat"]    { color: var(--color-processing); }
-
-/* Listening modifier (Capturing phase): neutral chip with a phosphor
- * dot pulsing inside. Reuses --color-live, the system's universal
- * "this surface is listening" signal (engine status pill, etc.). The
- * chip itself stays neutral, taxonomy hue commits only on capture. */
-.if-add-inline__chip--listening {
+/* Listening modifier on Chip Capture: neutral chip with a phosphor dot
+   pulsing inside. Reuses --color-live, the system's universal "this
+   surface is listening" signal. Overrides Chip Capture's currentColor
+   resolution so the chip stays neutral until capture commits the
+   taxonomy hue. */
+.if-chip.if-add-inline__chip--listening {
     color: var(--color-text-muted);
     background: var(--color-bg-sunken);
     border-color: var(--color-border-strong);
 }
 
-.if-add-inline__chip--listening::before {
+.if-chip.if-add-inline__chip--listening::before {
     content: "";
     width: 6px;
     height: 6px;
@@ -408,13 +389,8 @@
     animation: if-add-pulse-dot 1100ms ease-in-out infinite;
 }
 
-@keyframes if-add-pulse-dot {
-    0%, 100% { opacity: 0.45; }
-    50%      { opacity: 1; }
-}
-
 @media (prefers-reduced-motion: reduce) {
-    .if-add-inline__chip--listening::before {
+    .if-chip.if-add-inline__chip--listening::before {
         animation: none;
         opacity: 0.85;
     }

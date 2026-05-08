@@ -42,7 +42,9 @@ use inputforge_core::action::Action;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{InputAddress, InputId};
 
-use crate::components::{Button, ButtonSize, ButtonVariant, IconButton, InputSize, TextInput};
+use crate::components::{
+    Button, ButtonSize, ButtonVariant, Chip, ChipVariant, IconButton, InputSize, TextInput,
+};
 use crate::context::{AppContext, MappingSummary};
 use crate::frame::mapping_list::source_label;
 use crate::frame::view_state::ViewState;
@@ -497,17 +499,20 @@ pub(crate) fn AddInline(
                     },
                     div { class: "if-add-inline__readout",
                         if is_capturing {
-                            // Listening chip: empty box with a phosphor dot
-                            // pulsing inside (CSS @keyframes if-add-pulse-dot).
-                            span {
-                                class: "if-add-inline__chip if-add-inline__chip--listening",
-                                "aria-label": "Listening for input",
+                            span { "aria-label": "Listening for input",
+                                Chip {
+                                    variant: ChipVariant::Capture,
+                                    class: "if-add-inline__chip if-add-inline__chip--listening"
+                                        .to_owned(),
+                                }
                             }
                         } else {
-                            span {
-                                class: "if-add-inline__chip",
-                                "data-kind": kind_class,
-                                "{chip_label}"
+                            span { "data-kind": "{kind_class}",
+                                Chip {
+                                    variant: ChipVariant::Capture,
+                                    class: "if-add-inline__chip".to_owned(),
+                                    "{chip_label}"
+                                }
                             }
                         }
                         span { class: "if-add-inline__device", "{device_label}" }
