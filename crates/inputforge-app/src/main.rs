@@ -17,7 +17,7 @@ use clap::Parser;
 use mimalloc::MiMalloc;
 use parking_lot::RwLock;
 
-use inputforge_core::device::{DeviceHider, HidHideManager, NoOpDeviceHider, Sdl3Input};
+use inputforge_core::device::{DeviceHider, NoOpDeviceHider, Sdl3Input};
 use inputforge_core::engine::{Engine, EngineCommand};
 use inputforge_core::output::{KeyboardOutput, VJoyOutput};
 use inputforge_core::profile::Profile;
@@ -94,8 +94,8 @@ fn main() -> Result<()> {
         tracing::warn!(%e, "failed to save application settings");
     }
 
-    // Spawn the engine on a dedicated thread. All !Send types (SDL3,
-    // HidHide) are created on this thread.
+    // Spawn the engine on a dedicated thread. All !Send types (SDL3)
+    // are created on this thread.
     let engine_state = Arc::clone(&state);
     let engine_handle = thread::Builder::new()
         .name("engine".into())
@@ -135,9 +135,9 @@ fn main() -> Result<()> {
 
 /// Run the engine on a dedicated thread.
 ///
-/// Creates all `!Send` I/O types here (`SDL3`, `HidHide`) and enters the
+/// Creates all `!Send` I/O types here (`SDL3`) and enters the
 /// engine loop. Wrapped in [`std::panic::catch_unwind`] so that `Drop`
-/// impls (`HidHide` unhide, `vJoy` flush) still run on panic.
+/// impls (`vJoy` flush) still run on panic.
 fn run_engine(state: Arc<RwLock<AppState>>, commands: mpsc::Receiver<EngineCommand>) {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         run_engine_inner(state, commands)
@@ -166,18 +166,7 @@ fn run_engine_inner(
     let input = Box::new(Sdl3Input::new()?);
     let output = Box::new(VJoyOutput::new()?);
     let keyboard = Box::new(KeyboardOutput::new());
-    let hider: Box<dyn DeviceHider> = match HidHideManager::new() {
-        Ok(h) => Box::new(h),
-        Err(e) => {
-            tracing::warn!(%e, "HidHide unavailable, device hiding disabled");
-            state.write().warnings.push(
-                "HidHide unavailable \u{2014} device hiding is disabled. \
-                 Run InputForge as administrator to enable HidHide."
-                    .into(),
-            );
-            Box::new(NoOpDeviceHider)
-        }
-    };
+    let hider: Box<dyn DeviceHider> = Box::new(NoOpDeviceHider);
 
     let mut engine = Engine::new(
         input,
@@ -206,8 +195,7 @@ fn shutdown(cmd_tx: mpsc::Sender<EngineCommand>, engine_handle: thread::JoinHand
     // Drop the sender so the engine also sees channel disconnect.
     drop(cmd_tx);
 
-    // Wait for the engine thread. Engine::drop flushes output;
-    // HidHideManager::drop restores hidden devices.
+    // Wait for the engine thread. Engine::drop flushes output.
     if let Err(_panic) = engine_handle.join() {
         tracing::error!("engine thread panicked during join");
     } else {
