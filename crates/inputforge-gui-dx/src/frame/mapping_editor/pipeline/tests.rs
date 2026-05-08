@@ -665,15 +665,16 @@ fn HarnessComponent(props: HarnessProps) -> Element {
 }
 
 fn render_with(state: AppState, addr: InputAddress) -> String {
-    render_with_expanded(state, addr, vec![])
+    render_with_expanded(state, addr, vec![], &["Default"])
 }
 
 fn render_with_expanded(
     state: AppState,
     addr: InputAddress,
     pre_expanded_stages: Vec<StageId>,
+    modes: &[&str],
 ) -> String {
-    render_with_full(state, addr, pre_expanded_stages, vec![])
+    render_with_full(state, addr, pre_expanded_stages, vec![], modes)
 }
 
 /// Render helper that accepts both pre-expanded stages and virtual devices.
@@ -683,7 +684,9 @@ fn render_with_full(
     addr: InputAddress,
     pre_expanded_stages: Vec<StageId>,
     virtual_devices: Vec<VirtualDeviceConfig>,
+    modes: &[&str],
 ) -> String {
+    let meta_modes: Vec<String> = modes.iter().map(|s| (*s).to_owned()).collect();
     let mut vdom = VirtualDom::new_with_props(
         HarnessComponent,
         HarnessProps {
@@ -693,7 +696,7 @@ fn render_with_full(
             virtual_devices,
             pre_stage_menu: None,
             pre_malformed_hints: HashMap::new(),
-            meta_modes: vec!["Default".to_owned()],
+            meta_modes,
             hints_capture: None,
         },
     );
@@ -715,7 +718,9 @@ fn render_with_expanded_settled(
     state: AppState,
     addr: InputAddress,
     pre_expanded_stages: Vec<StageId>,
+    modes: &[&str],
 ) -> String {
+    let meta_modes: Vec<String> = modes.iter().map(|s| (*s).to_owned()).collect();
     let mut vdom = VirtualDom::new_with_props(
         HarnessComponent,
         HarnessProps {
@@ -725,7 +730,7 @@ fn render_with_expanded_settled(
             virtual_devices: vec![],
             pre_stage_menu: None,
             pre_malformed_hints: HashMap::new(),
-            meta_modes: vec!["Default".to_owned()],
+            meta_modes,
             hints_capture: None,
         },
     );
@@ -1003,7 +1008,7 @@ fn summary_deadzone_reports_inner_band_width_and_outer_saturation_width() {
 fn invert_stage_expanded_renders_descriptive_caption() {
     let (state, addr) = build_state(vec![Action::Invert]);
     let pre_expanded = vec![StageId(vec![StageIdSegment::Index(0)])];
-    let html = render_with_expanded(state, addr, pre_expanded);
+    let html = render_with_expanded(state, addr, pre_expanded, &["Default"]);
     assert!(
         html.contains("Inverts the input value"),
         "expected Invert descriptive caption in body: {html}"
@@ -1029,7 +1034,7 @@ fn map_to_vjoy_body() {
     };
     let (state, addr) = build_state(vec![Action::MapToVJoy { output }]);
     let pre_expanded = vec![StageId(vec![StageIdSegment::Index(0)])];
-    let html = render_with_full(state, addr, pre_expanded, vec![vd]);
+    let html = render_with_full(state, addr, pre_expanded, vec![vd], &["Default"]);
 
     // The body must render a device picker with a label containing "Device"
     // and a select option for "vJoy device 1".
@@ -1058,7 +1063,7 @@ fn map_to_keyboard_body_renders_modifier_toggles_and_key_field() {
     }];
     let (state, addr) = build_state(actions);
     let pre_expanded = vec![StageId(vec![StageIdSegment::Index(0)])];
-    let html = render_with_expanded(state, addr, pre_expanded);
+    let html = render_with_expanded(state, addr, pre_expanded, &["Default"]);
 
     // The body must render modifier labels.
     assert!(
@@ -1086,7 +1091,12 @@ fn merge_axis_body_renders_op_picker_and_secondary_input() {
         operation: MergeOp::Average,
     }];
     let (state, addr) = build_state(actions);
-    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
     assert!(
         html.contains("Average") || html.contains("Bidirectional"),
         "expected op picker option in DOM: {html}"
@@ -1108,7 +1118,12 @@ fn merge_axis_body_writes_malformed_hint_when_secondary_equals_primary() {
         operation: MergeOp::Average,
     }];
     let (state, addr) = build_state(actions);
-    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
     // The malformed-hint visual treatment lands in Task 35, but the hint
     // should still be set on the EditorState. For now, asserting the body
     // renders (no panic) is sufficient for Task 25.
@@ -1136,7 +1151,12 @@ fn predicate_editor_renders_kind_picker_with_seven_options() {
         if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
-    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
     // All 7 kind names must appear in the kind-picker select options.
     assert!(
         html.contains("ButtonPressed"),
@@ -1172,7 +1192,12 @@ fn predicate_axis_in_range_renders_min_max_inputs() {
         if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
-    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
     // NumberInput renders <input type="number"> elements for min and max.
     let count = html.matches(r#"type="number""#).count();
     assert!(
@@ -1202,7 +1227,12 @@ fn predicate_all_recursive_renders_nested_predicate_editors() {
         if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
-    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
     // The outer All editor renders its nested-list container.
     assert!(
         html.contains("if-predicate__nested-list"),
@@ -1228,7 +1258,12 @@ fn conditional_body_renders_branches_with_correct_aria_labels() {
         if_false: vec![Action::Invert],
     }];
     let (state, addr) = build_state(actions);
-    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
     assert!(
         html.contains("if true branch"),
         "expected if-true aria-label: {html}"
@@ -1246,7 +1281,7 @@ fn conditional_body_renders_branches_with_correct_aria_labels() {
 #[test]
 fn add_palette_renders_three_categorized_sections() {
     let (state, addr) = build_state(vec![]); // empty pipeline
-    let html = render_with_expanded(state, addr, vec![]);
+    let html = render_with_expanded(state, addr, vec![], &["Default"]);
     // The palette button should be visible (empty pipeline shows louder label).
     assert!(
         html.contains("Add first stage"),
@@ -1257,7 +1292,7 @@ fn add_palette_renders_three_categorized_sections() {
 #[test]
 fn add_palette_button_renders_for_non_empty_pipeline() {
     let (state, addr) = build_state(vec![Action::Invert]);
-    let html = render_with_expanded(state, addr, vec![]);
+    let html = render_with_expanded(state, addr, vec![], &["Default"]);
     // The end-of-pipeline add palette or its container must be present.
     assert!(
         html.contains("if-pipeline__add-end") || html.contains("if-add-palette"),
@@ -1283,7 +1318,7 @@ fn response_curve_stage_expanded_renders_f10_body_not_placeholder() {
     }];
     let (state, addr) = build_state(actions);
     let pre_expanded = vec![StageId(vec![StageIdSegment::Index(0)])];
-    let html = render_with_expanded(state, addr, pre_expanded);
+    let html = render_with_expanded(state, addr, pre_expanded, &["Default"]);
     assert!(
         html.contains("if-curve"),
         "expected F10 body root class 'if-curve' in expanded stage: {html}"
@@ -1364,6 +1399,7 @@ fn conditional_three_deep_renders_all_branches() {
                 StageIdSegment::Index(0),
             ]),
         ],
+        &["Default"],
     );
     // The innermost stage should render "Invert" inside the recursion
     assert!(
@@ -1799,7 +1835,7 @@ fn four_stage_pipeline_renders_all_categories_and_summaries() {
     ];
     let (state, addr) = build_state(actions);
     // Collapsed render: no pre-expanded stages -- just verify structure.
-    let html = render_with_expanded(state, addr, vec![]);
+    let html = render_with_expanded(state, addr, vec![], &["Default"]);
 
     let doc = Html::parse_document(&html);
     let stage_sel = Selector::parse("li.if-stage").expect("selector must be valid");
@@ -1888,8 +1924,12 @@ fn malformed_merge_axis_with_secondary_equal_primary_shows_error_class() {
         operation: MergeOp::Average,
     }];
     let (state, addr) = build_state(actions);
-    let html =
-        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded_settled(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
 
     // The error-tint modifier class must appear on the title element.
     assert!(
@@ -1934,6 +1974,7 @@ fn conditional_with_empty_if_false_renders_both_branches() {
         state,
         axis_addr,
         vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
     );
 
     assert!(
@@ -1971,6 +2012,7 @@ fn conditional_with_empty_if_true_renders_branch_with_add_first_stage() {
         state,
         axis_addr,
         vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
     );
 
     assert!(
@@ -2008,7 +2050,12 @@ fn predicate_input_row_unbound_renders_unbound_modifier() {
         if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
-    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
 
     assert!(
         html.contains("if-rebind-composite--unbound"),
@@ -2038,7 +2085,12 @@ fn predicate_input_row_bound_omits_unbound_modifier() {
         if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
-    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
 
     assert!(
         !html.contains("if-rebind-composite--unbound"),
@@ -2056,7 +2108,12 @@ fn merge_axis_body_unbound_secondary_renders_unbound_modifier() {
         operation: MergeOp::Average,
     }];
     let (state, addr) = build_state(actions);
-    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
 
     assert!(
         html.contains("if-rebind-composite--unbound"),
@@ -2081,7 +2138,12 @@ fn merge_axis_body_bound_secondary_omits_unbound_modifier() {
         operation: MergeOp::Average,
     }];
     let (state, addr) = build_state(actions);
-    let html = render_with_expanded(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
 
     assert!(
         !html.contains("if-rebind-composite--unbound"),
@@ -2149,8 +2211,12 @@ fn predicate_button_pressed_unbound_surfaces_malformed_hint() {
         if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
-    let html =
-        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded_settled(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
 
     assert!(
         html.contains("Bind an input to complete this condition"),
@@ -2170,8 +2236,12 @@ fn predicate_button_released_unbound_surfaces_malformed_hint() {
         if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
-    let html =
-        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded_settled(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
 
     assert!(
         html.contains("Bind an input to complete this condition"),
@@ -2194,8 +2264,12 @@ fn predicate_axis_in_range_unbound_pre_empts_inverted_range_hint() {
         if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
-    let html =
-        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded_settled(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
 
     assert!(
         html.contains("Bind an input to complete this condition"),
@@ -2217,8 +2291,12 @@ fn predicate_hat_direction_unbound_pre_empts_empty_directions_hint() {
         if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
-    let html =
-        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded_settled(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
 
     assert!(
         html.contains("Bind an input to complete this condition"),
@@ -2247,8 +2325,12 @@ fn predicate_axis_in_range_bound_inverted_renders_min_max_hint() {
         if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
-    let html =
-        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded_settled(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
 
     assert!(
         html.contains("min must not exceed max"),
@@ -2276,8 +2358,12 @@ fn predicate_hat_direction_bound_empty_renders_directions_hint() {
         if_false: Vec::new(),
     }];
     let (state, addr) = build_state(actions);
-    let html =
-        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded_settled(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
 
     assert!(
         html.contains("at least one direction must be selected"),
@@ -2294,11 +2380,100 @@ fn merge_axis_unbound_secondary_surfaces_malformed_hint() {
         operation: MergeOp::Average,
     }];
     let (state, addr) = build_state(actions);
-    let html =
-        render_with_expanded_settled(state, addr, vec![StageId(vec![StageIdSegment::Index(0)])]);
+    let html = render_with_expanded_settled(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
 
     assert!(
         html.contains("Bind a secondary input to complete this merge"),
         "expected unbound secondary hint, got: {html}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Task 16: F14 ChangeMode collapsed-header coverage
+//
+// Three integration tests:
+// 1. With a valid target mode and no hint, the collapsed header renders the
+//    expected `format_mode_strategy` summary ("Set Combat").
+// 2. The collapsed header renders the default chevron (not an F10/F11
+//    thumbnail), confirming `header_right_slot` falls through to the chevron
+//    branch for `Action::ChangeMode`.
+// 3. With an empty target mode, the F14 body's render-phase hint write is
+//    surfaced by the F9 stage preempt path: the `if-stage__summary` slot
+//    shows the hint string instead of `format_mode_strategy("")`. Because
+//    each `render_with_*` call constructs a fresh `VirtualDom` with a fresh
+//    `EditorState`, hint propagation cannot be split across two sequential
+//    renders; the test therefore drives the integration through a single
+//    `render_with_expanded_settled` pass with the stage pre-expanded so the
+//    body runs once, the hint signal is written, and the second render
+//    pass folds the hint into the parent `Stage` component's summary slot.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn collapsed_change_mode_header_shows_summary_when_no_hint() {
+    let actions = vec![Action::ChangeMode {
+        strategy: inputforge_core::action::ModeChangeStrategy::SwitchTo {
+            mode: "Combat".to_owned(),
+        },
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![], &["Default", "Combat"]);
+    assert!(
+        html.contains("Set Combat"),
+        "expected summary 'Set Combat': {html}"
+    );
+}
+
+#[test]
+fn change_mode_collapsed_header_renders_chevron_not_thumbnail() {
+    let actions = vec![Action::ChangeMode {
+        strategy: inputforge_core::action::ModeChangeStrategy::SwitchTo {
+            mode: "Combat".to_owned(),
+        },
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded(state, addr, vec![], &["Default", "Combat"]);
+    assert!(
+        html.contains("if-stage__chevron"),
+        "ChangeMode header must include the chevron class: {html}"
+    );
+    assert!(
+        !html.contains("if-curve__thumbnail"),
+        "F10 curve thumbnail leaked into ChangeMode header: {html}"
+    );
+    assert!(
+        !html.contains("if-deadzone-thumb"),
+        "F11 deadzone thumbnail leaked into ChangeMode header: {html}"
+    );
+}
+
+#[test]
+fn change_mode_header_summary_preempted_by_target_empty_hint() {
+    // Stage is pre-expanded so the F14 body runs once and writes the empty
+    // target hint to `editor.malformed_hints`; the second render pass in
+    // `render_with_expanded_settled` then re-runs the parent `Stage`, which
+    // reads the hint and uses it as the summary text in the StageHeader.
+    let actions = vec![Action::ChangeMode {
+        strategy: inputforge_core::action::ModeChangeStrategy::SwitchTo {
+            mode: String::new(),
+        },
+    }];
+    let (state, addr) = build_state(actions);
+    let html = render_with_expanded_settled(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
+    // The hint string must appear inside the `if-stage__summary` slot. The
+    // same string also appears in the body, so search for the slot-anchored
+    // substring to assert the F9 preempt actually replaced the summary.
+    assert!(
+        html.contains(r#"<div class="if-stage__summary">Choose a target mode</div>"#),
+        "expected summary slot to be preempted by hint: {html}"
     );
 }
