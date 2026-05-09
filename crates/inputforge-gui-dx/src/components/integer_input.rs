@@ -228,5 +228,13 @@ mod tests {
             Err(IntegerInputError::NotANumber)
         );
     }
+
+    #[test]
+    fn float_is_not_a_number() {
+        assert_eq!(
+            parse_and_validate("3.14", 1, 100),
+            Err(IntegerInputError::NotANumber)
+        );
+    }
 }
 // Rust guideline compliant 2026-05-09
