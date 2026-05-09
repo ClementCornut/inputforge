@@ -105,6 +105,22 @@ pub enum EngineCommand {
     /// same `process_commands` drain still see the old config.
     ReloadSettings,
 
+    /// Replace `AppSettings.snapshot` with the supplied config.
+    ///
+    /// Surgical: replaces only `settings.snapshot`, not other
+    /// `AppSettings` fields. Persists `settings.toml` with the new
+    /// value; on save failure the in-memory `snapshot` is rolled back
+    /// to the pre-command value and a warning is pushed to the
+    /// warnings channel.
+    ///
+    /// When `config.max_count` is *less than* the previous value and a
+    /// profile is loaded, the engine prunes the active namespace via
+    /// `snapshot::prune_in` (pinned snapshots exempt). Increases never
+    /// prune.
+    SetSnapshotConfig {
+        config: crate::snapshot::SnapshotConfig,
+    },
+
     /// Set or clear the global display alias for a device.
     SetDeviceAlias {
         device: DeviceId,
@@ -218,6 +234,11 @@ mod tests {
             name: "Combat".to_owned(),
         };
         assert!(format!("{c:?}").contains("SetDefaultMode"));
+
+        let c = EngineCommand::SetSnapshotConfig {
+            config: crate::snapshot::SnapshotConfig::default(),
+        };
+        assert!(format!("{c:?}").contains("SetSnapshotConfig"));
     }
 
     #[test]
@@ -286,5 +307,21 @@ mod tests {
         };
         assert_eq!(a, b);
         assert!(format!("{a:?}").contains("SetMappingsBulk"));
+    }
+
+    #[test]
+    fn set_snapshot_config_variant_debug_and_partialeq() {
+        use crate::snapshot::SnapshotConfig;
+
+        let cfg = SnapshotConfig {
+            max_count: 25,
+            skip_if_unchanged: false,
+        };
+        let a = EngineCommand::SetSnapshotConfig {
+            config: cfg.clone(),
+        };
+        let b = EngineCommand::SetSnapshotConfig { config: cfg };
+        assert_eq!(a, b);
+        assert!(format!("{a:?}").contains("SetSnapshotConfig"));
     }
 }

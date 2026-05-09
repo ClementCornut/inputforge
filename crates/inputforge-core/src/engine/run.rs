@@ -552,6 +552,8 @@ impl Engine {
                 self.state.write().snapshot_config = self.settings.snapshot.clone();
                 tracing::info!(target: "engine", "settings reloaded");
             }
+            // TODO(Task 3): implement handler with rollback and prune
+            EngineCommand::SetSnapshotConfig { config: _ } => {}
             EngineCommand::SetDeviceAlias { device, alias } => {
                 self.settings.set_device_alias(device.clone(), alias);
                 self.settings.save_to(&self.settings_path)?;
