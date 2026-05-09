@@ -2361,6 +2361,61 @@ fn load_profile_dedupes_auto_session_start_on_identical_content() {
     );
 }
 
+#[test]
+fn engine_loadprofile_dedup_respects_skip_if_unchanged_false() {
+    // Mirrors the cold-start scenario after main.rs sends LoadProfile:
+    // toggling Settings -> "Skip startup snapshot if unchanged" OFF must
+    // produce a fresh AutoSessionStart even when the profile content is
+    // byte-identical to the most recent existing snapshot.
+    let dir = tempfile::tempdir().unwrap();
+    let settings_path = dir.path().join("settings.toml");
+    let library_dir = dir.path().join("profiles");
+    std::fs::create_dir_all(&library_dir).unwrap();
+    let path = library_dir.join("TFM_Throttle.toml");
+    let profile = make_profile(simple_mode_tree(), vec![]);
+    profile.save(&path).unwrap();
+
+    // Persist settings with skip_if_unchanged = false on disk so the
+    // engine's mirror of self.settings reflects the user's toggle.
+    let mut settings = AppSettings::default();
+    settings.snapshot.skip_if_unchanged = false;
+    settings.save_to(&settings_path).unwrap();
+
+    let state = Arc::new(RwLock::new(AppState::new()));
+    state.write().engine_status = EngineStatus::Running;
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        settings,
+        settings_path,
+    );
+
+    tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
+    engine.tick().unwrap();
+    tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
+    engine.tick().unwrap();
+
+    let listed = crate::snapshot::list(&path).unwrap();
+    assert_eq!(
+        listed.len(),
+        2,
+        "skip_if_unchanged = false must produce a fresh AutoSessionStart \
+         even when content is identical"
+    );
+    assert!(
+        listed
+            .iter()
+            .all(|s| matches!(s.kind, crate::snapshot::SnapshotKind::AutoSessionStart)),
+        "both snapshots must be AutoSessionStart, got {:?}",
+        listed.iter().map(|s| s.kind).collect::<Vec<_>>()
+    );
+}
+
 // ---------------------------------------------------------------------------
 // F6 RestoreSnapshot handler tests (Task 22)
 // ---------------------------------------------------------------------------
