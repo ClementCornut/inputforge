@@ -8,13 +8,10 @@ use crate::frame::view_state::{PanelSlot, ViewState};
 use logic::{Tool, tool_active};
 
 /// Decide the next `PanelSlot` when a tools-cluster button is clicked.
-/// `current` is the current slot; `target` is the slot the button represents;
-/// `target_active` is whether the button is currently lit. Active button
-/// closes the slot; inactive button opens the target.
-/// `current` is currently unused but kept in the signature for future variants
-/// that may need it.
-pub(crate) fn next_slot(current: PanelSlot, target: PanelSlot, target_active: bool) -> PanelSlot {
-    let _ = current;
+/// `target` is the slot the button represents; `target_active` is whether
+/// the button is currently lit. Active button closes the slot; inactive
+/// button opens the target.
+pub(crate) fn next_slot(target: PanelSlot, target_active: bool) -> PanelSlot {
     if target_active {
         PanelSlot::None
     } else {
@@ -58,7 +55,7 @@ pub(crate) fn ToolsCluster() -> Element {
                 onclick: move |_| {
                     // via_calibration is sticky-while-Devices-open per spec;
                     // closing the panel leaves it as-is for the next open.
-                    let next = next_slot(panel(), PanelSlot::Devices, devices_active);
+                    let next = next_slot(PanelSlot::Devices, devices_active);
                     panel.set(next);
                     if !devices_active {
                         via.set(false);
@@ -73,7 +70,7 @@ pub(crate) fn ToolsCluster() -> Element {
                 // discovery surface, so it must remain reachable.
                 disabled_reason: "",
                 onclick: move |_| {
-                    let next = next_slot(panel(), PanelSlot::Profiles, profiles_active);
+                    let next = next_slot(PanelSlot::Profiles, profiles_active);
                     panel.set(next);
                     if !profiles_active {
                         via.set(false);
@@ -86,7 +83,7 @@ pub(crate) fn ToolsCluster() -> Element {
                 disabled: false,
                 disabled_reason: "",
                 onclick: move |_| {
-                    let next = next_slot(panel(), PanelSlot::Settings, settings_active);
+                    let next = next_slot(PanelSlot::Settings, settings_active);
                     panel.set(next);
                     if !settings_active {
                         via.set(false);
@@ -129,29 +126,11 @@ mod tests {
 
     #[test]
     fn next_slot_active_button_closes() {
-        assert_eq!(
-            next_slot(PanelSlot::Settings, PanelSlot::Settings, true),
-            PanelSlot::None
-        );
+        assert_eq!(next_slot(PanelSlot::Settings, true), PanelSlot::None);
     }
 
     #[test]
     fn next_slot_inactive_button_opens_target() {
-        assert_eq!(
-            next_slot(PanelSlot::None, PanelSlot::Settings, false),
-            PanelSlot::Settings
-        );
-    }
-
-    #[test]
-    fn next_slot_replaces_other_panel() {
-        assert_eq!(
-            next_slot(PanelSlot::Devices, PanelSlot::Settings, false),
-            PanelSlot::Settings
-        );
-        assert_eq!(
-            next_slot(PanelSlot::Profiles, PanelSlot::Settings, false),
-            PanelSlot::Settings
-        );
+        assert_eq!(next_slot(PanelSlot::Settings, false), PanelSlot::Settings);
     }
 }
