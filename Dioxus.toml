@@ -1,0 +1,14 @@
+[application]
+name = "InputForge"
+icon = "crates/inputforge-app/assets/icon.ico"
+
+[bundle]
+identifier = "io.inputforge.app"
+icon = [
+  "crates/inputforge-app/assets/icon-16.png",
+  "crates/inputforge-app/assets/icon-24.png",
+  "crates/inputforge-app/assets/icon-32.png",
+  "crates/inputforge-app/assets/icon-64.png",
+  "crates/inputforge-app/assets/icon-256.png",
+  "crates/inputforge-app/assets/icon.ico",
+]
