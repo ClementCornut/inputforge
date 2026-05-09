@@ -6,13 +6,16 @@
      --font-body-md   -> font-size: var(--text-base)
      --color-fg-muted -> var(--color-text-muted)
      --color-fg       -> var(--color-text)
-     --color-danger   -> var(--color-error)                              */
+     --color-danger   -> var(--color-error)
+   Panel padding uses --space-3 (12px) to match .if-device-panel and
+   .profiles-panel__body breathing ring; the project's spacing scale
+   intentionally skips --space-5 (see tokens/spacing.css). */
 
 .if-settings-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  padding: var(--space-5);
+  padding: var(--space-3);
   overflow-y: auto;
   min-height: 0;
 }
