@@ -20,3 +20,6 @@ __pycache__/
 
 # Claude Code agent isolation worktrees
 .claude/worktrees/
+
+# Node.js dependencies (icon pipeline)
+node_modules/

@@ -1,0 +1,9 @@
+{
+  "name": "inputforge-icon-pipeline",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "sharp": "^0.33",
+    "to-ico": "^1.1"
+  }
+}
