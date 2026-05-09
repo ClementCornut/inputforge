@@ -4049,7 +4049,7 @@ fn reload_settings_mirrors_into_state_snapshot_config() {
         max_count: 7,
         skip_if_unchanged: !initial.skip_if_unchanged,
     };
-    let mut file_settings = crate::settings::AppSettings::default();
+    let mut file_settings = AppSettings::default();
     file_settings.snapshot = new_cfg.clone();
     file_settings
         .save_to(&harness.engine.settings_path)
@@ -4230,4 +4230,74 @@ fn set_snapshot_config_in_memory_matches_disk_after_prune() {
     assert_eq!(on_disk.snapshot, new_cfg);
     // The AppState mirror also reflects the new value.
     assert_eq!(harness.state().snapshot_config, new_cfg);
+}
+
+#[cfg(unix)]
+#[test]
+fn set_snapshot_config_prune_failure_does_not_corrupt_settings() {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    // When the snapshot namespace dir becomes unreadable after settings.toml
+    // has already been saved, the handler must keep in-memory + on-disk +
+    // AppState consistent and surface a `Snapshot prune failed` warning.
+    // Note: under non-root permissions only; if the test runner is root,
+    // mode 0o000 does not deny access and this test is a no-op.
+
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+
+    // Seed unpinned snapshots so a prune would otherwise act.
+    for _ in 0..3 {
+        harness
+            .dispatch(EngineCommand::CreateSnapshot {
+                kind: crate::snapshot::SnapshotKind::AutoBeforeRestore,
+                label: None,
+            })
+            .unwrap();
+    }
+
+    // Resolve the namespace dir for the chmod target. The read guard is
+    // dropped at the end of the scope so the dispatch can re-acquire the
+    // lock for writes.
+    let namespace_dir = {
+        let state = harness.state();
+        crate::snapshot::pending_delete::resolve_snapshot_namespace(&state).unwrap()
+    };
+    let original_perms = fs::metadata(&namespace_dir).unwrap().permissions();
+    fs::set_permissions(&namespace_dir, fs::Permissions::from_mode(0o000)).unwrap();
+
+    let new_cfg = crate::snapshot::SnapshotConfig {
+        max_count: 1,
+        skip_if_unchanged: true,
+    };
+    // Both `prune_in` (via `list_in`) and `refresh_active_snapshot_rows`
+    // (via `list_visible`) read the now-unreadable dir. The handler pushes
+    // the prune-failure warning before propagating the refresh error, so
+    // the dispatch may return Err even though settings have been saved
+    // consistently. Either outcome is permissible; the consistency
+    // invariant is what we verify.
+    let _ = harness.dispatch(EngineCommand::SetSnapshotConfig {
+        config: new_cfg.clone(),
+    });
+
+    // Restore permissions so the temp dir can be cleaned up and so
+    // subsequent reads succeed.
+    fs::set_permissions(&namespace_dir, original_perms).unwrap();
+
+    // Settings updated atomically: in-memory, on-disk, and the AppState
+    // mirror all reflect the new config despite the post-save prune error.
+    assert_eq!(harness.engine.settings.snapshot, new_cfg);
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert_eq!(on_disk.snapshot, new_cfg);
+    assert_eq!(harness.state().snapshot_config, new_cfg);
+
+    // Prune-failure warning was pushed before any subsequent error.
+    let warnings = harness.state().warnings.clone();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("Snapshot prune failed after settings save")),
+        "expected prune-failure warning, got: {warnings:?}"
+    );
 }
