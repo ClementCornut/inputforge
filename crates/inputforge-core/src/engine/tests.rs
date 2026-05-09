@@ -4133,6 +4133,9 @@ fn set_snapshot_config_save_failure_does_not_persist() {
     // In-memory rolled back to the pre-command value.
     assert_eq!(harness.engine.settings.snapshot, original);
 
+    // The AppState mirror was also rolled back to the pre-command value.
+    assert_eq!(harness.state().snapshot_config, original);
+
     // Warnings channel received the failure message.
     let warnings = harness.state().warnings.clone();
     assert!(

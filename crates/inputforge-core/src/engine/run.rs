@@ -561,8 +561,7 @@ impl Engine {
                 // warning, and return without attempting the prune step.
                 self.settings.snapshot = config.clone();
                 // Mirror into AppState so the GUI projection observes the change
-                // on the next polling tick. Matches the device_aliases pattern at
-                // run.rs:554-560.
+                // on the next polling tick. Matches the device_aliases mirror pattern.
                 self.state.write().snapshot_config = self.settings.snapshot.clone();
                 if let Err(e) = self.settings.save_to(&self.settings_path) {
                     tracing::warn!(
@@ -573,11 +572,11 @@ impl Engine {
                     self.settings.snapshot = old_config;
                     // Revert the AppState mirror to the rolled-back value so
                     // the GUI projection does not surface a transient bogus value.
-                    self.state.write().snapshot_config = self.settings.snapshot.clone();
-                    self.state
-                        .write()
-                        .warnings
-                        .push(format!("Could not save settings: {e}"));
+                    {
+                        let mut state = self.state.write();
+                        state.snapshot_config = self.settings.snapshot.clone();
+                        state.warnings.push(format!("Could not save settings: {e}"));
+                    }
                     return Ok(());
                 }
 
@@ -586,7 +585,7 @@ impl Engine {
                 // profile is loaded.
                 let mut pruned = 0_usize;
                 if config.max_count < old_config.max_count {
-                    if let Some((_profile_path, namespace_dir)) = self.resolved_snapshot_target() {
+                    if let Some((_, namespace_dir)) = self.resolved_snapshot_target() {
                         match crate::snapshot::prune_in(&namespace_dir, &self.settings.snapshot) {
                             Ok(removed) => pruned = removed,
                             Err(e) => {
