@@ -28,12 +28,11 @@ pub(crate) struct RawHandles {
 }
 
 /// Polled projection of `AppSettings.snapshot` plus the count of unpinned
-/// snapshots in the active profile's namespace.
+/// snapshots in the active profile.
 ///
-/// `unpinned_snapshot_count` is computed each polling tick by resolving the
-/// namespace dir via `resolve_snapshot_namespace` and listing snapshots
-/// there; falls back to 0 when no profile is loaded or namespace
-/// resolution fails. The count is consumed by the F15 settings panel to
+/// `unpinned_snapshot_count` is derived from `AppState.active_snapshot_rows`
+/// (the engine's projection of the active namespace, refreshed on every
+/// snapshot mutation). The count is consumed by the F15 settings panel to
 /// derive `would_prune` at commit time without an additional engine query
 /// channel.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -46,22 +45,17 @@ impl SettingsSnapshot {
     /// Project an `AppState` into a `SettingsSnapshot`.
     ///
     /// Reads `state.snapshot_config` (the engine's mirror of
-    /// `AppSettings.snapshot`, populated on every settings mutation).
-    /// Resolves the active namespace via
-    /// `inputforge_core::snapshot::pending_delete::resolve_snapshot_namespace`
-    /// and lists snapshots; counts only unpinned entries. Errors at any
-    /// stage degrade silently to a count of 0 rather than panicking,
-    /// matching the polling task's "drop and skip" discipline.
+    /// `AppSettings.snapshot`, populated on every settings mutation) and
+    /// counts unpinned entries in `state.active_snapshot_rows` (refreshed
+    /// by the engine after every snapshot-mutating command). No filesystem
+    /// IO is performed; this runs on every polling tick.
     pub(crate) fn from_state(state: &AppState) -> Self {
         let snapshot = state.snapshot_config.clone();
-        let unpinned_snapshot_count =
-            match inputforge_core::snapshot::pending_delete::resolve_snapshot_namespace(state) {
-                Ok(namespace_dir) => match inputforge_core::snapshot::list_in(&namespace_dir) {
-                    Ok(snapshots) => snapshots.into_iter().filter(|s| !s.pinned).count(),
-                    Err(_) => 0,
-                },
-                Err(_) => 0,
-            };
+        let unpinned_snapshot_count = state
+            .active_snapshot_rows
+            .iter()
+            .filter(|row| !row.pinned)
+            .count();
         Self {
             snapshot,
             unpinned_snapshot_count,
@@ -2145,5 +2139,32 @@ mod tests {
         assert_eq!(snap.snapshot.max_count, 42);
         assert!(!snap.snapshot.skip_if_unchanged);
         assert_eq!(snap.unpinned_snapshot_count, 0);
+    }
+
+    #[test]
+    fn settings_snapshot_from_state_counts_unpinned_active_rows() {
+        use chrono::DateTime;
+        use inputforge_core::snapshot::{SnapshotId, SnapshotKind};
+        use inputforge_core::state::{ActiveSnapshotRow, AppState};
+        use ulid::Ulid;
+
+        fn row(pinned: bool) -> ActiveSnapshotRow {
+            ActiveSnapshotRow {
+                id: SnapshotId(Ulid::nil()),
+                kind: SnapshotKind::Manual,
+                label: None,
+                taken_at: DateTime::from_timestamp(0, 0).unwrap(),
+                pinned,
+            }
+        }
+
+        let mut state = AppState::new();
+        state.active_snapshot_rows = vec![row(true), row(false), row(true), row(false)];
+
+        let snap = SettingsSnapshot::from_state(&state);
+        assert_eq!(
+            snap.unpinned_snapshot_count, 2,
+            "should count only unpinned rows"
+        );
     }
 }

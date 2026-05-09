@@ -41,7 +41,7 @@ pub fn pending_manifest_path(pending_dir: &Path, id: &SnapshotId) -> PathBuf {
 /// Returns [`EngineError::InvalidConfig`] when no profile is loaded, or
 /// the underlying `snapshots_dir_for` / `external_snapshots_dir_for`
 /// error if the path layout is invalid.
-pub fn resolve_snapshot_namespace(state: &crate::state::AppState) -> Result<PathBuf> {
+pub(crate) fn resolve_snapshot_namespace(state: &crate::state::AppState) -> Result<PathBuf> {
     let path = state
         .profile_path
         .as_ref()
