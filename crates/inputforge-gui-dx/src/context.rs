@@ -2146,5 +2146,6 @@ mod tests {
         let snap = SettingsSnapshot::from_state(&state);
         assert_eq!(snap.snapshot.max_count, 42);
         assert!(!snap.snapshot.skip_if_unchanged);
+        assert_eq!(snap.unpinned_snapshot_count, 0);
     }
 }
