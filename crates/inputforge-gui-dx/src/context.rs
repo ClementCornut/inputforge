@@ -7,7 +7,6 @@ use parking_lot::RwLock;
 
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::pipeline::InputCache;
-use inputforge_core::settings::AppSettings;
 use inputforge_core::snapshot::{SnapshotConfig, SnapshotId};
 use inputforge_core::state::{
     AppState, DeviceState, EngineStatus, ProfileOrigin as CoreProfileOrigin,
@@ -19,13 +18,13 @@ use inputforge_core::types::{
 
 /// Raw signal-free handles installed via `LaunchBuilder::with_context`.
 ///
-/// `Arc<AppSettings>` is a zero-cost read-only handle at F1; F14 will
-/// unwind this wrapping when adding the mutation path.
+/// `AppSettings` is no longer carried here: the engine state is the truth
+/// source and the bridge polling task projects `state.snapshot_config`
+/// directly into `Signal<SettingsSnapshot>` (F15).
 #[derive(Clone, Debug)]
 pub(crate) struct RawHandles {
     pub state: Arc<RwLock<AppState>>,
     pub commands: mpsc::Sender<EngineCommand>,
-    pub settings: Arc<AppSettings>,
 }
 
 /// Polled projection of `AppSettings.snapshot` plus the count of unpinned
@@ -77,8 +76,7 @@ impl SettingsSnapshot {
 pub(crate) struct AppContext {
     pub state: Arc<RwLock<AppState>>,
     pub commands: mpsc::Sender<EngineCommand>,
-    #[expect(dead_code, reason = "used in later tasks (settings reads)")]
-    pub settings: Arc<AppSettings>,
+    pub settings: Signal<SettingsSnapshot>,
     pub meta: Signal<MetaSnapshot>,
     pub config: Signal<ConfigSnapshot>,
     pub live: Signal<LiveSnapshot>,

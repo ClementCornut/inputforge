@@ -62,9 +62,10 @@ mod tests {
 
     use std::sync::{Arc, mpsc};
 
-    use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
+    use crate::context::{
+        AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot,
+    };
     use dioxus_ssr::render;
-    use inputforge_core::settings::AppSettings;
     use inputforge_core::state::AppState;
     use parking_lot::RwLock;
 
@@ -88,7 +89,7 @@ mod tests {
         let profiles_panel = use_signal(crate::frame::view_state::ProfilesPanelState::default);
         let state = Arc::new(RwLock::new(AppState::new()));
         let (commands, _rx) = mpsc::channel();
-        let settings = Arc::new(AppSettings::default());
+        let settings = use_signal(SettingsSnapshot::default);
         let meta = use_signal(MetaSnapshot::default);
         let config = use_signal(ConfigSnapshot::default);
         let live = use_signal(LiveSnapshot::default);

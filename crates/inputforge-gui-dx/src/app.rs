@@ -2,7 +2,9 @@ use dioxus::prelude::*;
 
 use crate::LaunchParams;
 use crate::bridge::spawn_polling_task;
-use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
+use crate::context::{
+    AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
+};
 use crate::frame;
 use crate::frame::use_editor_state_provider;
 use crate::lifecycle;
@@ -23,11 +25,12 @@ pub(crate) fn app_root() -> Element {
     let meta = use_signal(MetaSnapshot::default);
     let config = use_signal(ConfigSnapshot::default);
     let live = use_signal(LiveSnapshot::default);
+    let settings = use_signal(SettingsSnapshot::default);
 
     let ctx = AppContext {
         state: std::sync::Arc::clone(&raw.state),
         commands: raw.commands.clone(),
-        settings: std::sync::Arc::clone(&raw.settings),
+        settings,
         meta,
         config,
         live,
@@ -133,11 +136,12 @@ mod tests {
     use dioxus_ssr::render;
     use parking_lot::RwLock;
 
-    use inputforge_core::settings::AppSettings;
     use inputforge_core::state::AppState;
 
     use crate::LaunchParams;
-    use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
+    use crate::context::{
+        AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
+    };
     use crate::frame;
     use crate::toast::{ToastQueue, ToastState};
     use crate::tray::action::TrayMenuIds;
@@ -161,7 +165,6 @@ mod tests {
         let raw = RawHandles {
             state: Arc::new(RwLock::new(AppState::new())),
             commands: cmd_tx,
-            settings: Arc::new(AppSettings::default()),
         };
         use_context_provider(|| raw.clone());
         use_context_provider(|| LaunchParams {
@@ -176,10 +179,11 @@ mod tests {
         let meta = use_signal(MetaSnapshot::default);
         let config = use_signal(ConfigSnapshot::default);
         let live = use_signal(LiveSnapshot::default);
+        let settings = use_signal(SettingsSnapshot::default);
         let ctx = AppContext {
             state: Arc::clone(&raw.state),
             commands: raw.commands.clone(),
-            settings: Arc::clone(&raw.settings),
+            settings,
             meta,
             config,
             live,

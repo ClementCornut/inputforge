@@ -114,7 +114,6 @@ fn main() -> Result<()> {
         cmd_tx.clone(),
         tray.menu_item_ids(),
         tray.toggle_menu_item(),
-        settings.clone(),
         cli.start_minimized,
     ) {
         tracing::error!(%e, "GUI exited with error");

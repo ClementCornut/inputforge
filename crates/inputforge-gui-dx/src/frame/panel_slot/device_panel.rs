@@ -358,9 +358,9 @@ mod tests {
 
     use crate::context::{
         ConfigSnapshot, DeviceCoverage, DeviceUsageSummary, LiveSnapshot, MetaSnapshot,
+        SettingsSnapshot,
     };
     use dioxus_ssr::render;
-    use inputforge_core::settings::AppSettings;
     use inputforge_core::state::AppState;
     use inputforge_core::types::{AxisPolarity, DeviceDiagnostics, DeviceInfo};
     use parking_lot::RwLock;
@@ -381,7 +381,7 @@ mod tests {
     fn TestHarness(props: TestHarnessProps) -> Element {
         let state = Arc::new(RwLock::new(AppState::new()));
         let (commands, _rx) = mpsc::channel();
-        let settings = Arc::new(AppSettings::default());
+        let settings = use_signal(SettingsSnapshot::default);
         let meta = use_signal(MetaSnapshot::default);
         let config = ConfigSnapshot {
             device_panel_rows: props.rows.clone(),

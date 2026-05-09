@@ -294,9 +294,10 @@ struct ToolbarHarnessProps {
 
 #[component]
 fn ToolbarHarness(props: ToolbarHarnessProps) -> Element {
-    use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
+    use crate::context::{
+        AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
+    };
     use crate::frame::mapping_editor::pipeline::stage_body::response_curve::toolbar::Toolbar;
-    use inputforge_core::settings::AppSettings;
     use inputforge_core::state::AppState;
     use parking_lot::RwLock;
     use std::sync::{Arc, mpsc};
@@ -304,16 +305,16 @@ fn ToolbarHarness(props: ToolbarHarnessProps) -> Element {
     let raw = RawHandles {
         state: Arc::new(RwLock::new(AppState::new())),
         commands: cmd_tx,
-        settings: Arc::new(AppSettings::default()),
     };
     use_context_provider(|| raw.clone());
     let meta = use_signal(MetaSnapshot::default);
     let config = use_signal(ConfigSnapshot::default);
     let live = use_signal(LiveSnapshot::default);
+    let settings = use_signal(SettingsSnapshot::default);
     let ctx = AppContext {
         state: Arc::clone(&raw.state),
         commands: raw.commands.clone(),
-        settings: Arc::clone(&raw.settings),
+        settings,
         meta,
         config,
         live,
@@ -433,11 +434,12 @@ fn body_omits_live_dot_for_nested_stage() {
 #[test]
 fn body_renders_live_dot_for_top_level_stage_with_connected_device() {
     fn h() -> Element {
-        use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
+        use crate::context::{
+            AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
+        };
         use crate::frame::mapping_editor::pipeline::stage_body::response_curve::ResponseCurveBody;
         use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
         use inputforge_core::action::Action;
-        use inputforge_core::settings::AppSettings;
         use inputforge_core::state::{AppState, DeviceState};
         use inputforge_core::types::{
             AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId,
@@ -480,16 +482,16 @@ fn body_renders_live_dot_for_top_level_stage_with_connected_device() {
         let raw = RawHandles {
             state: Arc::new(RwLock::new(state)),
             commands: cmd_tx,
-            settings: Arc::new(AppSettings::default()),
         };
         use_context_provider(|| raw.clone());
         let meta = use_signal(MetaSnapshot::default);
         let config = use_signal(ConfigSnapshot::default);
         let live = use_signal(LiveSnapshot::default);
+        let settings = use_signal(SettingsSnapshot::default);
         let ctx = AppContext {
             state: Arc::clone(&raw.state),
             commands: raw.commands.clone(),
-            settings: Arc::clone(&raw.settings),
+            settings,
             meta,
             config,
             live,

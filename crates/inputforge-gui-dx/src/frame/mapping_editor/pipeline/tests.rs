@@ -17,7 +17,6 @@ use inputforge_core::action::{Action, Condition, Mapping};
 use inputforge_core::mode::ModeTree;
 use inputforge_core::processing::DeadzoneConfig;
 use inputforge_core::profile::Profile;
-use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, EngineStatus};
 use inputforge_core::types::{
     AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, KeyCombo, KeyModifier, MergeOp,
@@ -25,7 +24,9 @@ use inputforge_core::types::{
 };
 use std::collections::HashMap;
 
-use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
+use crate::context::{
+    AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
+};
 use crate::frame::mapping_editor::{MappingEditor, use_editor_state_provider};
 use crate::frame::view_state::use_view_state_provider;
 use crate::patterns::live_capture::use_live_capture_provider;
@@ -603,7 +604,6 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     let raw = RawHandles {
         state,
         commands: cmd_tx,
-        settings: Arc::new(AppSettings::default()),
     };
     use_context_provider(|| raw.clone());
 
@@ -628,7 +628,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     let ctx = AppContext {
         state: Arc::clone(&raw.state),
         commands: raw.commands.clone(),
-        settings: Arc::clone(&raw.settings),
+        settings: use_signal(SettingsSnapshot::default),
         meta,
         config,
         live,

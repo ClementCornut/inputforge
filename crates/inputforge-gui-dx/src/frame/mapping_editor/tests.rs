@@ -11,14 +11,15 @@ use parking_lot::RwLock;
 use inputforge_core::action::{Action, Mapping};
 use inputforge_core::mode::ModeTree;
 use inputforge_core::profile::Profile;
-use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, EngineStatus};
 use inputforge_core::types::{
     AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId, OutputAddress,
     OutputId, VJoyAxis, VirtualDeviceConfig,
 };
 
-use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles};
+use crate::context::{
+    AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
+};
 use crate::frame::mapping_editor::{EditorState, MappingEditor, use_editor_state_provider};
 use crate::frame::view_state::use_view_state_provider;
 use crate::patterns::live_capture::use_live_capture_provider;
@@ -504,7 +505,6 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     let raw = RawHandles {
         state,
         commands: cmd_tx,
-        settings: Arc::new(AppSettings::default()),
     };
     use_context_provider(|| raw.clone());
 
@@ -523,7 +523,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     let ctx = AppContext {
         state: Arc::clone(&raw.state),
         commands: raw.commands.clone(),
-        settings: Arc::clone(&raw.settings),
+        settings: use_signal(SettingsSnapshot::default),
         meta,
         config,
         live,
@@ -652,7 +652,6 @@ fn LiveReadoutExpandHarness(props: LiveReadoutExpandHarnessProps) -> Element {
     let raw = RawHandles {
         state,
         commands: cmd_tx,
-        settings: Arc::new(AppSettings::default()),
     };
     use_context_provider(|| raw.clone());
 
@@ -670,7 +669,7 @@ fn LiveReadoutExpandHarness(props: LiveReadoutExpandHarnessProps) -> Element {
     let ctx = AppContext {
         state: Arc::clone(&raw.state),
         commands: raw.commands.clone(),
-        settings: Arc::clone(&raw.settings),
+        settings: use_signal(SettingsSnapshot::default),
         meta,
         config,
         live,
@@ -783,7 +782,6 @@ fn harness() -> Element {
     let raw = RawHandles {
         state: Arc::new(RwLock::new(AppState::new())),
         commands: cmd_tx,
-        settings: Arc::new(AppSettings::default()),
     };
     use_context_provider(|| raw.clone());
 
@@ -793,7 +791,7 @@ fn harness() -> Element {
     let ctx = AppContext {
         state: Arc::clone(&raw.state),
         commands: raw.commands.clone(),
-        settings: Arc::clone(&raw.settings),
+        settings: use_signal(SettingsSnapshot::default),
         meta,
         config,
         live,
@@ -872,7 +870,7 @@ fn editor_state_provider_mounts_and_reads_via_use_context() {
         let ctx = AppContext {
             state: Arc::new(RwLock::new(AppState::new())),
             commands: cmd_tx,
-            settings: Arc::new(AppSettings::default()),
+            settings: use_signal(SettingsSnapshot::default),
             meta: use_signal(MetaSnapshot::default),
             config: use_signal(ConfigSnapshot::default),
             live: use_signal(LiveSnapshot::default),
@@ -908,7 +906,6 @@ fn engine_offline_banner_visible_when_status_is_stopped() {
         let raw = RawHandles {
             state: Arc::new(RwLock::new(AppState::new())),
             commands: cmd_tx,
-            settings: Arc::new(AppSettings::default()),
         };
         use_context_provider(|| raw.clone());
         let meta = use_signal(|| MetaSnapshot {
@@ -923,7 +920,7 @@ fn engine_offline_banner_visible_when_status_is_stopped() {
         let ctx = AppContext {
             state: Arc::clone(&raw.state),
             commands: raw.commands.clone(),
-            settings: Arc::clone(&raw.settings),
+            settings: use_signal(SettingsSnapshot::default),
             meta,
             config,
             live,
@@ -1057,7 +1054,6 @@ fn editor_undo_recap_shows_label_and_kbd_hint() {
         let raw = RawHandles {
             state,
             commands: cmd_tx,
-            settings: Arc::new(AppSettings::default()),
         };
         use_context_provider(|| raw.clone());
 
@@ -1076,7 +1072,7 @@ fn editor_undo_recap_shows_label_and_kbd_hint() {
         let ctx = AppContext {
             state: Arc::clone(&raw.state),
             commands: raw.commands.clone(),
-            settings: Arc::clone(&raw.settings),
+            settings: use_signal(SettingsSnapshot::default),
             meta,
             config,
             live,

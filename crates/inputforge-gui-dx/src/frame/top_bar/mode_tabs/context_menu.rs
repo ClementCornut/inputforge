@@ -241,11 +241,10 @@ mod tests {
         use std::sync::Arc;
 
         use dioxus_ssr::render;
-        use inputforge_core::settings::AppSettings;
         use inputforge_core::state::AppState;
         use parking_lot::RwLock;
 
-        use crate::context::{ConfigSnapshot, LiveSnapshot, MetaSnapshot};
+        use crate::context::{ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
 
         #[expect(
             non_snake_case,
@@ -256,7 +255,7 @@ mod tests {
             let ctx = AppContext {
                 state: Arc::new(RwLock::new(AppState::new())),
                 commands: tx,
-                settings: Arc::new(AppSettings::default()),
+                settings: use_signal(SettingsSnapshot::default),
                 meta: use_signal(MetaSnapshot::default),
                 config: use_signal(ConfigSnapshot::default),
                 live: use_signal(LiveSnapshot::default),

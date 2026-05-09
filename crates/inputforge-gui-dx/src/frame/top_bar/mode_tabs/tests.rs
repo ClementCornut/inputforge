@@ -42,11 +42,10 @@ use parking_lot::RwLock;
 use inputforge_core::action::Mapping;
 use inputforge_core::mode::ModeTree;
 use inputforge_core::profile::Profile;
-use inputforge_core::settings::AppSettings;
 use inputforge_core::state::AppState;
 use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
-use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
+use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
 use crate::frame::top_bar::mode_tabs::{ModeDeleteSignal, ModeFocusSignal, ModeTabs};
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::toast::{ToastQueue, ToastState};
@@ -60,7 +59,7 @@ fn provide_mode_tabs_contexts() {
     let ctx = AppContext {
         state: Arc::new(RwLock::new(AppState::new())),
         commands: cmd_tx,
-        settings: Arc::new(AppSettings::default()),
+        settings: use_signal(SettingsSnapshot::default),
         meta: use_signal(MetaSnapshot::default),
         config: use_signal(ConfigSnapshot::default),
         live: use_signal(LiveSnapshot::default),

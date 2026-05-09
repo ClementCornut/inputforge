@@ -25,7 +25,6 @@ use muda::{MenuId, MenuItem};
 use parking_lot::RwLock;
 
 use inputforge_core::engine::EngineCommand;
-use inputforge_core::settings::AppSettings;
 use inputforge_core::state::AppState;
 
 use crate::context::RawHandles;
@@ -74,17 +73,12 @@ pub fn launch_gui(
     commands: mpsc::Sender<EngineCommand>,
     tray_menu_ids: (MenuId, MenuId, MenuId),
     toggle_menu_item: MenuItem,
-    settings: AppSettings,
     start_minimized: bool,
 ) -> anyhow::Result<()> {
     let (show, toggle, quit) = tray_menu_ids;
     let menu_ids = TrayMenuIds { show, toggle, quit };
 
-    let handles = RawHandles {
-        state,
-        commands,
-        settings: Arc::new(settings),
-    };
+    let handles = RawHandles { state, commands };
     let params = LaunchParams {
         start_minimized,
         tray_menu_ids: menu_ids,
