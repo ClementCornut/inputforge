@@ -1107,6 +1107,16 @@ impl EngineHarness {
         self.library_dir
             .join(format!("{}.toml", sanitize_filename(name)))
     }
+
+    /// Replace the engine's settings_path with one containing a NUL byte
+    /// so std::fs::create_dir_all and File::create both fail with
+    /// `ErrorKind::InvalidInput` deterministically on every OS. Used for
+    /// save-failure tests.
+    fn force_settings_path_to_unwritable(&mut self) {
+        let mut path = self._settings_dir.path().to_path_buf();
+        path.push("settings\0.toml");
+        self.engine.settings_path = path;
+    }
 }
 
 #[test]
@@ -3992,5 +4002,174 @@ fn reload_settings_mirrors_into_state_snapshot_config() {
 
     harness.dispatch(EngineCommand::ReloadSettings).unwrap();
 
+    assert_eq!(harness.state().snapshot_config, new_cfg);
+}
+
+#[test]
+fn set_snapshot_config_writes_settings_toml_and_replaces_in_memory() {
+    let mut harness = EngineHarness::new();
+
+    let new_cfg = crate::snapshot::SnapshotConfig {
+        max_count: 25,
+        skip_if_unchanged: false,
+    };
+    harness
+        .dispatch(EngineCommand::SetSnapshotConfig {
+            config: new_cfg.clone(),
+        })
+        .unwrap();
+
+    // In-memory: handler took effect.
+    assert_eq!(harness.engine.settings.snapshot, new_cfg);
+
+    // On-disk: settings.toml round-trips the new config.
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert_eq!(on_disk.snapshot, new_cfg);
+}
+
+#[test]
+fn set_snapshot_config_prunes_when_max_count_decreased() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+
+    // Seed five AutoBeforeRestore snapshots (unpinned, always fire) so the
+    // active namespace has enough unpinned entries for prune to act on.
+    // Manual snapshots are auto-pinned at creation and are therefore exempt
+    // from FIFO eviction; AutoBeforeRestore snapshots are not pinned.
+    for _ in 0..5 {
+        harness
+            .dispatch(EngineCommand::CreateSnapshot {
+                kind: crate::snapshot::SnapshotKind::AutoBeforeRestore,
+                label: None,
+            })
+            .unwrap();
+    }
+
+    let before = harness.state().active_snapshot_rows.len();
+    assert!(
+        before >= 5,
+        "expected at least 5 snapshots before prune, got {before}"
+    );
+
+    // Reduce max_count below the seeded count to force a prune.
+    harness
+        .dispatch(EngineCommand::SetSnapshotConfig {
+            config: crate::snapshot::SnapshotConfig {
+                max_count: 2,
+                skip_if_unchanged: true,
+            },
+        })
+        .unwrap();
+
+    let after = harness.state().active_snapshot_rows.len();
+    assert!(
+        after <= 2,
+        "expected at most 2 snapshots after prune, got {after}"
+    );
+}
+
+#[test]
+fn set_snapshot_config_does_not_prune_when_max_count_increased() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+    for i in 0..3 {
+        harness
+            .dispatch(EngineCommand::CreateSnapshot {
+                kind: crate::snapshot::SnapshotKind::Manual,
+                label: Some(format!("snap-{i}")),
+            })
+            .unwrap();
+    }
+    let before = harness.state().active_snapshot_rows.len();
+
+    harness
+        .dispatch(EngineCommand::SetSnapshotConfig {
+            config: crate::snapshot::SnapshotConfig {
+                max_count: 50,
+                skip_if_unchanged: true,
+            },
+        })
+        .unwrap();
+
+    let after = harness.state().active_snapshot_rows.len();
+    assert_eq!(after, before, "increase must not prune");
+}
+
+#[test]
+fn set_snapshot_config_no_prune_when_no_profile_loaded() {
+    let mut harness = EngineHarness::new();
+
+    // No profile loaded; resolved_snapshot_target returns None so prune is skipped.
+    let result = harness.dispatch(EngineCommand::SetSnapshotConfig {
+        config: crate::snapshot::SnapshotConfig {
+            max_count: 1,
+            skip_if_unchanged: false,
+        },
+    });
+
+    assert!(
+        result.is_ok(),
+        "no profile loaded must not error: {result:?}"
+    );
+    assert_eq!(harness.engine.settings.snapshot.max_count, 1);
+}
+
+#[test]
+fn set_snapshot_config_save_failure_does_not_persist() {
+    let mut harness = EngineHarness::new();
+    let original = harness.engine.settings.snapshot.clone();
+
+    harness.force_settings_path_to_unwritable();
+
+    // Dispatch with a different value so the rollback is observable.
+    let attempted = crate::snapshot::SnapshotConfig {
+        max_count: 99,
+        skip_if_unchanged: !original.skip_if_unchanged,
+    };
+    harness
+        .dispatch(EngineCommand::SetSnapshotConfig { config: attempted })
+        .unwrap();
+
+    // In-memory rolled back to the pre-command value.
+    assert_eq!(harness.engine.settings.snapshot, original);
+
+    // Warnings channel received the failure message.
+    let warnings = harness.state().warnings.clone();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("Could not save settings")),
+        "expected warning, got: {warnings:?}"
+    );
+}
+
+#[test]
+fn set_snapshot_config_in_memory_matches_disk_after_prune() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+    for i in 0..3 {
+        harness
+            .dispatch(EngineCommand::CreateSnapshot {
+                kind: crate::snapshot::SnapshotKind::Manual,
+                label: Some(format!("snap-{i}")),
+            })
+            .unwrap();
+    }
+
+    let new_cfg = crate::snapshot::SnapshotConfig {
+        max_count: 1,
+        skip_if_unchanged: true,
+    };
+    harness
+        .dispatch(EngineCommand::SetSnapshotConfig {
+            config: new_cfg.clone(),
+        })
+        .unwrap();
+
+    // After prune: in-memory == on-disk == requested.
+    assert_eq!(harness.engine.settings.snapshot, new_cfg);
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert_eq!(on_disk.snapshot, new_cfg);
+    // The AppState mirror also reflects the new value.
     assert_eq!(harness.state().snapshot_config, new_cfg);
 }

@@ -130,7 +130,7 @@ impl Engine {
             let mut state = state.write();
             state.device_aliases.clone_from(&settings.device_aliases);
             state.device_registry.clone_from(&settings.device_registry);
-            state.snapshot_config = settings.snapshot.clone();
+            state.snapshot_config.clone_from(&settings.snapshot);
         };
 
         let engine = Self {
