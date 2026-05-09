@@ -7,6 +7,19 @@ use crate::frame::view_state::{PanelSlot, ViewState};
 
 use logic::{Tool, tool_active};
 
+/// Decide the next `PanelSlot` when a tools-cluster button is clicked.
+/// `current` is the current slot; `target` is the slot the button represents;
+/// `target_active` is whether the button is currently lit. Active button
+/// closes the slot; inactive button opens the target.
+pub(crate) fn next_slot(current: PanelSlot, target: PanelSlot, target_active: bool) -> PanelSlot {
+    let _ = current;
+    if target_active {
+        PanelSlot::None
+    } else {
+        target
+    }
+}
+
 #[component]
 pub(crate) fn ToolsCluster() -> Element {
     tracing::trace!(target: "frame::render", region = "tools_cluster");
@@ -31,6 +44,7 @@ pub(crate) fn ToolsCluster() -> Element {
     // synchronized.
     let devices_active = tool_active(s, v, Tool::Devices);
     let profiles_active = tool_active(s, v, Tool::Profiles);
+    let settings_active = tool_active(s, v, Tool::Settings);
 
     rsx! {
         nav { class: "if-tools-cluster", "aria-label": "Side panels",
@@ -40,13 +54,11 @@ pub(crate) fn ToolsCluster() -> Element {
                 disabled: !p,
                 disabled_reason: "Load a profile to inspect connected devices.",
                 onclick: move |_| {
-                    if devices_active {
-                        // Toggle off: close the panel. via_calibration
-                        // is sticky-while-Devices-open per spec, so
-                        // it stays as-is for the next time Devices opens.
-                        panel.set(PanelSlot::None);
-                    } else {
-                        panel.set(PanelSlot::Devices);
+                    // via_calibration is sticky-while-Devices-open per spec;
+                    // closing the panel leaves it as-is for the next open.
+                    let next = next_slot(panel(), PanelSlot::Devices, devices_active);
+                    panel.set(next);
+                    if !devices_active {
                         via.set(false);
                     }
                 },
@@ -59,10 +71,22 @@ pub(crate) fn ToolsCluster() -> Element {
                 // discovery surface, so it must remain reachable.
                 disabled_reason: "",
                 onclick: move |_| {
-                    if profiles_active {
-                        panel.set(PanelSlot::None);
-                    } else {
-                        panel.set(PanelSlot::Profiles);
+                    let next = next_slot(panel(), PanelSlot::Profiles, profiles_active);
+                    panel.set(next);
+                    if !profiles_active {
+                        via.set(false);
+                    }
+                },
+            }
+            ToolButton {
+                label: "Settings",
+                active: settings_active,
+                disabled: false,
+                disabled_reason: "",
+                onclick: move |_| {
+                    let next = next_slot(panel(), PanelSlot::Settings, settings_active);
+                    panel.set(next);
+                    if !settings_active {
                         via.set(false);
                     }
                 },
@@ -94,5 +118,38 @@ fn ToolButton(
             onclick,
             "{label}"
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn next_slot_active_button_closes() {
+        assert_eq!(
+            next_slot(PanelSlot::Settings, PanelSlot::Settings, true),
+            PanelSlot::None
+        );
+    }
+
+    #[test]
+    fn next_slot_inactive_button_opens_target() {
+        assert_eq!(
+            next_slot(PanelSlot::None, PanelSlot::Settings, false),
+            PanelSlot::Settings
+        );
+    }
+
+    #[test]
+    fn next_slot_replaces_other_panel() {
+        assert_eq!(
+            next_slot(PanelSlot::Devices, PanelSlot::Settings, false),
+            PanelSlot::Settings
+        );
+        assert_eq!(
+            next_slot(PanelSlot::Profiles, PanelSlot::Settings, false),
+            PanelSlot::Settings
+        );
     }
 }
