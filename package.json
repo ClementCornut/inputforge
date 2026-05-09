@@ -2,8 +2,9 @@
   "name": "inputforge-icon-pipeline",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "dependencies": {
-    "sharp": "^0.33",
-    "to-ico": "^1.1"
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.33"
   }
 }

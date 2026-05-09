@@ -8,7 +8,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import sharp from "sharp";
-import toIco from "to-ico";
+import pngToIco from "png-to-ico";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(scriptDir, "..");
@@ -20,17 +20,17 @@ const sources = {
   medium24: join(assetsDir, "icon-24.svg"),
 };
 
-async function renderPng(svgPath, size) {
+async function renderPng(svgPath: string, size: number): Promise<Buffer> {
   const svg = await readFile(svgPath);
   return sharp(svg).resize(size, size).png().toBuffer();
 }
 
-async function renderRgba(svgPath, size) {
+async function renderRgba(svgPath: string, size: number): Promise<Buffer> {
   const svg = await readFile(svgPath);
   return sharp(svg).resize(size, size).ensureAlpha().raw().toBuffer();
 }
 
-async function main() {
+async function main(): Promise<void> {
   const masterAt32 = await renderPng(sources.master, 32);
   const masterAt48 = await renderPng(sources.master, 48);
   const masterAt64 = await renderPng(sources.master, 64);
@@ -38,7 +38,7 @@ async function main() {
   const small16Buf = await renderPng(sources.small16, 16);
   const medium24Buf = await renderPng(sources.medium24, 24);
 
-  const pngOutputs = [
+  const pngOutputs: [string, Buffer][] = [
     ["icon-16.png", small16Buf],
     ["icon-24.png", medium24Buf],
     ["icon-32.png", masterAt32],
@@ -49,10 +49,11 @@ async function main() {
     await writeFile(join(assetsDir, name), buf);
   }
 
-  // ICO entry order: 16, 32, 48, 256. to-ico packs in argument order;
-  // Windows reads ICONDIRENTRY records by id, not order, so this is
-  // ergonomic for inspection rather than functional.
-  const icoBuf = await toIco([small16Buf, masterAt32, masterAt48, masterAt256]);
+  // ICO entry order: 16, 32, 48, 256. png-to-ico's array form decodes each
+  // PNG Buffer via pngjs (its readPNG helper branches on Buffer.isBuffer)
+  // and packs in argument order. Windows reads ICONDIRENTRY records by id,
+  // not order, so this is ergonomic for inspection rather than functional.
+  const icoBuf = await pngToIco([small16Buf, masterAt32, masterAt48, masterAt256]);
   await writeFile(join(assetsDir, "icon.ico"), icoBuf);
 
   // 32x32 raw RGBA for tray-icon's Icon::from_rgba. ensureAlpha() guarantees
@@ -80,8 +81,8 @@ async function main() {
   }
   await writeFile(join(assetsDir, "icon.rgba"), rgba);
 
-  const summary = [
-    ...pngOutputs.map(([name, buf]) => [name, buf.length]),
+  const summary: [string, number][] = [
+    ...pngOutputs.map(([name, buf]) => [name, buf.length] as [string, number]),
     ["icon.ico", icoBuf.length],
     ["icon.rgba", rgba.length],
   ];
@@ -91,7 +92,7 @@ async function main() {
   }
 }
 
-main().catch((err) => {
+main().catch((err: unknown) => {
   console.error(err);
   process.exit(1);
 });
