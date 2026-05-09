@@ -8,7 +8,7 @@ use parking_lot::RwLock;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::pipeline::InputCache;
 use inputforge_core::settings::AppSettings;
-use inputforge_core::snapshot::SnapshotId;
+use inputforge_core::snapshot::{SnapshotConfig, SnapshotId};
 use inputforge_core::state::{
     AppState, DeviceState, EngineStatus, ProfileOrigin as CoreProfileOrigin,
 };
@@ -26,6 +26,48 @@ pub(crate) struct RawHandles {
     pub state: Arc<RwLock<AppState>>,
     pub commands: mpsc::Sender<EngineCommand>,
     pub settings: Arc<AppSettings>,
+}
+
+/// Polled projection of `AppSettings.snapshot` plus the count of unpinned
+/// snapshots in the active profile's namespace.
+///
+/// `unpinned_snapshot_count` is computed each polling tick by resolving the
+/// namespace dir via `resolve_snapshot_namespace` and listing snapshots
+/// there; falls back to 0 when no profile is loaded or namespace
+/// resolution fails. The count is consumed by the F15 settings panel to
+/// derive `would_prune` at commit time without an additional engine query
+/// channel.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct SettingsSnapshot {
+    pub snapshot: SnapshotConfig,
+    pub unpinned_snapshot_count: usize,
+}
+
+impl SettingsSnapshot {
+    /// Project an `AppState` into a `SettingsSnapshot`.
+    ///
+    /// Reads `state.snapshot_config` (the engine's mirror of
+    /// `AppSettings.snapshot`, populated on every settings mutation).
+    /// Resolves the active namespace via
+    /// `inputforge_core::snapshot::pending_delete::resolve_snapshot_namespace`
+    /// and lists snapshots; counts only unpinned entries. Errors at any
+    /// stage degrade silently to a count of 0 rather than panicking,
+    /// matching the polling task's "drop and skip" discipline.
+    pub(crate) fn from_state(state: &AppState) -> Self {
+        let snapshot = state.snapshot_config.clone();
+        let unpinned_snapshot_count =
+            match inputforge_core::snapshot::pending_delete::resolve_snapshot_namespace(state) {
+                Ok(namespace_dir) => match inputforge_core::snapshot::list_in(&namespace_dir) {
+                    Ok(snapshots) => snapshots.into_iter().filter(|s| !s.pinned).count(),
+                    Err(_) => 0,
+                },
+                Err(_) => 0,
+            };
+        Self {
+            snapshot,
+            unpinned_snapshot_count,
+        }
+    }
 }
 
 /// Full per-window context: raw handles plus the three reactive signals.
@@ -2070,5 +2112,39 @@ mod tests {
             snapshot.device_display_name(&DeviceId("dev-1".to_owned())),
             "Live Stick"
         );
+    }
+
+    #[test]
+    fn settings_snapshot_default_is_zero_count() {
+        let snap = SettingsSnapshot::default();
+        assert_eq!(snap.unpinned_snapshot_count, 0);
+    }
+
+    #[test]
+    fn settings_snapshot_from_state_no_profile_yields_zero_count() {
+        use inputforge_core::state::AppState;
+        let state = AppState::new();
+        let snap = SettingsSnapshot::from_state(&state);
+        assert_eq!(
+            snap.unpinned_snapshot_count, 0,
+            "no profile loaded must yield 0 unpinned"
+        );
+        assert_eq!(snap.snapshot, state.snapshot_config);
+    }
+
+    #[test]
+    fn settings_snapshot_from_state_mirrors_snapshot_config_field() {
+        use inputforge_core::snapshot::SnapshotConfig;
+        use inputforge_core::state::AppState;
+
+        let mut state = AppState::new();
+        state.snapshot_config = SnapshotConfig {
+            max_count: 42,
+            skip_if_unchanged: false,
+        };
+
+        let snap = SettingsSnapshot::from_state(&state);
+        assert_eq!(snap.snapshot.max_count, 42);
+        assert!(!snap.snapshot.skip_if_unchanged);
     }
 }
