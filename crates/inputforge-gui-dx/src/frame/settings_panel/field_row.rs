@@ -45,7 +45,7 @@ pub(crate) fn SettingsFieldRow(
                 class: "if-settings-field-row__control",
                 "aria-describedby": "{aria_describedby}",
                 "aria-invalid": if is_invalid { "true" } else { "false" },
-                "aria-errormessage": if is_invalid { error_id.clone() } else { String::new() },
+                "aria-errormessage": if is_invalid { Some(error_id.clone()) } else { None },
                 {control}
             }
             p {
@@ -107,6 +107,10 @@ mod tests {
         assert!(
             html.contains(r#"aria-invalid="false""#),
             "default invalid=false: {html}"
+        );
+        assert!(
+            !html.contains("aria-errormessage"),
+            "no-error case must omit aria-errormessage entirely: {html}"
         );
     }
 
