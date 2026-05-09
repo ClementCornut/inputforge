@@ -64,14 +64,10 @@ mod tests {
     }
 
     #[test]
-    fn panel_renders_snapshots_section_heading() {
+    fn panel_renders_field_rows_without_heading() {
         let mut vdom = VirtualDom::new(Harness);
         vdom.rebuild_in_place();
         let html = render(&vdom);
-        assert!(
-            html.contains("Snapshots"),
-            "expected section heading: {html}"
-        );
         assert!(
             html.contains("Snapshot buffer size"),
             "expected field 1 label: {html}"
@@ -81,6 +77,10 @@ mod tests {
             "expected field 2 label: {html}"
         );
         assert!(!html.contains("<h2"), "panel must not render an h2 header");
+        assert!(
+            !html.contains("<h3"),
+            "panel must not render an h3 section heading: {html}"
+        );
     }
 
     // ---- Step 2: reachability with no profile --------------------------------

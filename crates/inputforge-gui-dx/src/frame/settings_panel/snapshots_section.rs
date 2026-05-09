@@ -171,7 +171,6 @@ pub(crate) fn SnapshotsSection() -> Element {
 
     rsx! {
         SettingsSection {
-            heading: "Snapshots".to_owned(),
             children: rsx! {
                 SettingsFieldRow {
                     label: "Snapshot buffer size".to_owned(),
