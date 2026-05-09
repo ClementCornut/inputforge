@@ -144,6 +144,16 @@ mod tests {
                 html.contains(r#"<aside class="if-panel-slot""#),
                 "slot {slot:?} did not render the stable panel shell: {html}"
             );
+            let expected_aria = match slot {
+                PanelSlotEnum::Devices => "Devices panel",
+                PanelSlotEnum::Profiles => "Profiles panel",
+                PanelSlotEnum::Settings => "Settings",
+                PanelSlotEnum::None => unreachable!(),
+            };
+            assert!(
+                html.contains(&format!(r#"aria-label="{expected_aria}""#)),
+                "slot {slot:?} did not render aria-label \"{expected_aria}\": {html}"
+            );
         }
     }
 
@@ -169,6 +179,10 @@ mod tests {
                     !html.contains("<h2"),
                     "slot {slot:?} unexpectedly rendered an `<h2>`: {html}"
                 );
+            }
+            if matches!(slot, PanelSlotEnum::Devices) {
+                // Devices outside calibration mode must not bleed calibration-mode F12 strings.
+                assert!(!html.contains("F12"));
             }
         }
     }

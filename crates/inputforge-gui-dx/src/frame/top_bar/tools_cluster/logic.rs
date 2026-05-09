@@ -60,6 +60,7 @@ mod tests {
         assert!(!tool_active(PanelSlot::None, false, Tool::Devices));
         assert!(!tool_active(PanelSlot::None, false, Tool::Calibration));
         assert!(!tool_active(PanelSlot::None, false, Tool::Profiles));
+        assert!(!tool_active(PanelSlot::None, false, Tool::Settings));
     }
 
     #[test]

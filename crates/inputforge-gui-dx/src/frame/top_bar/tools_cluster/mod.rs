@@ -11,6 +11,8 @@ use logic::{Tool, tool_active};
 /// `current` is the current slot; `target` is the slot the button represents;
 /// `target_active` is whether the button is currently lit. Active button
 /// closes the slot; inactive button opens the target.
+/// `current` is currently unused but kept in the signature for future variants
+/// that may need it.
 pub(crate) fn next_slot(current: PanelSlot, target: PanelSlot, target_active: bool) -> PanelSlot {
     let _ = current;
     if target_active {
