@@ -198,6 +198,7 @@ pub(crate) fn SnapshotsSection() -> Element {
                     control_id: SKIP_UNCHANGED_ID.to_owned(),
                     control: rsx! {
                         Switch {
+                            id: Some(SKIP_UNCHANGED_ID.to_owned()),
                             checked: skip_local,
                             onchange: on_skip_change,
                         }
