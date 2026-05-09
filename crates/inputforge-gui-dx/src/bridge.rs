@@ -7,7 +7,7 @@ use crate::frame::ViewState;
 
 /// Spawn the ~60Hz state-bridge polling task (16ms tick interval).
 ///
-/// Each tick: non-blocking `try_read()` of `AppState`, rebuild the three
+/// Each tick: non-blocking `try_read()` of `AppState`, rebuild the four
 /// snapshots, write each via `Signal::set` only when `PartialEq` differs.
 /// Idle state produces no wake-ups even while ticking.
 ///

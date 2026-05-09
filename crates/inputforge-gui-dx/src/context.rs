@@ -69,7 +69,7 @@ impl SettingsSnapshot {
     }
 }
 
-/// Full per-window context: raw handles plus the three reactive signals.
+/// Full per-window context: raw handles plus the four reactive signals.
 ///
 /// Assembled inside `app_root` (signals must be created within the runtime).
 #[derive(Clone, Debug)]
