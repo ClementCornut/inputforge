@@ -36,6 +36,10 @@ pub struct DestructiveConfirmDialogProps {
     /// Rich body for emphasis. Caller passes a `rsx!`-built element, so the
     /// description can carry counts, profile names, formatted text without
     /// passing pre-rendered strings.
+    ///
+    /// Avoid wrapping the content in a block element such as `<p>`;
+    /// `DialogDescription` already supplies the outer `<p>`. Inline content,
+    /// `<span>`, or text-only nodes are correct.
     pub description: Element,
 
     /// Cancel button label, defaults to "Cancel".
@@ -57,7 +61,7 @@ pub struct DestructiveConfirmDialogProps {
 pub fn DestructiveConfirmDialog(props: DestructiveConfirmDialogProps) -> Element {
     let title = props.title.as_deref().unwrap_or("Confirm");
     let cancel_label = props.cancel_label.as_deref().unwrap_or("Cancel");
-    let confirm_label = props.confirm_label.clone();
+    let confirm_label = props.confirm_label;
 
     let mut open = props.open;
     let cancel = props.oncancel;
@@ -115,7 +119,7 @@ mod tests {
             DestructiveConfirmDialog {
                 open: open,
                 title: Some("Test title".to_owned()),
-                description: rsx! { p { "Test body" } },
+                description: rsx! { "Test body" },
                 confirm_label: "Reduce".to_owned(),
                 oncancel: move |()| {},
                 onconfirm: move |()| {},
@@ -134,6 +138,19 @@ mod tests {
         assert!(
             html.contains("Cancel"),
             "default cancel label missing: {html}"
+        );
+    }
+
+    #[test]
+    fn cancel_button_precedes_confirm_in_dom_order() {
+        let mut vdom = VirtualDom::new(Harness);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        let cancel_pos = html.find("Cancel").expect("Cancel label missing");
+        let confirm_pos = html.find("Reduce").expect("Reduce label missing");
+        assert!(
+            cancel_pos < confirm_pos,
+            "Cancel must precede Confirm in DOM order to land default focus on the safe action"
         );
     }
 }

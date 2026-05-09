@@ -1,5 +1,6 @@
-//! Reusable composed-component patterns. F4 ships only `DirtyConfirmDialog`;
-//! later features may add `SaveBeforeLeave`, `ConfirmDestructive`, etc.
+//! Reusable composed-component patterns. F4 ships `DirtyConfirmDialog`; F15
+//! adds `DestructiveConfirmDialog`. Later features may add `SaveBeforeLeave`,
+//! bulk-delete confirmations, etc.
 
 pub mod destructive_confirm;
 pub mod dirty_confirm;
