@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::profile::Profile;
 use crate::settings::DeviceRecord;
+use crate::snapshot::SnapshotConfig;
 use crate::types::{DeviceId, VirtualDeviceConfig};
 
 /// Origin of the currently loaded profile.
@@ -87,6 +88,8 @@ pub struct AppState {
     pub device_aliases: HashMap<DeviceId, String>,
     /// Last-known physical device records mirrored from `AppSettings`.
     pub device_registry: HashMap<DeviceId, DeviceRecord>,
+    /// Snapshot configuration mirrored from `AppSettings.snapshot`.
+    pub snapshot_config: SnapshotConfig,
     /// Name of the currently active mode.
     pub current_mode: String,
     /// Current engine lifecycle status.
@@ -124,6 +127,7 @@ impl AppState {
             devices: Vec::new(),
             device_aliases: HashMap::new(),
             device_registry: HashMap::new(),
+            snapshot_config: SnapshotConfig::default(),
             current_mode: "Default".to_owned(),
             engine_status: EngineStatus::Stopped,
             active_profile: None,
@@ -166,6 +170,7 @@ impl AppState {
             devices: Vec::new(),
             device_aliases: HashMap::new(),
             device_registry: HashMap::new(),
+            snapshot_config: SnapshotConfig::default(),
             current_mode: startup_mode,
             engine_status: EngineStatus::Stopped,
             active_profile: Some(profile),
@@ -191,6 +196,13 @@ impl Default for AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn appstate_default_has_snapshot_config_default() {
+        use crate::snapshot::SnapshotConfig;
+        let state = AppState::new();
+        assert_eq!(state.snapshot_config, SnapshotConfig::default());
+    }
 
     #[test]
     fn app_state_default_values() {

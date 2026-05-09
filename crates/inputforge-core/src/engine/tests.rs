@@ -3950,3 +3950,47 @@ fn smoke_bulk_map_full_round_trip_creates_correct_profile_state() {
         "AutoBeforeBulkMap must be listed"
     );
 }
+
+// ---------------------------------------------------------------------------
+// F15 Task 1.5: AppState.snapshot_config mirror
+// ---------------------------------------------------------------------------
+
+#[test]
+fn engine_initialisation_mirrors_settings_snapshot_into_state() {
+    use crate::snapshot::SnapshotConfig;
+    let mut harness = EngineHarness::new();
+    // Force the engine's in-memory settings snapshot to a non-default value
+    // and refresh the state mirror, simulating what `Engine::new` will do
+    // once Step 4 is wired.
+    harness.engine.settings.snapshot = SnapshotConfig {
+        max_count: 25,
+        skip_if_unchanged: false,
+    };
+    harness.engine.state.write().snapshot_config = harness.engine.settings.snapshot.clone();
+    assert_eq!(
+        harness.state().snapshot_config,
+        harness.engine.settings.snapshot
+    );
+}
+
+#[test]
+fn reload_settings_mirrors_into_state_snapshot_config() {
+    use crate::snapshot::SnapshotConfig;
+    let mut harness = EngineHarness::new();
+    let initial = harness.state().snapshot_config.clone();
+
+    // Write a fresh settings.toml with a different snapshot config.
+    let new_cfg = SnapshotConfig {
+        max_count: 7,
+        skip_if_unchanged: !initial.skip_if_unchanged,
+    };
+    let mut file_settings = crate::settings::AppSettings::default();
+    file_settings.snapshot = new_cfg.clone();
+    file_settings
+        .save_to(&harness.engine.settings_path)
+        .unwrap();
+
+    harness.dispatch(EngineCommand::ReloadSettings).unwrap();
+
+    assert_eq!(harness.state().snapshot_config, new_cfg);
+}

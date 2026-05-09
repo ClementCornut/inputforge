@@ -549,6 +549,7 @@ impl Engine {
             }
             EngineCommand::ReloadSettings => {
                 self.settings = crate::settings::AppSettings::load_from(&self.settings_path);
+                self.state.write().snapshot_config = self.settings.snapshot.clone();
                 tracing::info!(target: "engine", "settings reloaded");
             }
             EngineCommand::SetDeviceAlias { device, alias } => {
