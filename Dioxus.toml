@@ -1,6 +1,5 @@
 [application]
 name = "InputForge"
-icon = "crates/inputforge-app/assets/icon.ico"
 
 [bundle]
 identifier = "io.inputforge.app"

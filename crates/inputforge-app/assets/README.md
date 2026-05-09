@@ -13,7 +13,7 @@ bun scripts/build-app-icon.ts
 
 | Source        | Sizes rendered    | Outputs                                       |
 | ------------- | ----------------- | --------------------------------------------- |
-| `icon.svg`    | 32, 48, 64, 256   | `icon-32.png`, `icon-64.png`, `icon-256.png`, ICO frames at 32/48/256, `icon.rgba` (32x32) |
+| `icon.svg`    | 32, 48, 64, 256   | `icon-32.png`, `icon-64.png`, `icon-256.png`, ICO frames at 32/48/256, `icon.rgba` (32x32 RGBA, embedded in the binary for `tray_icon::Icon::from_rgba`) |
 | `icon-16.svg` | 16                | `icon-16.png`, ICO frame at 16                |
 | `icon-24.svg` | 24                | `icon-24.png` (bundle only; 24 has no ICO frame) |
 
@@ -33,5 +33,4 @@ The 96 px master uses a 9 px stroke and r=6 dot, both of which collapse to
 sub-pixel widths if scaled to 16 or 24 directly. The 16 px and 24 px
 variants are hand-tuned for their raster grids (corner radius, stroke
 weight, dot radius) so the mark stays legible at the smallest taskbar
-sizes. See `docs/superpowers/specs/2026-05-09-app-icon-design.md` for the
-brand-rule rationale.
+sizes.
