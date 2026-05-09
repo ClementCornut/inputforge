@@ -11,6 +11,7 @@ pub mod drawer;
 pub mod field;
 pub mod icon;
 pub mod icon_button;
+pub mod integer_input;
 pub mod label;
 pub mod layout;
 pub mod menu;
@@ -41,6 +42,7 @@ pub use drawer::{Drawer, DrawerAnchor, DrawerVariant};
 pub use field::Field;
 pub use icon::Icon;
 pub use icon_button::IconButton;
+pub use integer_input::{IntegerInput, IntegerInputError};
 pub use label::Label;
 pub use layout::{Cluster, Inset, Stack};
 pub use menu::{

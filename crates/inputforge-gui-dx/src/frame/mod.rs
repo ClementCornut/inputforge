@@ -6,6 +6,7 @@ mod mapping_editor;
 mod mapping_list;
 mod panel_slot;
 mod profiles;
+mod settings_panel;
 mod top_bar;
 mod view_state;
 
@@ -18,6 +19,11 @@ pub(crate) use profiles::snapshot_drawer::install_snapshot_shortcut_listener;
 // path style stays consistent across regions.
 // `MappingKey` is re-exported here for Task 3+ consumers (ConfigSnapshot,
 // UndoLog, EditorState). Until those tasks land it has no importers.
+#[allow(
+    unused_imports,
+    reason = "Forward-exported alongside the panel_slot mount; consumers may import via crate::frame::SettingsPanel."
+)]
+pub(crate) use settings_panel::SettingsPanel;
 #[allow(
     unused_imports,
     reason = "Forward-exported for Task 3+ consumers (ConfigSnapshot, UndoLog, EditorState)."

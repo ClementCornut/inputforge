@@ -26,6 +26,7 @@ const BUTTON_CSS: Asset = asset!("/assets/components/button.css");
 const ICON_BUTTON_CSS: Asset = asset!("/assets/components/icon-button.css");
 const TEXT_INPUT_CSS: Asset = asset!("/assets/components/text-input.css");
 const NUMBER_INPUT_CSS: Asset = asset!("/assets/components/number-input.css");
+const INTEGER_INPUT_CSS: Asset = asset!("/assets/components/integer-input.css");
 const SELECT_CSS: Asset = asset!("/assets/components/select.css");
 const SLIDER_CSS: Asset = asset!("/assets/components/slider.css");
 const SWITCH_CSS: Asset = asset!("/assets/components/switch.css");
@@ -84,6 +85,7 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: ICON_BUTTON_CSS }
         Stylesheet { href: TEXT_INPUT_CSS }
         Stylesheet { href: NUMBER_INPUT_CSS }
+        Stylesheet { href: INTEGER_INPUT_CSS }
         Stylesheet { href: SELECT_CSS }
         Stylesheet { href: SLIDER_CSS }
         Stylesheet { href: SWITCH_CSS }

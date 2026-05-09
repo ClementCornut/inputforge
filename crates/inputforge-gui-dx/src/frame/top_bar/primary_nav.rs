@@ -78,11 +78,10 @@ mod tests {
     use dioxus_ssr::render;
     use inputforge_core::mode::ModeTree;
     use inputforge_core::profile::Profile;
-    use inputforge_core::settings::AppSettings;
     use inputforge_core::state::AppState;
     use parking_lot::RwLock;
 
-    use crate::context::{ConfigSnapshot, LiveSnapshot, MetaSnapshot};
+    use crate::context::{ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
 
     #[component]
     fn Harness(surface: MainSurface) -> Element {
@@ -99,7 +98,7 @@ mod tests {
         let ctx = AppContext {
             state: Arc::new(RwLock::new(AppState::with_profile(profile))),
             commands: tx,
-            settings: Arc::new(AppSettings::default()),
+            settings: use_signal(SettingsSnapshot::default),
             meta: use_signal(|| MetaSnapshot {
                 profile_name: Some("T".to_owned()),
                 startup_mode: Some("Default".to_owned()),

@@ -2,12 +2,12 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 
-use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
+use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
 use crate::frame::ViewState;
 
 /// Spawn the ~60Hz state-bridge polling task (16ms tick interval).
 ///
-/// Each tick: non-blocking `try_read()` of `AppState`, rebuild the three
+/// Each tick: non-blocking `try_read()` of `AppState`, rebuild the four
 /// snapshots, write each via `Signal::set` only when `PartialEq` differs.
 /// Idle state produces no wake-ups even while ticking.
 ///
@@ -32,6 +32,7 @@ pub(crate) fn spawn_polling_task(ctx: AppContext, view: ViewState) {
             let selection = view.selected_mapping.peek().clone();
             let config = ConfigSnapshot::from_state(&guard, selection.as_ref());
             let live = LiveSnapshot::from_state(&guard, &config);
+            let settings = SettingsSnapshot::from_state(&guard);
             // Release the read lock before calling Signal::set; reactive re-reads of
             // ctx.state from subscribers must not contend with the held guard.
             drop(guard);
@@ -40,6 +41,7 @@ pub(crate) fn spawn_polling_task(ctx: AppContext, view: ViewState) {
             let mut meta_signal = ctx.meta;
             let mut config_signal = ctx.config;
             let mut live_signal = ctx.live;
+            let mut settings_signal = ctx.settings;
             if *meta_signal.peek() != meta {
                 meta_signal.set(meta);
             }
@@ -48,6 +50,9 @@ pub(crate) fn spawn_polling_task(ctx: AppContext, view: ViewState) {
             }
             if *live_signal.peek() != live {
                 live_signal.set(live);
+            }
+            if *settings_signal.peek() != settings {
+                settings_signal.set(settings);
             }
         }
     });

@@ -30,6 +30,7 @@ tracing-subscriber = { workspace = true }
 anyhow             = { workspace = true }
 dioxus-ssr         = { workspace = true }
 scraper            = { workspace = true }
+ulid               = { workspace = true }
 
 [lints]
 workspace = true

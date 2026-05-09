@@ -1,0 +1,41 @@
+.if-integer-input {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-sunken);
+}
+
+.if-integer-input__field {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.if-integer-input__field::-webkit-outer-spin-button,
+.if-integer-input__field::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.if-integer-input__field:focus {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
+}
+
+.if-integer-input--sm .if-integer-input__field { padding: var(--space-1) var(--space-2); }
+.if-integer-input--md .if-integer-input__field { padding: var(--space-2) var(--space-3); }
+.if-integer-input--lg .if-integer-input__field { padding: var(--space-3) var(--space-4); }
+
+/* Inset variant: focus ring sits inside the bordered shell; used by the
+   F15 settings panel where the row already provides container chrome. */
+.if-integer-input--inset {
+  border: 1px solid transparent;
+}
+.if-integer-input--inset .if-integer-input__field:focus {
+  outline-offset: -1px;
+}

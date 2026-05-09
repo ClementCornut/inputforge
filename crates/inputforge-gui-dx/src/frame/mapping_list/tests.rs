@@ -13,11 +13,10 @@ use dioxus::prelude::*;
 use dioxus_ssr::render;
 use parking_lot::RwLock;
 
-use inputforge_core::settings::AppSettings;
 use inputforge_core::state::AppState;
 
 use crate::components::sortable::use_sortable_state;
-use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
+use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
 use crate::frame::mapping_list::MappingList;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::toast::{ToastQueue, ToastState};
@@ -27,7 +26,7 @@ fn provide_minimal_contexts() {
     let ctx = AppContext {
         state: Arc::new(RwLock::new(AppState::new())),
         commands: cmd_tx,
-        settings: Arc::new(AppSettings::default()),
+        settings: use_signal(SettingsSnapshot::default),
         meta: use_signal(MetaSnapshot::default),
         config: use_signal(ConfigSnapshot::default),
         live: use_signal(LiveSnapshot::default),

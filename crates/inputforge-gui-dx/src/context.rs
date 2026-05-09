@@ -7,8 +7,7 @@ use parking_lot::RwLock;
 
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::pipeline::InputCache;
-use inputforge_core::settings::AppSettings;
-use inputforge_core::snapshot::SnapshotId;
+use inputforge_core::snapshot::{SnapshotConfig, SnapshotId};
 use inputforge_core::state::{
     AppState, DeviceState, EngineStatus, ProfileOrigin as CoreProfileOrigin,
 };
@@ -19,24 +18,59 @@ use inputforge_core::types::{
 
 /// Raw signal-free handles installed via `LaunchBuilder::with_context`.
 ///
-/// `Arc<AppSettings>` is a zero-cost read-only handle at F1; F14 will
-/// unwind this wrapping when adding the mutation path.
+/// `AppSettings` is no longer carried here: the engine state is the truth
+/// source and the bridge polling task projects `state.snapshot_config`
+/// directly into `Signal<SettingsSnapshot>` (F15).
 #[derive(Clone, Debug)]
 pub(crate) struct RawHandles {
     pub state: Arc<RwLock<AppState>>,
     pub commands: mpsc::Sender<EngineCommand>,
-    pub settings: Arc<AppSettings>,
 }
 
-/// Full per-window context: raw handles plus the three reactive signals.
+/// Polled projection of `AppSettings.snapshot` plus the count of unpinned
+/// snapshots in the active profile.
+///
+/// `unpinned_snapshot_count` is derived from `AppState.active_snapshot_rows`
+/// (the engine's projection of the active namespace, refreshed on every
+/// snapshot mutation). The count is consumed by the F15 settings panel to
+/// derive `would_prune` at commit time without an additional engine query
+/// channel.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct SettingsSnapshot {
+    pub snapshot: SnapshotConfig,
+    pub unpinned_snapshot_count: usize,
+}
+
+impl SettingsSnapshot {
+    /// Project an `AppState` into a `SettingsSnapshot`.
+    ///
+    /// Reads `state.snapshot_config` (the engine's mirror of
+    /// `AppSettings.snapshot`, populated on every settings mutation) and
+    /// counts unpinned entries in `state.active_snapshot_rows` (refreshed
+    /// by the engine after every snapshot-mutating command). No filesystem
+    /// IO is performed; this runs on every polling tick.
+    pub(crate) fn from_state(state: &AppState) -> Self {
+        let snapshot = state.snapshot_config.clone();
+        let unpinned_snapshot_count = state
+            .active_snapshot_rows
+            .iter()
+            .filter(|row| !row.pinned)
+            .count();
+        Self {
+            snapshot,
+            unpinned_snapshot_count,
+        }
+    }
+}
+
+/// Full per-window context: raw handles plus the four reactive signals.
 ///
 /// Assembled inside `app_root` (signals must be created within the runtime).
 #[derive(Clone, Debug)]
 pub(crate) struct AppContext {
     pub state: Arc<RwLock<AppState>>,
     pub commands: mpsc::Sender<EngineCommand>,
-    #[expect(dead_code, reason = "used in later tasks (settings reads)")]
-    pub settings: Arc<AppSettings>,
+    pub settings: Signal<SettingsSnapshot>,
     pub meta: Signal<MetaSnapshot>,
     pub config: Signal<ConfigSnapshot>,
     pub live: Signal<LiveSnapshot>,
@@ -2069,6 +2103,68 @@ mod tests {
         assert_eq!(
             snapshot.device_display_name(&DeviceId("dev-1".to_owned())),
             "Live Stick"
+        );
+    }
+
+    #[test]
+    fn settings_snapshot_default_is_zero_count() {
+        let snap = SettingsSnapshot::default();
+        assert_eq!(snap.unpinned_snapshot_count, 0);
+    }
+
+    #[test]
+    fn settings_snapshot_from_state_no_profile_yields_zero_count() {
+        use inputforge_core::state::AppState;
+        let state = AppState::new();
+        let snap = SettingsSnapshot::from_state(&state);
+        assert_eq!(
+            snap.unpinned_snapshot_count, 0,
+            "no profile loaded must yield 0 unpinned"
+        );
+        assert_eq!(snap.snapshot, state.snapshot_config);
+    }
+
+    #[test]
+    fn settings_snapshot_from_state_mirrors_snapshot_config_field() {
+        use inputforge_core::snapshot::SnapshotConfig;
+        use inputforge_core::state::AppState;
+
+        let mut state = AppState::new();
+        state.snapshot_config = SnapshotConfig {
+            max_count: 42,
+            skip_if_unchanged: false,
+        };
+
+        let snap = SettingsSnapshot::from_state(&state);
+        assert_eq!(snap.snapshot.max_count, 42);
+        assert!(!snap.snapshot.skip_if_unchanged);
+        assert_eq!(snap.unpinned_snapshot_count, 0);
+    }
+
+    #[test]
+    fn settings_snapshot_from_state_counts_unpinned_active_rows() {
+        use chrono::DateTime;
+        use inputforge_core::snapshot::{SnapshotId, SnapshotKind};
+        use inputforge_core::state::{ActiveSnapshotRow, AppState};
+        use ulid::Ulid;
+
+        fn row(pinned: bool) -> ActiveSnapshotRow {
+            ActiveSnapshotRow {
+                id: SnapshotId(Ulid::nil()),
+                kind: SnapshotKind::Manual,
+                label: None,
+                taken_at: DateTime::from_timestamp(0, 0).unwrap(),
+                pinned,
+            }
+        }
+
+        let mut state = AppState::new();
+        state.active_snapshot_rows = vec![row(true), row(false), row(true), row(false)];
+
+        let snap = SettingsSnapshot::from_state(&state);
+        assert_eq!(
+            snap.unpinned_snapshot_count, 2,
+            "should count only unpinned rows"
         );
     }
 }

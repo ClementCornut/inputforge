@@ -14,7 +14,6 @@ use std::sync::{Arc, mpsc};
 use parking_lot::RwLock;
 
 use inputforge_core::engine::EngineCommand;
-use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, DeviceState, EngineStatus};
 use inputforge_core::types::{
     AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, VJoyAxis, VirtualDeviceConfig,
@@ -72,12 +71,5 @@ fn main() -> anyhow::Result<()> {
     // sync effect just mutates a detached `MenuItem` that nothing renders.
     let toggle_item = muda::MenuItem::new("Activate", true, None);
 
-    inputforge_gui_dx::launch_gui(
-        state,
-        commands,
-        menu_ids,
-        toggle_item,
-        AppSettings::default(),
-        false,
-    )
+    inputforge_gui_dx::launch_gui(state, commands, menu_ids, toggle_item, false)
 }

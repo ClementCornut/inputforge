@@ -17,14 +17,13 @@ use inputforge_core::action::Action;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::mode::ModeTree;
 use inputforge_core::profile::Profile;
-use inputforge_core::settings::AppSettings;
 use inputforge_core::state::{AppState, DeviceState};
 use inputforge_core::types::{
     AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId, OutputAddress,
     OutputId, VJoyAxis, VirtualDeviceConfig,
 };
 
-use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
+use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
 use crate::frame::bulk_map::BulkMapPanel;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::toast::{ToastQueue, ToastState};
@@ -39,7 +38,7 @@ pub(super) fn provide(state: AppState) -> (AppContext, mpsc::Receiver<EngineComm
     let ctx = AppContext {
         state: Arc::new(RwLock::new(state)),
         commands: tx,
-        settings: Arc::new(AppSettings::default()),
+        settings: use_signal(SettingsSnapshot::default),
         meta: use_signal(|| MetaSnapshot {
             profile_name: Some("T".to_owned()),
             startup_mode: Some("Default".to_owned()),

@@ -282,10 +282,11 @@ mod hook_tests {
     use dioxus_ssr::render;
     use parking_lot::RwLock;
 
-    use inputforge_core::settings::AppSettings;
     use inputforge_core::state::AppState;
 
-    use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
+    use crate::context::{
+        AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot,
+    };
     use crate::patterns::live_capture::{CaptureFilter, use_live_capture_provider};
 
     fn provide_stub_app_context() {
@@ -293,7 +294,7 @@ mod hook_tests {
         let ctx = AppContext {
             state: Arc::new(RwLock::new(AppState::new())),
             commands: cmd_tx,
-            settings: Arc::new(AppSettings::default()),
+            settings: use_signal(SettingsSnapshot::default),
             meta: use_signal(MetaSnapshot::default),
             config: use_signal(ConfigSnapshot::default),
             live: use_signal(LiveSnapshot::default),

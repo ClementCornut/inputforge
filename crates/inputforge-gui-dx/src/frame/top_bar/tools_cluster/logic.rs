@@ -14,6 +14,7 @@ pub(crate) enum Tool {
     )]
     Calibration,
     Profiles,
+    Settings,
 }
 
 /// Whether a given tool button should render as active.
@@ -26,6 +27,7 @@ pub(crate) fn tool_active(slot: PanelSlot, via_calibration: bool, tool: Tool) ->
         (PanelSlot::Devices, false, Tool::Devices)
             | (PanelSlot::Devices, true, Tool::Calibration)
             | (PanelSlot::Profiles, _, Tool::Profiles)
+            | (PanelSlot::Settings, _, Tool::Settings)
     )
 }
 
@@ -58,5 +60,28 @@ mod tests {
         assert!(!tool_active(PanelSlot::None, false, Tool::Devices));
         assert!(!tool_active(PanelSlot::None, false, Tool::Calibration));
         assert!(!tool_active(PanelSlot::None, false, Tool::Profiles));
+        assert!(!tool_active(PanelSlot::None, false, Tool::Settings));
+    }
+
+    #[test]
+    fn settings_panel_lights_settings_regardless_of_via_calibration() {
+        assert!(tool_active(PanelSlot::Settings, false, Tool::Settings));
+        assert!(tool_active(PanelSlot::Settings, true, Tool::Settings));
+        assert!(!tool_active(PanelSlot::Settings, false, Tool::Devices));
+        assert!(!tool_active(PanelSlot::Settings, false, Tool::Profiles));
+    }
+
+    #[test]
+    fn settings_panel_does_not_light_other_tools() {
+        assert!(!tool_active(PanelSlot::Settings, false, Tool::Devices));
+        assert!(!tool_active(PanelSlot::Settings, false, Tool::Calibration));
+        assert!(!tool_active(PanelSlot::Settings, false, Tool::Profiles));
+    }
+
+    #[test]
+    fn devices_panel_does_not_light_settings() {
+        assert!(!tool_active(PanelSlot::Devices, false, Tool::Settings));
+        assert!(!tool_active(PanelSlot::Profiles, false, Tool::Settings));
+        assert!(!tool_active(PanelSlot::None, false, Tool::Settings));
     }
 }

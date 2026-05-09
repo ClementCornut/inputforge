@@ -32,6 +32,7 @@ pub(crate) enum PanelSlot {
     None,
     Devices,
     Profiles,
+    Settings,
 }
 
 /// Which primary workspace owns the main surface.

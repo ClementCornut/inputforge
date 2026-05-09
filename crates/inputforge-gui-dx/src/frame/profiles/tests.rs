@@ -9,11 +9,10 @@ use parking_lot::RwLock;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::mode::ModeTree;
 use inputforge_core::profile::Profile;
-use inputforge_core::settings::AppSettings;
 use inputforge_core::snapshot::{SnapshotConfig, SnapshotId, SnapshotKind, create};
 use inputforge_core::state::{AppState, ProfileOrigin};
 
-use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
+use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
 use crate::context::{ProfileRowOrigin, ProfileRowView, SnapshotRowView};
 use crate::frame::layout::EmptyState;
 use crate::frame::profiles::ProfilesPanel;
@@ -69,10 +68,11 @@ fn ProfilesHarness() -> Element {
     let via_calibration = use_signal(|| false);
     let selected_mapping = use_signal(|| None);
     let profiles_panel = use_signal(ProfilesPanelState::default);
+    let settings = use_signal(SettingsSnapshot::default);
     use_context_provider(|| AppContext {
         state,
         commands,
-        settings: Arc::new(AppSettings::default()),
+        settings,
         meta,
         config,
         live,
@@ -147,10 +147,11 @@ fn SnapshotDrawerHarness(rows: Vec<SnapshotRowView>, open: bool) -> Element {
     let via_calibration = use_signal(|| false);
     let selected_mapping = use_signal(|| None);
     let profiles_panel = use_signal(ProfilesPanelState::default);
+    let settings = use_signal(SettingsSnapshot::default);
     use_context_provider(|| AppContext {
         state,
         commands,
-        settings: Arc::new(AppSettings::default()),
+        settings,
         meta,
         config,
         live,
@@ -246,10 +247,11 @@ fn ProfilesHarnessWithMode(mode: ProfilesPanelMode) -> Element {
         mode: mode.clone(),
         ..ProfilesPanelState::default()
     });
+    let settings = use_signal(SettingsSnapshot::default);
     use_context_provider(|| AppContext {
         state,
         commands,
-        settings: Arc::new(AppSettings::default()),
+        settings,
         meta,
         config,
         live,

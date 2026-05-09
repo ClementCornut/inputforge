@@ -43,26 +43,25 @@ fn main() -> Result<()> {
     let state = Arc::new(RwLock::new(AppState::new()));
     let (cmd_tx, cmd_rx) = mpsc::channel::<EngineCommand>();
 
-    // Load settings and determine which profile to use.
-    let mut settings = AppSettings::load();
+    // Load settings to read last_profile. The engine re-reads settings
+    // itself inside run_engine_inner; this main-side load is for path
+    // resolution only.
+    let settings = AppSettings::load();
 
+    // Resolve the target profile path. Validate via Profile::load and
+    // discard the result: the engine re-reads through
+    // EngineCommand::LoadProfile so cold-start and in-session profile
+    // switches share one canonical code path (snapshot + prune +
+    // last_profile persistence). Validation here preserves today's
+    // corrupt-last_profile fallback to default without expanding the
+    // EngineCommand surface.
     let profile_path = if let Some(ref path) = cli.profile {
-        // CLI argument takes priority.
-        let profile = Profile::load(path)?;
-        let mut guard = state.write();
-        *guard = AppState::with_profile(profile);
-        guard.profile_path = Some(path.clone());
+        let _ = Profile::load(path)?;
         path.clone()
     } else {
-        // Try last-used profile from settings, fall back to default.
         match settings.last_profile {
             Some(ref last) if last.exists() => match Profile::load(last) {
-                Ok(profile) => {
-                    let mut guard = state.write();
-                    *guard = AppState::with_profile(profile);
-                    guard.profile_path = Some(last.clone());
-                    last.clone()
-                }
+                Ok(_) => last.clone(),
                 Err(e) => {
                     tracing::warn!(
                         path = %last.display(),
@@ -70,29 +69,17 @@ fn main() -> Result<()> {
                         "failed to load last-used profile, falling back to default"
                     );
                     let default_path = ensure_default_profile()?;
-                    let profile = Profile::load(&default_path)?;
-                    let mut guard = state.write();
-                    *guard = AppState::with_profile(profile);
-                    guard.profile_path = Some(default_path.clone());
+                    let _ = Profile::load(&default_path)?;
                     default_path
                 }
             },
             _ => {
                 let default_path = ensure_default_profile()?;
-                let profile = Profile::load(&default_path)?;
-                let mut guard = state.write();
-                *guard = AppState::with_profile(profile);
-                guard.profile_path = Some(default_path.clone());
+                let _ = Profile::load(&default_path)?;
                 default_path
             }
         }
     };
-
-    // Persist the loaded profile path as last-used.
-    settings.last_profile = Some(profile_path);
-    if let Err(e) = settings.save() {
-        tracing::warn!(%e, "failed to save application settings");
-    }
 
     // Spawn the engine on a dedicated thread. All !Send types (SDL3)
     // are created on this thread.
@@ -100,6 +87,12 @@ fn main() -> Result<()> {
     let engine_handle = thread::Builder::new()
         .name("engine".into())
         .spawn(move || run_engine(engine_state, cmd_rx))?;
+
+    // Cold-start profile load. Same code path as in-session profile
+    // switches: reloads from disk, takes AutoSessionStart snapshot
+    // (gated by settings.snapshot.skip_if_unchanged), prunes, refreshes
+    // projection rows, persists last_profile.
+    cmd_tx.send(EngineCommand::LoadProfile(profile_path))?;
 
     // Send activate command if requested.
     if cli.enable {
@@ -114,7 +107,6 @@ fn main() -> Result<()> {
         cmd_tx.clone(),
         tray.menu_item_ids(),
         tray.toggle_menu_item(),
-        settings.clone(),
         cli.start_minimized,
     ) {
         tracing::error!(%e, "GUI exited with error");

@@ -1107,6 +1107,16 @@ impl EngineHarness {
         self.library_dir
             .join(format!("{}.toml", sanitize_filename(name)))
     }
+
+    /// Replace the engine's settings_path with one containing a NUL byte
+    /// so std::fs::create_dir_all and File::create both fail with
+    /// `ErrorKind::InvalidInput` deterministically on every OS. Used for
+    /// save-failure tests.
+    fn force_settings_path_to_unwritable(&mut self) {
+        let mut path = self._settings_dir.path().to_path_buf();
+        path.push("settings\0.toml");
+        self.engine.settings_path = path;
+    }
 }
 
 #[test]
@@ -2348,6 +2358,61 @@ fn load_profile_dedupes_auto_session_start_on_identical_content() {
         listed.len(),
         1,
         "second load with identical content must dedup"
+    );
+}
+
+#[test]
+fn engine_loadprofile_dedup_respects_skip_if_unchanged_false() {
+    // Mirrors the cold-start scenario after main.rs sends LoadProfile:
+    // toggling Settings -> "Skip startup snapshot if unchanged" OFF must
+    // produce a fresh AutoSessionStart even when the profile content is
+    // byte-identical to the most recent existing snapshot.
+    let dir = tempfile::tempdir().unwrap();
+    let settings_path = dir.path().join("settings.toml");
+    let library_dir = dir.path().join("profiles");
+    std::fs::create_dir_all(&library_dir).unwrap();
+    let path = library_dir.join("TFM_Throttle.toml");
+    let profile = make_profile(simple_mode_tree(), vec![]);
+    profile.save(&path).unwrap();
+
+    // Persist settings with skip_if_unchanged = false on disk so the
+    // engine's mirror of self.settings reflects the user's toggle.
+    let mut settings = AppSettings::default();
+    settings.snapshot.skip_if_unchanged = false;
+    settings.save_to(&settings_path).unwrap();
+
+    let state = Arc::new(RwLock::new(AppState::new()));
+    state.write().engine_status = EngineStatus::Running;
+    let (tx, rx) = mpsc::channel();
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        settings,
+        settings_path,
+    );
+
+    tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
+    engine.tick().unwrap();
+    tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
+    engine.tick().unwrap();
+
+    let listed = crate::snapshot::list(&path).unwrap();
+    assert_eq!(
+        listed.len(),
+        2,
+        "skip_if_unchanged = false must produce a fresh AutoSessionStart \
+         even when content is identical"
+    );
+    assert!(
+        listed
+            .iter()
+            .all(|s| matches!(s.kind, crate::snapshot::SnapshotKind::AutoSessionStart)),
+        "both snapshots must be AutoSessionStart, got {:?}",
+        listed.iter().map(|s| s.kind).collect::<Vec<_>>()
     );
 }
 
@@ -3948,5 +4013,291 @@ fn smoke_bulk_map_full_round_trip_creates_correct_profile_state() {
             .iter()
             .any(|s| matches!(s.kind, crate::snapshot::SnapshotKind::AutoBeforeBulkMap)),
         "AutoBeforeBulkMap must be listed"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// F15 Task 1.5: AppState.snapshot_config mirror
+// ---------------------------------------------------------------------------
+
+#[test]
+fn engine_initialisation_mirrors_settings_snapshot_into_state() {
+    use crate::snapshot::SnapshotConfig;
+    let mut harness = EngineHarness::new();
+    // Force the engine's in-memory settings snapshot to a non-default value
+    // and refresh the state mirror, simulating what `Engine::new` will do
+    // once Step 4 is wired.
+    harness.engine.settings.snapshot = SnapshotConfig {
+        max_count: 25,
+        skip_if_unchanged: false,
+    };
+    harness.engine.state.write().snapshot_config = harness.engine.settings.snapshot.clone();
+    assert_eq!(
+        harness.state().snapshot_config,
+        harness.engine.settings.snapshot
+    );
+}
+
+#[test]
+fn reload_settings_mirrors_into_state_snapshot_config() {
+    use crate::snapshot::SnapshotConfig;
+    let mut harness = EngineHarness::new();
+    let initial = harness.state().snapshot_config.clone();
+
+    // Write a fresh settings.toml with a different snapshot config.
+    let new_cfg = SnapshotConfig {
+        max_count: 7,
+        skip_if_unchanged: !initial.skip_if_unchanged,
+    };
+    let mut file_settings = AppSettings::default();
+    file_settings.snapshot = new_cfg.clone();
+    file_settings
+        .save_to(&harness.engine.settings_path)
+        .unwrap();
+
+    harness.dispatch(EngineCommand::ReloadSettings).unwrap();
+
+    assert_eq!(harness.state().snapshot_config, new_cfg);
+}
+
+#[test]
+fn set_snapshot_config_writes_settings_toml_and_replaces_in_memory() {
+    let mut harness = EngineHarness::new();
+
+    let new_cfg = crate::snapshot::SnapshotConfig {
+        max_count: 25,
+        skip_if_unchanged: false,
+    };
+    harness
+        .dispatch(EngineCommand::SetSnapshotConfig {
+            config: new_cfg.clone(),
+        })
+        .unwrap();
+
+    // In-memory: handler took effect.
+    assert_eq!(harness.engine.settings.snapshot, new_cfg);
+
+    // On-disk: settings.toml round-trips the new config.
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert_eq!(on_disk.snapshot, new_cfg);
+}
+
+#[test]
+fn set_snapshot_config_prunes_when_max_count_decreased() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+
+    // Seed five AutoBeforeRestore snapshots (unpinned, always fire) so the
+    // active namespace has enough unpinned entries for prune to act on.
+    // Manual snapshots are auto-pinned at creation and are therefore exempt
+    // from FIFO eviction; AutoBeforeRestore snapshots are not pinned.
+    for _ in 0..5 {
+        harness
+            .dispatch(EngineCommand::CreateSnapshot {
+                kind: crate::snapshot::SnapshotKind::AutoBeforeRestore,
+                label: None,
+            })
+            .unwrap();
+    }
+
+    let before = harness.state().active_snapshot_rows.len();
+    assert!(
+        before >= 5,
+        "expected at least 5 snapshots before prune, got {before}"
+    );
+
+    // Reduce max_count below the seeded count to force a prune.
+    harness
+        .dispatch(EngineCommand::SetSnapshotConfig {
+            config: crate::snapshot::SnapshotConfig {
+                max_count: 2,
+                skip_if_unchanged: true,
+            },
+        })
+        .unwrap();
+
+    let after = harness.state().active_snapshot_rows.len();
+    assert!(
+        after <= 2,
+        "expected at most 2 snapshots after prune, got {after}"
+    );
+}
+
+#[test]
+fn set_snapshot_config_does_not_prune_when_max_count_increased() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+    for i in 0..3 {
+        harness
+            .dispatch(EngineCommand::CreateSnapshot {
+                kind: crate::snapshot::SnapshotKind::Manual,
+                label: Some(format!("snap-{i}")),
+            })
+            .unwrap();
+    }
+    let before = harness.state().active_snapshot_rows.len();
+
+    harness
+        .dispatch(EngineCommand::SetSnapshotConfig {
+            config: crate::snapshot::SnapshotConfig {
+                max_count: 50,
+                skip_if_unchanged: true,
+            },
+        })
+        .unwrap();
+
+    let after = harness.state().active_snapshot_rows.len();
+    assert_eq!(after, before, "increase must not prune");
+}
+
+#[test]
+fn set_snapshot_config_no_prune_when_no_profile_loaded() {
+    let mut harness = EngineHarness::new();
+
+    // No profile loaded; resolved_snapshot_target returns None so prune is skipped.
+    let result = harness.dispatch(EngineCommand::SetSnapshotConfig {
+        config: crate::snapshot::SnapshotConfig {
+            max_count: 1,
+            skip_if_unchanged: false,
+        },
+    });
+
+    assert!(
+        result.is_ok(),
+        "no profile loaded must not error: {result:?}"
+    );
+    assert_eq!(harness.engine.settings.snapshot.max_count, 1);
+}
+
+#[test]
+fn set_snapshot_config_save_failure_does_not_persist() {
+    let mut harness = EngineHarness::new();
+    let original = harness.engine.settings.snapshot.clone();
+
+    harness.force_settings_path_to_unwritable();
+
+    // Dispatch with a different value so the rollback is observable.
+    let attempted = crate::snapshot::SnapshotConfig {
+        max_count: 99,
+        skip_if_unchanged: !original.skip_if_unchanged,
+    };
+    harness
+        .dispatch(EngineCommand::SetSnapshotConfig { config: attempted })
+        .unwrap();
+
+    // In-memory rolled back to the pre-command value.
+    assert_eq!(harness.engine.settings.snapshot, original);
+
+    // The AppState mirror was also rolled back to the pre-command value.
+    assert_eq!(harness.state().snapshot_config, original);
+
+    // Warnings channel received the failure message.
+    let warnings = harness.state().warnings.clone();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("Could not save settings")),
+        "expected warning, got: {warnings:?}"
+    );
+}
+
+#[test]
+fn set_snapshot_config_in_memory_matches_disk_after_prune() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+    for i in 0..3 {
+        harness
+            .dispatch(EngineCommand::CreateSnapshot {
+                kind: crate::snapshot::SnapshotKind::Manual,
+                label: Some(format!("snap-{i}")),
+            })
+            .unwrap();
+    }
+
+    let new_cfg = crate::snapshot::SnapshotConfig {
+        max_count: 1,
+        skip_if_unchanged: true,
+    };
+    harness
+        .dispatch(EngineCommand::SetSnapshotConfig {
+            config: new_cfg.clone(),
+        })
+        .unwrap();
+
+    // After prune: in-memory == on-disk == requested.
+    assert_eq!(harness.engine.settings.snapshot, new_cfg);
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert_eq!(on_disk.snapshot, new_cfg);
+    // The AppState mirror also reflects the new value.
+    assert_eq!(harness.state().snapshot_config, new_cfg);
+}
+
+#[cfg(unix)]
+#[test]
+fn set_snapshot_config_prune_failure_does_not_corrupt_settings() {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    // When the snapshot namespace dir becomes unreadable after settings.toml
+    // has already been saved, the handler must keep in-memory + on-disk +
+    // AppState consistent and surface a `Snapshot prune failed` warning.
+    // Note: under non-root permissions only; if the test runner is root,
+    // mode 0o000 does not deny access and this test is a no-op.
+
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+
+    // Seed unpinned snapshots so a prune would otherwise act.
+    for _ in 0..3 {
+        harness
+            .dispatch(EngineCommand::CreateSnapshot {
+                kind: crate::snapshot::SnapshotKind::AutoBeforeRestore,
+                label: None,
+            })
+            .unwrap();
+    }
+
+    // Resolve the namespace dir for the chmod target. The read guard is
+    // dropped at the end of the scope so the dispatch can re-acquire the
+    // lock for writes.
+    let namespace_dir = {
+        let state = harness.state();
+        crate::snapshot::pending_delete::resolve_snapshot_namespace(&state).unwrap()
+    };
+    let original_perms = fs::metadata(&namespace_dir).unwrap().permissions();
+    fs::set_permissions(&namespace_dir, fs::Permissions::from_mode(0o000)).unwrap();
+
+    let new_cfg = crate::snapshot::SnapshotConfig {
+        max_count: 1,
+        skip_if_unchanged: true,
+    };
+    // Both `prune_in` (via `list_in`) and `refresh_active_snapshot_rows`
+    // (via `list_visible`) read the now-unreadable dir. The handler pushes
+    // the prune-failure warning before propagating the refresh error, so
+    // the dispatch may return Err even though settings have been saved
+    // consistently. Either outcome is permissible; the consistency
+    // invariant is what we verify.
+    let _ = harness.dispatch(EngineCommand::SetSnapshotConfig {
+        config: new_cfg.clone(),
+    });
+
+    // Restore permissions so the temp dir can be cleaned up and so
+    // subsequent reads succeed.
+    fs::set_permissions(&namespace_dir, original_perms).unwrap();
+
+    // Settings updated atomically: in-memory, on-disk, and the AppState
+    // mirror all reflect the new config despite the post-save prune error.
+    assert_eq!(harness.engine.settings.snapshot, new_cfg);
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert_eq!(on_disk.snapshot, new_cfg);
+    assert_eq!(harness.state().snapshot_config, new_cfg);
+
+    // Prune-failure warning was pushed before any subsequent error.
+    let warnings = harness.state().warnings.clone();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("Snapshot prune failed after settings save")),
+        "expected prune-failure warning, got: {warnings:?}"
     );
 }

@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::frame::profiles::ProfilesPanel;
+use crate::frame::settings_panel::SettingsPanel;
 use crate::frame::view_state::{PanelSlot as PanelSlotEnum, ViewState};
 
 mod device_panel;
@@ -38,11 +39,16 @@ pub(crate) fn PanelSlot() -> Element {
             body: "",
             aria: "Profiles panel",
         },
+        PanelSlotEnum::Settings => PanelSpec {
+            body: "",
+            aria: "Settings",
+        },
         PanelSlotEnum::None => unreachable!("None branch returned above"),
     };
     let body = match s {
         PanelSlotEnum::Devices if !calib => rsx! { device_panel::DevicePanel {} },
         PanelSlotEnum::Profiles => rsx! { ProfilesPanel {} },
+        PanelSlotEnum::Settings => rsx! { SettingsPanel {} },
         _ => rsx! { div { class: "if-panel-slot__placeholder", "{spec.body}" } },
     };
 
@@ -62,9 +68,10 @@ mod tests {
 
     use std::sync::{Arc, mpsc};
 
-    use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot};
+    use crate::context::{
+        AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot,
+    };
     use dioxus_ssr::render;
-    use inputforge_core::settings::AppSettings;
     use inputforge_core::state::AppState;
     use parking_lot::RwLock;
 
@@ -88,7 +95,7 @@ mod tests {
         let profiles_panel = use_signal(crate::frame::view_state::ProfilesPanelState::default);
         let state = Arc::new(RwLock::new(AppState::new()));
         let (commands, _rx) = mpsc::channel();
-        let settings = Arc::new(AppSettings::default());
+        let settings = use_signal(SettingsSnapshot::default);
         let meta = use_signal(MetaSnapshot::default);
         let config = use_signal(ConfigSnapshot::default);
         let live = use_signal(LiveSnapshot::default);
@@ -126,27 +133,57 @@ mod tests {
     }
 
     #[test]
-    fn devices_and_profiles_share_stable_aside_shell() {
-        for slot in [PanelSlotEnum::Devices, PanelSlotEnum::Profiles] {
+    fn devices_profiles_settings_share_stable_aside_shell() {
+        for slot in [
+            PanelSlotEnum::Devices,
+            PanelSlotEnum::Profiles,
+            PanelSlotEnum::Settings,
+        ] {
             let html = render_slot(slot);
-
             assert!(
                 html.contains(r#"<aside class="if-panel-slot""#),
                 "slot {slot:?} did not render the stable panel shell: {html}"
+            );
+            let expected_aria = match slot {
+                PanelSlotEnum::Devices => "Devices panel",
+                PanelSlotEnum::Profiles => "Profiles panel",
+                PanelSlotEnum::Settings => "Settings",
+                PanelSlotEnum::None => unreachable!(),
+            };
+            assert!(
+                html.contains(&format!(r#"aria-label="{expected_aria}""#)),
+                "slot {slot:?} did not render aria-label \"{expected_aria}\": {html}"
             );
         }
     }
 
     #[test]
     fn panel_header_omits_placeholder_caption() {
-        let html = render_slot(PanelSlotEnum::Devices);
-
-        assert!(!html.contains("Panel"));
-        assert!(!html.contains("F12"));
-        assert!(!html.contains("if-panel-slot__caption"));
-        assert!(!html.contains("if-panel-slot__header"));
-        assert!(!html.contains("if-panel-slot__title"));
-        assert!(!html.contains("<h2"));
-        assert!(!html.contains(">Devices<"));
+        for slot in [
+            PanelSlotEnum::Devices,
+            PanelSlotEnum::Profiles,
+            PanelSlotEnum::Settings,
+        ] {
+            let html = render_slot(slot);
+            assert!(!html.contains("Panel"));
+            assert!(!html.contains("if-panel-slot__caption"));
+            assert!(!html.contains("if-panel-slot__header"));
+            assert!(!html.contains("if-panel-slot__title"));
+            assert!(!html.contains(">Devices<"));
+            assert!(!html.contains(">Settings<"));
+            // ProfilesPanel mounts a destructive-confirm dialog whose
+            // `DialogTitle` legitimately renders an `<h2>`; the
+            // generic `<h2` ban applies only to the other slots.
+            if !matches!(slot, PanelSlotEnum::Profiles) {
+                assert!(
+                    !html.contains("<h2"),
+                    "slot {slot:?} unexpectedly rendered an `<h2>`: {html}"
+                );
+            }
+            if matches!(slot, PanelSlotEnum::Devices) {
+                // Devices outside calibration mode must not bleed calibration-mode F12 strings.
+                assert!(!html.contains("F12"));
+            }
+        }
     }
 }
