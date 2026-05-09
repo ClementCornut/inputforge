@@ -19,26 +19,18 @@ use crate::frame::settings_panel::prune_confirm::PruneConfirmDialog;
 use crate::frame::settings_panel::section::SettingsSection;
 use crate::toast::{ToastLevel, ToastQueue};
 
-// `#[expect(dead_code)]` covers the build window where `SnapshotsSection` is
-// authored but not yet mounted by the `SettingsPanel` root. Task 12 wires the
-// mount; once live, the lint promotes a warning if these items go unused.
-
 /// Inclusive lower bound of the snapshot buffer size. A buffer of zero would
 /// disable the rolling history entirely; one is the smallest meaningful value.
-#[expect(dead_code, reason = "Mounted by SettingsPanel in Task 12")]
 const MAX_COUNT_MIN: usize = 1;
 
 /// Inclusive upper bound of the snapshot buffer size. Mirrors the engine-side
 /// `SnapshotConfig` policy and prevents accidental disk pressure from a typo.
-#[expect(dead_code, reason = "Mounted by SettingsPanel in Task 12")]
 const MAX_COUNT_MAX: usize = 100;
 
 /// HTML id linking the buffer-size label to the IntegerInput control.
-#[expect(dead_code, reason = "Mounted by SettingsPanel in Task 12")]
 const MAX_COUNT_ID: &str = "if-settings-snapshot-max-count";
 
 /// HTML id linking the skip-startup label to the Switch control.
-#[expect(dead_code, reason = "Mounted by SettingsPanel in Task 12")]
 const SKIP_UNCHANGED_ID: &str = "if-settings-snapshot-skip-unchanged";
 
 #[component]
@@ -228,7 +220,6 @@ pub(crate) fn SnapshotsSection() -> Element {
     }
 }
 
-#[expect(dead_code, reason = "Mounted by SettingsPanel in Task 12")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct PendingPrune {
     candidate_max: usize,
