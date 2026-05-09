@@ -1,18 +1,15 @@
 //! F15 settings panel. See docs/superpowers/specs/2026-05-09-f15-settings-ui-design.md.
 
 mod field_row;
+mod prune_confirm;
 mod section;
+mod snapshots_section;
 
 #[allow(
     unused_imports,
-    reason = "Forward-exported for Task 11+ consumers (SnapshotsSection)."
+    reason = "Forward-exported for Task 12+ consumers (SettingsPanel root)."
 )]
-pub(crate) use field_row::SettingsFieldRow;
-#[allow(
-    unused_imports,
-    reason = "Forward-exported for Task 11+ consumers (SnapshotsSection)."
-)]
-pub(crate) use section::SettingsSection;
+pub(crate) use snapshots_section::SnapshotsSection;
 
 use dioxus::prelude::*;
 
