@@ -141,7 +141,7 @@ display_language_selector = false
 start_menu_folder = "InputForge"
 ```
 
-- [ ] **Step 2: Verify the TOML still parses**
+- [ ] **Step 2: Verify the Cargo workspace still parses**
 
 Run:
 
@@ -161,7 +161,17 @@ cargo build -p inputforge-app
 
 Expected: command exits `0`.
 
-- [ ] **Step 4: Commit the bundle configuration**
+- [ ] **Step 4: Validate the Dioxus bundle configuration on Windows**
+
+Run this on Windows with Dioxus CLI 0.7.9 available:
+
+```powershell
+dx bundle --package inputforge-app --platform desktop --release --package-types nsis
+```
+
+Expected: command exits `0` and creates one NSIS installer under `target/dx/**/bundle/nsis/*.exe`.
+
+- [ ] **Step 5: Commit the bundle configuration**
 
 Run:
 
@@ -458,6 +468,32 @@ function Assert-WorkflowContains {
     }
 }
 
+function Assert-WorkflowDoesNotContain {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Text,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Reason
+    )
+
+    if ($workflow.Contains($Text)) {
+        throw "Workflow assertion failed: $Reason. Unexpected text: $Text"
+    }
+}
+
+$actionlintVersion = "v1.7.12"
+go run "github.com/rhysd/actionlint/cmd/actionlint@$actionlintVersion" $WorkflowPath
+if ($LASTEXITCODE -ne 0) {
+    throw "actionlint $actionlintVersion failed for '$WorkflowPath'."
+}
+
+Assert-WorkflowContains -Text "on:" -Reason "workflow declares triggers"
+Assert-WorkflowContains -Text "  push:" -Reason "workflow runs only from push events"
+Assert-WorkflowContains -Text "    tags:" -Reason "workflow is tag-triggered"
+Assert-WorkflowContains -Text '      - "v*.*.*"' -Reason "workflow accepts semver-style release tags"
+Assert-WorkflowDoesNotContain -Text "workflow_dispatch:" -Reason "workflow is not manually publishable"
+Assert-WorkflowDoesNotContain -Text "branches:" -Reason "workflow does not publish from branches"
 Assert-WorkflowContains -Text 'release-${{ github.ref }}' -Reason "release concurrency is keyed by tag ref"
 Assert-WorkflowContains -Text "cancel-in-progress: false" -Reason "release builds are not cancelled mid-flight"
 Assert-WorkflowContains -Text "contents: write" -Reason "publish job can create or update releases"
@@ -466,6 +502,7 @@ Assert-WorkflowContains -Text "cargo test --workspace" -Reason "test job gates r
 Assert-WorkflowContains -Text "windows-latest" -Reason "initial matrix includes Windows"
 Assert-WorkflowContains -Text "package_type: nsis" -Reason "initial matrix bundles NSIS"
 Assert-WorkflowContains -Text "target/dx/**/bundle/nsis/*.exe" -Reason "asset glob matches Dioxus 0.7.9 NSIS output"
+Assert-WorkflowContains -Text 'Get-ChildItem -Path "${{ matrix.asset_glob }}" -File' -Reason "installer discovery consumes the matrix asset glob"
 Assert-WorkflowContains -Text "softprops/action-gh-release@v2" -Reason "publish job uploads release assets"
 Assert-WorkflowContains -Text "env.WINDOWS_SIGNING_CERTIFICATE_BASE64 != ''" -Reason "signing is optional at step level without direct secrets in if"
 Assert-WorkflowContains -Text "Get-FileHash -Algorithm SHA256" -Reason "build job writes a SHA-256 checksum"
@@ -481,7 +518,7 @@ Run:
 pwsh -NoLogo -NoProfile -File .github/scripts/assert-release-workflow.ps1
 ```
 
-Expected: FAIL with `Workflow '.github/workflows/release.yml' does not exist.`
+Expected: FAIL with `Workflow '.github/workflows/release.yml' does not exist.` before actionlint runs.
 
 ---
 
@@ -492,6 +529,10 @@ Expected: FAIL with `Workflow '.github/workflows/release.yml' does not exist.`
 - Test: `.github/scripts/assert-release-workflow.ps1`
 
 - [ ] **Step 1: Create the release workflow**
+
+Security note: this workflow intentionally uses maintained action version tags
+such as `actions/checkout@v4` and `softprops/action-gh-release@v2`. Full
+commit SHA pinning is not required for this milestone by project decision.
 
 Create `.github/workflows/release.yml`:
 
@@ -593,13 +634,11 @@ jobs:
         id: installer
         shell: pwsh
         run: |
-          $matches = Get-ChildItem -Path "target/dx" -Recurse -File -Filter "*.exe" |
-            Where-Object { $_.FullName -match "\\bundle\\nsis\\" } |
-            Sort-Object FullName
+          $matches = @(Get-ChildItem -Path "${{ matrix.asset_glob }}" -File | Sort-Object FullName)
 
           if ($matches.Count -ne 1) {
             $found = $matches | ForEach-Object { $_.FullName } | Out-String
-            throw "Expected exactly one NSIS installer, found $($matches.Count): $found"
+            throw "Expected exactly one installer matching '${{ matrix.asset_glob }}', found $($matches.Count): $found"
           }
 
           $installer = $matches[0]
@@ -697,7 +736,7 @@ Run:
 pwsh -NoLogo -NoProfile -File .github/scripts/assert-release-workflow.ps1
 ```
 
-Expected: PASS with `release workflow assertions passed`.
+Expected: PASS with `release workflow assertions passed`; the script also runs `actionlint` v1.7.12 against `.github/workflows/release.yml`.
 
 - [ ] **Step 3: Run the release helper tests again**
 
@@ -808,7 +847,8 @@ git commit -m "fix(release): correct windows bundle verification"
 ### Task 8: Verify a Test Release Tag
 
 **Files:**
-- Modify: none expected unless the GitHub Actions run exposes a workflow issue.
+- Modify: `Cargo.toml`, `Cargo.lock`
+- Modify if needed: `.github/workflows/release.yml`, `.github/scripts/*`
 
 - [ ] **Step 1: Push the branch with all release-pipeline commits**
 
@@ -821,49 +861,11 @@ git push
 
 Expected: branch push succeeds and `git status --short` is clean before creating the tag.
 
-- [ ] **Step 2: Create and push a matching test tag**
+- [ ] **Step 2: Prepare the first RC version**
 
-Run only when the branch is ready to publish a test release:
+Run only when the branch is ready to publish a rehearsal release:
 
-```powershell
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Expected: GitHub Actions starts the `Release` workflow for `refs/tags/v0.1.0`.
-
-- [ ] **Step 3: Confirm release outputs in GitHub**
-
-Check the completed workflow run:
-
-```text
-test: passes after validating v0.1.0 against workspace version 0.1.0
-build / Bundle windows: uploads inputforge-windows-0.1.0 artifact
-publish: creates or updates the v0.1.0 GitHub Release
-```
-
-Expected release assets:
-
-```text
-InputForge_0.1.0_x64-setup.exe
-InputForge_0.1.0_x64-setup.exe.sha256
-```
-
-- [ ] **Step 4: Smoke-test the installer**
-
-Download the installer from the GitHub Release onto a clean Windows machine, VM, or sandbox. Run the installer as a normal user.
-
-Expected:
-
-```text
-The installer does not require administrator elevation.
-The Start Menu folder is InputForge.
-InputForge launches successfully after installation.
-```
-
-- [ ] **Step 5: Verify pre-release behavior before the first RC**
-
-When preparing an RC release, first set `[workspace.package].version` to the RC version, for example:
+First set `[workspace.package].version` to the RC version:
 
 ```toml
 [workspace.package]
@@ -875,12 +877,60 @@ Then run:
 ```powershell
 git add Cargo.toml Cargo.lock
 git commit -m "chore(release): prepare 0.1.0-rc.1"
+```
+
+Expected: workspace version is committed as `0.1.0-rc.1`.
+
+- [ ] **Step 3: Create and push the RC rehearsal tag**
+
+```powershell
 git tag v0.1.0-rc.1
 git push origin HEAD
 git push origin v0.1.0-rc.1
 ```
 
-Expected: the GitHub Release for `v0.1.0-rc.1` is marked as a prerelease.
+Expected: GitHub Actions starts the `Release` workflow for `refs/tags/v0.1.0-rc.1`.
+
+- [ ] **Step 4: Confirm release outputs in GitHub**
+
+Check the completed workflow run:
+
+```text
+test: passes after validating v0.1.0-rc.1 against workspace version 0.1.0-rc.1
+build / Bundle windows: uploads inputforge-windows-0.1.0-rc.1 artifact
+publish: creates or updates the v0.1.0-rc.1 GitHub Release as a prerelease
+```
+
+Expected release assets:
+
+```text
+InputForge_0.1.0-rc.1_x64-setup.exe
+InputForge_0.1.0-rc.1_x64-setup.exe.sha256
+```
+
+- [ ] **Step 5: Smoke-test the installer**
+
+Download the installer from the GitHub Release onto a clean Windows machine, VM, or sandbox. Run the installer as a normal user.
+
+Expected:
+
+```text
+The installer does not require administrator elevation.
+The Start Menu folder is InputForge.
+InputForge launches successfully after installation.
+```
+
+- [ ] **Step 6: Clean up the rehearsal release when it is not the release candidate to keep**
+
+Run only when `v0.1.0-rc.1` was a disposable rehearsal and should not remain published:
+
+```powershell
+gh release delete v0.1.0-rc.1 --yes
+git push origin :refs/tags/v0.1.0-rc.1
+git tag -d v0.1.0-rc.1
+```
+
+Expected: the GitHub Release, remote tag, and local tag for `v0.1.0-rc.1` are removed.
 
 ---
 
@@ -907,4 +957,4 @@ Type and name consistency:
 
 - Workflow outputs use `release_version` and `is_prerelease` consistently from `.github/scripts/validate-release-tag.ps1` through `test.outputs`, artifact names, and release prerelease handling.
 - Signing uses `WINDOWS_SIGNING_CERTIFICATE_BASE64`, `WINDOWS_SIGNING_CERTIFICATE_PASSWORD`, and `WINDOWS_SIGNING_TIMESTAMP_URL` consistently.
-- The NSIS asset discovery uses `target/dx/**/bundle/nsis/*.exe`, matching the matrix and assertions.
+- The NSIS asset discovery uses `matrix.asset_glob`, matching the matrix and assertions.

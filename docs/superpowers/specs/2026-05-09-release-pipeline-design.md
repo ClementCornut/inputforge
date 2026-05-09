@@ -167,6 +167,10 @@ All jobs check out the repository with `actions/checkout@v4` and
 `fetch-depth: 0` so the version-match step can resolve annotated tags and the
 publish step has full history available.
 
+External actions use maintained version tags such as `actions/checkout@v4`,
+`Swatinem/rust-cache@v2`, and `softprops/action-gh-release@v2`. Full commit
+SHA pinning is intentionally out of scope for the first milestone.
+
 **`test` job** (runs once, gates the matrix):
 
 1. Check out the repository.
@@ -188,11 +192,12 @@ publish step has full history available.
    cache (`target/dx`) is left as a future optimization once cold-build cost
    data is collected.
 5. Run `dx bundle --package inputforge-app --platform ${{ matrix.platform }} --release --package-types ${{ matrix.package_type }}`.
-6. Sign the installer when signing secrets are configured (see Optional
+6. Locate produced installer assets with the matrix `asset_glob` value.
+7. Sign the installer when signing secrets are configured (see Optional
    Signing).
-7. Generate a SHA-256 checksum file for the installer, named
+8. Generate a SHA-256 checksum file for the installer, named
    `<installer-filename>.sha256`.
-8. Upload the installer and checksum as workflow artifacts with
+9. Upload the installer and checksum as workflow artifacts with
    `retention-days: 7`. Artifacts only need to live until the publish job
    consumes them.
 
@@ -212,9 +217,10 @@ free of platform-specific logic.
 
 The first workflow must not require signing secrets. Gating happens at the
 **step level inside the `build` job**, using
-`if: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 != '' }}` on each signing
-step. Cross-job gating on secret presence is not expressible in workflow
-conditions and must not be used.
+`if: ${{ env.WINDOWS_SIGNING_CERTIFICATE_BASE64 != '' }}` on each signing
+step after projecting the secret into the build job environment. Direct
+`secrets.*` references in `if:` conditionals and cross-job gating on secret
+presence must not be used.
 
 If the expected signing secrets are absent, the gating expression evaluates
 false, the signing steps are skipped, and the installer ships unsigned. If all
@@ -251,7 +257,8 @@ that work by:
 
 Implementation verifies local scripts and workflow helpers where possible,
 then runs the repository test suite. The actual release upload requires
-pushing a test semver tag. The Windows bundle can also be verified locally
+pushing a matching RC semver tag for the first publish-style rehearsal. The
+Windows bundle can also be verified locally
 with:
 
 ```powershell
@@ -265,9 +272,12 @@ Success criteria for the first milestone:
 - A tag like `v0.1.0` builds only if it matches the workspace version.
 - Pre-release tags like `v0.1.0-rc.1` produce a GitHub Release marked
   `prerelease: true`.
+- The first publish-style rehearsal uses `v0.1.0-rc.1` and documents cleanup
+  for the rehearsal release and tag.
 - GitHub Actions produces a Windows NSIS `.exe` installer at
   `target/dx/inputforge-app/bundle/nsis/InputForge_<version>_x64-setup.exe`.
 - The installer and matching `.sha256` are attached to the GitHub Release.
+- Workflow validation includes PowerShell assertions and `actionlint` v1.7.12.
 - After a test tag publishes, the installer runs on a clean Windows machine
   (or VM/sandbox) and the InputForge app launches successfully.
 - The workflow remains easy to extend by adding new matrix rows.
