@@ -8,6 +8,9 @@ mod noop;
 
 pub use error::AutostartError;
 
+#[cfg(feature = "mock")]
+pub mod mock;
+
 /// Platform-agnostic interface for the OS autostart store.
 ///
 /// Implementations write to HKCU\...\Run on Windows and to
