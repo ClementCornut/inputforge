@@ -36,6 +36,7 @@ indexmap = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 opener = { workspace = true }
+inputforge-autostart = { workspace = true }
 
 # Hardware I/O (optional, behind feature gates)
 sdl3 = { workspace = true, optional = true }
@@ -44,6 +45,7 @@ windows = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+inputforge-autostart = { workspace = true, features = ["mock"] }
 
 [lints]
 workspace = true
