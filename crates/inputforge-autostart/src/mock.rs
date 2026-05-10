@@ -3,6 +3,13 @@
 //!
 //! Cloning shares state via `Arc<Mutex<>>`, so tests can hold one clone for
 //! inspection while the engine owns another.
+//!
+//! `AutostartError` is intentionally not `Clone` (it carries `io::Error`).
+//! Tests that need to assert on a specific error variant must therefore
+//! seed a *factory closure* (`Fn() -> AutostartError`) rather than a
+//! pre-constructed error value: each call to `is_enabled()` or
+//! `set_enabled()` materialises a fresh error of the exact variant the
+//! test asked for.
 
 use std::sync::{Arc, Mutex};
 
@@ -15,20 +22,29 @@ pub struct SetEnabledCall {
     pub args: Vec<String>,
 }
 
-#[derive(Debug)]
+/// Factory producing an [`AutostartError`] on demand. Each invocation must
+/// return a fresh error of the exact variant the test wants to observe.
+type ErrorFactory = Box<dyn Fn() -> AutostartError + Send>;
+
+#[derive(Default)]
 struct State {
-    is_enabled: Result<bool, AutostartError>,
+    is_enabled_value: bool,
+    is_enabled_factory: Option<ErrorFactory>,
     set_enabled_calls: Vec<SetEnabledCall>,
-    next_set_enabled_failure: Option<AutostartError>,
+    next_set_enabled_factory: Option<ErrorFactory>,
 }
 
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            is_enabled: Ok(false),
-            set_enabled_calls: Vec::new(),
-            next_set_enabled_failure: None,
-        }
+impl std::fmt::Debug for State {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("State")
+            .field("is_enabled_value", &self.is_enabled_value)
+            .field("is_enabled_factory", &self.is_enabled_factory.is_some())
+            .field("set_enabled_calls", &self.set_enabled_calls)
+            .field(
+                "next_set_enabled_factory",
+                &self.next_set_enabled_factory.is_some(),
+            )
+            .finish()
     }
 }
 
@@ -43,34 +59,53 @@ impl MockAutostart {
         Self::default()
     }
 
-    /// Set the value returned by future `is_enabled()` calls. The argument is
-    /// cloned each call; for the error path, store an `AutostartError`
-    /// representative the test wants observed (e.g., `NotSupported`).
+    /// Set the value returned by future `is_enabled()` calls. Has no effect
+    /// when an error factory is also seeded; clear it via
+    /// [`Self::clear_is_enabled_error`] if needed.
     ///
     /// # Panics
     ///
     /// Panics if the internal mutex is poisoned.
-    #[allow(
-        clippy::needless_pass_by_value,
-        reason = "by-value matches the future call sites in inputforge-core engine tests; \
-                  cloning is cheap (Result<bool, AutostartError>) and the API stays ergonomic"
-    )]
-    pub fn set_is_enabled_result(&self, result: Result<bool, AutostartError>) {
-        let mut state = self.inner.lock().unwrap();
-        state.is_enabled = match result {
-            Ok(v) => Ok(v),
-            Err(_) => Err(AutostartError::Backend("seeded mock error".to_owned())),
-        };
+    pub fn set_is_enabled_value(&self, value: bool) {
+        self.inner.lock().unwrap().is_enabled_value = value;
     }
 
-    /// Queue a single failure for the next `set_enabled` call. Subsequent
-    /// calls succeed unless this is called again.
+    /// Seed an error factory invoked by every future `is_enabled()` call.
+    /// The closure must return a fresh `AutostartError` on each invocation
+    /// (so the test sees the exact variant it asked for, not a string-erased
+    /// substitute).
     ///
     /// # Panics
     ///
     /// Panics if the internal mutex is poisoned.
-    pub fn fail_next_set_enabled(&self, err: AutostartError) {
-        self.inner.lock().unwrap().next_set_enabled_failure = Some(err);
+    pub fn set_is_enabled_error<F>(&self, factory: F)
+    where
+        F: Fn() -> AutostartError + Send + 'static,
+    {
+        self.inner.lock().unwrap().is_enabled_factory = Some(Box::new(factory));
+    }
+
+    /// Drop any previously-seeded `is_enabled` error factory.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
+    pub fn clear_is_enabled_error(&self) {
+        self.inner.lock().unwrap().is_enabled_factory = None;
+    }
+
+    /// Queue a single failure for the next `set_enabled` call. The factory
+    /// is consumed on the next call; subsequent calls succeed unless this
+    /// is called again.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
+    pub fn fail_next_set_enabled<F>(&self, factory: F)
+    where
+        F: Fn() -> AutostartError + Send + 'static,
+    {
+        self.inner.lock().unwrap().next_set_enabled_factory = Some(Box::new(factory));
     }
 
     /// Snapshot of recorded `set_enabled` calls, in dispatch order.
@@ -87,16 +122,16 @@ impl MockAutostart {
 impl AutostartManager for MockAutostart {
     fn is_enabled(&self) -> Result<bool, AutostartError> {
         let state = self.inner.lock().unwrap();
-        match &state.is_enabled {
-            Ok(v) => Ok(*v),
-            Err(_) => Err(AutostartError::Backend("seeded mock error".to_owned())),
+        if let Some(f) = &state.is_enabled_factory {
+            return Err(f());
         }
+        Ok(state.is_enabled_value)
     }
 
     fn set_enabled(&mut self, enabled: bool, args: &[&str]) -> Result<(), AutostartError> {
         let mut state = self.inner.lock().unwrap();
-        if let Some(err) = state.next_set_enabled_failure.take() {
-            return Err(err);
+        if let Some(factory) = state.next_set_enabled_factory.take() {
+            return Err(factory());
         }
         state.set_enabled_calls.push(SetEnabledCall {
             enabled,
@@ -132,7 +167,7 @@ mod tests {
     #[test]
     fn fail_next_set_enabled_consumes_one_call_then_succeeds() {
         let mut m = MockAutostart::new();
-        m.fail_next_set_enabled(AutostartError::RegistryDenied);
+        m.fail_next_set_enabled(|| AutostartError::RegistryDenied);
         let err = m.set_enabled(true, &[]).unwrap_err();
         assert!(matches!(err, AutostartError::RegistryDenied));
         // Next call must now succeed.
@@ -149,10 +184,28 @@ mod tests {
     }
 
     #[test]
-    fn seeded_is_enabled_error_surfaces_through_trait() {
+    fn seeded_is_enabled_error_surfaces_exact_variant() {
         let m = MockAutostart::new();
-        m.set_is_enabled_result(Err(AutostartError::NotSupported));
+        m.set_is_enabled_error(|| AutostartError::NotSupported);
         let err = m.is_enabled().unwrap_err();
-        assert!(matches!(err, AutostartError::Backend(_)));
+        // The whole point of the factory: variant is preserved end-to-end.
+        assert!(matches!(err, AutostartError::NotSupported));
+    }
+
+    #[test]
+    fn set_is_enabled_value_returns_ok_when_no_error_seeded() {
+        let m = MockAutostart::new();
+        m.set_is_enabled_value(true);
+        assert!(m.is_enabled().unwrap());
+    }
+
+    #[test]
+    fn clear_is_enabled_error_restores_value_path() {
+        let m = MockAutostart::new();
+        m.set_is_enabled_value(true);
+        m.set_is_enabled_error(|| AutostartError::NotSupported);
+        let _err = m.is_enabled().unwrap_err();
+        m.clear_is_enabled_error();
+        assert!(m.is_enabled().unwrap());
     }
 }

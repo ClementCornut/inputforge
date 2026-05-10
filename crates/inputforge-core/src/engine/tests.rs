@@ -1134,6 +1134,16 @@ impl EngineHarness {
         path.push("settings\0.toml");
         self.engine.settings_path = path;
     }
+
+    /// Write `startup` into both `engine.settings.startup` and the
+    /// `state.startup` mirror. Tests covering startup commands should always
+    /// seed both: the handler reads from `settings`, but a future change
+    /// could read from the mirror, and a divergent seed would silently mask
+    /// regressions.
+    fn seed_startup(&mut self, startup: crate::settings::StartupSettings) {
+        self.engine.settings.startup = startup.clone();
+        self.engine.state.write().startup = startup;
+    }
 }
 
 #[test]
@@ -4385,9 +4395,15 @@ fn reload_settings_mirrors_startup_into_state() {
 
 #[test]
 fn set_autostart_passes_no_args_when_start_minimized_off() {
+    use crate::settings::StartupSettings;
     use inputforge_autostart::mock::SetEnabledCall;
     let mut harness = EngineHarness::new();
-    // Both startup fields default to false; just enabling autostart.
+    // Explicit seed so the test does not rely on harness defaults; both
+    // fields are false going in.
+    harness.seed_startup(StartupSettings {
+        launch_at_startup: false,
+        start_minimized_to_tray: false,
+    });
     harness
         .dispatch(EngineCommand::SetAutostart { enabled: true })
         .unwrap();
@@ -4409,11 +4425,10 @@ fn set_autostart_passes_start_minimized_arg_when_enabled() {
     use inputforge_autostart::mock::SetEnabledCall;
     let mut harness = EngineHarness::new();
     // Pre-seed: start-minimized is on; enabling autostart must pass the arg.
-    harness.engine.settings.startup = StartupSettings {
+    harness.seed_startup(StartupSettings {
         launch_at_startup: false,
         start_minimized_to_tray: true,
-    };
-    harness.engine.state.write().startup = harness.engine.settings.startup.clone();
+    });
 
     harness
         .dispatch(EngineCommand::SetAutostart { enabled: true })
@@ -4454,7 +4469,7 @@ fn set_autostart_failure_leaves_state_field_unchanged() {
     // Mock the next set_enabled to fail.
     harness
         .autostart_mock
-        .fail_next_set_enabled(AutostartError::RegistryDenied);
+        .fail_next_set_enabled(|| AutostartError::RegistryDenied);
 
     harness
         .dispatch(EngineCommand::SetAutostart { enabled: true })
@@ -4482,11 +4497,10 @@ fn set_autostart_off_preserves_start_minimized_to_tray() {
     use crate::settings::StartupSettings;
     let mut harness = EngineHarness::new();
     // Pre-seed: both on.
-    harness.engine.settings.startup = StartupSettings {
+    harness.seed_startup(StartupSettings {
         launch_at_startup: true,
         start_minimized_to_tray: true,
-    };
-    harness.engine.state.write().startup = harness.engine.settings.startup.clone();
+    });
 
     harness
         .dispatch(EngineCommand::SetAutostart { enabled: false })
@@ -4494,6 +4508,46 @@ fn set_autostart_off_preserves_start_minimized_to_tray() {
 
     assert!(!harness.state().startup.launch_at_startup);
     assert!(harness.state().startup.start_minimized_to_tray);
+}
+
+#[test]
+fn set_autostart_save_failure_rolls_back_state_and_warns() {
+    use inputforge_autostart::mock::SetEnabledCall;
+
+    let mut harness = EngineHarness::new();
+    let original = harness.engine.settings.startup.clone();
+    let warnings_before = harness.state().warnings.len();
+
+    // Settings save fails after the OS write succeeds.
+    harness.force_settings_path_to_unwritable();
+
+    harness
+        .dispatch(EngineCommand::SetAutostart { enabled: true })
+        .unwrap();
+
+    // OS write happened (handler does it before persisting).
+    let calls = harness.autostart_mock.calls();
+    assert_eq!(calls.len(), 1, "OS write must precede the save attempt");
+    assert_eq!(
+        calls[0],
+        SetEnabledCall {
+            enabled: true,
+            args: vec![],
+        }
+    );
+
+    // In-memory rolled back to the pre-command value.
+    assert_eq!(harness.engine.settings.startup, original);
+    // AppState mirror rolled back too.
+    assert_eq!(harness.state().startup, original);
+
+    // Warning channel received the documented save-failure message.
+    let warnings = harness.state().warnings.clone();
+    assert_eq!(warnings.len(), warnings_before + 1);
+    assert!(
+        warnings.last().unwrap().contains("Could not save settings"),
+        "expected save-failure warning; got {warnings:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -4536,11 +4590,10 @@ fn set_start_minimized_resyncs_autostart_args_when_enabled() {
 
     let mut harness = EngineHarness::new();
     // Pre-seed: launch_at_startup = true.
-    harness.engine.settings.startup = StartupSettings {
+    harness.seed_startup(StartupSettings {
         launch_at_startup: true,
         start_minimized_to_tray: false,
-    };
-    harness.engine.state.write().startup = harness.engine.settings.startup.clone();
+    });
     harness
         .engine
         .settings
@@ -4568,11 +4621,10 @@ fn set_start_minimized_persists_when_resync_fails() {
     use inputforge_autostart::AutostartError;
 
     let mut harness = EngineHarness::new();
-    harness.engine.settings.startup = StartupSettings {
+    harness.seed_startup(StartupSettings {
         launch_at_startup: true,
         start_minimized_to_tray: false,
-    };
-    harness.engine.state.write().startup = harness.engine.settings.startup.clone();
+    });
     harness
         .engine
         .settings
@@ -4581,7 +4633,7 @@ fn set_start_minimized_persists_when_resync_fails() {
 
     harness
         .autostart_mock
-        .fail_next_set_enabled(AutostartError::RegistryDenied);
+        .fail_next_set_enabled(|| AutostartError::RegistryDenied);
 
     let warnings_before = harness.state().warnings.len();
     harness
@@ -4600,6 +4652,39 @@ fn set_start_minimized_persists_when_resync_fails() {
         warnings.last().unwrap(),
         "Saved, but could not update the auto-launch arguments. \
          Restart of InputForge may use the previous setting."
+    );
+}
+
+#[test]
+fn set_start_minimized_save_failure_rolls_back_state_and_warns() {
+    let mut harness = EngineHarness::new();
+    // launch_at_startup defaults to false so the resync branch is out of
+    // scope; the handler returns right after the rollback.
+    let original = harness.engine.settings.startup.clone();
+    let warnings_before = harness.state().warnings.len();
+
+    harness.force_settings_path_to_unwritable();
+
+    harness
+        .dispatch(EngineCommand::SetStartMinimizedToTray { enabled: true })
+        .unwrap();
+
+    // In-memory + mirror both rolled back.
+    assert_eq!(harness.engine.settings.startup, original);
+    assert_eq!(harness.state().startup, original);
+
+    // Resync branch never reached on save failure.
+    assert_eq!(
+        harness.autostart_mock.calls().len(),
+        0,
+        "autostart manager must not be touched after save failure"
+    );
+
+    let warnings = harness.state().warnings.clone();
+    assert_eq!(warnings.len(), warnings_before + 1);
+    assert!(
+        warnings.last().unwrap().contains("Could not save settings"),
+        "expected save-failure warning; got {warnings:?}"
     );
 }
 
@@ -4652,7 +4737,7 @@ fn engine_startup_reconciles_settings_to_os() {
     };
 
     let (engine, state, _mock, _dir) = build_engine_with_seeded_mock(settings, |m| {
-        m.set_is_enabled_result(Ok(true));
+        m.set_is_enabled_value(true);
     });
 
     // settings was reconciled toward the OS truth.
@@ -4678,7 +4763,7 @@ fn engine_startup_repushes_argv_when_autostart_enabled() {
     };
 
     let (_engine, _state, mock, _dir) = build_engine_with_seeded_mock(settings, |m| {
-        m.set_is_enabled_result(Ok(true));
+        m.set_is_enabled_value(true);
     });
 
     let calls = mock.calls();
@@ -4706,8 +4791,8 @@ fn engine_startup_repush_failure_warns_does_not_block() {
     };
 
     let (_engine, state, _mock, _dir) = build_engine_with_seeded_mock(settings, |m| {
-        m.set_is_enabled_result(Ok(true));
-        m.fail_next_set_enabled(AutostartError::RegistryDenied);
+        m.set_is_enabled_value(true);
+        m.fail_next_set_enabled(|| AutostartError::RegistryDenied);
     });
 
     let warnings = state.read().warnings.clone();
@@ -4733,7 +4818,7 @@ fn engine_startup_tolerates_is_enabled_error() {
     };
 
     let (engine, state, mock, _dir) = build_engine_with_seeded_mock(settings, |m| {
-        m.set_is_enabled_result(Err(AutostartError::NotSupported));
+        m.set_is_enabled_error(|| AutostartError::NotSupported);
     });
 
     // settings unchanged, no warning pushed, no panic.

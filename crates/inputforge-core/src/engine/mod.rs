@@ -158,6 +158,8 @@ impl Engine {
                 );
                 settings.startup.launch_at_startup = actual;
                 state.write().startup = settings.startup.clone();
+                // No rollback on save failure: OS truth is authoritative,
+                // and the next launch re-runs reconciliation.
                 if let Err(e) = settings.save_to(&settings_path) {
                     tracing::warn!(
                         target: "settings",
