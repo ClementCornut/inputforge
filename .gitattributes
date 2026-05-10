@@ -1,3 +1,6 @@
 # Track binary dependencies with Git LFS.
 *.dll filter=lfs diff=lfs merge=lfs -text
 *.lib filter=lfs diff=lfs merge=lfs -text
+
+# CSS contract tests include assets verbatim and assert LF-shaped rules.
+*.css text eol=lf
