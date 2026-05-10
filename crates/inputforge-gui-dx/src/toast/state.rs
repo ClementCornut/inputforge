@@ -59,29 +59,29 @@ impl ToastState {
         // Older same-content entries are never eligible: a newer toast of
         // different content has rendered on top of them, and incrementing
         // the older one would re-order the visual stack.
-        if let Some(last) = self.toasts.last_mut() {
-            if last.level == level && last.message == msg {
-                last.count = last.count.saturating_add(1);
-                last.created = now;
-                last.paused = None;
-                last.paused_total = Duration::ZERO;
-                return;
-            }
+        if let Some(last) = self.toasts.last_mut()
+            && last.level == level
+            && last.message == msg
+        {
+            last.count = last.count.saturating_add(1);
+            last.created = now;
+            last.paused = None;
+            last.paused_total = Duration::ZERO;
+            return;
         }
 
         // Cap, FIFO drain when exceeded. Counts only non-dismissed entries
         // (post-GC, the only entries left are visible ones, but a prior cap
         // drain may have left a dismissed entry from the same tick).
         let visible = self.toasts.iter().filter(|t| !t.dismissed).count();
-        if visible >= TOAST_MAX_VISIBLE {
-            if let Some(oldest) = self
+        if visible >= TOAST_MAX_VISIBLE
+            && let Some(oldest) = self
                 .toasts
                 .iter_mut()
                 .filter(|t| !t.dismissed)
                 .min_by_key(|t| t.created)
-            {
-                oldest.dismissed = true;
-            }
+        {
+            oldest.dismissed = true;
         }
 
         // Append. wrapping_add on u64 is fine: id collisions only arise after
@@ -117,10 +117,10 @@ impl ToastState {
     }
 
     pub fn resume(&mut self, id: u64) {
-        if let Some(t) = self.toasts.iter_mut().find(|t| t.id == id && !t.dismissed) {
-            if let Some(start) = t.paused.take() {
-                t.paused_total = t.paused_total.saturating_add(start.elapsed());
-            }
+        if let Some(t) = self.toasts.iter_mut().find(|t| t.id == id && !t.dismissed)
+            && let Some(start) = t.paused.take()
+        {
+            t.paused_total = t.paused_total.saturating_add(start.elapsed());
         }
     }
 }

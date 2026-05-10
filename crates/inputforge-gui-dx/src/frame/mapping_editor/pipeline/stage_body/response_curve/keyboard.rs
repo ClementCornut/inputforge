@@ -295,18 +295,17 @@ fn advance_focus(
     };
     // Filter: skip duplicate-junction points (segN.end == seg(N+1).start).
     let visit_filter = |i: usize| -> bool {
-        if let ResponseCurve::CubicBezier { .. } = curve {
-            if i % 4 == 0 && i > 0 {
-                // seg.start where i = 4*k, k > 0; coincides with prior seg.end.
-                if let Some(prev) = anchors.get(i.saturating_sub(1)).copied() {
-                    if let Some(here) = anchors.get(i).copied() {
-                        if (prev.0 - here.0).abs() < f64::EPSILON
-                            && (prev.1 - here.1).abs() < f64::EPSILON
-                        {
-                            return false;
-                        }
-                    }
-                }
+        if let ResponseCurve::CubicBezier { .. } = curve
+            && i.is_multiple_of(4)
+            && i > 0
+        {
+            // seg.start where i = 4*k, k > 0; coincides with prior seg.end.
+            if let Some(prev) = anchors.get(i.saturating_sub(1)).copied()
+                && let Some(here) = anchors.get(i).copied()
+                && (prev.0 - here.0).abs() < f64::EPSILON
+                && (prev.1 - here.1).abs() < f64::EPSILON
+            {
+                return false;
             }
         }
         true

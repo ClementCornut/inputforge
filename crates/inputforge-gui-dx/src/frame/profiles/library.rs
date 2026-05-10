@@ -196,12 +196,11 @@ pub(crate) fn ProfileLibrary(
                             &rename_from_blur,
                             &next,
                             &rename_existing_blur,
-                        ) {
-                            if let Some(command) = profile_rename_action(&rename_from_blur, &validated)
+                        )
+                            && let Some(command) = profile_rename_action(&rename_from_blur, &validated)
                             {
                                 let _ = commands_blur.send(command);
                             }
-                        }
                         rename_error.set(None);
                         rename_profile.set(None);
                     };

@@ -109,11 +109,11 @@ pub(crate) fn update_point_in_curve(
             if *symmetric {
                 let count = points.len();
                 let mirror_idx = count - 1 - index;
-                if mirror_idx != index {
-                    if let Some(mirror_pt) = points.get_mut(mirror_idx) {
-                        mirror_pt.0 = -new_x;
-                        mirror_pt.1 = -new_y;
-                    }
+                if mirror_idx != index
+                    && let Some(mirror_pt) = points.get_mut(mirror_idx)
+                {
+                    mirror_pt.0 = -new_x;
+                    mirror_pt.1 = -new_y;
                 }
             }
         }
@@ -138,7 +138,7 @@ fn update_bezier_point(
     let seg_idx = index / 4;
     let local = index % 4;
     // Freeze the join between the two halves of a symmetric curve.
-    if symmetric && segments.len() % 2 == 0 {
+    if symmetric && segments.len().is_multiple_of(2) {
         let center_seg = segments.len() / 2;
         if seg_idx == center_seg && local == 0 {
             return;
@@ -169,10 +169,11 @@ fn update_bezier_point(
         if let Some(next) = segments.get_mut(seg_idx + 1) {
             next.start = (new_x, new_y);
         }
-    } else if local == 0 && seg_idx > 0 {
-        if let Some(prev) = segments.get_mut(seg_idx - 1) {
-            prev.end = (new_x, new_y);
-        }
+    } else if local == 0
+        && seg_idx > 0
+        && let Some(prev) = segments.get_mut(seg_idx - 1)
+    {
+        prev.end = (new_x, new_y);
     }
     if symmetric {
         let seg_count = segments.len();
@@ -195,17 +196,17 @@ fn update_bezier_point(
             }
             if mirror_local == 3 {
                 let target = mirror_seg_idx + 1;
-                if primary_synced_idx != Some(target) {
-                    if let Some(next) = segments.get_mut(target) {
-                        next.start = (-new_x, -new_y);
-                    }
+                if primary_synced_idx != Some(target)
+                    && let Some(next) = segments.get_mut(target)
+                {
+                    next.start = (-new_x, -new_y);
                 }
             } else if mirror_local == 0 && mirror_seg_idx > 0 {
                 let target = mirror_seg_idx - 1;
-                if primary_synced_idx != Some(target) {
-                    if let Some(prev) = segments.get_mut(target) {
-                        prev.end = (-new_x, -new_y);
-                    }
+                if primary_synced_idx != Some(target)
+                    && let Some(prev) = segments.get_mut(target)
+                {
+                    prev.end = (-new_x, -new_y);
                 }
             }
         }

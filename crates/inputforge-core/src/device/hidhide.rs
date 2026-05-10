@@ -245,10 +245,11 @@ impl Drop for HidHideManager {
         }
 
         // Restore the original active state if we changed it.
-        if !self.was_active_before && self.active {
-            if let Err(e) = write_active(self.handle, false) {
-                tracing::warn!(%e, "failed to deactivate HidHide during cleanup");
-            }
+        if !self.was_active_before
+            && self.active
+            && let Err(e) = write_active(self.handle, false)
+        {
+            tracing::warn!(%e, "failed to deactivate HidHide during cleanup");
         }
 
         // SAFETY: `self.handle` was obtained from `CreateFileW` and has not
@@ -348,7 +349,7 @@ fn read_multi_string(handle: HANDLE, ioctl: u32) -> Result<Vec<String>> {
 
         match result {
             Ok(()) => {
-                if returned % 2 != 0 {
+                if !returned.is_multiple_of(2) {
                     return Err(EngineError::HidHide(format!(
                         "IOCTL returned odd byte count {returned}: malformed UTF-16 buffer"
                     )));

@@ -80,17 +80,17 @@ pub fn create_in(
     //    prepend below.
     let prior = list_in(snap_dir)?;
     // 4. AutoSessionStart dedup: skip if hash matches latest existing entry.
-    if matches!(kind, SnapshotKind::AutoSessionStart) && cfg.skip_if_unchanged {
-        if let Some(latest) = prior.first() {
-            if latest.content_hash == content_hash {
-                tracing::info!(
-                    target: "snapshot",
-                    profile_path = %profile_path.display(),
-                    "skipping AutoSessionStart: content unchanged"
-                );
-                return Ok(None);
-            }
-        }
+    if matches!(kind, SnapshotKind::AutoSessionStart)
+        && cfg.skip_if_unchanged
+        && let Some(latest) = prior.first()
+        && latest.content_hash == content_hash
+    {
+        tracing::info!(
+            target: "snapshot",
+            profile_path = %profile_path.display(),
+            "skipping AutoSessionStart: content unchanged"
+        );
+        return Ok(None);
     }
     // 5. Build snapshot record.
     let snap = Snapshot {
@@ -195,15 +195,15 @@ pub fn list_in(snap_dir: &Path) -> Result<Vec<Snapshot>> {
         // contents, a redundant write would just rewrite the same bytes.
         // Don't propagate write errors: a failed write is recoverable on
         // the next `list()`.
-        if cached != rebuilt {
-            if let Err(e) = index::write_index(&index_path, &rebuilt) {
-                tracing::warn!(
-                    target: "snapshot",
-                    path = %index_path.display(),
-                    error = %e,
-                    "failed to persist rebuilt index"
-                );
-            }
+        if cached != rebuilt
+            && let Err(e) = index::write_index(&index_path, &rebuilt)
+        {
+            tracing::warn!(
+                target: "snapshot",
+                path = %index_path.display(),
+                error = %e,
+                "failed to persist rebuilt index"
+            );
         }
         rebuilt
     } else {

@@ -143,11 +143,11 @@ pub fn Drawer(
             "if-drawer--closed"
         });
     }
-    if let Some(extra) = class.as_deref() {
-        if !extra.is_empty() {
-            combined.push(' ');
-            combined.push_str(extra);
-        }
+    if let Some(extra) = class.as_deref()
+        && !extra.is_empty()
+    {
+        combined.push(' ');
+        combined.push_str(extra);
     }
 
     rsx! {

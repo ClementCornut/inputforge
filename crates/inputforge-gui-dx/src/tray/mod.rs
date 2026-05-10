@@ -89,10 +89,10 @@ pub(crate) const CHANNEL_CAPACITY: usize = 8;
 /// listener task spawned via `spawn_listener_task`.
 pub(crate) fn install_event_handler(ids: TrayMenuIds, tx: mpsc::Sender<TrayAction>) {
     use_muda_event_handler(move |menu_ev| {
-        if let Some(action) = TrayAction::from_event(menu_ev, &ids) {
-            if let Err(err) = tx.try_send(action) {
-                tracing::warn!(?err, "tray channel overflow; dropping action");
-            }
+        if let Some(action) = TrayAction::from_event(menu_ev, &ids)
+            && let Err(err) = tx.try_send(action)
+        {
+            tracing::warn!(?err, "tray channel overflow; dropping action");
         }
     });
 }

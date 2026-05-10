@@ -586,21 +586,22 @@ impl Engine {
                 // No-op when the count is the same or larger, or when no
                 // profile is loaded.
                 let mut pruned = 0_usize;
-                if config.max_count < old_config.max_count {
-                    if let Some((_, namespace_dir)) = self.resolved_snapshot_target() {
-                        match crate::snapshot::prune_in(&namespace_dir, &self.settings.snapshot) {
-                            Ok(removed) => pruned = removed,
-                            Err(e) => {
-                                tracing::warn!(
-                                    target: "settings",
-                                    error = %e,
-                                    "settings saved but snapshot prune failed; in-memory \
-                                     and on-disk settings remain consistent"
-                                );
-                                self.state.write().warnings.push(format!(
-                                    "Snapshot prune failed after settings save: {e}"
-                                ));
-                            }
+                if config.max_count < old_config.max_count
+                    && let Some((_, namespace_dir)) = self.resolved_snapshot_target()
+                {
+                    match crate::snapshot::prune_in(&namespace_dir, &self.settings.snapshot) {
+                        Ok(removed) => pruned = removed,
+                        Err(e) => {
+                            tracing::warn!(
+                                target: "settings",
+                                error = %e,
+                                "settings saved but snapshot prune failed; in-memory \
+                                 and on-disk settings remain consistent"
+                            );
+                            self.state
+                                .write()
+                                .warnings
+                                .push(format!("Snapshot prune failed after settings save: {e}"));
                         }
                     }
                 }

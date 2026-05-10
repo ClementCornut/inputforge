@@ -445,7 +445,7 @@ impl InputSource for Sdl3Input {
         self.poll_count = self.poll_count.saturating_add(1);
         if self.poll_count >= REPROBE_START
             && self.poll_count <= REPROBE_END
-            && self.poll_count % REPROBE_INTERVAL == 0
+            && self.poll_count.is_multiple_of(REPROBE_INTERVAL)
         {
             self.deferred_reprobe_polarities(now, out);
         }

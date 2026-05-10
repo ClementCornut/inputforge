@@ -160,14 +160,14 @@ impl OutputSink for VJoyOutput {
 
     fn release_device(&mut self, device: u8) -> Result<()> {
         // Flush any unflushed dirty state before releasing the device.
-        if self.dirty_devices.contains(&device) {
-            if let Some(state) = self.cached_states.get(&device) {
-                self.vjoy
-                    .update_device_state(state)
-                    .map_err(|e| EngineError::OutputFailed {
-                        reason: format!("vJoy device {device} flush on release: {e:?}"),
-                    })?;
-            }
+        if self.dirty_devices.contains(&device)
+            && let Some(state) = self.cached_states.get(&device)
+        {
+            self.vjoy
+                .update_device_state(state)
+                .map_err(|e| EngineError::OutputFailed {
+                    reason: format!("vJoy device {device} flush on release: {e:?}"),
+                })?;
         }
 
         // The `vjoy` crate relinquishes all devices in its `Drop` impl.
@@ -261,10 +261,10 @@ impl OutputSink for VJoyOutput {
 impl Drop for VJoyOutput {
     fn drop(&mut self) {
         for &device_id in &self.dirty_devices {
-            if let Some(state) = self.cached_states.get(&device_id) {
-                if let Err(e) = self.vjoy.update_device_state(state) {
-                    tracing::warn!(device_id, error = ?e, "failed to flush vJoy device on drop");
-                }
+            if let Some(state) = self.cached_states.get(&device_id)
+                && let Err(e) = self.vjoy.update_device_state(state)
+            {
+                tracing::warn!(device_id, error = ?e, "failed to flush vJoy device on drop");
             }
         }
     }

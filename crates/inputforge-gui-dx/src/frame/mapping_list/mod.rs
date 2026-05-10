@@ -131,11 +131,11 @@ pub(crate) fn MappingList() -> Element {
     use_effect(move || {
         let chips = device_chips_memo.read();
         let selected = selected_device.read().clone();
-        if let Some(device) = selected {
-            if !chips.iter().any(|chip| chip.id == device) {
-                let mut selected_device = selected_device;
-                selected_device.set(None);
-            }
+        if let Some(device) = selected
+            && !chips.iter().any(|chip| chip.id == device)
+        {
+            let mut selected_device = selected_device;
+            selected_device.set(None);
         }
     });
 

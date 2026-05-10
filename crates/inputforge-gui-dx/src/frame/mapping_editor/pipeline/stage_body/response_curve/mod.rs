@@ -208,43 +208,40 @@ fn dispatch_bridge_event(
             let prev = body.peek().clone();
             let (mut next, new_curve_opt, changed) =
                 interaction::handle_double_click(prev, &live, (payload.x, payload.y), &rect);
-            if changed {
-                if let Some(new_curve) = new_curve_opt {
-                    next.cached_path = sample_curve_path(&new_curve, CURVE_SAMPLE_COUNT);
-                    next.cached_anchors = extract_anchors(&new_curve);
-                    next.cache_dirty = false;
-                    match mutation::reconstruct_curve(&new_curve) {
-                        Ok(valid) => {
-                            // `rect` was already gated on `payload.rs > 0.0` at
-                            // the top of dispatch_bridge_event, so this branch
-                            // is reached only with a measured rect; fall back
-                            // to a coordless label if that ever changes.
-                            let label =
-                                match interaction::screen_to_viewbox((payload.x, payload.y), &rect)
-                                {
-                                    Some(vb) => {
-                                        format!("curve: add point at ({:.2}, {:.2})", vb.0, vb.1)
-                                    }
-                                    None => "curve: add point".to_owned(),
-                                };
-                            let cfg2 = config_signal.read();
-                            let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
-                            drop(cfg2);
-                            dispatch_stage_edit(
-                                &actions_snap,
-                                stage_id,
-                                Action::ResponseCurve { curve: valid },
-                                mapping_key,
-                                name,
-                                cmd_tx,
-                                &mut undo_log,
-                                label,
-                            );
-                            malformed_hints.write().remove(stage_id);
-                        }
-                        Err(err) => {
-                            malformed_hints.write().insert(stage_id.clone(), err);
-                        }
+            if changed && let Some(new_curve) = new_curve_opt {
+                next.cached_path = sample_curve_path(&new_curve, CURVE_SAMPLE_COUNT);
+                next.cached_anchors = extract_anchors(&new_curve);
+                next.cache_dirty = false;
+                match mutation::reconstruct_curve(&new_curve) {
+                    Ok(valid) => {
+                        // `rect` was already gated on `payload.rs > 0.0` at
+                        // the top of dispatch_bridge_event, so this branch
+                        // is reached only with a measured rect; fall back
+                        // to a coordless label if that ever changes.
+                        let label =
+                            match interaction::screen_to_viewbox((payload.x, payload.y), &rect) {
+                                Some(vb) => {
+                                    format!("curve: add point at ({:.2}, {:.2})", vb.0, vb.1)
+                                }
+                                None => "curve: add point".to_owned(),
+                            };
+                        let cfg2 = config_signal.read();
+                        let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
+                        drop(cfg2);
+                        dispatch_stage_edit(
+                            &actions_snap,
+                            stage_id,
+                            Action::ResponseCurve { curve: valid },
+                            mapping_key,
+                            name,
+                            cmd_tx,
+                            &mut undo_log,
+                            label,
+                        );
+                        malformed_hints.write().remove(stage_id);
+                    }
+                    Err(err) => {
+                        malformed_hints.write().insert(stage_id.clone(), err);
                     }
                 }
             }
@@ -258,31 +255,29 @@ fn dispatch_bridge_event(
             drop(cfg);
             let prev = body.peek().clone();
             let (mut next, new_curve_opt, changed) = interaction::handle_context_menu(prev, &live);
-            if changed {
-                if let Some(new_curve) = new_curve_opt {
-                    next.cached_path = sample_curve_path(&new_curve, CURVE_SAMPLE_COUNT);
-                    next.cached_anchors = extract_anchors(&new_curve);
-                    next.cache_dirty = false;
-                    match mutation::reconstruct_curve(&new_curve) {
-                        Ok(valid) => {
-                            let cfg2 = config_signal.read();
-                            let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
-                            drop(cfg2);
-                            dispatch_stage_edit(
-                                &actions_snap,
-                                stage_id,
-                                Action::ResponseCurve { curve: valid },
-                                mapping_key,
-                                name,
-                                cmd_tx,
-                                &mut undo_log,
-                                "curve: remove point".to_owned(),
-                            );
-                            malformed_hints.write().remove(stage_id);
-                        }
-                        Err(err) => {
-                            malformed_hints.write().insert(stage_id.clone(), err);
-                        }
+            if changed && let Some(new_curve) = new_curve_opt {
+                next.cached_path = sample_curve_path(&new_curve, CURVE_SAMPLE_COUNT);
+                next.cached_anchors = extract_anchors(&new_curve);
+                next.cache_dirty = false;
+                match mutation::reconstruct_curve(&new_curve) {
+                    Ok(valid) => {
+                        let cfg2 = config_signal.read();
+                        let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
+                        drop(cfg2);
+                        dispatch_stage_edit(
+                            &actions_snap,
+                            stage_id,
+                            Action::ResponseCurve { curve: valid },
+                            mapping_key,
+                            name,
+                            cmd_tx,
+                            &mut undo_log,
+                            "curve: remove point".to_owned(),
+                        );
+                        malformed_hints.write().remove(stage_id);
+                    }
+                    Err(err) => {
+                        malformed_hints.write().insert(stage_id.clone(), err);
                     }
                 }
             }
@@ -369,14 +364,14 @@ pub(crate) fn ResponseCurveBody(
             b.cache_dirty = false;
             // Clamp focused index to the new anchor count so stale focus
             // from a previous curve does not index out of bounds.
-            if let Some(idx) = b.focused_point {
-                if idx >= b.cached_anchors.len() {
-                    b.focused_point = if b.cached_anchors.is_empty() {
-                        None
-                    } else {
-                        Some(b.cached_anchors.len() - 1)
-                    };
-                }
+            if let Some(idx) = b.focused_point
+                && idx >= b.cached_anchors.len()
+            {
+                b.focused_point = if b.cached_anchors.is_empty() {
+                    None
+                } else {
+                    Some(b.cached_anchors.len() - 1)
+                };
             }
         });
     });

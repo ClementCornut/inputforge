@@ -73,11 +73,11 @@ pub(crate) fn merge_class(base: &str, variant: &str, caller: Option<&str>) -> St
         out.push(' ');
         out.push_str(variant);
     }
-    if let Some(c) = caller {
-        if !c.is_empty() {
-            out.push(' ');
-            out.push_str(c);
-        }
+    if let Some(c) = caller
+        && !c.is_empty()
+    {
+        out.push(' ');
+        out.push_str(c);
     }
     out
 }

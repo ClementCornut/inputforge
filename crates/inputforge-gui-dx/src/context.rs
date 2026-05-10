@@ -301,15 +301,15 @@ impl MetaSnapshot {
                 }
             })
             .collect::<Vec<_>>();
-        if s.active_profile_origin == Some(CoreProfileOrigin::External) {
-            if let Some(row) = active_profile_row_from_state(s, ProfileRowOrigin::External) {
-                profile_rows.push(row);
-            }
+        if s.active_profile_origin == Some(CoreProfileOrigin::External)
+            && let Some(row) = active_profile_row_from_state(s, ProfileRowOrigin::External)
+        {
+            profile_rows.push(row);
         }
-        if profile_rows.is_empty() {
-            if let Some(row) = active_profile_row_from_state(s, ProfileRowOrigin::Library) {
-                profile_rows.push(row);
-            }
+        if profile_rows.is_empty()
+            && let Some(row) = active_profile_row_from_state(s, ProfileRowOrigin::Library)
+        {
+            profile_rows.push(row);
         }
         let now_for_snapshots = chrono::Utc::now();
         let snapshot_rows = s
@@ -568,10 +568,10 @@ fn walk_actions(actions: &[inputforge_core::action::Action], out: &mut GlyphFlag
                 if_true,
                 if_false,
             } => {
-                if out.first_input_predicate.is_none() {
-                    if let Some(addr) = first_input_predicate(condition) {
-                        out.first_input_predicate = Some(addr);
-                    }
+                if out.first_input_predicate.is_none()
+                    && let Some(addr) = first_input_predicate(condition)
+                {
+                    out.first_input_predicate = Some(addr);
                 }
                 walk_actions(if_true, out);
                 walk_actions(if_false, out);
@@ -603,10 +603,10 @@ fn derive_referenced_devices(
     actions: &[inputforge_core::action::Action],
 ) -> Vec<DeviceId> {
     fn push_addr(out: &mut Vec<DeviceId>, addr: &InputAddress) {
-        if let Some(device) = addr.device() {
-            if !out.iter().any(|existing| existing == device) {
-                out.push(device.clone());
-            }
+        if let Some(device) = addr.device()
+            && !out.iter().any(|existing| existing == device)
+        {
+            out.push(device.clone());
         }
     }
 
@@ -909,10 +909,11 @@ impl ConfigSnapshot {
                     referenced_devices: derive_referenced_devices(&mapping.input, &mapping.actions),
                     first_vjoy_output: first_vjoy_output(&mapping.actions),
                 });
-                if let Some((sel_mode, sel_input)) = selection {
-                    if mapping.mode == *sel_mode && mapping.input == *sel_input {
-                        selected_mapping_actions = Some(mapping.actions.clone());
-                    }
+                if let Some((sel_mode, sel_input)) = selection
+                    && mapping.mode == *sel_mode
+                    && mapping.input == *sel_input
+                {
+                    selected_mapping_actions = Some(mapping.actions.clone());
                 }
             }
         }

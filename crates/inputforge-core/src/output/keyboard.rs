@@ -215,10 +215,10 @@ fn key_to_vk(key: &str) -> Option<VIRTUAL_KEY> {
     }
 
     // Function keys: F1-F24.
-    if let Some(num_str) = key.strip_prefix('F').or_else(|| key.strip_prefix('f')) {
-        if let Ok(n) = num_str.parse::<u8>() {
-            return fkey_to_vk(n);
-        }
+    if let Some(num_str) = key.strip_prefix('F').or_else(|| key.strip_prefix('f'))
+        && let Ok(n) = num_str.parse::<u8>()
+    {
+        return fkey_to_vk(n);
     }
 
     // Named keys (case-insensitive, without allocating).
