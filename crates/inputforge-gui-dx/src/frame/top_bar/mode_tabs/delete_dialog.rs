@@ -175,10 +175,8 @@ pub(crate) fn ModeDeleteDialog() -> Element {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use inputforge_core::action::Mapping;
-    use inputforge_core::mode::ModeTree;
+    use inputforge_core::mode::Modes;
     use inputforge_core::profile::Profile;
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
@@ -201,15 +199,12 @@ mod tests {
     }
 
     fn profile_with_mappings(mappings: Vec<Mapping>) -> Profile {
-        let map = HashMap::from([
-            (
-                "Default".to_owned(),
-                vec!["Combat".to_owned(), "Landing".to_owned()],
-            ),
-            ("Combat".to_owned(), vec![]),
-            ("Landing".to_owned(), vec![]),
-        ]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec![
+            "Default".to_owned(),
+            "Combat".to_owned(),
+            "Landing".to_owned(),
+        ])
+        .unwrap();
         Profile::new(
             "P".to_owned(),
             vec![],

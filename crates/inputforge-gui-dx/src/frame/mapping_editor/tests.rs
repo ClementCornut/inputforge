@@ -9,7 +9,7 @@ use dioxus_ssr::render;
 use parking_lot::RwLock;
 
 use inputforge_core::action::{Action, Mapping};
-use inputforge_core::mode::ModeTree;
+use inputforge_core::mode::Modes;
 use inputforge_core::profile::Profile;
 use inputforge_core::state::{AppState, EngineStatus};
 use inputforge_core::types::{
@@ -35,9 +35,7 @@ use crate::toast::{ToastQueue, ToastState};
 /// The device is registered with 2 axes / 4 buttons / 0 hats so that
 /// `source_label::format` can produce a human-readable subtitle.
 fn seeded_profile_with_one_mapping(actions: Vec<Action>) -> AppState {
-    use std::collections::HashMap;
-    let map = HashMap::from([("Default".to_owned(), vec![])]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
     let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
@@ -84,9 +82,7 @@ fn seeded_profile_with_polarities_and_axes(
     axis_values: &[(u8, f64, AxisPolarity)],
 ) -> AppState {
     use inputforge_core::types::{AxisValue, InputValue};
-    use std::collections::HashMap;
-    let map = HashMap::from([("Default".to_owned(), vec![])]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
     let primary = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
@@ -211,10 +207,7 @@ fn seeded_profile_with_input_mapping(
     buttons: u8,
     hats: u8,
 ) -> AppState {
-    use std::collections::HashMap;
-
-    let map = HashMap::from([("Default".to_owned(), vec![])]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
     let mappings = vec![Mapping {
         input,
         mode: "Default".to_owned(),

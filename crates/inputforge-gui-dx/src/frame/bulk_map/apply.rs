@@ -55,9 +55,9 @@ mod tests {
     };
 
     fn one_mode_profile() -> Profile {
-        let map =
-            std::collections::HashMap::from([("Default".to_owned(), vec!["Combat".to_owned()])]);
-        let modes = inputforge_core::mode::ModeTree::from_adjacency(&map).unwrap();
+        let modes =
+            inputforge_core::mode::Modes::new(vec!["Default".to_owned(), "Combat".to_owned()])
+                .unwrap();
         Profile::new(
             "T".to_owned(),
             vec![],

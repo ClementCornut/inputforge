@@ -14,7 +14,7 @@ use dioxus_ssr::render;
 use parking_lot::RwLock;
 
 use inputforge_core::action::{Action, Condition, Mapping};
-use inputforge_core::mode::ModeTree;
+use inputforge_core::mode::Modes;
 use inputforge_core::processing::DeadzoneConfig;
 use inputforge_core::profile::Profile;
 use inputforge_core::state::{AppState, EngineStatus};
@@ -282,8 +282,7 @@ fn insert_remove_invalid_paths_return_none() {
 // ---------------------------------------------------------------------------
 
 fn build_state(actions: Vec<Action>) -> (AppState, InputAddress) {
-    let map = HashMap::from([("Default".to_owned(), vec![])]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
     let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
         input: InputId::Axis { index: 0 },
@@ -323,8 +322,7 @@ fn build_state(actions: Vec<Action>) -> (AppState, InputAddress) {
 /// than hard-coding axis 0. Used by F14 tests that need to exercise the
 /// button-shaped vs non-button-shaped split for the Hold pill.
 fn build_state_with_mapping(actions: Vec<Action>, addr: InputAddress) -> (AppState, InputAddress) {
-    let map = HashMap::from([("Default".to_owned(), vec![])]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
     let mappings = vec![Mapping {
         input: addr.clone(),
         mode: "Default".to_owned(),
@@ -2155,8 +2153,7 @@ fn header_subtitle_unbound_primary_renders_unbound_modifier() {
     // must carry the `if-rebind-composite--unbound` modifier so the
     // `Unbound` placeholder reads consistently with the predicate /
     // merge-axis call sites.
-    let map = HashMap::from([("Default".to_owned(), vec![])]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
     let unbound = InputAddress::Unbound;
     let mappings = vec![Mapping {
         input: unbound.clone(),

@@ -87,13 +87,7 @@ pub(crate) struct MetaSnapshot {
     pub profile_name: Option<String>,
     pub profile_path: Option<PathBuf>,
     pub warnings: Vec<String>,
-    /// DFS pre-order names. Hierarchy queries (parent, descendants) are
-    /// not surfaced through this field, components requiring tree shape
-    /// read `ctx.state.active_profile.modes()` directly. The split is
-    /// deliberate: this snapshot is cheap to clone-on-tick, and the
-    /// only F7 consumer that needs hierarchy (delete-confirm preview)
-    /// reads from raw state at dialog-open time, which is rare enough
-    /// not to warrant projecting an `Arc<ModeTree>` here.
+    /// Ordered flat mode names.
     pub modes: Vec<String>,
     pub startup_mode: Option<String>,
     pub active_profile_id: Option<String>,
@@ -972,12 +966,11 @@ mod tests {
     fn profile_with_primary_merge_and_conditional_device_refs() -> inputforge_core::profile::Profile
     {
         use inputforge_core::action::{Action, Condition, Mapping};
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
         use inputforge_core::types::MergeOp;
 
-        let modes =
-            ModeTree::from_adjacency(&HashMap::from([("Default".to_owned(), vec![])])).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         let device = DeviceId("dev-1".to_owned());
         let other = DeviceId("dev-2".to_owned());
         let third = DeviceId("dev-3".to_owned());
@@ -1082,12 +1075,10 @@ mod tests {
 
     #[test]
     fn meta_from_state_with_active_profile_maps_name() {
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
 
-        let mut map = HashMap::new();
-        map.insert("Default".to_owned(), vec![]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let profile = Profile::new(
             "Hornet".to_owned(),
@@ -1194,7 +1185,7 @@ mod tests {
     #[test]
     fn config_snapshot_counts_same_device_merge_axis_as_secondary_usage() {
         use inputforge_core::action::{Action, Mapping};
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
         use inputforge_core::types::MergeOp;
 
@@ -1207,8 +1198,7 @@ mod tests {
             device: device.clone(),
             input: InputId::Axis { index: 0 },
         };
-        let modes =
-            ModeTree::from_adjacency(&HashMap::from([("Default".to_owned(), vec![])])).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         let profile = Profile::new(
             "P".to_owned(),
             vec![],
@@ -1334,13 +1324,11 @@ mod tests {
     #[test]
     fn config_from_state_populates_mapped_inputs_and_names() {
         use inputforge_core::action::Mapping;
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
         use inputforge_core::types::{DeviceId, InputId};
 
-        let mut map = HashMap::new();
-        map.insert("Default".to_owned(), vec![]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let device_id = DeviceId("dev-1".to_owned());
         let addr_named = InputAddress::Bound {
@@ -1431,15 +1419,15 @@ mod tests {
 
     #[test]
     fn meta_from_state_projects_modes_and_startup_mode() {
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
 
-        let mut map = HashMap::new();
-        map.insert(
+        let modes = Modes::new(vec![
             "Default".to_owned(),
-            vec!["Combat".to_owned(), "Landing".to_owned()],
-        );
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+            "Combat".to_owned(),
+            "Landing".to_owned(),
+        ])
+        .unwrap();
         let profile = Profile::new(
             "Modal".to_owned(),
             vec![],
@@ -1466,12 +1454,11 @@ mod tests {
     #[test]
     fn config_snapshot_populates_mappings_with_no_glyphs() {
         use inputforge_core::action::Mapping;
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
         use inputforge_core::types::{DeviceId, InputId};
 
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let addr = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
@@ -1507,12 +1494,11 @@ mod tests {
     #[test]
     fn config_snapshot_glyph_walker_finds_merge_axis() {
         use inputforge_core::action::{Action, Mapping};
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
         use inputforge_core::types::{DeviceId, InputId, MergeOp};
 
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let primary = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
@@ -1552,12 +1538,11 @@ mod tests {
     #[test]
     fn config_snapshot_glyph_walker_finds_input_conditional() {
         use inputforge_core::action::{Action, Condition, Mapping};
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
         use inputforge_core::types::{DeviceId, InputId};
 
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let trigger = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
@@ -1603,12 +1588,11 @@ mod tests {
     #[test]
     fn config_snapshot_glyph_walker_finds_both_glyphs() {
         use inputforge_core::action::{Action, Condition, Mapping};
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
         use inputforge_core::types::{DeviceId, InputId, MergeOp};
 
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let primary = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
@@ -1661,12 +1645,11 @@ mod tests {
     #[test]
     fn config_snapshot_glyph_walker_recurses_through_composite_conditions() {
         use inputforge_core::action::{Action, Condition, Mapping};
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
         use inputforge_core::types::{DeviceId, InputId};
 
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let trigger = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
@@ -1719,12 +1702,11 @@ mod tests {
     #[test]
     fn config_snapshot_glyph_walker_descends_into_nested_actions() {
         use inputforge_core::action::{Action, Condition, Mapping};
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
         use inputforge_core::types::{DeviceId, InputId, MergeOp};
 
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let primary = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),
@@ -1777,7 +1759,7 @@ mod tests {
     #[test]
     fn mapping_summary_referenced_devices_dedupes_and_ignores_unbound() {
         use inputforge_core::action::{Action, Condition, Mapping};
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
         use inputforge_core::state::AppState;
         use inputforge_core::types::{DeviceId, InputAddress, InputId, MergeOp};
@@ -1787,8 +1769,7 @@ mod tests {
             device: dev_a.clone(),
             input: InputId::Axis { index: 0 },
         };
-        let modes =
-            ModeTree::from_adjacency(&HashMap::from([("Default".to_owned(), vec![])])).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         let profile = Profile::new(
             "P".to_owned(),
             vec![],
@@ -1820,15 +1801,14 @@ mod tests {
     #[test]
     fn mapping_summary_finds_first_vjoy_output_in_preorder() {
         use inputforge_core::action::{Action, Condition, Mapping};
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
         use inputforge_core::state::AppState;
         use inputforge_core::types::{
             DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis,
         };
 
-        let modes =
-            ModeTree::from_adjacency(&HashMap::from([("Default".to_owned(), vec![])])).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         let input = InputAddress::Bound {
             device: DeviceId("stick".to_owned()),
             input: InputId::Axis { index: 0 },
@@ -1873,12 +1853,11 @@ mod tests {
     #[test]
     fn config_from_state_with_selection_clones_actions() {
         use inputforge_core::action::{Action, Mapping};
-        use inputforge_core::mode::ModeTree;
+        use inputforge_core::mode::Modes;
         use inputforge_core::profile::Profile;
         use inputforge_core::types::{DeviceId, InputId};
 
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let addr = InputAddress::Bound {
             device: DeviceId("dev-1".to_owned()),

@@ -90,11 +90,10 @@ fn BulkMapWorkspace() -> Element {
 mod tests {
     use super::*;
 
-    use std::collections::HashMap;
     use std::sync::{Arc, mpsc};
 
     use dioxus_ssr::render;
-    use inputforge_core::mode::ModeTree;
+    use inputforge_core::mode::Modes;
     use inputforge_core::profile::Profile;
     use inputforge_core::state::AppState;
     use parking_lot::RwLock;
@@ -110,8 +109,7 @@ mod tests {
         let profile = Profile::new(
             "T".to_owned(),
             Vec::new(),
-            ModeTree::from_adjacency(&HashMap::from([("Default".to_owned(), vec![])]))
-                .expect("single Default mode tree is valid"),
+            Modes::new(vec!["Default".to_owned()]).expect("single Default mode is valid"),
             Vec::new(),
             Vec::new(),
             "Default".to_owned(),

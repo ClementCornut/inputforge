@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
 
@@ -7,7 +6,7 @@ use dioxus_ssr::render;
 use parking_lot::RwLock;
 
 use inputforge_core::engine::EngineCommand;
-use inputforge_core::mode::ModeTree;
+use inputforge_core::mode::Modes;
 use inputforge_core::profile::Profile;
 use inputforge_core::snapshot::{SnapshotConfig, SnapshotId, SnapshotKind, create};
 use inputforge_core::state::{AppState, ProfileOrigin};
@@ -34,8 +33,7 @@ use crate::frame::view_state::{
 };
 
 fn simple_profile(name: &str) -> Profile {
-    let map = HashMap::from([("Default".to_owned(), vec![])]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
     Profile::new(
         name.to_owned(),
         vec![],

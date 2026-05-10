@@ -876,17 +876,15 @@ fn add_inline_force_expanded_arms_capture() {
 #[test]
 fn mapping_list_renders_axes_and_buttons_groups_in_order() {
     use inputforge_core::action::{Action, Mapping};
-    use inputforge_core::mode::ModeTree;
+    use inputforge_core::mode::Modes;
     use inputforge_core::profile::Profile;
     use inputforge_core::state::AppState;
     use inputforge_core::types::{
         DeviceId, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis,
     };
-    use std::collections::HashMap;
 
     fn TestComponent() -> Element {
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         let mut mappings = vec![];
         for i in 0..3 {
             mappings.push(Mapping {
@@ -974,15 +972,13 @@ fn mapping_list_zero_mappings_renders_empty_state_a() {
 #[test]
 fn context_menu_renders_when_menu_open_is_set() {
     use inputforge_core::action::Mapping;
-    use inputforge_core::mode::ModeTree;
+    use inputforge_core::mode::Modes;
     use inputforge_core::profile::Profile;
     use inputforge_core::state::AppState;
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
-    use std::collections::HashMap;
 
     fn TestComponent() -> Element {
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         let mappings = vec![Mapping {
             input: InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
@@ -1153,17 +1149,15 @@ fn empty_zero_filter_results_renders_full_anatomy() {
 )]
 fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
     use inputforge_core::action::{Action, Condition, Mapping};
-    use inputforge_core::mode::ModeTree;
+    use inputforge_core::mode::Modes;
     use inputforge_core::profile::Profile;
     use inputforge_core::state::AppState;
     use inputforge_core::types::{
         DeviceId, InputAddress, InputId, MergeOp, OutputAddress, OutputId, VJoyAxis,
     };
-    use std::collections::HashMap;
 
     fn TestComponent() -> Element {
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let mappings = vec![
             Mapping {
@@ -1272,15 +1266,13 @@ fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
 #[test]
 fn active_row_carries_is_active_class_in_full_rail() {
     use inputforge_core::action::Mapping;
-    use inputforge_core::mode::ModeTree;
+    use inputforge_core::mode::Modes;
     use inputforge_core::profile::Profile;
     use inputforge_core::state::AppState;
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
-    use std::collections::HashMap;
 
     fn TestComponent() -> Element {
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         let target_input = InputAddress::Bound {
             device: DeviceId("dev".to_owned()),
             input: InputId::Button { index: 0 },
@@ -1377,15 +1369,13 @@ fn colors_css_declares_tint_selected_and_tint_create() {
 fn mode_tabs_active_tab_renders_canonical_if_tab_active_class() {
     use crate::frame::top_bar::mode_tabs::ModeTabs;
     use inputforge_core::action::Mapping;
-    use inputforge_core::mode::ModeTree;
+    use inputforge_core::mode::Modes;
     use inputforge_core::profile::Profile;
     use inputforge_core::state::AppState;
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
-    use std::collections::HashMap;
 
     fn TestComponent() -> Element {
-        let map = HashMap::from([("Default".to_owned(), vec!["Combat".to_owned()])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned(), "Combat".to_owned()]).unwrap();
         let mappings = vec![Mapping {
             input: InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
@@ -1444,15 +1434,13 @@ fn mode_tabs_active_tab_renders_canonical_if_tab_active_class() {
 fn mode_tabs_add_button_lives_outside_tablist() {
     use crate::frame::top_bar::mode_tabs::ModeTabs;
     use inputforge_core::action::Mapping;
-    use inputforge_core::mode::ModeTree;
+    use inputforge_core::mode::Modes;
     use inputforge_core::profile::Profile;
     use inputforge_core::state::AppState;
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
-    use std::collections::HashMap;
 
     fn TestComponent() -> Element {
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         let mappings = vec![Mapping {
             input: InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
@@ -1508,15 +1496,13 @@ fn mode_tabs_add_button_lives_outside_tablist() {
 fn mode_tabs_running_pip_uses_canonical_class() {
     use crate::frame::top_bar::mode_tabs::ModeTabs;
     use inputforge_core::action::Mapping;
-    use inputforge_core::mode::ModeTree;
+    use inputforge_core::mode::Modes;
     use inputforge_core::profile::Profile;
     use inputforge_core::state::AppState;
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
-    use std::collections::HashMap;
 
     fn TestComponent() -> Element {
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         let mappings = vec![Mapping {
             input: InputAddress::Bound {
                 device: DeviceId("dev".to_owned()),
@@ -1572,15 +1558,13 @@ fn mode_tabs_running_pip_uses_canonical_class() {
 #[test]
 fn group_header_renders_post_filter_row_count() {
     use inputforge_core::action::Mapping;
-    use inputforge_core::mode::ModeTree;
+    use inputforge_core::mode::Modes;
     use inputforge_core::profile::Profile;
     use inputforge_core::state::AppState;
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
-    use std::collections::HashMap;
 
     fn TestComponent() -> Element {
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         let mut mappings = vec![];
         for i in 0..3 {
             mappings.push(Mapping {

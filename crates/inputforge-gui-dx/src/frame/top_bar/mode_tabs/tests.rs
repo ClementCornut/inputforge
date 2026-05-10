@@ -40,7 +40,7 @@ use dioxus_ssr::render;
 use parking_lot::RwLock;
 
 use inputforge_core::action::Mapping;
-use inputforge_core::mode::ModeTree;
+use inputforge_core::mode::Modes;
 use inputforge_core::profile::Profile;
 use inputforge_core::state::AppState;
 use inputforge_core::types::{DeviceId, InputAddress, InputId};
@@ -80,26 +80,16 @@ fn provide_mode_tabs_contexts() {
     use_context_provider(|| ModeFocusSignal(mf));
 }
 
-/// Build an `AppState` with the supplied modes (parent-children adjacency)
-/// and a single bound mapping so `ConfigSnapshot::from_state` produces a
-/// non-empty render. The first mode is taken as the startup mode.
-fn build_state(mode_adjacency: &[(&str, Vec<&str>)], current: &str) -> AppState {
-    let map: std::collections::HashMap<String, Vec<String>> = mode_adjacency
-        .iter()
-        .map(|(parent, kids)| {
-            (
-                (*parent).to_owned(),
-                kids.iter().map(|k| (*k).to_owned()).collect(),
-            )
-        })
-        .collect();
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+/// Build an `AppState` with the supplied flat modes and a single bound mapping
+/// so `ConfigSnapshot::from_state` produces a non-empty render.
+fn build_state(mode_names: &[&str], current: &str) -> AppState {
+    let modes = Modes::new(mode_names.iter().map(|mode| (*mode).to_owned()).collect()).unwrap();
     let mappings = vec![Mapping {
         input: InputAddress::Bound {
             device: DeviceId("dev".to_owned()),
             input: InputId::Button { index: 0 },
         },
-        mode: mode_adjacency[0].0.to_owned(),
+        mode: mode_names[0].to_owned(),
         name: Some("Boost".to_owned()),
         actions: vec![],
     }];
@@ -109,7 +99,7 @@ fn build_state(mode_adjacency: &[(&str, Vec<&str>)], current: &str) -> AppState 
         modes,
         mappings,
         vec![],
-        mode_adjacency[0].0.to_owned(),
+        mode_names[0].to_owned(),
     );
     let mut state = AppState::with_profile(profile);
     state.current_mode = current.to_owned();
@@ -164,7 +154,7 @@ fn render_with_state(state: AppState) -> String {
 /// `TabButton::aria_haspopup` at `mod.rs:225`.
 #[test]
 fn mode_tabs_each_tab_announces_aria_haspopup_menu() {
-    let state = build_state(&[("Default", vec!["Combat"])], "Default");
+    let state = build_state(&["Default", "Combat"], "Default");
     let html = render_with_state(state);
     // One occurrence per tab. With Default + Combat, expect at least 2.
     let popup_count = html.matches("aria-haspopup=\"menu\"").count();
@@ -179,7 +169,7 @@ fn mode_tabs_each_tab_announces_aria_haspopup_menu() {
 /// has no menu open, so every tab announces `aria-expanded="false"`.
 #[test]
 fn mode_tabs_aria_expanded_false_at_rest() {
-    let state = build_state(&[("Default", vec!["Combat"])], "Default");
+    let state = build_state(&["Default", "Combat"], "Default");
     let html = render_with_state(state);
     let expanded_true = html.matches("aria-expanded=\"true\"").count();
     assert_eq!(
@@ -200,7 +190,7 @@ fn mode_tabs_aria_expanded_false_at_rest() {
 /// At rest, no tab carries aria-controls.
 #[test]
 fn mode_tabs_aria_controls_omitted_when_menu_closed() {
-    let state = build_state(&[("Default", vec!["Combat"])], "Default");
+    let state = build_state(&["Default", "Combat"], "Default");
     let html = render_with_state(state);
     assert!(
         !html.contains("aria-controls=\"mode-tab-menu-"),
@@ -217,7 +207,7 @@ fn mode_tabs_aria_controls_omitted_when_menu_closed() {
 /// `role="tab"` count inside the tablist matches the modes count.
 #[test]
 fn mode_tabs_tablist_count_matches_modes() {
-    let state = build_state(&[("Default", vec!["Combat", "Stealth"])], "Default");
+    let state = build_state(&["Default", "Combat", "Stealth"], "Default");
     let html = render_with_state(state);
     let tablist_open = html.find("role=\"tablist\"").expect("tablist must render");
     let tablist_close_relative = html[tablist_open..].find("</div>").expect("tablist closes");
@@ -242,7 +232,7 @@ fn mode_tabs_tablist_count_matches_modes() {
 /// `mod.rs:222` carries the mode name verbatim.
 #[test]
 fn mode_tabs_each_tab_carries_data_mode_attribute() {
-    let state = build_state(&[("Default", vec!["Combat"])], "Default");
+    let state = build_state(&["Default", "Combat"], "Default");
     let html = render_with_state(state);
     assert!(
         html.contains("data-mode=\"Default\""),
@@ -260,7 +250,7 @@ fn mode_tabs_each_tab_carries_data_mode_attribute() {
 /// that `mode-tab-{idx}` ids appear in the rendered HTML.
 #[test]
 fn mode_tabs_dom_ids_use_index_not_mode_name() {
-    let state = build_state(&[("Default", vec!["Combat"])], "Default");
+    let state = build_state(&["Default", "Combat"], "Default");
     let html = render_with_state(state);
     assert!(
         html.contains("id=\"mode-tab-0\""),

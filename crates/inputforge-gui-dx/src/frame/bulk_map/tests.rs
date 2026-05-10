@@ -15,7 +15,7 @@ use parking_lot::RwLock;
 
 use inputforge_core::action::Action;
 use inputforge_core::engine::EngineCommand;
-use inputforge_core::mode::ModeTree;
+use inputforge_core::mode::Modes;
 use inputforge_core::profile::Profile;
 use inputforge_core::state::{AppState, DeviceState};
 use inputforge_core::types::{
@@ -92,8 +92,7 @@ pub(super) fn one_vjoy() -> VirtualDeviceConfig {
 }
 
 pub(super) fn seeded_state(with_vjoy: bool) -> AppState {
-    let map = HashMap::from([("Default".to_owned(), vec![])]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
     let profile = Profile::new(
         "T".to_owned(),
         vec![],
@@ -380,8 +379,7 @@ fn panel_clean_rows_omit_contextual_replace_controls() {
 #[test]
 fn panel_conflicting_row_renders_contextual_replace_control() {
     fn TestComponent() -> Element {
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         let mut profile = Profile::new(
             "T".to_owned(),
             vec![],
@@ -420,8 +418,7 @@ fn panel_conflicting_row_renders_contextual_replace_control() {
 #[test]
 fn panel_axes_group_shows_replace_all_chip_when_axis_conflict_exists() {
     fn TestComponent() -> Element {
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         let mut profile = Profile::new(
             "T".to_owned(),
             vec![],
@@ -561,8 +558,7 @@ fn source_row_labels_are_user_facing_one_based() {
 
 #[test]
 fn row_conflicts_detects_any_active_mode_conflict() {
-    let map = HashMap::from([("Default".to_owned(), vec!["Combat".to_owned()])]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = Modes::new(vec!["Default".to_owned(), "Combat".to_owned()]).unwrap();
     let mut profile = Profile::new(
         "T".to_owned(),
         vec![],
@@ -589,8 +585,7 @@ fn row_conflicts_detects_any_active_mode_conflict() {
 
 #[test]
 fn row_conflicts_ignores_inactive_mode_conflicts() {
-    let map = HashMap::from([("Default".to_owned(), vec!["Combat".to_owned()])]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = Modes::new(vec!["Default".to_owned(), "Combat".to_owned()]).unwrap();
     let mut profile = Profile::new(
         "T".to_owned(),
         vec![],
@@ -722,8 +717,7 @@ fn reconcile_valid_selection_preserves_row_overrides() {
 #[test]
 fn panel_summary_includes_across_n_modes_when_apply_to_all_checked() {
     fn TestComponent() -> Element {
-        let map = HashMap::from([("Default".to_owned(), vec!["Combat".to_owned()])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned(), "Combat".to_owned()]).unwrap();
         let profile = Profile::new(
             "T".to_owned(),
             vec![],
@@ -755,8 +749,7 @@ fn panel_do_not_map_target_excludes_row_from_apply_count() {
         state::{RowKind, RowState, WizardState},
     };
 
-    let map = HashMap::from([("Default".to_owned(), vec![])]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
     let profile = Profile::new(
         "T".to_owned(),
         vec![],
@@ -802,8 +795,7 @@ fn panel_apply_for_test_dispatches_set_mappings_bulk_with_snapshot_label() {
         state::{RowKind, RowState, WizardState},
     };
 
-    let map = HashMap::from([("Default".to_owned(), vec![])]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
     let profile = Profile::new(
         "T".to_owned(),
         vec![],

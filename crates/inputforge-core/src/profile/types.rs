@@ -56,11 +56,11 @@ impl ProfileSettings {
 
     /// Set the startup mode.
     ///
-    /// Caller must validate that `mode` exists in the profile's [`ModeTree`].
+    /// Caller must validate that `mode` exists in the profile's [`Modes`].
     /// This method only mutates the field and performs no cross-profile
     /// validation.
     ///
-    /// [`ModeTree`]: crate::mode::ModeTree
+    /// [`Modes`]: crate::mode::Modes
     pub fn set_startup_mode(&mut self, mode: String) {
         self.startup_mode = mode;
     }
