@@ -141,6 +141,7 @@ impl Engine {
             state.device_aliases.clone_from(&settings.device_aliases);
             state.device_registry.clone_from(&settings.device_registry);
             state.snapshot_config.clone_from(&settings.snapshot);
+            state.startup.clone_from(&settings.startup);
         };
 
         let engine = Self {

@@ -4333,3 +4333,21 @@ fn set_snapshot_config_prune_failure_does_not_corrupt_settings() {
         "expected prune-failure warning, got: {warnings:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// F16: startup preference mirror tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn engine_initialisation_mirrors_startup_into_state() {
+    use crate::settings::StartupSettings;
+    let settings = AppSettings {
+        startup: StartupSettings {
+            launch_at_startup: true,
+            start_minimized_to_tray: true,
+        },
+        ..AppSettings::default()
+    };
+    let (engine, _path) = test_engine_with_settings_path(settings.clone());
+    assert_eq!(engine.state.read().startup, settings.startup);
+}
