@@ -121,7 +121,7 @@ pub enum EngineCommand {
         config: crate::snapshot::SnapshotConfig,
     },
 
-    /// Set the OS-level "launch InputForge at sign-in" preference (F16).
+    /// Set the OS-level "launch `InputForge` at sign-in" preference (F16).
     ///
     /// Engine handler order:
     ///   1. Compute argv from `self.settings.startup.start_minimized_to_tray`

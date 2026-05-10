@@ -102,7 +102,7 @@ pub(crate) fn list_profiles_in(dir: &Path) -> Result<Vec<ProfileSummary>> {
             summaries.push(ProfileSummary { name, path });
         }
     }
-    summaries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    summaries.sort_by_key(|s| s.name.to_lowercase());
     Ok(summaries)
 }
 

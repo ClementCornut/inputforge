@@ -18,8 +18,8 @@ pub(crate) fn project_profile_rows(
         .cloned()
         .collect::<Vec<_>>();
 
-    active.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    inactive.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    active.sort_by_key(|x| x.name.to_lowercase());
+    inactive.sort_by_key(|x| x.name.to_lowercase());
     active.extend(inactive);
     active
 }

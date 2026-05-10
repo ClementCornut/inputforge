@@ -26,7 +26,9 @@ fn parse_and_validate(raw: &str, min: usize, max: usize) -> Result<usize, Intege
     }
     // `usize::from_str` rejects negative strings and floats, so "-5" and
     // "3.14" both map to `NotANumber` without any special-casing.
-    let v: usize = trimmed.parse().map_err(|_| IntegerInputError::NotANumber)?;
+    let v: usize = trimmed
+        .parse()
+        .map_err(|_e| IntegerInputError::NotANumber)?;
     if !(min..=max).contains(&v) {
         return Err(IntegerInputError::OutOfRange { min, max });
     }

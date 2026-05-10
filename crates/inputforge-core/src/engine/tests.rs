@@ -1125,8 +1125,8 @@ impl EngineHarness {
             .join(format!("{}.toml", sanitize_filename(name)))
     }
 
-    /// Replace the engine's settings_path with one containing a NUL byte
-    /// so std::fs::create_dir_all and File::create both fail with
+    /// Replace the engine's `settings_path` with one containing a NUL byte
+    /// so `std::fs::create_dir_all` and `File::create` both fail with
     /// `ErrorKind::InvalidInput` deterministically on every OS. Used for
     /// save-failure tests.
     fn force_settings_path_to_unwritable(&mut self) {
@@ -4081,8 +4081,10 @@ fn reload_settings_mirrors_into_state_snapshot_config() {
         max_count: 7,
         skip_if_unchanged: !initial.skip_if_unchanged,
     };
-    let mut file_settings = AppSettings::default();
-    file_settings.snapshot = new_cfg.clone();
+    let file_settings = AppSettings {
+        snapshot: new_cfg.clone(),
+        ..AppSettings::default()
+    };
     file_settings
         .save_to(&harness.engine.settings_path)
         .unwrap();
@@ -4361,10 +4363,12 @@ fn reload_settings_mirrors_startup_into_state() {
     let mut harness = EngineHarness::new();
 
     // Write a fresh settings.toml with a non-default [startup].
-    let mut file_settings = AppSettings::default();
-    file_settings.startup = StartupSettings {
-        launch_at_startup: true,
-        start_minimized_to_tray: true,
+    let file_settings = AppSettings {
+        startup: StartupSettings {
+            launch_at_startup: true,
+            start_minimized_to_tray: true,
+        },
+        ..AppSettings::default()
     };
     file_settings
         .save_to(&harness.engine.settings_path)

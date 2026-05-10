@@ -508,13 +508,9 @@ fn rewrite_mode_in_action(action: &mut Action, from: &str, to: &str) -> bool {
     match action {
         Action::ChangeMode {
             strategy: M::SwitchTo { mode } | M::Temporary { mode },
-        } => {
-            if mode == from {
-                to.clone_into(mode);
-                true
-            } else {
-                false
-            }
+        } if mode == from => {
+            to.clone_into(mode);
+            true
         }
         Action::Conditional {
             if_true, if_false, ..

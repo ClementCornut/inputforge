@@ -221,7 +221,7 @@ pub(crate) fn AddInline(
         // Snapshot then drop the borrow before mutating `pending`.
         let snapshot = pending.peek().clone();
         if let Some(source) = snapshot {
-            let prefilled = format!("{} (copy)", source.name.as_deref().unwrap_or("(unnamed)"),);
+            let prefilled = format!("{} (copy)", source.name.as_deref().unwrap_or("(unnamed)"));
             let mut name = name;
             name.set(prefilled);
             let mut local = local_source;
@@ -239,7 +239,7 @@ pub(crate) fn AddInline(
     use_effect(move || {
         let snapshot = pending_for_effect.read().clone();
         if let Some(source) = snapshot {
-            let prefilled = format!("{} (copy)", source.name.as_deref().unwrap_or("(unnamed)"),);
+            let prefilled = format!("{} (copy)", source.name.as_deref().unwrap_or("(unnamed)"));
             name.set(prefilled);
             local_source.set(Some(source));
             state.set(AddState::Pad {

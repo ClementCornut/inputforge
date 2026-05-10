@@ -42,7 +42,7 @@ mod tests {
 
     use super::SettingsPanel;
 
-    #[allow(non_snake_case)]
+    #[allow(non_snake_case, reason = "Dioxus components are PascalCase")]
     fn Harness() -> Element {
         let state = Arc::new(RwLock::new(AppState::new()));
         let (commands, _rx) = mpsc::channel();
@@ -108,7 +108,7 @@ mod tests {
         unpinned: usize,
     }
 
-    #[allow(non_snake_case)]
+    #[allow(non_snake_case, reason = "Dioxus components are PascalCase")]
     fn PolledHarness(props: PolledHarnessProps) -> Element {
         let state = Arc::new(RwLock::new(AppState::new()));
         let (commands, _rx) = mpsc::channel();

@@ -575,11 +575,10 @@ impl Engine {
                     self.settings.snapshot = old_config;
                     // Revert the AppState mirror to the rolled-back value so
                     // the GUI projection does not surface a transient bogus value.
-                    {
-                        let mut state = self.state.write();
-                        state.snapshot_config = self.settings.snapshot.clone();
-                        state.warnings.push(format!("Could not save settings: {e}"));
-                    }
+                    let mut state = self.state.write();
+                    state.snapshot_config = self.settings.snapshot.clone();
+                    state.warnings.push(format!("Could not save settings: {e}"));
+                    drop(state);
                     return Ok(());
                 }
 

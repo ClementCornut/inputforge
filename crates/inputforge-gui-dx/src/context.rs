@@ -560,10 +560,8 @@ fn walk_actions(actions: &[inputforge_core::action::Action], out: &mut GlyphFlag
             return;
         }
         match action {
-            Action::MergeAxis { second_input, .. } => {
-                if out.merge_secondary.is_none() {
-                    out.merge_secondary = Some(second_input.clone());
-                }
+            Action::MergeAxis { second_input, .. } if out.merge_secondary.is_none() => {
+                out.merge_secondary = Some(second_input.clone());
             }
             Action::Conditional {
                 condition,
@@ -827,11 +825,11 @@ fn record_referenced_input_kinds(
     let mut found = false;
     for action in actions {
         match action {
-            Action::MergeAxis { second_input, .. } => {
-                if second_input.device().is_some_and(|id| id == device_id) {
-                    record_input_kind(second_input, axes, buttons, hats);
-                    found = true;
-                }
+            Action::MergeAxis { second_input, .. }
+                if second_input.device().is_some_and(|id| id == device_id) =>
+            {
+                record_input_kind(second_input, axes, buttons, hats);
+                found = true;
             }
             Action::Conditional {
                 condition,

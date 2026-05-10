@@ -27,7 +27,7 @@ const MAX_COUNT_MIN: usize = 1;
 /// `SnapshotConfig` policy and prevents accidental disk pressure from a typo.
 const MAX_COUNT_MAX: usize = 100;
 
-/// HTML id linking the buffer-size label to the IntegerInput control.
+/// HTML id linking the buffer-size label to the `IntegerInput` control.
 const MAX_COUNT_ID: &str = "if-settings-snapshot-max-count";
 
 /// HTML id linking the skip-startup label to the Switch control.

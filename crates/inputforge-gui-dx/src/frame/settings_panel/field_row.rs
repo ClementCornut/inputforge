@@ -45,7 +45,7 @@ pub(crate) fn SettingsFieldRow(
                 class: "if-settings-field-row__control",
                 "aria-describedby": "{aria_describedby}",
                 "aria-invalid": if is_invalid { "true" } else { "false" },
-                "aria-errormessage": if is_invalid { Some(error_id.clone()) } else { None },
+                "aria-errormessage": is_invalid.then(|| error_id.clone()),
                 {control}
             }
             p {
