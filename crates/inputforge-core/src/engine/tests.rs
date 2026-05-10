@@ -4488,3 +4488,110 @@ fn set_autostart_off_preserves_start_minimized_to_tray() {
     assert!(!harness.state().startup.launch_at_startup);
     assert!(harness.state().startup.start_minimized_to_tray);
 }
+
+// ---------------------------------------------------------------------------
+// F16: SetStartMinimizedToTray handler
+// ---------------------------------------------------------------------------
+
+#[test]
+fn set_start_minimized_persists_and_mirrors() {
+    let mut harness = EngineHarness::new();
+
+    harness
+        .dispatch(EngineCommand::SetStartMinimizedToTray { enabled: true })
+        .unwrap();
+
+    assert!(harness.state().startup.start_minimized_to_tray);
+
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert!(on_disk.startup.start_minimized_to_tray);
+}
+
+#[test]
+fn set_start_minimized_when_autostart_off_does_not_call_manager() {
+    let mut harness = EngineHarness::new();
+    // launch_at_startup defaults to false; expect zero set_enabled calls.
+    harness
+        .dispatch(EngineCommand::SetStartMinimizedToTray { enabled: true })
+        .unwrap();
+
+    assert_eq!(
+        harness.autostart_mock.calls().len(),
+        0,
+        "autostart manager must not be touched when launch_at_startup is false"
+    );
+}
+
+#[test]
+fn set_start_minimized_resyncs_autostart_args_when_enabled() {
+    use crate::settings::StartupSettings;
+    use inputforge_autostart::mock::SetEnabledCall;
+
+    let mut harness = EngineHarness::new();
+    // Pre-seed: launch_at_startup = true.
+    harness.engine.settings.startup = StartupSettings {
+        launch_at_startup: true,
+        start_minimized_to_tray: false,
+    };
+    harness.engine.state.write().startup = harness.engine.settings.startup.clone();
+    harness
+        .engine
+        .settings
+        .save_to(&harness.engine.settings_path)
+        .unwrap();
+
+    harness
+        .dispatch(EngineCommand::SetStartMinimizedToTray { enabled: true })
+        .unwrap();
+
+    let calls = harness.autostart_mock.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0],
+        SetEnabledCall {
+            enabled: true,
+            args: vec!["--start-minimized".to_owned()],
+        }
+    );
+}
+
+#[test]
+fn set_start_minimized_persists_when_resync_fails() {
+    use crate::settings::StartupSettings;
+    use inputforge_autostart::AutostartError;
+
+    let mut harness = EngineHarness::new();
+    harness.engine.settings.startup = StartupSettings {
+        launch_at_startup: true,
+        start_minimized_to_tray: false,
+    };
+    harness.engine.state.write().startup = harness.engine.settings.startup.clone();
+    harness
+        .engine
+        .settings
+        .save_to(&harness.engine.settings_path)
+        .unwrap();
+
+    harness
+        .autostart_mock
+        .fail_next_set_enabled(AutostartError::RegistryDenied);
+
+    let warnings_before = harness.state().warnings.len();
+    harness
+        .dispatch(EngineCommand::SetStartMinimizedToTray { enabled: true })
+        .unwrap();
+
+    // Persisted: settings updated, mirror updated, on-disk reflects.
+    assert!(harness.state().startup.start_minimized_to_tray);
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert!(on_disk.startup.start_minimized_to_tray);
+
+    // Exactly one warning with the documented text.
+    let warnings = harness.state().warnings.clone();
+    assert_eq!(warnings.len(), warnings_before + 1);
+    assert_eq!(
+        warnings.last().unwrap(),
+        "Saved, but could not update the auto-launch arguments. \
+         Restart of InputForge may use the previous setting."
+    );
+}

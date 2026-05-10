@@ -1017,9 +1017,52 @@ impl Engine {
                     "autostart updated"
                 );
             }
-            EngineCommand::SetStartMinimizedToTray { .. } => {
-                // Implemented in Task 7.2.
-                tracing::trace!(target: "engine", "SetStartMinimizedToTray received (handler not yet wired)");
+            EngineCommand::SetStartMinimizedToTray { enabled } => {
+                // Step 1: capture prior for rollback on save failure.
+                let prior = self.settings.startup.clone();
+
+                // Step 2: persist + mirror.
+                self.settings.startup.start_minimized_to_tray = enabled;
+                self.state.write().startup = self.settings.startup.clone();
+                if let Err(e) = self.settings.save_to(&self.settings_path) {
+                    tracing::warn!(
+                        target: "settings",
+                        error = %e,
+                        "failed to persist settings.toml; rolling back in-memory startup"
+                    );
+                    self.settings.startup = prior;
+                    let mut state = self.state.write();
+                    state.startup = self.settings.startup.clone();
+                    state.warnings.push(format!("Could not save settings: {e}"));
+                    return Ok(());
+                }
+
+                // Step 3: best-effort autostart argv re-register when on.
+                if self.settings.startup.launch_at_startup {
+                    let owned_args: Vec<&str> = if self.settings.startup.start_minimized_to_tray {
+                        vec!["--start-minimized"]
+                    } else {
+                        vec![]
+                    };
+                    if let Err(e) = self.autostart.set_enabled(true, &owned_args) {
+                        tracing::warn!(
+                            target: "autostart",
+                            %e,
+                            "could not refresh autostart argv after start-minimized toggle"
+                        );
+                        self.state.write().warnings.push(
+                            "Saved, but could not update the auto-launch arguments. \
+                             Restart of InputForge may use the previous setting."
+                                .to_owned(),
+                        );
+                    }
+                }
+
+                tracing::info!(
+                    target: "engine",
+                    start_minimized_to_tray = self.settings.startup.start_minimized_to_tray,
+                    "start-minimized preference updated"
+                );
             }
         }
         Ok(())
