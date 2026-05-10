@@ -1,0 +1,192 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  DIOXUS_CLI_VERSION: 0.7.9
+
+jobs:
+  test:
+    name: Test release gate
+    runs-on: windows-latest
+    outputs:
+      release_version: ${{ steps.version.outputs.release_version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.85.0
+
+      - name: Validate release tag
+        id: version
+        shell: pwsh
+        run: .github/scripts/validate-release-tag.ps1 -TagRef "${{ github.ref }}" -ManifestPath Cargo.toml
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test release helper
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File .github/scripts/test-release-tag.ps1
+
+      - name: Run workspace tests
+        run: cargo test --workspace
+
+  build:
+    name: Bundle ${{ matrix.platform }}
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            package_type: nsis
+            asset_glob: target/dx/*/bundle/windows/nsis/*.exe
+    env:
+      HAS_WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.85.0
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Dioxus CLI
+        shell: pwsh
+        run: |
+          cargo install cargo-binstall --locked
+          if ($LASTEXITCODE -eq 0) {
+            cargo binstall --no-confirm --locked "dioxus-cli@${{ env.DIOXUS_CLI_VERSION }}"
+          }
+          if ($LASTEXITCODE -ne 0) {
+            cargo install dioxus-cli --version "${{ env.DIOXUS_CLI_VERSION }}" --locked
+          }
+
+      - name: Bundle desktop app
+        shell: pwsh
+        run: |
+          dx bundle --package inputforge-app --platform "${{ matrix.platform }}" --release --package-types "${{ matrix.package_type }}"
+
+      - name: Locate installer
+        id: installer
+        shell: pwsh
+        run: |
+          $matches = @(Get-ChildItem -Path "${{ matrix.asset_glob }}" -File | Sort-Object FullName)
+
+          if ($matches.Count -ne 1) {
+            $found = $matches | ForEach-Object { $_.FullName } | Out-String
+            throw "Expected exactly one installer matching '${{ matrix.asset_glob }}', found $($matches.Count): $found"
+          }
+
+          $installer = $matches[0]
+          "installer_path=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+          "installer_name=$($installer.Name)" >> $env:GITHUB_OUTPUT
+
+      - name: Import signing certificate
+        if: ${{ env.HAS_WINDOWS_SIGNING_CERTIFICATE == 'true' }}
+        id: signing_cert
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD) {
+            throw "WINDOWS_SIGNING_CERTIFICATE_PASSWORD is required when WINDOWS_SIGNING_CERTIFICATE_BASE64 is set."
+          }
+
+          $certPath = Join-Path $env:RUNNER_TEMP "inputforge-signing.pfx"
+          [System.IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE_BASE64))
+          "certificate_path=$certPath" >> $env:GITHUB_OUTPUT
+
+      - name: Sign installer
+        if: ${{ env.HAS_WINDOWS_SIGNING_CERTIFICATE == 'true' }}
+        shell: pwsh
+        env:
+          INSTALLER_PATH: ${{ steps.installer.outputs.installer_path }}
+          CERTIFICATE_PATH: ${{ steps.signing_cert.outputs.certificate_path }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+          WINDOWS_SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}
+        run: |
+          $timestampUrl = if ($env:WINDOWS_SIGNING_TIMESTAMP_URL) {
+            $env:WINDOWS_SIGNING_TIMESTAMP_URL
+          } else {
+            "http://timestamp.digicert.com"
+          }
+
+          $signtool = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -File -Filter signtool.exe |
+            Where-Object { $_.FullName -match "\\x64\\signtool.exe$" } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+
+          if (-not $signtool) {
+            throw "signtool.exe was not found in the Windows Kits installation."
+          }
+
+          & $signtool.FullName sign /fd SHA256 /f "$env:CERTIFICATE_PATH" /p "$env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD" /tr "$timestampUrl" /td SHA256 "$env:INSTALLER_PATH"
+
+      - name: Generate checksum
+        id: checksum
+        shell: pwsh
+        env:
+          INSTALLER_PATH: ${{ steps.installer.outputs.installer_path }}
+          INSTALLER_NAME: ${{ steps.installer.outputs.installer_name }}
+        run: |
+          $checksumPath = "$env:INSTALLER_PATH.sha256"
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath "$env:INSTALLER_PATH").Hash.ToLowerInvariant()
+          "$hash  $env:INSTALLER_NAME" | Set-Content -LiteralPath "$checksumPath" -Encoding ascii -NoNewline
+          "checksum_path=$checksumPath" >> $env:GITHUB_OUTPUT
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: inputforge-${{ matrix.platform }}-${{ needs.test.outputs.release_version }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ steps.installer.outputs.installer_path }}
+            ${{ steps.checksum.outputs.checksum_path }}
+
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - test
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          prerelease: ${{ needs.test.outputs.is_prerelease == 'true' }}
+          files: release-assets/**/*
