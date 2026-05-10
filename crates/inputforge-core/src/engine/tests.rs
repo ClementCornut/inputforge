@@ -4371,3 +4371,68 @@ fn reload_settings_mirrors_startup_into_state() {
 
     assert_eq!(harness.state().startup, file_settings.startup);
 }
+
+// ---------------------------------------------------------------------------
+// F16: SetAutostart handler
+// ---------------------------------------------------------------------------
+
+#[test]
+fn set_autostart_passes_no_args_when_start_minimized_off() {
+    use inputforge_autostart::mock::SetEnabledCall;
+    let mut harness = EngineHarness::new();
+    // Both startup fields default to false; just enabling autostart.
+    harness
+        .dispatch(EngineCommand::SetAutostart { enabled: true })
+        .unwrap();
+
+    let calls = harness.autostart_mock.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0],
+        SetEnabledCall {
+            enabled: true,
+            args: vec![],
+        }
+    );
+}
+
+#[test]
+fn set_autostart_passes_start_minimized_arg_when_enabled() {
+    use crate::settings::StartupSettings;
+    use inputforge_autostart::mock::SetEnabledCall;
+    let mut harness = EngineHarness::new();
+    // Pre-seed: start-minimized is on; enabling autostart must pass the arg.
+    harness.engine.settings.startup = StartupSettings {
+        launch_at_startup: false,
+        start_minimized_to_tray: true,
+    };
+    harness.engine.state.write().startup = harness.engine.settings.startup.clone();
+
+    harness
+        .dispatch(EngineCommand::SetAutostart { enabled: true })
+        .unwrap();
+
+    let calls = harness.autostart_mock.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0],
+        SetEnabledCall {
+            enabled: true,
+            args: vec!["--start-minimized".to_owned()],
+        }
+    );
+}
+
+#[test]
+fn set_autostart_writes_state_field_on_success() {
+    let mut harness = EngineHarness::new();
+    harness
+        .dispatch(EngineCommand::SetAutostart { enabled: true })
+        .unwrap();
+
+    assert!(harness.state().startup.launch_at_startup);
+
+    // On-disk: settings.toml round-trips the new value.
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert!(on_disk.startup.launch_at_startup);
+}

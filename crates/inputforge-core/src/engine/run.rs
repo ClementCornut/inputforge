@@ -969,9 +969,53 @@ impl Engine {
                 self.set_mappings_bulk(&entries, snapshot_label);
                 self.pending_output_refresh = true;
             }
-            EngineCommand::SetAutostart { .. } => {
-                // Implemented in Task 6.2.
-                tracing::trace!(target: "engine", "SetAutostart received (handler not yet wired)");
+            EngineCommand::SetAutostart { enabled } => {
+                // Step 1: compute argv from the persisted start-minimized
+                // setting; auto-launch is dumb about that flag.
+                let owned_args: Vec<&str> = if self.settings.startup.start_minimized_to_tray {
+                    vec!["--start-minimized"]
+                } else {
+                    vec![]
+                };
+
+                // Step 2: OS write first; on failure, do NOT touch settings or
+                // AppState (the mirror chain plus polling will resync the UI).
+                if let Err(e) = self.autostart.set_enabled(enabled, &owned_args) {
+                    tracing::warn!(
+                        target: "autostart",
+                        %e,
+                        enabled,
+                        "autostart OS write failed"
+                    );
+                    self.state
+                        .write()
+                        .warnings
+                        .push("Could not change launch-at-startup setting.".to_owned());
+                    return Ok(());
+                }
+
+                // Step 3: persist + mirror; on save failure, roll back both.
+                let prior = self.settings.startup.clone();
+                self.settings.startup.launch_at_startup = enabled;
+                self.state.write().startup = self.settings.startup.clone();
+                if let Err(e) = self.settings.save_to(&self.settings_path) {
+                    tracing::warn!(
+                        target: "settings",
+                        error = %e,
+                        "failed to persist settings.toml; rolling back in-memory startup"
+                    );
+                    self.settings.startup = prior;
+                    let mut state = self.state.write();
+                    state.startup = self.settings.startup.clone();
+                    state.warnings.push(format!("Could not save settings: {e}"));
+                    return Ok(());
+                }
+
+                tracing::info!(
+                    target: "engine",
+                    launch_at_startup = self.settings.startup.launch_at_startup,
+                    "autostart updated"
+                );
             }
         }
         Ok(())

@@ -71,10 +71,6 @@ pub struct Engine {
     pub(crate) settings_path: PathBuf,
     /// OS autostart manager. Concrete impl chosen per platform; tests pass
     /// `inputforge_autostart::mock::MockAutostart`.
-    #[expect(
-        dead_code,
-        reason = "field will be read in Tasks 4.3 and 8.1 (mirror and reconcile)"
-    )]
     pub(crate) autostart: Box<dyn AutostartManager>,
 }
 
