@@ -41,12 +41,8 @@ jobs:
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2.9.1
 
-      - name: Test release helper
-        shell: pwsh
-        run: pwsh -NoLogo -NoProfile -File .github/scripts/test-release-tag.ps1
-
       - name: Run workspace tests
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
 
   build:
     name: Bundle ${{ matrix.platform }}
@@ -99,30 +95,6 @@ jobs:
           & $dx --version
           "DX_BIN=$dx" >> $env:GITHUB_ENV
 
-      - name: Assert Windows installer source contract
-        shell: pwsh
-        run: pwsh -NoLogo -NoProfile -File .github/scripts/assert-windows-installer-contract.ps1
-
-      - name: Normalize NSIS bundle version
-        id: nsis_version
-        shell: pwsh
-        env:
-          RELEASE_VERSION: ${{ needs.test.outputs.release_version }}
-        run: |
-          $nsisBundleVersion = $env:RELEASE_VERSION -replace "-.*$", ""
-
-          if ($nsisBundleVersion -notmatch "^\d+\.\d+\.\d+(\.\d+)?$") {
-            throw "Derived NSIS bundle version '$nsisBundleVersion' from release version '$env:RELEASE_VERSION' is not numeric."
-          }
-
-          foreach ($path in @("Cargo.toml", "Cargo.lock")) {
-            $content = Get-Content -LiteralPath $path -Raw
-            $updated = $content.Replace($env:RELEASE_VERSION, $nsisBundleVersion)
-            Set-Content -LiteralPath $path -Value $updated -NoNewline
-          }
-
-          "nsis_bundle_version=$nsisBundleVersion" >> $env:GITHUB_OUTPUT
-
       - name: Verify SDL runtime source
         shell: pwsh
         run: |
@@ -133,11 +105,7 @@ jobs:
       - name: Bundle desktop app
         shell: pwsh
         run: |
-          & $env:DX_BIN bundle --package inputforge-app --bin inputforge --platform "${{ matrix.platform }}" --release --package-types "${{ matrix.package_type }}"
-
-      - name: Assert Windows bundle payload
-        shell: pwsh
-        run: pwsh -NoLogo -NoProfile -File .github/scripts/assert-windows-installer-contract.ps1 -BundleRoot "target/dx/inputforge/bundle/windows/nsis"
+          & $env:DX_BIN bundle --package inputforge-app --bin inputforge --platform "${{ matrix.platform }}" --release --package-types "${{ matrix.package_type }}" --locked
 
       - name: Locate installer
         id: installer

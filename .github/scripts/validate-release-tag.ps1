@@ -23,7 +23,7 @@ $tagMatch = [regex]::Match(
 )
 
 if (-not $tagMatch.Success) {
-    throw "Tag '$tagName' is not a supported semver release tag. Use v0.1.0 or v0.1.0-rc.1."
+    throw "Tag '$tagName' is not a supported SemVer release tag. Use v0.1.0, v0.1.0-rc.1, or another matching SemVer prerelease tag."
 }
 
 $tagVersion = $tagMatch.Groups["version"].Value

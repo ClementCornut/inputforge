@@ -78,10 +78,10 @@ enabled initially:
 
 ```yaml
 include:
-  - os: windows-latest
+  - os: windows-2025-vs2026
     platform: windows
     package_type: nsis
-    asset_glob: target/dx/**/bundle/nsis/*.exe
+    asset_glob: target/dx/*/bundle/windows/nsis/*.exe
 ```
 
 The job body should read runner, package type, and artifact glob values from
@@ -89,15 +89,11 @@ the matrix. Future platform rows can add macOS package types such as `dmg` or
 Linux package types such as `appimage` and `deb`, plus any platform-specific
 setup steps.
 
-The asset glob path comes from Dioxus 0.7.9 NSIS output: `dx bundle` writes the
-installer to
-`target/dx/<crate>/bundle/nsis/<ProductName>_<Version>_<Arch>-setup.exe`. There
-is a single `bundle/` segment, not two. Sources:
-
-- `packages/cli/src/bundler/windows.rs:374` joins `"nsis"` to
-  `project_out_directory()`.
-- `packages/cli/src/build/request.rs:2625-2628` resolves
-  `bundle_dir(Windows) = internal_out_dir().join(main_target).join("bundle")`.
+The verified Dioxus 0.7.9 Windows NSIS output path is
+`target/dx/inputforge/bundle/windows/nsis/<ProductName>_<Version>_<Arch>-setup.exe`.
+The workflow uses a single-level PowerShell glob (`target/dx/*/...`) because
+`Get-ChildItem -Path` does not interpret recursive `**` globs the same way as
+GitHub path filters.
 
 ## Dioxus Bundle Configuration
 
@@ -114,10 +110,10 @@ behavior:
   description.
 - Windows `icon_path` pointing at the existing `.ico` asset. Path is
   workspace-relative, matching the existing `icon = [...]` entries.
-- NSIS `install_mode = "CurrentUser"` so the first installer does not require
-  administrator rights.
+- NSIS `install_mode = "Both"` so the installer exposes both all-users and
+  current-user installation modes.
 - NSIS `languages = ["English"]` and `display_language_selector = false`.
-- NSIS `start_menu_folder = "InputForge"`.
+- NSIS `start_menu_folder = "inputforge"`.
 
 All of these keys are valid `Dioxus.toml` fields in 0.7.9
 (`packages/cli/src/config/bundle.rs`: `BundleConfig` for `publisher`,
@@ -128,7 +124,7 @@ All of these keys are valid `Dioxus.toml` fields in 0.7.9
 The Windows bundling command is:
 
 ```powershell
-dx bundle --package inputforge-app --platform desktop --release --package-types nsis
+dx bundle --package inputforge-app --bin inputforge --platform windows --release --package-types nsis --locked
 ```
 
 Flag notes for 0.7.9:
@@ -139,14 +135,25 @@ Flag notes for 0.7.9:
   `packages/cli/src/platform.rs:43-61` (`Platform::from_identifier`).
 - `--package`: selects the workspace member crate to bundle (`inputforge-app`).
   Source: `packages/cli/src/cli/target.rs:36-38`.
+- `--bin`: selects the lowercase binary target (`inputforge`) declared by
+  `crates/inputforge-app/Cargo.toml`.
 - `--package-types`: accepts the lowercase value `nsis`. Source:
   `packages/cli/src/config/bundle.rs` (`PackageType::Nsis`
   `#[clap(name = "nsis")]`).
 - `--release`: inherited from `BuildArgs`.
+- `--locked`: asserts that `Cargo.lock` remains unchanged during release
+  builds.
 - Asset discovery: the workflow locates produced assets via the matrix
   `asset_glob` exclusively. Dioxus 0.7.9 has no `--json-output` flag;
   structured output is emitted by internal tracing and is not a stable CI
   parsing target.
+
+The project-owned NSIS template keeps prerelease strings in visible installer
+metadata while deriving a numeric-only `VIProductVersion`. For example,
+`0.1.0-rc.1` stays in `FileVersion`, `ProductVersion`, Add/Remove Programs
+`DisplayVersion`, and the uploaded asset name, while `VIProductVersion` uses
+`0.1.0.0`. CI must not rewrite `Cargo.toml` or `Cargo.lock` to remove
+prerelease suffixes before bundling.
 
 ## CI Flow
 
@@ -163,13 +170,14 @@ Workflow-level configuration:
   job overrides to `permissions: { contents: write }`. Other permissions stay
   default-deny.
 
-All jobs check out the repository with `actions/checkout@v4` and
+All jobs check out the repository with `actions/checkout@v6.0.2` and
 `fetch-depth: 0` so the version-match step can resolve annotated tags and the
 publish step has full history available.
 
-External actions use maintained version tags such as `actions/checkout@v4`,
-`Swatinem/rust-cache@v2`, and `softprops/action-gh-release@v2`. Full commit
-SHA pinning is intentionally out of scope for the first milestone.
+External actions use maintained version tags such as `actions/checkout@v6.0.2`,
+`Swatinem/rust-cache@v2.9.1`, `actions/upload-artifact@v7.0.1`,
+`actions/download-artifact@v8.0.1`, and `softprops/action-gh-release@v3.0.0`.
+Full commit SHA pinning is intentionally out of scope for the first milestone.
 
 **`test` job** (runs once, gates the matrix):
 
@@ -177,27 +185,30 @@ SHA pinning is intentionally out of scope for the first milestone.
 2. Verify the tag version matches the workspace package version (strip leading
    `v`, compare full remainder to `[workspace.package].version`).
 3. Install the Rust toolchain required by the workspace.
-4. Restore Cargo cache via `Swatinem/rust-cache@v2`.
-5. Run `cargo test --workspace`.
+4. Restore Cargo cache via `Swatinem/rust-cache@v2.9.1`.
+5. Run `cargo test --workspace --locked`.
 
 **`build` matrix job** (one row per platform, `needs: test`):
 
 1. Check out the repository.
 2. Install the Rust toolchain.
 3. Install Dioxus CLI 0.7.9:
-   `cargo binstall --no-confirm --locked dioxus-cli@0.7.9`.
+   `cargo binstall --force --no-confirm --locked dioxus-cli@0.7.9`.
    Fallback when binstall is unavailable:
-   `cargo install dioxus-cli --version 0.7.9 --locked`.
-4. Restore Cargo cache via `Swatinem/rust-cache@v2`. The Dioxus bundle output
+   `cargo install dioxus-cli --version 0.7.9 --locked --force`.
+4. Restore Cargo cache via `Swatinem/rust-cache@v2.9.1`. The Dioxus bundle output
    cache (`target/dx`) is left as a future optimization once cold-build cost
    data is collected.
-5. Run `dx bundle --package inputforge-app --platform ${{ matrix.platform }} --release --package-types ${{ matrix.package_type }}`.
-6. Locate produced installer assets with the matrix `asset_glob` value.
-7. Sign the installer when signing secrets are configured (see Optional
+5. Verify that `SDL/SDL3.dll` exists in the checkout.
+6. Run `dx bundle --package inputforge-app --bin inputforge --platform ${{ matrix.platform }} --release --package-types ${{ matrix.package_type }} --locked`.
+7. Locate produced installer assets with the matrix `asset_glob` value.
+8. Rename the installer to the final lowercase release asset name,
+   `inputforge_<version>_x64-setup.exe`.
+9. Sign the installer when signing secrets are configured (see Optional
    Signing).
-8. Generate a SHA-256 checksum file for the installer, named
+10. Generate a SHA-256 checksum file for the installer, named
    `<installer-filename>.sha256`.
-9. Upload the installer and checksum as workflow artifacts with
+11. Upload the installer and checksum as workflow artifacts with
    `retention-days: 7`. Artifacts only need to live until the publish job
    consumes them.
 
@@ -216,11 +227,10 @@ free of platform-specific logic.
 ## Optional Signing
 
 The first workflow must not require signing secrets. Gating happens at the
-**step level inside the `build` job**, using
-`if: ${{ env.WINDOWS_SIGNING_CERTIFICATE_BASE64 != '' }}` on each signing
-step after projecting the secret into the build job environment. Direct
-`secrets.*` references in `if:` conditionals and cross-job gating on secret
-presence must not be used.
+**step level inside the `build` job**, using a non-secret
+`HAS_WINDOWS_SIGNING_CERTIFICATE` environment flag derived from secret
+presence. Direct `secrets.*` references in `if:` conditionals and broad
+job-scoped exposure of certificate secrets must not be used.
 
 If the expected signing secrets are absent, the gating expression evaluates
 false, the signing steps are skipped, and the installer ships unsigned. If all
@@ -255,29 +265,31 @@ that work by:
 
 ## Testing And Verification
 
-Implementation verifies local scripts and workflow helpers where possible,
-then runs the repository test suite. The actual release upload requires
-pushing a matching RC semver tag for the first publish-style rehearsal. The
-Windows bundle can also be verified locally
-with:
+Implementation verifies the release validator directly, then runs the
+repository test suite. The temporary PowerShell test/assertion scripts used
+while developing the workflow are not part of the final release workflow. The
+actual release upload requires pushing a matching RC semver tag for the first
+publish-style rehearsal. The Windows bundle can also be verified locally with:
 
 ```powershell
-dx bundle --package inputforge-app --platform desktop --release --package-types nsis
+dx bundle --package inputforge-app --bin inputforge --platform windows --release --package-types nsis --locked
 ```
 
 Success criteria for the first milestone:
 
 - Workspace `Cargo.toml` lists `dioxus = "0.7.9"` and `dioxus-ssr = "0.7.9"`,
-  and `cargo build -p inputforge-app` and `cargo test --workspace` succeed.
+  and `cargo build -p inputforge-app` and `cargo test --workspace --locked`
+  succeed.
 - A tag like `v0.1.0` builds only if it matches the workspace version.
 - Pre-release tags like `v0.1.0-rc.1` produce a GitHub Release marked
   `prerelease: true`.
+- Pre-release installer metadata stays pre-release (`0.1.0-rc.1`) while NSIS
+  `VIProductVersion` stays numeric (`0.1.0.0`).
 - The first publish-style rehearsal uses `v0.1.0-rc.1` and documents cleanup
   for the rehearsal release and tag.
 - GitHub Actions produces a Windows NSIS `.exe` installer at
-  `target/dx/inputforge-app/bundle/nsis/InputForge_<version>_x64-setup.exe`.
+  `target/dx/inputforge/bundle/windows/nsis/inputforge_<version>_x64-setup.exe`.
 - The installer and matching `.sha256` are attached to the GitHub Release.
-- Workflow validation includes PowerShell assertions and `actionlint` v1.7.12.
 - After a test tag publishes, the installer runs on a clean Windows machine
   (or VM/sandbox) and the InputForge app launches successfully.
 - The workflow remains easy to extend by adding new matrix rows.
