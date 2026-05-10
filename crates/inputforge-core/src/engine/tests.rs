@@ -33,6 +33,8 @@ use crate::types::{
     OutputId, VJoyAxis,
 };
 
+use inputforge_autostart::mock::MockAutostart;
+
 use super::Engine;
 use super::command::EngineCommand;
 use super::output_handler::{process_pipeline_outputs, refresh_axes_for_mode_change};
@@ -145,6 +147,7 @@ fn make_engine(
         rx,
         AppSettings::default(),
         PathBuf::new(),
+        Box::new(MockAutostart::new()),
     );
 
     (engine, state, tx)
@@ -168,6 +171,7 @@ fn test_engine_with_settings_path(settings: AppSettings) -> (Engine, PathBuf) {
         rx,
         settings,
         settings_path.clone(),
+        Box::new(MockAutostart::new()),
     );
 
     (engine, settings_path)
@@ -1033,6 +1037,7 @@ fn make_engine_no_profile(
         rx,
         AppSettings::default(),
         PathBuf::new(),
+        Box::new(MockAutostart::new()),
     );
 
     (engine, state, tx)
@@ -1048,6 +1053,10 @@ struct EngineHarness {
     )]
     _settings_dir: tempfile::TempDir,
     library_dir: PathBuf,
+    /// Cloned handle to the autostart mock the engine was constructed with.
+    /// Tests inspect calls and seed `is_enabled` results through this clone;
+    /// the inner state is shared via `Arc<Mutex<>>`.
+    autostart_mock: MockAutostart,
 }
 
 impl EngineHarness {
@@ -1060,6 +1069,12 @@ impl EngineHarness {
 
         let state = Arc::new(RwLock::new(AppState::new()));
         let (_tx, rx) = mpsc::channel();
+        // MockAutostart is Clone with internal Arc<Mutex<>>-shared state, so
+        // the engine takes one boxed clone while the harness keeps another
+        // for assertions. Both clones see the same call log and seeded
+        // results. See the contract test `clone_shares_state_with_original`
+        // (Task 1.5) for the proof.
+        let autostart_mock = MockAutostart::new();
         let engine = Engine::new(
             Box::new(MockInputSource::default()),
             Box::new(MockOutputSink::new()),
@@ -1069,6 +1084,7 @@ impl EngineHarness {
             rx,
             settings,
             settings_path,
+            Box::new(autostart_mock.clone()),
         );
 
         Self {
@@ -1076,6 +1092,7 @@ impl EngineHarness {
             state,
             _settings_dir: settings_dir,
             library_dir,
+            autostart_mock,
         }
     }
 
@@ -1877,6 +1894,7 @@ fn activate_refreshes_outputs_from_cached_axis_values() {
         rx,
         AppSettings::default(),
         PathBuf::new(),
+        Box::new(MockAutostart::new()),
     );
 
     // Tick 1 (Stopped): input cache is updated, mappings are not evaluated.
@@ -2018,6 +2036,7 @@ fn make_engine_with_simple_disk_profile() -> (
         rx,
         AppSettings::default(),
         settings_path,
+        Box::new(MockAutostart::new()),
     );
     (engine, state, tx, dir, path)
 }
@@ -2127,6 +2146,7 @@ fn reload_settings_picks_up_disk_edits() {
         rx,
         AppSettings::default(),
         settings_path.clone(),
+        Box::new(MockAutostart::new()),
     );
 
     // Sentinel mutation; after ReloadSettings, the field must reflect the
@@ -2306,6 +2326,7 @@ fn load_profile_creates_auto_session_start_snapshot() {
         rx,
         AppSettings::default(),
         settings_path,
+        Box::new(MockAutostart::new()),
     );
 
     tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
@@ -2346,6 +2367,7 @@ fn load_profile_dedupes_auto_session_start_on_identical_content() {
         rx,
         AppSettings::default(),
         settings_path,
+        Box::new(MockAutostart::new()),
     );
 
     tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
@@ -2393,6 +2415,7 @@ fn engine_loadprofile_dedup_respects_skip_if_unchanged_false() {
         rx,
         settings,
         settings_path,
+        Box::new(MockAutostart::new()),
     );
 
     tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
@@ -2653,6 +2676,7 @@ fn sequential_eight_then_ninth_evicts_oldest() {
         rx,
         settings,
         settings_path,
+        Box::new(MockAutostart::new()),
     );
 
     let mut ids = Vec::new();
@@ -2777,6 +2801,7 @@ fn make_engine_with_disk_profile() -> (
         rx,
         AppSettings::default(),
         PathBuf::new(),
+        Box::new(MockAutostart::new()),
     );
     (engine, state, tx, dir, path)
 }
@@ -2976,6 +3001,7 @@ fn rename_mode_cascades_into_mappings() {
         rx,
         AppSettings::default(),
         PathBuf::new(),
+        Box::new(MockAutostart::new()),
     );
     tx.send(EngineCommand::RenameMode {
         from: "Combat".to_owned(),
@@ -3177,6 +3203,7 @@ fn rename_mode_rewrites_switch_to_action() {
         rx,
         AppSettings::default(),
         PathBuf::new(),
+        Box::new(MockAutostart::new()),
     );
 
     tx.send(EngineCommand::RenameMode {
@@ -3229,6 +3256,7 @@ fn rename_mode_rewrites_temporary_action() {
         rx,
         AppSettings::default(),
         PathBuf::new(),
+        Box::new(MockAutostart::new()),
     );
 
     tx.send(EngineCommand::RenameMode {
@@ -3398,6 +3426,7 @@ fn delete_mode_cascades_subtree_and_mappings() {
         rx,
         AppSettings::default(),
         PathBuf::new(),
+        Box::new(MockAutostart::new()),
     );
 
     tx.send(EngineCommand::DeleteMode {
@@ -3465,6 +3494,7 @@ fn delete_mode_rejects_when_subtree_contains_startup_mode() {
         rx,
         AppSettings::default(),
         PathBuf::new(),
+        Box::new(MockAutostart::new()),
     );
 
     let err = engine.handle_command(EngineCommand::DeleteMode {
@@ -3552,6 +3582,7 @@ fn delete_mode_resets_when_active_is_descendant() {
         rx,
         AppSettings::default(),
         PathBuf::new(),
+        Box::new(MockAutostart::new()),
     );
 
     // Switch into Missiles (descendant of Combat).
@@ -3723,6 +3754,7 @@ fn engine_set_mappings_bulk_with_no_profile_loaded_is_noop_and_warns() {
         rx,
         AppSettings::default(),
         PathBuf::new(),
+        Box::new(MockAutostart::new()),
     );
 
     tx.send(EngineCommand::SetMappingsBulk {

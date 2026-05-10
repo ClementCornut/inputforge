@@ -24,6 +24,8 @@ use std::sync::mpsc;
 
 use parking_lot::RwLock;
 
+use inputforge_autostart::AutostartManager;
+
 use crate::callbacks::CallbackRegistry;
 use crate::device::traits::{DeviceHider, InputSource};
 use crate::mode::ModeState;
@@ -67,6 +69,13 @@ pub struct Engine {
     /// `AppSettings::settings_path()`; tests inject a tempdir path so they
     /// don't touch the developer's real `%APPDATA%`.
     pub(crate) settings_path: PathBuf,
+    /// OS autostart manager. Concrete impl chosen per platform; tests pass
+    /// `inputforge_autostart::mock::MockAutostart`.
+    #[expect(
+        dead_code,
+        reason = "field will be read in Tasks 4.3 and 8.1 (mirror and reconcile)"
+    )]
+    pub(crate) autostart: Box<dyn AutostartManager>,
 }
 
 impl std::fmt::Debug for Engine {
@@ -106,6 +115,7 @@ impl Engine {
         commands: mpsc::Receiver<EngineCommand>,
         settings: AppSettings,
         settings_path: PathBuf,
+        autostart: Box<dyn AutostartManager>,
     ) -> Self {
         let startup_mode = {
             let s = state.read();
@@ -148,6 +158,7 @@ impl Engine {
             pending_output_refresh: false,
             settings,
             settings_path,
+            autostart,
         };
 
         // Classify the startup-loaded profile's origin if main.rs left

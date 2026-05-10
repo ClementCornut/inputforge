@@ -170,6 +170,7 @@ fn run_engine_inner(
         commands,
         AppSettings::load(),
         AppSettings::settings_path(),
+        inputforge_autostart::new_for_current_platform(),
     );
     engine.run()?;
     Ok(())

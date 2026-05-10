@@ -16,8 +16,9 @@ name = "inputforge"
 path = "src/main.rs"
 
 [dependencies]
-inputforge-core   = { workspace = true }
-inputforge-gui-dx = { workspace = true }
+inputforge-core      = { workspace = true }
+inputforge-gui-dx    = { workspace = true }
+inputforge-autostart = { workspace = true }
 anyhow            = { workspace = true }
 parking_lot       = { workspace = true }
 tracing           = { workspace = true }
