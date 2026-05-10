@@ -2626,7 +2626,7 @@ dependencies = [
 
 [[package]]
 name = "inputforge-app"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2642,7 +2642,7 @@ dependencies = [
 
 [[package]]
 name = "inputforge-core"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "blake3",
  "chrono",
@@ -2668,7 +2668,7 @@ dependencies = [
 
 [[package]]
 name = "inputforge-gui-dx"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "anyhow",
  "arboard",
