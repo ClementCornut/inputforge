@@ -54,6 +54,24 @@ function Assert-WorkflowDoesNotMatch {
     }
 }
 
+function Assert-WorkflowMatchCount {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Pattern,
+
+        [Parameter(Mandatory = $true)]
+        [int] $ExpectedCount,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Reason
+    )
+
+    $count = [regex]::Matches($workflow, $Pattern).Count
+    if ($count -ne $ExpectedCount) {
+        throw "Workflow assertion failed: $Reason. Expected $ExpectedCount matches for pattern '$Pattern', found $count."
+    }
+}
+
 function Get-WorkflowStepBlock {
     param(
         [Parameter(Mandatory = $true)]
@@ -197,6 +215,8 @@ Assert-WorkflowContains -Text "          lfs: true" -Reason "checkout downloads 
 Assert-WorkflowContains -Text "actions/checkout@v6.0.2" -Reason "checkout uses the latest verified Node 24 release"
 Assert-WorkflowDoesNotContain -Text "actions/checkout@v4" -Reason "checkout avoids the deprecated Node 20 action runtime"
 Assert-WorkflowContains -Text "Swatinem/rust-cache@v2.9.1" -Reason "Cargo cache action uses the latest verified release"
+Assert-WorkflowMatchCount -Pattern "(?m)^      - name: Add Cargo bin to PATH$" -ExpectedCount 2 -Reason "Windows jobs explicitly add Cargo-installed tools to PATH"
+Assert-WorkflowMatchCount -Pattern '(?m)^          Join-Path \$env:CARGO_HOME "bin" >> \$env:GITHUB_PATH$' -ExpectedCount 2 -Reason "Cargo bin PATH update uses CARGO_HOME in both Windows jobs"
 Assert-WorkflowContains -Text "DIOXUS_CLI_VERSION: 0.7.9" -Reason "workflow pins the target Dioxus CLI"
 Assert-WorkflowContains -Text "cargo test --workspace" -Reason "test job gates release builds"
 Assert-WorkflowContains -Text "windows-2025-vs2026" -Reason "Windows jobs use the latest verified hosted runner image"

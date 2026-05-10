@@ -33,6 +33,11 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Add Cargo bin to PATH
+        shell: pwsh
+        run: |
+          Join-Path $env:CARGO_HOME "bin" >> $env:GITHUB_PATH
+
       - name: Validate release tag
         id: version
         shell: pwsh
@@ -71,6 +76,11 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Cargo bin to PATH
+        shell: pwsh
+        run: |
+          Join-Path $env:CARGO_HOME "bin" >> $env:GITHUB_PATH
 
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2.9.1
