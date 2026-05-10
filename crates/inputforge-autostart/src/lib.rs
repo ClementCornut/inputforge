@@ -43,3 +43,45 @@ pub trait AutostartManager {
     /// (permissions, IO, registry denial).
     fn set_enabled(&mut self, enabled: bool, args: &[&str]) -> Result<(), AutostartError>;
 }
+
+/// Construct the platform-appropriate autostart manager, or a `NoOpAutostart`
+/// fallback when `std::env::current_exe()` fails.
+///
+/// The fallback's `is_enabled()` returns `Ok(false)` and `set_enabled()`
+/// returns [`AutostartError::NotSupported`], so the engine and UI degrade
+/// gracefully (the toggle stays off; dispatch surfaces a warning toast).
+#[must_use]
+pub fn new_for_current_platform() -> Box<dyn AutostartManager> {
+    #[cfg(target_os = "windows")]
+    {
+        match windows::WindowsAutostart::new() {
+            Ok(w) => return Box::new(w),
+            Err(e) => {
+                tracing::warn!(target: "autostart", %e, "Windows backend init failed, using NoOp");
+            }
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        match linux::LinuxAutostart::new() {
+            Ok(l) => return Box::new(l),
+            Err(e) => {
+                tracing::warn!(target: "autostart", %e, "Linux backend init failed, using NoOp");
+            }
+        }
+    }
+    Box::new(noop::NoOpAutostart::new())
+}
+
+#[cfg(test)]
+mod factory_tests {
+    use super::*;
+
+    #[test]
+    fn new_for_current_platform_returns_a_manager() {
+        let m = new_for_current_platform();
+        // is_enabled may succeed or fail depending on platform/runner state;
+        // we only assert the call doesn't panic and the trait object lives.
+        let _ = m.is_enabled();
+    }
+}

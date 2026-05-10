@@ -4,11 +4,9 @@
 use crate::{AutostartError, AutostartManager};
 
 #[derive(Debug, Default)]
-#[allow(dead_code, reason = "used by the factory in Task 1.8; not yet wired")]
 pub(crate) struct NoOpAutostart;
 
 impl NoOpAutostart {
-    #[allow(dead_code, reason = "called by the factory in Task 1.8; not yet wired")]
     pub(crate) fn new() -> Self {
         Self
     }

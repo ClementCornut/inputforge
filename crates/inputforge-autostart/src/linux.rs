@@ -8,16 +8,8 @@ use auto_launch::{AutoLaunch, AutoLaunchBuilder};
 
 use crate::{AutostartError, AutostartManager};
 
-#[allow(
-    dead_code,
-    reason = "consumed by `new_for_current_platform` factory in Task 1.8"
-)]
 const APP_NAME: &str = "InputForge";
 
-#[allow(
-    dead_code,
-    reason = "consumed by `new_for_current_platform` factory in Task 1.8"
-)]
 #[derive(Debug)]
 pub(crate) struct LinuxAutostart {
     app_path: String,
@@ -30,7 +22,6 @@ impl LinuxAutostart {
     ///
     /// Returns [`AutostartError::NotSupported`] when `std::env::current_exe`
     /// fails (e.g., AppImage mount weirdness).
-    #[allow(dead_code, reason = "called by the factory in Task 1.8; not yet wired")]
     pub(crate) fn new() -> Result<Self, AutostartError> {
         let exe = std::env::current_exe().map_err(|_e| AutostartError::NotSupported)?;
         let app_path = exe.to_str().ok_or(AutostartError::NotSupported)?.to_owned();
