@@ -3,4 +3,6 @@
 //!
 //! See `docs/superpowers/specs/2026-05-10-f16-startup-preferences-design.md`.
 
-// Modules and re-exports land in subsequent tasks.
+mod error;
+
+pub use error::AutostartError;
