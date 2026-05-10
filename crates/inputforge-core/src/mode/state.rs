@@ -2,7 +2,7 @@
 
 use crate::error::{EngineError, Result};
 
-use super::ModeTree;
+use super::Modes;
 
 /// Runtime mode state machine.
 ///
@@ -36,9 +36,9 @@ impl ModeState {
     /// # Errors
     ///
     /// Returns [`EngineError::ModeNotFound`] if the mode does not exist
-    /// in the tree.
-    pub fn switch_to(&mut self, name: &str, tree: &ModeTree) -> Result<()> {
-        if !tree.contains(name) {
+    /// in the mode list.
+    pub fn switch_to(&mut self, name: &str, modes: &Modes) -> Result<()> {
+        if !modes.contains(name) {
             return Err(EngineError::ModeNotFound {
                 name: name.to_owned(),
             });
@@ -56,10 +56,10 @@ impl ModeState {
     /// # Errors
     ///
     /// Returns [`EngineError::ModeNotFound`] if the mode does not exist
-    /// in the tree, or [`EngineError::ModeCycleDetected`] if the mode
+    /// in the mode list, or [`EngineError::ModeCycleDetected`] if the mode
     /// is already on the stack or equals the current mode.
-    pub fn push_temporary(&mut self, name: &str, tree: &ModeTree) -> Result<()> {
-        if !tree.contains(name) {
+    pub fn push_temporary(&mut self, name: &str, modes: &Modes) -> Result<()> {
+        if !modes.contains(name) {
             return Err(EngineError::ModeNotFound {
                 name: name.to_owned(),
             });
@@ -107,21 +107,17 @@ impl ModeState {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
 
-    fn test_tree() -> ModeTree {
-        let mut map = HashMap::new();
-        map.insert(
+    fn test_modes() -> Modes {
+        Modes::new(vec![
             "Default".to_owned(),
-            vec!["Combat".to_owned(), "Landing".to_owned()],
-        );
-        map.insert(
             "Combat".to_owned(),
-            vec!["Missiles".to_owned(), "Guns".to_owned()],
-        );
-        ModeTree::from_adjacency(&map).unwrap()
+            "Landing".to_owned(),
+            "Missiles".to_owned(),
+            "Guns".to_owned(),
+        ])
+        .unwrap()
     }
 
     // --- new / current ---
@@ -136,27 +132,27 @@ mod tests {
 
     #[test]
     fn switch_to_valid_mode() {
-        let tree = test_tree();
+        let modes = test_modes();
         let mut state = ModeState::new("Default".to_owned());
-        state.switch_to("Combat", &tree).unwrap();
+        state.switch_to("Combat", &modes).unwrap();
         assert_eq!(state.current(), "Combat");
     }
 
     #[test]
     fn switch_to_nonexistent_mode() {
-        let tree = test_tree();
+        let modes = test_modes();
         let mut state = ModeState::new("Default".to_owned());
-        let err = state.switch_to("Space", &tree).unwrap_err();
+        let err = state.switch_to("Space", &modes).unwrap_err();
         assert!(err.to_string().contains("Space"));
     }
 
     #[test]
     fn switch_to_clears_stack() {
-        let tree = test_tree();
+        let modes = test_modes();
         let mut state = ModeState::new("Default".to_owned());
-        state.push_temporary("Combat", &tree).unwrap();
+        state.push_temporary("Combat", &modes).unwrap();
         assert_eq!(state.current(), "Combat");
-        state.switch_to("Landing", &tree).unwrap();
+        state.switch_to("Landing", &modes).unwrap();
         assert_eq!(state.current(), "Landing");
         // Pop should be no-op since stack was cleared.
         state.pop_temporary();
@@ -167,9 +163,9 @@ mod tests {
 
     #[test]
     fn push_and_pop_temporary() {
-        let tree = test_tree();
+        let modes = test_modes();
         let mut state = ModeState::new("Default".to_owned());
-        state.push_temporary("Combat", &tree).unwrap();
+        state.push_temporary("Combat", &modes).unwrap();
         assert_eq!(state.current(), "Combat");
         state.pop_temporary();
         assert_eq!(state.current(), "Default");
@@ -177,10 +173,10 @@ mod tests {
 
     #[test]
     fn nested_temporaries() {
-        let tree = test_tree();
+        let modes = test_modes();
         let mut state = ModeState::new("Default".to_owned());
-        state.push_temporary("Combat", &tree).unwrap();
-        state.push_temporary("Missiles", &tree).unwrap();
+        state.push_temporary("Combat", &modes).unwrap();
+        state.push_temporary("Missiles", &modes).unwrap();
         assert_eq!(state.current(), "Missiles");
         state.pop_temporary();
         assert_eq!(state.current(), "Combat");
@@ -197,9 +193,9 @@ mod tests {
 
     #[test]
     fn push_nonexistent_mode() {
-        let tree = test_tree();
+        let modes = test_modes();
         let mut state = ModeState::new("Default".to_owned());
-        let err = state.push_temporary("Space", &tree).unwrap_err();
+        let err = state.push_temporary("Space", &modes).unwrap_err();
         assert!(err.to_string().contains("Space"));
         // State unchanged.
         assert_eq!(state.current(), "Default");
@@ -207,20 +203,20 @@ mod tests {
 
     #[test]
     fn push_duplicate_detected() {
-        let tree = test_tree();
+        let modes = test_modes();
         let mut state = ModeState::new("Default".to_owned());
-        state.push_temporary("Combat", &tree).unwrap();
-        state.push_temporary("Missiles", &tree).unwrap();
+        state.push_temporary("Combat", &modes).unwrap();
+        state.push_temporary("Missiles", &modes).unwrap();
         // Try to push Default again (it's on the stack).
-        let err = state.push_temporary("Default", &tree).unwrap_err();
+        let err = state.push_temporary("Default", &modes).unwrap_err();
         assert!(err.to_string().contains("cycle"));
     }
 
     #[test]
     fn push_same_as_current() {
-        let tree = test_tree();
+        let modes = test_modes();
         let mut state = ModeState::new("Combat".to_owned());
-        let err = state.push_temporary("Combat", &tree).unwrap_err();
+        let err = state.push_temporary("Combat", &modes).unwrap_err();
         assert!(err.to_string().contains("cycle"));
     }
 
@@ -228,9 +224,9 @@ mod tests {
 
     #[test]
     fn rename_in_place_rewrites_current_and_stack() {
-        let tree = test_tree();
+        let modes = test_modes();
         let mut state = ModeState::new("Default".to_owned());
-        state.push_temporary("Combat", &tree).unwrap();
+        state.push_temporary("Combat", &modes).unwrap();
         state.rename_in_place("Combat", "Fighter");
         assert_eq!(state.current(), "Fighter");
         state.pop_temporary();
@@ -239,9 +235,9 @@ mod tests {
 
     #[test]
     fn rename_in_place_no_match_is_no_op() {
-        let tree = test_tree();
+        let modes = test_modes();
         let mut state = ModeState::new("Default".to_owned());
-        state.push_temporary("Combat", &tree).unwrap();
+        state.push_temporary("Combat", &modes).unwrap();
         state.rename_in_place("Nope", "Whatever");
         assert_eq!(state.current(), "Combat");
     }
@@ -250,9 +246,9 @@ mod tests {
 
     #[test]
     fn clear_stack_entries_drops_named() {
-        let tree = test_tree();
+        let modes = test_modes();
         let mut state = ModeState::new("Default".to_owned());
-        state.push_temporary("Combat", &tree).unwrap();
+        state.push_temporary("Combat", &modes).unwrap();
         state.clear_stack_entries(&["Default".to_owned()]);
         assert_eq!(state.current(), "Combat");
         state.pop_temporary();

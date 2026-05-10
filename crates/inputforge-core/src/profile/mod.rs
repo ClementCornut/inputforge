@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::action::{Action, Mapping};
 use crate::error::{EngineError, Result};
-use crate::mode::ModeTree;
+use crate::mode::Modes;
 use crate::types::{InputAddress, InputId};
 
 /// Discriminator for `reorder_mapping_in_group` that mirrors the GUI's
@@ -46,6 +46,8 @@ fn group_of_input(addr: &InputAddress) -> InputGroup {
 /// Profiles are persisted as TOML files. The file structure matches:
 ///
 /// ```toml
+/// modes = ["Default", "Combat", "Landing", "Missiles", "Guns"]
+///
 /// [profile]
 /// id = "550e8400-e29b-41d4-a716-446655440000"
 /// name = "My Profile"
@@ -54,10 +56,6 @@ fn group_of_input(addr: &InputAddress) -> InputGroup {
 /// [[devices]]
 /// id = "030000005e040000ea02000000007801"
 /// name = "VKB Gladiator NXT Left"
-///
-/// [modes]
-/// Default = ["Combat", "Landing"]
-/// Combat = ["Missiles", "Guns"]
 ///
 /// [[mappings]]
 /// mode = "Default"
@@ -68,7 +66,7 @@ pub struct Profile {
     id: ProfileId,
     name: String,
     devices: Vec<DeviceEntry>,
-    modes: ModeTree,
+    modes: Modes,
     mappings: Vec<Mapping>,
     calibrations: Vec<CalibrationEntry>,
     settings: ProfileSettings,
@@ -85,10 +83,10 @@ struct ProfileMeta {
 /// Internal TOML-level representation of the full file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ProfileRaw {
+    modes: Modes,
     profile: ProfileMeta,
     #[serde(default)]
     devices: Vec<DeviceEntry>,
-    modes: ModeTree,
     #[serde(default)]
     mappings: Vec<Mapping>,
     #[serde(default)]
@@ -101,7 +99,7 @@ impl Profile {
     pub fn new(
         name: String,
         devices: Vec<DeviceEntry>,
-        modes: ModeTree,
+        modes: Modes,
         mappings: Vec<Mapping>,
         calibrations: Vec<CalibrationEntry>,
         startup_mode: String,
@@ -123,7 +121,7 @@ impl Profile {
     ///
     /// Returns [`EngineError::ProfileParse`] on invalid TOML, or
     /// [`EngineError::InvalidConfig`] if validation fails (e.g., startup
-    /// mode not in tree, mapping references unknown mode).
+    /// mode not in modes, mapping references unknown mode).
     pub fn from_toml(s: &str) -> Result<Self> {
         let raw: ProfileRaw = toml::from_str(s)?;
         Self::from_raw(raw)
@@ -186,9 +184,9 @@ impl Profile {
         &self.devices
     }
 
-    /// Return the mode tree.
+    /// Return the modes.
     #[must_use]
-    pub fn modes(&self) -> &ModeTree {
+    pub fn modes(&self) -> &Modes {
         &self.modes
     }
 
@@ -365,18 +363,18 @@ impl Profile {
         self.calibrations = entries;
     }
 
-    /// Replace the mode tree wholesale.
+    /// Replace the modes wholesale.
     ///
-    /// Caller is responsible for ensuring the new tree is consistent with
+    /// Caller is responsible for ensuring the new list is consistent with
     /// `settings().startup_mode()` and any mode names referenced by mappings
     /// or action graphs. Engine handlers do this validation before calling.
-    pub fn set_modes(&mut self, modes: ModeTree) {
+    pub fn set_modes(&mut self, modes: Modes) {
         self.modes = modes;
     }
 
     /// Set the profile's startup mode.
     ///
-    /// Caller must validate that `mode` exists in the profile's mode tree.
+    /// Caller must validate that `mode` exists in the profile's modes.
     pub fn set_startup_mode(&mut self, mode: String) {
         self.settings.set_startup_mode(mode);
     }
@@ -387,7 +385,7 @@ impl Profile {
     /// destructive-confirm dialog's affected-mappings count.
     ///
     /// Infallible by contract, `DeleteMode` invokes this in a loop after the
-    /// tree mutation has already been applied, and a partial cascade would
+    /// mode-list mutation has already been applied, and a partial cascade would
     /// leave the profile in an inconsistent state. The signature must remain
     /// `usize`, never `Result<usize, _>`.
     pub fn remove_mappings_for_mode(&mut self, mode: &str) -> usize {
@@ -407,7 +405,7 @@ impl Profile {
     /// preserved across renames.
     ///
     /// Caller (`RenameMode` handler) composes this with
-    /// `ModeTree::with_renamed` and `set_modes` for the full cascade.
+    /// `Modes::with_renamed` and `set_modes` for the full cascade.
     pub fn rename_mode_refs(&mut self, from: &str, to: &str) -> usize {
         if from == to {
             return 0;
@@ -441,17 +439,17 @@ impl Profile {
 
     /// Validate and convert from the raw TOML representation.
     fn from_raw(raw: ProfileRaw) -> Result<Self> {
-        // Validate startup_mode exists in the mode tree.
+        // Validate startup_mode exists in the modes.
         if !raw.modes.contains(&raw.profile.startup_mode) {
             return Err(EngineError::InvalidConfig {
                 reason: format!(
-                    "startup_mode '{}' not found in mode tree",
+                    "startup_mode '{}' not found in modes",
                     raw.profile.startup_mode
                 ),
             });
         }
 
-        // Validate all mapping mode names exist in the tree.
+        // Validate all mapping mode names exist in the modes.
         for mapping in &raw.mappings {
             if !raw.modes.contains(&mapping.mode) {
                 return Err(EngineError::InvalidConfig {
@@ -488,13 +486,13 @@ impl Profile {
     /// Convert to the raw TOML representation for serialization.
     fn to_raw(&self) -> ProfileRaw {
         ProfileRaw {
+            modes: self.modes.clone(),
             profile: ProfileMeta {
                 id: self.id.clone(),
                 name: self.name.clone(),
                 startup_mode: self.settings.startup_mode.clone(),
             },
             devices: self.devices.clone(),
-            modes: self.modes.clone(),
             mappings: self.mappings.clone(),
             calibrations: self.calibrations.clone(),
         }
@@ -536,11 +534,8 @@ mod tests {
     use crate::types::{
         DeviceId, KeyCombo, KeyModifier, MergeOp, OutputAddress, OutputId, VJoyAxis,
     };
-    use std::collections::HashMap;
-
     fn test_profile_with_one_mode() -> Profile {
-        let map = HashMap::from([("Default".to_owned(), vec![])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         Profile::new(
             "T".to_owned(),
             vec![],
@@ -552,8 +547,7 @@ mod tests {
     }
 
     fn test_profile_with_two_modes() -> Profile {
-        let map = HashMap::from([("Default".to_owned(), vec!["Combat".to_owned()])]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned(), "Combat".to_owned()]).unwrap();
         Profile::new(
             "T".to_owned(),
             vec![],
@@ -564,17 +558,15 @@ mod tests {
         )
     }
 
-    fn test_modes() -> ModeTree {
-        let mut map = HashMap::new();
-        map.insert(
+    fn test_modes() -> Modes {
+        Modes::new(vec![
             "Default".to_owned(),
-            vec!["Combat".to_owned(), "Landing".to_owned()],
-        );
-        map.insert(
             "Combat".to_owned(),
-            vec!["Missiles".to_owned(), "Guns".to_owned()],
-        );
-        ModeTree::from_adjacency(&map).unwrap()
+            "Landing".to_owned(),
+            "Missiles".to_owned(),
+            "Guns".to_owned(),
+        ])
+        .unwrap()
     }
 
     fn test_input() -> InputAddress {
@@ -592,9 +584,7 @@ mod tests {
     }
 
     fn minimal_profile() -> Profile {
-        let mut map = HashMap::new();
-        map.insert("Default".to_owned(), vec![]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         Profile::new(
             "Test Profile".to_owned(),
@@ -636,13 +626,12 @@ mod tests {
     #[test]
     fn profile_from_toml_minimal() {
         let toml_str = r#"
+modes = ["Default"]
+
 [profile]
 id = "test-id-1234"
 name = "Minimal"
 startup_mode = "Default"
-
-[modes]
-Default = []
 
 [[mappings]]
 mode = "Default"
@@ -668,6 +657,8 @@ type = "invert"
     #[test]
     fn profile_from_toml_with_devices() {
         let toml_str = r#"
+modes = ["Default"]
+
 [profile]
 id = "test-id"
 name = "With Devices"
@@ -680,9 +671,6 @@ name = "Left Stick"
 [[devices]]
 id = "guid-002"
 name = "Right Stick"
-
-[modes]
-Default = []
 "#;
         let profile = Profile::from_toml(toml_str).unwrap();
         assert_eq!(profile.devices().len(), 2);
@@ -695,13 +683,12 @@ Default = []
     #[test]
     fn profile_invalid_startup_mode() {
         let toml_str = r#"
+modes = ["Default"]
+
 [profile]
 id = "test-id"
 name = "Bad"
 startup_mode = "NonExistent"
-
-[modes]
-Default = []
 "#;
         let err = Profile::from_toml(toml_str).unwrap_err();
         assert!(err.to_string().contains("startup_mode"));
@@ -711,13 +698,12 @@ Default = []
     #[test]
     fn profile_invalid_mapping_mode() {
         let toml_str = r#"
+modes = ["Default"]
+
 [profile]
 id = "test-id"
 name = "Bad"
 startup_mode = "Default"
-
-[modes]
-Default = []
 
 [[mappings]]
 mode = "Unknown"
@@ -774,7 +760,7 @@ type = "invert"
     // --- Complex profiles ---
 
     #[test]
-    fn profile_with_mode_tree() {
+    fn profile_with_modes() {
         let modes = test_modes();
         let profile = Profile::new(
             "Complex".to_owned(),
@@ -805,9 +791,7 @@ type = "invert"
 
     #[test]
     fn profile_with_deadzone_action() {
-        let mut map = HashMap::new();
-        map.insert("Default".to_owned(), vec![]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let profile = Profile::new(
             "Deadzone Test".to_owned(),
@@ -836,9 +820,7 @@ type = "invert"
 
     #[test]
     fn profile_with_conditional_actions() {
-        let mut map = HashMap::new();
-        map.insert("Default".to_owned(), vec![]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let profile = Profile::new(
             "Conditional Test".to_owned(),
@@ -910,9 +892,7 @@ type = "invert"
 
     #[test]
     fn profile_with_merge_axis_action() {
-        let mut map = HashMap::new();
-        map.insert("Default".to_owned(), vec![]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let profile = Profile::new(
             "Merge Test".to_owned(),
@@ -945,9 +925,7 @@ type = "invert"
 
     #[test]
     fn profile_with_calibrations_roundtrip() {
-        let mut map = HashMap::new();
-        map.insert("Default".to_owned(), vec![]);
-        let modes = ModeTree::from_adjacency(&map).unwrap();
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
         let calibrations = vec![
             CalibrationEntry {
@@ -991,13 +969,12 @@ type = "invert"
     #[test]
     fn profile_without_calibrations_loads() {
         let toml_str = r#"
+modes = ["Default"]
+
 [profile]
 id = "test-id"
 name = "No Cals"
 startup_mode = "Default"
-
-[modes]
-Default = []
 "#;
         let profile = Profile::from_toml(toml_str).unwrap();
         assert!(profile.calibrations().is_empty());
@@ -1006,13 +983,12 @@ Default = []
     #[test]
     fn profile_with_invalid_calibration_rejected() {
         let toml_str = r#"
+modes = ["Default"]
+
 [profile]
 id = "test-id"
 name = "Bad Cal"
 startup_mode = "Default"
-
-[modes]
-Default = []
 
 [[calibrations]]
 device = "dev-1"
@@ -1364,7 +1340,7 @@ enabled = true
     // --- set_modes / remove_mappings_for_mode ---
 
     #[test]
-    fn set_modes_replaces_tree() {
+    fn set_modes_replaces_modes() {
         let mut profile = minimal_profile();
         let new_modes = test_modes();
         profile.set_modes(new_modes.clone());

@@ -1,10 +1,9 @@
 // Rust guideline compliant 2026-03-07
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::error::{EngineError, Result};
-use crate::mode::ModeTree;
+use crate::mode::Modes;
 use crate::settings::AppSettings;
 
 use super::Profile;
@@ -149,13 +148,11 @@ pub(crate) fn create_profile_in(name: &str, dir: &Path) -> Result<PathBuf> {
         });
     }
 
-    let mut map = HashMap::new();
-    map.insert("Default".to_owned(), vec![]);
     #[expect(
         clippy::unwrap_used,
-        reason = "single-node adjacency map is always valid"
+        reason = "single-item default mode list is always valid"
     )]
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
 
     let profile = Profile::new(
         name.to_owned(),
