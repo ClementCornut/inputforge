@@ -1,5 +1,10 @@
 [workspace]
-members = ["crates/inputforge-core", "crates/inputforge-gui-dx", "crates/inputforge-app"]
+members = [
+    "crates/inputforge-core",
+    "crates/inputforge-gui-dx",
+    "crates/inputforge-app",
+    "crates/inputforge-autostart",
+]
 resolver = "2"
 
 [workspace.package]
@@ -85,9 +90,13 @@ dioxus-ssr = "0.7.9"
 scraper = "0.26.0"
 arboard = { version = "3.6.1", default-features = false }
 
+# Autostart (Windows registry, Linux XDG)
+auto-launch = "0.6"
+
 # Internal crates
 inputforge-core = { path = "crates/inputforge-core" }
 inputforge-gui-dx = { path = "crates/inputforge-gui-dx" }
+inputforge-autostart = { path = "crates/inputforge-autostart" }
 
 # Compiler lints (M-STATIC-VERIFICATION)
 [workspace.lints.rust]

@@ -1,0 +1,27 @@
+[package]
+name = "inputforge-autostart"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Autostart manager (Launch at OS sign-in) for InputForge"
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# `mock` exposes `MockAutostart` for downstream test code (e.g., inputforge-core tests).
+# Disabled by default so release binaries do not pull the mock in.
+mock = []
+
+[dependencies]
+auto-launch = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
