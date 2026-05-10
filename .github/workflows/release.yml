@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.85.0
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Validate release tag
         id: version
@@ -68,7 +68,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.85.0
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2
