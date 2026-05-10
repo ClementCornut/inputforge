@@ -46,10 +46,7 @@ fn run_commit(
 ) {
     match validate_mode_name(raw, modes, None) {
         NameValidation::Valid(name) => {
-            let _ = commands.send(EngineCommand::AddMode {
-                name: name.clone(),
-                parent: None,
-            });
+            let _ = commands.send(EngineCommand::AddMode { name: name.clone() });
             editing.set(name.clone());
             // Hand the new name to ModeTabs's pending_focus effect so it
             // focuses the new tab once the engine snapshot makes it

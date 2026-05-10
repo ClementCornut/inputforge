@@ -182,24 +182,19 @@ pub enum EngineCommand {
     /// auto-rolls back to it if the post-restore reload fails (D16).
     RestoreSnapshot { id: SnapshotId },
 
-    /// Add a new mode under the profile's existing root, or under `parent`
-    /// if specified. Default placement: as a child of the root mode.
-    AddMode {
-        name: String,
-        parent: Option<String>,
-    },
+    /// Add a new mode by appending it to the profile's mode list.
+    AddMode { name: String },
 
-    /// Rename a mode in the active profile's mode tree, cascading the rename
+    /// Rename a mode in the active profile's mode list, cascading the rename
     /// across all mappings, action graphs, and `startup_mode`.
     RenameMode { from: String, to: String },
 
-    /// Delete a mode and its descendants. Cascade-drops every mapping scoped
-    /// to any deleted mode. Errors if the mode is the root or its subtree
-    /// contains the profile's startup mode.
+    /// Delete a mode. Drops mappings scoped to that mode. Errors if the mode
+    /// is first in the list or is the profile's startup mode.
     DeleteMode { name: String },
 
     /// Set the profile's startup mode. Errors if the named mode is not in
-    /// the active profile's mode tree.
+    /// the active profile's mode list.
     SetDefaultMode { name: String },
 }
 
@@ -243,7 +238,6 @@ mod tests {
 
         let c = EngineCommand::AddMode {
             name: "Combat".to_owned(),
-            parent: None,
         };
         assert!(format!("{c:?}").contains("AddMode"));
 
@@ -273,11 +267,9 @@ mod tests {
     fn engine_command_derives_debug_partialeq() {
         let a = EngineCommand::AddMode {
             name: "Combat".to_owned(),
-            parent: None,
         };
         let b = EngineCommand::AddMode {
             name: "Combat".to_owned(),
-            parent: None,
         };
         assert_eq!(a, b, "PartialEq must hold across the new variants");
         let _: String = format!("{a:?}");

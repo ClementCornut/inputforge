@@ -101,7 +101,9 @@ pub fn create_in(
         content_hash,
         pinned: matches!(kind, SnapshotKind::Manual),
     };
-    // 6. Compose snapshot file body: [snapshot_meta] + profile body.
+    // 6. Compose snapshot file body with the profile first. Flat profile
+    // root keys must stay before `[snapshot_meta]`; otherwise TOML treats
+    // them as snapshot metadata fields.
     if !snap_dir.exists() {
         std::fs::create_dir_all(snap_dir).map_err(|source| EngineError::SnapshotDirCreate {
             path: snap_dir.to_path_buf(),
@@ -111,7 +113,7 @@ pub fn create_in(
     let meta_table = toml::to_string(&MetaWrapper {
         snapshot_meta: snap.clone(),
     })?;
-    let combined = format!("{meta_table}\n{body}");
+    let combined = format!("{body}\n{meta_table}");
     let snap_path = snap_dir.join(format!("{}.toml", snap.id));
     fs::atomic_write(&snap_path, combined.as_bytes())?;
 
@@ -358,12 +360,13 @@ fn mutate_meta_in(snap_dir: &Path, id: &SnapshotId, f: impl FnOnce(&mut Snapshot
             })?;
     f(&mut snap);
 
-    // Re-serialize: meta wrapper first, then the rest of the value.
+    // Re-serialize the profile first so flat root keys stay at document
+    // root instead of under `[snapshot_meta]`.
     let meta_str = toml::to_string(&MetaWrapper {
         snapshot_meta: snap.clone(),
     })?;
     let rest_str = toml::to_string(&value)?;
-    let combined = format!("{meta_str}\n{rest_str}");
+    let combined = format!("{rest_str}\n{meta_str}");
 
     // Read the index BEFORE the destructive op so a transient list_in()
     // failure leaves the snapshot file's meta untouched.

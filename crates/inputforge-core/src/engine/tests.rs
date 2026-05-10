@@ -5,7 +5,6 @@
 //! This module is feature-gated behind `test-util` so it can access
 //! the mock I/O implementations.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,7 +17,7 @@ use crate::action::{Action, Condition, Mapping, ModeChangeStrategy};
 use crate::callbacks::{CallbackRegistry, ReleaseCallback};
 use crate::device::mock::{MockDeviceHider, MockInputSource};
 use crate::device::traits::HotplugEvent;
-use crate::mode::{ModeState, ModeTree};
+use crate::mode::{ModeState, Modes};
 use crate::output::mock::{KeyboardCall, MockKeyboardSink, MockOutputSink, OutputCall};
 use crate::pipeline::PipelineOutput;
 use crate::profile::Profile;
@@ -96,26 +95,29 @@ fn button_event(index: u8, pressed: bool) -> InputEvent {
     }
 }
 
-/// Build a minimal `ModeTree` with Default at root.
-fn simple_mode_tree() -> ModeTree {
-    let map = HashMap::from([("Default".to_owned(), vec![])]);
-    ModeTree::from_adjacency(&map).unwrap()
+fn simple_modes() -> Modes {
+    Modes::new(vec!["Default".to_owned()]).unwrap()
 }
 
-/// Build a `ModeTree` with Default → Combat.
-fn two_mode_tree() -> ModeTree {
-    let map = HashMap::from([("Default".to_owned(), vec!["Combat".to_owned()])]);
-    ModeTree::from_adjacency(&map).unwrap()
+fn two_modes() -> Modes {
+    Modes::new(vec!["Default".to_owned(), "Combat".to_owned()]).unwrap()
 }
 
-/// Build a `ModeTree` with Default → Shift.
-fn shift_mode_tree() -> ModeTree {
-    let map = HashMap::from([("Default".to_owned(), vec!["Shift".to_owned()])]);
-    ModeTree::from_adjacency(&map).unwrap()
+fn shift_modes() -> Modes {
+    Modes::new(vec!["Default".to_owned(), "Shift".to_owned()]).unwrap()
 }
 
-/// Build a profile with the given mode tree and mappings.
-fn make_profile(modes: ModeTree, mappings: Vec<Mapping>) -> Profile {
+fn three_modes() -> Modes {
+    Modes::new(vec![
+        "Default".to_owned(),
+        "Combat".to_owned(),
+        "Landing".to_owned(),
+    ])
+    .unwrap()
+}
+
+/// Build a profile with the given modes and mappings.
+fn make_profile(modes: Modes, mappings: Vec<Mapping>) -> Profile {
     Profile::new(
         "Test".to_owned(),
         vec![],
@@ -158,7 +160,7 @@ fn test_engine_with_settings_path(settings: AppSettings) -> (Engine, PathBuf) {
         std::env::temp_dir().join(format!("inputforge-settings-{}.toml", ulid::Ulid::new()));
     settings.save_to(&settings_path).unwrap();
 
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
     state.write().engine_status = EngineStatus::Running;
     let (_tx, rx) = mpsc::channel();
@@ -190,7 +192,7 @@ fn process_outputs_set_axis() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
-    let tree = simple_mode_tree();
+    let tree = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(0);
@@ -226,7 +228,7 @@ fn process_outputs_set_button() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
-    let tree = simple_mode_tree();
+    let tree = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(0);
@@ -268,7 +270,7 @@ fn process_outputs_send_key_only_on_press() {
         pressed: false,
     }];
 
-    let tree = simple_mode_tree();
+    let tree = simple_modes();
     let trigger = button_addr(0);
 
     // Pressed → key sent.
@@ -310,7 +312,7 @@ fn process_outputs_send_key_only_on_press() {
 
 #[test]
 fn process_outputs_change_mode_switch_to() {
-    let tree = two_mode_tree();
+    let tree = two_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(0);
@@ -341,7 +343,7 @@ fn process_outputs_change_mode_switch_to() {
 
 #[test]
 fn process_outputs_temporary_mode_registers_callback() {
-    let tree = shift_mode_tree();
+    let tree = shift_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(5);
@@ -377,7 +379,7 @@ fn process_outputs_temporary_mode_registers_callback() {
 
 #[test]
 fn refresh_axes_reprocesses_cached_values() {
-    let tree = simple_mode_tree();
+    let tree = simple_modes();
     let mapping = Mapping {
         input: axis_addr(0),
         mode: "Default".to_owned(),
@@ -419,7 +421,7 @@ fn refresh_axes_reprocesses_cached_values() {
 
 #[test]
 fn refresh_axes_skips_mode_changes_and_keys() {
-    let tree = two_mode_tree();
+    let tree = two_modes();
     let mapping = Mapping {
         input: axis_addr(0),
         mode: "Default".to_owned(),
@@ -477,7 +479,7 @@ fn tick_processes_axis_event_to_output() {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     let mut input = MockInputSource::default();
     input.events.push(axis_event(0, 0.5));
@@ -511,7 +513,7 @@ fn tick_merge_axis_secondary_event_refreshes_primary_mapping_output() {
             },
         ],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     let mut input = MockInputSource::default();
     input.events.push(axis_event(0, 0.2));
@@ -552,7 +554,7 @@ fn tick_conditional_button_predicate_event_refreshes_primary_mapping_output() {
             }],
         }],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     let mut input = MockInputSource::default();
     input.events.push(axis_event(0, 0.6));
@@ -595,7 +597,7 @@ fn tick_conditional_axis_predicate_event_refreshes_primary_mapping_output() {
             }],
         }],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     let mut input = MockInputSource::default();
     input.events.push(axis_event(0, 0.4));
@@ -625,7 +627,7 @@ fn tick_unrelated_input_event_does_not_refresh_mapping_output() {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     let mut input = MockInputSource::default();
     input.events.push(axis_event(0, 0.2));
@@ -675,7 +677,7 @@ fn tick_dependent_mapping_runs_once_when_input_is_referenced_twice() {
             },
         ],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     let mut input = MockInputSource::default();
     input.events.push(axis_event(0, 0.2));
@@ -707,7 +709,7 @@ fn tick_updates_current_mode_in_state() {
             },
         }],
     };
-    let profile = make_profile(two_mode_tree(), vec![mapping]);
+    let profile = make_profile(two_modes(), vec![mapping]);
 
     let mut input = MockInputSource::default();
     input.events.push(button_event(0, true));
@@ -736,7 +738,7 @@ fn tick_temporary_mode_press_and_release_full_cycle() {
             },
         }],
     };
-    let profile = make_profile(shift_mode_tree(), vec![mapping]);
+    let profile = make_profile(shift_modes(), vec![mapping]);
 
     let mut input = MockInputSource::default();
     input.events.push(button_event(0, true));
@@ -776,7 +778,7 @@ fn tick_skips_processing_when_paused() {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     let mut input = MockInputSource::default();
     input.events.push(axis_event(0, 0.5));
@@ -795,7 +797,7 @@ fn tick_skips_processing_when_paused() {
 
 #[test]
 fn tick_handles_activate_command() {
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
 
     let input = MockInputSource::default();
     let (mut engine, state, tx) = make_engine(input, profile);
@@ -811,7 +813,7 @@ fn tick_handles_activate_command() {
 
 #[test]
 fn tick_handles_shutdown_command() {
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     let input = MockInputSource::default();
     let (mut engine, _state, tx) = make_engine(input, profile);
 
@@ -823,7 +825,7 @@ fn tick_handles_shutdown_command() {
 
 #[test]
 fn tick_hotplug_connected_adds_device() {
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
 
     let device_info = DeviceInfo {
         id: DeviceId("joy-1".to_owned()),
@@ -852,7 +854,7 @@ fn tick_hotplug_connected_adds_device() {
 
 #[test]
 fn connected_hotplug_upserts_device_registry() {
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     let device = DeviceId("dev-1".to_owned());
     let info = DeviceInfo {
         id: device.clone(),
@@ -902,7 +904,7 @@ fn connected_hotplug_upserts_device_registry() {
 
 #[test]
 fn tick_hotplug_disconnected_marks_device() {
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
 
     let device_info = DeviceInfo {
         id: DeviceId("joy-1".to_owned()),
@@ -958,7 +960,7 @@ fn tick_release_pops_temporary_mode_before_mapping() {
             if_false: Vec::new(),
         }],
     };
-    let profile = make_profile(shift_mode_tree(), vec![mapping]);
+    let profile = make_profile(shift_modes(), vec![mapping]);
 
     // First tick: press button → pushes temporary Shift mode.
     let mut input = MockInputSource::default();
@@ -983,7 +985,7 @@ fn tick_release_pops_temporary_mode_before_mapping() {
 
 #[test]
 fn drop_flushes_output_without_panic() {
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     let input = MockInputSource::default();
     let (engine, _state, _tx) = make_engine(input, profile);
 
@@ -1008,15 +1010,6 @@ fn hat_event(index: u8, direction: HatDirection) -> InputEvent {
         value: InputValue::Hat { direction },
         timestamp: Instant::now(),
     }
-}
-
-/// Build a `ModeTree` with Default → Combat and Default → Landing.
-fn three_mode_tree() -> ModeTree {
-    let map = HashMap::from([(
-        "Default".to_owned(),
-        vec!["Combat".to_owned(), "Landing".to_owned()],
-    )]);
-    ModeTree::from_adjacency(&map).unwrap()
 }
 
 /// Build an engine without a loaded profile.
@@ -1109,9 +1102,7 @@ impl EngineHarness {
             ._settings_dir
             .path()
             .join(format!("{}.toml", sanitize_filename(name)));
-        make_profile(simple_mode_tree(), vec![])
-            .save(&path)
-            .unwrap();
+        make_profile(simple_modes(), vec![]).save(&path).unwrap();
         path
     }
 
@@ -1393,7 +1384,7 @@ fn process_outputs_set_axis_wrong_output_id() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
-    let tree = simple_mode_tree();
+    let tree = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(0);
@@ -1422,7 +1413,7 @@ fn process_outputs_set_button_wrong_output_id() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
-    let tree = simple_mode_tree();
+    let tree = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(0);
@@ -1444,7 +1435,7 @@ fn process_outputs_set_button_wrong_output_id() {
 #[test]
 fn process_outputs_mode_change_no_op() {
     // Switching to the current mode should not set mode_changed.
-    let tree = two_mode_tree();
+    let tree = two_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(0);
@@ -1484,7 +1475,7 @@ fn refresh_axes_set_button_path() {
     // Since the pipeline always produces SetAxis for axis inputs, we test
     // the refresh SetButton path via direct process_pipeline_outputs.
     // This is the closest we can get without mocking the pipeline.
-    let tree = simple_mode_tree();
+    let tree = simple_modes();
     let mapping = Mapping {
         input: button_addr(0),
         mode: "Default".to_owned(),
@@ -1567,7 +1558,7 @@ fn tick_unmapped_input_continues() {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     let mut input = MockInputSource::default();
     // Button 99 has no mapping → hits the `continue` path.
@@ -1599,7 +1590,7 @@ fn tick_hat_event_produces_zero_value() {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     let mut input = MockInputSource::default();
     input.events.push(hat_event(0, HatDirection::N));
@@ -1614,7 +1605,7 @@ fn tick_hat_event_produces_zero_value() {
 
 #[test]
 fn tick_custom_release_callback_fires() {
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
 
     let mut input = MockInputSource::default();
     input.events.push(button_event(0, false));
@@ -1638,7 +1629,7 @@ fn tick_custom_release_callback_fires() {
 
 #[test]
 fn tick_handles_deactivate_command() {
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     let input = MockInputSource::default();
     let (mut engine, state, tx) = make_engine(input, profile);
 
@@ -1650,7 +1641,7 @@ fn tick_handles_deactivate_command() {
 
 #[test]
 fn tick_handles_pause_command() {
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     let input = MockInputSource::default();
     let (mut engine, state, tx) = make_engine(input, profile);
 
@@ -1662,7 +1653,7 @@ fn tick_handles_pause_command() {
 
 #[test]
 fn tick_channel_disconnected_sets_shutdown() {
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     let input = MockInputSource::default();
     let (mut engine, _state, tx) = make_engine(input, profile);
 
@@ -1676,7 +1667,7 @@ fn tick_channel_disconnected_sets_shutdown() {
 
 #[test]
 fn tick_hotplug_reconnect_updates_existing() {
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
 
     let original_info = DeviceInfo {
         id: DeviceId("joy-1".to_owned()),
@@ -1729,7 +1720,7 @@ fn tick_hotplug_reconnect_updates_existing() {
 
 #[test]
 fn engine_debug_format() {
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     let input = MockInputSource::default();
     let (engine, _state, _tx) = make_engine(input, profile);
 
@@ -1753,7 +1744,7 @@ fn tick_handles_load_profile_command() {
     let (mut engine, state, tx) = make_engine_no_profile(input);
 
     // Create a minimal profile and save it to a temp file.
-    let profile = make_profile(two_mode_tree(), vec![]);
+    let profile = make_profile(two_modes(), vec![]);
     let toml_str = profile.to_toml().unwrap();
 
     let dir = std::env::temp_dir().join("inputforge_engine_test");
@@ -1781,7 +1772,7 @@ fn tick_handles_load_profile_command() {
 fn tick_set_calibration_command_updates_store() {
     use crate::processing::Calibration;
 
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     let input = MockInputSource::default();
     let (mut engine, state, tx) = make_engine(input, profile);
 
@@ -1812,7 +1803,7 @@ fn tick_axis_with_calibration_applies_transform() {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     // Calibration over the normalised range [-1.0, 1.0] with no centre
     // deadzone.  Input of 0.5 passes through calibration unchanged (identity
@@ -1844,9 +1835,7 @@ fn tick_axis_with_calibration_applies_transform() {
 fn with_profile_loads_calibrations() {
     use crate::profile::{CalibrationEntry, Profile};
 
-    let mut map = HashMap::new();
-    map.insert("Default".to_owned(), vec![]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
+    let modes = simple_modes();
 
     let calibrations = vec![CalibrationEntry {
         device: DeviceId("dev-1".to_owned()),
@@ -1883,7 +1872,7 @@ fn activate_refreshes_outputs_from_cached_axis_values() {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     // Engine starts Stopped so the first tick populates the input cache
     // without evaluating mappings.
@@ -1940,7 +1929,7 @@ fn set_mapping_refreshes_outputs_from_cached_axis_values() {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     // Write the profile to a temp file so set_mapping can persist it.
     let dir = std::env::temp_dir().join("inputforge_engine_test");
@@ -1999,8 +1988,8 @@ fn set_mapping_refreshes_outputs_from_cached_axis_values() {
 
 /// Build an engine whose profile is already persisted to a temp file.
 ///
-/// Uses a simple single-mode tree (`Default` only).  The snapshot tests
-/// only need a real on-disk file and do not care about the mode-tree shape.
+/// Uses a simple single-mode list (`Default` only).  The snapshot tests
+/// only need a real on-disk file and do not care about the mode-list shape.
 ///
 /// Returns `(engine, state, tx, dir, path)` where:
 /// - `dir` is the [`tempfile::TempDir`] whose lifetime keeps the temp
@@ -2025,7 +2014,7 @@ fn make_engine_with_simple_disk_profile() -> (
     let library_dir = dir.path().join("profiles");
     std::fs::create_dir_all(&library_dir).unwrap();
     let path = library_dir.join("TFM_Throttle.toml");
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     profile.save(&path).unwrap();
     AppSettings::default().save_to(&settings_path).unwrap();
 
@@ -2057,7 +2046,7 @@ fn make_engine_with_simple_disk_profile() -> (
 
 #[test]
 fn switch_mode_changes_current_mode() {
-    let profile = make_profile(three_mode_tree(), vec![]);
+    let profile = make_profile(three_modes(), vec![]);
     let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
 
     tx.send(EngineCommand::SwitchMode {
@@ -2071,7 +2060,7 @@ fn switch_mode_changes_current_mode() {
 
 #[test]
 fn switch_mode_unknown_returns_mode_not_found() {
-    let profile = make_profile(three_mode_tree(), vec![]);
+    let profile = make_profile(three_modes(), vec![]);
     let (mut engine, state, _tx) = make_engine(MockInputSource::default(), profile);
 
     let err = engine.handle_command(EngineCommand::SwitchMode {
@@ -2090,7 +2079,7 @@ fn switch_mode_unknown_returns_mode_not_found() {
 
 #[test]
 fn switch_mode_idempotent_on_same_mode() {
-    let profile = make_profile(three_mode_tree(), vec![]);
+    let profile = make_profile(three_modes(), vec![]);
     let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
 
     tx.send(EngineCommand::SwitchMode {
@@ -2111,7 +2100,7 @@ fn switch_mode_idempotent_on_same_mode() {
 
 #[test]
 fn switch_mode_rotates_to_different_mode() {
-    let profile = make_profile(three_mode_tree(), vec![]);
+    let profile = make_profile(three_modes(), vec![]);
     let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
 
     tx.send(EngineCommand::SwitchMode {
@@ -2143,7 +2132,7 @@ fn reload_settings_picks_up_disk_edits() {
     )
     .unwrap();
 
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
     state.write().engine_status = EngineStatus::Running;
     let (tx, rx) = mpsc::channel();
@@ -2320,7 +2309,7 @@ fn load_profile_creates_auto_session_start_snapshot() {
     let library_dir = dir.path().join("profiles");
     std::fs::create_dir_all(&library_dir).unwrap();
     let path = library_dir.join("TFM_Throttle.toml");
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     profile.save(&path).unwrap();
     AppSettings::default().save_to(&settings_path).unwrap();
 
@@ -2361,7 +2350,7 @@ fn load_profile_dedupes_auto_session_start_on_identical_content() {
     let library_dir = dir.path().join("profiles");
     std::fs::create_dir_all(&library_dir).unwrap();
     let path = library_dir.join("TFM_Throttle.toml");
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     profile.save(&path).unwrap();
     AppSettings::default().save_to(&settings_path).unwrap();
 
@@ -2404,7 +2393,7 @@ fn engine_loadprofile_dedup_respects_skip_if_unchanged_false() {
     let library_dir = dir.path().join("profiles");
     std::fs::create_dir_all(&library_dir).unwrap();
     let path = library_dir.join("TFM_Throttle.toml");
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     profile.save(&path).unwrap();
 
     // Persist settings with skip_if_unchanged = false on disk so the
@@ -2467,8 +2456,8 @@ fn restore_snapshot_round_trip() {
     let v1 = crate::snapshot::list(&path).unwrap()[0].clone();
 
     // Mutate the live profile by hand to a different (still-valid) body.
-    let new_body = "[profile]\nid = \"550e8400-e29b-41d4-a716-446655440099\"\n\
-        name = \"v2\"\nstartup_mode = \"Default\"\n\n[modes]\nDefault = []\n";
+    let new_body = "modes = [\"Default\"]\n[profile]\nid = \"550e8400-e29b-41d4-a716-446655440099\"\n\
+        name = \"v2\"\nstartup_mode = \"Default\"\n";
     std::fs::write(&path, new_body).unwrap();
     // Force an explicit reload so engine sees v2 in-memory before restoring.
     tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
@@ -2508,7 +2497,7 @@ fn remove_mapping_round_trip_persists_removal_to_disk() {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     let dir = std::env::temp_dir().join("inputforge_remove_mapping_test");
     std::fs::create_dir_all(&dir).unwrap();
@@ -2567,7 +2556,7 @@ fn remove_mapping_no_op_for_unknown_input_does_not_panic() {
             output: vjoy_axis_output(1, VJoyAxis::X),
         }],
     };
-    let profile = make_profile(simple_mode_tree(), vec![mapping]);
+    let profile = make_profile(simple_modes(), vec![mapping]);
 
     let dir = std::env::temp_dir().join("inputforge_remove_mapping_noop_test");
     std::fs::create_dir_all(&dir).unwrap();
@@ -2657,7 +2646,7 @@ fn sequential_eight_then_ninth_evicts_oldest() {
     let library_dir = dir.path().join("profiles");
     std::fs::create_dir_all(&library_dir).unwrap();
     let path = library_dir.join("TFM_Throttle.toml");
-    let profile = make_profile(simple_mode_tree(), vec![]);
+    let profile = make_profile(simple_modes(), vec![]);
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile.clone())));
@@ -2793,7 +2782,7 @@ fn make_engine_with_disk_profile() -> (
 ) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("profile.toml");
-    let profile = make_profile(three_mode_tree(), vec![]);
+    let profile = make_profile(three_modes(), vec![]);
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
@@ -2817,46 +2806,28 @@ fn make_engine_with_disk_profile() -> (
 }
 
 #[test]
-fn add_mode_appends_under_root_by_default() {
+fn add_mode_appends_to_modes_list() {
     let (mut engine, state, tx, _dir, path) = make_engine_with_disk_profile();
     tx.send(EngineCommand::AddMode {
         name: "Approach".to_owned(),
-        parent: None,
     })
     .unwrap();
     engine.tick().unwrap();
 
     let s = state.read();
     let modes = s.active_profile.as_ref().unwrap().modes();
-    assert!(modes.contains("Approach"));
-    let root = modes.root();
-    assert!(root.children().iter().any(|c| c.name() == "Approach"));
+    assert_eq!(
+        modes.all_modes(),
+        vec!["Default", "Combat", "Landing", "Approach"]
+    );
 
     // Persisted to disk.
     drop(s);
     let reloaded = Profile::load(&path).unwrap();
-    assert!(reloaded.modes().contains("Approach"));
-}
-
-#[test]
-fn add_mode_under_named_parent() {
-    let (mut engine, state, tx, _dir, _path) = make_engine_with_disk_profile();
-    tx.send(EngineCommand::AddMode {
-        name: "Bombs".to_owned(),
-        parent: Some("Combat".to_owned()),
-    })
-    .unwrap();
-    engine.tick().unwrap();
-
-    let s = state.read();
-    let combat = s
-        .active_profile
-        .as_ref()
-        .unwrap()
-        .modes()
-        .find_mode("Combat")
-        .unwrap();
-    assert!(combat.children().iter().any(|c| c.name() == "Bombs"));
+    assert_eq!(
+        reloaded.modes().all_modes(),
+        vec!["Default", "Combat", "Landing", "Approach"]
+    );
 }
 
 #[test]
@@ -2864,7 +2835,6 @@ fn add_mode_rejects_empty_name() {
     let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
     let err = engine.handle_command(EngineCommand::AddMode {
         name: String::new(),
-        parent: None,
     });
     assert!(err.is_err(), "expected error on empty name");
     // Profile unchanged.
@@ -2882,10 +2852,7 @@ fn add_mode_rejects_empty_name() {
 fn add_mode_rejects_overlong_name() {
     let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
     let overlong = "x".repeat(65);
-    let err = engine.handle_command(EngineCommand::AddMode {
-        name: overlong,
-        parent: None,
-    });
+    let err = engine.handle_command(EngineCommand::AddMode { name: overlong });
     assert!(err.is_err(), "expected error on 65-grapheme name");
     let s = state.read();
     let modes = s.active_profile.as_ref().unwrap().modes().all_modes();
@@ -2897,7 +2864,6 @@ fn add_mode_rejects_duplicate_name() {
     let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
     let err = engine.handle_command(EngineCommand::AddMode {
         name: "Combat".to_owned(),
-        parent: None,
     });
     assert!(err.is_err(), "expected error on duplicate name");
     assert_eq!(
@@ -2914,22 +2880,11 @@ fn add_mode_rejects_duplicate_name() {
 }
 
 #[test]
-fn add_mode_rejects_unknown_parent() {
-    let (mut engine, _state, _tx, _dir, _path) = make_engine_with_disk_profile();
-    let err = engine.handle_command(EngineCommand::AddMode {
-        name: "Foo".to_owned(),
-        parent: Some("Nope".to_owned()),
-    });
-    assert!(err.is_err());
-}
-
-#[test]
 fn add_mode_no_active_profile_is_no_op() {
     let (mut engine, state, _tx) = make_engine_no_profile(MockInputSource::default());
     engine
         .handle_command(EngineCommand::AddMode {
             name: "Foo".to_owned(),
-            parent: None,
         })
         .unwrap();
     assert!(state.read().active_profile.is_none());
@@ -2944,7 +2899,6 @@ fn add_mode_returns_err_when_persist_fails() {
     drop(s);
     let err = engine.handle_command(EngineCommand::AddMode {
         name: "Approach".to_owned(),
-        parent: None,
     });
     assert!(err.is_err(), "expected persistence error to propagate");
     // In-memory mutation is intentionally retained.
@@ -2964,7 +2918,7 @@ fn add_mode_returns_err_when_persist_fails() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn rename_mode_renames_tree_and_persists() {
+fn rename_mode_renames_modes_and_persists() {
     let (mut engine, state, tx, _dir, path) = make_engine_with_disk_profile();
     tx.send(EngineCommand::RenameMode {
         from: "Combat".to_owned(),
@@ -2993,7 +2947,7 @@ fn rename_mode_cascades_into_mappings() {
         name: None,
         actions: vec![Action::Invert],
     }];
-    let profile = make_profile(three_mode_tree(), mappings);
+    let profile = make_profile(three_modes(), mappings);
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
@@ -3196,7 +3150,7 @@ fn rename_mode_rewrites_switch_to_action() {
             },
         }],
     }];
-    let profile = make_profile(three_mode_tree(), mappings);
+    let profile = make_profile(three_modes(), mappings);
     profile.save(&path).unwrap();
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
     let mut s = state.write();
@@ -3249,7 +3203,7 @@ fn rename_mode_rewrites_temporary_action() {
             },
         }],
     }];
-    let profile = make_profile(three_mode_tree(), mappings);
+    let profile = make_profile(three_modes(), mappings);
     profile.save(&path).unwrap();
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
     let mut s = state.write();
@@ -3381,23 +3335,10 @@ fn delete_mode_removes_leaf() {
 }
 
 #[test]
-fn delete_mode_cascades_subtree_and_mappings() {
+fn delete_mode_drops_mappings_for_deleted_mode() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("profile.toml");
 
-    // Build a tree with Combat → [Missiles, Guns] so DeleteMode("Combat")
-    // hits children + mappings.
-    let map = HashMap::from([
-        (
-            "Default".to_owned(),
-            vec!["Combat".to_owned(), "Landing".to_owned()],
-        ),
-        (
-            "Combat".to_owned(),
-            vec!["Missiles".to_owned(), "Guns".to_owned()],
-        ),
-    ]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
     let mappings = vec![
         Mapping {
             input: axis_addr(0),
@@ -3407,7 +3348,7 @@ fn delete_mode_cascades_subtree_and_mappings() {
         },
         Mapping {
             input: axis_addr(1),
-            mode: "Missiles".to_owned(),
+            mode: "Landing".to_owned(),
             name: None,
             actions: vec![Action::Invert],
         },
@@ -3418,7 +3359,7 @@ fn delete_mode_cascades_subtree_and_mappings() {
             actions: vec![Action::Invert],
         },
     ];
-    let profile = make_profile(modes, mappings);
+    let profile = make_profile(three_modes(), mappings);
     profile.save(&path).unwrap();
 
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
@@ -3448,21 +3389,25 @@ fn delete_mode_cascades_subtree_and_mappings() {
     let s = state.read();
     let modes = s.active_profile.as_ref().unwrap().modes();
     assert!(!modes.contains("Combat"));
-    assert!(!modes.contains("Missiles"));
-    assert!(!modes.contains("Guns"));
     assert!(modes.contains("Default"));
+    assert!(modes.contains("Landing"));
     let mappings = s.active_profile.as_ref().unwrap().mappings();
-    assert_eq!(mappings.len(), 1);
-    assert_eq!(mappings[0].mode, "Default");
+    assert_eq!(mappings.len(), 2);
+    assert!(mappings.iter().all(|mapping| mapping.mode != "Combat"));
+    assert!(mappings.iter().any(|mapping| mapping.mode == "Default"));
+    assert!(mappings.iter().any(|mapping| mapping.mode == "Landing"));
 }
 
 #[test]
-fn delete_mode_rejects_root() {
+fn delete_mode_rejects_first_mode() {
     let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
     let err = engine.handle_command(EngineCommand::DeleteMode {
         name: "Default".to_owned(),
     });
-    assert!(err.is_err());
+    assert!(matches!(
+        err,
+        Err(crate::error::EngineError::InvalidConfig { .. })
+    ));
     assert!(
         state
             .read()
@@ -3475,10 +3420,10 @@ fn delete_mode_rejects_root() {
 }
 
 #[test]
-fn delete_mode_rejects_when_subtree_contains_startup_mode() {
+fn delete_mode_rejects_startup_mode() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("profile.toml");
-    let modes = three_mode_tree();
+    let modes = three_modes();
     // Profile that boots into Combat; DeleteMode("Combat") must reject.
     let profile = Profile::new(
         "BootCombat".to_owned(),
@@ -3510,10 +3455,7 @@ fn delete_mode_rejects_when_subtree_contains_startup_mode() {
     let err = engine.handle_command(EngineCommand::DeleteMode {
         name: "Combat".to_owned(),
     });
-    assert!(
-        err.is_err(),
-        "must reject when subtree contains startup_mode"
-    );
+    assert!(err.is_err(), "must reject when deleting startup_mode");
     assert!(
         state
             .read()
@@ -3533,6 +3475,7 @@ fn delete_mode_resets_current_when_referenced() {
     })
     .unwrap();
     engine.tick().unwrap();
+    assert_eq!(engine.mode_state.current(), "Combat");
 
     tx.send(EngineCommand::DeleteMode {
         name: "Combat".to_owned(),
@@ -3544,6 +3487,11 @@ fn delete_mode_resets_current_when_referenced() {
         state.read().current_mode,
         "Default",
         "current_mode resets to startup"
+    );
+    assert_eq!(
+        engine.mode_state.current(),
+        "Default",
+        "ModeState::current resets to startup"
     );
 }
 
@@ -3557,85 +3505,40 @@ fn delete_mode_rejects_unknown_name() {
 }
 
 #[test]
-fn delete_mode_resets_when_active_is_descendant() {
-    // Spec invariant: deleting an ancestor of the active mode must reset
-    // current_mode to startup_mode and purge every removed name from the
-    // ModeState stack.
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("profile.toml");
-    let map = HashMap::from([
-        (
-            "Default".to_owned(),
-            vec!["Combat".to_owned(), "Landing".to_owned()],
-        ),
-        (
-            "Combat".to_owned(),
-            vec!["Missiles".to_owned(), "Guns".to_owned()],
-        ),
-    ]);
-    let modes = ModeTree::from_adjacency(&map).unwrap();
-    let profile = make_profile(modes, vec![]);
-    profile.save(&path).unwrap();
-
-    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    let mut s = state.write();
-    s.profile_path = Some(path.clone());
-    s.engine_status = EngineStatus::Running;
-    drop(s);
-    let (tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockDeviceHider::default()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-        Box::new(MockAutostart::new()),
-    );
-
-    // Switch into Missiles (descendant of Combat).
-    tx.send(EngineCommand::SwitchMode {
-        mode: "Missiles".to_owned(),
-    })
-    .unwrap();
-    engine.tick().unwrap();
-    // Push another descendant so the stack is non-trivial.
-    let tree = state
+fn delete_mode_clears_deleted_mode_from_temporary_stack() {
+    let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
+    let modes = state
         .read()
         .active_profile
         .as_ref()
         .unwrap()
         .modes()
         .clone();
-    engine.mode_state.push_temporary("Guns", &tree).unwrap();
 
-    // Delete Combat, every descendant (Missiles, Guns) and Combat itself
-    // must be purged from current_mode and the stack.
-    tx.send(EngineCommand::DeleteMode {
-        name: "Combat".to_owned(),
-    })
-    .unwrap();
-    engine.tick().unwrap();
+    engine.mode_state.switch_to("Combat", &modes).unwrap();
+    engine.mode_state.push_temporary("Landing", &modes).unwrap();
+    assert_eq!(engine.mode_state.current(), "Landing");
 
-    let s = state.read();
-    assert_eq!(
-        s.current_mode, "Default",
-        "current_mode must reset to startup"
+    engine
+        .handle_command(EngineCommand::DeleteMode {
+            name: "Combat".to_owned(),
+        })
+        .unwrap();
+
+    assert!(
+        !state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .modes()
+            .contains("Combat")
     );
-    assert_eq!(
-        engine.mode_state.current(),
-        "Default",
-        "ModeState::current resets"
-    );
-    // pop_temporary is a no-op on an empty stack, the post-delete current
-    // stays "Default".
     engine.mode_state.pop_temporary();
     assert_eq!(
         engine.mode_state.current(),
-        "Default",
-        "stack must be purged of removed names"
+        "Landing",
+        "deleted stack entry must not be restored"
     );
 }
 

@@ -98,9 +98,9 @@ fn validate_mode_name_for_engine(
 fn read_profile_metadata(path: &Path) -> (u32, Option<DateTime<Utc>>) {
     let mode_count = match Profile::load(path) {
         Ok(profile) => {
-            // The mode count is bounded by tree depth caps elsewhere in
+            // The mode count is bounded by profile validation elsewhere in
             // the engine; saturating to u32::MAX keeps the cast lossless
-            // for any plausible tree size.
+            // for any plausible mode-list size.
             u32::try_from(profile.modes().all_modes().len()).unwrap_or(u32::MAX)
         }
         Err(e) => {
@@ -527,7 +527,7 @@ impl Engine {
                 if self.mode_state.current() == mode {
                     return Ok(());
                 }
-                let tree = if let Some(p) = self.state.read().active_profile.as_ref() {
+                let modes = if let Some(p) = self.state.read().active_profile.as_ref() {
                     p.modes().clone()
                 } else {
                     tracing::warn!(
@@ -536,7 +536,7 @@ impl Engine {
                     );
                     return Ok(());
                 };
-                self.mode_state.switch_to(&mode, &tree)?;
+                self.mode_state.switch_to(&mode, &modes)?;
                 let mut state = self.state.write();
                 mode.clone_into(&mut state.current_mode);
                 drop(state);
@@ -680,7 +680,7 @@ impl Engine {
                     );
                 }
             }
-            EngineCommand::AddMode { name, parent } => {
+            EngineCommand::AddMode { name } => {
                 validate_mode_name_for_engine(&name, "mode name cannot be empty")?;
                 // Bind the read-guarded snapshot in its own scope before
                 // acquiring the write lock to avoid a non-reentrant deadlock
@@ -691,11 +691,8 @@ impl Engine {
                     tracing::warn!(target: "engine", "AddMode dispatched with no profile; ignoring");
                     return Ok(());
                 };
-                let parent_name = parent
-                    .clone()
-                    .unwrap_or_else(|| profile.modes().root().name().to_owned());
-                let new_tree = profile.modes().with_added_child(&parent_name, &name)?;
-                profile.set_modes(new_tree);
+                let modes = profile.modes().with_appended(&name)?;
+                profile.set_modes(modes);
                 if let Some(path) = path.as_ref() {
                     profile.save(path).map_err(|e| {
                         tracing::error!(
@@ -707,13 +704,13 @@ impl Engine {
                         e
                     })?;
                 }
-                tracing::info!(target: "engine", mode = %name, parent = %parent_name, "AddMode applied");
+                tracing::info!(target: "engine", mode = %name, "AddMode applied");
             }
             EngineCommand::RenameMode { from, to } => {
                 // Validate both names against the same policy. Without
                 // this, an oversized `from` would fall through to
                 // `with_renamed` and surface as `ModeNotFound`, leaking
-                // an internal detail (the name doesn't match a tree node)
+                // an internal detail (the name doesn't match a mode)
                 // when the policy reason (length cap) is what should
                 // surface. Symmetric validation pins the contract.
                 validate_mode_name_for_engine(&from, "source mode name cannot be empty")?;
@@ -729,24 +726,24 @@ impl Engine {
                 };
 
                 // Atomicity contract, order is load-bearing:
-                //   1. `with_renamed` clones the tree and validates the
+                //   1. `with_renamed` clones the mode list and validates the
                 //      collision (returns Err without mutating). Must run
                 //      first so a name collision doesn't leave a partial
                 //      mapping rewrite behind.
                 //   2. `rename_mode_refs` mutates mappings + startup_mode
                 //      in one pass. Infallible, no rollback path needed.
-                //   3. `set_modes` swaps in the new tree last. Single-shot,
+                //   3. `set_modes` swaps in the new list last. Single-shot,
                 //      infallible, once the cascade has succeeded the
-                //      tree replacement cannot fail partway.
+                //      list replacement cannot fail partway.
                 // Reordering risks: (2)/(3) before (1) mutates mappings
-                // before the tree is validated against the new name, which
+                // before the list is validated against the new name, which
                 // would orphan mappings on collision.
-                // Step 1: tree rewrite (errors on missing-from / collision).
-                let new_tree = profile.modes().with_renamed(&from, &to)?;
+                // Step 1: list rewrite (errors on missing-from / collision).
+                let new_modes = profile.modes().with_renamed(&from, &to)?;
                 // Step 2: cascade across mappings + startup.
                 let touched = profile.rename_mode_refs(&from, &to);
-                // Step 3: swap the new tree in last.
-                profile.set_modes(new_tree);
+                // Step 3: swap the new list in last.
+                profile.set_modes(new_modes);
 
                 // Step 3: runtime-state cascade.
                 if state.current_mode == from {
@@ -796,59 +793,46 @@ impl Engine {
                     return Ok(());
                 };
 
-                // Pre-validation.
-                if profile.modes().root().name() == name {
+                if profile.modes().first() == name {
                     return Err(crate::error::EngineError::InvalidConfig {
-                        reason: "cannot delete root mode".to_owned(),
+                        reason: "cannot delete first mode".to_owned(),
                     });
                 }
                 if !profile.modes().contains(&name) {
                     return Err(crate::error::EngineError::ModeNotFound { name: name.clone() });
                 }
 
-                // Compute the deleted set (subtree + name).
-                let descendants = profile.modes().descendants_of(&name)?;
-                let mut deleted: Vec<String> = descendants;
-                deleted.push(name.clone());
-
                 let startup = profile.settings().startup_mode().to_owned();
-                if deleted.iter().any(|m| m == &startup) {
+                if startup == name {
                     return Err(crate::error::EngineError::InvalidConfig {
-                        reason: format!(
-                            "cannot delete mode '{name}', its subtree contains startup mode '{startup}'"
-                        ),
+                        reason: format!("cannot delete startup mode '{startup}'"),
                     });
                 }
 
-                // Apply the tree mutation.
-                let new_tree = profile.modes().with_subtree_removed(&name)?;
-                profile.set_modes(new_tree);
-
-                // Cascade-drop every mapping scoped to a deleted mode.
-                let mut mappings_dropped = 0usize;
-                for m in &deleted {
-                    mappings_dropped += profile.remove_mappings_for_mode(m);
-                }
+                let new_modes = profile.modes().with_removed(&name)?;
+                profile.set_modes(new_modes);
+                let mappings_dropped = profile.remove_mappings_for_mode(&name);
 
                 // Runtime state cascade.
-                if deleted.iter().any(|m| m == &state.current_mode) {
+                if state.current_mode == name {
                     startup.clone_into(&mut state.current_mode);
                 }
                 drop(state);
 
                 // ModeState reset.
-                if deleted.iter().any(|m| m == self.mode_state.current()) {
-                    let tree = self
+                if self.mode_state.current() == name {
+                    let modes = self
                         .state
                         .read()
                         .active_profile
                         .as_ref()
-                        .map(|p| p.modes().clone());
-                    if let Some(tree) = tree {
-                        self.mode_state.switch_to(&startup, &tree)?;
+                        .map(|profile| profile.modes().clone());
+                    if let Some(modes) = modes {
+                        self.mode_state.switch_to(&startup, &modes)?;
                     }
                 }
-                self.mode_state.clear_stack_entries(&deleted);
+                self.mode_state
+                    .clear_stack_entries(std::slice::from_ref(&name));
 
                 if let Some(path) = path.as_ref() {
                     let state_read = self.state.read();
@@ -868,7 +852,7 @@ impl Engine {
 
                 tracing::info!(
                     target: "engine",
-                    modes_deleted = ?deleted,
+                    mode = %name,
                     mappings_dropped,
                     "DeleteMode applied"
                 );
