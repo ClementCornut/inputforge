@@ -24,7 +24,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::profile::Profile;
-use crate::settings::DeviceRecord;
+use crate::settings::{DeviceRecord, StartupSettings};
 use crate::snapshot::SnapshotConfig;
 use crate::types::{DeviceId, VirtualDeviceConfig};
 
@@ -90,6 +90,8 @@ pub struct AppState {
     pub device_registry: HashMap<DeviceId, DeviceRecord>,
     /// Snapshot configuration mirrored from `AppSettings.snapshot`.
     pub snapshot_config: SnapshotConfig,
+    /// Startup preferences mirrored from `AppSettings.startup` (F16).
+    pub startup: StartupSettings,
     /// Name of the currently active mode.
     pub current_mode: String,
     /// Current engine lifecycle status.
@@ -128,6 +130,7 @@ impl AppState {
             device_aliases: HashMap::new(),
             device_registry: HashMap::new(),
             snapshot_config: SnapshotConfig::default(),
+            startup: StartupSettings::default(),
             current_mode: "Default".to_owned(),
             engine_status: EngineStatus::Stopped,
             active_profile: None,
@@ -171,6 +174,7 @@ impl AppState {
             device_aliases: HashMap::new(),
             device_registry: HashMap::new(),
             snapshot_config: SnapshotConfig::default(),
+            startup: StartupSettings::default(),
             current_mode: startup_mode,
             engine_status: EngineStatus::Stopped,
             active_profile: Some(profile),
@@ -225,5 +229,12 @@ mod tests {
         let debug = format!("{state:?}");
         assert!(debug.contains("AppState"));
         assert!(debug.contains("current_mode"));
+    }
+
+    #[test]
+    fn app_state_new_defaults_startup_to_default() {
+        use crate::settings::StartupSettings;
+        let s = AppState::new();
+        assert_eq!(s.startup, StartupSettings::default());
     }
 }
