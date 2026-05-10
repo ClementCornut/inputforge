@@ -127,14 +127,14 @@ impl Profile {
         Self::from_raw(raw)
     }
 
-    /// Serialize the profile to a pretty-printed TOML string.
+    /// Serialize the profile to a TOML string.
     ///
     /// # Errors
     ///
     /// Returns [`EngineError::ProfileWrite`] on serialization failure.
     pub fn to_toml(&self) -> Result<String> {
         let raw = self.to_raw();
-        Ok(toml::to_string_pretty(&raw)?)
+        Ok(toml::to_string(&raw)?)
     }
 
     /// Load a profile from a TOML file.
@@ -621,6 +621,62 @@ mod tests {
             profile.settings().startup_mode(),
             back.settings().startup_mode()
         );
+    }
+
+    #[test]
+    fn flat_modes_toml_roundtrip() {
+        let input = r#"
+modes = ["Default", "Combat", "Landing"]
+
+[profile]
+id = "01J00000000000000000000000"
+name = "Flight"
+startup_mode = "Default"
+"#;
+
+        let profile = Profile::from_toml(input).unwrap();
+        assert_eq!(profile.modes().as_slice(), ["Default", "Combat", "Landing"]);
+
+        let saved = profile.to_toml().unwrap();
+        assert!(saved.contains("modes = [\"Default\", \"Combat\", \"Landing\"]"));
+
+        let reparsed = Profile::from_toml(&saved).unwrap();
+        assert_eq!(reparsed, profile);
+    }
+
+    #[test]
+    fn non_list_modes_value_is_rejected_with_neutral_message() {
+        let input = r#"
+modes = 42
+
+[profile]
+id = "01J00000000000000000000000"
+name = "Flight"
+startup_mode = "Default"
+"#;
+
+        let err = Profile::from_toml(input).unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("modes must be a flat list of strings")
+        );
+    }
+
+    #[test]
+    fn non_string_modes_entry_is_rejected() {
+        let input = r#"
+modes = ["Default", 42]
+
+[profile]
+id = "01J00000000000000000000000"
+name = "Flight"
+startup_mode = "Default"
+"#;
+
+        let err = Profile::from_toml(input).unwrap_err();
+
+        assert!(err.to_string().contains("mode names must be strings"));
     }
 
     #[test]

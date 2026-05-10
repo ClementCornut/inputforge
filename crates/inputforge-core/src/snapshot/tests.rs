@@ -13,9 +13,8 @@ fn fresh_profile_dir() -> (tempfile::TempDir, PathBuf) {
     let path = dir.path().join("TFM_Throttle.toml");
     std::fs::write(
         &path,
-        "[profile]\nid = \"550e8400-e29b-41d4-a716-446655440000\"\n\
-         name = \"TFM Throttle\"\nstartup_mode = \"Default\"\n\n\
-         [modes]\nDefault = []\n",
+        "modes = [\"Default\"]\n\n[profile]\nid = \"550e8400-e29b-41d4-a716-446655440000\"\n\
+         name = \"TFM Throttle\"\nstartup_mode = \"Default\"\n",
     )
     .unwrap();
     (dir, path)
@@ -232,8 +231,8 @@ fn list_returns_newest_first_by_taken_at() {
     std::thread::sleep(std::time::Duration::from_millis(2));
     std::fs::write(
         &path,
-        "[profile]\nid = \"550e8400-e29b-41d4-a716-446655440001\"\n\
-        name = \"changed\"\nstartup_mode = \"Default\"\n\n[modes]\nDefault = []\n",
+        "modes = [\"Default\"]\n\n[profile]\nid = \"550e8400-e29b-41d4-a716-446655440001\"\n\
+        name = \"changed\"\nstartup_mode = \"Default\"\n",
     )
     .unwrap();
     let b = create(&path, SnapshotKind::Manual, None, &cfg)
@@ -371,8 +370,8 @@ fn restore_strips_meta_and_writes_profile() {
     // Mutate the live profile.
     std::fs::write(
         &path,
-        "[profile]\nid = \"550e8400-e29b-41d4-a716-446655440099\"\n\
-        name = \"changed\"\nstartup_mode = \"Default\"\n\n[modes]\nDefault = []\n",
+        "modes = [\"Default\"]\n\n[profile]\nid = \"550e8400-e29b-41d4-a716-446655440099\"\n\
+        name = \"changed\"\nstartup_mode = \"Default\"\n",
     )
     .unwrap();
 
@@ -405,8 +404,8 @@ fn restore_errors_when_meta_table_missing() {
     // Valid TOML but no [snapshot_meta] table.
     std::fs::write(
         &snap_path,
-        "[profile]\nid = \"550e8400-e29b-41d4-a716-446655440000\"\n\
-         name = \"meta-less\"\nstartup_mode = \"Default\"\n\n[modes]\nDefault = []\n",
+        "modes = [\"Default\"]\n\n[profile]\nid = \"550e8400-e29b-41d4-a716-446655440000\"\n\
+         name = \"meta-less\"\nstartup_mode = \"Default\"\n",
     )
     .unwrap();
 
@@ -439,8 +438,8 @@ fn prune_evicts_oldest_unpinned() {
         std::fs::write(
             &path,
             format!(
-                "[profile]\nid = \"550e8400-e29b-41d4-a716-44665544000{i}\"\n\
-            name = \"v{i}\"\nstartup_mode = \"Default\"\n\n[modes]\nDefault = []\n"
+                "modes = [\"Default\"]\n\n[profile]\nid = \"550e8400-e29b-41d4-a716-44665544000{i}\"\n\
+            name = \"v{i}\"\nstartup_mode = \"Default\"\n"
             ),
         )
         .unwrap();
@@ -475,8 +474,8 @@ fn prune_skips_pinned_snapshots() {
 
     std::fs::write(
         &path,
-        "[profile]\nid = \"550e8400-e29b-41d4-a716-446655440042\"\n\
-        name = \"v2\"\nstartup_mode = \"Default\"\n\n[modes]\nDefault = []\n",
+        "modes = [\"Default\"]\n\n[profile]\nid = \"550e8400-e29b-41d4-a716-446655440042\"\n\
+        name = \"v2\"\nstartup_mode = \"Default\"\n",
     )
     .unwrap();
     let s2 = create(&path, SnapshotKind::AutoSessionStart, None, &cfg)

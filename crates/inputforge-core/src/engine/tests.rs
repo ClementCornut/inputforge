@@ -2456,7 +2456,7 @@ fn restore_snapshot_round_trip() {
     let v1 = crate::snapshot::list(&path).unwrap()[0].clone();
 
     // Mutate the live profile by hand to a different (still-valid) body.
-    let new_body = "modes = [\"Default\"]\n[profile]\nid = \"550e8400-e29b-41d4-a716-446655440099\"\n\
+    let new_body = "modes = [\"Default\"]\n\n[profile]\nid = \"550e8400-e29b-41d4-a716-446655440099\"\n\
         name = \"v2\"\nstartup_mode = \"Default\"\n";
     std::fs::write(&path, new_body).unwrap();
     // Force an explicit reload so engine sees v2 in-memory before restoring.
@@ -2606,8 +2606,8 @@ fn restore_snapshot_auto_rollback_on_reload_failure() {
     let snap_file = snap_dir.join(format!("{}.toml", snap.id));
     let body = std::fs::read_to_string(&snap_file).unwrap();
     let (meta, _profile_part) = body.split_once("\n\n").unwrap();
-    let bad_profile = "\n\n[profile]\nid = \"550e8400-e29b-41d4-a716-446655440000\"\n\
-        name = \"x\"\nstartup_mode = \"NonExistent\"\n\n[modes]\nDefault = []\n";
+    let bad_profile = "\n\nmodes = [\"Default\"]\n\n[profile]\nid = \"550e8400-e29b-41d4-a716-446655440000\"\n\
+        name = \"x\"\nstartup_mode = \"NonExistent\"\n";
     std::fs::write(&snap_file, format!("{meta}{bad_profile}")).unwrap();
 
     let pre_restore_name = state
