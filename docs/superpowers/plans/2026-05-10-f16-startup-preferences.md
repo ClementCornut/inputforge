@@ -945,7 +945,7 @@ pub fn new_for_current_platform() -> Box<dyn AutostartManager> {
 }
 ```
 
-(`tracing` is already in dev-deps via the workspace; if the `tracing` import is missing at the file head, add `use tracing` is unnecessary because we use the macros via path. Add `tracing` to `[dependencies]` in `Cargo.toml` if it is not already listed there. Per Task 1.1 it is.)
+(`tracing` is already declared in `[dependencies]` per Task 1.1; the macros above are called via `tracing::warn!`/`tracing::debug!` paths so no `use` import is needed at the file head.)
 
 - [ ] **Step 4: Run the test**
 
@@ -1160,7 +1160,7 @@ In `AppState::new`, initialise the field below `snapshot_config: SnapshotConfig:
             startup: StartupSettings::default(),
 ```
 
-In `AppState::with_profile`, scan for the same `snapshot_config: SnapshotConfig::default(),` line and add `startup: StartupSettings::default(),` immediately below it (this method appears around line 151 onward; it sets every field of `Self`). If `with_profile` uses `Self { ..Self::new() }` style, no change is needed there.
+In `AppState::with_profile` (around line 151 onward in `crates/inputforge-core/src/state/mod.rs`), scan for the same `snapshot_config: SnapshotConfig::default(),` line and add `startup: StartupSettings::default(),` immediately below it. `with_profile` constructs `Self { ... }` field-by-field (verified at `b8273b0`); it does not use `..Self::new()` spread, so the new field must be added explicitly.
 
 - [ ] **Step 4: Run the test**
 
@@ -1328,6 +1328,11 @@ In `EngineHarness::new` (line 1054), update the constructor:
 
         let state = Arc::new(RwLock::new(AppState::new()));
         let (_tx, rx) = mpsc::channel();
+        // MockAutostart is Clone with internal Arc<Mutex<>>-shared state, so
+        // the engine takes one boxed clone while the harness keeps another
+        // for assertions. Both clones see the same call log and seeded
+        // results. See the contract test `clone_shares_state_with_original`
+        // (Task 1.5) for the proof.
         let autostart_mock = MockAutostart::new();
         let engine = Engine::new(
             Box::new(MockInputSource::default()),
@@ -1373,7 +1378,7 @@ struct EngineHarness {
 
 - [ ] **Step 5: Sweep the 15 direct `Engine::new(` sites in `engine/tests.rs`**
 
-For each occurrence at lines (approximate; verify with `grep -n "Engine::new(" crates/inputforge-core/src/engine/tests.rs`):
+For each occurrence at lines (verified at `b8273b0`; if the file has drifted, re-grep with `grep -n "Engine::new(" crates/inputforge-core/src/engine/tests.rs`):
 
 `1867, 2012, 2121, 2300, 2340, 2387, 2647, 2771, 2970, 3171, 3223, 3392, 3459, 3546, 3717`
 
@@ -1558,6 +1563,8 @@ This phase adds the `EngineCommand::SetAutostart` variant and its handler. Per t
 - On `Err(_)`: pushes `"Could not change launch-at-startup setting."`, leaves `settings`/`AppState` untouched.
 
 ### Task 6.1: Add the variant and Debug/PartialEq tests
+
+> **Paired-task note:** Task 6.1 lands a placeholder `EngineCommand::SetAutostart { .. } => {}` arm so the build stays green; this is intentionally a no-op for one commit only. Task 6.2 must follow in the next commit. Do not pause execution between 6.1 and 6.2; treat them as a single logical change. A GUI built against the 6.1 commit alone would silently swallow `SetAutostart` dispatches (the optimistic UI flip would never reconcile against engine truth), which is why the placeholder window must be kept short.
 
 **Files:**
 - Modify: `crates/inputforge-core/src/engine/command.rs`
@@ -1859,6 +1866,8 @@ git commit -m "test(engine): cover SetAutostart failure and off-preserves-other 
 
 ### Task 7.1: Add the variant + placeholder match arm
 
+> **Paired-task note:** Task 7.1 lands a placeholder `EngineCommand::SetStartMinimizedToTray { .. } => {}` arm so the build stays green; this is intentionally a no-op for one commit only. Task 7.2 must follow in the next commit. Do not pause execution between 7.1 and 7.2; treat them as a single logical change. The same UI-silent-swallow risk noted on Task 6.1 applies here.
+
 **Files:**
 - Modify: `crates/inputforge-core/src/engine/command.rs`
 - Modify: `crates/inputforge-core/src/engine/run.rs`
@@ -2109,6 +2118,8 @@ git commit -m "feat(engine): implement SetStartMinimizedToTray handler"
 
 Per spec choice 7: in `Engine::new`, after the existing mirror, query `autostart.is_enabled()`. If it disagrees with `settings.startup.launch_at_startup`, sync settings to the OS value and persist. Then if settings now says enabled, unconditionally re-push argv (heals stale start-minimized state).
 
+Reconciliation lives inside `Engine::new` rather than the first `run()` iteration (the spec leaves the choice open) so that the post-construction `AppState` already reflects the OS-confirmed autostart state before any GUI rendering frame observes it. The `run()` loop only ever sees a settled state; later commands such as `SetAutostart` operate on a known-correct baseline.
+
 ### Task 8.1: Tests
 
 **Files:**
@@ -2314,7 +2325,7 @@ Replace the area from `};` (closing the `state.write()` block) up to the `let en
         let engine = Self {
 ```
 
-(Note the `let mut settings_mut = &mut settings;` shadow is just to make the mutation explicit; you can also re-bind `settings` to `mut` at the start of the function: `pub fn new(... mut settings: AppSettings, settings_path: PathBuf, mut autostart: Box<dyn AutostartManager>) -> Self`. The `mut` on `autostart` is required because `set_enabled` takes `&mut self`. Apply the mut there.)
+Note: `set_enabled` takes `&mut self`, so the `autostart` parameter must be bound as `mut autostart: Box<dyn AutostartManager>` in the function signature. The `settings` parameter must likewise be `mut settings: AppSettings` so the reconciliation block can write to `settings.startup.launch_at_startup`.
 
 Confirm the function signature now reads:
 
@@ -2458,6 +2469,8 @@ git commit -m "feat(app): OR CLI flag with persisted start-minimized"
 
 - [ ] **Step 1: Write the failing test**
 
+Place this test in the existing `#[cfg(test)] mod tests` block inside `crates/inputforge-gui-dx/src/context.rs` (or extend the file with one if none exists). Co-location is required because both `pub(crate) struct SettingsSnapshot` (`context.rs:39`) and `pub(crate) fn from_state` (`context.rs:52`) are crate-private; an integration test under `crates/inputforge-gui-dx/tests/` cannot reach `pub(crate)` items.
+
 In `crates/inputforge-gui-dx/src/context.rs`, append (or extend) a `#[cfg(test)] mod tests` block at the end of the file:
 
 ```rust
@@ -2555,6 +2568,8 @@ Create `crates/inputforge-gui-dx/src/frame/settings_panel/startup_section.rs`:
 //! `snapshots_section.rs:67-79` and `:124-136` to avoid the double-click
 //! race within a single polling tick.
 
+use std::sync::mpsc::Sender;
+
 use dioxus::prelude::*;
 
 use inputforge_core::engine::EngineCommand;
@@ -2566,6 +2581,24 @@ use crate::frame::settings_panel::section::SettingsSection;
 
 const LAUNCH_AT_STARTUP_ID: &str = "if-settings-startup-launch-at-startup";
 const START_MINIMIZED_ID: &str = "if-settings-startup-start-minimized";
+
+/// Dispatches `SetAutostart` to the engine. Extracted so tests can call the
+/// helper directly with a real `mpsc::channel` and verify the right
+/// `EngineCommand` variant was sent. Returning unit (errors are logged) keeps
+/// the call-site closure body trivial.
+pub(super) fn dispatch_set_autostart(tx: &Sender<EngineCommand>, enabled: bool) {
+    if let Err(e) = tx.send(EngineCommand::SetAutostart { enabled }) {
+        tracing::warn!(target: "startup_section", %e, "Failed to dispatch SetAutostart");
+    }
+}
+
+/// Dispatches `SetStartMinimizedToTray` to the engine. See
+/// `dispatch_set_autostart` for the rationale behind the helper split.
+pub(super) fn dispatch_set_start_minimized_to_tray(tx: &Sender<EngineCommand>, enabled: bool) {
+    if let Err(e) = tx.send(EngineCommand::SetStartMinimizedToTray { enabled }) {
+        tracing::warn!(target: "startup_section", %e, "Failed to dispatch SetStartMinimizedToTray");
+    }
+}
 
 #[component]
 pub(crate) fn StartupSection() -> Element {
@@ -2591,16 +2624,14 @@ pub(crate) fn StartupSection() -> Element {
     let on_launch_change = move |_evt: FormEvent| {
         let new_value = !launch_local();
         launch_local.set(new_value);
-        let _ = commands_for_launch.send(EngineCommand::SetAutostart { enabled: new_value });
+        dispatch_set_autostart(&commands_for_launch, new_value);
     };
 
     let commands_for_start_min = commands.clone();
     let on_start_min_change = move |_evt: FormEvent| {
         let new_value = !start_min_local();
         start_min_local.set(new_value);
-        let _ = commands_for_start_min.send(EngineCommand::SetStartMinimizedToTray {
-            enabled: new_value,
-        });
+        dispatch_set_start_minimized_to_tray(&commands_for_start_min, new_value);
     };
 
     rsx! {
@@ -2694,6 +2725,10 @@ mod tests {
         HarnessWithStartup(false, false)
     }
 
+    fn HarnessLaunchOnly() -> Element {
+        HarnessWithStartup(true, false)
+    }
+
     #[test]
     fn renders_two_switches_with_persisted_state() {
         let mut vdom = VirtualDom::new(HarnessBothOn);
@@ -2710,7 +2745,7 @@ mod tests {
             "missing start-minimized label: {html}"
         );
 
-        // Both inputs render with id and checked.
+        // Both inputs render with id.
         assert!(
             html.contains(r#"id="if-settings-startup-launch-at-startup""#),
             "missing launch input id"
@@ -2723,6 +2758,17 @@ mod tests {
             html.matches(r#"type="checkbox""#).count() >= 2,
             "expected at least two checkbox inputs"
         );
+
+        // dioxus-ssr 0.7.6 renders boolean HTML attributes as bare names
+        // (e.g. `<input ... checked>`), never as `checked="true"`. Each
+        // attribute name in the serialized output is preceded by whitespace,
+        // so matching on the substring " checked" with a leading space
+        // disambiguates the bare attribute from any other occurrence.
+        assert_eq!(
+            html.matches(" checked").count(),
+            2,
+            "expected 2 bare `checked` attrs in both-on render: {html}"
+        );
     }
 
     #[test]
@@ -2730,11 +2776,24 @@ mod tests {
         let mut vdom = VirtualDom::new(HarnessBothOff);
         vdom.rebuild_in_place();
         let html = render(&vdom);
-        // dioxus-ssr renders bool attributes as `checked="false"`. We assert
-        // the substring `checked="true"` is absent for the two switches.
+        // No bare `checked` attribute when both switches are off.
         assert!(
-            !html.contains(r#"checked="true""#),
-            "expected no checked=true when both startup fields are off: {html}"
+            !html.contains(" checked"),
+            "expected zero `checked` attrs when both startup fields are off: {html}"
+        );
+    }
+
+    #[test]
+    fn launch_only_renders_one_checked() {
+        // Confirms each checkbox is bound to its own prop: launch=true,
+        // start_min=false should produce exactly one bare `checked`.
+        let mut vdom = VirtualDom::new(HarnessLaunchOnly);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert_eq!(
+            html.matches(" checked").count(),
+            1,
+            "expected exactly 1 bare `checked` for launch-only render: {html}"
         );
     }
 }
@@ -2785,14 +2844,12 @@ pub(crate) fn SettingsPanel() -> Element {
 - [ ] **Step 3: Run the new tests**
 
 Run: `cargo test -p inputforge-gui-dx startup_section`
-Expected: 2 PASS.
+Expected: 3 PASS (`renders_two_switches_with_persisted_state`, `off_state_does_not_render_checked`, `launch_only_renders_one_checked`).
 
 - [ ] **Step 4: Verify the panel-level tests still pass**
 
 Run: `cargo test -p inputforge-gui-dx settings_panel`
 Expected: `panel_renders_field_rows_without_heading` and the rest of the F15 panel tests still pass. The `<h2>`/`<h3>` ban remains satisfied because `StartupSection` uses only `SettingsSection` + `SettingsFieldRow`.
-
-If `panel_renders_field_rows_without_heading` fails because new helper text breaks an old assertion, update only the assertions that reference removed labels. Do NOT relax the heading checks.
 
 - [ ] **Step 5: Commit**
 
@@ -2808,55 +2865,70 @@ git commit -m "feat(settings-panel): add StartupSection with two switches"
 **Files:**
 - Modify: `crates/inputforge-gui-dx/src/frame/settings_panel/startup_section.rs`
 
-- [ ] **Step 1: Add dispatch tests**
+- [ ] **Step 1: Add helper-level dispatch tests**
 
-The Dioxus desktop runtime is required to fire `onchange` from a synthetic click in pure SSR; the simpler approach is to call the handler closure via a helper. Replace this with a direct send-test that injects into the channel via `commands_for_launch`. Append tests that exercise the dispatch behaviour using `mpsc::channel` end-to-end:
+Dioxus 0.7 has no in-tree event-simulation harness for SSR, and the codebase has no precedent for one (verified: `snapshots_section.rs` tests stop at SSR rendering; engine-side dispatch is tested directly in `crates/inputforge-core/src/engine/tests.rs`). Sending `EngineCommand` straight into the channel from the test would only test `mpsc::channel` (the channel just transports whatever you give it), so a regression that swaps `SetAutostart` for `SetStartMinimizedToTray` in the component closure would not be caught.
+
+The fix is to extract the dispatch step into the `pub(super)` helpers introduced in Task 11.1 (`dispatch_set_autostart`, `dispatch_set_start_minimized_to_tray`) and unit-test those directly. The component's closures call the helpers, so testing the helper proves the component dispatches the correct variant.
+
+Append the following tests inside the `mod tests { ... }` block (the same module that holds the SSR tests from Task 11.1):
 
 ```rust
     #[test]
-    fn dispatches_set_autostart_when_launch_handler_invoked() {
-        // Build a harness whose Sender we can inspect via Receiver.
-        let state = Arc::new(RwLock::new(AppState::new()));
-        let (commands, rx) = mpsc::channel();
-
-        // Manually build the handler the same way the component would, then
-        // invoke it. This isolates the dispatch logic without needing a real
-        // event loop.
-        // (Exercise: send the same EngineCommand the handler would send and
-        // confirm it lands in rx.)
-        let _ = commands.send(EngineCommand::SetAutostart { enabled: true });
-
-        let received = rx.try_recv().expect("expected a SetAutostart command on the channel");
-        match received {
-            EngineCommand::SetAutostart { enabled } => assert_eq!(enabled, true),
-            other => panic!("unexpected command on channel: {other:?}"),
+    fn dispatch_set_autostart_sends_set_autostart_with_true() {
+        let (tx, rx) = mpsc::channel();
+        super::dispatch_set_autostart(&tx, true);
+        match rx.try_recv().expect("expected a command on the channel") {
+            EngineCommand::SetAutostart { enabled } => {
+                assert!(enabled, "expected enabled=true, got false");
+            }
+            other => panic!("expected SetAutostart, got {other:?}"),
         }
-        let _ = state;
     }
 
     #[test]
-    fn dispatches_set_start_minimized_when_handler_invoked() {
-        let state = Arc::new(RwLock::new(AppState::new()));
-        let (commands, rx) = mpsc::channel();
-        let _ = commands.send(EngineCommand::SetStartMinimizedToTray { enabled: true });
-
-        let received = rx
-            .try_recv()
-            .expect("expected a SetStartMinimizedToTray command on the channel");
-        match received {
-            EngineCommand::SetStartMinimizedToTray { enabled } => assert_eq!(enabled, true),
-            other => panic!("unexpected command on channel: {other:?}"),
+    fn dispatch_set_autostart_sends_set_autostart_with_false() {
+        let (tx, rx) = mpsc::channel();
+        super::dispatch_set_autostart(&tx, false);
+        match rx.try_recv().expect("expected a command on the channel") {
+            EngineCommand::SetAutostart { enabled } => {
+                assert!(!enabled, "expected enabled=false, got true");
+            }
+            other => panic!("expected SetAutostart, got {other:?}"),
         }
-        let _ = state;
+    }
+
+    #[test]
+    fn dispatch_set_start_minimized_to_tray_sends_correct_variant_with_true() {
+        let (tx, rx) = mpsc::channel();
+        super::dispatch_set_start_minimized_to_tray(&tx, true);
+        match rx.try_recv().expect("expected a command on the channel") {
+            EngineCommand::SetStartMinimizedToTray { enabled } => {
+                assert!(enabled, "expected enabled=true, got false");
+            }
+            other => panic!("expected SetStartMinimizedToTray, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dispatch_set_start_minimized_to_tray_sends_correct_variant_with_false() {
+        let (tx, rx) = mpsc::channel();
+        super::dispatch_set_start_minimized_to_tray(&tx, false);
+        match rx.try_recv().expect("expected a command on the channel") {
+            EngineCommand::SetStartMinimizedToTray { enabled } => {
+                assert!(!enabled, "expected enabled=false, got true");
+            }
+            other => panic!("expected SetStartMinimizedToTray, got {other:?}"),
+        }
     }
 ```
 
-These tests assert that the GUI's command channel transports the F16 commands correctly; together with the SSR test from Task 11.1 (which proves the section renders both switches with the correct ids/labels) and the engine-side handler tests from Phases 6-7 (which prove the handlers respond), the round-trip is covered.
+These four tests fail if a future edit swaps the variant (for example, `dispatch_set_autostart` accidentally sending `SetStartMinimizedToTray`), which the channel-passthrough form would not catch. Together with the SSR rendering tests from Task 11.1 and the engine-side handler tests from Phases 6-7, the round trip is covered.
 
 - [ ] **Step 2: Run**
 
 Run: `cargo test -p inputforge-gui-dx startup_section`
-Expected: 4 PASS.
+Expected: 7 PASS (3 SSR rendering tests from Task 11.1 plus 4 helper dispatch tests).
 
 - [ ] **Step 3: Commit**
 
@@ -2923,6 +2995,7 @@ If smoke surfaced no issues, stop. If anything was tweaked, commit it with the a
 ## Self-review checklist (run before declaring done)
 
 - [ ] Spec choices 1-13 each map to at least one implemented task.
+- [ ] Each row of the spec's `Cross-coupling rules` table is exercised by a Phase 6, 7, or 8 handler branch (set-autostart success, set-autostart failure, off preserves start-minimized, set-start-minimized rollback, set-start-minimized re-register failure, startup OS-wins reconciliation, unconditional argv resync).
 - [ ] All tests under `Test plan` in the spec are present.
 - [ ] No `style` commit type was used; CSS-only edits (none expected here) classified by intent.
 - [ ] No em-dash, en-dash, or double-hyphen substitutes anywhere.

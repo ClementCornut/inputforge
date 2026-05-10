@@ -19,9 +19,9 @@ This spec adds those two preferences. Linux is the second supported platform tar
 
 ### Existing scaffolding (audit before design)
 
-Verified against current source on `main` (commit `a22028d`):
+Verified against current source on `main` (commit `e0ca46f`):
 
-- `crates/inputforge-app/src/cli.rs:23` defines `Cli::start_minimized: bool` (clap flag `--start-minimized`).
+- `crates/inputforge-app/src/cli.rs:24` defines `Cli::start_minimized: bool` (clap flag `--start-minimized`).
 - `crates/inputforge-app/src/main.rs:110` plumbs `cli.start_minimized` into the `launch_gui(...)` call (call site begins at line 105).
 - `crates/inputforge-gui-dx/src/lib.rs:46` declares `start_minimized: bool` on `LaunchParams`; the `launch_gui` argument feeding it is at line 76 and the literal initialiser at line 83.
 - `crates/inputforge-gui-dx/src/lifecycle/mod.rs:48` `apply_start_minimized` calls `window().set_visible(false)` (so the existing flag means "hidden in tray", not "iconified to taskbar"; see Choice 1).
