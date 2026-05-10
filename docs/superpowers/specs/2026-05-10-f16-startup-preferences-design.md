@@ -13,7 +13,7 @@
 
 ## Context
 
-InputForge is a tray-resident input remapper. Users expect it to be running whenever they game, the same way Discord, qBittorrent, OBS, and reWASD are. Today the app supports a `--start-minimized` CLI flag and a working tray, but lacks two preferences mature peers ship: launch at OS sign-in, and start in the tray on every launch (not just CLI-flagged ones).
+InputForge is a tray-resident input remapper. Users expect it to be running whenever they game, the same way Discord, qBittorrent, OBS, and reWASD are. Today the app supports a `--start-minimized` CLI flag and a working tray, but lacks two preferences mature peers ship: launch at startup, and start in the tray on every launch (not just CLI-flagged ones).
 
 This spec adds those two preferences. Linux is the second supported platform target on the project roadmap, so the implementation must work on both Windows and Linux from day one of the abstraction. Today the binary only ships on Windows; the Linux concrete impl is in scope for the spec but not on the build matrix until the platform itself is.
 
