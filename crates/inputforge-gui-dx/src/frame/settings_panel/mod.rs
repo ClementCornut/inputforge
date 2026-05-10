@@ -72,12 +72,20 @@ mod tests {
         vdom.rebuild_in_place();
         let html = render(&vdom);
         assert!(
+            html.contains("Launch InputForge at startup"),
+            "expected startup field 1 label: {html}"
+        );
+        assert!(
+            html.contains("Start minimized to tray"),
+            "expected startup field 2 label: {html}"
+        );
+        assert!(
             html.contains("Snapshot buffer size"),
-            "expected field 1 label: {html}"
+            "expected snapshot field 1 label: {html}"
         );
         assert!(
             html.contains("Skip startup snapshot"),
-            "expected field 2 label: {html}"
+            "expected snapshot field 2 label: {html}"
         );
         assert!(!html.contains("<h2"), "panel must not render an h2 header");
         assert!(
