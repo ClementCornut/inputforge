@@ -111,6 +111,7 @@ mod tests {
     use dioxus_ssr::render;
     use parking_lot::RwLock;
 
+    use inputforge_core::engine::EngineCommand;
     use inputforge_core::settings::StartupSettings;
     use inputforge_core::state::AppState;
 
@@ -228,5 +229,53 @@ mod tests {
             1,
             "expected exactly 1 bare `checked` for launch-only render: {html}"
         );
+    }
+
+    #[test]
+    fn dispatch_set_autostart_sends_set_autostart_with_true() {
+        let (tx, rx) = mpsc::channel();
+        super::dispatch_set_autostart(&tx, true);
+        match rx.try_recv().expect("expected a command on the channel") {
+            EngineCommand::SetAutostart { enabled } => {
+                assert!(enabled, "expected enabled=true, got false");
+            }
+            other => panic!("expected SetAutostart, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dispatch_set_autostart_sends_set_autostart_with_false() {
+        let (tx, rx) = mpsc::channel();
+        super::dispatch_set_autostart(&tx, false);
+        match rx.try_recv().expect("expected a command on the channel") {
+            EngineCommand::SetAutostart { enabled } => {
+                assert!(!enabled, "expected enabled=false, got true");
+            }
+            other => panic!("expected SetAutostart, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dispatch_set_start_minimized_to_tray_sends_correct_variant_with_true() {
+        let (tx, rx) = mpsc::channel();
+        super::dispatch_set_start_minimized_to_tray(&tx, true);
+        match rx.try_recv().expect("expected a command on the channel") {
+            EngineCommand::SetStartMinimizedToTray { enabled } => {
+                assert!(enabled, "expected enabled=true, got false");
+            }
+            other => panic!("expected SetStartMinimizedToTray, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dispatch_set_start_minimized_to_tray_sends_correct_variant_with_false() {
+        let (tx, rx) = mpsc::channel();
+        super::dispatch_set_start_minimized_to_tray(&tx, false);
+        match rx.try_recv().expect("expected a command on the channel") {
+            EngineCommand::SetStartMinimizedToTray { enabled } => {
+                assert!(!enabled, "expected enabled=false, got true");
+            }
+            other => panic!("expected SetStartMinimizedToTray, got {other:?}"),
+        }
     }
 }
