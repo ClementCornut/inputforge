@@ -33,11 +33,6 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Add Cargo bin to PATH
-        shell: pwsh
-        run: |
-          Join-Path $env:CARGO_HOME "bin" >> $env:GITHUB_PATH
-
       - name: Validate release tag
         id: version
         shell: pwsh
@@ -77,24 +72,32 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Add Cargo bin to PATH
-        shell: pwsh
-        run: |
-          Join-Path $env:CARGO_HOME "bin" >> $env:GITHUB_PATH
-
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2.9.1
 
       - name: Install Dioxus CLI
         shell: pwsh
         run: |
-          cargo install cargo-binstall --locked
+          cargo install cargo-binstall --locked --force
           if ($LASTEXITCODE -eq 0) {
-            cargo binstall --no-confirm --locked "dioxus-cli@${{ env.DIOXUS_CLI_VERSION }}"
+            cargo binstall --force --no-confirm --locked "dioxus-cli@${{ env.DIOXUS_CLI_VERSION }}"
           }
           if ($LASTEXITCODE -ne 0) {
-            cargo install dioxus-cli --version "${{ env.DIOXUS_CLI_VERSION }}" --locked
+            cargo install dioxus-cli --version "${{ env.DIOXUS_CLI_VERSION }}" --locked --force
           }
+
+      - name: Verify Dioxus CLI
+        shell: pwsh
+        run: |
+          $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE ".cargo" }
+          $dx = Join-Path $cargoHome "bin\dx.exe"
+
+          if (-not (Test-Path -LiteralPath $dx)) {
+            throw "Dioxus CLI was not installed at '$dx'."
+          }
+
+          & $dx --version
+          "DX_BIN=$dx" >> $env:GITHUB_ENV
 
       - name: Normalize NSIS bundle version
         id: nsis_version
@@ -119,7 +122,7 @@ jobs:
       - name: Bundle desktop app
         shell: pwsh
         run: |
-          dx bundle --package inputforge-app --platform "${{ matrix.platform }}" --release --package-types "${{ matrix.package_type }}"
+          & $env:DX_BIN bundle --package inputforge-app --platform "${{ matrix.platform }}" --release --package-types "${{ matrix.package_type }}"
 
       - name: Locate installer
         id: installer
