@@ -19,6 +19,19 @@ pub struct DeviceRecord {
     pub last_seen_unix_ms: Option<u64>,
 }
 
+/// Startup preferences (F16): launch at OS sign-in and start minimized to tray.
+///
+/// Both fields default to `false`. The outer `#[serde(default)]` on
+/// `AppSettings.startup` plus the inner `#[serde(default)]` on each field
+/// lets pre-F16 `settings.toml` files load with no migration.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StartupSettings {
+    #[serde(default)]
+    pub launch_at_startup: bool,
+    #[serde(default)]
+    pub start_minimized_to_tray: bool,
+}
+
 /// Application-wide settings persisted between sessions.
 ///
 /// Stored as TOML at `<config_dir>/inputforge/settings.toml`
@@ -36,6 +49,10 @@ pub struct AppSettings {
     /// via `#[serde(default)]`.
     #[serde(default)]
     pub snapshot: SnapshotConfig,
+
+    /// Startup preferences (F16). Persisted as a `[startup]` sub-table.
+    #[serde(default)]
+    pub startup: StartupSettings,
 
     #[serde(default)]
     pub device_aliases: HashMap<DeviceId, String>,
@@ -459,5 +476,60 @@ mod tests {
             display_name_for_device(&s.device_aliases, &info)
         );
         assert_eq!(s.display_name_for(&info), "Pedals");
+    }
+
+    #[test]
+    fn settings_default_has_default_startup() {
+        let s = AppSettings::default();
+        assert_eq!(s.startup, StartupSettings::default());
+        assert!(!s.startup.launch_at_startup);
+        assert!(!s.startup.start_minimized_to_tray);
+    }
+
+    #[test]
+    fn pre_f16_settings_loads_with_default_startup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.toml");
+        // Pre-F16: no [startup] table.
+        std::fs::write(&path, "last_profile = \"C:/foo.toml\"\n").unwrap();
+
+        let loaded = AppSettings::load_from(&path);
+        assert_eq!(loaded.startup, StartupSettings::default());
+    }
+
+    #[test]
+    fn pre_f16_settings_loads_with_partial_startup_table() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.toml");
+        // [startup] present but missing one field.
+        std::fs::write(&path, "[startup]\nlaunch_at_startup = true\n").unwrap();
+
+        let loaded = AppSettings::load_from(&path);
+        assert!(loaded.startup.launch_at_startup);
+        assert!(!loaded.startup.start_minimized_to_tray);
+    }
+
+    #[test]
+    fn settings_round_trips_startup_table() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.toml");
+
+        let s = AppSettings {
+            startup: StartupSettings {
+                launch_at_startup: true,
+                start_minimized_to_tray: true,
+            },
+            ..Default::default()
+        };
+        s.save_to(&path).unwrap();
+
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            body.contains("[startup]"),
+            "expected [startup] table on disk; got: {body}"
+        );
+
+        let loaded = AppSettings::load_from(&path);
+        assert_eq!(loaded, s);
     }
 }
