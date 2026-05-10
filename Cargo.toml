@@ -3,10 +3,10 @@ members = ["crates/inputforge-core", "crates/inputforge-gui-dx", "crates/inputfo
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.0-rc.1"
 edition = "2024"
 license = "MIT"
-rust-version = "1.85"
+rust-version = "1.88"
 description = "Remap physical joystick, pedal, and throttle inputs to virtual vJoy devices"
 repository = "https://github.com/ClementCornut/inputforge"
 readme = "README.md"
@@ -80,8 +80,8 @@ tray-icon = "0.21"
 muda = "0.17"
 
 # GUI
-dioxus = "0.7.6"
-dioxus-ssr = "0.7.6"
+dioxus = "0.7.9"
+dioxus-ssr = "0.7.9"
 scraper = "0.26.0"
 arboard = { version = "3.6.1", default-features = false }
 

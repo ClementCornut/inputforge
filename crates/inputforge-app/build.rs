@@ -1,4 +1,4 @@
-// Rust guideline compliant 2026-04-26
+// Rust guideline compliant 2026-05-10
 //
 // Build script for inputforge-app.
 //
@@ -13,6 +13,8 @@
 // Scope: Windows only, and only when an SDL/ source directory exists at the
 // workspace root. Soft failures are reported via cargo:warning so the build
 // still succeeds; the runtime dynamic loader will surface any actual problem.
+
+const DX_APP_TARGET: &str = "inputforge";
 
 fn main() {
     // Only Windows needs runtime DLL placement; on other platforms SDL3 is loaded
@@ -95,7 +97,7 @@ fn main() {
     // "release" based on inheritance, instead of the cargo profile name.
     //
     // CARGO_TARGET_DIR caveat: this path assumes the dx output lives under
-    // `<workspace_root>/target/`. dioxus-cli 0.7.6 hardcodes `target/` relative
+    // `<workspace_root>/target/`. dioxus-cli 0.7.9 hardcodes `target/` relative
     // to the workspace and does not honor CARGO_TARGET_DIR for its bundle
     // output, so honoring it here would put the DLL where dx will not look.
     // The cargo-side copy above derives its target via OUT_DIR ancestry, so it
@@ -106,7 +108,7 @@ fn main() {
     let dx_app_dir = workspace_root
         .join("target")
         .join("dx")
-        .join("inputforge-app")
+        .join(DX_APP_TARGET)
         .join(&dx_profile)
         .join("windows")
         .join("app");
