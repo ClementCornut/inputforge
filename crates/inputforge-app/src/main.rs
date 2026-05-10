@@ -8,6 +8,17 @@
 mod cli;
 mod tray;
 
+/// OR the CLI `--start-minimized` flag with the persisted setting.
+///
+/// Used at the `launch_gui` call site so the existing single-bool flow in
+/// `launch_gui` / `LaunchParams.start_minimized` / `lifecycle::apply_start_minimized`
+/// stays unchanged. There is no `--no-start-minimized` flag; users with the
+/// setting on who want a normal-window launch are an unsupported edge case
+/// (no peer surveyed exposes this).
+fn resolve_start_minimized(cli_flag: bool, settings_flag: bool) -> bool {
+    cli_flag || settings_flag
+}
+
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
@@ -102,12 +113,17 @@ fn main() -> Result<()> {
     // Create the system tray icon (always visible).
     let tray = AppTray::new(Arc::clone(&state))?;
 
+    let effective_start_minimized = resolve_start_minimized(
+        cli.start_minimized,
+        settings.startup.start_minimized_to_tray,
+    );
+
     if let Err(e) = launch_gui(
         Arc::clone(&state),
         cmd_tx.clone(),
         tray.menu_item_ids(),
         tray.toggle_menu_item(),
-        cli.start_minimized,
+        effective_start_minimized,
     ) {
         tracing::error!(%e, "GUI exited with error");
     }
@@ -194,5 +210,28 @@ fn shutdown(cmd_tx: mpsc::Sender<EngineCommand>, engine_handle: thread::JoinHand
         tracing::error!("engine thread panicked during join");
     } else {
         tracing::info!("engine thread joined cleanly");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_start_minimized;
+
+    #[test]
+    fn resolve_start_minimized_or_logic() {
+        // (cli, settings) -> expected
+        let cases = [
+            (false, false, false),
+            (true, false, true),
+            (false, true, true),
+            (true, true, true),
+        ];
+        for (cli, settings, expected) in cases {
+            assert_eq!(
+                resolve_start_minimized(cli, settings),
+                expected,
+                "cli={cli}, settings={settings}"
+            );
+        }
     }
 }
