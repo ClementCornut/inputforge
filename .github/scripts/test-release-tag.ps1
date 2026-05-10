@@ -44,9 +44,10 @@ function Invoke-Validator {
 
     $outputPath = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString("N"))
     & $validator -TagRef $TagRef -ManifestPath $ManifestPath -GitHubOutputPath $outputPath
+    $lastExitCode = Get-Variable -Name LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
 
     return @{
-        ExitCode = $LASTEXITCODE
+        ExitCode = if ($null -ne $lastExitCode) { $lastExitCode } else { 0 }
         OutputPath = $outputPath
         Output = if (Test-Path -LiteralPath $outputPath) { Get-Content -LiteralPath $outputPath -Raw } else { "" }
     }
@@ -107,6 +108,11 @@ Assert-Throws -MessageFragment "does not match workspace version" -ScriptBlock {
 $invalid = New-TestManifest -Version "0.1.0"
 Assert-Throws -MessageFragment "is not a supported semver release tag" -ScriptBlock {
     Invoke-Validator -TagRef "release-0.1.0" -ManifestPath $invalid.ManifestPath
+}
+
+$namespacedRef = New-TestManifest -Version "0.1.0"
+Assert-Throws -MessageFragment "is not a supported semver release tag" -ScriptBlock {
+    Invoke-Validator -TagRef "refs/tags/release/v0.1.0" -ManifestPath $namespacedRef.ManifestPath
 }
 
 Write-Host "release tag helper tests passed"
