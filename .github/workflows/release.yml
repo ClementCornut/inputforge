@@ -86,6 +86,26 @@ jobs:
             cargo install dioxus-cli --version "${{ env.DIOXUS_CLI_VERSION }}" --locked
           }
 
+      - name: Normalize NSIS bundle version
+        id: nsis_version
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.test.outputs.release_version }}
+        run: |
+          $nsisBundleVersion = $env:RELEASE_VERSION -replace "-.*$", ""
+
+          if ($nsisBundleVersion -notmatch "^\d+\.\d+\.\d+(\.\d+)?$") {
+            throw "Derived NSIS bundle version '$nsisBundleVersion' from release version '$env:RELEASE_VERSION' is not numeric."
+          }
+
+          foreach ($path in @("Cargo.toml", "Cargo.lock")) {
+            $content = Get-Content -LiteralPath $path -Raw
+            $updated = $content.Replace($env:RELEASE_VERSION, $nsisBundleVersion)
+            Set-Content -LiteralPath $path -Value $updated -NoNewline
+          }
+
+          "nsis_bundle_version=$nsisBundleVersion" >> $env:GITHUB_OUTPUT
+
       - name: Bundle desktop app
         shell: pwsh
         run: |
@@ -105,6 +125,25 @@ jobs:
           $installer = $matches[0]
           "installer_path=$($installer.FullName)" >> $env:GITHUB_OUTPUT
           "installer_name=$($installer.Name)" >> $env:GITHUB_OUTPUT
+
+      - name: Rename installer asset
+        id: release_installer
+        shell: pwsh
+        env:
+          INSTALLER_PATH: ${{ steps.installer.outputs.installer_path }}
+          NSIS_BUNDLE_VERSION: ${{ steps.nsis_version.outputs.nsis_bundle_version }}
+          RELEASE_VERSION: ${{ needs.test.outputs.release_version }}
+        run: |
+          $installer = Get-Item -LiteralPath $env:INSTALLER_PATH
+          $targetName = $installer.Name.Replace($env:NSIS_BUNDLE_VERSION, $env:RELEASE_VERSION)
+          $targetPath = Join-Path $installer.DirectoryName $targetName
+
+          if ($installer.FullName -ne $targetPath) {
+            Move-Item -LiteralPath $installer.FullName -Destination $targetPath -Force
+          }
+
+          "installer_path=$targetPath" >> $env:GITHUB_OUTPUT
+          "installer_name=$targetName" >> $env:GITHUB_OUTPUT
 
       - name: Import signing certificate
         if: ${{ env.HAS_WINDOWS_SIGNING_CERTIFICATE == 'true' }}
@@ -126,7 +165,7 @@ jobs:
         if: ${{ env.HAS_WINDOWS_SIGNING_CERTIFICATE == 'true' }}
         shell: pwsh
         env:
-          INSTALLER_PATH: ${{ steps.installer.outputs.installer_path }}
+          INSTALLER_PATH: ${{ steps.release_installer.outputs.installer_path }}
           CERTIFICATE_PATH: ${{ steps.signing_cert.outputs.certificate_path }}
           WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
           WINDOWS_SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}
@@ -152,8 +191,8 @@ jobs:
         id: checksum
         shell: pwsh
         env:
-          INSTALLER_PATH: ${{ steps.installer.outputs.installer_path }}
-          INSTALLER_NAME: ${{ steps.installer.outputs.installer_name }}
+          INSTALLER_PATH: ${{ steps.release_installer.outputs.installer_path }}
+          INSTALLER_NAME: ${{ steps.release_installer.outputs.installer_name }}
         run: |
           $checksumPath = "$env:INSTALLER_PATH.sha256"
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath "$env:INSTALLER_PATH").Hash.ToLowerInvariant()
@@ -167,7 +206,7 @@ jobs:
           retention-days: 7
           if-no-files-found: error
           path: |
-            ${{ steps.installer.outputs.installer_path }}
+            ${{ steps.release_installer.outputs.installer_path }}
             ${{ steps.checksum.outputs.checksum_path }}
 
   publish:

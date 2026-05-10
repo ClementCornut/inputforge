@@ -103,6 +103,36 @@ function Assert-BlockDoesNotContain {
     }
 }
 
+function Assert-StepBefore {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $FirstName,
+
+        [Parameter(Mandatory = $true)]
+        [string] $SecondName,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Reason
+    )
+
+    $firstText = "      - name: $FirstName"
+    $secondText = "      - name: $SecondName"
+    $firstIndex = $workflow.IndexOf($firstText, [StringComparison]::Ordinal)
+    $secondIndex = $workflow.IndexOf($secondText, [StringComparison]::Ordinal)
+
+    if ($firstIndex -lt 0) {
+        throw "Workflow assertion failed: $Reason. Missing step: $FirstName"
+    }
+
+    if ($secondIndex -lt 0) {
+        throw "Workflow assertion failed: $Reason. Missing step: $SecondName"
+    }
+
+    if ($firstIndex -ge $secondIndex) {
+        throw "Workflow assertion failed: $Reason. Step '$FirstName' must appear before '$SecondName'."
+    }
+}
+
 function Invoke-PinnedActionlint {
     param(
         [Parameter(Mandatory = $true)]
@@ -172,6 +202,13 @@ Assert-WorkflowContains -Text "target/dx/*/bundle/windows/nsis/*.exe" -Reason "a
 Assert-WorkflowDoesNotContain -Text "target/dx/**/bundle/windows/nsis/*.exe" -Reason "asset glob avoids recursive glob syntax unsupported by Get-ChildItem -Path"
 Assert-WorkflowDoesNotContain -Text "target/dx/*/*/bundle/windows/nsis/*.exe" -Reason "asset glob matches the verified Dioxus output depth"
 Assert-WorkflowContains -Text 'Get-ChildItem -Path "${{ matrix.asset_glob }}" -File' -Reason "installer discovery consumes the matrix asset glob"
+Assert-WorkflowContains -Text "Normalize NSIS bundle version" -Reason "build job normalizes prerelease versions before NSIS bundling"
+Assert-WorkflowContains -Text '$nsisBundleVersion = $env:RELEASE_VERSION -replace "-.*$", ""' -Reason "NSIS bundle version drops prerelease suffix"
+Assert-WorkflowContains -Text 'nsis_bundle_version=$nsisBundleVersion' -Reason "NSIS numeric bundle version is exposed for asset renaming"
+Assert-WorkflowContains -Text "Rename installer asset" -Reason "installer is renamed back to the release version before upload"
+Assert-WorkflowContains -Text '$targetName = $installer.Name.Replace($env:NSIS_BUNDLE_VERSION, $env:RELEASE_VERSION)' -Reason "final installer basename uses release version"
+Assert-WorkflowContains -Text "steps.release_installer.outputs.installer_path" -Reason "signing, checksum, and upload use the final release installer path"
+Assert-WorkflowContains -Text "steps.release_installer.outputs.installer_name" -Reason "checksum line uses the final release installer basename"
 Assert-WorkflowContains -Text "softprops/action-gh-release@v2" -Reason "publish job uploads release assets"
 Assert-WorkflowContains -Text 'HAS_WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 != '''' }}' -Reason "build job exposes a non-secret signing availability flag"
 Assert-WorkflowContains -Text "env.HAS_WINDOWS_SIGNING_CERTIFICATE == 'true'" -Reason "signing is optional at step level without direct secrets in if"
@@ -181,14 +218,30 @@ Assert-WorkflowDoesNotMatch -Pattern "(?m)^      WINDOWS_SIGNING_CERTIFICATE_PAS
 Assert-WorkflowDoesNotMatch -Pattern "(?m)^      WINDOWS_SIGNING_TIMESTAMP_URL: \$\{\{ secrets\.WINDOWS_SIGNING_TIMESTAMP_URL \}\}$" -Reason "timestamp secret is not exposed at build job scope"
 Assert-WorkflowContains -Text "Get-FileHash -Algorithm SHA256" -Reason "build job writes a SHA-256 checksum"
 
+$normalizeNsisStep = Get-WorkflowStepBlock -Name "Normalize NSIS bundle version"
+$renameInstallerStep = Get-WorkflowStepBlock -Name "Rename installer asset"
 $importSigningStep = Get-WorkflowStepBlock -Name "Import signing certificate"
 $signInstallerStep = Get-WorkflowStepBlock -Name "Sign installer"
+$generateChecksumStep = Get-WorkflowStepBlock -Name "Generate checksum"
 
+Assert-StepBefore -FirstName "Normalize NSIS bundle version" -SecondName "Bundle desktop app" -Reason "Cargo files are patched before Dioxus renders the NSIS template"
+Assert-StepBefore -FirstName "Locate installer" -SecondName "Rename installer asset" -Reason "the numeric Dioxus installer is found before it is renamed"
+Assert-StepBefore -FirstName "Rename installer asset" -SecondName "Sign installer" -Reason "optional signing targets the final release asset"
+Assert-StepBefore -FirstName "Rename installer asset" -SecondName "Generate checksum" -Reason "checksum is generated after the final release asset name is set"
+Assert-StepBefore -FirstName "Generate checksum" -SecondName "Upload release artifact" -Reason "checksum exists before artifact upload"
+
+Assert-BlockContains -Block $normalizeNsisStep -Text '$updated = $content.Replace($env:RELEASE_VERSION, $nsisBundleVersion)' -Reason "CI checkout Cargo files are patched from release version to numeric NSIS version"
+Assert-BlockContains -Block $renameInstallerStep -Text 'INSTALLER_PATH: ${{ steps.installer.outputs.installer_path }}' -Reason "installer rename starts from the located Dioxus artifact"
+Assert-BlockContains -Block $renameInstallerStep -Text 'NSIS_BUNDLE_VERSION: ${{ steps.nsis_version.outputs.nsis_bundle_version }}' -Reason "installer rename knows the numeric NSIS version"
+Assert-BlockContains -Block $renameInstallerStep -Text 'RELEASE_VERSION: ${{ needs.test.outputs.release_version }}' -Reason "installer rename restores the actual release version"
 Assert-BlockContains -Block $importSigningStep -Text 'WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}' -Reason "certificate secret is scoped to certificate import"
 Assert-BlockContains -Block $importSigningStep -Text 'WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}' -Reason "password secret is available while importing the certificate"
 Assert-BlockDoesNotContain -Block $importSigningStep -Text 'WINDOWS_SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}' -Reason "timestamp secret is not exposed during certificate import"
 Assert-BlockDoesNotContain -Block $signInstallerStep -Text 'WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}' -Reason "certificate secret is not exposed during signing after import"
+Assert-BlockContains -Block $signInstallerStep -Text 'INSTALLER_PATH: ${{ steps.release_installer.outputs.installer_path }}' -Reason "signing uses the final release installer path"
 Assert-BlockContains -Block $signInstallerStep -Text 'WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}' -Reason "password secret is scoped to installer signing"
 Assert-BlockContains -Block $signInstallerStep -Text 'WINDOWS_SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}' -Reason "timestamp secret is scoped to installer signing"
+Assert-BlockContains -Block $generateChecksumStep -Text 'INSTALLER_PATH: ${{ steps.release_installer.outputs.installer_path }}' -Reason "checksum uses the final release installer path"
+Assert-BlockContains -Block $generateChecksumStep -Text 'INSTALLER_NAME: ${{ steps.release_installer.outputs.installer_name }}' -Reason "checksum line uses the final release installer basename"
 
 Write-Host "release workflow assertions passed"
