@@ -4,6 +4,7 @@
 //! See `docs/superpowers/specs/2026-05-10-f16-startup-preferences-design.md`.
 
 mod error;
+mod noop;
 
 pub use error::AutostartError;
 
