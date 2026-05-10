@@ -7,6 +7,7 @@ use parking_lot::RwLock;
 
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::pipeline::InputCache;
+use inputforge_core::settings::StartupSettings;
 use inputforge_core::snapshot::{SnapshotConfig, SnapshotId};
 use inputforge_core::state::{
     AppState, DeviceState, EngineStatus, ProfileOrigin as CoreProfileOrigin,
@@ -39,6 +40,7 @@ pub(crate) struct RawHandles {
 pub(crate) struct SettingsSnapshot {
     pub snapshot: SnapshotConfig,
     pub unpinned_snapshot_count: usize,
+    pub startup: StartupSettings,
 }
 
 impl SettingsSnapshot {
@@ -56,9 +58,11 @@ impl SettingsSnapshot {
             .iter()
             .filter(|row| !row.pinned)
             .count();
+        let startup = state.startup.clone();
         Self {
             snapshot,
             unpinned_snapshot_count,
+            startup,
         }
     }
 }
@@ -2166,5 +2170,19 @@ mod tests {
             snap.unpinned_snapshot_count, 2,
             "should count only unpinned rows"
         );
+    }
+
+    #[test]
+    fn settings_snapshot_from_state_mirrors_startup() {
+        use inputforge_core::settings::StartupSettings;
+        use inputforge_core::state::AppState;
+
+        let mut state = AppState::new();
+        state.startup = StartupSettings {
+            launch_at_startup: true,
+            start_minimized_to_tray: true,
+        };
+        let snap = SettingsSnapshot::from_state(&state);
+        assert_eq!(snap.startup, state.startup);
     }
 }
