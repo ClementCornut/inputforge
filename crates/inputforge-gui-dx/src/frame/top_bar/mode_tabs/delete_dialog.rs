@@ -14,6 +14,7 @@
 use dioxus::prelude::*;
 
 use inputforge_core::engine::EngineCommand;
+use inputforge_core::profile::Profile;
 
 use crate::context::AppContext;
 
@@ -28,6 +29,22 @@ pub(crate) struct ModeDeleteSignal(pub Signal<Option<String>>);
 /// dialog and the tabs are siblings under `Layout`.
 #[derive(Clone, Copy)]
 pub(crate) struct ModeFocusSignal(pub Signal<Option<String>>);
+
+fn affected_counts(name: &str, profile: Option<&Profile>) -> (usize, usize) {
+    let modes_count = 1usize;
+    let mappings_count = profile.map_or(0usize, |profile| {
+        profile
+            .mappings()
+            .iter()
+            .filter(|mapping| mapping.mode == *name)
+            .count()
+    });
+    (modes_count, mappings_count)
+}
+
+fn count_label(count: usize, singular: &'static str, plural: &'static str) -> &'static str {
+    if count == 1 { singular } else { plural }
+}
 
 #[component]
 pub(crate) fn ModeDeleteDialog() -> Element {
@@ -47,40 +64,23 @@ pub(crate) fn ModeDeleteDialog() -> Element {
         }
     });
 
-    // Pre-compute the blast-radius counts every render, cheap walk.
+    // Pre-compute the affected counts every render, cheap walk.
     // The numeric magnitudes are the dialog body's "what does this
-    // affect" readout; mode count includes the target itself plus any
-    // descendants in the active profile's mode tree. `survivor_name`
-    // is the tab the user should land on after a Confirm: take the
-    // current modes list, drop the deleted set, clamp the deleted
-    // tab's old index against the survivors length. For Cancel /
-    // Escape / click-outside, focus simply returns to the tab that
-    // owned the menu (`display_name`).
+    // affect" readout; mode count is the target itself. `survivor_name`
+    // is the tab the user should land on after a Confirm: take the current
+    // modes list, drop the deleted mode, clamp the deleted tab's old index
+    // against the survivors length. For Cancel / Escape / click-outside,
+    // focus simply returns to the tab that owned the menu (`display_name`).
     let (display_name, modes_count, mappings_count, survivor_name) =
         match delete_target.read().as_ref() {
             Some(name) => {
-                let s = ctx.state.read();
-                let (counts, deleted_set) = s.active_profile.as_ref().map_or_else(
-                    || ((1_usize, 0_usize), vec![name.clone()]),
-                    |p| {
-                        let descendants = p.modes().descendants_of(name).unwrap_or_default();
-                        let modes_count = 1 + descendants.len();
-                        let mut deleted: Vec<String> = descendants;
-                        deleted.push(name.clone());
-                        let mappings_count = p
-                            .mappings()
-                            .iter()
-                            .filter(|m| deleted.iter().any(|d| d == &m.mode))
-                            .count();
-                        ((modes_count, mappings_count), deleted)
-                    },
-                );
+                let counts = {
+                    let s = ctx.state.read();
+                    affected_counts(name, s.active_profile.as_ref())
+                };
                 let modes_now = ctx.meta.read().modes.clone();
                 let restore_idx = modes_now.iter().position(|m| m == name);
-                let survivors: Vec<String> = modes_now
-                    .into_iter()
-                    .filter(|m| !deleted_set.iter().any(|d| d == m))
-                    .collect();
+                let survivors: Vec<String> = modes_now.into_iter().filter(|m| m != name).collect();
                 let survivor = restore_idx.and_then(|idx| {
                     if survivors.is_empty() {
                         None
@@ -98,6 +98,8 @@ pub(crate) fn ModeDeleteDialog() -> Element {
     let confirm_name = display_name.clone();
     let cancel_focus_name = display_name.clone();
     let confirm_focus_name = survivor_name.clone();
+    let modes_label = count_label(modes_count, "mode", "modes");
+    let mappings_label = count_label(mappings_count, "mapping", "mappings");
 
     // Focus-restore callback. on_close fires for Escape and
     // click-outside; both are Cancel-shaped (the modes list is
@@ -127,8 +129,8 @@ pub(crate) fn ModeDeleteDialog() -> Element {
             crate::components::DialogBody {
                 "Delete '{display_name}'?"
                 div { class: "if-modetab-delete-confirm__counts",
-                    span { strong { "{modes_count}" } " modes" }
-                    span { strong { "{mappings_count}" } " mappings" }
+                    span { strong { "{modes_count}" } " {modes_label}" }
+                    span { strong { "{mappings_count}" } " {mappings_label}" }
                 }
             }
             crate::components::DialogFooter {
@@ -168,5 +170,70 @@ pub(crate) fn ModeDeleteDialog() -> Element {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use inputforge_core::action::Mapping;
+    use inputforge_core::mode::ModeTree;
+    use inputforge_core::profile::Profile;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    use super::{affected_counts, count_label};
+
+    fn input(index: u8) -> InputAddress {
+        InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index },
+        }
+    }
+
+    fn mapping(mode: &str, index: u8) -> Mapping {
+        Mapping {
+            input: input(index),
+            mode: mode.to_owned(),
+            name: None,
+            actions: vec![],
+        }
+    }
+
+    fn profile_with_mappings(mappings: Vec<Mapping>) -> Profile {
+        let map = HashMap::from([
+            (
+                "Default".to_owned(),
+                vec!["Combat".to_owned(), "Landing".to_owned()],
+            ),
+            ("Combat".to_owned(), vec![]),
+            ("Landing".to_owned(), vec![]),
+        ]);
+        let modes = ModeTree::from_adjacency(&map).unwrap();
+        Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            mappings,
+            vec![],
+            "Default".to_owned(),
+        )
+    }
+
+    #[test]
+    fn affected_counts_include_selected_mode_and_direct_mappings_only() {
+        let profile = profile_with_mappings(vec![
+            mapping("Combat", 0),
+            mapping("Combat", 1),
+            mapping("Landing", 2),
+            mapping("Default", 3),
+        ]);
+
+        assert_eq!(affected_counts("Combat", Some(&profile)), (1, 2));
+    }
+
+    #[test]
+    fn count_label_uses_singular_for_one() {
+        assert_eq!(count_label(1, "mode", "modes"), "mode");
     }
 }

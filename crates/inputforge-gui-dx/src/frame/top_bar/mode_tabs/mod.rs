@@ -123,9 +123,8 @@ pub(crate) fn ModeTabs() -> Element {
                             let kb_tab_id = tab_id.clone();
                             // Plumbing for the Delete keybind: the closure
                             // resolves the disabled flag at event time
-                            // (cheap, runs only on Delete keystroke) by
-                            // reading meta + state, so render does not pay
-                            // an O(N) descendants_of cost per tab.
+                            // (cheap, runs only on Delete keystroke) from
+                            // the current modes snapshot and startup mode.
                             let kb_delete_name = name.clone();
                             let kb_ctx = ctx.clone();
                             let oncontextmenu = move |evt: MouseEvent| {
@@ -184,28 +183,17 @@ pub(crate) fn ModeTabs() -> Element {
 
                                 // Delete → opens F4 destructive-confirm.
                                 // Same disabled rules as the context-menu
-                                // Delete item: root tabs and any tab whose
-                                // subtree contains the startup mode are
+                                // Delete item: first tab and startup tab are
                                 // immune.
                                 if evt.key() == Key::Delete {
                                     evt.prevent_default();
                                     evt.stop_propagation();
                                     let modes_snapshot = key_modes.clone();
                                     let startup = kb_ctx.meta.read().startup_mode.clone();
-                                    let descendants = kb_ctx
-                                        .state
-                                        .read()
-                                        .active_profile
-                                        .as_ref()
-                                        .and_then(|p| {
-                                            p.modes().descendants_of(&kb_delete_name).ok()
-                                        })
-                                        .unwrap_or_default();
                                     if !logic::delete_disabled_for_tab(
                                         &kb_delete_name,
                                         &modes_snapshot,
                                         startup.as_deref(),
-                                        &descendants,
                                     ) {
                                         let mut delete_target = delete_target;
                                         delete_target.set(Some(kb_delete_name.clone()));
@@ -262,9 +250,8 @@ pub(crate) fn ModeTabs() -> Element {
                 }
                 // The context menu lives outside the tablist so it does
                 // not disrupt the flex layout. Rendered once for whichever
-                // tab is currently open; flag-derivation walks the active
-                // profile's mode tree to compute "subtree contains
-                // startup" precisely.
+                // tab is currently open; flag-derivation mirrors the
+                // keyboard Delete rules.
                 {
                     // Bind the read result into an owned Option so the
                     // signal's read guard drops before any inner branch
@@ -278,17 +265,6 @@ pub(crate) fn ModeTabs() -> Element {
                         let current_mode = m.current_mode.clone();
                         let has_profile = m.profile_name.is_some();
                         drop(m);
-
-                        // Resolve descendants once; both the menu's
-                        // Delete-flag and the keydown Delete arm share the
-                        // same helper for a single source of truth.
-                        let descendants = {
-                            let s = ctx.state.read();
-                            s.active_profile
-                                .as_ref()
-                                .and_then(|p| p.modes().descendants_of(&open_name).ok())
-                                .unwrap_or_default()
-                        };
 
                         let is_startup = startup.as_ref().is_some_and(|s| s == &open_name);
                         let already_current = current_mode == open_name;
@@ -312,7 +288,6 @@ pub(crate) fn ModeTabs() -> Element {
                                     &open_name,
                                     &modes_for_flags,
                                     startup.as_deref(),
-                                    &descendants,
                                 ),
                                 set_default_disabled: is_startup,
                             };
