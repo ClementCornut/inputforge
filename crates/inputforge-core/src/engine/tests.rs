@@ -4436,3 +4436,55 @@ fn set_autostart_writes_state_field_on_success() {
     let on_disk = AppSettings::load_from(&harness.engine.settings_path);
     assert!(on_disk.startup.launch_at_startup);
 }
+
+#[test]
+fn set_autostart_failure_leaves_state_field_unchanged() {
+    use inputforge_autostart::AutostartError;
+
+    let mut harness = EngineHarness::new();
+    let warnings_before = harness.state().warnings.len();
+
+    // Mock the next set_enabled to fail.
+    harness
+        .autostart_mock
+        .fail_next_set_enabled(AutostartError::RegistryDenied);
+
+    harness
+        .dispatch(EngineCommand::SetAutostart { enabled: true })
+        .unwrap();
+
+    // settings + state mirror unchanged.
+    assert!(!harness.state().startup.launch_at_startup);
+    assert!(!harness.engine.settings.startup.launch_at_startup);
+
+    // On-disk unchanged (no save attempted).
+    let on_disk = AppSettings::load_from(&harness.engine.settings_path);
+    assert!(!on_disk.startup.launch_at_startup);
+
+    // Exactly one new warning, with the documented exact text.
+    let warnings = harness.state().warnings.clone();
+    assert_eq!(warnings.len(), warnings_before + 1);
+    assert_eq!(
+        warnings.last().unwrap(),
+        "Could not change launch-at-startup setting."
+    );
+}
+
+#[test]
+fn set_autostart_off_preserves_start_minimized_to_tray() {
+    use crate::settings::StartupSettings;
+    let mut harness = EngineHarness::new();
+    // Pre-seed: both on.
+    harness.engine.settings.startup = StartupSettings {
+        launch_at_startup: true,
+        start_minimized_to_tray: true,
+    };
+    harness.engine.state.write().startup = harness.engine.settings.startup.clone();
+
+    harness
+        .dispatch(EngineCommand::SetAutostart { enabled: false })
+        .unwrap();
+
+    assert!(!harness.state().startup.launch_at_startup);
+    assert!(harness.state().startup.start_minimized_to_tray);
+}
