@@ -102,6 +102,11 @@ impl Engine {
         reason = "constructor wires every I/O dependency explicitly; a builder \
                   would not improve clarity for this single caller"
     )]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "startup reconciliation block is linear and self-contained; \
+                  extracting it would obscure the call order guarantee"
+    )]
     pub fn new(
         input: Box<dyn InputSource>,
         output: Box<dyn OutputSink>,
@@ -109,9 +114,9 @@ impl Engine {
         hider: Box<dyn DeviceHider>,
         state: Arc<RwLock<AppState>>,
         commands: mpsc::Receiver<EngineCommand>,
-        settings: AppSettings,
+        mut settings: AppSettings,
         settings_path: PathBuf,
-        autostart: Box<dyn AutostartManager>,
+        mut autostart: Box<dyn AutostartManager>,
     ) -> Self {
         let startup_mode = {
             let s = state.read();
@@ -139,6 +144,55 @@ impl Engine {
             state.snapshot_config.clone_from(&settings.snapshot);
             state.startup.clone_from(&settings.startup);
         };
+
+        // F16 startup reconciliation. Run BEFORE engine construction so the
+        // first command sees converged state.
+        // 1) Read OS state.
+        match autostart.is_enabled() {
+            Ok(actual) if actual != settings.startup.launch_at_startup => {
+                tracing::info!(
+                    target: "autostart",
+                    actual,
+                    persisted = settings.startup.launch_at_startup,
+                    "OS autostart state diverged from settings; OS wins"
+                );
+                settings.startup.launch_at_startup = actual;
+                state.write().startup = settings.startup.clone();
+                if let Err(e) = settings.save_to(&settings_path) {
+                    tracing::warn!(
+                        target: "settings",
+                        error = %e,
+                        "could not persist OS-reconciled startup setting"
+                    );
+                }
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!(target: "autostart", %e, "is_enabled() failed at startup");
+            }
+        }
+
+        // 2) Unconditional argv resync when launch_at_startup is on. Heals a
+        //    stale --start-minimized after a SetStartMinimizedToTray re-register
+        //    failure on the previous run. Idempotent on the happy path.
+        if settings.startup.launch_at_startup {
+            let owned_args: Vec<&str> = if settings.startup.start_minimized_to_tray {
+                vec!["--start-minimized"]
+            } else {
+                vec![]
+            };
+            if let Err(e) = autostart.set_enabled(true, &owned_args) {
+                tracing::warn!(
+                    target: "autostart",
+                    %e,
+                    "could not refresh autostart argv at startup"
+                );
+                state
+                    .write()
+                    .warnings
+                    .push("Could not refresh auto-launch arguments at startup.".to_owned());
+            }
+        }
 
         let engine = Self {
             input,

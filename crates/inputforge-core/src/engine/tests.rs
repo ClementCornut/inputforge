@@ -4341,9 +4341,12 @@ fn set_snapshot_config_prune_failure_does_not_corrupt_settings() {
 #[test]
 fn engine_initialisation_mirrors_startup_into_state() {
     use crate::settings::StartupSettings;
+    // launch_at_startup: false agrees with the default MockAutostart
+    // is_enabled = Ok(false), so reconciliation is a no-op and the
+    // mirror assertion still holds.
     let settings = AppSettings {
         startup: StartupSettings {
-            launch_at_startup: true,
+            launch_at_startup: false,
             start_minimized_to_tray: true,
         },
         ..AppSettings::default()
@@ -4594,4 +4597,147 @@ fn set_start_minimized_persists_when_resync_fails() {
         "Saved, but could not update the auto-launch arguments. \
          Restart of InputForge may use the previous setting."
     );
+}
+
+// ---------------------------------------------------------------------------
+// F16: Engine startup OS reconciliation
+// ---------------------------------------------------------------------------
+
+fn build_engine_with_seeded_mock(
+    settings: AppSettings,
+    seed_mock: impl FnOnce(&MockAutostart),
+) -> (
+    Engine,
+    Arc<RwLock<AppState>>,
+    MockAutostart,
+    tempfile::TempDir,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let settings_path = dir.path().join("settings.toml");
+    settings.save_to(&settings_path).unwrap();
+
+    let state = Arc::new(RwLock::new(AppState::new()));
+    let (_tx, rx) = mpsc::channel();
+    let mock = MockAutostart::new();
+    seed_mock(&mock);
+
+    let engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(MockOutputSink::new()),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        settings,
+        settings_path,
+        Box::new(mock.clone()),
+    );
+
+    (engine, state, mock, dir)
+}
+
+#[test]
+fn engine_startup_reconciles_settings_to_os() {
+    use crate::settings::StartupSettings;
+    let settings = AppSettings {
+        startup: StartupSettings {
+            launch_at_startup: false,
+            start_minimized_to_tray: false,
+        },
+        ..AppSettings::default()
+    };
+
+    let (engine, state, _mock, _dir) = build_engine_with_seeded_mock(settings, |m| {
+        m.set_is_enabled_result(Ok(true));
+    });
+
+    // settings was reconciled toward the OS truth.
+    assert!(engine.settings.startup.launch_at_startup);
+    assert!(state.read().startup.launch_at_startup);
+
+    // Persisted to disk.
+    let on_disk = AppSettings::load_from(&engine.settings_path);
+    assert!(on_disk.startup.launch_at_startup);
+}
+
+#[test]
+fn engine_startup_repushes_argv_when_autostart_enabled() {
+    use crate::settings::StartupSettings;
+    use inputforge_autostart::mock::SetEnabledCall;
+
+    let settings = AppSettings {
+        startup: StartupSettings {
+            launch_at_startup: true,
+            start_minimized_to_tray: true,
+        },
+        ..AppSettings::default()
+    };
+
+    let (_engine, _state, mock, _dir) = build_engine_with_seeded_mock(settings, |m| {
+        m.set_is_enabled_result(Ok(true));
+    });
+
+    let calls = mock.calls();
+    assert_eq!(calls.len(), 1, "exactly one resync call expected");
+    assert_eq!(
+        calls[0],
+        SetEnabledCall {
+            enabled: true,
+            args: vec!["--start-minimized".to_owned()],
+        }
+    );
+}
+
+#[test]
+fn engine_startup_repush_failure_warns_does_not_block() {
+    use crate::settings::StartupSettings;
+    use inputforge_autostart::AutostartError;
+
+    let settings = AppSettings {
+        startup: StartupSettings {
+            launch_at_startup: true,
+            start_minimized_to_tray: false,
+        },
+        ..AppSettings::default()
+    };
+
+    let (_engine, state, _mock, _dir) = build_engine_with_seeded_mock(settings, |m| {
+        m.set_is_enabled_result(Ok(true));
+        m.fail_next_set_enabled(AutostartError::RegistryDenied);
+    });
+
+    let warnings = state.read().warnings.clone();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w == "Could not refresh auto-launch arguments at startup."),
+        "expected resync-failure warning; got {warnings:?}"
+    );
+}
+
+#[test]
+fn engine_startup_tolerates_is_enabled_error() {
+    use crate::settings::StartupSettings;
+    use inputforge_autostart::AutostartError;
+
+    let settings = AppSettings {
+        startup: StartupSettings {
+            launch_at_startup: false,
+            start_minimized_to_tray: false,
+        },
+        ..AppSettings::default()
+    };
+
+    let (engine, state, mock, _dir) = build_engine_with_seeded_mock(settings, |m| {
+        m.set_is_enabled_result(Err(AutostartError::NotSupported));
+    });
+
+    // settings unchanged, no warning pushed, no panic.
+    assert!(!engine.settings.startup.launch_at_startup);
+    assert!(
+        state.read().warnings.is_empty(),
+        "is_enabled error must NOT push a user-visible warning"
+    );
+    // is_enabled was attempted but no set_enabled call followed.
+    assert_eq!(mock.calls().len(), 0);
 }
