@@ -6,8 +6,10 @@ mod field_row;
 mod prune_confirm;
 mod section;
 mod snapshots_section;
+mod startup_section;
 
 pub(crate) use snapshots_section::SnapshotsSection;
+pub(crate) use startup_section::StartupSection;
 
 const SETTINGS_PANEL_CSS: Asset = asset!("/assets/frame/settings_panel.css");
 
@@ -17,6 +19,7 @@ pub(crate) fn SettingsPanel() -> Element {
     rsx! {
         Stylesheet { href: SETTINGS_PANEL_CSS }
         div { class: "if-settings-panel",
+            StartupSection {}
             SnapshotsSection {}
         }
     }
