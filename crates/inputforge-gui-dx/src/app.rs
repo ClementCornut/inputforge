@@ -7,7 +7,6 @@ use crate::context::{
 };
 use crate::frame;
 use crate::frame::use_editor_state_provider;
-use crate::lifecycle;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::theme::ThemeProvider;
 use crate::toast::{ToastQueue, ToastState, ToastViewport, install_warnings_bridge};
@@ -106,9 +105,6 @@ pub(crate) fn app_root() -> Element {
         });
     }
 
-    // --start-minimized, applied once on first mount.
-    use_hook(|| lifecycle::apply_start_minimized(params.start_minimized));
-
     app_root_view()
 }
 
@@ -168,7 +164,6 @@ mod tests {
         };
         use_context_provider(|| raw.clone());
         use_context_provider(|| LaunchParams {
-            start_minimized: false,
             tray_menu_ids: TrayMenuIds {
                 show: muda::MenuId::new("show"),
                 toggle: muda::MenuId::new("toggle"),

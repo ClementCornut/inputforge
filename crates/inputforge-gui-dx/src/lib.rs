@@ -43,7 +43,6 @@ use crate::tray::action::TrayMenuIds;
 /// inside `app_root`'s `use_hook` body.
 #[derive(Clone)]
 pub(crate) struct LaunchParams {
-    pub start_minimized: bool,
     pub tray_menu_ids: TrayMenuIds,
 }
 
@@ -80,7 +79,6 @@ pub fn launch_gui(
 
     let handles = RawHandles { state, commands };
     let params = LaunchParams {
-        start_minimized,
         tray_menu_ids: menu_ids,
     };
 
@@ -93,10 +91,16 @@ pub fn launch_gui(
     // value is taken exactly once, on `app_root`'s first mount.
     tray::install_toggle_menu_item(toggle_menu_item);
 
+    // Configure visibility at construction so the window is born hidden
+    // when start-minimized is on. Hiding post-mount via `set_visible(false)`
+    // races the WebView2 first paint and leaves the window visible under
+    // `dx run`; tao's `with_visible(false)` sidesteps the race entirely.
+    // Tray "Show" later calls `lifecycle::show_window()` which re-shows.
     let window = WindowBuilder::new()
         .with_title("InputForge")
         .with_inner_size(LogicalSize::new(1280.0, 800.0))
-        .with_min_inner_size(LogicalSize::new(800.0, 500.0));
+        .with_min_inner_size(LogicalSize::new(800.0, 500.0))
+        .with_visible(!start_minimized);
 
     let cfg = Config::new()
         .with_window(window)

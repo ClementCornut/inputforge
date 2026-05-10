@@ -1,4 +1,4 @@
-//! Window-lifecycle helpers. Three functions, all called from inside a
+//! Window-lifecycle helpers. Two functions, all called from inside a
 //! Dioxus scope (so `dioxus::desktop::window()` resolves correctly).
 //!
 //! No close-hook gate: Dioxus owns close-requested handling. X-click hide
@@ -6,6 +6,11 @@
 //! `lib.rs::launch_gui`; tray Quit flips the per-window close behavior to
 //! `WindowCloses` then triggers close, the event loop exits because
 //! `exit_on_last_window_close` is true (the default; F3 does not override).
+//!
+//! Start-minimized is applied at construction via
+//! `WindowBuilder::with_visible(false)` in `lib.rs::launch_gui`, not from
+//! a hook here, hiding post-mount with `set_visible(false)` races the
+//! `WebView2` first paint and leaves the window visible under `dx run`.
 //!
 //! ## API spelling note
 //!
@@ -35,17 +40,4 @@ pub(crate) fn request_quit() {
     let w = window();
     w.set_close_behavior(WindowCloseBehaviour::WindowCloses);
     w.close();
-}
-
-/// Apply --start-minimized once during `app_root` mount.
-///
-/// The `WebView2` window (and the polling + listener tasks) is always
-/// created at startup; `--start-minimized` only hides it via
-/// `set_visible(false)`. Dioxus 0.7's `tao::EventLoop::run` is one-shot,
-/// so a tray-triggered defer-launch isn't viable without restructuring
-/// the whole event loop.
-pub(crate) fn apply_start_minimized(start_minimized: bool) {
-    if start_minimized {
-        window().set_visible(false);
-    }
 }
