@@ -4,6 +4,8 @@
 //! See `docs/superpowers/specs/2026-05-10-f16-startup-preferences-design.md`.
 
 mod error;
+#[cfg(target_os = "linux")]
+mod linux;
 mod noop;
 #[cfg(target_os = "windows")]
 mod windows;
