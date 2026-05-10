@@ -1017,6 +1017,10 @@ impl Engine {
                     "autostart updated"
                 );
             }
+            EngineCommand::SetStartMinimizedToTray { .. } => {
+                // Implemented in Task 7.2.
+                tracing::trace!(target: "engine", "SetStartMinimizedToTray received (handler not yet wired)");
+            }
         }
         Ok(())
     }

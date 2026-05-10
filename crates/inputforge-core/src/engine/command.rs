@@ -134,6 +134,21 @@ pub enum EngineCommand {
     ///      leave settings + state untouched.
     SetAutostart { enabled: bool },
 
+    /// Set the persisted "start minimized to tray" preference (F16).
+    ///
+    /// Engine handler order:
+    ///   1. Capture prior setting for rollback.
+    ///   2. Update `settings.startup.start_minimized_to_tray`, mirror into
+    ///      `AppState`, persist `settings.toml`. On save failure: roll
+    ///      back in-memory + mirror, push warning, return.
+    ///   3. If `settings.startup.launch_at_startup`, re-register the
+    ///      autostart entry with the new args. Best-effort: on `Err`,
+    ///      push `"Saved, but could not update the auto-launch arguments. \
+    ///      Restart of InputForge may use the previous setting."`. Do NOT
+    ///      revert; the engine-startup unconditional argv resync heals it
+    ///      on the next launch.
+    SetStartMinimizedToTray { enabled: bool },
+
     /// Set or clear the global display alias for a device.
     SetDeviceAlias {
         device: DeviceId,
@@ -344,5 +359,13 @@ mod tests {
         let b = EngineCommand::SetAutostart { enabled: true };
         assert_eq!(a, b);
         assert!(format!("{a:?}").contains("SetAutostart"));
+    }
+
+    #[test]
+    fn set_start_minimized_to_tray_variant_debug_and_partialeq() {
+        let a = EngineCommand::SetStartMinimizedToTray { enabled: true };
+        let b = EngineCommand::SetStartMinimizedToTray { enabled: true };
+        assert_eq!(a, b);
+        assert!(format!("{a:?}").contains("SetStartMinimizedToTray"));
     }
 }
