@@ -179,14 +179,14 @@ rsx! {
 
 Order is fixed: Startup first because "what does this app do at sign-in" reads before "internal storage detail". Components are reused verbatim from F15 (`SettingsSection`, `SettingsFieldRow`) and F2 (`Switch`); no new design-system primitives.
 
-**9. SettingsSnapshot mirror.** `SettingsSnapshot` in `crates/inputforge-gui-dx/src/context.rs` (the polled view) gains:
+**9. SettingsSnapshot mirror.** `SettingsSnapshot` in `crates/inputforge-gui-dx/src/context.rs:39` (the polled view) gains:
 
 ```rust
 pub launch_at_startup: bool,
 pub start_minimized_to_tray: bool,
 ```
 
-Populated by `SettingsSnapshot::from_state` (or whatever the existing constructor is named) reading from `AppState.app_settings`. The bridge polling cadence is whatever F1 already established; no new polling added.
+Populated by `SettingsSnapshot::from_state(state: &AppState)` at `context.rs:44`, which today reads `state.snapshot_config`. Following that per-field mirror convention, `AppState` gains two scalar fields (`launch_at_startup: bool`, `start_minimized_to_tray: bool`) populated by the engine from `AppSettings` on load and on each `Set*` command, exactly as `state.snapshot_config` is maintained today (verified at `context.rs:48` and the existing F6 mirror tests `engine_initialisation_mirrors_settings_snapshot_into_state` and `reload_settings_mirrors_into_state_snapshot_config`). The bridge polling cadence is whatever F1 already established; no new polling added.
 
 **10. Reactivity contract.** When the user flips a switch:
 
