@@ -163,6 +163,7 @@ Assert-WorkflowDoesNotContain -Text "branches:" -Reason "workflow does not publi
 Assert-WorkflowContains -Text 'release-${{ github.ref }}' -Reason "release concurrency is keyed by tag ref"
 Assert-WorkflowContains -Text "cancel-in-progress: false" -Reason "release builds are not cancelled mid-flight"
 Assert-WorkflowContains -Text "contents: write" -Reason "publish job can create or update releases"
+Assert-WorkflowContains -Text "          lfs: true" -Reason "checkout downloads Git LFS binary dependencies"
 Assert-WorkflowContains -Text "DIOXUS_CLI_VERSION: 0.7.9" -Reason "workflow pins the target Dioxus CLI"
 Assert-WorkflowContains -Text "cargo test --workspace" -Reason "test job gates release builds"
 Assert-WorkflowContains -Text "windows-latest" -Reason "initial matrix includes Windows"
