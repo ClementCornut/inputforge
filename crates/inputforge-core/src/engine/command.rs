@@ -121,6 +121,19 @@ pub enum EngineCommand {
         config: crate::snapshot::SnapshotConfig,
     },
 
+    /// Set the OS-level "launch InputForge at sign-in" preference (F16).
+    ///
+    /// Engine handler order:
+    ///   1. Compute argv from `self.settings.startup.start_minimized_to_tray`
+    ///      (`&["--start-minimized"]` when on, `&[]` when off).
+    ///   2. Call `self.autostart.set_enabled(enabled, args)`.
+    ///   3. On `Ok(())`: persist the new `launch_at_startup` value to
+    ///      `settings.toml`, mirror into `AppState`. On save failure: roll
+    ///      back in-memory + mirror, push warning.
+    ///   4. On `Err`: push `"Could not change launch-at-startup setting."`,
+    ///      leave settings + state untouched.
+    SetAutostart { enabled: bool },
+
     /// Set or clear the global display alias for a device.
     SetDeviceAlias {
         device: DeviceId,
@@ -323,5 +336,13 @@ mod tests {
         let b = EngineCommand::SetSnapshotConfig { config: cfg };
         assert_eq!(a, b);
         assert!(format!("{a:?}").contains("SetSnapshotConfig"));
+    }
+
+    #[test]
+    fn set_autostart_variant_debug_and_partialeq() {
+        let a = EngineCommand::SetAutostart { enabled: true };
+        let b = EngineCommand::SetAutostart { enabled: true };
+        assert_eq!(a, b);
+        assert!(format!("{a:?}").contains("SetAutostart"));
     }
 }

@@ -969,6 +969,10 @@ impl Engine {
                 self.set_mappings_bulk(&entries, snapshot_label);
                 self.pending_output_refresh = true;
             }
+            EngineCommand::SetAutostart { .. } => {
+                // Implemented in Task 6.2.
+                tracing::trace!(target: "engine", "SetAutostart received (handler not yet wired)");
+            }
         }
         Ok(())
     }
