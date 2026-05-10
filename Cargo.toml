@@ -80,8 +80,8 @@ tray-icon = "0.21"
 muda = "0.17"
 
 # GUI
-dioxus = "0.7.6"
-dioxus-ssr = "0.7.6"
+dioxus = "0.7.9"
+dioxus-ssr = "0.7.9"
 scraper = "0.26.0"
 arboard = { version = "3.6.1", default-features = false }
 
