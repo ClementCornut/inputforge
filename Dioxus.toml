@@ -1,5 +1,5 @@
 [application]
-name = "InputForge"
+name = "inputforge"
 
 [bundle]
 identifier = "io.inputforge.app"
@@ -15,12 +15,16 @@ icon = [
   "crates/inputforge-app/assets/icon-256.png",
   "crates/inputforge-app/assets/icon.ico",
 ]
+resources = [
+  "SDL/SDL3.dll",
+]
 
 [bundle.windows]
 icon_path = "crates/inputforge-app/assets/icon.ico"
 
 [bundle.windows.nsis]
-install_mode = "CurrentUser"
+template = "../../scripts/nsis/inputforge.nsi"
+install_mode = "Both"
 languages = ["English"]
 display_language_selector = false
-start_menu_folder = "InputForge"
+start_menu_folder = "inputforge"

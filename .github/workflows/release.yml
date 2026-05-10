@@ -99,6 +99,10 @@ jobs:
           & $dx --version
           "DX_BIN=$dx" >> $env:GITHUB_ENV
 
+      - name: Assert Windows installer source contract
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File .github/scripts/assert-windows-installer-contract.ps1
+
       - name: Normalize NSIS bundle version
         id: nsis_version
         shell: pwsh
@@ -119,10 +123,21 @@ jobs:
 
           "nsis_bundle_version=$nsisBundleVersion" >> $env:GITHUB_OUTPUT
 
+      - name: Verify SDL runtime source
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath "SDL/SDL3.dll")) {
+            throw "SDL/SDL3.dll is required for Windows release bundles."
+          }
+
       - name: Bundle desktop app
         shell: pwsh
         run: |
-          & $env:DX_BIN bundle --package inputforge-app --platform "${{ matrix.platform }}" --release --package-types "${{ matrix.package_type }}"
+          & $env:DX_BIN bundle --package inputforge-app --bin inputforge --platform "${{ matrix.platform }}" --release --package-types "${{ matrix.package_type }}"
+
+      - name: Assert Windows bundle payload
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File .github/scripts/assert-windows-installer-contract.ps1 -BundleRoot "target/dx/inputforge/bundle/windows/nsis"
 
       - name: Locate installer
         id: installer
@@ -144,11 +159,10 @@ jobs:
         shell: pwsh
         env:
           INSTALLER_PATH: ${{ steps.installer.outputs.installer_path }}
-          NSIS_BUNDLE_VERSION: ${{ steps.nsis_version.outputs.nsis_bundle_version }}
           RELEASE_VERSION: ${{ needs.test.outputs.release_version }}
         run: |
           $installer = Get-Item -LiteralPath $env:INSTALLER_PATH
-          $targetName = $installer.Name.Replace($env:NSIS_BUNDLE_VERSION, $env:RELEASE_VERSION)
+          $targetName = "inputforge_{0}_x64-setup.exe" -f $env:RELEASE_VERSION
           $targetPath = Join-Path $installer.DirectoryName $targetName
 
           if ($installer.FullName -ne $targetPath) {
