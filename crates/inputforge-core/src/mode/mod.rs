@@ -1,9 +1,7 @@
 // Rust guideline compliant 2026-05-10
 
-mod resolve;
 mod state;
 
-pub use resolve::resolve_mapping;
 pub use state::ModeState;
 
 use std::collections::{HashMap, HashSet};

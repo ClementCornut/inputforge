@@ -150,10 +150,10 @@ impl Engine {
 
     /// Execute a single engine frame.
     ///
-    /// Processes pending commands, polls input, routes events through
-    /// the mode tree and pipeline, and writes output. Call this
-    /// directly in tests instead of [`run`](Self::run) to avoid the
-    /// loop and sleep.
+    /// Processes pending commands, polls input, routes events through direct
+    /// active-mode mapping lookup and pipelines, and writes output. Call this
+    /// directly in tests instead of [`run`](Self::run) to avoid the loop and
+    /// sleep.
     ///
     /// # Errors
     ///
@@ -190,8 +190,8 @@ impl Engine {
         }
 
         // Get profile data needed for this frame.
-        // Clone mappings + mode tree to avoid holding the lock during processing.
-        let (mappings, mode_tree) = {
+        // Clone mappings + mode list to avoid holding the lock during processing.
+        let (mappings, mode_list) = {
             let state = self.state.read();
             match &state.active_profile {
                 Some(profile) => (profile.mappings().to_vec(), profile.modes().clone()),
@@ -202,7 +202,7 @@ impl Engine {
         // On first tick after activation, refresh all cached axis outputs so
         // vJoy reflects current physical device positions without waiting for
         // a new input event.
-        self.apply_activation_refresh(&mappings, &mode_tree)?;
+        self.apply_activation_refresh(&mappings, &mode_list)?;
 
         // Process each input event.
         // Move the buffer out of self so the loop body can borrow other
@@ -238,12 +238,8 @@ impl Engine {
                 callbacks_changed_mode = self.mode_state.current() != mode_before_callbacks;
             }
 
-            let active_mappings = active_mappings_for_event(
-                &mappings,
-                &event.source,
-                self.mode_state.current(),
-                &mode_tree,
-            );
+            let active_mappings =
+                active_mappings_for_event(&mappings, &event.source, self.mode_state.current());
             if active_mappings.is_empty() {
                 continue;
             }
@@ -273,7 +269,7 @@ impl Engine {
                     self.output.as_mut(),
                     self.keyboard.as_mut(),
                     &mut self.mode_state,
-                    &mode_tree,
+                    &mode_list,
                     &mut self.callbacks,
                     &event.source,
                 )?;
@@ -289,7 +285,7 @@ impl Engine {
                         &state.input_cache,
                         &mappings,
                         self.mode_state.current(),
-                        &mode_tree,
+                        &mode_list,
                         self.output.as_mut(),
                         &mut state.output_cache,
                     )?;
@@ -330,7 +326,7 @@ impl Engine {
     fn apply_activation_refresh(
         &mut self,
         mappings: &[Mapping],
-        mode_tree: &crate::mode::ModeTree,
+        mode_list: &crate::mode::Modes,
     ) -> Result<()> {
         if !self.pending_output_refresh {
             return Ok(());
@@ -342,7 +338,7 @@ impl Engine {
             &state.input_cache,
             mappings,
             self.mode_state.current(),
-            mode_tree,
+            mode_list,
             self.output.as_mut(),
             &mut state.output_cache,
         )

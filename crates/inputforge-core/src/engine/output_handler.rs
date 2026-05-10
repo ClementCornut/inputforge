@@ -9,7 +9,7 @@
 use crate::action::ModeChangeStrategy;
 use crate::callbacks::{CallbackRegistry, ReleaseCallback};
 use crate::error::Result;
-use crate::mode::{ModeState, ModeTree, resolve_mapping};
+use crate::mode::{ModeState, Modes};
 use crate::output::traits::{KeyboardSink, OutputSink};
 use crate::pipeline::{self, PipelineContext, PipelineOutput};
 use crate::state::{InputCacheStore, OutputCacheStore};
@@ -35,7 +35,7 @@ pub(super) fn process_pipeline_outputs(
     output_sink: &mut dyn OutputSink,
     keyboard: &mut dyn KeyboardSink,
     mode_state: &mut ModeState,
-    mode_tree: &ModeTree,
+    mode_list: &Modes,
     callbacks: &mut CallbackRegistry,
     triggering_input: &InputAddress,
 ) -> Result<OutputResult> {
@@ -70,7 +70,7 @@ pub(super) fn process_pipeline_outputs(
             }
             PipelineOutput::ChangeMode { strategy } => {
                 let old_mode = mode_state.current().to_owned();
-                apply_mode_change(strategy, mode_state, mode_tree, callbacks, triggering_input);
+                apply_mode_change(strategy, mode_state, mode_list, callbacks, triggering_input);
                 if mode_state.current() != old_mode {
                     mode_changed = true;
                 }
@@ -94,13 +94,13 @@ pub(super) fn process_pipeline_outputs(
 fn apply_mode_change(
     strategy: &ModeChangeStrategy,
     mode_state: &mut ModeState,
-    tree: &ModeTree,
+    mode_list: &Modes,
     callbacks: &mut CallbackRegistry,
     triggering_input: &InputAddress,
 ) {
     match strategy {
         ModeChangeStrategy::SwitchTo { mode } => {
-            if let Err(e) = mode_state.switch_to(mode, tree) {
+            if let Err(e) = mode_state.switch_to(mode, mode_list) {
                 tracing::warn!(
                     mode,
                     error = %e,
@@ -108,18 +108,20 @@ fn apply_mode_change(
                 );
             }
         }
-        ModeChangeStrategy::Temporary { mode } => match mode_state.push_temporary(mode, tree) {
-            Ok(()) => {
-                callbacks.register(triggering_input.clone(), ReleaseCallback::PopTemporaryMode);
+        ModeChangeStrategy::Temporary { mode } => {
+            match mode_state.push_temporary(mode, mode_list) {
+                Ok(()) => {
+                    callbacks.register(triggering_input.clone(), ReleaseCallback::PopTemporaryMode);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        mode,
+                        error = %e,
+                        "Temporary mode push failed, skipping"
+                    );
+                }
             }
-            Err(e) => {
-                tracing::warn!(
-                    mode,
-                    error = %e,
-                    "Temporary mode push failed, skipping"
-                );
-            }
-        },
+        }
     }
 }
 
@@ -160,12 +162,15 @@ pub(super) fn refresh_axes_for_mode_change(
     cache: &InputCacheStore,
     mappings: &[crate::action::Mapping],
     mode: &str,
-    tree: &ModeTree,
+    _mode_list: &Modes,
     output_sink: &mut dyn OutputSink,
     output_cache: &mut OutputCacheStore,
 ) -> Result<()> {
     for (address, value, polarity) in cache.get_all_axis_entries() {
-        if let Some(mapping) = resolve_mapping(mappings, &address, mode, tree) {
+        if let Some(mapping) = mappings
+            .iter()
+            .find(|mapping| mapping.input == address && mapping.mode == *mode)
+        {
             let input_value = InputValue::Axis {
                 value: AxisValue::new(value),
                 polarity,

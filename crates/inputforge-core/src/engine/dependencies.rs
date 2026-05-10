@@ -3,7 +3,6 @@
 //! Input dependency discovery for engine event routing.
 
 use crate::action::{Action, Condition, Mapping};
-use crate::mode::{ModeTree, resolve_mapping};
 use crate::types::InputAddress;
 
 /// Return active mappings whose primary or derived inputs depend on `source`.
@@ -11,11 +10,10 @@ pub(super) fn active_mappings_for_event<'a>(
     mappings: &'a [Mapping],
     source: &InputAddress,
     mode: &str,
-    tree: &ModeTree,
 ) -> Vec<&'a Mapping> {
     let mut out = Vec::new();
 
-    if let Some(primary) = resolve_mapping(mappings, source, mode, tree) {
+    if let Some(primary) = direct_mapping_for(mappings, source, mode) {
         out.push(primary);
     }
 
@@ -29,7 +27,7 @@ pub(super) fn active_mappings_for_event<'a>(
         {
             continue;
         }
-        let Some(active) = resolve_mapping(mappings, &mapping.input, mode, tree) else {
+        let Some(active) = direct_mapping_for(mappings, &mapping.input, mode) else {
             continue;
         };
         if std::ptr::eq(active, mapping) {
@@ -38,6 +36,16 @@ pub(super) fn active_mappings_for_event<'a>(
     }
 
     out
+}
+
+fn direct_mapping_for<'a>(
+    mappings: &'a [Mapping],
+    input: &InputAddress,
+    mode: &str,
+) -> Option<&'a Mapping> {
+    mappings
+        .iter()
+        .find(|mapping| mapping.input == *input && mapping.mode == *mode)
 }
 
 /// Return all bound inputs that can affect `mapping`.
@@ -122,12 +130,104 @@ mod tests {
     }
 
     fn mapping(actions: Vec<Action>) -> Mapping {
+        mapping_for(axis(0), "Default", actions)
+    }
+
+    fn mapping_for(input: InputAddress, mode: &str, actions: Vec<Action>) -> Mapping {
         Mapping {
-            input: axis(0),
-            mode: "Default".to_owned(),
+            input,
+            mode: mode.to_owned(),
             name: None,
             actions,
         }
+    }
+
+    fn mapping_modes(results: &[&Mapping]) -> Vec<String> {
+        results.iter().map(|mapping| mapping.mode.clone()).collect()
+    }
+
+    fn mapping_inputs(results: &[&Mapping]) -> Vec<InputAddress> {
+        results
+            .iter()
+            .map(|mapping| mapping.input.clone())
+            .collect()
+    }
+
+    #[test]
+    fn active_mappings_returns_exact_active_mode_primary_mapping() {
+        let mappings = vec![
+            mapping_for(axis(0), "Default", vec![Action::Invert]),
+            mapping_for(
+                axis(0),
+                "Combat",
+                vec![Action::MapToVJoy { output: output() }],
+            ),
+        ];
+
+        let active = active_mappings_for_event(&mappings, &axis(0), "Combat");
+
+        assert_eq!(mapping_modes(&active), vec!["Combat"]);
+    }
+
+    #[test]
+    fn active_mappings_does_not_inherit_parent_mode_mapping() {
+        let mappings = vec![mapping_for(axis(0), "Default", vec![Action::Invert])];
+
+        let active = active_mappings_for_event(&mappings, &axis(0), "Combat");
+
+        assert!(active.is_empty());
+    }
+
+    #[test]
+    fn active_mappings_requires_direct_mode_match_for_derived_dependency() {
+        let mappings = vec![
+            mapping_for(
+                axis(0),
+                "Default",
+                vec![Action::MergeAxis {
+                    second_input: axis(1),
+                    operation: MergeOp::Average,
+                }],
+            ),
+            mapping_for(axis(2), "Combat", vec![Action::Invert]),
+        ];
+
+        let active = active_mappings_for_event(&mappings, &axis(1), "Combat");
+
+        assert!(active.is_empty());
+    }
+
+    #[test]
+    fn active_mappings_includes_direct_derived_dependency_mapping() {
+        let mappings = vec![mapping_for(
+            axis(0),
+            "Combat",
+            vec![Action::MergeAxis {
+                second_input: axis(1),
+                operation: MergeOp::Average,
+            }],
+        )];
+
+        let active = active_mappings_for_event(&mappings, &axis(1), "Combat");
+
+        assert_eq!(mapping_inputs(&active), vec![axis(0)]);
+    }
+
+    #[test]
+    fn active_mappings_preserves_first_duplicate_mapping_order() {
+        let mappings = vec![
+            mapping_for(axis(0), "Combat", vec![Action::Invert]),
+            mapping_for(
+                axis(0),
+                "Combat",
+                vec![Action::MapToVJoy { output: output() }],
+            ),
+        ];
+
+        let active = active_mappings_for_event(&mappings, &axis(0), "Combat");
+
+        assert_eq!(active.len(), 1);
+        assert!(std::ptr::eq(active[0], &mappings[0]));
     }
 
     #[test]
