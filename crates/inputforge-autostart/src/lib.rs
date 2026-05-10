@@ -5,6 +5,8 @@
 
 mod error;
 mod noop;
+#[cfg(target_os = "windows")]
+mod windows;
 
 pub use error::AutostartError;
 
