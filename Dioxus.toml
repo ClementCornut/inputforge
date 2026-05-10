@@ -3,6 +3,10 @@ name = "InputForge"
 
 [bundle]
 identifier = "io.inputforge.app"
+publisher = "InputForge"
+copyright = "Copyright (c) 2026 InputForge"
+short_description = "Remap physical joystick, pedal, and throttle inputs to virtual vJoy devices"
+long_description = "Remap physical joystick, pedal, and throttle inputs to virtual vJoy devices"
 icon = [
   "crates/inputforge-app/assets/icon-16.png",
   "crates/inputforge-app/assets/icon-24.png",
@@ -11,3 +15,12 @@ icon = [
   "crates/inputforge-app/assets/icon-256.png",
   "crates/inputforge-app/assets/icon.ico",
 ]
+
+[bundle.windows]
+icon_path = "crates/inputforge-app/assets/icon.ico"
+
+[bundle.windows.nsis]
+install_mode = "CurrentUser"
+languages = ["English"]
+display_language_selector = false
+start_menu_folder = "InputForge"
