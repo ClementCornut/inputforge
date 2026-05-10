@@ -4351,3 +4351,23 @@ fn engine_initialisation_mirrors_startup_into_state() {
     let (engine, _path) = test_engine_with_settings_path(settings.clone());
     assert_eq!(engine.state.read().startup, settings.startup);
 }
+
+#[test]
+fn reload_settings_mirrors_startup_into_state() {
+    use crate::settings::StartupSettings;
+    let mut harness = EngineHarness::new();
+
+    // Write a fresh settings.toml with a non-default [startup].
+    let mut file_settings = AppSettings::default();
+    file_settings.startup = StartupSettings {
+        launch_at_startup: true,
+        start_minimized_to_tray: true,
+    };
+    file_settings
+        .save_to(&harness.engine.settings_path)
+        .unwrap();
+
+    harness.dispatch(EngineCommand::ReloadSettings).unwrap();
+
+    assert_eq!(harness.state().startup, file_settings.startup);
+}

@@ -549,7 +549,10 @@ impl Engine {
             }
             EngineCommand::ReloadSettings => {
                 self.settings = crate::settings::AppSettings::load_from(&self.settings_path);
-                self.state.write().snapshot_config = self.settings.snapshot.clone();
+                let mut state = self.state.write();
+                state.snapshot_config = self.settings.snapshot.clone();
+                state.startup = self.settings.startup.clone();
+                drop(state);
                 tracing::info!(target: "engine", "settings reloaded");
             }
             EngineCommand::SetSnapshotConfig { config } => {
