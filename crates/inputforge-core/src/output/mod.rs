@@ -11,7 +11,7 @@ pub mod keyboard;
 #[cfg(feature = "win32-io")]
 pub mod mouse;
 
-#[cfg(feature = "test-util")]
+#[cfg(any(test, feature = "test-util"))]
 pub mod mock;
 
 pub use traits::{KeyboardSink, MouseSink, OutputSink, VirtualDeviceConfig};
@@ -22,7 +22,7 @@ pub use vjoy_output::VJoyOutput;
 #[cfg(feature = "win32-io")]
 pub use keyboard::KeyboardOutput;
 
-#[cfg(feature = "test-util")]
+#[cfg(any(test, feature = "test-util"))]
 pub use mock::{
     KeyboardCall, MockKeyboardSink, MockMouseSink, MockOutputSink, MouseCall, OutputCall,
 };

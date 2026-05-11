@@ -9,7 +9,7 @@ pub mod sdl3;
 #[cfg(feature = "win32-io")]
 pub mod hidhide;
 
-#[cfg(feature = "test-util")]
+#[cfg(any(test, feature = "test-util"))]
 pub mod mock;
 
 pub use noop_hider::NoOpDeviceHider;
@@ -21,5 +21,5 @@ pub use sdl3::Sdl3Input;
 #[cfg(feature = "win32-io")]
 pub use hidhide::HidHideManager;
 
-#[cfg(feature = "test-util")]
+#[cfg(any(test, feature = "test-util"))]
 pub use mock::{MockDeviceHider, MockInputSource};

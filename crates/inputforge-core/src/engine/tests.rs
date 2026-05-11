@@ -380,6 +380,18 @@ fn held_mouse_mapping(target: MouseTarget, mode: &str) -> Mapping {
     }
 }
 
+fn pulse_mouse_mapping(target: MouseTarget, mode: &str) -> Mapping {
+    Mapping {
+        input: button_addr(0),
+        mode: mode.to_owned(),
+        name: None,
+        actions: vec![Action::MapToMouse {
+            target,
+            behavior: OutputBehavior::Pulse,
+        }],
+    }
+}
+
 fn held_mouse_mapping_for_input(target: MouseTarget, mode: &str, input_index: u8) -> Mapping {
     Mapping {
         input: button_addr(input_index),
@@ -773,6 +785,29 @@ fn failed_release_is_retryable() {
     engine.tick().unwrap();
     mouse.fail_next_button_up();
     tx.send(EngineCommand::Deactivate).unwrap();
+    assert!(engine.tick().is_err());
+
+    tx.send(EngineCommand::Deactivate).unwrap();
+    engine.tick().unwrap();
+
+    assert_eq!(
+        mouse.calls(),
+        vec![
+            MouseCall::ButtonDown(MouseTarget::LeftButton),
+            MouseCall::ButtonUp(MouseTarget::LeftButton),
+        ]
+    );
+}
+
+#[test]
+fn partial_pulse_failure_releases_on_cleanup() {
+    let mapping = pulse_mouse_mapping(MouseTarget::LeftButton, "Default");
+    let profile = make_profile(simple_modes(), vec![mapping]);
+    let mut input = MockInputSource::default();
+    input.events.push(button_event(0, true));
+    let (mut engine, _state, tx, _keyboard, mouse) = make_recording_engine(input, profile, None);
+
+    mouse.fail_next_button_up();
     assert!(engine.tick().is_err());
 
     tx.send(EngineCommand::Deactivate).unwrap();

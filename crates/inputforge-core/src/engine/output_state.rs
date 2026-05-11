@@ -10,16 +10,19 @@ use crate::types::{InputAddress, KeyCombo};
 pub(crate) enum OutputEvent {
     KeyDown(KeyCombo),
     KeyUp(KeyCombo),
-    KeyPulse(KeyCombo),
     MouseDown(MouseTarget),
     MouseUp(MouseTarget),
-    MousePulse(MouseTarget),
     Wheel(MouseTarget),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum OutputAction {
     Immediate(OutputEvent),
+    Pulse {
+        owner: OutputOwner,
+        start: OutputEvent,
+        finish: Option<OutputEvent>,
+    },
     Release {
         owner: OutputOwner,
         event: OutputEvent,
@@ -34,6 +37,7 @@ impl OutputAction {
     pub(crate) fn into_event(self) -> OutputEvent {
         match self {
             Self::Immediate(event) | Self::Release { event, .. } => event,
+            Self::Pulse { start, .. } => start,
         }
     }
 }
@@ -70,6 +74,7 @@ impl OwnerScopeKey {
 #[derive(Debug, Default)]
 pub(crate) struct OutputRuntimeState {
     active_owners: HashSet<OutputOwner>,
+    partial_pulse_owners: HashSet<OutputOwner>,
     hold_counts: HashMap<OutputDestination, usize>,
 }
 
@@ -90,9 +95,12 @@ impl OutputRuntimeState {
                 OutputEvent::KeyDown(key.clone()),
                 OutputEvent::KeyUp(key),
             ),
-            OutputBehavior::Pulse => {
-                self.reconcile_pulse(owner, active, OutputEvent::KeyPulse(key))
-            }
+            OutputBehavior::Pulse => self.reconcile_pulse(
+                owner,
+                active,
+                OutputEvent::KeyDown(key.clone()),
+                Some(OutputEvent::KeyUp(key)),
+            ),
         }
     }
 
@@ -104,7 +112,7 @@ impl OutputRuntimeState {
         active: bool,
     ) -> Vec<OutputAction> {
         if target.is_wheel() {
-            return self.reconcile_pulse(owner, active, OutputEvent::Wheel(target));
+            return self.reconcile_pulse(owner, active, OutputEvent::Wheel(target), None);
         }
 
         let destination = OutputDestination::Mouse(target);
@@ -116,9 +124,12 @@ impl OutputRuntimeState {
                 OutputEvent::MouseDown(target),
                 OutputEvent::MouseUp(target),
             ),
-            OutputBehavior::Pulse => {
-                self.reconcile_pulse(owner, active, OutputEvent::MousePulse(target))
-            }
+            OutputBehavior::Pulse => self.reconcile_pulse(
+                owner,
+                active,
+                OutputEvent::MouseDown(target),
+                Some(OutputEvent::MouseUp(target)),
+            ),
         }
     }
 
@@ -153,6 +164,8 @@ impl OutputRuntimeState {
             return;
         }
 
+        self.partial_pulse_owners.remove(owner);
+
         if owner.behavior == OutputBehavior::Hold {
             let count = self
                 .hold_counts
@@ -163,6 +176,16 @@ impl OutputRuntimeState {
                 self.hold_counts.remove(&owner.destination);
             }
         }
+    }
+
+    pub(crate) fn commit_pulse(&mut self, owner: OutputOwner) {
+        self.partial_pulse_owners.remove(&owner);
+        self.active_owners.insert(owner);
+    }
+
+    pub(crate) fn mark_partial_pulse(&mut self, owner: OutputOwner) {
+        self.active_owners.insert(owner.clone());
+        self.partial_pulse_owners.insert(owner);
     }
 
     fn reconcile_hold(
@@ -196,25 +219,34 @@ impl OutputRuntimeState {
         &mut self,
         owner: OutputOwner,
         active: bool,
-        pulse: OutputEvent,
+        start: OutputEvent,
+        finish: Option<OutputEvent>,
     ) -> Vec<OutputAction> {
         if active {
-            if self.active_owners.insert(owner) {
-                vec![OutputAction::Immediate(pulse)]
-            } else {
+            if self.active_owners.contains(&owner) {
                 Vec::new()
+            } else {
+                vec![OutputAction::Pulse {
+                    owner,
+                    start,
+                    finish,
+                }]
             }
         } else {
-            self.active_owners.remove(&owner);
-            Vec::new()
+            if self.partial_pulse_owners.contains(&owner) {
+                self.release_event_for_owner(&owner)
+                    .map(|event| OutputAction::Release { owner, event })
+                    .into_iter()
+                    .collect()
+            } else {
+                self.active_owners.remove(&owner);
+                Vec::new()
+            }
         }
     }
 
     fn stage_release_owner(&mut self, owner: OutputOwner) -> Option<OutputAction> {
-        let event = match &owner.destination {
-            OutputDestination::Keyboard(key) => OutputEvent::KeyUp(key.clone()),
-            OutputDestination::Mouse(target) => OutputEvent::MouseUp(*target),
-        };
+        let event = self.release_event_for_owner(&owner)?;
         self.stage_release_owner_with_event(owner, event)
     }
 
@@ -228,6 +260,10 @@ impl OutputRuntimeState {
         }
 
         if owner.behavior != OutputBehavior::Hold {
+            if self.partial_pulse_owners.contains(&owner) {
+                return Some(OutputAction::Release { owner, event });
+            }
+
             self.active_owners.remove(&owner);
             return None;
         }
@@ -242,6 +278,16 @@ impl OutputRuntimeState {
             None
         } else {
             Some(OutputAction::Release { owner, event })
+        }
+    }
+
+    fn release_event_for_owner(&self, owner: &OutputOwner) -> Option<OutputEvent> {
+        match &owner.destination {
+            OutputDestination::Keyboard(key) => Some(OutputEvent::KeyUp(key.clone())),
+            OutputDestination::Mouse(target) if !target.is_wheel() => {
+                Some(OutputEvent::MouseUp(*target))
+            }
+            OutputDestination::Mouse(_) => None,
         }
     }
 }
@@ -392,8 +438,10 @@ mod tests {
                 OutputBehavior::Pulse,
                 true,
             )),
-            vec![OutputEvent::KeyPulse(key.clone())],
+            vec![OutputEvent::KeyDown(key.clone())],
         );
+
+        state.commit_pulse(owner.clone());
         assert!(
             state
                 .reconcile_keyboard(owner.clone(), key.clone(), OutputBehavior::Pulse, true)
@@ -406,8 +454,63 @@ mod tests {
         );
         assert_eq!(
             events(state.reconcile_keyboard(owner, key.clone(), OutputBehavior::Pulse, true)),
-            vec![OutputEvent::KeyPulse(key)],
+            vec![OutputEvent::KeyDown(key)],
         );
+    }
+
+    #[test]
+    fn pulse_retries_until_committed() {
+        let mut state = OutputRuntimeState::default();
+        let key = combo();
+        let owner = owner(
+            OutputDestination::Keyboard(key.clone()),
+            0,
+            OutputBehavior::Pulse,
+        );
+
+        assert_eq!(
+            events(state.reconcile_keyboard(
+                owner.clone(),
+                key.clone(),
+                OutputBehavior::Pulse,
+                true,
+            )),
+            vec![OutputEvent::KeyDown(key.clone())],
+        );
+        assert_eq!(
+            events(state.reconcile_keyboard(
+                owner.clone(),
+                key.clone(),
+                OutputBehavior::Pulse,
+                true,
+            )),
+            vec![OutputEvent::KeyDown(key.clone())],
+        );
+
+        state.commit_pulse(owner.clone());
+        assert!(
+            state
+                .reconcile_keyboard(owner, key, OutputBehavior::Pulse, true)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn partial_pulse_releases_on_falling_edge() {
+        let mut state = OutputRuntimeState::default();
+        let key = combo();
+        let owner = owner(
+            OutputDestination::Keyboard(key.clone()),
+            0,
+            OutputBehavior::Pulse,
+        );
+
+        state.mark_partial_pulse(owner.clone());
+
+        let release =
+            state.reconcile_keyboard(owner.clone(), key.clone(), OutputBehavior::Pulse, false);
+        assert_eq!(events(release), vec![OutputEvent::KeyUp(key)]);
+        state.commit_release(&owner);
     }
 
     #[test]

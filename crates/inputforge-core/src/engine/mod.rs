@@ -13,7 +13,7 @@ mod dependencies;
 mod output_handler;
 mod output_state;
 mod run;
-#[cfg(all(test, feature = "test-util"))]
+#[cfg(test)]
 mod tests;
 
 pub use command::EngineCommand;

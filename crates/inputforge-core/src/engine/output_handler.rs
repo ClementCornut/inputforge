@@ -110,26 +110,45 @@ pub(super) fn dispatch_output_action(
     keyboard: &mut dyn KeyboardSink,
     mouse: &mut dyn MouseSink,
 ) -> Result<()> {
-    let (event, release_owner) = match action {
-        OutputAction::Immediate(event) => (event, None),
-        OutputAction::Release { owner, event } => (event, Some(owner)),
+    match action {
+        OutputAction::Immediate(event) => {
+            dispatch_event(event, keyboard, mouse)?;
+        }
+        OutputAction::Pulse {
+            owner,
+            start,
+            finish,
+        } => {
+            dispatch_event(start, keyboard, mouse)?;
+            if let Some(finish) = finish {
+                if let Err(err) = dispatch_event(finish, keyboard, mouse) {
+                    output_state.mark_partial_pulse(owner);
+                    return Err(err);
+                }
+            }
+            output_state.commit_pulse(owner);
+        }
+        OutputAction::Release { owner, event } => {
+            dispatch_event(event, keyboard, mouse)?;
+            output_state.commit_release(&owner);
+        }
     };
-
-    match event {
-        OutputEvent::KeyDown(key) => keyboard.key_down(&key)?,
-        OutputEvent::KeyUp(key) => keyboard.key_up(&key)?,
-        OutputEvent::KeyPulse(key) => keyboard.pulse_key(&key)?,
-        OutputEvent::MouseDown(target) => mouse.button_down(target)?,
-        OutputEvent::MouseUp(target) => mouse.button_up(target)?,
-        OutputEvent::MousePulse(target) => mouse.pulse_button(target)?,
-        OutputEvent::Wheel(target) => mouse.wheel(target)?,
-    };
-
-    if let Some(owner) = release_owner {
-        output_state.commit_release(&owner);
-    }
 
     Ok(())
+}
+
+fn dispatch_event(
+    event: OutputEvent,
+    keyboard: &mut dyn KeyboardSink,
+    mouse: &mut dyn MouseSink,
+) -> Result<()> {
+    match event {
+        OutputEvent::KeyDown(key) => keyboard.key_down(&key),
+        OutputEvent::KeyUp(key) => keyboard.key_up(&key),
+        OutputEvent::MouseDown(target) => mouse.button_down(target),
+        OutputEvent::MouseUp(target) => mouse.button_up(target),
+        OutputEvent::Wheel(target) => mouse.wheel(target),
+    }
 }
 
 /// Apply a mode change strategy to the mode state.
