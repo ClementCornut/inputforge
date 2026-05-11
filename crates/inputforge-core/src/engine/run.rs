@@ -17,7 +17,7 @@ use crate::action::{Action, Mapping};
 use crate::callbacks::ReleaseCallback;
 use crate::device::traits::HotplugEvent;
 use crate::error::Result;
-use crate::pipeline::{self, PipelineContext};
+use crate::pipeline::{self, OutputOwnerScope, PipelineContext};
 use crate::profile::library::{
     add_external_profile_to_library, duplicate_library_profile, rename_library_profile,
 };
@@ -191,10 +191,14 @@ impl Engine {
 
         // Get profile data needed for this frame.
         // Clone mappings + mode list to avoid holding the lock during processing.
-        let (mappings, mode_list) = {
+        let (profile_name, mappings, mode_list) = {
             let state = self.state.read();
             match &state.active_profile {
-                Some(profile) => (profile.mappings().to_vec(), profile.modes().clone()),
+                Some(profile) => (
+                    profile.name().to_owned(),
+                    profile.mappings().to_vec(),
+                    profile.modes().clone(),
+                ),
                 None => return Ok(()),
             }
         };
@@ -259,7 +263,15 @@ impl Engine {
                     outputs: Vec::new(),
                     input_cache: &guard.input_cache,
                 };
-                pipeline::execute_pipeline(&mapping.actions, &mut ctx);
+                pipeline::execute_pipeline_with_scope(
+                    &mapping.actions,
+                    &mut ctx,
+                    OutputOwnerScope::new(
+                        profile_name.clone(),
+                        mapping.mode.clone(),
+                        mapping.input.clone(),
+                    ),
+                );
                 let outputs = std::mem::take(&mut ctx.outputs);
                 drop(guard);
 

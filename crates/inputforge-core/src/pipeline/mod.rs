@@ -1154,6 +1154,24 @@ mod tests {
                 ActionPathSegment::Index(0),
             ]
         );
+
+        cache.buttons.insert(button(1), false);
+        let mut ctx = button_ctx(&cache, true);
+
+        execute_pipeline_with_scope(
+            &actions,
+            &mut ctx,
+            OutputOwnerScope::new("profile-a", "Default", button(0)),
+        );
+
+        assert_eq!(
+            output_owner_path(&ctx.outputs[0]),
+            vec![
+                ActionPathSegment::Index(0),
+                ActionPathSegment::IfFalse,
+                ActionPathSegment::Index(0),
+            ]
+        );
     }
 
     // -- ChangeMode -----------------------------------------------------------

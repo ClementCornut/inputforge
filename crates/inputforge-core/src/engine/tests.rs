@@ -389,7 +389,6 @@ fn process_outputs_temporary_mode_registers_callback() {
 
 #[test]
 fn refresh_axes_reprocesses_cached_values() {
-    let modes = simple_modes();
     let mapping = Mapping {
         input: axis_addr(0),
         mode: "Default".to_owned(),
@@ -413,7 +412,6 @@ fn refresh_axes_reprocesses_cached_values() {
         &cache,
         &[mapping],
         "Default",
-        &modes,
         &mut sink,
         &mut OutputCacheStore::new(),
     )
@@ -431,7 +429,6 @@ fn refresh_axes_reprocesses_cached_values() {
 
 #[test]
 fn refresh_axes_skips_mode_changes_and_keys() {
-    let modes = two_modes();
     let mapping = Mapping {
         input: axis_addr(0),
         mode: "Default".to_owned(),
@@ -466,7 +463,6 @@ fn refresh_axes_skips_mode_changes_and_keys() {
         &cache,
         &[mapping],
         "Default",
-        &modes,
         &mut sink,
         &mut OutputCacheStore::new(),
     )
@@ -506,6 +502,40 @@ fn tick_processes_axis_event_to_output() {
 
     // Mode unchanged.
     assert_eq!(s.current_mode, "Default");
+}
+
+#[test]
+fn tick_keyboard_output_intent_uses_profile_owner() {
+    let combo = KeyCombo {
+        key: "Space".to_owned(),
+        modifiers: Vec::new(),
+    };
+    let mapping = Mapping {
+        input: button_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::MapToKeyboard {
+            key: combo.clone(),
+            behavior: OutputBehavior::Hold,
+        }],
+    };
+    let profile = make_profile(simple_modes(), vec![mapping]);
+
+    let mut input = MockInputSource::default();
+    input.events.push(button_event(0, true));
+
+    let (mut engine, _state, _tx) = make_engine(input, profile);
+    engine.tick().unwrap();
+
+    assert_eq!(engine.output_buffer.len(), 1);
+    let PipelineOutput::Keyboard { owner, .. } = &engine.output_buffer[0] else {
+        panic!("expected keyboard output intent");
+    };
+    assert_eq!(owner.profile, "Test");
+    assert_eq!(owner.mode, "Default");
+    assert_eq!(owner.input, button_addr(0));
+    assert_eq!(owner.action_path, vec![ActionPathSegment::Index(0)]);
+    assert_eq!(owner.destination, OutputDestination::Keyboard(combo));
 }
 
 #[test]
@@ -1486,7 +1516,6 @@ fn refresh_axes_set_button_path() {
     // Since the pipeline always produces SetAxis for axis inputs, we test
     // the refresh SetButton path via direct process_pipeline_outputs.
     // This is the closest we can get without mocking the pipeline.
-    let modes = simple_modes();
     let mapping = Mapping {
         input: button_addr(0),
         mode: "Default".to_owned(),
@@ -1526,7 +1555,6 @@ fn refresh_axes_set_button_path() {
         &cache,
         &[mapping, mapping_axis],
         "Default",
-        &modes,
         &mut sink,
         &mut OutputCacheStore::new(),
     )
