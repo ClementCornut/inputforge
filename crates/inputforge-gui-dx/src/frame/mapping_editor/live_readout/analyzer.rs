@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use inputforge_core::action::{Action, Condition};
+use inputforge_core::action::{Action, Condition, MouseTarget, OutputBehavior};
 use inputforge_core::pipeline::{
     BranchStep, InputCache, button_pressed_from_value, evaluate_actions_through_path,
     evaluate_condition,
@@ -53,8 +53,19 @@ pub(super) enum OutputDestination {
     Keyboard {
         /// Key combination emitted by the pipeline.
         key: KeyCombo,
+        /// Whether the keyboard output holds or pulses.
+        behavior: OutputBehavior,
         /// Whether the current pipeline value would press the key.
         pressed: bool,
+    },
+    /// Mouse button or wheel output.
+    Mouse {
+        /// Mouse target emitted by the pipeline.
+        target: MouseTarget,
+        /// Whether the mouse output holds or pulses.
+        behavior: OutputBehavior,
+        /// Whether the current pipeline value would activate the target.
+        active: bool,
     },
 }
 
@@ -459,12 +470,31 @@ fn walk(
                     polarity,
                 });
             }
-            Action::MapToKeyboard { key, .. } => {
+            Action::MapToKeyboard { key, behavior } => {
                 let pressed = context.keyboard_pressed(branch_path, i);
                 model.outputs.push(OutputDescriptor {
                     destination: OutputDestination::Keyboard {
                         key: key.clone(),
+                        behavior: *behavior,
                         pressed,
+                    },
+                    chain: chain_stack.clone(),
+                    is_active: compute_is_active(chain_stack),
+                    polarity: AxisPolarity::Bipolar,
+                });
+            }
+            Action::MapToMouse { target, behavior } => {
+                let active = context.keyboard_pressed(branch_path, i);
+                let behavior = if target.is_wheel() {
+                    OutputBehavior::Pulse
+                } else {
+                    *behavior
+                };
+                model.outputs.push(OutputDescriptor {
+                    destination: OutputDestination::Mouse {
+                        target: *target,
+                        behavior,
+                        active,
                     },
                     chain: chain_stack.clone(),
                     is_active: compute_is_active(chain_stack),
@@ -520,7 +550,6 @@ fn walk(
             Action::ResponseCurve { .. }
             | Action::Deadzone { .. }
             | Action::Invert
-            | Action::MapToMouse { .. }
             | Action::ChangeMode { .. } => {}
         }
     }
@@ -996,7 +1025,7 @@ mod walker_tests {
         let key = keyboard_combo("F1");
         let actions = vec![Action::MapToKeyboard {
             key: key.clone(),
-            behavior: inputforge_core::action::OutputBehavior::Hold,
+            behavior: OutputBehavior::Hold,
         }];
 
         let model = analyze_actions(&actions, &primary);
@@ -1006,6 +1035,7 @@ mod walker_tests {
             vec![OutputDescriptor {
                 destination: OutputDestination::Keyboard {
                     key,
+                    behavior: OutputBehavior::Hold,
                     pressed: false,
                 },
                 chain: Vec::new(),
@@ -1013,6 +1043,24 @@ mod walker_tests {
                 polarity: AxisPolarity::Bipolar,
             }]
         );
+    }
+
+    #[test]
+    fn live_readout_exposes_mouse_destination() {
+        let actions = vec![Action::MapToMouse {
+            target: MouseTarget::RightButton,
+            behavior: OutputBehavior::Hold,
+        }];
+        let model = analyze_actions(&actions, &input(0));
+
+        assert!(matches!(
+            model.outputs[0].destination,
+            OutputDestination::Mouse {
+                target: MouseTarget::RightButton,
+                behavior: OutputBehavior::Hold,
+                active: false,
+            }
+        ));
     }
 
     #[test]

@@ -9,7 +9,7 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Condition, ModeChangeStrategy};
+use inputforge_core::action::{Action, Condition, ModeChangeStrategy, OutputBehavior};
 use inputforge_core::processing::ResponseCurve;
 use inputforge_core::types::{
     InputAddress, KeyCombo, KeyModifier, OutputAddress, OutputId, VJoyAxis,
@@ -287,9 +287,17 @@ pub(crate) fn stage_summary_for(action: &Action, cfg: &ConfigSnapshot) -> String
 
         Action::MapToVJoy { output } => format_output_summary(output),
 
-        Action::MapToKeyboard { key, .. } => format_key_combo(key),
+        Action::MapToKeyboard { key, behavior } => {
+            format!("{} - {}", format_key_combo(key), format_behavior(*behavior))
+        }
 
-        Action::MapToMouse { .. } => String::new(),
+        Action::MapToMouse { target, behavior } => {
+            if target.is_wheel() {
+                target.label().to_owned()
+            } else {
+                format!("{} - {}", target.label(), format_behavior(*behavior))
+            }
+        }
 
         Action::MergeAxis {
             second_input,
@@ -320,6 +328,13 @@ fn format_output_summary(output: &OutputAddress) -> String {
         OutputId::Hat { id } => format!("Hat {id}"),
     };
     format!("vJoy {} \u{00b7} {output_label}", output.device)
+}
+
+fn format_behavior(behavior: OutputBehavior) -> &'static str {
+    match behavior {
+        OutputBehavior::Hold => "Hold",
+        OutputBehavior::Pulse => "Pulse",
+    }
 }
 
 /// Map a [`VJoyAxis`] to its short display name.

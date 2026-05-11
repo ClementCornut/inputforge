@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use dioxus::prelude::*;
 
+use inputforge_core::action::OutputBehavior;
 use inputforge_core::types::OutputId;
 
 use crate::components::Icon;
@@ -149,8 +150,13 @@ pub(super) fn OutRow(
                 }
             }
         },
-        OutputDestination::Keyboard { key, pressed } => {
+        OutputDestination::Keyboard {
+            key,
+            behavior,
+            pressed,
+        } => {
             let combo_text = format_key_combo(key);
+            let tag = format!("Keyboard - {}", format_behavior(*behavior));
             let key_live = engine_running && descriptor.is_active && *pressed;
             let row_class = keyboard_row_class(frozen);
             let chip_class = keyboard_chip_class(key_live);
@@ -159,11 +165,32 @@ pub(super) fn OutRow(
             rsx! {
                 div { class: "{row_class}",
                     div { class: "if-editor__readout-label", "{label}" }
-                    div { class: "if-editor__readout-tag", "Keyboard" }
+                    div { class: "if-editor__readout-tag", "{tag}" }
                     div { class: "if-editor__readout-kb-cell",
                         span { class: "{chip_class}", "{combo_text}" }
                     }
                     div { class: "if-editor__readout-pct" }
+                }
+            }
+        }
+        OutputDestination::Mouse {
+            target,
+            behavior,
+            active,
+        } => {
+            let is_live = engine_running && descriptor.is_active && *active;
+            let tag = if target.is_wheel() {
+                target.label().to_owned()
+            } else {
+                format!("{} - {}", target.label(), format_behavior(*behavior))
+            };
+
+            rsx! {
+                ButtonReadoutRow {
+                    label: row_label.clone(),
+                    tag,
+                    pressed: if target.is_wheel() { false } else { is_live },
+                    frozen,
                 }
             }
         }
@@ -268,6 +295,13 @@ fn keyboard_chip_class(live: bool) -> &'static str {
         "if-editor__readout-kb-chip if-editor__readout-kb-chip--live"
     } else {
         "if-editor__readout-kb-chip if-editor__readout-kb-chip--idle"
+    }
+}
+
+fn format_behavior(behavior: OutputBehavior) -> &'static str {
+    match behavior {
+        OutputBehavior::Hold => "Hold",
+        OutputBehavior::Pulse => "Pulse",
     }
 }
 

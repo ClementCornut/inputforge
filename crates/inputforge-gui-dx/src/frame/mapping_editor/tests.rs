@@ -8,13 +8,13 @@ use dioxus::prelude::*;
 use dioxus_ssr::render;
 use parking_lot::RwLock;
 
-use inputforge_core::action::{Action, Mapping, OutputBehavior};
+use inputforge_core::action::{Action, Mapping, MouseTarget, OutputBehavior};
 use inputforge_core::mode::Modes;
 use inputforge_core::profile::Profile;
 use inputforge_core::state::{AppState, EngineStatus};
 use inputforge_core::types::{
-    AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId, OutputAddress,
-    OutputId, VJoyAxis, VirtualDeviceConfig,
+    AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId, KeyCombo,
+    OutputAddress, OutputId, VJoyAxis, VirtualDeviceConfig,
 };
 
 use crate::context::{
@@ -2227,5 +2227,63 @@ fn editor_inactive_hint_visible_when_modes_diverge() {
     assert!(
         html.contains("Mapping fires only in"),
         "expected inactive-hint suffix copy; got: {html}"
+    );
+}
+
+#[test]
+fn stage_summary_keyboard_includes_behavior() {
+    let html = render_with_pipeline(
+        &[Action::MapToKeyboard {
+            key: KeyCombo {
+                key: "A".to_owned(),
+                modifiers: vec![],
+            },
+            behavior: OutputBehavior::Hold,
+        }],
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.0)],
+        &[],
+        &[],
+    );
+
+    assert!(
+        html.contains("A - Hold"),
+        "expected keyboard summary: {html}"
+    );
+}
+
+#[test]
+fn stage_summary_mouse_button_includes_behavior() {
+    let html = render_with_pipeline(
+        &[Action::MapToMouse {
+            target: MouseTarget::LeftButton,
+            behavior: OutputBehavior::Pulse,
+        }],
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.0)],
+        &[],
+        &[],
+    );
+
+    assert!(
+        html.contains("Left click - Pulse"),
+        "expected mouse button summary: {html}"
+    );
+}
+
+#[test]
+fn stage_summary_mouse_wheel_omits_behavior() {
+    let html = render_with_pipeline(
+        &[Action::MapToMouse {
+            target: MouseTarget::WheelUp,
+            behavior: OutputBehavior::Pulse,
+        }],
+        &[(axis_addr(0), AxisPolarity::Bipolar, 0.0)],
+        &[],
+        &[],
+    );
+
+    assert!(html.contains("Wheel up"), "expected wheel summary: {html}");
+    assert!(
+        !html.contains("Wheel up - Pulse"),
+        "wheel summary should omit behavior: {html}"
     );
 }
