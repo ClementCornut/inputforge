@@ -193,11 +193,14 @@ impl Engine {
 
         // Get profile data needed for this frame.
         // Clone mappings + mode list to avoid holding the lock during processing.
-        let (profile_name, mappings, mode_list) = {
+        let (profile_id, mappings, mode_list) = {
             let state = self.state.read();
             match &state.active_profile {
                 Some(profile) => (
-                    profile.name().to_owned(),
+                    state.profile_path.as_ref().map_or_else(
+                        || "memory-profile".to_owned(),
+                        |path| path.display().to_string(),
+                    ),
                     profile.mappings().to_vec(),
                     profile.modes().clone(),
                 ),
@@ -269,7 +272,7 @@ impl Engine {
                     &mapping.actions,
                     &mut ctx,
                     OutputOwnerScope::new(
-                        profile_name.clone(),
+                        profile_id.clone(),
                         mapping.mode.clone(),
                         mapping.input.clone(),
                     ),
@@ -290,7 +293,7 @@ impl Engine {
                 let owner_scope = current_owners.first().map_or_else(
                     || {
                         OwnerScopeKey::new(
-                            profile_name.clone(),
+                            profile_id.clone(),
                             mapping.mode.clone(),
                             mapping.input.clone(),
                         )

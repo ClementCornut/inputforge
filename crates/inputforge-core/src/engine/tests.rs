@@ -606,11 +606,40 @@ fn tick_keyboard_output_intent_uses_profile_owner() {
     let PipelineOutput::Keyboard { owner, .. } = &engine.output_buffer[0] else {
         panic!("expected keyboard output intent");
     };
-    assert_eq!(owner.profile, "Test");
+    assert_eq!(owner.profile, "memory-profile");
     assert_eq!(owner.mode, "Default");
     assert_eq!(owner.input, button_addr(0));
     assert_eq!(owner.action_path, vec![ActionPathSegment::Index(0)]);
     assert_eq!(owner.destination, OutputDestination::Keyboard(combo));
+
+    let profile_path = PathBuf::from(r"C:\profiles\stable.toml");
+    let combo = KeyCombo {
+        key: "Space".to_owned(),
+        modifiers: Vec::new(),
+    };
+    let mapping = Mapping {
+        input: button_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::MapToKeyboard {
+            key: combo,
+            behavior: OutputBehavior::Hold,
+        }],
+    };
+    let profile = make_profile(simple_modes(), vec![mapping]);
+
+    let mut input = MockInputSource::default();
+    input.events.push(button_event(0, true));
+
+    let (mut engine, state, _tx) = make_engine(input, profile);
+    state.write().profile_path = Some(profile_path.clone());
+    engine.tick().unwrap();
+
+    assert_eq!(engine.output_buffer.len(), 1);
+    let PipelineOutput::Keyboard { owner, .. } = &engine.output_buffer[0] else {
+        panic!("expected keyboard output intent");
+    };
+    assert_eq!(owner.profile, profile_path.display().to_string());
 }
 
 #[test]
