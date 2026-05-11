@@ -46,6 +46,25 @@ pub(crate) struct OwnerScopeKey {
 }
 
 impl OwnerScopeKey {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "Task 6 will construct scopes for empty pipeline output lists"
+        )
+    )]
+    pub(crate) fn new(
+        profile: impl Into<String>,
+        mode: impl Into<String>,
+        input: InputAddress,
+    ) -> Self {
+        Self {
+            profile: profile.into(),
+            mode: mode.into(),
+            input,
+        }
+    }
+
     pub(crate) fn from_owner(owner: &OutputOwner) -> Self {
         Self {
             profile: owner.profile.clone(),
@@ -280,6 +299,22 @@ mod tests {
 
     fn events(actions: Vec<OutputAction>) -> Vec<OutputEvent> {
         actions.into_iter().map(OutputAction::into_event).collect()
+    }
+
+    #[test]
+    fn owner_scope_new_matches_owner_scope() {
+        let mut owner = owner(
+            OutputDestination::Keyboard(combo()),
+            0,
+            OutputBehavior::Hold,
+        );
+        owner.profile = "profile-a".to_owned();
+        owner.mode = "Default".to_owned();
+
+        assert_eq!(
+            OwnerScopeKey::new("profile-a", "Default", InputAddress::Unbound),
+            OwnerScopeKey::from_owner(&owner),
+        );
     }
 
     #[test]
