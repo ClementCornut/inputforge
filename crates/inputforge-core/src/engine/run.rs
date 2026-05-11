@@ -330,6 +330,9 @@ impl Engine {
                 // If mode changed (via pipeline output or release callbacks),
                 // refresh all cached axes through the new mode.
                 if result.mode_changed || callbacks_changed_mode {
+                    if result.mode_changed {
+                        self.release_all_held_outputs()?;
+                    }
                     let mut guard = self.state.write();
                     let state: &mut AppState = &mut guard;
                     refresh_axes_for_mode_change(
@@ -523,7 +526,6 @@ impl Engine {
             }
             EngineCommand::DeleteProfile { name } => {
                 let path = self.profile_path_for_name(&name);
-                delete_profile(&path)?;
                 let was_active = self
                     .state
                     .read()
@@ -533,6 +535,7 @@ impl Engine {
                 if was_active {
                     self.release_all_held_outputs()?;
                 }
+                delete_profile(&path)?;
                 if was_active {
                     let mut state = self.state.write();
                     state.active_profile = None;
