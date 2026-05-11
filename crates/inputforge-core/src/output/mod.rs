@@ -8,6 +8,9 @@ pub mod vjoy_output;
 #[cfg(feature = "win32-io")]
 pub mod keyboard;
 
+#[cfg(feature = "win32-io")]
+pub mod mouse;
+
 #[cfg(feature = "test-util")]
 pub mod mock;
 
