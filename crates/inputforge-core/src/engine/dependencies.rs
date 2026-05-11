@@ -227,7 +227,7 @@ mod tests {
         let active = active_mappings_for_event(&mappings, &axis(0), "Combat");
 
         assert_eq!(active.len(), 1);
-        assert!(std::ptr::eq(active[0], &mappings[0]));
+        assert!(std::ptr::eq(active[0], &raw const mappings[0]));
     }
 
     #[test]
