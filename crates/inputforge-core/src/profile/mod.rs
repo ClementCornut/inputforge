@@ -532,7 +532,7 @@ mod tests {
     use crate::action::{Condition, ModeChangeStrategy, OutputBehavior};
     use crate::processing::DeadzoneConfig;
     use crate::types::{
-        DeviceId, KeyCombo, KeyModifier, MergeOp, OutputAddress, OutputId, VJoyAxis,
+        DeviceId, KeyCombo, KeyModifier, MergeOp, OutputAddress, OutputId, PhysicalKey, VJoyAxis,
     };
     fn test_profile_with_one_mode() -> Profile {
         let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
@@ -898,14 +898,14 @@ type = "invert"
                     },
                     if_true: vec![Action::MapToKeyboard {
                         key: KeyCombo {
-                            key: "F1".to_owned(),
+                            key: PhysicalKey::F1,
                             modifiers: vec![KeyModifier::Ctrl],
                         },
                         behavior: OutputBehavior::Hold,
                     }],
                     if_false: vec![Action::MapToKeyboard {
                         key: KeyCombo {
-                            key: "F1".to_owned(),
+                            key: PhysicalKey::F1,
                             modifiers: vec![],
                         },
                         behavior: OutputBehavior::Hold,

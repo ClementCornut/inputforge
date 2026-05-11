@@ -276,7 +276,7 @@ pub(super) fn hat_glyph_for(direction: HatDirection) -> char {
 /// Modifiers keep their configured order, followed by the key name.
 pub(super) fn format_key_combo(combo: &inputforge_core::types::KeyCombo) -> String {
     use inputforge_core::types::KeyModifier;
-    let mut parts: Vec<&str> = combo
+    let mut parts: Vec<String> = combo
         .modifiers
         .iter()
         .map(|m| match m {
@@ -285,8 +285,9 @@ pub(super) fn format_key_combo(combo: &inputforge_core::types::KeyCombo) -> Stri
             KeyModifier::Alt => "Alt",
             KeyModifier::Win => "Win",
         })
+        .map(str::to_owned)
         .collect();
-    parts.push(combo.key.as_str());
+    parts.push(combo.key.display_label().into_owned());
     parts.join(" + ")
 }
 

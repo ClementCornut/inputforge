@@ -2,7 +2,7 @@
 
 use crate::action::MouseTarget;
 use crate::error::Result;
-use crate::types::{HatDirection, KeyCombo, VJoyAxis, VirtualDeviceConfig};
+use crate::types::{HatDirection, KeyCombo, PhysicalKey, VJoyAxis, VirtualDeviceConfig};
 
 use super::traits::{KeyboardSink, MouseSink, OutputSink};
 
@@ -295,7 +295,7 @@ mod tests {
 
         let mut mock = MockKeyboardSink::new();
         let combo = KeyCombo {
-            key: "Space".to_owned(),
+            key: PhysicalKey::Space,
             modifiers: vec![KeyModifier::Ctrl],
         };
         mock.pulse_key(&combo).unwrap();
@@ -306,7 +306,7 @@ mod tests {
     fn mock_keyboard_records_down_up_and_pulse() {
         let mut mock = MockKeyboardSink::new();
         let combo = KeyCombo {
-            key: "A".to_owned(),
+            key: PhysicalKey::KeyA,
             modifiers: vec![],
         };
 
@@ -348,7 +348,7 @@ mod tests {
     fn mock_keyboard_clear_removes_calls() {
         let mut mock = MockKeyboardSink::new();
         let combo = KeyCombo {
-            key: "A".to_owned(),
+            key: PhysicalKey::KeyA,
             modifiers: vec![],
         };
         mock.key_down(&combo).unwrap();

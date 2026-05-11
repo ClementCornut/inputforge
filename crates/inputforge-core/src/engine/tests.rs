@@ -32,7 +32,7 @@ use crate::state::{
 use crate::types::{
     AxisPolarity, AxisValue, DeviceConnectionState, DeviceDiagnostics, DeviceId, DeviceInfo,
     HatDirection, InputAddress, InputEvent, InputId, InputValue, KeyCombo, MergeOp, OutputAddress,
-    OutputId, VJoyAxis,
+    OutputId, PhysicalKey, VJoyAxis,
 };
 
 use inputforge_autostart::mock::MockAutostart;
@@ -67,8 +67,13 @@ fn button_addr(index: u8) -> InputAddress {
 }
 
 fn key_combo(key: &str) -> KeyCombo {
+    let key = match key {
+        "Escape" => PhysicalKey::Escape,
+        "Space" => PhysicalKey::Space,
+        other => panic!("unsupported test key: {other}"),
+    };
     KeyCombo {
-        key: key.to_owned(),
+        key,
         modifiers: vec![],
     }
 }
@@ -1150,7 +1155,7 @@ fn refresh_axes_skips_mode_changes_and_keys() {
             },
             Action::MapToKeyboard {
                 key: KeyCombo {
-                    key: "A".to_owned(),
+                    key: PhysicalKey::KeyA,
                     modifiers: vec![],
                 },
                 behavior: OutputBehavior::Hold,
@@ -1216,7 +1221,7 @@ fn tick_processes_axis_event_to_output() {
 #[test]
 fn tick_keyboard_output_intent_uses_profile_owner() {
     let combo = KeyCombo {
-        key: "Space".to_owned(),
+        key: PhysicalKey::Space,
         modifiers: Vec::new(),
     };
     let mapping = Mapping {
@@ -1248,7 +1253,7 @@ fn tick_keyboard_output_intent_uses_profile_owner() {
 
     let profile_path = PathBuf::from(r"C:\profiles\stable.toml");
     let combo = KeyCombo {
-        key: "Space".to_owned(),
+        key: PhysicalKey::Space,
         modifiers: Vec::new(),
     };
     let mapping = Mapping {

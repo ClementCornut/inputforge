@@ -267,6 +267,70 @@
     font-style: italic;
 }
 
+.if-key-capture {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+}
+
+.if-key-capture__surface {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 112px;
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-sunken);
+    color: var(--color-text);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-text) 5%, transparent);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1;
+    letter-spacing: 0;
+    cursor: pointer;
+}
+
+.if-key-capture__surface:hover {
+    border-color: var(--color-border-strong);
+    background: var(--color-bg-elevated);
+}
+
+.if-key-capture__surface:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+.if-key-capture__surface.is-listening {
+    border-color: var(--color-control);
+    background: var(--color-control-bg);
+    color: var(--color-control-badge-text);
+}
+
+.if-key-capture__surface.is-listening::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    margin-right: 8px;
+    border-radius: 50%;
+    background: var(--color-live);
+    animation: if-add-pulse-dot 1100ms ease-in-out infinite;
+}
+
+.if-key-capture__hint {
+    color: var(--color-text-muted);
+    font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .if-key-capture__surface.is-listening::before {
+        animation: none;
+    }
+}
+
 /* Stage-body form layout: 2-column grid (label, control). Each body
    container declares the grid; individual fields use `display: contents`
    so their label + control unwrap directly into the parent grid. The
@@ -281,6 +345,7 @@
 .if-stage__body-merge-axis,
 .if-stage__body-vjoy,
 .if-stage__body-keyboard,
+.if-stage__body-mouse,
 .if-stage__body-change-mode {
     display: grid;
     grid-template-columns: max-content 1fr;
@@ -300,12 +365,9 @@
     color: var(--color-text-muted);
 }
 
-/* F14 ChangeMode body. Two-pill segmented row used by the strategy
-   field. Active pill carries the control-violet badge tint pattern;
-   inactive pills are muted text on a hairline border. The row sits on
-   bg-elevated; active-pill contrast tested per DESIGN.md §2.
-   Promotion to a shared primitive is intentionally deferred until a
-   third stage variant needs the same shape. */
+/* SegmentedControl primitive. Active pill carries the control-violet badge
+   tint pattern; inactive pills are muted text on a hairline border. The row
+   sits on bg-elevated; active-pill contrast tested per DESIGN.md §2. */
 
 .if-stage__body-strategy {
     display: flex;
@@ -321,6 +383,7 @@
 }
 
 .if-stage__body-strategy-pill {
+    appearance: none;
     display: inline-flex;
     align-items: center;
     height: 24px;

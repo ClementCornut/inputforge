@@ -17,6 +17,7 @@ pub mod layout;
 pub mod menu;
 pub mod number_input;
 pub mod portal;
+pub mod segmented_control;
 pub mod select;
 pub mod separator;
 pub mod slider;
@@ -50,6 +51,7 @@ pub use menu::{
 };
 pub use number_input::NumberInput;
 pub use portal::Portal;
+pub use segmented_control::{SegmentedControl, SegmentedControlOption};
 pub use select::{Select, SelectOption};
 pub use separator::{Separator, SeparatorOrientation};
 pub use slider::Slider;

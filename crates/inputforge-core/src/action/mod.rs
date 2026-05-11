@@ -256,7 +256,7 @@ impl<'de> Deserialize<'de> for Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{DeviceId, InputId, OutputId, VJoyAxis};
+    use crate::types::{DeviceId, InputId, OutputId, PhysicalKey, VJoyAxis};
 
     fn test_input_address() -> InputAddress {
         InputAddress::Bound {
@@ -307,7 +307,7 @@ mod tests {
     fn action_map_to_keyboard_behavior_roundtrips() {
         let action = Action::MapToKeyboard {
             key: KeyCombo {
-                key: "Space".to_owned(),
+                key: PhysicalKey::Space,
                 modifiers: vec![],
             },
             behavior: OutputBehavior::Pulse,
@@ -322,8 +322,8 @@ mod tests {
     }
 
     #[test]
-    fn old_keyboard_action_defaults_to_hold() {
-        let json = r#"{"type":"map_to_keyboard","key":{"key":"A","modifiers":[]}}"#;
+    fn keyboard_action_defaults_to_hold() {
+        let json = r#"{"type":"map_to_keyboard","key":{"key":"KeyA","modifiers":[]}}"#;
 
         let back: Action = serde_json::from_str(json).unwrap();
 
@@ -331,7 +331,7 @@ mod tests {
             back,
             Action::MapToKeyboard {
                 key: KeyCombo {
-                    key: "A".to_owned(),
+                    key: PhysicalKey::KeyA,
                     modifiers: vec![],
                 },
                 behavior: OutputBehavior::Hold,

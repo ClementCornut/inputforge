@@ -14,7 +14,7 @@ use inputforge_core::profile::Profile;
 use inputforge_core::state::{AppState, EngineStatus};
 use inputforge_core::types::{
     AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId, KeyCombo,
-    OutputAddress, OutputId, VJoyAxis, VirtualDeviceConfig,
+    OutputAddress, OutputId, PhysicalKey, VJoyAxis, VirtualDeviceConfig,
 };
 
 use crate::context::{
@@ -1774,7 +1774,7 @@ fn editor_live_readout_keyboard_active_renders_live_chip() {
         condition: Condition::ButtonPressed { input: btn_addr(0) },
         if_true: vec![Action::MapToKeyboard {
             key: KeyCombo {
-                key: "Space".to_owned(),
+                key: PhysicalKey::Space,
                 modifiers: vec![KeyModifier::Ctrl],
             },
             behavior: OutputBehavior::Hold,
@@ -1801,7 +1801,7 @@ fn editor_live_readout_keyboard_active_below_threshold_renders_idle_chip() {
         condition: Condition::ButtonPressed { input: btn_addr(0) },
         if_true: vec![Action::MapToKeyboard {
             key: KeyCombo {
-                key: "Space".to_owned(),
+                key: PhysicalKey::Space,
                 modifiers: vec![KeyModifier::Ctrl],
             },
             behavior: OutputBehavior::Hold,
@@ -1828,7 +1828,7 @@ fn editor_live_readout_keyboard_inactive_renders_idle_chip() {
         condition: Condition::ButtonPressed { input: btn_addr(0) },
         if_true: vec![Action::MapToKeyboard {
             key: KeyCombo {
-                key: "Space".to_owned(),
+                key: PhysicalKey::Space,
                 modifiers: vec![KeyModifier::Ctrl],
             },
             behavior: OutputBehavior::Hold,
@@ -2235,7 +2235,7 @@ fn stage_summary_keyboard_includes_behavior() {
     let html = render_with_pipeline(
         &[Action::MapToKeyboard {
             key: KeyCombo {
-                key: "A".to_owned(),
+                key: PhysicalKey::KeyA,
                 modifiers: vec![],
             },
             behavior: OutputBehavior::Hold,
@@ -2245,9 +2245,11 @@ fn stage_summary_keyboard_includes_behavior() {
         &[],
     );
 
+    let key_label = PhysicalKey::KeyA.display_label();
+    let expected_summary = format!("{key_label} - Hold");
     assert!(
-        html.contains("A - Hold"),
-        "expected keyboard summary: {html}"
+        html.contains(&expected_summary),
+        "expected keyboard summary {expected_summary}: {html}"
     );
 }
 

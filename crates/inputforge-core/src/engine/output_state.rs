@@ -297,10 +297,11 @@ mod tests {
     use super::*;
 
     use crate::pipeline::ActionPathSegment;
+    use crate::types::PhysicalKey;
 
     fn combo() -> KeyCombo {
         KeyCombo {
-            key: "F1".to_owned(),
+            key: PhysicalKey::F1,
             modifiers: Vec::new(),
         }
     }

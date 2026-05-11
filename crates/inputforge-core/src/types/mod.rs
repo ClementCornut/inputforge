@@ -11,4 +11,4 @@ pub use device::{
     DeviceInfo, VirtualDeviceConfig,
 };
 pub use input::{AxisValue, HatDirection, InputEvent, InputValue};
-pub use mapping::{KeyCombo, KeyModifier, MergeOp};
+pub use mapping::{KeyCombo, KeyModifier, MergeOp, PhysicalKey, PhysicalKeyScanCode};

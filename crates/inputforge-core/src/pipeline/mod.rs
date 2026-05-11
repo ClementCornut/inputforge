@@ -508,7 +508,9 @@ mod tests {
     use super::*;
     use crate::action::Condition;
     use crate::processing::{DeadzoneConfig, ResponseCurve};
-    use crate::types::{AxisValue, DeviceId, KeyModifier, MergeOp, OutputId, VJoyAxis};
+    use crate::types::{
+        AxisValue, DeviceId, KeyModifier, MergeOp, OutputId, PhysicalKey, VJoyAxis,
+    };
 
     const TOLERANCE: f64 = 1e-6;
 
@@ -533,9 +535,9 @@ mod tests {
         }
     }
 
-    fn key_combo(key: &str) -> KeyCombo {
+    fn key_combo(key: PhysicalKey) -> KeyCombo {
         KeyCombo {
-            key: key.to_owned(),
+            key,
             modifiers: Vec::new(),
         }
     }
@@ -1004,7 +1006,7 @@ mod tests {
         let cache = MockCache::new();
         let mut ctx = button_ctx(&cache, true);
         let key = KeyCombo {
-            key: "Space".to_owned(),
+            key: PhysicalKey::Space,
             modifiers: vec![KeyModifier::Ctrl],
         };
         let actions = [Action::MapToKeyboard {
@@ -1034,7 +1036,7 @@ mod tests {
     #[test]
     fn map_to_keyboard_outputs_behavior_and_owner() {
         let actions = vec![Action::MapToKeyboard {
-            key: key_combo("Space"),
+            key: key_combo(PhysicalKey::Space),
             behavior: OutputBehavior::Hold,
         }];
         let cache = MockCache::new();
@@ -1054,10 +1056,10 @@ mod tests {
                     mode: "Default".to_owned(),
                     input: button(0),
                     action_path: vec![ActionPathSegment::Index(0)],
-                    destination: OutputDestination::Keyboard(key_combo("Space")),
+                    destination: OutputDestination::Keyboard(key_combo(PhysicalKey::Space)),
                     behavior: OutputBehavior::Hold,
                 },
-                key: key_combo("Space"),
+                key: key_combo(PhysicalKey::Space),
                 behavior: OutputBehavior::Hold,
                 active: true,
             }]
@@ -1509,7 +1511,7 @@ mod tests {
             input_cache: &cache,
         };
         let key = KeyCombo {
-            key: "Space".to_owned(),
+            key: PhysicalKey::Space,
             modifiers: vec![],
         };
         let actions = [Action::MapToKeyboard {

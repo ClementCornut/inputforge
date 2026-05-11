@@ -28,7 +28,9 @@ use dioxus::prelude::*;
 use inputforge_core::action::{Action, Condition, Mapping, MouseTarget, OutputBehavior};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::processing::{DeadzoneConfig, ResponseCurve};
-use inputforge_core::types::{InputAddress, KeyCombo, MergeOp, OutputAddress, OutputId, VJoyAxis};
+use inputforge_core::types::{
+    InputAddress, KeyCombo, MergeOp, OutputAddress, OutputId, PhysicalKey, VJoyAxis,
+};
 
 use crate::components::{Anchor, Icon, MenuItem, MenuItems, MenuRoot, MenuTrigger};
 use crate::context::AppContext;
@@ -79,7 +81,7 @@ fn default_map_to_vjoy() -> Action {
 fn default_map_to_keyboard() -> Action {
     Action::MapToKeyboard {
         key: KeyCombo {
-            key: "A".to_owned(),
+            key: PhysicalKey::KeyA,
             modifiers: vec![],
         },
         behavior: OutputBehavior::Hold,

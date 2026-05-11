@@ -353,7 +353,7 @@ const fn format_vjoy_axis(axis: VJoyAxis) -> &'static str {
 
 /// Format a [`KeyCombo`] as "Mod + Mod + Key", e.g. "Ctrl + Shift + Q".
 fn format_key_combo(key: &KeyCombo) -> String {
-    let mut parts: Vec<&str> = key
+    let mut parts: Vec<String> = key
         .modifiers
         .iter()
         .map(|m| match m {
@@ -362,8 +362,9 @@ fn format_key_combo(key: &KeyCombo) -> String {
             KeyModifier::Alt => "Alt",
             KeyModifier::Win => "Win",
         })
+        .map(str::to_owned)
         .collect();
-    parts.push(key.key.as_str());
+    parts.push(key.key.display_label().into_owned());
     parts.join(" + ")
 }
 

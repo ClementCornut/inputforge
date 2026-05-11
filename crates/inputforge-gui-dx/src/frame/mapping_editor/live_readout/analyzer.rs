@@ -611,7 +611,7 @@ mod tests {
 mod walker_tests {
     use super::*;
     use inputforge_core::types::{
-        AxisValue, DeviceId, InputId, InputValue, KeyModifier, OutputId, VJoyAxis,
+        AxisValue, DeviceId, InputId, InputValue, KeyModifier, OutputId, PhysicalKey, VJoyAxis,
     };
 
     fn input(index: u8) -> InputAddress {
@@ -635,9 +635,9 @@ mod walker_tests {
         }
     }
 
-    fn keyboard_combo(key: &str) -> KeyCombo {
+    fn keyboard_combo(key: PhysicalKey) -> KeyCombo {
         KeyCombo {
-            key: key.to_owned(),
+            key,
             modifiers: vec![KeyModifier::Ctrl, KeyModifier::Shift],
         }
     }
@@ -1022,7 +1022,7 @@ mod walker_tests {
     #[test]
     fn keyboard_output_yields_keyboard_destination() {
         let primary = input(0);
-        let key = keyboard_combo("F1");
+        let key = keyboard_combo(PhysicalKey::F1);
         let actions = vec![Action::MapToKeyboard {
             key: key.clone(),
             behavior: OutputBehavior::Hold,

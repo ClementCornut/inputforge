@@ -9,6 +9,7 @@ use dioxus::prelude::*;
 use inputforge_core::action::{Action, Mapping, MouseTarget, OutputBehavior};
 use inputforge_core::engine::EngineCommand;
 
+use crate::components::{SegmentedControl, SegmentedControlOption, Select, SelectOption};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
@@ -49,6 +50,20 @@ pub(crate) fn MapToMouseBody(
 
     let cmd_tx = ctx.commands.clone();
     let undo_log = editor.undo_log;
+    let target_value = mouse_target_value(target).to_owned();
+    let mut target_signal: Signal<String> = use_signal(|| target_value.clone());
+    if *target_signal.peek() != target_value {
+        target_signal.set(target_value.clone());
+    }
+    let target_options: Vec<SelectOption> = MOUSE_TARGETS
+        .iter()
+        .map(|candidate| SelectOption {
+            value: mouse_target_value(*candidate).to_owned(),
+            label: candidate.label().to_owned(),
+            disabled: false,
+            class: None,
+        })
+        .collect();
 
     let mapping_key_hold = mapping_key.clone();
     let stage_id_hold = stage_id.clone();
@@ -100,77 +115,94 @@ pub(crate) fn MapToMouseBody(
         );
     };
 
+    let mapping_key_target = mapping_key.clone();
+    let stage_id_target = stage_id.clone();
+    let root_actions_target = root_actions.clone();
+    let before_target = before_mapping.clone();
+    let current_name_target = current_name.clone();
+    let cmd_tx_target = cmd_tx.clone();
+    let mut undo_log_target = undo_log;
+    let on_target_change = move |evt: FormEvent| {
+        let Some(candidate) = mouse_target_from_value(&evt.value()) else {
+            tracing::warn!(
+                target: "f9::mapping_editor",
+                value = evt.value(),
+                "mouse output target change ignored: unknown target"
+            );
+            return;
+        };
+        if is_mouse_target_click_noop(target, candidate) {
+            return;
+        }
+        dispatch_mouse_change(
+            candidate,
+            behavior,
+            "target",
+            &mapping_key_target,
+            &stage_id_target,
+            &root_actions_target,
+            &before_target,
+            current_name_target.clone(),
+            &cmd_tx_target,
+            &mut undo_log_target,
+        );
+    };
+
     rsx! {
         div { class: "if-stage__body-mouse",
             div { class: "if-stage__body-field",
                 label { class: "if-stage__body-label", "Target" }
-                div { class: "if-stage__body-segmented",
-                    for candidate in MOUSE_TARGETS {
-                        {
-                            let candidate = *candidate;
-                            let mapping_key_target = mapping_key.clone();
-                            let stage_id_target = stage_id.clone();
-                            let root_actions_target = root_actions.clone();
-                            let before_target = before_mapping.clone();
-                            let current_name_target = current_name.clone();
-                            let cmd_tx_target = cmd_tx.clone();
-                            let mut undo_log_target = undo_log;
-                            let onclick = move |_| {
-                                if is_mouse_target_click_noop(target, candidate) {
-                                    return;
-                                }
-                                dispatch_mouse_change(
-                                    candidate,
-                                    behavior,
-                                    "target",
-                                    &mapping_key_target,
-                                    &stage_id_target,
-                                    &root_actions_target,
-                                    &before_target,
-                                    current_name_target.clone(),
-                                    &cmd_tx_target,
-                                    &mut undo_log_target,
-                                );
-                            };
-                            rsx! {
-                                button {
-                                    class: if candidate == target { "if-stage__body-segment is-active" } else { "if-stage__body-segment" },
-                                    onclick,
-                                    "{candidate.label()}"
-                                }
-                            }
-                        }
-                    }
+                Select {
+                    value: target_signal,
+                    options: target_options,
+                    onchange: on_target_change,
                 }
             }
             if !target.is_wheel() {
                 div { class: "if-stage__body-field",
                     label { class: "if-stage__body-label", "Behavior" }
-                    div { class: "if-stage__body-segmented",
-                        {
-                            let onclick = on_hold;
-                            rsx! {
-                                button {
-                                    class: if behavior == OutputBehavior::Hold { "if-stage__body-segment is-active" } else { "if-stage__body-segment" },
-                                    onclick,
-                                    "Hold"
-                                }
-                            }
+                    SegmentedControl { aria_label: "Mouse output behavior".to_owned(),
+                        SegmentedControlOption {
+                            value: "hold".to_owned(),
+                            selected: behavior == OutputBehavior::Hold,
+                            onclick: on_hold,
+                            "Hold"
                         }
-                        {
-                            let onclick = on_pulse;
-                            rsx! {
-                                button {
-                                    class: if behavior == OutputBehavior::Pulse { "if-stage__body-segment is-active" } else { "if-stage__body-segment" },
-                                    onclick,
-                                    "Pulse"
-                                }
-                            }
+                        SegmentedControlOption {
+                            value: "pulse".to_owned(),
+                            selected: behavior == OutputBehavior::Pulse,
+                            onclick: on_pulse,
+                            "Pulse"
                         }
                     }
                 }
             }
         }
+    }
+}
+
+fn mouse_target_value(target: MouseTarget) -> &'static str {
+    match target {
+        MouseTarget::LeftButton => "left_button",
+        MouseTarget::RightButton => "right_button",
+        MouseTarget::MiddleButton => "middle_button",
+        MouseTarget::BackButton => "back_button",
+        MouseTarget::ForwardButton => "forward_button",
+        MouseTarget::WheelUp => "wheel_up",
+        MouseTarget::WheelDown => "wheel_down",
+    }
+}
+
+fn mouse_target_from_value(value: &str) -> Option<MouseTarget> {
+    match value {
+        "left_button" => Some(MouseTarget::LeftButton),
+        "right_button" => Some(MouseTarget::RightButton),
+        "middle_button" => Some(MouseTarget::MiddleButton),
+        "back_button" => Some(MouseTarget::BackButton),
+        "forward_button" => Some(MouseTarget::ForwardButton),
+        "wheel_up" => Some(MouseTarget::WheelUp),
+        "wheel_down" => Some(MouseTarget::WheelDown),
+        _ => None,
     }
 }
 

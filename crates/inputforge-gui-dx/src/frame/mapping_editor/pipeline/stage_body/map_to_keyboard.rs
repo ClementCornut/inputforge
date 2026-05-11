@@ -1,38 +1,19 @@
 // Rust guideline compliant 2026-05-01
 
-//! `MapToKeyboard` body: modifier toggles + key input field.
+//! `MapToKeyboard` body: physical key-combo capture + behavior selector.
 //!
 //! # Controls
 //!
-//! Four modifier checkboxes (Ctrl, Alt, Shift, Win) and a free-text key
-//! field allow the user to specify a full [`KeyCombo`]. The modifier
-//! checkboxes dispatch on every `onchange` (each toggle is one click, so
-//! one dispatch per click). The key field follows Task 15's commit-on-blur
-//! pattern: `oninput` only updates the local `Signal`, and the dispatch
-//! happens once on `onblur` (or when the user presses Enter, which
-//! programmatically blurs the input). This avoids flooding the engine
-//! channel and undo log with one entry per keystroke.
-//!
-//! # Live capture
-//!
-//! `CaptureFilter::KeysOnly` is not yet defined in the live-capture
-//! primitive (it only ships `Any`, `AxesOnly`, and `ButtonsOnly`). Until
-//! Task 16's consumer-flag pattern is extended with a `KeysOnly` variant,
-//! this body ships the TextInput-only path. When `KeysOnly` lands, a
-//! "Capture" button should be added here following the same consumer-flag
-//! pattern used by the input-rebind field (Task 16).
+//! A single stable button captures the physical base key and any held
+//! modifiers from the next keyboard event. Modifier-only events remain in
+//! capture mode with an inline hint; unsupported DOM codes are ignored with
+//! an inline hint.
 //!
 //! # Prop naming note
 //!
 //! Dioxus reserves the prop name `key` for the built-in reconciliation hint.
 //! The keyboard combo is therefore exposed as the prop `combo` and
 //! destructured that way in the function signature.
-//!
-//! # Malformed hints (Amendment 3)
-//!
-//! On every render the component writes to `editor.malformed_hints` when the
-//! combo is invalid (empty key with modifiers, or entirely empty). When valid
-//! it clears the stale hint for this `stage_id`.
 //!
 //! # Name preservation (Amendment 4)
 //!
@@ -45,20 +26,24 @@ use dioxus::prelude::*;
 
 use inputforge_core::action::{Action, Mapping, OutputBehavior};
 use inputforge_core::engine::EngineCommand;
-use inputforge_core::types::{KeyCombo, KeyModifier};
+use inputforge_core::types::{KeyCombo, KeyModifier, PhysicalKey};
 
-use crate::components::Checkbox;
+use crate::components::{SegmentedControl, SegmentedControlOption};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::pipeline::replace_at_path;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 
-/// `MapToKeyboard` body: four modifier toggles and a free-text key field.
+/// `MapToKeyboard` body: key-combo capture and behavior selector.
 ///
 /// The prop is named `combo` rather than `key` because Dioxus reserves the
 /// identifier `key` for its built-in reconciliation-hint attribute.
 #[component]
+#[allow(
+    unused_qualifications,
+    reason = "Dioxus 0.7 RSX reports bound event handlers as redundant qualifications."
+)]
 pub(crate) fn MapToKeyboardBody(
     mapping_key: MappingKey,
     stage_id: StageId,
@@ -72,42 +57,13 @@ pub(crate) fn MapToKeyboardBody(
     root_actions: Vec<Action>,
 ) -> Element {
     let ctx = use_context::<AppContext>();
-    let editor = use_context::<EditorState>();
+    let mut editor = use_context::<EditorState>();
 
-    // Local working copies of each field so widgets are fully controlled.
-    let mut local_key: Signal<String> = use_signal(|| combo.key.clone());
-    let mut local_ctrl: Signal<bool> = use_signal(|| combo.modifiers.contains(&KeyModifier::Ctrl));
-    let mut local_alt: Signal<bool> = use_signal(|| combo.modifiers.contains(&KeyModifier::Alt));
-    let mut local_shift: Signal<bool> =
-        use_signal(|| combo.modifiers.contains(&KeyModifier::Shift));
-    let mut local_win: Signal<bool> = use_signal(|| combo.modifiers.contains(&KeyModifier::Win));
+    let mut local_combo: Signal<KeyCombo> = use_signal(|| combo.clone());
+    let mut capture_active: Signal<bool> = use_signal(|| false);
+    let mut capture_hint: Signal<Option<String>> = use_signal(|| None);
 
-    // Amendment 3: malformed-hint write / clear on every render.
-    // REACTIVE-LOOP CONCERN (Task 40): this write happens during the render
-    // phase (not inside use_effect). Dioxus will schedule a re-render when
-    // malformed_hints is dirtied, but the write value is derived solely from
-    // local_key and the modifier Signals, none of which originate from
-    // malformed_hints, so no loop forms. A read-then-compare guard would be
-    // more explicit but is not required for correctness here.
-    {
-        let k = local_key.read();
-        let has_modifiers =
-            *local_ctrl.read() || *local_alt.read() || *local_shift.read() || *local_win.read();
-        let key_empty = k.trim().is_empty();
-        // Both an empty field with modifiers (modifier-only) and an entirely
-        // empty combo are invalid per spec lines 587-589.
-        let mut malformed = editor.malformed_hints;
-        if key_empty {
-            let msg = if has_modifiers {
-                "Key combo is modifier-only: add a base key".to_owned()
-            } else {
-                "Key combo is empty: enter a key".to_owned()
-            };
-            malformed.write().insert(stage_id.clone(), msg);
-        } else {
-            malformed.write().remove(&stage_id);
-        }
-    }
+    editor.malformed_hints.write().remove(&stage_id);
 
     // Snapshot of the mapping before any edit, used for undo entries.
     let cfg = ctx.config.read();
@@ -121,215 +77,84 @@ pub(crate) fn MapToKeyboardBody(
     };
     drop(cfg);
 
-    // --- Ctrl toggle handler ---
-    let mapping_key_ctrl = mapping_key.clone();
-    let stage_id_ctrl = stage_id.clone();
-    let root_actions_ctrl = root_actions.clone();
-    let before_ctrl = before_mapping.clone();
-    let current_name_ctrl = current_name.clone();
-    let cmd_tx_ctrl = ctx.commands.clone();
-    let mut undo_log_ctrl = editor.undo_log;
-
-    let on_ctrl = move |_evt: FormEvent| {
-        let new_ctrl = !*local_ctrl.peek();
-        local_ctrl.set(new_ctrl);
-        let new_combo = build_combo_from(
-            local_key,
-            new_ctrl,
-            *local_alt.peek(),
-            *local_shift.peek(),
-            *local_win.peek(),
-        );
-        dispatch_keyboard(
-            new_combo,
-            behavior,
-            "Ctrl modifier",
-            &mapping_key_ctrl,
-            &stage_id_ctrl,
-            &root_actions_ctrl,
-            &before_ctrl,
-            current_name_ctrl.clone(),
-            &cmd_tx_ctrl,
-            &mut undo_log_ctrl,
-        );
+    let on_capture_start = move |_| {
+        capture_active.set(true);
+        capture_hint.set(None);
     };
 
-    // --- Alt toggle handler ---
-    let mapping_key_alt = mapping_key.clone();
-    let stage_id_alt = stage_id.clone();
-    let root_actions_alt = root_actions.clone();
-    let before_alt = before_mapping.clone();
-    let current_name_alt = current_name.clone();
-    let cmd_tx_alt = ctx.commands.clone();
-    let mut undo_log_alt = editor.undo_log;
-
-    let on_alt = move |_evt: FormEvent| {
-        let new_alt = !*local_alt.peek();
-        local_alt.set(new_alt);
-        let new_combo = build_combo_from(
-            local_key,
-            *local_ctrl.peek(),
-            new_alt,
-            *local_shift.peek(),
-            *local_win.peek(),
-        );
-        dispatch_keyboard(
-            new_combo,
-            behavior,
-            "Alt modifier",
-            &mapping_key_alt,
-            &stage_id_alt,
-            &root_actions_alt,
-            &before_alt,
-            current_name_alt.clone(),
-            &cmd_tx_alt,
-            &mut undo_log_alt,
-        );
-    };
-
-    // --- Shift toggle handler ---
-    let mapping_key_shift = mapping_key.clone();
-    let stage_id_shift = stage_id.clone();
-    let root_actions_shift = root_actions.clone();
-    let before_shift = before_mapping.clone();
-    let current_name_shift = current_name.clone();
-    let cmd_tx_shift = ctx.commands.clone();
-    let mut undo_log_shift = editor.undo_log;
-
-    let on_shift = move |_evt: FormEvent| {
-        let new_shift = !*local_shift.peek();
-        local_shift.set(new_shift);
-        let new_combo = build_combo_from(
-            local_key,
-            *local_ctrl.peek(),
-            *local_alt.peek(),
-            new_shift,
-            *local_win.peek(),
-        );
-        dispatch_keyboard(
-            new_combo,
-            behavior,
-            "Shift modifier",
-            &mapping_key_shift,
-            &stage_id_shift,
-            &root_actions_shift,
-            &before_shift,
-            current_name_shift.clone(),
-            &cmd_tx_shift,
-            &mut undo_log_shift,
-        );
-    };
-
-    // --- Win toggle handler ---
-    let mapping_key_win = mapping_key.clone();
-    let stage_id_win = stage_id.clone();
-    let root_actions_win = root_actions.clone();
-    let before_win = before_mapping.clone();
-    let current_name_win = current_name.clone();
-    let cmd_tx_win = ctx.commands.clone();
-    let mut undo_log_win = editor.undo_log;
-
-    let on_win = move |_evt: FormEvent| {
-        let new_win = !*local_win.peek();
-        local_win.set(new_win);
-        let new_combo = build_combo_from(
-            local_key,
-            *local_ctrl.peek(),
-            *local_alt.peek(),
-            *local_shift.peek(),
-            new_win,
-        );
-        dispatch_keyboard(
-            new_combo,
-            behavior,
-            "Win modifier",
-            &mapping_key_win,
-            &stage_id_win,
-            &root_actions_win,
-            &before_win,
-            current_name_win.clone(),
-            &cmd_tx_win,
-            &mut undo_log_win,
-        );
-    };
-
-    // --- Key text field handlers ---
-    //
-    // Per the F9 plan (lines 5340-5352) and Task 15's NameField pattern, the
-    // key field commits on `onblur`, NOT on every `oninput` keystroke. The
-    // `oninput` handler only updates the local working copy so the textbox
-    // stays controlled; the actual `dispatch_keyboard` runs once when the
-    // user moves focus away (or presses Enter, which programmatically blurs
-    // the input via the same path NameField uses).
-    let oninput = move |evt: FormEvent| {
-        local_key.set(evt.value());
-    };
-
-    let mapping_key_blur = mapping_key.clone();
-    let stage_id_blur = stage_id.clone();
-    let root_actions_blur = root_actions.clone();
-    let before_blur = before_mapping.clone();
-    let current_name_blur = current_name.clone();
-    let cmd_tx_blur = ctx.commands.clone();
-    let mut undo_log_blur = editor.undo_log;
-    // Remember the key value at mount so blur with no actual change is a no-op.
-    let initial_key_blur = combo.key.clone();
-
-    let onblur = move |_evt: FocusEvent| {
-        let new_key_str = local_key.peek().trim().to_owned();
-        // Skip the dispatch when the field is empty or unchanged. The
-        // malformed-hint write at the top of the function still flags the
-        // empty-key state on the next render so the user gets a visual cue.
-        if new_key_str.is_empty() || new_key_str == initial_key_blur {
+    let mapping_key_capture = mapping_key.clone();
+    let stage_id_capture = stage_id.clone();
+    let root_actions_capture = root_actions.clone();
+    let before_capture = before_mapping.clone();
+    let current_name_capture = current_name.clone();
+    let cmd_tx_capture = ctx.commands.clone();
+    let mut undo_log_capture = editor.undo_log;
+    let on_capture_keydown = move |evt: KeyboardEvent| {
+        if !*capture_active.peek() {
             return;
         }
-        let new_combo = build_combo_from_key(
-            new_key_str,
-            *local_ctrl.peek(),
-            *local_alt.peek(),
-            *local_shift.peek(),
-            *local_win.peek(),
-        );
+        evt.prevent_default();
+        evt.stop_propagation();
+
+        let code = evt.code();
+        if is_capture_cancel_event(&evt, code) {
+            capture_active.set(false);
+            capture_hint.set(None);
+            return;
+        }
+
+        if is_modifier_code(code) {
+            capture_hint.set(Some("Press a base key with any modifiers held".to_owned()));
+            return;
+        }
+
+        let Some(key) = physical_key_from_code(code) else {
+            capture_hint.set(Some("Unsupported key".to_owned()));
+            return;
+        };
+
+        let new_combo = build_combo_from_key(key, modifier_state_from_event(&evt));
+        let old_combo = local_combo.peek().clone();
+
+        local_combo.set(new_combo.clone());
+        capture_active.set(false);
+        capture_hint.set(None);
+
+        if new_combo == old_combo {
+            return;
+        }
         dispatch_keyboard(
             new_combo,
             behavior,
             "key",
-            &mapping_key_blur,
-            &stage_id_blur,
-            &root_actions_blur,
-            &before_blur,
-            current_name_blur.clone(),
-            &cmd_tx_blur,
-            &mut undo_log_blur,
+            &mapping_key_capture,
+            &stage_id_capture,
+            &root_actions_capture,
+            &before_capture,
+            current_name_capture.clone(),
+            &cmd_tx_capture,
+            &mut undo_log_capture,
         );
     };
 
-    // Enter key behaves like blur: programmatically blur the active input so
-    // the canonical commit path (`onblur`) runs exactly once. Mirrors
-    // NameField's onkeydown handler (Task 15).
-    let onkeydown = move |evt: KeyboardEvent| {
-        if evt.key() == Key::Enter {
-            evt.prevent_default();
-            let _ = document::eval(
-                r"
-                const el = document.activeElement;
-                if (el && el instanceof HTMLInputElement) { el.blur(); }
-                ",
-            );
-        }
-    };
-
-    // `ReadSignal` conversions for the Checkbox `checked` prop.
-    let ctrl_ro: ReadSignal<bool> = local_ctrl.into();
-    let alt_ro: ReadSignal<bool> = local_alt.into();
-    let shift_ro: ReadSignal<bool> = local_shift.into();
-    let win_ro: ReadSignal<bool> = local_win.into();
-
-    let invalid_field = local_key.read().trim().is_empty();
-    let key_class = if invalid_field {
-        "if-text-input if-text-input--md if-text-input--invalid"
+    let current_combo = local_combo.read().clone();
+    let key_label = format_key_combo(&current_combo);
+    let capture_message = capture_hint.read().clone();
+    let is_listening = *capture_active.read();
+    let capture_class = if is_listening {
+        "if-key-capture__surface is-listening"
     } else {
-        "if-text-input if-text-input--md"
+        "if-key-capture__surface"
+    };
+    let capture_aria_label = if is_listening {
+        "Press keyboard shortcut"
+    } else {
+        "Capture keyboard shortcut"
+    };
+    let capture_text = if is_listening {
+        "Press keys"
+    } else {
+        key_label.as_str()
     };
 
     let mapping_key_hold = mapping_key.clone();
@@ -343,13 +168,7 @@ pub(crate) fn MapToKeyboardBody(
         if is_output_behavior_click_noop(behavior, OutputBehavior::Hold) {
             return;
         }
-        let new_combo = build_combo_from(
-            local_key,
-            *local_ctrl.peek(),
-            *local_alt.peek(),
-            *local_shift.peek(),
-            *local_win.peek(),
-        );
+        let new_combo = local_combo.peek().clone();
         dispatch_keyboard(
             new_combo,
             OutputBehavior::Hold,
@@ -375,13 +194,7 @@ pub(crate) fn MapToKeyboardBody(
         if is_output_behavior_click_noop(behavior, OutputBehavior::Pulse) {
             return;
         }
-        let new_combo = build_combo_from(
-            local_key,
-            *local_ctrl.peek(),
-            *local_alt.peek(),
-            *local_shift.peek(),
-            *local_win.peek(),
-        );
+        let new_combo = local_combo.peek().clone();
         dispatch_keyboard(
             new_combo,
             OutputBehavior::Pulse,
@@ -398,85 +211,37 @@ pub(crate) fn MapToKeyboardBody(
 
     rsx! {
         div { class: "if-stage__body-keyboard",
-            // Modifier toggles row
-            div { class: "if-stage__body-field if-stage__body-field--modifiers",
-                label { class: "if-stage__body-label", "Modifiers" }
-                div { class: "if-stage__body-modifier-row",
-                    label { class: "if-stage__body-modifier-item",
-                        Checkbox {
-                            checked: ctrl_ro,
-                            onchange: on_ctrl,
-                        }
-                        span { class: "if-stage__body-modifier-label", "Ctrl" }
-                    }
-                    label { class: "if-stage__body-modifier-item",
-                        Checkbox {
-                            checked: alt_ro,
-                            onchange: on_alt,
-                        }
-                        span { class: "if-stage__body-modifier-label", "Alt" }
-                    }
-                    label { class: "if-stage__body-modifier-item",
-                        Checkbox {
-                            checked: shift_ro,
-                            onchange: on_shift,
-                        }
-                        span { class: "if-stage__body-modifier-label", "Shift" }
-                    }
-                    label { class: "if-stage__body-modifier-item",
-                        Checkbox {
-                            checked: win_ro,
-                            onchange: on_win,
-                        }
-                        span { class: "if-stage__body-modifier-label", "Win" }
-                    }
-                }
-            }
-            // Key text field. Uses a raw `<input>` (not `TextInput`) because
-            // the F2 `TextInput` component does not currently expose `onblur`
-            // or `onkeydown` props, both of which are required for the
-            // commit-on-blur dispatch pattern (see Task 15's NameField).
-            // Class strings mirror what `TextInput` would emit so the styling
-            // stays consistent across forms.
             div { class: "if-stage__body-field",
                 label { class: "if-stage__body-label", "Key" }
-                input {
-                    r#type: "text",
-                    class: "{key_class}",
-                    value: "{local_key}",
-                    placeholder: "e.g. Q, F1, Space",
-                    // Use binding shorthand here. The compiler's
-                    // `unused_qualifications` lint flags `oninput: oninput`
-                    // style (because the macro expands to a redundant
-                    // path), so we name the closures to match the prop
-                    // names: `oninput`, `onblur`, `onkeydown`.
-                    oninput,
-                    onblur,
-                    onkeydown,
+                div { class: "if-key-capture",
+                    button {
+                        r#type: "button",
+                        class: "{capture_class}",
+                        "aria-label": "{capture_aria_label}",
+                        "data-key-capture": if is_listening { "active" } else { "idle" },
+                        onclick: on_capture_start,
+                        onkeydown: on_capture_keydown,
+                        span { class: "if-key-capture__value", "{capture_text}" }
+                    }
+                    if let Some(message) = capture_message {
+                        span { class: "if-key-capture__hint", "{message}" }
+                    }
                 }
             }
             div { class: "if-stage__body-field",
                 label { class: "if-stage__body-label", "Behavior" }
-                div { class: "if-stage__body-segmented",
-                    {
-                        let onclick = on_hold;
-                        rsx! {
-                            button {
-                                class: if behavior == OutputBehavior::Hold { "if-stage__body-segment is-active" } else { "if-stage__body-segment" },
-                                onclick,
-                                "Hold"
-                            }
-                        }
+                SegmentedControl { aria_label: "Keyboard output behavior".to_owned(),
+                    SegmentedControlOption {
+                        value: "hold".to_owned(),
+                        selected: behavior == OutputBehavior::Hold,
+                        onclick: on_hold,
+                        "Hold"
                     }
-                    {
-                        let onclick = on_pulse;
-                        rsx! {
-                            button {
-                                class: if behavior == OutputBehavior::Pulse { "if-stage__body-segment is-active" } else { "if-stage__body-segment" },
-                                onclick,
-                                "Pulse"
-                            }
-                        }
+                    SegmentedControlOption {
+                        value: "pulse".to_owned(),
+                        selected: behavior == OutputBehavior::Pulse,
+                        onclick: on_pulse,
+                        "Pulse"
                     }
                 }
             }
@@ -488,41 +253,7 @@ pub(crate) fn MapToKeyboardBody(
 // Private helpers
 // ---------------------------------------------------------------------------
 
-/// Build a [`KeyCombo`] by peeking the current `local_key` signal for the
-/// base key and using the four caller-supplied bools for modifiers.
-///
-/// Each handler passes the *new* value for its own modifier and
-/// `*signal.peek()` for all others, so the combo reflects the post-toggle
-/// state without triggering a reactive subscription.
-#[expect(
-    clippy::fn_params_excessive_bools,
-    reason = "The four bools map 1-to-1 to the four KeyModifier variants; \
-              introducing a wrapper struct would add ceremony at every call site \
-              without improving clarity."
-)]
-fn build_combo_from(
-    local_key: Signal<String>,
-    ctrl: bool,
-    alt: bool,
-    shift: bool,
-    win: bool,
-) -> KeyCombo {
-    build_combo_from_key(local_key.peek().clone(), ctrl, alt, shift, win)
-}
-
-/// Build a [`KeyCombo`] from an explicit key string and four modifier bools.
-///
-/// Separated from `build_combo_from` so the key-field handler can supply the
-/// new key string it just received rather than re-reading the signal (which
-/// was written in the same handler call, so the signal value may not yet have
-/// propagated).
-#[expect(
-    clippy::fn_params_excessive_bools,
-    reason = "The four bools map 1-to-1 to the four KeyModifier variants; \
-              introducing a wrapper struct would add ceremony at every call site \
-              without improving clarity."
-)]
-fn build_combo_from_key(key: String, ctrl: bool, alt: bool, shift: bool, win: bool) -> KeyCombo {
+fn build_combo_from_key(key: PhysicalKey, (ctrl, alt, shift, win): ModifierState) -> KeyCombo {
     let mut modifiers = Vec::new();
     if ctrl {
         modifiers.push(KeyModifier::Ctrl);
@@ -537,6 +268,153 @@ fn build_combo_from_key(key: String, ctrl: bool, alt: bool, shift: bool, win: bo
         modifiers.push(KeyModifier::Win);
     }
     KeyCombo { key, modifiers }
+}
+
+fn format_key_combo(combo: &KeyCombo) -> String {
+    let mut parts: Vec<String> = combo
+        .modifiers
+        .iter()
+        .map(|modifier| match modifier {
+            KeyModifier::Ctrl => "Ctrl",
+            KeyModifier::Shift => "Shift",
+            KeyModifier::Alt => "Alt",
+            KeyModifier::Win => "Win",
+        })
+        .map(str::to_owned)
+        .collect();
+    parts.push(combo.key.display_label().into_owned());
+    parts.join(" + ")
+}
+
+type ModifierState = (bool, bool, bool, bool);
+
+fn modifier_state_from_event(evt: &KeyboardEvent) -> ModifierState {
+    let modifiers = evt.modifiers();
+    (
+        modifiers.ctrl(),
+        modifiers.alt(),
+        modifiers.shift(),
+        modifiers.meta(),
+    )
+}
+
+const fn is_modifier_code(code: Code) -> bool {
+    matches!(
+        code,
+        Code::ControlLeft
+            | Code::ControlRight
+            | Code::ShiftLeft
+            | Code::ShiftRight
+            | Code::AltLeft
+            | Code::AltRight
+            | Code::MetaLeft
+            | Code::MetaRight
+    )
+}
+
+const fn is_capture_cancel_code(code: Code) -> bool {
+    matches!(code, Code::Escape)
+}
+
+fn is_capture_cancel_event(evt: &KeyboardEvent, code: Code) -> bool {
+    evt.key() == Key::Escape || is_capture_cancel_code(code)
+}
+
+const fn physical_key_from_code(code: Code) -> Option<PhysicalKey> {
+    match code {
+        Code::KeyA => Some(PhysicalKey::KeyA),
+        Code::KeyB => Some(PhysicalKey::KeyB),
+        Code::KeyC => Some(PhysicalKey::KeyC),
+        Code::KeyD => Some(PhysicalKey::KeyD),
+        Code::KeyE => Some(PhysicalKey::KeyE),
+        Code::KeyF => Some(PhysicalKey::KeyF),
+        Code::KeyG => Some(PhysicalKey::KeyG),
+        Code::KeyH => Some(PhysicalKey::KeyH),
+        Code::KeyI => Some(PhysicalKey::KeyI),
+        Code::KeyJ => Some(PhysicalKey::KeyJ),
+        Code::KeyK => Some(PhysicalKey::KeyK),
+        Code::KeyL => Some(PhysicalKey::KeyL),
+        Code::KeyM => Some(PhysicalKey::KeyM),
+        Code::KeyN => Some(PhysicalKey::KeyN),
+        Code::KeyO => Some(PhysicalKey::KeyO),
+        Code::KeyP => Some(PhysicalKey::KeyP),
+        Code::KeyQ => Some(PhysicalKey::KeyQ),
+        Code::KeyR => Some(PhysicalKey::KeyR),
+        Code::KeyS => Some(PhysicalKey::KeyS),
+        Code::KeyT => Some(PhysicalKey::KeyT),
+        Code::KeyU => Some(PhysicalKey::KeyU),
+        Code::KeyV => Some(PhysicalKey::KeyV),
+        Code::KeyW => Some(PhysicalKey::KeyW),
+        Code::KeyX => Some(PhysicalKey::KeyX),
+        Code::KeyY => Some(PhysicalKey::KeyY),
+        Code::KeyZ => Some(PhysicalKey::KeyZ),
+        Code::Digit0 => Some(PhysicalKey::Digit0),
+        Code::Digit1 => Some(PhysicalKey::Digit1),
+        Code::Digit2 => Some(PhysicalKey::Digit2),
+        Code::Digit3 => Some(PhysicalKey::Digit3),
+        Code::Digit4 => Some(PhysicalKey::Digit4),
+        Code::Digit5 => Some(PhysicalKey::Digit5),
+        Code::Digit6 => Some(PhysicalKey::Digit6),
+        Code::Digit7 => Some(PhysicalKey::Digit7),
+        Code::Digit8 => Some(PhysicalKey::Digit8),
+        Code::Digit9 => Some(PhysicalKey::Digit9),
+        Code::F1 => Some(PhysicalKey::F1),
+        Code::F2 => Some(PhysicalKey::F2),
+        Code::F3 => Some(PhysicalKey::F3),
+        Code::F4 => Some(PhysicalKey::F4),
+        Code::F5 => Some(PhysicalKey::F5),
+        Code::F6 => Some(PhysicalKey::F6),
+        Code::F7 => Some(PhysicalKey::F7),
+        Code::F8 => Some(PhysicalKey::F8),
+        Code::F9 => Some(PhysicalKey::F9),
+        Code::F10 => Some(PhysicalKey::F10),
+        Code::F11 => Some(PhysicalKey::F11),
+        Code::F12 => Some(PhysicalKey::F12),
+        Code::Space => Some(PhysicalKey::Space),
+        Code::Enter => Some(PhysicalKey::Enter),
+        Code::Tab => Some(PhysicalKey::Tab),
+        Code::Escape => Some(PhysicalKey::Escape),
+        Code::Backspace => Some(PhysicalKey::Backspace),
+        Code::Delete => Some(PhysicalKey::Delete),
+        Code::Insert => Some(PhysicalKey::Insert),
+        Code::ArrowUp => Some(PhysicalKey::ArrowUp),
+        Code::ArrowDown => Some(PhysicalKey::ArrowDown),
+        Code::ArrowLeft => Some(PhysicalKey::ArrowLeft),
+        Code::ArrowRight => Some(PhysicalKey::ArrowRight),
+        Code::Home => Some(PhysicalKey::Home),
+        Code::End => Some(PhysicalKey::End),
+        Code::PageUp => Some(PhysicalKey::PageUp),
+        Code::PageDown => Some(PhysicalKey::PageDown),
+        Code::Minus => Some(PhysicalKey::Minus),
+        Code::Equal => Some(PhysicalKey::Equal),
+        Code::BracketLeft => Some(PhysicalKey::BracketLeft),
+        Code::BracketRight => Some(PhysicalKey::BracketRight),
+        Code::Backslash => Some(PhysicalKey::Backslash),
+        Code::IntlBackslash => Some(PhysicalKey::IntlBackslash),
+        Code::Semicolon => Some(PhysicalKey::Semicolon),
+        Code::Quote => Some(PhysicalKey::Quote),
+        Code::Backquote => Some(PhysicalKey::Backquote),
+        Code::Comma => Some(PhysicalKey::Comma),
+        Code::Period => Some(PhysicalKey::Period),
+        Code::Slash => Some(PhysicalKey::Slash),
+        Code::Numpad0 => Some(PhysicalKey::Numpad0),
+        Code::Numpad1 => Some(PhysicalKey::Numpad1),
+        Code::Numpad2 => Some(PhysicalKey::Numpad2),
+        Code::Numpad3 => Some(PhysicalKey::Numpad3),
+        Code::Numpad4 => Some(PhysicalKey::Numpad4),
+        Code::Numpad5 => Some(PhysicalKey::Numpad5),
+        Code::Numpad6 => Some(PhysicalKey::Numpad6),
+        Code::Numpad7 => Some(PhysicalKey::Numpad7),
+        Code::Numpad8 => Some(PhysicalKey::Numpad8),
+        Code::Numpad9 => Some(PhysicalKey::Numpad9),
+        Code::NumpadAdd => Some(PhysicalKey::NumpadAdd),
+        Code::NumpadSubtract => Some(PhysicalKey::NumpadSubtract),
+        Code::NumpadMultiply => Some(PhysicalKey::NumpadMultiply),
+        Code::NumpadDivide => Some(PhysicalKey::NumpadDivide),
+        Code::NumpadDecimal => Some(PhysicalKey::NumpadDecimal),
+        Code::NumpadEnter => Some(PhysicalKey::NumpadEnter),
+        _ => None,
+    }
 }
 
 fn is_output_behavior_click_noop(
@@ -624,5 +502,52 @@ mod tests {
             OutputBehavior::Hold,
             OutputBehavior::Pulse
         ));
+    }
+
+    #[test]
+    fn physical_key_capture_maps_dom_codes_to_physical_keys() {
+        assert_eq!(physical_key_from_code(Code::KeyA), Some(PhysicalKey::KeyA));
+        assert_eq!(
+            physical_key_from_code(Code::Digit7),
+            Some(PhysicalKey::Digit7)
+        );
+        assert_eq!(physical_key_from_code(Code::F12), Some(PhysicalKey::F12));
+        assert_eq!(
+            physical_key_from_code(Code::Slash),
+            Some(PhysicalKey::Slash)
+        );
+        assert_eq!(
+            physical_key_from_code(Code::BracketLeft),
+            Some(PhysicalKey::BracketLeft)
+        );
+        assert_eq!(
+            physical_key_from_code(Code::IntlBackslash),
+            Some(PhysicalKey::IntlBackslash)
+        );
+        assert_eq!(
+            physical_key_from_code(Code::NumpadDivide),
+            Some(PhysicalKey::NumpadDivide)
+        );
+        assert_eq!(
+            physical_key_from_code(Code::NumpadEnter),
+            Some(PhysicalKey::NumpadEnter)
+        );
+        assert_eq!(physical_key_from_code(Code::AudioVolumeUp), None);
+    }
+
+    #[test]
+    fn modifier_dom_codes_are_not_base_keys() {
+        assert!(is_modifier_code(Code::ControlLeft));
+        assert!(is_modifier_code(Code::MetaRight));
+        assert_eq!(physical_key_from_code(Code::ControlLeft), None);
+    }
+
+    #[test]
+    fn escape_code_aborts_capture_before_key_mapping() {
+        assert!(is_capture_cancel_code(Code::Escape));
+        assert_eq!(
+            physical_key_from_code(Code::Escape),
+            Some(PhysicalKey::Escape)
+        );
     }
 }

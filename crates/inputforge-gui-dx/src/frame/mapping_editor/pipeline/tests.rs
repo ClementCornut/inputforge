@@ -20,7 +20,7 @@ use inputforge_core::profile::Profile;
 use inputforge_core::state::{AppState, EngineStatus};
 use inputforge_core::types::{
     AxisPolarity, DeviceId, DeviceInfo, InputAddress, InputId, KeyCombo, KeyModifier, MergeOp,
-    OutputAddress, OutputId, VJoyAxis, VirtualDeviceConfig,
+    OutputAddress, OutputId, PhysicalKey, VJoyAxis, VirtualDeviceConfig,
 };
 use std::collections::HashMap;
 
@@ -677,9 +677,9 @@ fn render_stage_body(action: Action) -> String {
     )
 }
 
-fn key_combo(key: &str) -> KeyCombo {
+fn key_combo(key: PhysicalKey) -> KeyCombo {
     KeyCombo {
-        key: key.to_owned(),
+        key,
         modifiers: vec![],
     }
 }
@@ -850,12 +850,27 @@ fn add_palette_includes_map_to_mouse() {
 #[test]
 fn map_to_keyboard_body_renders_behavior_selector() {
     let html = render_stage_body(Action::MapToKeyboard {
-        key: key_combo("A"),
+        key: key_combo(PhysicalKey::KeyA),
         behavior: OutputBehavior::Hold,
     });
 
-    assert!(html.contains("Hold"));
-    assert!(html.contains("Pulse"));
+    assert!(
+        html.contains(r#"aria-label="Keyboard output behavior""#),
+        "keyboard behavior must render as a segmented control: {html}"
+    );
+    let hold_idx = html
+        .find(r#"data-value="hold""#)
+        .expect("Hold behavior option must render");
+    let hold_slice = &html[hold_idx..hold_idx + 220];
+    assert!(
+        hold_slice.contains(r#"if-stage__body-strategy-pill"#),
+        "Hold behavior must reuse strategy pill styling: {hold_slice}"
+    );
+    assert!(
+        hold_slice.contains(r#"aria-pressed="true""#),
+        "Hold behavior must be pressed: {hold_slice}"
+    );
+    assert!(html.contains(r#"data-value="pulse""#));
 }
 
 #[test]
@@ -865,11 +880,30 @@ fn map_to_mouse_body_renders_targets_and_button_behavior() {
         behavior: OutputBehavior::Hold,
     });
 
-    assert!(html.contains("Left click"));
-    assert!(html.contains("Right click"));
-    assert!(html.contains("Wheel up"));
-    assert!(html.contains("Hold"));
-    assert!(html.contains("Pulse"));
+    assert!(
+        html.contains(r#"<select"#),
+        "mouse target must render as a Select: {html}"
+    );
+    assert!(html.contains(r#"value="left_button" selected=true>Left click</option>"#));
+    assert!(html.contains(r#"value="right_button">Right click</option>"#));
+    assert!(html.contains(r#"value="wheel_up">Wheel up</option>"#));
+    assert!(
+        html.contains(r#"aria-label="Mouse output behavior""#),
+        "mouse button target must render behavior segmented control: {html}"
+    );
+    let hold_idx = html
+        .find(r#"data-value="hold""#)
+        .expect("Hold behavior option must render");
+    let hold_slice = &html[hold_idx..hold_idx + 220];
+    assert!(
+        hold_slice.contains(r#"if-stage__body-strategy-pill"#),
+        "Hold behavior must reuse strategy pill styling: {hold_slice}"
+    );
+    assert!(
+        hold_slice.contains(r#"aria-pressed="true""#),
+        "Hold behavior must be pressed: {hold_slice}"
+    );
+    assert!(html.contains(r#"data-value="pulse""#));
 }
 
 #[test]
@@ -880,6 +914,10 @@ fn map_to_mouse_wheel_hides_behavior_selector() {
     });
 
     assert!(html.contains("Wheel up"));
+    assert!(
+        !html.contains(r#"aria-label="Mouse output behavior""#),
+        "wheel target must hide behavior segmented control: {html}"
+    );
     assert!(!html.contains("Hold"));
 }
 
@@ -1034,7 +1072,7 @@ fn summary_map_to_keyboard_renders_combo() {
     let s = stage_summary_for(
         &Action::MapToKeyboard {
             key: KeyCombo {
-                key: "Q".to_owned(),
+                key: PhysicalKey::KeyQ,
                 modifiers: vec![KeyModifier::Ctrl, KeyModifier::Shift],
             },
             behavior: OutputBehavior::Hold,
@@ -1043,7 +1081,26 @@ fn summary_map_to_keyboard_renders_combo() {
     );
     assert!(s.contains("Ctrl"), "missing Ctrl in: {s}");
     assert!(s.contains("Shift"), "missing Shift in: {s}");
-    assert!(s.contains('Q'), "missing key in: {s}");
+    let key_q_label = PhysicalKey::KeyQ.display_label();
+    assert!(
+        s.contains(key_q_label.as_ref()),
+        "missing layout-aware key label {key_q_label} in: {s}"
+    );
+
+    let numpad = stage_summary_for(
+        &Action::MapToKeyboard {
+            key: KeyCombo {
+                key: PhysicalKey::NumpadDivide,
+                modifiers: vec![KeyModifier::Alt],
+            },
+            behavior: OutputBehavior::Pulse,
+        },
+        &synth_cfg(),
+    );
+    assert!(
+        numpad.contains("Alt + Num /"),
+        "missing numpad physical label in: {numpad}"
+    );
 }
 
 #[test]
@@ -1110,14 +1167,14 @@ fn map_to_vjoy_body() {
 }
 
 // ---------------------------------------------------------------------------
-// Task 24: MapToKeyboard body (modifier toggles + key field)
+// Task 24: MapToKeyboard body (physical key capture)
 // ---------------------------------------------------------------------------
 
 #[test]
-fn map_to_keyboard_body_renders_modifier_toggles_and_key_field() {
+fn map_to_keyboard_body_renders_single_capture_control() {
     let actions = vec![Action::MapToKeyboard {
         key: KeyCombo {
-            key: "Q".to_owned(),
+            key: PhysicalKey::KeyQ,
             modifiers: vec![KeyModifier::Ctrl],
         },
         behavior: OutputBehavior::Hold,
@@ -1125,16 +1182,45 @@ fn map_to_keyboard_body_renders_modifier_toggles_and_key_field() {
     let (state, addr) = build_state(actions);
     let pre_expanded = vec![StageId(vec![StageIdSegment::Index(0)])];
     let html = render_with_expanded(state, addr, pre_expanded, &["Default"]);
+    let key_q_label = PhysicalKey::KeyQ.display_label();
+    let expected_combo = format!("Ctrl + {key_q_label}");
 
-    // The body must render modifier labels.
     assert!(
-        html.contains("Ctrl"),
-        "expected Ctrl modifier toggle in body: {html}"
+        !html.contains("Modifiers")
+            && !html.contains(r#"type="checkbox""#)
+            && !html.contains("if-stage__body-modifier"),
+        "modifier row and checkbox markup must be absent: {html}"
     );
-    // The key text field must be present (TextInput renders an <input type="text">).
     assert!(
-        html.contains("Key") || html.contains(r#"type="text""#),
-        "expected Key field in body: {html}"
+        html.contains(r#"class="if-key-capture__surface""#)
+            && html.contains(r#"aria-label="Capture keyboard shortcut""#)
+            && html.contains(&expected_combo),
+        "expected physical key capture surface in body: {html}"
+    );
+    assert!(
+        !html.contains(r#"type="text""#),
+        "key binding must not render a free-text input: {html}"
+    );
+}
+
+#[test]
+fn map_to_keyboard_capture_has_css_contract_without_modifier_row() {
+    let css = include_str!("../../../../assets/frame/mapping_editor.css");
+
+    assert!(
+        !css.contains(".if-stage__body-modifier-row")
+            && !css.contains(".if-stage__body-modifier-input")
+            && !css.contains(".if-stage__body-modifier-keycap"),
+        "modifier-row CSS should be retired"
+    );
+    assert!(
+        css.contains(".if-key-capture")
+            && css.contains(".if-key-capture__surface")
+            && css.contains("appearance: none;")
+            && css.contains("min-height: 32px;")
+            && css.contains(".if-key-capture__surface.is-listening")
+            && css.contains(".if-key-capture__hint"),
+        "keyboard capture needs styled idle/listening/hint states"
     );
 }
 

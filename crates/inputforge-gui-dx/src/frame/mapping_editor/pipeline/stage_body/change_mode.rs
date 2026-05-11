@@ -20,7 +20,9 @@ use inputforge_core::action::{Action, ModeChangeStrategy};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::InputAddress;
 
-use crate::components::{Select, SelectOption, Tooltip, TooltipPlacement};
+use crate::components::{
+    SegmentedControl, SegmentedControlOption, Select, SelectOption, Tooltip, TooltipPlacement,
+};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
@@ -281,9 +283,6 @@ pub(crate) fn ChangeModeBody(
     let primary_is_button_shaped = mapping_key.1.is_button_shaped();
     let hold_disabled = !primary_is_button_shaped;
 
-    let set_aria_pressed = if is_set { "true" } else { "false" };
-    let hold_aria_pressed = if is_hold { "true" } else { "false" };
-    let hold_aria_disabled = if hold_disabled { "true" } else { "false" };
     // Skip the Hold pill in tab order when aria-disabled. The internal
     // pill_activates gate already no-ops the dispatch; removing the pill
     // from sequential focus prevents the user-facing impression of a
@@ -487,13 +486,12 @@ pub(crate) fn ChangeModeBody(
     };
 
     let hold_pill = rsx! {
-        button {
-            r#type: "button",
-            class: "if-stage__body-strategy-pill",
-            "data-strategy": "hold",
-            "aria-pressed": "{hold_aria_pressed}",
-            "aria-disabled": "{hold_aria_disabled}",
-            tabindex: "{hold_tabindex}",
+        SegmentedControlOption {
+            value: "hold".to_owned(),
+            data_strategy: Some("hold".to_owned()),
+            selected: is_hold,
+            disabled: hold_disabled,
+            tabindex: Some(hold_tabindex.to_owned()),
             onclick: on_hold_click,
             "Hold"
         }
@@ -503,16 +501,11 @@ pub(crate) fn ChangeModeBody(
         div { class: "if-stage__body-change-mode",
             div { class: "if-stage__body-field",
                 label { class: "if-stage__body-label", "Strategy" }
-                // Toggle-button-group pattern (role="group" + child aria-pressed).
-                div {
-                    class: "if-stage__body-strategy",
-                    role: "group",
-                    "aria-label": "Mode change strategy",
-                    button {
-                        r#type: "button",
-                        class: "if-stage__body-strategy-pill",
-                        "data-strategy": "set",
-                        "aria-pressed": "{set_aria_pressed}",
+                SegmentedControl { aria_label: "Mode change strategy".to_owned(),
+                    SegmentedControlOption {
+                        value: "set".to_owned(),
+                        data_strategy: Some("set".to_owned()),
+                        selected: is_set,
                         onclick: on_set_click,
                         "Set"
                     }
