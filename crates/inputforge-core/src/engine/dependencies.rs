@@ -170,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn active_mappings_does_not_inherit_parent_mode_mapping() {
+    fn active_mappings_requires_exact_mode_match() {
         let mappings = vec![mapping_for(axis(0), "Default", vec![Action::Invert])];
 
         let active = active_mappings_for_event(&mappings, &axis(0), "Combat");

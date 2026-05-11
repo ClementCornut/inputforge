@@ -192,7 +192,7 @@ fn process_outputs_set_axis() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
-    let tree = simple_modes();
+    let modes = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(0);
@@ -202,7 +202,7 @@ fn process_outputs_set_axis() {
         &mut sink,
         &mut kb,
         &mut mode_state,
-        &tree,
+        &modes,
         &mut callbacks,
         &trigger,
     )
@@ -228,7 +228,7 @@ fn process_outputs_set_button() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
-    let tree = simple_modes();
+    let modes = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(0);
@@ -238,7 +238,7 @@ fn process_outputs_set_button() {
         &mut sink,
         &mut kb,
         &mut mode_state,
-        &tree,
+        &modes,
         &mut callbacks,
         &trigger,
     )
@@ -270,7 +270,7 @@ fn process_outputs_send_key_only_on_press() {
         pressed: false,
     }];
 
-    let tree = simple_modes();
+    let modes = simple_modes();
     let trigger = button_addr(0);
 
     // Pressed → key sent.
@@ -284,7 +284,7 @@ fn process_outputs_send_key_only_on_press() {
         &mut sink,
         &mut kb,
         &mut mode_state,
-        &tree,
+        &modes,
         &mut callbacks,
         &trigger,
     )
@@ -302,7 +302,7 @@ fn process_outputs_send_key_only_on_press() {
         &mut sink2,
         &mut kb2,
         &mut mode_state2,
-        &tree,
+        &modes,
         &mut callbacks2,
         &trigger,
     )
@@ -312,7 +312,7 @@ fn process_outputs_send_key_only_on_press() {
 
 #[test]
 fn process_outputs_change_mode_switch_to() {
-    let tree = two_modes();
+    let modes = two_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(0);
@@ -331,7 +331,7 @@ fn process_outputs_change_mode_switch_to() {
         &mut sink,
         &mut kb,
         &mut mode_state,
-        &tree,
+        &modes,
         &mut callbacks,
         &trigger,
     )
@@ -343,7 +343,7 @@ fn process_outputs_change_mode_switch_to() {
 
 #[test]
 fn process_outputs_temporary_mode_registers_callback() {
-    let tree = shift_modes();
+    let modes = shift_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(5);
@@ -362,7 +362,7 @@ fn process_outputs_temporary_mode_registers_callback() {
         &mut sink,
         &mut kb,
         &mut mode_state,
-        &tree,
+        &modes,
         &mut callbacks,
         &trigger,
     )
@@ -379,7 +379,7 @@ fn process_outputs_temporary_mode_registers_callback() {
 
 #[test]
 fn refresh_axes_reprocesses_cached_values() {
-    let tree = simple_modes();
+    let modes = simple_modes();
     let mapping = Mapping {
         input: axis_addr(0),
         mode: "Default".to_owned(),
@@ -403,7 +403,7 @@ fn refresh_axes_reprocesses_cached_values() {
         &cache,
         &[mapping],
         "Default",
-        &tree,
+        &modes,
         &mut sink,
         &mut OutputCacheStore::new(),
     )
@@ -421,7 +421,7 @@ fn refresh_axes_reprocesses_cached_values() {
 
 #[test]
 fn refresh_axes_skips_mode_changes_and_keys() {
-    let tree = two_modes();
+    let modes = two_modes();
     let mapping = Mapping {
         input: axis_addr(0),
         mode: "Default".to_owned(),
@@ -455,7 +455,7 @@ fn refresh_axes_skips_mode_changes_and_keys() {
         &cache,
         &[mapping],
         "Default",
-        &tree,
+        &modes,
         &mut sink,
         &mut OutputCacheStore::new(),
     )
@@ -1384,7 +1384,7 @@ fn process_outputs_set_axis_wrong_output_id() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
-    let tree = simple_modes();
+    let modes = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(0);
@@ -1394,7 +1394,7 @@ fn process_outputs_set_axis_wrong_output_id() {
         &mut sink,
         &mut kb,
         &mut mode_state,
-        &tree,
+        &modes,
         &mut callbacks,
         &trigger,
     )
@@ -1413,7 +1413,7 @@ fn process_outputs_set_button_wrong_output_id() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
-    let tree = simple_modes();
+    let modes = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(0);
@@ -1423,7 +1423,7 @@ fn process_outputs_set_button_wrong_output_id() {
         &mut sink,
         &mut kb,
         &mut mode_state,
-        &tree,
+        &modes,
         &mut callbacks,
         &trigger,
     )
@@ -1435,7 +1435,7 @@ fn process_outputs_set_button_wrong_output_id() {
 #[test]
 fn process_outputs_mode_change_no_op() {
     // Switching to the current mode should not set mode_changed.
-    let tree = two_modes();
+    let modes = two_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
     let trigger = button_addr(0);
@@ -1454,7 +1454,7 @@ fn process_outputs_mode_change_no_op() {
         &mut sink,
         &mut kb,
         &mut mode_state,
-        &tree,
+        &modes,
         &mut callbacks,
         &trigger,
     )
@@ -1475,7 +1475,7 @@ fn refresh_axes_set_button_path() {
     // Since the pipeline always produces SetAxis for axis inputs, we test
     // the refresh SetButton path via direct process_pipeline_outputs.
     // This is the closest we can get without mocking the pipeline.
-    let tree = simple_modes();
+    let modes = simple_modes();
     let mapping = Mapping {
         input: button_addr(0),
         mode: "Default".to_owned(),
@@ -1515,7 +1515,7 @@ fn refresh_axes_set_button_path() {
         &cache,
         &[mapping, mapping_axis],
         "Default",
-        &tree,
+        &modes,
         &mut sink,
         &mut OutputCacheStore::new(),
     )
@@ -2867,13 +2867,7 @@ fn add_mode_rejects_duplicate_name() {
     });
     assert!(err.is_err(), "expected error on duplicate name");
     assert_eq!(
-        state
-            .read()
-            .active_profile
-            .as_ref()
-            .unwrap()
-            .modes()
-            .len(),
+        state.read().active_profile.as_ref().unwrap().modes().len(),
         3
     );
 }
@@ -3075,7 +3069,7 @@ fn rename_mode_rejects_empty_to() {
 fn rename_mode_rejects_empty_from_with_invalid_config() {
     // Symmetric validation: an empty `from` returns InvalidConfig (the
     // policy register), not ModeNotFound (which would leak the
-    // implementation detail that an empty string isn't in the tree).
+    // implementation detail that an empty string isn't in the mode list).
     let (mut engine, _state, _tx, _dir, _path) = make_engine_with_disk_profile();
     let err = engine
         .handle_command(EngineCommand::RenameMode {
@@ -3256,7 +3250,7 @@ fn rename_mode_rewrites_multi_entry_stack() {
     //   rename, verify current rewritten.
     let (mut engine, state, _tx, _dir, _path) = make_engine_with_disk_profile();
 
-    let tree = state
+    let modes = state
         .read()
         .active_profile
         .as_ref()
@@ -3266,9 +3260,9 @@ fn rename_mode_rewrites_multi_entry_stack() {
 
     // Part A: stack entry is rewritten.
     // switch_to resets the stack, sets current = "Combat".
-    engine.mode_state.switch_to("Combat", &tree).unwrap();
+    engine.mode_state.switch_to("Combat", &modes).unwrap();
     // push_temporary saves "Combat" on the stack, sets current = "Landing".
-    engine.mode_state.push_temporary("Landing", &tree).unwrap();
+    engine.mode_state.push_temporary("Landing", &modes).unwrap();
     assert_eq!(engine.mode_state.current(), "Landing");
 
     engine
@@ -3286,15 +3280,18 @@ fn rename_mode_rewrites_multi_entry_stack() {
 
     // Part B: current itself is rewritten.
     // After the pop, current = "Fighter". Switch back to a known name.
-    // Re-acquire tree reflecting the rename already applied.
-    let tree2 = state
+    // Re-acquire modes reflecting the rename already applied.
+    let modes_after_rename = state
         .read()
         .active_profile
         .as_ref()
         .unwrap()
         .modes()
         .clone();
-    engine.mode_state.switch_to("Fighter", &tree2).unwrap();
+    engine
+        .mode_state
+        .switch_to("Fighter", &modes_after_rename)
+        .unwrap();
     assert_eq!(engine.mode_state.current(), "Fighter");
 
     engine
