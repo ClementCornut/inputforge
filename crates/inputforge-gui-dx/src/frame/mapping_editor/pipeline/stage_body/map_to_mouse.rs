@@ -58,6 +58,9 @@ pub(crate) fn MapToMouseBody(
     let cmd_tx_hold = cmd_tx.clone();
     let mut undo_log_hold = undo_log;
     let on_hold = move |_| {
+        if is_output_behavior_click_noop(behavior, OutputBehavior::Hold) {
+            return;
+        }
         dispatch_mouse_change(
             target,
             OutputBehavior::Hold,
@@ -80,6 +83,9 @@ pub(crate) fn MapToMouseBody(
     let cmd_tx_pulse = cmd_tx.clone();
     let mut undo_log_pulse = undo_log;
     let on_pulse = move |_| {
+        if is_output_behavior_click_noop(behavior, OutputBehavior::Pulse) {
+            return;
+        }
         dispatch_mouse_change(
             target,
             OutputBehavior::Pulse,
@@ -110,6 +116,9 @@ pub(crate) fn MapToMouseBody(
                             let cmd_tx_target = cmd_tx.clone();
                             let mut undo_log_target = undo_log;
                             let onclick = move |_| {
+                                if is_mouse_target_click_noop(target, candidate) {
+                                    return;
+                                }
                                 dispatch_mouse_change(
                                     candidate,
                                     behavior,
@@ -163,6 +172,17 @@ pub(crate) fn MapToMouseBody(
             }
         }
     }
+}
+
+fn is_mouse_target_click_noop(current_target: MouseTarget, requested_target: MouseTarget) -> bool {
+    current_target == requested_target
+}
+
+fn is_output_behavior_click_noop(
+    current_behavior: OutputBehavior,
+    requested_behavior: OutputBehavior,
+) -> bool {
+    current_behavior == requested_behavior
 }
 
 #[expect(
@@ -223,4 +243,33 @@ fn dispatch_mouse_change(
         UndoKind::StageEdit,
         label,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn map_to_mouse_target_click_noop_only_when_target_is_unchanged() {
+        assert!(is_mouse_target_click_noop(
+            MouseTarget::LeftButton,
+            MouseTarget::LeftButton
+        ));
+        assert!(!is_mouse_target_click_noop(
+            MouseTarget::LeftButton,
+            MouseTarget::RightButton
+        ));
+    }
+
+    #[test]
+    fn map_to_mouse_behavior_click_noop_only_when_behavior_is_unchanged() {
+        assert!(is_output_behavior_click_noop(
+            OutputBehavior::Hold,
+            OutputBehavior::Hold
+        ));
+        assert!(!is_output_behavior_click_noop(
+            OutputBehavior::Hold,
+            OutputBehavior::Pulse
+        ));
+    }
 }

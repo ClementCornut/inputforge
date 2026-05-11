@@ -339,10 +339,19 @@ pub(crate) fn MapToKeyboardBody(
     let current_name_hold = current_name.clone();
     let cmd_tx_hold = ctx.commands.clone();
     let mut undo_log_hold = editor.undo_log;
-    let combo_hold = combo.clone();
     let on_hold = move |_| {
+        if is_output_behavior_click_noop(behavior, OutputBehavior::Hold) {
+            return;
+        }
+        let new_combo = build_combo_from(
+            local_key,
+            *local_ctrl.peek(),
+            *local_alt.peek(),
+            *local_shift.peek(),
+            *local_win.peek(),
+        );
         dispatch_keyboard(
-            combo_hold.clone(),
+            new_combo,
             OutputBehavior::Hold,
             "behavior",
             &mapping_key_hold,
@@ -362,10 +371,19 @@ pub(crate) fn MapToKeyboardBody(
     let current_name_pulse = current_name.clone();
     let cmd_tx_pulse = ctx.commands.clone();
     let mut undo_log_pulse = editor.undo_log;
-    let combo_pulse = combo.clone();
     let on_pulse = move |_| {
+        if is_output_behavior_click_noop(behavior, OutputBehavior::Pulse) {
+            return;
+        }
+        let new_combo = build_combo_from(
+            local_key,
+            *local_ctrl.peek(),
+            *local_alt.peek(),
+            *local_shift.peek(),
+            *local_win.peek(),
+        );
         dispatch_keyboard(
-            combo_pulse.clone(),
+            new_combo,
             OutputBehavior::Pulse,
             "behavior",
             &mapping_key_pulse,
@@ -521,6 +539,13 @@ fn build_combo_from_key(key: String, ctrl: bool, alt: bool, shift: bool, win: bo
     KeyCombo { key, modifiers }
 }
 
+fn is_output_behavior_click_noop(
+    current_behavior: OutputBehavior,
+    requested_behavior: OutputBehavior,
+) -> bool {
+    current_behavior == requested_behavior
+}
+
 /// Dispatch a `SetMapping` command and push an undo entry if it succeeds.
 ///
 /// This is the shared commit path for all five field handlers. Amendment 7:
@@ -583,4 +608,21 @@ fn dispatch_keyboard(
         UndoKind::StageEdit,
         label,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn map_to_keyboard_behavior_click_noop_only_when_behavior_is_unchanged() {
+        assert!(is_output_behavior_click_noop(
+            OutputBehavior::Hold,
+            OutputBehavior::Hold
+        ));
+        assert!(!is_output_behavior_click_noop(
+            OutputBehavior::Hold,
+            OutputBehavior::Pulse
+        ));
+    }
 }
