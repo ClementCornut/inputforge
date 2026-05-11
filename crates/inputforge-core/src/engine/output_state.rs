@@ -138,7 +138,6 @@ impl OutputRuntimeState {
             .collect()
     }
 
-    #[expect(dead_code, reason = "Task 6 will release active outputs on cleanup")]
     pub(crate) fn release_all(&mut self) -> Vec<OutputAction> {
         self.active_owners
             .iter()

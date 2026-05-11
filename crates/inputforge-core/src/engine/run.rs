@@ -42,7 +42,7 @@ use super::output_handler::{
     dispatch_output_action, process_pipeline_outputs, record_outputs_to_cache,
     refresh_axes_for_mode_change,
 };
-use super::output_state::OwnerScopeKey;
+use super::output_state::{OutputAction, OwnerScopeKey};
 
 /// Target poll interval for the engine loop.
 ///
@@ -389,6 +389,23 @@ impl Engine {
         )
     }
 
+    fn release_all_held_outputs(&mut self) -> Result<()> {
+        let actions = self.output_state.release_all();
+        self.dispatch_cleanup_actions(actions)
+    }
+
+    fn dispatch_cleanup_actions(&mut self, actions: Vec<OutputAction>) -> Result<()> {
+        for action in actions {
+            dispatch_output_action(
+                action,
+                &mut self.output_state,
+                self.keyboard.as_mut(),
+                self.mouse.as_mut(),
+            )?;
+        }
+        Ok(())
+    }
+
     /// Process all pending commands from the GUI.
     fn process_commands(&mut self) -> Result<()> {
         loop {
@@ -396,6 +413,13 @@ impl Engine {
                 Ok(cmd) => self.handle_command(cmd)?,
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
+                    if let Err(e) = self.release_all_held_outputs() {
+                        tracing::warn!(
+                            target: "engine",
+                            error = %e,
+                            "engine.output.release_on_disconnect_failed"
+                        );
+                    }
                     self.shutdown = true;
                     break;
                 }
@@ -413,6 +437,7 @@ impl Engine {
     pub(crate) fn handle_command(&mut self, cmd: EngineCommand) -> Result<()> {
         match cmd {
             EngineCommand::LoadProfile(path) => {
+                self.release_all_held_outputs()?;
                 self.purge_all_namespaces();
                 self.reload_profile_from_disk(&path)?;
                 let origin = self.profile_origin_for_path(&path);
@@ -435,6 +460,7 @@ impl Engine {
                 self.persist_last_profile()?;
             }
             EngineCommand::CreateProfile { name } => {
+                self.release_all_held_outputs()?;
                 let path = create_profile_in(&name, &self.profile_library_dir())?;
                 self.reload_profile_from_disk(&path)?;
                 self.mark_profile_loaded(ProfileOrigin::Library);
@@ -443,6 +469,7 @@ impl Engine {
                 self.persist_last_profile()?;
             }
             EngineCommand::LoadExternalProfileOnce(path) => {
+                self.release_all_held_outputs()?;
                 self.purge_all_namespaces();
                 self.reload_profile_from_disk(&path)?;
                 self.mark_profile_loaded(ProfileOrigin::External);
@@ -460,6 +487,7 @@ impl Engine {
                 self.refresh_active_snapshot_rows()?;
             }
             EngineCommand::AddExternalProfileToLibrary { path, name } => {
+                self.release_all_held_outputs()?;
                 let imported =
                     add_external_profile_to_library(&path, &name, &self.profile_library_dir())?;
                 self.reload_profile_from_disk(&imported.path)?;
@@ -476,6 +504,9 @@ impl Engine {
                     .profile_path
                     .as_ref()
                     .is_some_and(|path| path == &old_path);
+                if was_active {
+                    self.release_all_held_outputs()?;
+                }
                 let renamed = rename_library_profile(&old_path, &new_name)?;
                 if was_active {
                     self.reload_profile_from_disk(&renamed.path)?;
@@ -499,6 +530,9 @@ impl Engine {
                     .profile_path
                     .as_ref()
                     .is_some_and(|profile_path| profile_path == &path);
+                if was_active {
+                    self.release_all_held_outputs()?;
+                }
                 if was_active {
                     let mut state = self.state.write();
                     state.active_profile = None;
@@ -530,11 +564,13 @@ impl Engine {
                 self.pending_output_refresh = true;
             }
             EngineCommand::Deactivate => {
+                self.release_all_held_outputs()?;
                 self.output.flush()?;
                 let mut state = self.state.write();
                 state.engine_status = EngineStatus::Stopped;
             }
             EngineCommand::Pause => {
+                self.release_all_held_outputs()?;
                 let mut state = self.state.write();
                 state.engine_status = EngineStatus::Paused;
             }
@@ -555,6 +591,7 @@ impl Engine {
                 name,
                 actions,
             } => {
+                self.release_all_held_outputs()?;
                 self.set_mapping(&input, &mode, name, actions);
                 self.pending_output_refresh = true;
             }
@@ -563,15 +600,18 @@ impl Engine {
                 mode,
                 target_index_in_group,
             } => {
+                self.release_all_held_outputs()?;
                 self.reorder_mapping_in_group(&input, &mode, target_index_in_group);
             }
             EngineCommand::Shutdown => {
+                self.release_all_held_outputs()?;
                 self.shutdown = true;
             }
             EngineCommand::SwitchMode { mode } => {
                 if self.mode_state.current() == mode {
                     return Ok(());
                 }
+                self.release_all_held_outputs()?;
                 let modes = if let Some(p) = self.state.read().active_profile.as_ref() {
                     p.modes().clone()
                 } else {
@@ -763,6 +803,7 @@ impl Engine {
                 if from == to {
                     return Ok(());
                 }
+                self.release_all_held_outputs()?;
                 let path = { self.state.read().profile_path.clone() };
                 let mut state = self.state.write();
                 let Some(profile) = state.active_profile.as_mut() else {
@@ -831,6 +872,7 @@ impl Engine {
                 // to `contains` and returning `ModeNotFound` (the wrong
                 // error register for a policy violation).
                 validate_mode_name_for_engine(&name, "mode name cannot be empty")?;
+                self.release_all_held_outputs()?;
                 let path = { self.state.read().profile_path.clone() };
                 let mut state = self.state.write();
                 let Some(profile) = state.active_profile.as_mut() else {
@@ -929,6 +971,7 @@ impl Engine {
                 tracing::info!(target: "engine", mode = %name, "SetDefaultMode applied");
             }
             EngineCommand::RestoreSnapshot { id } => {
+                self.release_all_held_outputs()?;
                 let Some((path, namespace_dir)) = self.resolved_snapshot_target() else {
                     tracing::warn!(target: "snapshot", "RestoreSnapshot dispatched with no profile loaded");
                     return Ok(());
@@ -984,6 +1027,7 @@ impl Engine {
             }
 
             EngineCommand::RemoveMapping { input, mode } => {
+                self.release_all_held_outputs()?;
                 self.remove_mapping(&input, &mode);
                 self.pending_output_refresh = true;
             }
@@ -991,6 +1035,7 @@ impl Engine {
                 entries,
                 snapshot_label,
             } => {
+                self.release_all_held_outputs()?;
                 self.set_mappings_bulk(&entries, snapshot_label);
                 self.pending_output_refresh = true;
             }
