@@ -19,7 +19,7 @@ use crate::device::mock::{MockDeviceHider, MockInputSource};
 use crate::device::traits::HotplugEvent;
 use crate::mode::{ModeState, Modes};
 use crate::output::mock::{KeyboardCall, MockKeyboardSink, MockOutputSink, OutputCall};
-use crate::pipeline::PipelineOutput;
+use crate::pipeline::{ActionPathSegment, OutputDestination, OutputOwner, PipelineOutput};
 use crate::profile::Profile;
 use crate::profile::manager::{create_profile_in, sanitize_filename};
 use crate::settings::AppSettings;
@@ -59,6 +59,22 @@ fn button_addr(index: u8) -> InputAddress {
     InputAddress::Bound {
         device: dev_id(),
         input: InputId::Button { index },
+    }
+}
+
+fn keyboard_owner(key: KeyCombo, active: bool) -> PipelineOutput {
+    PipelineOutput::Keyboard {
+        owner: OutputOwner {
+            profile: "anonymous".to_owned(),
+            mode: "anonymous".to_owned(),
+            input: InputAddress::Unbound,
+            action_path: vec![ActionPathSegment::Index(0)],
+            destination: OutputDestination::Keyboard(key.clone()),
+            behavior: OutputBehavior::Hold,
+        },
+        key,
+        behavior: OutputBehavior::Hold,
+        active,
     }
 }
 
@@ -261,14 +277,8 @@ fn process_outputs_send_key_only_on_press() {
         modifiers: vec![],
     };
 
-    let pressed_outputs = vec![PipelineOutput::SendKey {
-        key: combo.clone(),
-        pressed: true,
-    }];
-    let released_outputs = vec![PipelineOutput::SendKey {
-        key: combo.clone(),
-        pressed: false,
-    }];
+    let pressed_outputs = vec![keyboard_owner(combo.clone(), true)];
+    let released_outputs = vec![keyboard_owner(combo.clone(), false)];
 
     let modes = simple_modes();
     let trigger = button_addr(0);

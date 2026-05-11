@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// A keyboard key combination (key + modifiers).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct KeyCombo {
     pub key: String,
     pub modifiers: Vec<KeyModifier>,

@@ -8,7 +8,7 @@ mod test_helpers;
 pub use condition::evaluate_condition;
 pub use merge::merge_axes;
 
-use crate::action::{Action, ModeChangeStrategy};
+use crate::action::{Action, ModeChangeStrategy, MouseTarget, OutputBehavior};
 use crate::processing::invert_axis;
 use crate::types::{
     AxisPolarity, HatDirection, InputAddress, InputId, InputValue, KeyCombo, OutputAddress,
@@ -40,13 +40,78 @@ pub enum PipelineOutput {
         output: OutputAddress,
         pressed: bool,
     },
-    SendKey {
+    Keyboard {
+        owner: OutputOwner,
         key: KeyCombo,
-        pressed: bool,
+        behavior: OutputBehavior,
+        active: bool,
+    },
+    Mouse {
+        owner: OutputOwner,
+        target: MouseTarget,
+        behavior: OutputBehavior,
+        active: bool,
     },
     ChangeMode {
         strategy: ModeChangeStrategy,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ActionPathSegment {
+    Index(usize),
+    IfTrue,
+    IfFalse,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum OutputDestination {
+    Keyboard(KeyCombo),
+    Mouse(MouseTarget),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct OutputOwner {
+    pub profile: String,
+    pub mode: String,
+    pub input: InputAddress,
+    pub action_path: Vec<ActionPathSegment>,
+    pub destination: OutputDestination,
+    pub behavior: OutputBehavior,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputOwnerScope {
+    profile: String,
+    mode: String,
+    input: InputAddress,
+}
+
+impl OutputOwnerScope {
+    #[must_use]
+    pub fn new(profile: impl Into<String>, mode: impl Into<String>, input: InputAddress) -> Self {
+        Self {
+            profile: profile.into(),
+            mode: mode.into(),
+            input,
+        }
+    }
+
+    fn owner(
+        &self,
+        action_path: &[ActionPathSegment],
+        destination: OutputDestination,
+        behavior: OutputBehavior,
+    ) -> OutputOwner {
+        OutputOwner {
+            profile: self.profile.clone(),
+            mode: self.mode.clone(),
+            input: self.input.clone(),
+            action_path: action_path.to_vec(),
+            destination,
+            behavior,
+        }
+    }
 }
 
 /// Selects a conditional branch while resolving a nested action path.
@@ -96,7 +161,30 @@ impl std::fmt::Debug for PipelineContext<'_> {
 
 /// Execute a sequence of actions against the given pipeline context.
 pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
-    for action in actions {
+    execute_pipeline_with_scope(
+        actions,
+        ctx,
+        OutputOwnerScope::new("anonymous", "anonymous", InputAddress::Unbound),
+    );
+}
+
+pub fn execute_pipeline_with_scope(
+    actions: &[Action],
+    ctx: &mut PipelineContext<'_>,
+    scope: OutputOwnerScope,
+) {
+    let mut path = Vec::new();
+    execute_pipeline_inner(actions, ctx, &scope, &mut path);
+}
+
+fn execute_pipeline_inner(
+    actions: &[Action],
+    ctx: &mut PipelineContext<'_>,
+    scope: &OutputOwnerScope,
+    path: &mut Vec<ActionPathSegment>,
+) {
+    for (index, action) in actions.iter().enumerate() {
+        path.push(ActionPathSegment::Index(index));
         match action {
             // Processing actions transform current_value
             Action::ResponseCurve { curve } => {
@@ -139,18 +227,43 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                     tracing::debug!("hat-to-vJoy mapping not yet implemented");
                 }
             },
-            Action::MapToKeyboard { key, .. } => match &ctx.input_value {
+            Action::MapToKeyboard { key, behavior } => match &ctx.input_value {
                 InputValue::Hat { .. } => {
                     tracing::debug!("hat-to-keyboard mapping not yet implemented");
                 }
                 _ => {
-                    ctx.outputs.push(PipelineOutput::SendKey {
+                    let active = button_pressed_from_value(ctx.current_value);
+                    ctx.outputs.push(PipelineOutput::Keyboard {
+                        owner: scope.owner(
+                            path,
+                            OutputDestination::Keyboard(key.clone()),
+                            *behavior,
+                        ),
                         key: key.clone(),
-                        pressed: button_pressed_from_value(ctx.current_value),
+                        behavior: *behavior,
+                        active,
                     });
                 }
             },
-            Action::MapToMouse { .. } => {}
+            Action::MapToMouse { target, behavior } => match &ctx.input_value {
+                InputValue::Hat { .. } => {
+                    tracing::debug!("hat-to-mouse mapping not yet implemented");
+                }
+                _ => {
+                    let active = button_pressed_from_value(ctx.current_value);
+                    let behavior = if target.is_wheel() {
+                        OutputBehavior::Pulse
+                    } else {
+                        *behavior
+                    };
+                    ctx.outputs.push(PipelineOutput::Mouse {
+                        owner: scope.owner(path, OutputDestination::Mouse(*target), behavior),
+                        target: *target,
+                        behavior,
+                        active,
+                    });
+                }
+            },
             Action::MergeAxis {
                 second_input,
                 operation,
@@ -161,31 +274,30 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                 // must not silently merge with `cache.get_axis(Unbound)`
                 // (which conventionally returns 0.0). Companion to
                 // `evaluate_condition`'s Unbound short-circuit.
-                if second_input.is_unbound() {
-                    continue;
+                if !second_input.is_unbound() {
+                    // Primary's polarity comes from the original input value;
+                    // secondary's from the cache. `merge_axes` consumes both
+                    // for the natural-domain `Maximum` comparison; the other
+                    // ops ignore polarity.
+                    //
+                    // Fallback to default (Bipolar) is reachable: nothing in
+                    // the action editor prevents authoring a button or hat
+                    // primary with a `MergeAxis` action. Treating the
+                    // synthetic 0/1 (button) or 0.0 (hat) `current_value` as
+                    // bipolar gives sensible Maximum semantics.
+                    let first_polarity = match &ctx.input_value {
+                        InputValue::Axis { polarity, .. } => *polarity,
+                        _ => AxisPolarity::default(),
+                    };
+                    let (second, second_polarity) = ctx.input_cache.get_axis(second_input);
+                    ctx.current_value = merge_axes(
+                        ctx.current_value,
+                        second,
+                        *operation,
+                        first_polarity,
+                        second_polarity,
+                    );
                 }
-                // Primary's polarity comes from the original input value;
-                // secondary's from the cache. `merge_axes` consumes both
-                // for the natural-domain `Maximum` comparison; the other
-                // ops ignore polarity.
-                //
-                // Fallback to default (Bipolar) is reachable: nothing in
-                // the action editor prevents authoring a button or hat
-                // primary with a `MergeAxis` action. Treating the
-                // synthetic 0/1 (button) or 0.0 (hat) `current_value` as
-                // bipolar gives sensible Maximum semantics.
-                let first_polarity = match &ctx.input_value {
-                    InputValue::Axis { polarity, .. } => *polarity,
-                    _ => AxisPolarity::default(),
-                };
-                let (second, second_polarity) = ctx.input_cache.get_axis(second_input);
-                ctx.current_value = merge_axes(
-                    ctx.current_value,
-                    second,
-                    *operation,
-                    first_polarity,
-                    second_polarity,
-                );
             }
 
             // Control flow
@@ -222,12 +334,17 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                 if_false,
             } => {
                 if evaluate_condition(condition, ctx.input_cache) {
-                    execute_pipeline(if_true, ctx);
+                    path.push(ActionPathSegment::IfTrue);
+                    execute_pipeline_inner(if_true, ctx, scope, path);
+                    path.pop();
                 } else {
-                    execute_pipeline(if_false, ctx);
+                    path.push(ActionPathSegment::IfFalse);
+                    execute_pipeline_inner(if_false, ctx, scope, path);
+                    path.pop();
                 }
             }
         }
+        path.pop();
     }
 }
 
@@ -389,7 +506,7 @@ pub fn evaluate_actions_through_path(
 mod tests {
     use super::test_helpers::{MockCache, button_input_address};
     use super::*;
-    use crate::action::{Condition, OutputBehavior};
+    use crate::action::Condition;
     use crate::processing::{DeadzoneConfig, ResponseCurve};
     use crate::types::{AxisValue, DeviceId, KeyModifier, MergeOp, OutputId, VJoyAxis};
 
@@ -406,6 +523,29 @@ mod tests {
         OutputAddress {
             device: 1,
             output: OutputId::Button { id: 1 },
+        }
+    }
+
+    fn button(index: u8) -> InputAddress {
+        InputAddress::Bound {
+            device: DeviceId("stick-1".to_owned()),
+            input: InputId::Button { index },
+        }
+    }
+
+    fn key_combo(key: &str) -> KeyCombo {
+        KeyCombo {
+            key: key.to_owned(),
+            modifiers: Vec::new(),
+        }
+    }
+
+    fn output_owner_path(output: &PipelineOutput) -> Vec<ActionPathSegment> {
+        match output {
+            PipelineOutput::Keyboard { owner, .. } | PipelineOutput::Mouse { owner, .. } => {
+                owner.action_path.clone()
+            }
+            _ => Vec::new(),
         }
     }
 
@@ -875,7 +1015,144 @@ mod tests {
         assert_eq!(ctx.outputs.len(), 1);
         assert_eq!(
             ctx.outputs[0],
-            PipelineOutput::SendKey { key, pressed: true }
+            PipelineOutput::Keyboard {
+                owner: OutputOwner {
+                    profile: "anonymous".to_owned(),
+                    mode: "anonymous".to_owned(),
+                    input: InputAddress::Unbound,
+                    action_path: vec![ActionPathSegment::Index(0)],
+                    destination: OutputDestination::Keyboard(key.clone()),
+                    behavior: OutputBehavior::Hold,
+                },
+                key,
+                behavior: OutputBehavior::Hold,
+                active: true,
+            }
+        );
+    }
+
+    #[test]
+    fn map_to_keyboard_outputs_behavior_and_owner() {
+        let actions = vec![Action::MapToKeyboard {
+            key: key_combo("Space"),
+            behavior: OutputBehavior::Hold,
+        }];
+        let cache = MockCache::new();
+        let mut ctx = button_ctx(&cache, true);
+
+        execute_pipeline_with_scope(
+            &actions,
+            &mut ctx,
+            OutputOwnerScope::new("profile-a", "Default", button(0)),
+        );
+
+        assert_eq!(
+            ctx.outputs,
+            vec![PipelineOutput::Keyboard {
+                owner: OutputOwner {
+                    profile: "profile-a".to_owned(),
+                    mode: "Default".to_owned(),
+                    input: button(0),
+                    action_path: vec![ActionPathSegment::Index(0)],
+                    destination: OutputDestination::Keyboard(key_combo("Space")),
+                    behavior: OutputBehavior::Hold,
+                },
+                key: key_combo("Space"),
+                behavior: OutputBehavior::Hold,
+                active: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn map_to_mouse_outputs_button_intent() {
+        let actions = vec![Action::MapToMouse {
+            target: MouseTarget::LeftButton,
+            behavior: OutputBehavior::Pulse,
+        }];
+        let cache = MockCache::new();
+        let mut ctx = button_ctx(&cache, true);
+
+        execute_pipeline_with_scope(
+            &actions,
+            &mut ctx,
+            OutputOwnerScope::new("profile-a", "Default", button(0)),
+        );
+
+        assert_eq!(
+            ctx.outputs,
+            vec![PipelineOutput::Mouse {
+                owner: OutputOwner {
+                    profile: "profile-a".to_owned(),
+                    mode: "Default".to_owned(),
+                    input: button(0),
+                    action_path: vec![ActionPathSegment::Index(0)],
+                    destination: OutputDestination::Mouse(MouseTarget::LeftButton),
+                    behavior: OutputBehavior::Pulse,
+                },
+                target: MouseTarget::LeftButton,
+                behavior: OutputBehavior::Pulse,
+                active: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn map_to_mouse_wheel_is_effective_pulse() {
+        let actions = vec![Action::MapToMouse {
+            target: MouseTarget::WheelDown,
+            behavior: OutputBehavior::Hold,
+        }];
+        let cache = MockCache::new();
+        let mut ctx = button_ctx(&cache, true);
+
+        execute_pipeline_with_scope(
+            &actions,
+            &mut ctx,
+            OutputOwnerScope::new("profile-a", "Default", button(0)),
+        );
+
+        assert!(matches!(
+            &ctx.outputs[0],
+            PipelineOutput::Mouse {
+                behavior: OutputBehavior::Pulse,
+                target: MouseTarget::WheelDown,
+                active: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn conditional_action_paths_distinguish_branches() {
+        let actions = vec![Action::Conditional {
+            condition: Condition::ButtonPressed { input: button(1) },
+            if_true: vec![Action::MapToMouse {
+                target: MouseTarget::LeftButton,
+                behavior: OutputBehavior::Hold,
+            }],
+            if_false: vec![Action::MapToMouse {
+                target: MouseTarget::LeftButton,
+                behavior: OutputBehavior::Hold,
+            }],
+        }];
+        let mut cache = MockCache::new();
+        cache.buttons.insert(button(1), true);
+        let mut ctx = button_ctx(&cache, true);
+
+        execute_pipeline_with_scope(
+            &actions,
+            &mut ctx,
+            OutputOwnerScope::new("profile-a", "Default", button(0)),
+        );
+
+        assert_eq!(
+            output_owner_path(&ctx.outputs[0]),
+            vec![
+                ActionPathSegment::Index(0),
+                ActionPathSegment::IfTrue,
+                ActionPathSegment::Index(0),
+            ]
         );
     }
 

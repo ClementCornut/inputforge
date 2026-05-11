@@ -63,11 +63,12 @@ pub(super) fn process_pipeline_outputs(
                 };
                 output_sink.set_button(output.device, *id, *pressed)?;
             }
-            PipelineOutput::SendKey { key, pressed } => {
-                if *pressed {
+            PipelineOutput::Keyboard { key, active, .. } => {
+                if *active {
                     keyboard.send_key(key)?;
                 }
             }
+            PipelineOutput::Mouse { .. } => {}
             PipelineOutput::ChangeMode { strategy } => {
                 let old_mode = mode_state.current().to_owned();
                 apply_mode_change(strategy, mode_state, mode_list, callbacks, triggering_input);
@@ -128,7 +129,7 @@ fn apply_mode_change(
 /// Write axis and button values from pipeline outputs into the output cache.
 ///
 /// Iterates each output and updates the corresponding entry in the cache.
-/// Non-output variants (`SendKey`, `ChangeMode`) are ignored.
+/// Non-output intent variants (`Keyboard`, `Mouse`, `ChangeMode`) are ignored.
 pub(super) fn record_outputs_to_cache(outputs: &[PipelineOutput], cache: &mut OutputCacheStore) {
     for output in outputs {
         match output {
@@ -148,7 +149,9 @@ pub(super) fn record_outputs_to_cache(outputs: &[PipelineOutput], cache: &mut Ou
                     cache.set_button(addr.device, *id, *pressed);
                 }
             }
-            PipelineOutput::SendKey { .. } | PipelineOutput::ChangeMode { .. } => {}
+            PipelineOutput::Keyboard { .. }
+            | PipelineOutput::Mouse { .. }
+            | PipelineOutput::ChangeMode { .. } => {}
         }
     }
 }
@@ -215,7 +218,9 @@ pub(super) fn refresh_axes_for_mode_change(
                     }
                     // Skip key presses (spurious from axis-to-keyboard
                     // mappings) and mode changes (avoid recursion).
-                    PipelineOutput::SendKey { .. } | PipelineOutput::ChangeMode { .. } => {}
+                    PipelineOutput::Keyboard { .. }
+                    | PipelineOutput::Mouse { .. }
+                    | PipelineOutput::ChangeMode { .. } => {}
                 }
             }
         }
