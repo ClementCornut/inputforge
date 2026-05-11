@@ -49,20 +49,6 @@ impl Modes {
         self.0.iter().any(|candidate| candidate == name)
     }
 
-    #[must_use]
-    pub fn all_modes(&self) -> Vec<&str> {
-        self.0.iter().map(String::as_str).collect()
-    }
-
-    #[must_use]
-    pub fn ancestors(&self, name: &str) -> Vec<&str> {
-        if let Some(existing) = self.0.iter().find(|candidate| candidate.as_str() == name) {
-            vec![existing.as_str()]
-        } else {
-            Vec::new()
-        }
-    }
-
     pub fn with_appended(&self, name: &str) -> Result<Self> {
         let mut names = self.0.clone();
         names.push(name.to_owned());

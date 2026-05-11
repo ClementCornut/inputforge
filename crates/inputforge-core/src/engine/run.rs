@@ -101,7 +101,7 @@ fn read_profile_metadata(path: &Path) -> (u32, Option<DateTime<Utc>>) {
             // The mode count is bounded by profile validation elsewhere in
             // the engine; saturating to u32::MAX keeps the cast lossless
             // for any plausible mode-list size.
-            u32::try_from(profile.modes().all_modes().len()).unwrap_or(u32::MAX)
+            u32::try_from(profile.modes().len()).unwrap_or(u32::MAX)
         }
         Err(e) => {
             tracing::warn!(

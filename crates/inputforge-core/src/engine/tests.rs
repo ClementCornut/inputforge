@@ -2817,16 +2817,16 @@ fn add_mode_appends_to_modes_list() {
     let s = state.read();
     let modes = s.active_profile.as_ref().unwrap().modes();
     assert_eq!(
-        modes.all_modes(),
-        vec!["Default", "Combat", "Landing", "Approach"]
+        modes.as_slice(),
+        ["Default", "Combat", "Landing", "Approach"]
     );
 
     // Persisted to disk.
     drop(s);
     let reloaded = Profile::load(&path).unwrap();
     assert_eq!(
-        reloaded.modes().all_modes(),
-        vec!["Default", "Combat", "Landing", "Approach"]
+        reloaded.modes().as_slice(),
+        ["Default", "Combat", "Landing", "Approach"]
     );
 }
 
@@ -2839,7 +2839,7 @@ fn add_mode_rejects_empty_name() {
     assert!(err.is_err(), "expected error on empty name");
     // Profile unchanged.
     let s = state.read();
-    let modes = s.active_profile.as_ref().unwrap().modes().all_modes();
+    let modes = s.active_profile.as_ref().unwrap().modes();
     assert_eq!(modes.len(), 3);
 }
 
@@ -2855,7 +2855,7 @@ fn add_mode_rejects_overlong_name() {
     let err = engine.handle_command(EngineCommand::AddMode { name: overlong });
     assert!(err.is_err(), "expected error on 65-grapheme name");
     let s = state.read();
-    let modes = s.active_profile.as_ref().unwrap().modes().all_modes();
+    let modes = s.active_profile.as_ref().unwrap().modes();
     assert_eq!(modes.len(), 3, "profile must remain unchanged on rejection");
 }
 
@@ -2873,7 +2873,6 @@ fn add_mode_rejects_duplicate_name() {
             .as_ref()
             .unwrap()
             .modes()
-            .all_modes()
             .len(),
         3
     );

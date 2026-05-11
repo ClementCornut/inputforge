@@ -342,13 +342,7 @@ impl MetaSnapshot {
             modes: s
                 .active_profile
                 .as_ref()
-                .map(|p| {
-                    p.modes()
-                        .all_modes()
-                        .into_iter()
-                        .map(str::to_owned)
-                        .collect()
-                })
+                .map(|p| p.modes().as_slice().to_vec())
                 .unwrap_or_default(),
             startup_mode: s
                 .active_profile
@@ -366,7 +360,7 @@ fn active_profile_row_from_state(s: &AppState, origin: ProfileRowOrigin) -> Opti
     let profile = s.active_profile.as_ref()?;
     let path_label = path.display().to_string();
     let is_external = origin == ProfileRowOrigin::External;
-    let mode_count = u32::try_from(profile.modes().all_modes().len()).unwrap_or(u32::MAX);
+    let mode_count = u32::try_from(profile.modes().len()).unwrap_or(u32::MAX);
     let last_edited_label = std::fs::metadata(path)
         .and_then(|m| m.modified())
         .ok()

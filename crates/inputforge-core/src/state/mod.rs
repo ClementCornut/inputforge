@@ -50,7 +50,7 @@ pub struct ProfileLibraryRow {
     pub is_active: bool,
     /// Number of modes declared by the profile.
     ///
-    /// Projected by the engine from `profile.modes().all_modes().len()`.
+    /// Projected by the engine from `profile.modes().len()`.
     /// Defaults to `0` when the profile cannot be loaded for projection.
     pub mode_count: u32,
     /// Last filesystem modification time of the profile file.
