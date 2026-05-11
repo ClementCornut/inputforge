@@ -46,13 +46,6 @@ pub(crate) struct OwnerScopeKey {
 }
 
 impl OwnerScopeKey {
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Task 6 will construct scopes for empty pipeline output lists"
-        )
-    )]
     pub(crate) fn new(
         profile: impl Into<String>,
         mode: impl Into<String>,
@@ -81,13 +74,6 @@ pub(crate) struct OutputRuntimeState {
 }
 
 impl OutputRuntimeState {
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Task 6 will reconcile keyboard outputs in the engine tick"
-        )
-    )]
     pub(crate) fn reconcile_keyboard(
         &mut self,
         owner: OutputOwner,
@@ -110,7 +96,6 @@ impl OutputRuntimeState {
         }
     }
 
-    #[expect(dead_code, reason = "Task 6 will reconcile mouse outputs")]
     pub(crate) fn reconcile_mouse(
         &mut self,
         owner: OutputOwner,
@@ -137,13 +122,6 @@ impl OutputRuntimeState {
         }
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Task 6 will reconcile absent owners in the engine tick"
-        )
-    )]
     pub(crate) fn reconcile_absent_owners_for_scope(
         &mut self,
         scope: &OwnerScopeKey,

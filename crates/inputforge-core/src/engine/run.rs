@@ -17,7 +17,7 @@ use crate::action::{Action, Mapping};
 use crate::callbacks::ReleaseCallback;
 use crate::device::traits::HotplugEvent;
 use crate::error::Result;
-use crate::pipeline::{self, OutputOwnerScope, PipelineContext};
+use crate::pipeline::{self, OutputOwnerScope, PipelineContext, PipelineOutput};
 use crate::profile::library::{
     add_external_profile_to_library, duplicate_library_profile, rename_library_profile,
 };
@@ -39,8 +39,10 @@ use super::Engine;
 use super::command::EngineCommand;
 use super::dependencies::active_mappings_for_event;
 use super::output_handler::{
-    process_pipeline_outputs, record_outputs_to_cache, refresh_axes_for_mode_change,
+    dispatch_output_action, process_pipeline_outputs, record_outputs_to_cache,
+    refresh_axes_for_mode_change,
 };
+use super::output_state::OwnerScopeKey;
 
 /// Target poll interval for the engine loop.
 ///
@@ -275,16 +277,50 @@ impl Engine {
                 let outputs = std::mem::take(&mut ctx.outputs);
                 drop(guard);
 
+                let current_owners = outputs
+                    .iter()
+                    .filter_map(|output| match output {
+                        PipelineOutput::Keyboard { owner, .. }
+                        | PipelineOutput::Mouse { owner, .. } => Some(owner.clone()),
+                        PipelineOutput::SetAxis { .. }
+                        | PipelineOutput::SetButton { .. }
+                        | PipelineOutput::ChangeMode { .. } => None,
+                    })
+                    .collect::<Vec<_>>();
+                let owner_scope = current_owners.first().map_or_else(
+                    || {
+                        OwnerScopeKey::new(
+                            profile_name.clone(),
+                            mapping.mode.clone(),
+                            mapping.input.clone(),
+                        )
+                    },
+                    OwnerScopeKey::from_owner,
+                );
+
                 // Process pipeline outputs.
                 let result = process_pipeline_outputs(
                     &outputs,
                     self.output.as_mut(),
                     self.keyboard.as_mut(),
+                    self.mouse.as_mut(),
+                    &mut self.output_state,
                     &mut self.mode_state,
                     &mode_list,
                     &mut self.callbacks,
                     &event.source,
                 )?;
+                for action in self
+                    .output_state
+                    .reconcile_absent_owners_for_scope(&owner_scope, &current_owners)
+                {
+                    dispatch_output_action(
+                        action,
+                        &mut self.output_state,
+                        self.keyboard.as_mut(),
+                        self.mouse.as_mut(),
+                    )?;
+                }
 
                 self.output_buffer.extend_from_slice(&outputs);
 

@@ -6,14 +6,16 @@
 //! into concrete I/O calls and mode state transitions. Kept separate
 //! from the main loop for testability and readability.
 
-use crate::action::{ModeChangeStrategy, OutputBehavior};
+use crate::action::ModeChangeStrategy;
 use crate::callbacks::{CallbackRegistry, ReleaseCallback};
 use crate::error::Result;
 use crate::mode::{ModeState, Modes};
-use crate::output::traits::{KeyboardSink, OutputSink};
+use crate::output::traits::{KeyboardSink, MouseSink, OutputSink};
 use crate::pipeline::{self, PipelineContext, PipelineOutput};
 use crate::state::{InputCacheStore, OutputCacheStore};
 use crate::types::{AxisValue, InputAddress, InputValue, OutputId};
+
+use super::output_state::{OutputAction, OutputEvent, OutputRuntimeState};
 
 /// Result of processing pipeline outputs for a single event.
 #[derive(Debug)]
@@ -34,6 +36,8 @@ pub(super) fn process_pipeline_outputs(
     outputs: &[PipelineOutput],
     output_sink: &mut dyn OutputSink,
     keyboard: &mut dyn KeyboardSink,
+    mouse: &mut dyn MouseSink,
+    output_state: &mut OutputRuntimeState,
     mode_state: &mut ModeState,
     mode_list: &Modes,
     callbacks: &mut CallbackRegistry,
@@ -64,25 +68,29 @@ pub(super) fn process_pipeline_outputs(
                 output_sink.set_button(output.device, *id, *pressed)?;
             }
             PipelineOutput::Keyboard {
+                owner,
                 key,
                 behavior,
                 active,
-                ..
-            } => match behavior {
-                OutputBehavior::Pulse => {
-                    if *active {
-                        keyboard.pulse_key(key)?;
-                    }
+            } => {
+                for action in
+                    output_state.reconcile_keyboard(owner.clone(), key.clone(), *behavior, *active)
+                {
+                    dispatch_output_action(action, output_state, keyboard, mouse)?;
                 }
-                OutputBehavior::Hold => {
-                    if *active {
-                        keyboard.key_down(key)?;
-                    } else {
-                        keyboard.key_up(key)?;
-                    }
+            }
+            PipelineOutput::Mouse {
+                owner,
+                target,
+                behavior,
+                active,
+            } => {
+                for action in
+                    output_state.reconcile_mouse(owner.clone(), *target, *behavior, *active)
+                {
+                    dispatch_output_action(action, output_state, keyboard, mouse)?;
                 }
-            },
-            PipelineOutput::Mouse { .. } => {}
+            }
             PipelineOutput::ChangeMode { strategy } => {
                 let old_mode = mode_state.current().to_owned();
                 apply_mode_change(strategy, mode_state, mode_list, callbacks, triggering_input);
@@ -94,6 +102,34 @@ pub(super) fn process_pipeline_outputs(
     }
 
     Ok(OutputResult { mode_changed })
+}
+
+pub(super) fn dispatch_output_action(
+    action: OutputAction,
+    output_state: &mut OutputRuntimeState,
+    keyboard: &mut dyn KeyboardSink,
+    mouse: &mut dyn MouseSink,
+) -> Result<()> {
+    let (event, release_owner) = match action {
+        OutputAction::Immediate(event) => (event, None),
+        OutputAction::Release { owner, event } => (event, Some(owner)),
+    };
+
+    match event {
+        OutputEvent::KeyDown(key) => keyboard.key_down(&key)?,
+        OutputEvent::KeyUp(key) => keyboard.key_up(&key)?,
+        OutputEvent::KeyPulse(key) => keyboard.pulse_key(&key)?,
+        OutputEvent::MouseDown(target) => mouse.button_down(target)?,
+        OutputEvent::MouseUp(target) => mouse.button_up(target)?,
+        OutputEvent::MousePulse(target) => mouse.pulse_button(target)?,
+        OutputEvent::Wheel(target) => mouse.wheel(target)?,
+    };
+
+    if let Some(owner) = release_owner {
+        output_state.commit_release(&owner);
+    }
+
+    Ok(())
 }
 
 /// Apply a mode change strategy to the mode state.

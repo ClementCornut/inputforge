@@ -45,9 +45,7 @@ pub struct Engine {
     input: Box<dyn InputSource>,
     output: Box<dyn OutputSink>,
     keyboard: Box<dyn KeyboardSink>,
-    #[expect(dead_code, reason = "Task 6 will dispatch mouse output events")]
     mouse: Box<dyn MouseSink>,
-    #[expect(dead_code, reason = "Task 6 will reconcile runtime output edges")]
     output_state: output_state::OutputRuntimeState,
     #[expect(
         dead_code,

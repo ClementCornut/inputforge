@@ -13,13 +13,13 @@ use std::time::Instant;
 
 use parking_lot::RwLock;
 
-use crate::action::{Action, Condition, Mapping, ModeChangeStrategy, OutputBehavior};
+use crate::action::{Action, Condition, Mapping, ModeChangeStrategy, MouseTarget, OutputBehavior};
 use crate::callbacks::{CallbackRegistry, ReleaseCallback};
 use crate::device::mock::{MockDeviceHider, MockInputSource};
 use crate::device::traits::HotplugEvent;
 use crate::mode::{ModeState, Modes};
 use crate::output::mock::{
-    KeyboardCall, MockKeyboardSink, MockMouseSink, MockOutputSink, OutputCall,
+    KeyboardCall, MockKeyboardSink, MockMouseSink, MockOutputSink, MouseCall, OutputCall,
 };
 use crate::pipeline::{ActionPathSegment, OutputDestination, OutputOwner, PipelineOutput};
 use crate::profile::Profile;
@@ -39,6 +39,7 @@ use inputforge_autostart::mock::MockAutostart;
 use super::Engine;
 use super::command::EngineCommand;
 use super::output_handler::{process_pipeline_outputs, refresh_axes_for_mode_change};
+use super::output_state::OutputRuntimeState;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,35 +65,32 @@ fn button_addr(index: u8) -> InputAddress {
     }
 }
 
-fn keyboard_owner(key: KeyCombo, active: bool) -> PipelineOutput {
-    PipelineOutput::Keyboard {
-        owner: OutputOwner {
-            profile: "anonymous".to_owned(),
-            mode: "anonymous".to_owned(),
-            input: InputAddress::Unbound,
-            action_path: vec![ActionPathSegment::Index(0)],
-            destination: OutputDestination::Keyboard(key.clone()),
-            behavior: OutputBehavior::Hold,
-        },
-        key,
-        behavior: OutputBehavior::Hold,
-        active,
+fn key_combo(key: &str) -> KeyCombo {
+    KeyCombo {
+        key: key.to_owned(),
+        modifiers: vec![],
     }
 }
 
-fn pulse_keyboard_owner(key: KeyCombo, active: bool) -> PipelineOutput {
-    PipelineOutput::Keyboard {
-        owner: OutputOwner {
-            profile: "anonymous".to_owned(),
-            mode: "anonymous".to_owned(),
-            input: InputAddress::Unbound,
-            action_path: vec![ActionPathSegment::Index(0)],
-            destination: OutputDestination::Keyboard(key.clone()),
-            behavior: OutputBehavior::Pulse,
-        },
-        key,
-        behavior: OutputBehavior::Pulse,
-        active,
+fn keyboard_owner(key: KeyCombo, index: usize, behavior: OutputBehavior) -> OutputOwner {
+    OutputOwner {
+        profile: "anonymous".to_owned(),
+        mode: "anonymous".to_owned(),
+        input: InputAddress::Unbound,
+        action_path: vec![ActionPathSegment::Index(index)],
+        destination: OutputDestination::Keyboard(key),
+        behavior,
+    }
+}
+
+fn mouse_owner(target: MouseTarget, index: usize, behavior: OutputBehavior) -> OutputOwner {
+    OutputOwner {
+        profile: "anonymous".to_owned(),
+        mode: "anonymous".to_owned(),
+        input: InputAddress::Unbound,
+        action_path: vec![ActionPathSegment::Index(index)],
+        destination: OutputDestination::Mouse(target),
+        behavior,
     }
 }
 
@@ -228,6 +226,8 @@ fn process_outputs_set_axis() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
+    let mut mouse = MockMouseSink::new();
+    let mut output_state = OutputRuntimeState::default();
     let modes = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
@@ -237,6 +237,8 @@ fn process_outputs_set_axis() {
         &outputs,
         &mut sink,
         &mut kb,
+        &mut mouse,
+        &mut output_state,
         &mut mode_state,
         &modes,
         &mut callbacks,
@@ -264,6 +266,8 @@ fn process_outputs_set_button() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
+    let mut mouse = MockMouseSink::new();
+    let mut output_state = OutputRuntimeState::default();
     let modes = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
@@ -273,6 +277,8 @@ fn process_outputs_set_button() {
         &outputs,
         &mut sink,
         &mut kb,
+        &mut mouse,
+        &mut output_state,
         &mut mode_state,
         &modes,
         &mut callbacks,
@@ -291,101 +297,94 @@ fn process_outputs_set_button() {
 }
 
 #[test]
-fn process_outputs_applies_hold_keyboard_transitions() {
-    let combo = KeyCombo {
-        key: "Space".to_owned(),
-        modifiers: vec![],
-    };
-
-    let pressed_outputs = vec![keyboard_owner(combo.clone(), true)];
-    let released_outputs = vec![keyboard_owner(combo.clone(), false)];
-
-    let modes = simple_modes();
-    let trigger = button_addr(0);
-
-    // Pressed → key down.
+fn process_outputs_keyboard_hold_sends_down_and_up_edges() {
+    let combo = key_combo("Space");
+    let owner = keyboard_owner(combo.clone(), 0, OutputBehavior::Hold);
+    let mut output_state = OutputRuntimeState::default();
     let mut sink = MockOutputSink::new();
-    let mut kb = MockKeyboardSink::new();
+    let mut keyboard = MockKeyboardSink::new();
+    let mut mouse = MockMouseSink::new();
+    let modes = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
 
     process_pipeline_outputs(
-        &pressed_outputs,
+        &[PipelineOutput::Keyboard {
+            owner: owner.clone(),
+            key: combo.clone(),
+            behavior: OutputBehavior::Hold,
+            active: true,
+        }],
         &mut sink,
-        &mut kb,
+        &mut keyboard,
+        &mut mouse,
+        &mut output_state,
         &mut mode_state,
         &modes,
         &mut callbacks,
-        &trigger,
+        &button_addr(0),
     )
     .unwrap();
-    assert_eq!(kb.calls(), &[KeyboardCall::KeyDown(combo.clone())]);
-
-    // Released → key up.
-    let mut kb2 = MockKeyboardSink::new();
-    let mut sink2 = MockOutputSink::new();
-    let mut mode_state2 = ModeState::new("Default".to_owned());
-    let mut callbacks2 = CallbackRegistry::new();
 
     process_pipeline_outputs(
-        &released_outputs,
-        &mut sink2,
-        &mut kb2,
-        &mut mode_state2,
+        &[PipelineOutput::Keyboard {
+            owner,
+            key: combo.clone(),
+            behavior: OutputBehavior::Hold,
+            active: false,
+        }],
+        &mut sink,
+        &mut keyboard,
+        &mut mouse,
+        &mut output_state,
+        &mut mode_state,
         &modes,
-        &mut callbacks2,
-        &trigger,
+        &mut callbacks,
+        &button_addr(0),
     )
     .unwrap();
-    assert_eq!(kb2.calls(), &[KeyboardCall::KeyUp(combo)]);
+
+    assert_eq!(
+        keyboard.calls(),
+        &[
+            KeyboardCall::KeyDown(combo.clone()),
+            KeyboardCall::KeyUp(combo)
+        ]
+    );
 }
 
 #[test]
-fn process_outputs_applies_pulse_keyboard_on_press_only() {
-    let combo = KeyCombo {
-        key: "Space".to_owned(),
-        modifiers: vec![],
-    };
-
-    let pressed_outputs = vec![pulse_keyboard_owner(combo.clone(), true)];
-    let released_outputs = vec![pulse_keyboard_owner(combo.clone(), false)];
-
-    let modes = simple_modes();
-    let trigger = button_addr(0);
-
+fn process_outputs_mouse_wheel_pulses_once() {
+    let owner = mouse_owner(MouseTarget::WheelUp, 0, OutputBehavior::Pulse);
+    let mut output_state = OutputRuntimeState::default();
     let mut sink = MockOutputSink::new();
-    let mut kb = MockKeyboardSink::new();
+    let mut keyboard = MockKeyboardSink::new();
+    let mut mouse = MockMouseSink::new();
+    let modes = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
 
-    process_pipeline_outputs(
-        &pressed_outputs,
-        &mut sink,
-        &mut kb,
-        &mut mode_state,
-        &modes,
-        &mut callbacks,
-        &trigger,
-    )
-    .unwrap();
-    assert_eq!(kb.calls(), &[KeyboardCall::PulseKey(combo.clone())]);
+    for _ in 0..2 {
+        process_pipeline_outputs(
+            &[PipelineOutput::Mouse {
+                owner: owner.clone(),
+                target: MouseTarget::WheelUp,
+                behavior: OutputBehavior::Pulse,
+                active: true,
+            }],
+            &mut sink,
+            &mut keyboard,
+            &mut mouse,
+            &mut output_state,
+            &mut mode_state,
+            &modes,
+            &mut callbacks,
+            &button_addr(0),
+        )
+        .unwrap();
+    }
 
-    let mut kb2 = MockKeyboardSink::new();
-    let mut sink2 = MockOutputSink::new();
-    let mut mode_state2 = ModeState::new("Default".to_owned());
-    let mut callbacks2 = CallbackRegistry::new();
-
-    process_pipeline_outputs(
-        &released_outputs,
-        &mut sink2,
-        &mut kb2,
-        &mut mode_state2,
-        &modes,
-        &mut callbacks2,
-        &trigger,
-    )
-    .unwrap();
-    assert!(kb2.calls().is_empty());
+    assert_eq!(mouse.calls(), &[MouseCall::Wheel(MouseTarget::WheelUp)]);
 }
 
 #[test]
@@ -403,11 +402,15 @@ fn process_outputs_change_mode_switch_to() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
+    let mut mouse = MockMouseSink::new();
+    let mut output_state = OutputRuntimeState::default();
 
     let result = process_pipeline_outputs(
         &outputs,
         &mut sink,
         &mut kb,
+        &mut mouse,
+        &mut output_state,
         &mut mode_state,
         &modes,
         &mut callbacks,
@@ -434,11 +437,15 @@ fn process_outputs_temporary_mode_registers_callback() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
+    let mut mouse = MockMouseSink::new();
+    let mut output_state = OutputRuntimeState::default();
 
     let result = process_pipeline_outputs(
         &outputs,
         &mut sink,
         &mut kb,
+        &mut mouse,
+        &mut output_state,
         &mut mode_state,
         &modes,
         &mut callbacks,
@@ -1495,6 +1502,8 @@ fn process_outputs_set_axis_wrong_output_id() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
+    let mut mouse = MockMouseSink::new();
+    let mut output_state = OutputRuntimeState::default();
     let modes = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
@@ -1504,6 +1513,8 @@ fn process_outputs_set_axis_wrong_output_id() {
         &outputs,
         &mut sink,
         &mut kb,
+        &mut mouse,
+        &mut output_state,
         &mut mode_state,
         &modes,
         &mut callbacks,
@@ -1524,6 +1535,8 @@ fn process_outputs_set_button_wrong_output_id() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
+    let mut mouse = MockMouseSink::new();
+    let mut output_state = OutputRuntimeState::default();
     let modes = simple_modes();
     let mut mode_state = ModeState::new("Default".to_owned());
     let mut callbacks = CallbackRegistry::new();
@@ -1533,6 +1546,8 @@ fn process_outputs_set_button_wrong_output_id() {
         &outputs,
         &mut sink,
         &mut kb,
+        &mut mouse,
+        &mut output_state,
         &mut mode_state,
         &modes,
         &mut callbacks,
@@ -1559,11 +1574,15 @@ fn process_outputs_mode_change_no_op() {
 
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
+    let mut mouse = MockMouseSink::new();
+    let mut output_state = OutputRuntimeState::default();
 
     let result = process_pipeline_outputs(
         &outputs,
         &mut sink,
         &mut kb,
+        &mut mouse,
+        &mut output_state,
         &mut mode_state,
         &modes,
         &mut callbacks,
