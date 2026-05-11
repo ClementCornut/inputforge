@@ -1,7 +1,6 @@
 // Rust guideline compliant 2026-05-02
 
-//! F10 response-curve body. See spec
-//! `docs/superpowers/specs/2026-05-01-f10-curve-editor-design.md`.
+//! F10 response-curve body.
 
 pub(crate) mod interaction;
 pub(crate) mod keyboard;

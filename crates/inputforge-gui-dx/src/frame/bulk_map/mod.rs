@@ -1,5 +1,4 @@
-//! F-bulk-map: primary workspace bulk mapping wizard. See
-//! `docs/superpowers/specs/2026-05-03-bulk-mapping-design.md`.
+//! F-bulk-map: primary workspace bulk mapping wizard.
 
 mod apply;
 mod auto_map;

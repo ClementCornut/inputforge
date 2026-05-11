@@ -1,7 +1,6 @@
 // Rust guideline compliant 2026-05-01
 
-//! F9 mapping editor (center column). See
-//! `docs/superpowers/specs/2026-04-30-f9-mapping-editor-design.md`.
+//! F9 mapping editor (center column).
 
 #![allow(
     dead_code,

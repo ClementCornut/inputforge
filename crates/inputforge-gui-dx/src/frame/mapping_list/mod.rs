@@ -1,6 +1,4 @@
-//! F8 mapping list (left rail). See
-//! `docs/superpowers/specs/2026-04-30-f8-mapping-list-design.md` for the
-//! design rationale.
+//! F8 mapping list (left rail).
 //!
 //! Composition (inside-out, in dependency order):
 //!   - `source_label::format`, `InputAddress` -> "TFM Throttle . Z" formatter

@@ -1,7 +1,4 @@
 //! On-disk profile snapshot store.
-//!
-//! See `docs/superpowers/specs/2026-04-28-f6-snapshot-preferences-core-design.md`
-//! for the full design.
 
 pub use self::config::SnapshotConfig;
 pub use self::types::{PendingSnapshotDelete, Snapshot, SnapshotId, SnapshotKind};

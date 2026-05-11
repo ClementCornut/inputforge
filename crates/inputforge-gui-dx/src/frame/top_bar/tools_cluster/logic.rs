@@ -10,7 +10,7 @@ pub(crate) enum Tool {
     // intact for restoration.
     #[allow(
         dead_code,
-        reason = "Calibration variant retained for F13 calibration UI (see docs/superpowers/specs/2026-04-24-egui-to-dioxus-rewrite-design.md section F12 calibration drill-in and 2026-04-29-f7-frame-design.md section 49 calibration sugar routing); matcher arms + tests keep the state machine intact for restoration"
+        reason = "Calibration variant retained for future calibration UI; matcher arms + tests keep the state machine intact for restoration"
     )]
     Calibration,
     Profiles,

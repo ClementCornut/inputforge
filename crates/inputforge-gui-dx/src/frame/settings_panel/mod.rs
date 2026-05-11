@@ -1,4 +1,4 @@
-//! F15 settings panel. See docs/superpowers/specs/2026-05-09-f15-settings-ui-design.md.
+//! F15 settings panel.
 
 use dioxus::prelude::*;
 

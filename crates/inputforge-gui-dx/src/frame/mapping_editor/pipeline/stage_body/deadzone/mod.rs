@@ -1,7 +1,6 @@
 // Rust guideline compliant 2026-05-03
 
-//! F11 deadzone body. See spec
-//! `docs/superpowers/specs/2026-05-02-f11-deadzone-editor-design.md`.
+//! F11 deadzone body.
 
 pub(crate) mod interaction;
 pub(crate) mod keyboard;
