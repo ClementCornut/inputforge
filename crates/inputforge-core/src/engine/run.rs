@@ -246,6 +246,19 @@ impl Engine {
                 }
                 callbacks_changed_mode = self.mode_state.current() != mode_before_callbacks;
             }
+            if callbacks_changed_mode {
+                self.release_all_held_outputs()?;
+                let mut guard = self.state.write();
+                let state: &mut AppState = &mut guard;
+                refresh_axes_for_mode_change(
+                    &state.input_cache,
+                    &mappings,
+                    self.mode_state.current(),
+                    self.output.as_mut(),
+                    &mut state.output_cache,
+                )?;
+                self.output_buffer.clear();
+            }
 
             let active_mappings =
                 active_mappings_for_event(&mappings, &event.source, self.mode_state.current());
@@ -327,12 +340,10 @@ impl Engine {
 
                 self.output_buffer.extend_from_slice(&outputs);
 
-                // If mode changed (via pipeline output or release callbacks),
-                // refresh all cached axes through the new mode.
-                if result.mode_changed || callbacks_changed_mode {
-                    if result.mode_changed {
-                        self.release_all_held_outputs()?;
-                    }
+                // If a pipeline action changed mode, refresh all cached axes
+                // through the new mode.
+                if result.mode_changed {
+                    self.release_all_held_outputs()?;
                     let mut guard = self.state.write();
                     let state: &mut AppState = &mut guard;
                     refresh_axes_for_mode_change(
@@ -806,8 +817,21 @@ impl Engine {
                 if from == to {
                     return Ok(());
                 }
-                self.release_all_held_outputs()?;
                 let path = { self.state.read().profile_path.clone() };
+                let new_modes = {
+                    let state = self.state.read();
+                    let Some(profile) = state.active_profile.as_ref() else {
+                        tracing::warn!(
+                            target: "engine",
+                            "RenameMode dispatched with no profile; ignoring"
+                        );
+                        return Ok(());
+                    };
+
+                    // Step 1: list rewrite validation (errors on missing-from / collision).
+                    profile.modes().with_renamed(&from, &to)?
+                };
+                self.release_all_held_outputs()?;
                 let mut state = self.state.write();
                 let Some(profile) = state.active_profile.as_mut() else {
                     tracing::warn!(target: "engine", "RenameMode dispatched with no profile; ignoring");
@@ -827,8 +851,6 @@ impl Engine {
                 // Reordering risks: (2)/(3) before (1) mutates mappings
                 // before the list is validated against the new name, which
                 // would orphan mappings on collision.
-                // Step 1: list rewrite (errors on missing-from / collision).
-                let new_modes = profile.modes().with_renamed(&from, &to)?;
                 // Step 2: cascade across mappings + startup.
                 let touched = profile.rename_mode_refs(&from, &to);
                 // Step 3: swap the new list in last.
@@ -875,31 +897,42 @@ impl Engine {
                 // to `contains` and returning `ModeNotFound` (the wrong
                 // error register for a policy violation).
                 validate_mode_name_for_engine(&name, "mode name cannot be empty")?;
-                self.release_all_held_outputs()?;
                 let path = { self.state.read().profile_path.clone() };
+                let (new_modes, startup) = {
+                    let state = self.state.read();
+                    let Some(profile) = state.active_profile.as_ref() else {
+                        tracing::warn!(
+                            target: "engine",
+                            "DeleteMode dispatched with no profile; ignoring"
+                        );
+                        return Ok(());
+                    };
+
+                    if profile.modes().first() == name {
+                        return Err(crate::error::EngineError::InvalidConfig {
+                            reason: "cannot delete first mode".to_owned(),
+                        });
+                    }
+                    if !profile.modes().contains(&name) {
+                        return Err(crate::error::EngineError::ModeNotFound { name: name.clone() });
+                    }
+
+                    let startup = profile.settings().startup_mode().to_owned();
+                    if startup == name {
+                        return Err(crate::error::EngineError::InvalidConfig {
+                            reason: format!("cannot delete startup mode '{startup}'"),
+                        });
+                    }
+
+                    (profile.modes().with_removed(&name)?, startup)
+                };
+
+                self.release_all_held_outputs()?;
                 let mut state = self.state.write();
                 let Some(profile) = state.active_profile.as_mut() else {
                     tracing::warn!(target: "engine", "DeleteMode dispatched with no profile; ignoring");
                     return Ok(());
                 };
-
-                if profile.modes().first() == name {
-                    return Err(crate::error::EngineError::InvalidConfig {
-                        reason: "cannot delete first mode".to_owned(),
-                    });
-                }
-                if !profile.modes().contains(&name) {
-                    return Err(crate::error::EngineError::ModeNotFound { name: name.clone() });
-                }
-
-                let startup = profile.settings().startup_mode().to_owned();
-                if startup == name {
-                    return Err(crate::error::EngineError::InvalidConfig {
-                        reason: format!("cannot delete startup mode '{startup}'"),
-                    });
-                }
-
-                let new_modes = profile.modes().with_removed(&name)?;
                 profile.set_modes(new_modes);
                 let mappings_dropped = profile.remove_mappings_for_mode(&name);
 

@@ -380,6 +380,18 @@ fn held_mouse_mapping(target: MouseTarget, mode: &str) -> Mapping {
     }
 }
 
+fn held_mouse_mapping_for_input(target: MouseTarget, mode: &str, input_index: u8) -> Mapping {
+    Mapping {
+        input: button_addr(input_index),
+        mode: mode.to_owned(),
+        name: None,
+        actions: vec![Action::MapToMouse {
+            target,
+            behavior: OutputBehavior::Hold,
+        }],
+    }
+}
+
 fn temp_profile_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("inputforge-{name}-{}.toml", ulid::Ulid::new()))
 }
@@ -564,6 +576,51 @@ fn held_outputs_release_on_pipeline_mode_transition() {
 }
 
 #[test]
+fn held_outputs_release_on_temporary_mode_pop() {
+    let temporary_mapping = Mapping {
+        input: button_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::ChangeMode {
+            strategy: ModeChangeStrategy::Temporary {
+                mode: "Shift".to_owned(),
+            },
+        }],
+    };
+    let held_mapping = Mapping {
+        input: button_addr(1),
+        mode: "Shift".to_owned(),
+        name: None,
+        actions: vec![Action::MapToKeyboard {
+            key: key_combo("Space"),
+            behavior: OutputBehavior::Hold,
+        }],
+    };
+    let profile = make_profile(shift_modes(), vec![temporary_mapping, held_mapping]);
+    let mut input = MockInputSource::default();
+    input.events.push(button_event(0, true));
+    input.events.push(button_event(1, true));
+    let (mut engine, state, _tx, keyboard, _mouse) = make_recording_engine(input, profile, None);
+
+    engine.tick().unwrap();
+    assert_eq!(state.read().current_mode, "Shift");
+
+    input = MockInputSource::default();
+    input.events.push(button_event(0, false));
+    engine.input = Box::new(input);
+    engine.tick().unwrap();
+
+    assert_eq!(
+        keyboard.calls(),
+        vec![
+            KeyboardCall::KeyDown(key_combo("Space")),
+            KeyboardCall::KeyUp(key_combo("Space")),
+        ]
+    );
+    assert_eq!(state.read().current_mode, "Default");
+}
+
+#[test]
 fn held_outputs_release_on_mode_transition() {
     let mapping = held_mouse_mapping(MouseTarget::MiddleButton, "Default");
     let profile = make_profile(
@@ -591,6 +648,55 @@ fn held_outputs_release_on_mode_transition() {
 }
 
 #[test]
+fn held_outputs_stay_active_when_rename_mode_validation_fails() {
+    let held_mapping = held_mouse_mapping(MouseTarget::LeftButton, "Default");
+    let profile = make_profile(shift_modes(), vec![held_mapping]);
+    let mut input = MockInputSource::default();
+    input.events.push(button_event(0, true));
+    let (mut engine, _state, tx, _keyboard, mouse) = make_recording_engine(input, profile, None);
+
+    engine.tick().unwrap();
+    tx.send(EngineCommand::RenameMode {
+        from: "Missing".to_owned(),
+        to: "Renamed".to_owned(),
+    })
+    .unwrap();
+
+    assert!(matches!(
+        engine.tick(),
+        Err(crate::error::EngineError::ModeNotFound { .. })
+    ));
+    assert_eq!(
+        mouse.calls(),
+        vec![MouseCall::ButtonDown(MouseTarget::LeftButton)]
+    );
+}
+
+#[test]
+fn held_outputs_stay_active_when_delete_mode_validation_fails() {
+    let held_mapping = held_mouse_mapping(MouseTarget::LeftButton, "Default");
+    let profile = make_profile(shift_modes(), vec![held_mapping]);
+    let mut input = MockInputSource::default();
+    input.events.push(button_event(0, true));
+    let (mut engine, _state, tx, _keyboard, mouse) = make_recording_engine(input, profile, None);
+
+    engine.tick().unwrap();
+    tx.send(EngineCommand::DeleteMode {
+        name: "Missing".to_owned(),
+    })
+    .unwrap();
+
+    assert!(matches!(
+        engine.tick(),
+        Err(crate::error::EngineError::ModeNotFound { .. })
+    ));
+    assert_eq!(
+        mouse.calls(),
+        vec![MouseCall::ButtonDown(MouseTarget::LeftButton)]
+    );
+}
+
+#[test]
 fn held_outputs_release_on_shutdown() {
     let mapping = held_keyboard_mapping("Escape");
     let profile = make_profile(simple_modes(), vec![mapping]);
@@ -609,6 +715,27 @@ fn held_outputs_release_on_shutdown() {
             KeyboardCall::KeyDown(key_combo("Escape")),
             KeyboardCall::KeyUp(key_combo("Escape")),
         ]
+    );
+}
+
+#[test]
+fn held_outputs_disconnect_failed_release_does_not_propagate() {
+    let mapping = held_mouse_mapping_for_input(MouseTarget::LeftButton, "Default", 0);
+    let profile = make_profile(simple_modes(), vec![mapping]);
+    let mut input = MockInputSource::default();
+    input.events.push(button_event(0, true));
+    let (mut engine, _state, tx, _keyboard, mouse) = make_recording_engine(input, profile, None);
+
+    engine.tick().unwrap();
+    mouse.fail_next_button_up();
+    drop(tx);
+
+    engine.tick().unwrap();
+
+    assert!(engine.shutdown);
+    assert_eq!(
+        mouse.calls(),
+        vec![MouseCall::ButtonDown(MouseTarget::LeftButton)]
     );
 }
 
