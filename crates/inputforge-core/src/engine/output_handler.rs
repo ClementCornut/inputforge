@@ -162,7 +162,6 @@ pub(super) fn refresh_axes_for_mode_change(
     cache: &InputCacheStore,
     mappings: &[crate::action::Mapping],
     mode: &str,
-    _mode_list: &Modes,
     output_sink: &mut dyn OutputSink,
     output_cache: &mut OutputCacheStore,
 ) -> Result<()> {

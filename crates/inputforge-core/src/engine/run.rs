@@ -202,7 +202,7 @@ impl Engine {
         // On first tick after activation, refresh all cached axis outputs so
         // vJoy reflects current physical device positions without waiting for
         // a new input event.
-        self.apply_activation_refresh(&mappings, &mode_list)?;
+        self.apply_activation_refresh(&mappings)?;
 
         // Process each input event.
         // Move the buffer out of self so the loop body can borrow other
@@ -285,7 +285,6 @@ impl Engine {
                         &state.input_cache,
                         &mappings,
                         self.mode_state.current(),
-                        &mode_list,
                         self.output.as_mut(),
                         &mut state.output_cache,
                     )?;
@@ -323,11 +322,7 @@ impl Engine {
     /// Consumes the `pending_output_refresh` flag and runs
     /// [`refresh_axes_for_mode_change`] so vJoy reflects current physical
     /// device positions on the first tick after activation.
-    fn apply_activation_refresh(
-        &mut self,
-        mappings: &[Mapping],
-        mode_list: &crate::mode::Modes,
-    ) -> Result<()> {
+    fn apply_activation_refresh(&mut self, mappings: &[Mapping]) -> Result<()> {
         if !self.pending_output_refresh {
             return Ok(());
         }
@@ -338,7 +333,6 @@ impl Engine {
             &state.input_cache,
             mappings,
             self.mode_state.current(),
-            mode_list,
             self.output.as_mut(),
             &mut state.output_cache,
         )
