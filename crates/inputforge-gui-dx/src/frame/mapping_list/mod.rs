@@ -78,6 +78,34 @@ use crate::patterns::live_capture::LiveCapture;
 )]
 const MAPPING_LIST_CSS: Asset = asset!("/assets/frame/mapping_list.css");
 
+fn mapping_list_keyboard_script() -> &'static str {
+    r#"const h = (ev) => {
+       if (document.querySelector('[role="menu"]')) return;
+       const editableSelector = 'input, textarea, select, [contenteditable], [role="textbox"]';
+       const active = document.activeElement;
+       if (active && active.closest(editableSelector)) return;
+       const rawTarget = ev.target;
+       const target = rawTarget instanceof Element ? rawTarget : rawTarget?.parentElement;
+       if (target && target.closest(editableSelector)) return;
+       const meta = ev.metaKey ? 1 : 0;
+       const ctrl = ev.ctrlKey ? 1 : 0;
+       const alt  = ev.altKey  ? 1 : 0;
+       dioxus.send([ev.key, meta, ctrl, alt]);
+     };
+     window.addEventListener('keydown', h, true);
+     (async () => {
+       while (true) {
+         const msg = await dioxus.recv();
+         if (msg === '__shutdown__') {
+           window.removeEventListener('keydown', h, true);
+           dioxus.send(['__ack__', 0, 0, 0]);
+           return;
+         }
+       }
+     })();
+     "#
+}
+
 #[component]
 #[allow(
     unused_qualifications,
@@ -185,33 +213,11 @@ pub(crate) fn MappingList() -> Element {
             // handler regardless of focus. That is intentional for the rail
             // shortcuts (Up/Down to nav rows, Cmd+F to focus filter, Esc to
             // clear filter, Enter to focus the editor) but conflicts with
-            // any open menu surface, whose own onkeydown also navigates with
-            // arrow keys. The early return on `[role="menu"]` defers to the
-            // menu when one is mounted (covers MenuItems, AnchoredMenu, and
-            // the legacy `.if-row-menu` in this file); the menu's own
-            // element-level onkeydown is unaffected because we do not call
-            // stopPropagation, we just opt this listener out.
-            let mut handle = document::eval(
-                "const h = (ev) => {\n\
-                   if (document.querySelector('[role=\"menu\"]')) return;\n\
-                   const meta = ev.metaKey ? 1 : 0;\n\
-                   const ctrl = ev.ctrlKey ? 1 : 0;\n\
-                   const alt  = ev.altKey  ? 1 : 0;\n\
-                   dioxus.send([ev.key, meta, ctrl, alt]);\n\
-                 };\n\
-                 window.addEventListener('keydown', h, true);\n\
-                 (async () => {\n\
-                   while (true) {\n\
-                     const msg = await dioxus.recv();\n\
-                     if (msg === '__shutdown__') {\n\
-                       window.removeEventListener('keydown', h, true);\n\
-                       dioxus.send(['__ack__', 0, 0, 0]);\n\
-                       return;\n\
-                     }\n\
-                   }\n\
-                 })();\n\
-                 ",
-            );
+            // editable controls and any open menu surface, which own their
+            // own key handling. The script's early returns defer to those
+            // elements without stopPropagation, so their element-level
+            // onkeydown handlers are unaffected.
+            let mut handle = document::eval(mapping_list_keyboard_script());
 
             loop {
                 if *kb_shutdown_signal.peek() {

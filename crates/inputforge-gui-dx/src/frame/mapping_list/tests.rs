@@ -21,6 +21,27 @@ use crate::frame::mapping_list::MappingList;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::toast::{ToastQueue, ToastState};
 
+#[test]
+fn mapping_list_keyboard_bridge_ignores_editable_targets() {
+    let script = super::mapping_list_keyboard_script();
+
+    assert!(
+        script.contains(
+            "editableSelector = 'input, textarea, select, [contenteditable], [role=\"textbox\"]'"
+        ),
+        "mapping-list keyboard bridge must leave editable controls to their native key handling: {script}",
+    );
+    assert!(
+        script.contains("document.activeElement")
+            && script.contains("active.closest(editableSelector)"),
+        "mapping-list keyboard bridge must gate on focused editable controls, not only event targets: {script}",
+    );
+    assert!(
+        script.contains("target.closest(editableSelector)"),
+        "mapping-list keyboard bridge must still gate event targets for delegated input events: {script}",
+    );
+}
+
 fn provide_minimal_contexts() {
     let (cmd_tx, _cmd_rx) = mpsc::channel();
     let ctx = AppContext {

@@ -20,6 +20,13 @@ impl InputSize {
     }
 }
 
+fn should_stop_text_navigation_propagation(key: Key) -> bool {
+    matches!(
+        key,
+        Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown | Key::Home | Key::End
+    )
+}
+
 #[component]
 pub fn TextInput(
     value: ReadSignal<String>,
@@ -70,6 +77,9 @@ pub fn TextInput(
         }
     };
     let keydown_handler = move |evt: KeyboardEvent| {
+        if should_stop_text_navigation_propagation(evt.key()) {
+            evt.stop_propagation();
+        }
         if let Some(handler) = &onkeydown {
             handler.call(evt);
         }
@@ -120,6 +130,33 @@ pub fn TextInput(
 mod tests {
     use super::*;
     use dioxus_ssr::render;
+
+    #[test]
+    fn text_navigation_keys_stop_at_text_input() {
+        for key in [
+            Key::ArrowLeft,
+            Key::ArrowRight,
+            Key::ArrowUp,
+            Key::ArrowDown,
+            Key::Home,
+            Key::End,
+        ] {
+            assert!(
+                should_stop_text_navigation_propagation(key),
+                "text navigation key should not bubble to parent shortcuts"
+            );
+        }
+    }
+
+    #[test]
+    fn commit_and_cancel_keys_still_bubble_to_inline_editors() {
+        for key in [Key::Enter, Key::Escape] {
+            assert!(
+                !should_stop_text_navigation_propagation(key),
+                "inline editors must still receive commit/cancel keys"
+            );
+        }
+    }
 
     #[test]
     fn text_input_forwards_aria_describedby() {
