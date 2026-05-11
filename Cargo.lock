@@ -2646,7 +2646,7 @@ dependencies = [
 
 [[package]]
 name = "inputforge-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2663,7 +2663,7 @@ dependencies = [
 
 [[package]]
 name = "inputforge-autostart"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "auto-launch",
  "tempfile",
@@ -2673,7 +2673,7 @@ dependencies = [
 
 [[package]]
 name = "inputforge-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "chrono",
@@ -2700,7 +2700,7 @@ dependencies = [
 
 [[package]]
 name = "inputforge-gui-dx"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "arboard",
