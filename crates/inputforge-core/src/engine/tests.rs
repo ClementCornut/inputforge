@@ -78,6 +78,22 @@ fn keyboard_owner(key: KeyCombo, active: bool) -> PipelineOutput {
     }
 }
 
+fn pulse_keyboard_owner(key: KeyCombo, active: bool) -> PipelineOutput {
+    PipelineOutput::Keyboard {
+        owner: OutputOwner {
+            profile: "anonymous".to_owned(),
+            mode: "anonymous".to_owned(),
+            input: InputAddress::Unbound,
+            action_path: vec![ActionPathSegment::Index(0)],
+            destination: OutputDestination::Keyboard(key.clone()),
+            behavior: OutputBehavior::Pulse,
+        },
+        key,
+        behavior: OutputBehavior::Pulse,
+        active,
+    }
+}
+
 fn vjoy_axis_output(device: u8, axis: VJoyAxis) -> OutputAddress {
     OutputAddress {
         device,
@@ -318,6 +334,54 @@ fn process_outputs_applies_hold_keyboard_transitions() {
     )
     .unwrap();
     assert_eq!(kb2.calls(), &[KeyboardCall::KeyUp(combo)]);
+}
+
+#[test]
+fn process_outputs_applies_pulse_keyboard_on_press_only() {
+    let combo = KeyCombo {
+        key: "Space".to_owned(),
+        modifiers: vec![],
+    };
+
+    let pressed_outputs = vec![pulse_keyboard_owner(combo.clone(), true)];
+    let released_outputs = vec![pulse_keyboard_owner(combo.clone(), false)];
+
+    let modes = simple_modes();
+    let trigger = button_addr(0);
+
+    let mut sink = MockOutputSink::new();
+    let mut kb = MockKeyboardSink::new();
+    let mut mode_state = ModeState::new("Default".to_owned());
+    let mut callbacks = CallbackRegistry::new();
+
+    process_pipeline_outputs(
+        &pressed_outputs,
+        &mut sink,
+        &mut kb,
+        &mut mode_state,
+        &modes,
+        &mut callbacks,
+        &trigger,
+    )
+    .unwrap();
+    assert_eq!(kb.calls(), &[KeyboardCall::PulseKey(combo.clone())]);
+
+    let mut kb2 = MockKeyboardSink::new();
+    let mut sink2 = MockOutputSink::new();
+    let mut mode_state2 = ModeState::new("Default".to_owned());
+    let mut callbacks2 = CallbackRegistry::new();
+
+    process_pipeline_outputs(
+        &released_outputs,
+        &mut sink2,
+        &mut kb2,
+        &mut mode_state2,
+        &modes,
+        &mut callbacks2,
+        &trigger,
+    )
+    .unwrap();
+    assert!(kb2.calls().is_empty());
 }
 
 #[test]
