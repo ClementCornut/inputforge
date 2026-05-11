@@ -11,6 +11,7 @@
 mod command;
 mod dependencies;
 mod output_handler;
+mod output_state;
 mod run;
 #[cfg(all(test, feature = "test-util"))]
 mod tests;
@@ -29,7 +30,7 @@ use inputforge_autostart::AutostartManager;
 use crate::callbacks::CallbackRegistry;
 use crate::device::traits::{DeviceHider, InputSource};
 use crate::mode::ModeState;
-use crate::output::traits::{KeyboardSink, OutputSink};
+use crate::output::traits::{KeyboardSink, MouseSink, OutputSink};
 use crate::pipeline::PipelineOutput;
 use crate::settings::AppSettings;
 use crate::state::AppState;
@@ -44,6 +45,10 @@ pub struct Engine {
     input: Box<dyn InputSource>,
     output: Box<dyn OutputSink>,
     keyboard: Box<dyn KeyboardSink>,
+    #[expect(dead_code, reason = "Task 6 will dispatch mouse output events")]
+    mouse: Box<dyn MouseSink>,
+    #[expect(dead_code, reason = "Task 6 will reconcile runtime output edges")]
+    output_state: output_state::OutputRuntimeState,
     #[expect(
         dead_code,
         reason = "will be used for device hiding in activation flow"
@@ -111,6 +116,7 @@ impl Engine {
         input: Box<dyn InputSource>,
         output: Box<dyn OutputSink>,
         keyboard: Box<dyn KeyboardSink>,
+        mouse: Box<dyn MouseSink>,
         hider: Box<dyn DeviceHider>,
         state: Arc<RwLock<AppState>>,
         commands: mpsc::Receiver<EngineCommand>,
@@ -200,6 +206,8 @@ impl Engine {
             input,
             output,
             keyboard,
+            mouse,
+            output_state: output_state::OutputRuntimeState::default(),
             hider,
             state,
             commands,

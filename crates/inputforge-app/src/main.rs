@@ -30,6 +30,7 @@ use parking_lot::RwLock;
 
 use inputforge_core::device::{DeviceHider, NoOpDeviceHider, Sdl3Input};
 use inputforge_core::engine::{Engine, EngineCommand};
+use inputforge_core::output::mouse::MouseOutput;
 use inputforge_core::output::{KeyboardOutput, VJoyOutput};
 use inputforge_core::profile::Profile;
 use inputforge_core::profile::manager::ensure_default_profile;
@@ -175,12 +176,14 @@ fn run_engine_inner(
     let input = Box::new(Sdl3Input::new()?);
     let output = Box::new(VJoyOutput::new()?);
     let keyboard = Box::new(KeyboardOutput::new());
+    let mouse = Box::new(MouseOutput::new());
     let hider: Box<dyn DeviceHider> = Box::new(NoOpDeviceHider);
 
     let mut engine = Engine::new(
         input,
         output,
         keyboard,
+        mouse,
         hider,
         state,
         commands,
