@@ -251,12 +251,17 @@ impl KeyboardSink for RecordingKeyboardSink {
 #[derive(Debug, Default)]
 struct RecordingMouseState {
     calls: Mutex<Vec<MouseCall>>,
+    fail_next_button_down: AtomicBool,
     fail_next_button_up: AtomicBool,
 }
 
 impl RecordingMouseState {
     fn calls(&self) -> Vec<MouseCall> {
         self.calls.lock().clone()
+    }
+
+    fn fail_next_button_down(&self) {
+        self.fail_next_button_down.store(true, Ordering::SeqCst);
     }
 
     fn fail_next_button_up(&self) {
@@ -283,6 +288,15 @@ impl RecordingMouseSink {
 
 impl MouseSink for RecordingMouseSink {
     fn button_down(&mut self, target: MouseTarget) -> crate::error::Result<()> {
+        if self
+            .state
+            .fail_next_button_down
+            .swap(false, Ordering::SeqCst)
+        {
+            return Err(crate::error::EngineError::OutputFailed {
+                reason: "injected mouse button-down failure".to_owned(),
+            });
+        }
         self.state.calls.lock().push(MouseCall::ButtonDown(target));
         Ok(())
     }
@@ -793,6 +807,37 @@ fn failed_release_is_retryable() {
     assert!(engine.tick().is_err());
 
     tx.send(EngineCommand::Deactivate).unwrap();
+    engine.tick().unwrap();
+
+    assert_eq!(
+        mouse.calls(),
+        vec![
+            MouseCall::ButtonDown(MouseTarget::LeftButton),
+            MouseCall::ButtonUp(MouseTarget::LeftButton),
+        ]
+    );
+}
+
+#[test]
+fn failed_hold_acquisition_is_retryable() {
+    let mapping = held_mouse_mapping(MouseTarget::LeftButton, "Default");
+    let profile = make_profile(simple_modes(), vec![mapping]);
+    let mut input = MockInputSource::default();
+    input.events.push(button_event(0, true));
+    let (mut engine, _state, _tx, _keyboard, mouse) = make_recording_engine(input, profile, None);
+
+    mouse.fail_next_button_down();
+    assert!(engine.tick().is_err());
+    assert!(mouse.calls().is_empty());
+
+    let mut retry_input = MockInputSource::default();
+    retry_input.events.push(button_event(0, true));
+    engine.input = Box::new(retry_input);
+    engine.tick().unwrap();
+
+    let mut release_input = MockInputSource::default();
+    release_input.events.push(button_event(0, false));
+    engine.input = Box::new(release_input);
     engine.tick().unwrap();
 
     assert_eq!(

@@ -33,7 +33,7 @@ use crate::patterns::live_capture::use_live_capture_provider;
 use crate::toast::{ToastQueue, ToastState};
 
 use super::super::undo_log::{StageId, StageIdSegment};
-use super::{at_path, insert_at_path, remove_at_path, replace_at_path};
+use super::{at_path, insert_at_path, remove_at_path, replace_at_path, stage_body};
 
 // ---------------------------------------------------------------------------
 // Helpers shared by path-walker tests
@@ -434,7 +434,7 @@ pub(crate) fn render_change_mode_body_for_test(
 pub(crate) fn simulate_dispatch_strategy_change(
     strategy_before: inputforge_core::action::ModeChangeStrategy,
     primary: &str,
-    target: crate::frame::mapping_editor::pipeline::stage_body::change_mode::StrategyTarget,
+    target: stage_body::change_mode::StrategyTarget,
 ) -> (Vec<inputforge_core::engine::EngineCommand>, Option<String>) {
     use crate::frame::MappingKey;
     use crate::frame::mapping_editor::pipeline::stage_body::change_mode::dispatch_strategy_change_into;
@@ -675,6 +675,50 @@ fn render_stage_body(action: Action) -> String {
         vec![StageId(vec![StageIdSegment::Index(0)])],
         &["Default"],
     )
+}
+
+#[allow(
+    non_snake_case,
+    reason = "Dioxus components are PascalCase by convention"
+)]
+fn KeyboardPropSyncHarness() -> Element {
+    let (cmd_tx, _) = mpsc::channel();
+    let state = Arc::new(RwLock::new(AppState::new()));
+    let ctx = AppContext {
+        state,
+        commands: cmd_tx,
+        settings: use_signal(SettingsSnapshot::default),
+        meta: use_signal(MetaSnapshot::default),
+        config: use_signal(ConfigSnapshot::default),
+        live: use_signal(LiveSnapshot::default),
+    };
+    use_context_provider(|| ctx);
+    use_editor_state_provider();
+
+    let mut use_next_combo = use_signal(|| false);
+    let combo = if *use_next_combo.read() {
+        key_combo(PhysicalKey::F12)
+    } else {
+        key_combo(PhysicalKey::F11)
+    };
+    if !*use_next_combo.peek() {
+        use_next_combo.set(true);
+    }
+
+    let action = Action::MapToKeyboard {
+        key: combo,
+        behavior: OutputBehavior::Hold,
+    };
+    let mapping_key = ("Default".to_owned(), synth_addr());
+
+    rsx! {
+        stage_body::StageBody {
+            mapping_key,
+            stage_id: StageId(vec![StageIdSegment::Index(0)]),
+            action: action.clone(),
+            root_actions: vec![action],
+        }
+    }
 }
 
 fn key_combo(key: PhysicalKey) -> KeyCombo {
@@ -1200,6 +1244,28 @@ fn map_to_keyboard_body_renders_single_capture_control() {
     assert!(
         !html.contains(r#"type="text""#),
         "key binding must not render a free-text input: {html}"
+    );
+}
+
+#[test]
+fn map_to_keyboard_body_syncs_local_combo_when_props_change() {
+    let mut vdom = VirtualDom::new(KeyboardPropSyncHarness);
+    vdom.rebuild_in_place();
+    let first_html = render(&vdom);
+    assert!(
+        first_html.contains("F11"),
+        "first render must show initial combo: {first_html}"
+    );
+
+    vdom.render_immediate(&mut dioxus::core::NoOpMutations);
+    let second_html = render(&vdom);
+    assert!(
+        second_html.contains("F12"),
+        "second render must show updated combo prop: {second_html}"
+    );
+    assert!(
+        !second_html.contains("F11"),
+        "updated combo must replace stale local combo: {second_html}"
     );
 }
 

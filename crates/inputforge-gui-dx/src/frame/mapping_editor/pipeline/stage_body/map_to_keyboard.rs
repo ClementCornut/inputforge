@@ -62,6 +62,9 @@ pub(crate) fn MapToKeyboardBody(
     let mut local_combo: Signal<KeyCombo> = use_signal(|| combo.clone());
     let mut capture_active: Signal<bool> = use_signal(|| false);
     let mut capture_hint: Signal<Option<String>> = use_signal(|| None);
+    if !*capture_active.peek() && *local_combo.peek() != combo {
+        local_combo.set(combo.clone());
+    }
 
     editor.malformed_hints.write().remove(&stage_id);
 

@@ -111,8 +111,11 @@ pub(super) fn dispatch_output_action(
     mouse: &mut dyn MouseSink,
 ) -> Result<()> {
     match action {
-        OutputAction::Immediate(event) => {
-            dispatch_event(event, keyboard, mouse)?;
+        OutputAction::HoldStart { owner, event } => {
+            if let Some(event) = event {
+                dispatch_event(event, keyboard, mouse)?;
+            }
+            output_state.commit_hold(owner);
         }
         OutputAction::Pulse {
             owner,

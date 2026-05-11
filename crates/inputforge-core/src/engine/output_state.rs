@@ -17,7 +17,10 @@ pub(crate) enum OutputEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum OutputAction {
-    Immediate(OutputEvent),
+    HoldStart {
+        owner: OutputOwner,
+        event: Option<OutputEvent>,
+    },
     Pulse {
         owner: OutputOwner,
         start: OutputEvent,
@@ -36,7 +39,13 @@ impl OutputAction {
     )]
     pub(crate) fn into_event(self) -> OutputEvent {
         match self {
-            Self::Immediate(event) | Self::Release { event, .. } => event,
+            Self::Release { event, .. } => event,
+            Self::HoldStart {
+                event: Some(event), ..
+            } => event,
+            Self::HoldStart { event: None, .. } => {
+                panic!("hold start without event has no output event")
+            }
             Self::Pulse { start, .. } => start,
         }
     }
@@ -178,6 +187,15 @@ impl OutputRuntimeState {
         }
     }
 
+    pub(crate) fn commit_hold(&mut self, owner: OutputOwner) {
+        if !self.active_owners.insert(owner.clone()) {
+            return;
+        }
+
+        let count = self.hold_counts.entry(owner.destination).or_default();
+        *count += 1;
+    }
+
     pub(crate) fn commit_pulse(&mut self, owner: OutputOwner) {
         self.partial_pulse_owners.remove(&owner);
         self.active_owners.insert(owner);
@@ -197,17 +215,16 @@ impl OutputRuntimeState {
         up: OutputEvent,
     ) -> Vec<OutputAction> {
         if active {
-            if !self.active_owners.insert(owner) {
+            if self.active_owners.contains(&owner) {
                 return Vec::new();
             }
 
-            let count = self.hold_counts.entry(destination).or_default();
-            *count += 1;
-            if *count == 1 {
-                vec![OutputAction::Immediate(down)]
+            let event = if self.hold_counts.contains_key(&destination) {
+                None
             } else {
-                Vec::new()
-            }
+                Some(down)
+            };
+            vec![OutputAction::HoldStart { owner, event }]
         } else {
             self.stage_release_owner_with_event(owner, up)
                 .into_iter()
@@ -360,6 +377,7 @@ mod tests {
             )),
             vec![OutputEvent::KeyDown(key.clone())],
         );
+        state.commit_hold(owner.clone());
         assert!(
             state
                 .reconcile_keyboard(owner.clone(), key.clone(), OutputBehavior::Hold, true)
@@ -405,11 +423,15 @@ mod tests {
             )),
             vec![OutputEvent::KeyDown(key.clone())],
         );
-        assert!(
-            state
-                .reconcile_keyboard(second.clone(), key.clone(), OutputBehavior::Hold, true)
-                .is_empty()
+        state.commit_hold(first.clone());
+        assert_eq!(
+            state.reconcile_keyboard(second.clone(), key.clone(), OutputBehavior::Hold, true),
+            vec![OutputAction::HoldStart {
+                owner: second.clone(),
+                event: None,
+            }]
         );
+        state.commit_hold(second.clone());
         assert!(
             state
                 .reconcile_keyboard(first, key.clone(), OutputBehavior::Hold, false)
@@ -534,6 +556,7 @@ mod tests {
             )),
             vec![OutputEvent::KeyDown(key.clone())],
         );
+        state.commit_hold(owner.clone());
 
         let release = state.reconcile_absent_owners_for_scope(&scope, &[]);
         assert_eq!(events(release), vec![OutputEvent::KeyUp(key)]);
