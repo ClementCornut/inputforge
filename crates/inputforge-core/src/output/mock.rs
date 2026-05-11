@@ -1,9 +1,10 @@
 // Rust guideline compliant 2026-03-03
 
+use crate::action::MouseTarget;
 use crate::error::Result;
 use crate::types::{HatDirection, KeyCombo, VJoyAxis, VirtualDeviceConfig};
 
-use super::traits::{KeyboardSink, OutputSink};
+use super::traits::{KeyboardSink, MouseSink, OutputSink};
 
 /// A recorded output call for test assertions.
 #[derive(Debug, Clone, PartialEq)]
@@ -100,7 +101,9 @@ impl OutputSink for MockOutputSink {
 /// A recorded keyboard call for test assertions.
 #[derive(Debug, Clone, PartialEq)]
 pub enum KeyboardCall {
-    SendKey(KeyCombo),
+    KeyDown(KeyCombo),
+    KeyUp(KeyCombo),
+    PulseKey(KeyCombo),
 }
 
 /// Mock keyboard sink that records all calls for test assertions.
@@ -129,8 +132,74 @@ impl MockKeyboardSink {
 }
 
 impl KeyboardSink for MockKeyboardSink {
-    fn send_key(&mut self, combo: &KeyCombo) -> Result<()> {
-        self.calls.push(KeyboardCall::SendKey(combo.clone()));
+    fn key_down(&mut self, combo: &KeyCombo) -> Result<()> {
+        self.calls.push(KeyboardCall::KeyDown(combo.clone()));
+        Ok(())
+    }
+
+    fn key_up(&mut self, combo: &KeyCombo) -> Result<()> {
+        self.calls.push(KeyboardCall::KeyUp(combo.clone()));
+        Ok(())
+    }
+
+    fn pulse_key(&mut self, combo: &KeyCombo) -> Result<()> {
+        self.calls.push(KeyboardCall::PulseKey(combo.clone()));
+        Ok(())
+    }
+}
+
+/// A recorded mouse call for test assertions.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MouseCall {
+    ButtonDown(MouseTarget),
+    ButtonUp(MouseTarget),
+    PulseButton(MouseTarget),
+    Wheel(MouseTarget),
+}
+
+/// Mock mouse sink that records all calls for test assertions.
+#[derive(Debug, Default)]
+pub struct MockMouseSink {
+    calls: Vec<MouseCall>,
+}
+
+impl MockMouseSink {
+    /// Create a new empty `MockMouseSink`.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Return all recorded calls.
+    #[must_use]
+    pub fn calls(&self) -> &[MouseCall] {
+        &self.calls
+    }
+
+    /// Clear all recorded calls.
+    pub fn clear(&mut self) {
+        self.calls.clear();
+    }
+}
+
+impl MouseSink for MockMouseSink {
+    fn button_down(&mut self, target: MouseTarget) -> Result<()> {
+        self.calls.push(MouseCall::ButtonDown(target));
+        Ok(())
+    }
+
+    fn button_up(&mut self, target: MouseTarget) -> Result<()> {
+        self.calls.push(MouseCall::ButtonUp(target));
+        Ok(())
+    }
+
+    fn pulse_button(&mut self, target: MouseTarget) -> Result<()> {
+        self.calls.push(MouseCall::PulseButton(target));
+        Ok(())
+    }
+
+    fn wheel(&mut self, target: MouseTarget) -> Result<()> {
+        self.calls.push(MouseCall::Wheel(target));
         Ok(())
     }
 }
@@ -221,7 +290,7 @@ mod tests {
     // --- MockKeyboardSink ---
 
     #[test]
-    fn mock_keyboard_records_send_key() {
+    fn mock_keyboard_records_pulse_key() {
         use crate::types::KeyModifier;
 
         let mut mock = MockKeyboardSink::new();
@@ -229,8 +298,50 @@ mod tests {
             key: "Space".to_owned(),
             modifiers: vec![KeyModifier::Ctrl],
         };
-        mock.send_key(&combo).unwrap();
-        assert_eq!(mock.calls(), &[KeyboardCall::SendKey(combo)]);
+        mock.pulse_key(&combo).unwrap();
+        assert_eq!(mock.calls(), &[KeyboardCall::PulseKey(combo)]);
+    }
+
+    #[test]
+    fn mock_keyboard_records_down_up_and_pulse() {
+        let mut mock = MockKeyboardSink::new();
+        let combo = KeyCombo {
+            key: "A".to_owned(),
+            modifiers: vec![],
+        };
+
+        mock.key_down(&combo).unwrap();
+        mock.key_up(&combo).unwrap();
+        mock.pulse_key(&combo).unwrap();
+
+        assert_eq!(
+            mock.calls(),
+            &[
+                KeyboardCall::KeyDown(combo.clone()),
+                KeyboardCall::KeyUp(combo.clone()),
+                KeyboardCall::PulseKey(combo),
+            ]
+        );
+    }
+
+    #[test]
+    fn mock_mouse_records_button_and_wheel_calls() {
+        let mut mock = MockMouseSink::new();
+
+        mock.button_down(MouseTarget::LeftButton).unwrap();
+        mock.button_up(MouseTarget::LeftButton).unwrap();
+        mock.pulse_button(MouseTarget::RightButton).unwrap();
+        mock.wheel(MouseTarget::WheelUp).unwrap();
+
+        assert_eq!(
+            mock.calls(),
+            &[
+                MouseCall::ButtonDown(MouseTarget::LeftButton),
+                MouseCall::ButtonUp(MouseTarget::LeftButton),
+                MouseCall::PulseButton(MouseTarget::RightButton),
+                MouseCall::Wheel(MouseTarget::WheelUp),
+            ]
+        );
     }
 
     #[test]
@@ -240,7 +351,7 @@ mod tests {
             key: "A".to_owned(),
             modifiers: vec![],
         };
-        mock.send_key(&combo).unwrap();
+        mock.key_down(&combo).unwrap();
         assert_eq!(mock.calls().len(), 1);
         mock.clear();
         assert!(mock.calls().is_empty());

@@ -70,11 +70,11 @@ impl KeyboardOutput {
 }
 
 impl KeyboardSink for KeyboardOutput {
-    fn send_key(&mut self, combo: &KeyCombo) -> Result<()> {
-        // Press then release the key combination.
-        // Use explicit inherent method calls to avoid resolving to the
-        // trait method (which has a different signature).
-        Self::send_key(&*self, combo, true)?;
+    fn key_down(&mut self, combo: &KeyCombo) -> Result<()> {
+        Self::send_key(&*self, combo, true)
+    }
+
+    fn key_up(&mut self, combo: &KeyCombo) -> Result<()> {
         Self::send_key(&*self, combo, false)
     }
 }

@@ -6,7 +6,7 @@
 //! into concrete I/O calls and mode state transitions. Kept separate
 //! from the main loop for testability and readability.
 
-use crate::action::ModeChangeStrategy;
+use crate::action::{ModeChangeStrategy, OutputBehavior};
 use crate::callbacks::{CallbackRegistry, ReleaseCallback};
 use crate::error::Result;
 use crate::mode::{ModeState, Modes};
@@ -63,11 +63,25 @@ pub(super) fn process_pipeline_outputs(
                 };
                 output_sink.set_button(output.device, *id, *pressed)?;
             }
-            PipelineOutput::Keyboard { key, active, .. } => {
-                if *active {
-                    keyboard.send_key(key)?;
+            PipelineOutput::Keyboard {
+                key,
+                behavior,
+                active,
+                ..
+            } => match behavior {
+                OutputBehavior::Pulse => {
+                    if *active {
+                        keyboard.pulse_key(key)?;
+                    }
                 }
-            }
+                OutputBehavior::Hold => {
+                    if *active {
+                        keyboard.key_down(key)?;
+                    } else {
+                        keyboard.key_up(key)?;
+                    }
+                }
+            },
             PipelineOutput::Mouse { .. } => {}
             PipelineOutput::ChangeMode { strategy } => {
                 let old_mode = mode_state.current().to_owned();

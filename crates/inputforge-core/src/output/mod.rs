@@ -11,7 +11,7 @@ pub mod keyboard;
 #[cfg(feature = "test-util")]
 pub mod mock;
 
-pub use traits::{KeyboardSink, OutputSink, VirtualDeviceConfig};
+pub use traits::{KeyboardSink, MouseSink, OutputSink, VirtualDeviceConfig};
 
 #[cfg(feature = "vjoy-output")]
 pub use vjoy_output::VJoyOutput;
@@ -20,4 +20,6 @@ pub use vjoy_output::VJoyOutput;
 pub use keyboard::KeyboardOutput;
 
 #[cfg(feature = "test-util")]
-pub use mock::{KeyboardCall, MockKeyboardSink, MockOutputSink, OutputCall};
+pub use mock::{
+    KeyboardCall, MockKeyboardSink, MockMouseSink, MockOutputSink, MouseCall, OutputCall,
+};

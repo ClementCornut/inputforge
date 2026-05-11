@@ -3,6 +3,7 @@
 use crate::error::Result;
 pub use crate::types::VirtualDeviceConfig;
 
+use crate::action::MouseTarget;
 use crate::types::{HatDirection, KeyCombo, VJoyAxis};
 
 /// Trait for sending output to virtual devices.
@@ -75,10 +76,64 @@ pub trait OutputSink: Send {
 /// Separated from [`OutputSink`] because keyboard output operates on
 /// key combinations rather than virtual device axes/buttons.
 pub trait KeyboardSink: Send {
-    /// Sends a key press (press and release) for the given key combination.
+    /// Press the given key combination.
     ///
     /// # Errors
     ///
     /// Returns an error if the key injection fails.
-    fn send_key(&mut self, combo: &KeyCombo) -> Result<()>;
+    fn key_down(&mut self, combo: &KeyCombo) -> Result<()>;
+
+    /// Release the given key combination.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key injection fails.
+    fn key_up(&mut self, combo: &KeyCombo) -> Result<()>;
+
+    /// Press and release the given key combination.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if either key injection fails.
+    fn pulse_key(&mut self, combo: &KeyCombo) -> Result<()> {
+        self.key_down(combo)?;
+        self.key_up(combo)
+    }
+}
+
+/// Trait for mouse output sinks.
+///
+/// Separated from [`OutputSink`] because mouse output operates on
+/// mouse targets rather than virtual device axes/buttons.
+pub trait MouseSink: Send {
+    /// Press the given mouse button target.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the mouse injection fails.
+    fn button_down(&mut self, target: MouseTarget) -> Result<()>;
+
+    /// Release the given mouse button target.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the mouse injection fails.
+    fn button_up(&mut self, target: MouseTarget) -> Result<()>;
+
+    /// Press and release the given mouse button target.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if either mouse injection fails.
+    fn pulse_button(&mut self, target: MouseTarget) -> Result<()> {
+        self.button_down(target)?;
+        self.button_up(target)
+    }
+
+    /// Scroll the given mouse wheel target.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the mouse injection fails.
+    fn wheel(&mut self, target: MouseTarget) -> Result<()>;
 }

@@ -271,7 +271,7 @@ fn process_outputs_set_button() {
 }
 
 #[test]
-fn process_outputs_send_key_only_on_press() {
+fn process_outputs_applies_hold_keyboard_transitions() {
     let combo = KeyCombo {
         key: "Space".to_owned(),
         modifiers: vec![],
@@ -283,7 +283,7 @@ fn process_outputs_send_key_only_on_press() {
     let modes = simple_modes();
     let trigger = button_addr(0);
 
-    // Pressed → key sent.
+    // Pressed → key down.
     let mut sink = MockOutputSink::new();
     let mut kb = MockKeyboardSink::new();
     let mut mode_state = ModeState::new("Default".to_owned());
@@ -299,9 +299,9 @@ fn process_outputs_send_key_only_on_press() {
         &trigger,
     )
     .unwrap();
-    assert_eq!(kb.calls(), &[KeyboardCall::SendKey(combo.clone())]);
+    assert_eq!(kb.calls(), &[KeyboardCall::KeyDown(combo.clone())]);
 
-    // Released → no key sent.
+    // Released → key up.
     let mut kb2 = MockKeyboardSink::new();
     let mut sink2 = MockOutputSink::new();
     let mut mode_state2 = ModeState::new("Default".to_owned());
@@ -317,7 +317,7 @@ fn process_outputs_send_key_only_on_press() {
         &trigger,
     )
     .unwrap();
-    assert!(kb2.calls().is_empty());
+    assert_eq!(kb2.calls(), &[KeyboardCall::KeyUp(combo)]);
 }
 
 #[test]
