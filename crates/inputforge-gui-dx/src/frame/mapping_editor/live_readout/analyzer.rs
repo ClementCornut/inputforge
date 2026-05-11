@@ -459,7 +459,7 @@ fn walk(
                     polarity,
                 });
             }
-            Action::MapToKeyboard { key } => {
+            Action::MapToKeyboard { key, .. } => {
                 let pressed = context.keyboard_pressed(branch_path, i);
                 model.outputs.push(OutputDescriptor {
                     destination: OutputDestination::Keyboard {
@@ -520,6 +520,7 @@ fn walk(
             Action::ResponseCurve { .. }
             | Action::Deadzone { .. }
             | Action::Invert
+            | Action::MapToMouse { .. }
             | Action::ChangeMode { .. } => {}
         }
     }
@@ -993,7 +994,10 @@ mod walker_tests {
     fn keyboard_output_yields_keyboard_destination() {
         let primary = input(0);
         let key = keyboard_combo("F1");
-        let actions = vec![Action::MapToKeyboard { key: key.clone() }];
+        let actions = vec![Action::MapToKeyboard {
+            key: key.clone(),
+            behavior: inputforge_core::action::OutputBehavior::Hold,
+        }];
 
         let model = analyze_actions(&actions, &primary);
 

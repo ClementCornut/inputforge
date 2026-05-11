@@ -43,7 +43,7 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Mapping};
+use inputforge_core::action::{Action, Mapping, OutputBehavior};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{KeyCombo, KeyModifier};
 
@@ -65,6 +65,7 @@ pub(crate) fn MapToKeyboardBody(
     /// The keyboard combo to edit. Named `combo` (not `key`) because Dioxus
     /// reserves `key` as a built-in prop for its reconciliation hint.
     combo: KeyCombo,
+    behavior: OutputBehavior,
     /// Full root-level action list for the mapping. Needed so that
     /// `replace_at_path` can build the new action tree on every edit.
     /// Named `root_actions` per Amendment 5 (the dispatcher uses this name).
@@ -141,6 +142,7 @@ pub(crate) fn MapToKeyboardBody(
         );
         dispatch_keyboard(
             new_combo,
+            behavior,
             "Ctrl modifier",
             &mapping_key_ctrl,
             &stage_id_ctrl,
@@ -173,6 +175,7 @@ pub(crate) fn MapToKeyboardBody(
         );
         dispatch_keyboard(
             new_combo,
+            behavior,
             "Alt modifier",
             &mapping_key_alt,
             &stage_id_alt,
@@ -205,6 +208,7 @@ pub(crate) fn MapToKeyboardBody(
         );
         dispatch_keyboard(
             new_combo,
+            behavior,
             "Shift modifier",
             &mapping_key_shift,
             &stage_id_shift,
@@ -237,6 +241,7 @@ pub(crate) fn MapToKeyboardBody(
         );
         dispatch_keyboard(
             new_combo,
+            behavior,
             "Win modifier",
             &mapping_key_win,
             &stage_id_win,
@@ -287,6 +292,7 @@ pub(crate) fn MapToKeyboardBody(
         );
         dispatch_keyboard(
             new_combo,
+            behavior,
             "key",
             &mapping_key_blur,
             &stage_id_blur,
@@ -324,6 +330,52 @@ pub(crate) fn MapToKeyboardBody(
         "if-text-input if-text-input--md if-text-input--invalid"
     } else {
         "if-text-input if-text-input--md"
+    };
+
+    let mapping_key_hold = mapping_key.clone();
+    let stage_id_hold = stage_id.clone();
+    let root_actions_hold = root_actions.clone();
+    let before_hold = before_mapping.clone();
+    let current_name_hold = current_name.clone();
+    let cmd_tx_hold = ctx.commands.clone();
+    let mut undo_log_hold = editor.undo_log;
+    let combo_hold = combo.clone();
+    let on_hold = move |_| {
+        dispatch_keyboard(
+            combo_hold.clone(),
+            OutputBehavior::Hold,
+            "behavior",
+            &mapping_key_hold,
+            &stage_id_hold,
+            &root_actions_hold,
+            &before_hold,
+            current_name_hold.clone(),
+            &cmd_tx_hold,
+            &mut undo_log_hold,
+        );
+    };
+
+    let mapping_key_pulse = mapping_key.clone();
+    let stage_id_pulse = stage_id.clone();
+    let root_actions_pulse = root_actions.clone();
+    let before_pulse = before_mapping.clone();
+    let current_name_pulse = current_name.clone();
+    let cmd_tx_pulse = ctx.commands.clone();
+    let mut undo_log_pulse = editor.undo_log;
+    let combo_pulse = combo.clone();
+    let on_pulse = move |_| {
+        dispatch_keyboard(
+            combo_pulse.clone(),
+            OutputBehavior::Pulse,
+            "behavior",
+            &mapping_key_pulse,
+            &stage_id_pulse,
+            &root_actions_pulse,
+            &before_pulse,
+            current_name_pulse.clone(),
+            &cmd_tx_pulse,
+            &mut undo_log_pulse,
+        );
     };
 
     rsx! {
@@ -383,6 +435,31 @@ pub(crate) fn MapToKeyboardBody(
                     oninput,
                     onblur,
                     onkeydown,
+                }
+            }
+            div { class: "if-stage__body-field",
+                label { class: "if-stage__body-label", "Behavior" }
+                div { class: "if-stage__body-segmented",
+                    {
+                        let onclick = on_hold;
+                        rsx! {
+                            button {
+                                class: if behavior == OutputBehavior::Hold { "if-stage__body-segment is-active" } else { "if-stage__body-segment" },
+                                onclick,
+                                "Hold"
+                            }
+                        }
+                    }
+                    {
+                        let onclick = on_pulse;
+                        rsx! {
+                            button {
+                                class: if behavior == OutputBehavior::Pulse { "if-stage__body-segment is-active" } else { "if-stage__body-segment" },
+                                onclick,
+                                "Pulse"
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -457,6 +534,7 @@ fn build_combo_from_key(key: String, ctrl: bool, alt: bool, shift: bool, win: bo
 )]
 fn dispatch_keyboard(
     new_combo: KeyCombo,
+    new_behavior: OutputBehavior,
     field_label: &'static str,
     mapping_key: &MappingKey,
     stage_id: &StageId,
@@ -466,7 +544,10 @@ fn dispatch_keyboard(
     cmd_tx: &std::sync::mpsc::Sender<EngineCommand>,
     undo_log: &mut Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
 ) {
-    let new_action = Action::MapToKeyboard { key: new_combo };
+    let new_action = Action::MapToKeyboard {
+        key: new_combo,
+        behavior: new_behavior,
+    };
     let Some(new_actions) = replace_at_path(root_actions, stage_id, new_action) else {
         return;
     };

@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 use dioxus_ssr::render;
 use parking_lot::RwLock;
 
-use inputforge_core::action::{Action, Mapping};
+use inputforge_core::action::{Action, Mapping, OutputBehavior};
 use inputforge_core::mode::Modes;
 use inputforge_core::profile::Profile;
 use inputforge_core::state::{AppState, EngineStatus};
@@ -1777,6 +1777,7 @@ fn editor_live_readout_keyboard_active_renders_live_chip() {
                 key: "Space".to_owned(),
                 modifiers: vec![KeyModifier::Ctrl],
             },
+            behavior: OutputBehavior::Hold,
         }],
         if_false: vec![],
     }];
@@ -1803,6 +1804,7 @@ fn editor_live_readout_keyboard_active_below_threshold_renders_idle_chip() {
                 key: "Space".to_owned(),
                 modifiers: vec![KeyModifier::Ctrl],
             },
+            behavior: OutputBehavior::Hold,
         }],
         if_false: vec![],
     }];
@@ -1829,6 +1831,7 @@ fn editor_live_readout_keyboard_inactive_renders_idle_chip() {
                 key: "Space".to_owned(),
                 modifiers: vec![KeyModifier::Ctrl],
             },
+            behavior: OutputBehavior::Hold,
         }],
         if_false: vec![],
     }];

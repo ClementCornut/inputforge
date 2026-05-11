@@ -118,9 +118,10 @@ pub(crate) fn Stage(
 
     let category_class = match &action {
         Action::ResponseCurve { .. } | Action::Deadzone { .. } | Action::Invert => "is-processing",
-        Action::MapToVJoy { .. } | Action::MapToKeyboard { .. } | Action::MergeAxis { .. } => {
-            "is-output"
-        }
+        Action::MapToVJoy { .. }
+        | Action::MapToKeyboard { .. }
+        | Action::MapToMouse { .. }
+        | Action::MergeAxis { .. } => "is-output",
         Action::ChangeMode { .. } | Action::Conditional { .. } => "is-control",
     };
 
@@ -243,6 +244,7 @@ pub(crate) fn stage_title_for(action: &Action) -> &'static str {
         Action::ResponseCurve { .. } => "Response curve",
         Action::MapToVJoy { .. } => "Map to vJoy",
         Action::MapToKeyboard { .. } => "Map to keyboard",
+        Action::MapToMouse { .. } => "Map to mouse",
         Action::MergeAxis { .. } => "Merge axis",
         Action::ChangeMode { .. } => "Change mode",
         Action::Conditional { .. } => "Conditional",
@@ -285,7 +287,9 @@ pub(crate) fn stage_summary_for(action: &Action, cfg: &ConfigSnapshot) -> String
 
         Action::MapToVJoy { output } => format_output_summary(output),
 
-        Action::MapToKeyboard { key } => format_key_combo(key),
+        Action::MapToKeyboard { key, .. } => format_key_combo(key),
+
+        Action::MapToMouse { .. } => String::new(),
 
         Action::MergeAxis {
             second_input,

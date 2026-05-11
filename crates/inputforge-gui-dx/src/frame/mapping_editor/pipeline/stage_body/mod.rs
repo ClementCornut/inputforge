@@ -21,6 +21,7 @@ mod deadzone;
 mod instruments;
 mod invert;
 mod map_to_keyboard;
+mod map_to_mouse;
 mod map_to_vjoy;
 mod merge_axis;
 pub(crate) mod predicate;
@@ -46,11 +47,21 @@ pub(crate) fn StageBody(
                 root_actions: root_actions.clone(),
             }
         },
-        Action::MapToKeyboard { key } => rsx! {
+        Action::MapToKeyboard { key, behavior } => rsx! {
             map_to_keyboard::MapToKeyboardBody {
                 mapping_key: mapping_key.clone(),
                 stage_id: stage_id.clone(),
                 combo: key.clone(),
+                behavior: *behavior,
+                root_actions: root_actions.clone(),
+            }
+        },
+        Action::MapToMouse { target, behavior } => rsx! {
+            map_to_mouse::MapToMouseBody {
+                mapping_key: mapping_key.clone(),
+                stage_id: stage_id.clone(),
+                target: *target,
+                behavior: *behavior,
                 root_actions: root_actions.clone(),
             }
         },

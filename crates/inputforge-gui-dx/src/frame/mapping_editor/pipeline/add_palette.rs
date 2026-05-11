@@ -25,7 +25,7 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Condition, Mapping};
+use inputforge_core::action::{Action, Condition, Mapping, MouseTarget, OutputBehavior};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::processing::{DeadzoneConfig, ResponseCurve};
 use inputforge_core::types::{InputAddress, KeyCombo, MergeOp, OutputAddress, OutputId, VJoyAxis};
@@ -82,6 +82,14 @@ fn default_map_to_keyboard() -> Action {
             key: "A".to_owned(),
             modifiers: vec![],
         },
+        behavior: OutputBehavior::Hold,
+    }
+}
+
+fn default_map_to_mouse() -> Action {
+    Action::MapToMouse {
+        target: MouseTarget::LeftButton,
+        behavior: OutputBehavior::Hold,
     }
 }
 
@@ -149,6 +157,10 @@ const OUTPUT_ITEMS: &[PaletteItem] = &[
     PaletteItem {
         label: "Map to keyboard",
         make: default_map_to_keyboard,
+    },
+    PaletteItem {
+        label: "Map to mouse",
+        make: default_map_to_mouse,
     },
     PaletteItem {
         label: "Merge axis",
@@ -351,6 +363,7 @@ fn action_palette_label(action: &Action) -> &'static str {
         Action::ResponseCurve { .. } => "Response curve",
         Action::MapToVJoy { .. } => "Map to vJoy",
         Action::MapToKeyboard { .. } => "Map to keyboard",
+        Action::MapToMouse { .. } => "Map to mouse",
         Action::MergeAxis { .. } => "Merge axis",
         Action::Conditional { .. } => "Conditional",
         Action::ChangeMode { .. } => "Change mode",

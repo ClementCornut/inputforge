@@ -13,7 +13,7 @@ use dioxus::prelude::*;
 use dioxus_ssr::render;
 use parking_lot::RwLock;
 
-use inputforge_core::action::{Action, Condition, Mapping};
+use inputforge_core::action::{Action, Condition, Mapping, MouseTarget, OutputBehavior};
 use inputforge_core::mode::Modes;
 use inputforge_core::processing::DeadzoneConfig;
 use inputforge_core::profile::Profile;
@@ -662,6 +662,28 @@ fn render_with(state: AppState, addr: InputAddress) -> String {
     render_with_expanded(state, addr, vec![], &["Default"])
 }
 
+fn render_add_palette() -> String {
+    let (state, addr) = build_state(vec![]);
+    render_with_expanded(state, addr, vec![], &["Default"])
+}
+
+fn render_stage_body(action: Action) -> String {
+    let (state, addr) = build_state(vec![action]);
+    render_with_expanded(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    )
+}
+
+fn key_combo(key: &str) -> KeyCombo {
+    KeyCombo {
+        key: key.to_owned(),
+        modifiers: vec![],
+    }
+}
+
 fn render_with_expanded(
     state: AppState,
     addr: InputAddress,
@@ -818,6 +840,49 @@ fn pipeline_empty_branch_renders_add_first_stage_affordance() {
     );
 }
 
+#[test]
+fn add_palette_includes_map_to_mouse() {
+    let html = render_add_palette();
+
+    assert!(html.contains("Map to mouse"));
+}
+
+#[test]
+fn map_to_keyboard_body_renders_behavior_selector() {
+    let html = render_stage_body(Action::MapToKeyboard {
+        key: key_combo("A"),
+        behavior: OutputBehavior::Hold,
+    });
+
+    assert!(html.contains("Hold"));
+    assert!(html.contains("Pulse"));
+}
+
+#[test]
+fn map_to_mouse_body_renders_targets_and_button_behavior() {
+    let html = render_stage_body(Action::MapToMouse {
+        target: MouseTarget::LeftButton,
+        behavior: OutputBehavior::Hold,
+    });
+
+    assert!(html.contains("Left click"));
+    assert!(html.contains("Right click"));
+    assert!(html.contains("Wheel up"));
+    assert!(html.contains("Hold"));
+    assert!(html.contains("Pulse"));
+}
+
+#[test]
+fn map_to_mouse_wheel_hides_behavior_selector() {
+    let html = render_stage_body(Action::MapToMouse {
+        target: MouseTarget::WheelUp,
+        behavior: OutputBehavior::Pulse,
+    });
+
+    assert!(html.contains("Wheel up"));
+    assert!(!html.contains("Hold"));
+}
+
 // ---------------------------------------------------------------------------
 // Task 21: stage_title_for / stage_summary_for unit tests
 // ---------------------------------------------------------------------------
@@ -972,6 +1037,7 @@ fn summary_map_to_keyboard_renders_combo() {
                 key: "Q".to_owned(),
                 modifiers: vec![KeyModifier::Ctrl, KeyModifier::Shift],
             },
+            behavior: OutputBehavior::Hold,
         },
         &synth_cfg(),
     );
@@ -1054,6 +1120,7 @@ fn map_to_keyboard_body_renders_modifier_toggles_and_key_field() {
             key: "Q".to_owned(),
             modifiers: vec![KeyModifier::Ctrl],
         },
+        behavior: OutputBehavior::Hold,
     }];
     let (state, addr) = build_state(actions);
     let pre_expanded = vec![StageId(vec![StageIdSegment::Index(0)])];
