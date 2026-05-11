@@ -76,6 +76,7 @@ fn collect_action_dependencies(actions: &[Action], out: &mut Vec<InputAddress>) 
             | Action::Invert
             | Action::MapToVJoy { .. }
             | Action::MapToKeyboard { .. }
+            | Action::MapToMouse { .. }
             | Action::ChangeMode { .. } => {}
         }
     }

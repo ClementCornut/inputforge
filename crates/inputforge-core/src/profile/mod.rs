@@ -529,7 +529,7 @@ fn rewrite_mode_in_action(action: &mut Action, from: &str, to: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::{Condition, ModeChangeStrategy};
+    use crate::action::{Condition, ModeChangeStrategy, OutputBehavior};
     use crate::processing::DeadzoneConfig;
     use crate::types::{
         DeviceId, KeyCombo, KeyModifier, MergeOp, OutputAddress, OutputId, VJoyAxis,
@@ -901,12 +901,14 @@ type = "invert"
                             key: "F1".to_owned(),
                             modifiers: vec![KeyModifier::Ctrl],
                         },
+                        behavior: OutputBehavior::Hold,
                     }],
                     if_false: vec![Action::MapToKeyboard {
                         key: KeyCombo {
                             key: "F1".to_owned(),
                             modifiers: vec![],
                         },
+                        behavior: OutputBehavior::Hold,
                     }],
                 }],
             }],

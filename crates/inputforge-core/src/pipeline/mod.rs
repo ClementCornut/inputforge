@@ -139,7 +139,7 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                     tracing::debug!("hat-to-vJoy mapping not yet implemented");
                 }
             },
-            Action::MapToKeyboard { key } => match &ctx.input_value {
+            Action::MapToKeyboard { key, .. } => match &ctx.input_value {
                 InputValue::Hat { .. } => {
                     tracing::debug!("hat-to-keyboard mapping not yet implemented");
                 }
@@ -150,6 +150,7 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
                     });
                 }
             },
+            Action::MapToMouse { .. } => {}
             Action::MergeAxis {
                 second_input,
                 operation,
@@ -388,7 +389,7 @@ pub fn evaluate_actions_through_path(
 mod tests {
     use super::test_helpers::{MockCache, button_input_address};
     use super::*;
-    use crate::action::Condition;
+    use crate::action::{Condition, OutputBehavior};
     use crate::processing::{DeadzoneConfig, ResponseCurve};
     use crate::types::{AxisValue, DeviceId, KeyModifier, MergeOp, OutputId, VJoyAxis};
 
@@ -866,7 +867,10 @@ mod tests {
             key: "Space".to_owned(),
             modifiers: vec![KeyModifier::Ctrl],
         };
-        let actions = [Action::MapToKeyboard { key: key.clone() }];
+        let actions = [Action::MapToKeyboard {
+            key: key.clone(),
+            behavior: OutputBehavior::Hold,
+        }];
         execute_pipeline(&actions, &mut ctx);
         assert_eq!(ctx.outputs.len(), 1);
         assert_eq!(
@@ -1213,7 +1217,10 @@ mod tests {
             key: "Space".to_owned(),
             modifiers: vec![],
         };
-        let actions = [Action::MapToKeyboard { key }];
+        let actions = [Action::MapToKeyboard {
+            key,
+            behavior: OutputBehavior::Hold,
+        }];
         execute_pipeline(&actions, &mut ctx);
         assert!(ctx.outputs.is_empty());
     }

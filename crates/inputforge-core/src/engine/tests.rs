@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use parking_lot::RwLock;
 
-use crate::action::{Action, Condition, Mapping, ModeChangeStrategy};
+use crate::action::{Action, Condition, Mapping, ModeChangeStrategy, OutputBehavior};
 use crate::callbacks::{CallbackRegistry, ReleaseCallback};
 use crate::device::mock::{MockDeviceHider, MockInputSource};
 use crate::device::traits::HotplugEvent;
@@ -437,6 +437,7 @@ fn refresh_axes_skips_mode_changes_and_keys() {
                     key: "A".to_owned(),
                     modifiers: vec![],
                 },
+                behavior: OutputBehavior::Hold,
             },
         ],
     };
