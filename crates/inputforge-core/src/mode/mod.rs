@@ -44,17 +44,41 @@ impl Modes {
         self.0.len()
     }
 
+    /// Always `false` because [`Modes`] is non-empty by construction.
+    ///
+    /// Defined so the type satisfies clippy's
+    /// [`len_without_is_empty`](https://rust-lang.github.io/rust-clippy/master/index.html#len_without_is_empty)
+    /// lint and so callers that hold the type behind a generic length
+    /// trait do not silently get the wrong answer.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        false
+    }
+
     #[must_use]
     pub fn contains(&self, name: &str) -> bool {
         self.0.iter().any(|candidate| candidate == name)
     }
 
+    /// Return a new mode list with `name` appended at the tail.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::InvalidConfig`] if `name` collides with an
+    /// existing mode under ASCII case folding.
     pub fn with_appended(&self, name: &str) -> Result<Self> {
         let mut names = self.0.clone();
         names.push(name.to_owned());
         Self::new(names)
     }
 
+    /// Return a new mode list with the mode named `from` renamed to `to`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::ModeNotFound`] if `from` is not in the list,
+    /// or [`EngineError::InvalidConfig`] if `to` collides with another
+    /// existing mode under ASCII case folding.
     pub fn with_renamed(&self, from: &str, to: &str) -> Result<Self> {
         let Some(index) = self.0.iter().position(|name| name == from) else {
             return Err(EngineError::ModeNotFound {
@@ -63,10 +87,17 @@ impl Modes {
         };
 
         let mut names = self.0.clone();
-        names[index] = to.to_owned();
+        to.clone_into(&mut names[index]);
         Self::new(names)
     }
 
+    /// Return a new mode list with the mode named `name` removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError::ModeNotFound`] if `name` is not in the list,
+    /// or [`EngineError::InvalidConfig`] if removing it would leave the
+    /// list empty.
     pub fn with_removed(&self, name: &str) -> Result<Self> {
         let Some(index) = self.0.iter().position(|candidate| candidate == name) else {
             return Err(EngineError::ModeNotFound {
