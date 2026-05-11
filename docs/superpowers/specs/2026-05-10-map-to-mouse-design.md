@@ -27,7 +27,7 @@ Add a shared `OutputBehavior` enum for keyboard and mouse output actions:
 - `Hold`
 - `Pulse`
 
-`OutputBehavior` serializes in profiles as `behavior: "hold"` or `behavior: "pulse"`. Missing `behavior` fields deserialize as `Hold`, including old `MapToKeyboard` profile data. This intentionally changes legacy keyboard mappings from the current pulse-like behavior to held-key behavior.
+`OutputBehavior` serializes in profiles as `behavior: "hold"` or `behavior: "pulse"`. Missing `behavior` fields deserialize as `Hold`, including old `MapToKeyboard` profile data. This intentionally changes legacy keyboard mappings from the current pulse-like behavior to held-key behavior. The implementation should document this behavior change in release/spec notes and cover it with regression tests, but it does not need an in-app prompt, compatibility mode, or profile version marker.
 
 Targets:
 
@@ -41,7 +41,7 @@ Targets:
 
 Keyboard targets and mouse button targets support both behaviors. `Hold` presses on inactive-to-active and releases on active-to-inactive. `Pulse` sends one press-and-release pulse on inactive-to-active and does not repeat while the source remains active.
 
-Wheel targets are always pulse outputs. On an inactive-to-active transition, InputForge emits one wheel step. It does not repeat while the source remains active. After the source returns inactive, a later active transition may emit another wheel step.
+Wheel targets are always pulse outputs. On an inactive-to-active transition, InputForge emits one wheel step. It does not repeat while the source remains active. After the source returns inactive, a later active transition may emit another wheel step. If a hand-edited profile provides `behavior: "hold"` for `WheelUp` or `WheelDown`, loading succeeds, the effective behavior is normalized to `Pulse`, and later saves should write `behavior: "pulse"`.
 
 Analog inputs use the existing button press threshold behavior used by keyboard mapping. Hat input behavior should match `MapToKeyboard` unless the implementation plan explicitly expands hat support for both action types.
 
@@ -70,7 +70,7 @@ Human-readable labels should be stable and concise:
 
 ### Pipeline
 
-The pipeline should translate the current input value into current output intent. Keyboard and mouse output should produce pipeline outputs that include destination, behavior, and `active` state. `active` uses the existing button press threshold for button and analog input. Hat input behavior should match existing `MapToKeyboard` behavior unless the implementation plan explicitly expands hat support.
+The pipeline should translate the current input value into current output intent. Keyboard and mouse output should produce pipeline outputs that include destination, behavior, `active` state, and owner identity metadata. `active` uses the existing button press threshold for button and analog input. Hat input behavior should match existing `MapToKeyboard` behavior unless the implementation plan explicitly expands hat support.
 
 The pipeline must not own previous activation state. It remains a current-value evaluator so GUI projections and recursive conditional evaluation stay side-effect free.
 
@@ -78,13 +78,15 @@ The pipeline must not own previous activation state. It remains a current-value 
 
 The engine/output handling layer owns keyboard and mouse edge detection in runtime output behavior state.
 
-State is keyed by output owner `(mode, input, action path/output identity)`. The owner key must distinguish multiple keyboard or mouse actions in the same mapping, including actions nested inside conditionals.
+State is keyed by output owner. The owner key must include active profile identity, mode identity, mapping input/address identity, action path, output destination, and behavior class. The action path must distinguish conditional branch labels and nested action indices so multiple keyboard or mouse actions in the same mapping remain independent, including actions nested inside conditionals.
+
+After each pipeline evaluation for a mapping scope, the engine reconciles previous active owners against the owners emitted by the current evaluation. Any previously active owner missing from the current output set is treated as an inactive transition. This releases held outputs when a conditional branch changes while the source remains active, even though the pipeline stays side-effect free.
 
 For `Hold` keyboard keys and mouse buttons:
 
 ```text
 owner inactive -> active: register owner; send key/button down if this is the first active owner for the destination
-owner active -> inactive: unregister owner; send key/button up if this was the last active owner for the destination
+owner active -> inactive or owner absent from current evaluation: unregister owner; send key/button up if this was the last active owner for the destination
 owner active -> active: no duplicate down event
 owner inactive -> inactive: no event
 ```
@@ -94,13 +96,15 @@ For `Pulse` keyboard keys, mouse buttons, and wheel targets:
 ```text
 owner inactive -> active: emit one press-and-release or wheel event and mark owner active
 owner active -> active: no event
-owner active -> inactive: mark owner inactive
+owner active -> inactive or owner absent from current evaluation: mark owner inactive
 owner inactive -> inactive: no event
 ```
 
-Wheel targets are always effective `Pulse`, regardless of any deserialized behavior value. The GUI should write `Pulse` for wheel targets, and the runtime should treat wheel targets as pulse-only to avoid impossible held-wheel semantics.
+Destination ref-counting is separate from owner identity. Owners decide whether an output source is active; destinations decide whether a shared key/button needs a physical down/up event. The first active `Hold` owner for a destination sends down, and only the last inactive or removed owner sends up.
 
-Cleanup should release held keyboard keys and mouse buttons on mapping edit/removal, bulk mapping replacement, profile load/unload/delete/restore, mode switch, mode deletion, pause, deactivate, shutdown, and command-channel disconnect. Cleanup is best-effort through the keyboard and mouse sinks: failures use the existing output error mechanism and should leave the affected state retryable until release is confirmed.
+Wheel targets are always effective `Pulse`, regardless of any deserialized behavior value. The GUI should write `Pulse` for wheel targets, and the runtime should treat wheel targets as pulse-only to avoid impossible held-wheel semantics. If a wheel action deserializes with `Hold`, normalize it to `Pulse` before runtime evaluation and before the next profile save.
+
+Cleanup should release held keyboard keys and mouse buttons on mapping edit/removal, bulk mapping replacement, profile load/unload/delete/restore, mode switch, mode deletion, pause, deactivate, shutdown, and command-channel disconnect. Live cleanup paths, such as mapping/profile/mode/status changes, are best-effort through the keyboard and mouse sinks; failures use the existing output error mechanism and leave the affected release state retryable until release is confirmed. Terminal cleanup paths, such as shutdown and command-channel disconnect, perform bounded best-effort release and logging before sinks are dropped; they do not promise later retries after the runtime loop is gone.
 
 ### Output backend
 
@@ -129,17 +133,17 @@ Add a stage body for `MapToMouse` with one compact target selector containing th
 
 Add a compact `Hold` / `Pulse` behavior selector to the `MapToKeyboard` editor and to the `MapToMouse` editor for button targets. Hide the selector for `WheelUp` and `WheelDown` because wheel targets are always pulse-only.
 
-New keyboard and mouse button actions should default to `Hold`. New wheel actions should default to effective `Pulse`.
+New keyboard and mouse button actions should default to `Hold`. New wheel actions should default to `Pulse`, write `Pulse`, and hide behavior selection.
 
 Target and behavior changes should dispatch normal stage edits and produce undo labels consistent with existing output action editors.
 
-The live-readout analyzer and output destination model should represent `MapToMouse` explicitly so the GUI can show mouse button and wheel targets without treating them as vJoy or keyboard output. Stage summaries and live readout should include behavior where it disambiguates output, for example `Ctrl+A - Hold` or `Left click - Pulse`.
+The live-readout analyzer and output destination model should represent `MapToMouse` explicitly so the GUI can show mouse button and wheel targets without treating them as vJoy or keyboard output. Stage summaries and live readout should always include behavior for keyboard outputs and mouse button outputs, for example `Ctrl+A - Hold` or `Left click - Pulse`. Wheel outputs should never show behavior text because they are always pulse-only.
 
 ## Error Handling
 
 `MouseTarget` is a closed enum, so invalid targets should be impossible after successful deserialization.
 
-If a profile contains an unknown target value, loading should fail through the existing profile error path. The feature does not need a custom recovery path for malformed hand-edited JSON.
+If a profile contains an unknown target value, loading should fail through the existing profile error path. The feature does not need a custom recovery path for malformed hand-edited JSON. Unknown `OutputBehavior` values should fail through the same profile error path.
 
 The Windows backend should report OS-level `SendInput` failures through the existing output error mechanism. The implementation plan should identify whether that mechanism already covers keyboard output adequately or needs a small shared helper.
 
@@ -148,8 +152,10 @@ The Windows backend should report OS-level `SendInput` failures through the exis
 Core/model tests:
 
 - `Action::MapToKeyboard` serde round-trip for `Hold` and `Pulse`.
-- `Action::MapToMouse` serde round-trip for each target.
-- Missing `behavior` deserializes as `Hold`, including old keyboard action JSON.
+- `Action::MapToMouse` button target serde round-trip for `Hold` and `Pulse`.
+- `Action::MapToMouse` wheel target serde round-trip writes `Pulse`.
+- Missing `behavior` deserializes as `Hold`, including old keyboard action JSON. This documents the intentional legacy keyboard behavior change.
+- `WheelUp` and `WheelDown` profile data with `behavior: "hold"` loads successfully, normalizes to `Pulse`, and saves back as `behavior: "pulse"`.
 - Invalid `MouseTarget` strings fail profile loading through the existing profile error path.
 - Invalid `OutputBehavior` strings fail profile loading through the existing profile error path.
 - Human-readable labels remain stable.
@@ -158,6 +164,8 @@ Pipeline/engine state tests:
 
 - Keyboard and mouse `Hold` emit down/up behavior from digital input.
 - Keyboard and mouse `Hold` do not emit duplicate down events while held.
+- Two `Hold` owners targeting the same key/button send one down event, do not release when only one owner becomes inactive, and release when the last owner becomes inactive.
+- Conditional branch changes synthesize inactive transitions for owners that disappear from the current output set.
 - Keyboard and mouse `Pulse` emit one press-and-release pulse per inactive-to-active transition.
 - Keyboard and mouse `Pulse` do not repeat while held.
 - Keyboard and mouse `Pulse` can fire again after release and re-press.
@@ -180,6 +188,8 @@ Lifecycle cleanup tests:
 - Held mouse buttons release on mode switch and mode deletion.
 - Held keyboard keys release on pause, deactivate, shutdown, and command-channel disconnect.
 - Held mouse buttons release on pause, deactivate, shutdown, and command-channel disconnect.
+- Live cleanup failures keep release state retryable until confirmed.
+- Terminal cleanup performs bounded best-effort release/logging before sinks are dropped.
 
 Output tests:
 
@@ -195,6 +205,8 @@ GUI tests:
 - Stage body renders all seven targets.
 - `MapToMouse` body renders `Hold` / `Pulse` for button targets.
 - `MapToMouse` body hides the behavior selector for wheel targets.
+- Stage summaries and live readout always show behavior for keyboard outputs and mouse button outputs.
+- Stage summaries and live readout omit behavior text for wheel outputs.
 - Changing targets dispatches the expected stage edit and undo label.
 - Changing behavior dispatches the expected stage edit and undo label.
 - Stage title, header, summary, and live readout display stable labels.
