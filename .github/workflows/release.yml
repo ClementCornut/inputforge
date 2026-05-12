@@ -40,9 +40,25 @@ jobs:
 
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2.9.1
+        with:
+          shared-key: windows-release-test
+          cache-targets: true
+          cache-all-crates: true
+          cache-bin: false
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Run workspace tests
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          RUSTC_WRAPPER: sccache
+          RUSTFLAGS: "-C debuginfo=0 -C codegen-units=16"
         run: cargo test --workspace --locked
+
+      - name: Show sccache stats
+        if: ${{ !cancelled() }}
+        run: sccache --show-stats
 
   build:
     name: Bundle ${{ matrix.platform }}
@@ -70,17 +86,58 @@ jobs:
 
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2.9.1
+        with:
+          shared-key: windows-release-build-dioxus-${{ env.DIOXUS_CLI_VERSION }}
+          cache-targets: true
+          cache-all-crates: true
+          cache-bin: true
 
-      - name: Install Dioxus CLI
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Resolve Cargo tools
+        id: cargo_tools
         shell: pwsh
         run: |
-          cargo install cargo-binstall --locked --force
+          $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE ".cargo" }
+          $cargoBin = Join-Path $cargoHome "bin"
+          $dx = Join-Path $cargoBin "dx.exe"
+          $binstall = Join-Path $cargoBin "cargo-binstall.exe"
+
+          "dx_path=$dx" >> $env:GITHUB_OUTPUT
+
+          $dxCacheHit = "false"
+          if (Test-Path -LiteralPath $dx) {
+            $dxVersionOutput = (& $dx --version 2>$null | Out-String).Trim()
+            $dxVersionExitCode = $LASTEXITCODE
+            $dxVersionMatch = [regex]::Match($dxVersionOutput, "(?<version>\d+\.\d+\.\d+(?:[-+][^\s]+)?)")
+            if (($dxVersionExitCode -eq 0) -and $dxVersionMatch.Success -and ($dxVersionMatch.Groups["version"].Value -eq $env:DIOXUS_CLI_VERSION)) {
+              $dxCacheHit = "true"
+            }
+          }
+
+          $binstallMissing = if (Test-Path -LiteralPath $binstall) { "false" } else { "true" }
+
+          "dx_cache_hit=$dxCacheHit" >> $env:GITHUB_OUTPUT
+          "binstall_missing=$binstallMissing" >> $env:GITHUB_OUTPUT
+
+      - name: Install cargo-binstall
+        if: ${{ steps.cargo_tools.outputs.dx_cache_hit != 'true' && steps.cargo_tools.outputs.binstall_missing == 'true' }}
+        uses: cargo-bins/cargo-binstall@v1.19.1
+
+      - name: Install Dioxus CLI
+        if: ${{ steps.cargo_tools.outputs.dx_cache_hit != 'true' }}
+        shell: pwsh
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          RUSTC_WRAPPER: sccache
+        run: |
+          cargo binstall --force --no-confirm --locked "dioxus-cli@${{ env.DIOXUS_CLI_VERSION }}"
           if ($LASTEXITCODE -eq 0) {
-            cargo binstall --force --no-confirm --locked "dioxus-cli@${{ env.DIOXUS_CLI_VERSION }}"
+            exit 0
           }
-          if ($LASTEXITCODE -ne 0) {
-            cargo install dioxus-cli --version "${{ env.DIOXUS_CLI_VERSION }}" --locked --force
-          }
+
+          cargo install dioxus-cli --version "${{ env.DIOXUS_CLI_VERSION }}" --locked --force
 
       - name: Verify Dioxus CLI
         shell: pwsh
@@ -92,7 +149,23 @@ jobs:
             throw "Dioxus CLI was not installed at '$dx'."
           }
 
-          & $dx --version
+          $dxVersionOutput = (& $dx --version | Out-String).Trim()
+          $dxVersionExitCode = $LASTEXITCODE
+          if ($dxVersionExitCode -ne 0) {
+            throw "Dioxus CLI version check failed with exit code $dxVersionExitCode."
+          }
+
+          $dxVersionMatch = [regex]::Match($dxVersionOutput, "(?<version>\d+\.\d+\.\d+(?:[-+][^\s]+)?)")
+          if (-not $dxVersionMatch.Success) {
+            throw "Dioxus CLI version output did not contain a SemVer token: '$dxVersionOutput'."
+          }
+
+          $dxVersion = $dxVersionMatch.Groups["version"].Value
+          if ($dxVersion -ne $env:DIOXUS_CLI_VERSION) {
+            throw "Dioxus CLI version '$dxVersion' did not match expected '$env:DIOXUS_CLI_VERSION'. Full output: $dxVersionOutput"
+          }
+
+          $dxVersionOutput
           "DX_BIN=$dx" >> $env:GITHUB_ENV
 
       - name: Verify SDL runtime source
@@ -104,8 +177,15 @@ jobs:
 
       - name: Bundle desktop app
         shell: pwsh
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          RUSTC_WRAPPER: sccache
         run: |
           & $env:DX_BIN bundle --package inputforge-app --bin inputforge --platform "${{ matrix.platform }}" --release --package-types "${{ matrix.package_type }}" --locked
+
+      - name: Show sccache stats
+        if: ${{ !cancelled() }}
+        run: sccache --show-stats
 
       - name: Locate installer
         id: installer
