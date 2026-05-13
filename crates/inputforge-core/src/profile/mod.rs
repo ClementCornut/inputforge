@@ -899,7 +899,7 @@ type = "invert"
                     if_true: vec![Action::MapToKeyboard {
                         key: KeyCombo {
                             key: PhysicalKey::F1,
-                            modifiers: vec![KeyModifier::Ctrl],
+                            modifiers: vec![KeyModifier::CONTROL_LEFT],
                         },
                         behavior: OutputBehavior::Hold,
                     }],

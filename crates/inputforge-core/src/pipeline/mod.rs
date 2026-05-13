@@ -1007,7 +1007,7 @@ mod tests {
         let mut ctx = button_ctx(&cache, true);
         let key = KeyCombo {
             key: PhysicalKey::Space,
-            modifiers: vec![KeyModifier::Ctrl],
+            modifiers: vec![KeyModifier::CONTROL_LEFT],
         };
         let actions = [Action::MapToKeyboard {
             key: key.clone(),

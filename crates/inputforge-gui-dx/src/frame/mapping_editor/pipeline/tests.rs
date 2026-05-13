@@ -1117,7 +1117,7 @@ fn summary_map_to_keyboard_renders_combo() {
         &Action::MapToKeyboard {
             key: KeyCombo {
                 key: PhysicalKey::KeyQ,
-                modifiers: vec![KeyModifier::Ctrl, KeyModifier::Shift],
+                modifiers: vec![KeyModifier::CONTROL_LEFT, KeyModifier::SHIFT_LEFT],
             },
             behavior: OutputBehavior::Hold,
         },
@@ -1135,7 +1135,7 @@ fn summary_map_to_keyboard_renders_combo() {
         &Action::MapToKeyboard {
             key: KeyCombo {
                 key: PhysicalKey::NumpadDivide,
-                modifiers: vec![KeyModifier::Alt],
+                modifiers: vec![KeyModifier::ALT_LEFT],
             },
             behavior: OutputBehavior::Pulse,
         },
@@ -1219,7 +1219,7 @@ fn map_to_keyboard_body_renders_single_capture_control() {
     let actions = vec![Action::MapToKeyboard {
         key: KeyCombo {
             key: PhysicalKey::KeyQ,
-            modifiers: vec![KeyModifier::Ctrl],
+            modifiers: vec![KeyModifier::CONTROL_LEFT],
         },
         behavior: OutputBehavior::Hold,
     }];

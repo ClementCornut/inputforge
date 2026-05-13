@@ -11,9 +11,7 @@ use dioxus::prelude::*;
 
 use inputforge_core::action::{Action, Condition, ModeChangeStrategy, OutputBehavior};
 use inputforge_core::processing::ResponseCurve;
-use inputforge_core::types::{
-    InputAddress, KeyCombo, KeyModifier, OutputAddress, OutputId, VJoyAxis,
-};
+use inputforge_core::types::{InputAddress, KeyCombo, OutputAddress, OutputId, VJoyAxis};
 
 use crate::components::sortable::{SortableHandle, SortableState};
 use crate::context::ConfigSnapshot;
@@ -356,12 +354,7 @@ fn format_key_combo(key: &KeyCombo) -> String {
     let mut parts: Vec<String> = key
         .modifiers
         .iter()
-        .map(|m| match m {
-            KeyModifier::Ctrl => "Ctrl",
-            KeyModifier::Shift => "Shift",
-            KeyModifier::Alt => "Alt",
-            KeyModifier::Win => "Win",
-        })
+        .map(|modifier| modifier.display_label())
         .map(str::to_owned)
         .collect();
     parts.push(key.key.display_label().into_owned());

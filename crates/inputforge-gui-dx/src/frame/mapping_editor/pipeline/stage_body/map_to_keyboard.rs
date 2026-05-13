@@ -259,16 +259,16 @@ pub(crate) fn MapToKeyboardBody(
 fn build_combo_from_key(key: PhysicalKey, (ctrl, alt, shift, win): ModifierState) -> KeyCombo {
     let mut modifiers = Vec::new();
     if ctrl {
-        modifiers.push(KeyModifier::Ctrl);
+        modifiers.push(KeyModifier::CONTROL_LEFT);
     }
     if alt {
-        modifiers.push(KeyModifier::Alt);
+        modifiers.push(KeyModifier::ALT_LEFT);
     }
     if shift {
-        modifiers.push(KeyModifier::Shift);
+        modifiers.push(KeyModifier::SHIFT_LEFT);
     }
     if win {
-        modifiers.push(KeyModifier::Win);
+        modifiers.push(KeyModifier::META_LEFT);
     }
     KeyCombo { key, modifiers }
 }
@@ -277,12 +277,7 @@ fn format_key_combo(combo: &KeyCombo) -> String {
     let mut parts: Vec<String> = combo
         .modifiers
         .iter()
-        .map(|modifier| match modifier {
-            KeyModifier::Ctrl => "Ctrl",
-            KeyModifier::Shift => "Shift",
-            KeyModifier::Alt => "Alt",
-            KeyModifier::Win => "Win",
-        })
+        .map(|modifier| modifier.display_label())
         .map(str::to_owned)
         .collect();
     parts.push(combo.key.display_label().into_owned());

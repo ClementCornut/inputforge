@@ -275,16 +275,10 @@ pub(super) fn hat_glyph_for(direction: HatDirection) -> char {
 ///
 /// Modifiers keep their configured order, followed by the key name.
 pub(super) fn format_key_combo(combo: &inputforge_core::types::KeyCombo) -> String {
-    use inputforge_core::types::KeyModifier;
     let mut parts: Vec<String> = combo
         .modifiers
         .iter()
-        .map(|m| match m {
-            KeyModifier::Ctrl => "Ctrl",
-            KeyModifier::Shift => "Shift",
-            KeyModifier::Alt => "Alt",
-            KeyModifier::Win => "Win",
-        })
+        .map(|modifier| modifier.display_label())
         .map(str::to_owned)
         .collect();
     parts.push(combo.key.display_label().into_owned());

@@ -638,7 +638,7 @@ mod walker_tests {
     fn keyboard_combo(key: PhysicalKey) -> KeyCombo {
         KeyCombo {
             key,
-            modifiers: vec![KeyModifier::Ctrl, KeyModifier::Shift],
+            modifiers: vec![KeyModifier::CONTROL_LEFT, KeyModifier::SHIFT_LEFT],
         }
     }
 

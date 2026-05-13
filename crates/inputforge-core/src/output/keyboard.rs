@@ -142,29 +142,8 @@ fn send_inputs(inputs: &[INPUT]) -> Result<()> {
     }
 }
 
-/// Maps a key modifier to its corresponding left-side scan code.
-///
-/// All modifiers are sent as the left-hand variant. Left Windows uses an
-/// extended scan code; Ctrl, Shift, and Alt do not.
 fn modifier_to_scan_code(modifier: KeyModifier) -> PhysicalKeyScanCode {
-    match modifier {
-        KeyModifier::Ctrl => PhysicalKeyScanCode {
-            code: 0x1d,
-            extended: false,
-        },
-        KeyModifier::Shift => PhysicalKeyScanCode {
-            code: 0x2a,
-            extended: false,
-        },
-        KeyModifier::Alt => PhysicalKeyScanCode {
-            code: 0x38,
-            extended: false,
-        },
-        KeyModifier::Win => PhysicalKeyScanCode {
-            code: 0x5b,
-            extended: true,
-        },
-    }
+    modifier.physical_key().scan_code()
 }
 
 #[cfg(test)]
@@ -183,28 +162,28 @@ mod tests {
     #[test]
     fn modifier_to_scan_code_all_variants() {
         assert_eq!(
-            modifier_to_scan_code(KeyModifier::Ctrl),
+            modifier_to_scan_code(KeyModifier::CONTROL_LEFT),
             PhysicalKeyScanCode {
                 code: 0x1d,
                 extended: false,
             }
         );
         assert_eq!(
-            modifier_to_scan_code(KeyModifier::Shift),
+            modifier_to_scan_code(KeyModifier::SHIFT_LEFT),
             PhysicalKeyScanCode {
                 code: 0x2a,
                 extended: false,
             }
         );
         assert_eq!(
-            modifier_to_scan_code(KeyModifier::Alt),
+            modifier_to_scan_code(KeyModifier::ALT_LEFT),
             PhysicalKeyScanCode {
                 code: 0x38,
                 extended: false,
             }
         );
         assert_eq!(
-            modifier_to_scan_code(KeyModifier::Win),
+            modifier_to_scan_code(KeyModifier::META_LEFT),
             PhysicalKeyScanCode {
                 code: 0x5b,
                 extended: true,
@@ -267,7 +246,7 @@ mod tests {
     fn build_key_inputs_presses_modifiers_before_key() {
         let combo = KeyCombo {
             key: PhysicalKey::NumpadEnter,
-            modifiers: vec![KeyModifier::Ctrl, KeyModifier::Shift],
+            modifiers: vec![KeyModifier::CONTROL_LEFT, KeyModifier::SHIFT_LEFT],
         };
 
         let (inputs, count) = build_key_inputs(&combo, true);
@@ -295,7 +274,7 @@ mod tests {
     fn build_key_inputs_releases_key_before_modifiers_in_reverse_order() {
         let combo = KeyCombo {
             key: PhysicalKey::NumpadDivide,
-            modifiers: vec![KeyModifier::Ctrl, KeyModifier::Alt],
+            modifiers: vec![KeyModifier::CONTROL_LEFT, KeyModifier::ALT_LEFT],
         };
 
         let (inputs, count) = build_key_inputs(&combo, false);
