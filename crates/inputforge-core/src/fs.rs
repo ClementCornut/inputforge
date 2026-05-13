@@ -47,7 +47,10 @@ mod tests {
         let dest = dir.path().join("sidecar.toml");
         std::fs::write(&dest, "stable").unwrap();
 
-        let err = atomic_write_with(&dest, b"new", |_tmp, _dest| {
+        let err = atomic_write_with(&dest, b"new", |tmp, dest| {
+            assert_eq!(std::fs::read(tmp.path()).unwrap(), b"new");
+            assert_eq!(std::fs::read_to_string(dest).unwrap(), "stable");
+
             Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 "injected persist failure",

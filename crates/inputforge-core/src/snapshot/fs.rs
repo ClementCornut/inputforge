@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 
 use crate::error::{EngineError, Result};
+
+/// Atomically write bytes using the shared core filesystem helper.
 pub(crate) use crate::fs::atomic_write;
 
 /// Compute the snapshots directory for a profile.
@@ -52,19 +54,6 @@ pub(crate) fn external_snapshots_dir_for(canonical_path: &Path) -> PathBuf {
         .join(hash)
 }
 
-/// Atomically write `bytes` to `dest`.
-///
-/// Creates the parent directory if needed, writes to a temp file in
-/// the same directory as `dest`, then renames into place. Atomic on
-/// NTFS and POSIX *only when temp and dest share a volume*; we enforce
-/// that by placing the temp file in `dest.parent()`.
-///
-/// # Errors
-///
-/// Returns [`EngineError::ProfilePathHasNoParent`] when the destination
-/// has no parent directory, [`EngineError::SnapshotDirCreate`] when the
-/// parent directory cannot be created, or [`EngineError::Io`] for
-/// read/write failures.
 #[cfg(test)]
 mod tests {
     use super::*;
