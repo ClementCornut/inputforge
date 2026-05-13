@@ -4,10 +4,10 @@
 //!
 //! # Controls
 //!
-//! A single stable button captures the physical base key and any held
-//! modifiers from the next keyboard event. Modifier-only events remain in
-//! capture mode with an inline hint; unsupported DOM codes are ignored with
-//! an inline hint.
+//! A single stable button arms the root keyboard-capture context, which captures
+//! the physical base key and any held modifiers from the next keyboard event.
+//! Modifier-only events remain in capture mode with an inline hint; unsupported
+//! DOM codes are ignored with an inline hint.
 //!
 //! # Prop naming note
 //!
@@ -32,11 +32,9 @@ use crate::components::{SegmentedControl, SegmentedControlOption};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::keyboard_capture::{
-    CaptureKeyEvent, CaptureKeyEventKind, CaptureOutcome, KeyboardCapture,
-};
 use crate::frame::mapping_editor::pipeline::replace_at_path;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
+use crate::patterns::keyboard_capture::use_keyboard_capture;
 
 /// `MapToKeyboard` body: key-combo capture and behavior selector.
 ///
@@ -63,12 +61,6 @@ pub(crate) fn MapToKeyboardBody(
     let mut editor = use_context::<EditorState>();
 
     let mut local_combo: Signal<KeyCombo> = use_signal(|| combo.clone());
-    let mut capture_active: Signal<bool> = use_signal(|| false);
-    let mut capture_hint: Signal<Option<String>> = use_signal(|| None);
-    let mut capture_state: Signal<KeyboardCapture> = use_signal(KeyboardCapture::default);
-    if !*capture_active.peek() && *local_combo.peek() != combo {
-        local_combo.set(combo.clone());
-    }
 
     editor.malformed_hints.write().remove(&stage_id);
 
@@ -84,12 +76,6 @@ pub(crate) fn MapToKeyboardBody(
     };
     drop(cfg);
 
-    let on_capture_start = move |_| {
-        capture_state.set(KeyboardCapture::default());
-        capture_active.set(true);
-        capture_hint.set(None);
-    };
-
     let mapping_key_capture = mapping_key.clone();
     let stage_id_capture = stage_id.clone();
     let root_actions_capture = root_actions.clone();
@@ -97,22 +83,11 @@ pub(crate) fn MapToKeyboardBody(
     let current_name_capture = current_name.clone();
     let cmd_tx_capture = ctx.commands.clone();
     let mut undo_log_capture = editor.undo_log;
-    let on_capture_keydown = move |evt: KeyboardEvent| {
-        if !*capture_active.peek() {
-            return;
-        }
-        evt.prevent_default();
-        evt.stop_propagation();
-
-        let outcome = capture_state
-            .write()
-            .handle_event(capture_key_event(&evt, CaptureKeyEventKind::KeyDown));
-        apply_capture_outcome(
-            outcome,
+    let on_capture_commit = use_callback(move |new_combo: KeyCombo| {
+        commit_capture_combo(
+            new_combo,
             behavior,
             local_combo,
-            capture_active,
-            capture_hint,
             &mapping_key_capture,
             &stage_id_capture,
             &root_actions_capture,
@@ -121,45 +96,20 @@ pub(crate) fn MapToKeyboardBody(
             &cmd_tx_capture,
             &mut undo_log_capture,
         );
-    };
+    });
 
-    let mapping_key_keyup = mapping_key.clone();
-    let stage_id_keyup = stage_id.clone();
-    let root_actions_keyup = root_actions.clone();
-    let before_keyup = before_mapping.clone();
-    let current_name_keyup = current_name.clone();
-    let cmd_tx_keyup = ctx.commands.clone();
-    let mut undo_log_keyup = editor.undo_log;
-    let on_capture_keyup = move |evt: KeyboardEvent| {
-        if !*capture_active.peek() {
-            return;
-        }
-        evt.prevent_default();
-        evt.stop_propagation();
-
-        let outcome = capture_state
-            .write()
-            .handle_event(capture_key_event(&evt, CaptureKeyEventKind::KeyUp));
-        apply_capture_outcome(
-            outcome,
-            behavior,
-            local_combo,
-            capture_active,
-            capture_hint,
-            &mapping_key_keyup,
-            &stage_id_keyup,
-            &root_actions_keyup,
-            &before_keyup,
-            current_name_keyup.clone(),
-            &cmd_tx_keyup,
-            &mut undo_log_keyup,
-        );
+    let keyboard_capture = use_keyboard_capture(on_capture_commit);
+    if !*keyboard_capture.active.read() && *local_combo.peek() != combo {
+        local_combo.set(combo.clone());
+    }
+    let on_capture_start = move |_| {
+        keyboard_capture.start.call(());
     };
 
     let current_combo = local_combo.read().clone();
     let key_label = format_key_combo(&current_combo);
-    let capture_message = capture_hint.read().clone();
-    let is_listening = *capture_active.read();
+    let capture_message = (*keyboard_capture.hint.read()).map(str::to_owned);
+    let is_listening = *keyboard_capture.active.read();
     let capture_class = if is_listening {
         "if-key-capture__surface is-listening"
     } else {
@@ -239,8 +189,6 @@ pub(crate) fn MapToKeyboardBody(
                         "aria-label": "{capture_aria_label}",
                         "data-key-capture": if is_listening { "active" } else { "idle" },
                         onclick: on_capture_start,
-                        onkeydown: on_capture_keydown,
-                        onkeyup: on_capture_keyup,
                         span { class: "if-key-capture__value", "{capture_text}" }
                     }
                     if let Some(message) = capture_message {
@@ -284,29 +232,14 @@ fn format_key_combo(combo: &KeyCombo) -> String {
     parts.join(" + ")
 }
 
-fn capture_key_event(evt: &KeyboardEvent, kind: CaptureKeyEventKind) -> CaptureKeyEvent {
-    let modifiers = evt.modifiers();
-    CaptureKeyEvent {
-        kind,
-        code: evt.code(),
-        ctrl: modifiers.ctrl(),
-        alt: modifiers.alt(),
-        shift: modifiers.shift(),
-        meta: modifiers.meta(),
-        key_is_escape: evt.key() == Key::Escape || matches!(evt.code(), Code::Escape),
-    }
-}
-
 #[allow(
     clippy::too_many_arguments,
-    reason = "Capture outcome handling needs the same dispatch context as the field handlers."
+    reason = "Capture commit handling needs the same dispatch context as the field handlers."
 )]
-fn apply_capture_outcome(
-    outcome: CaptureOutcome,
+fn commit_capture_combo(
+    new_combo: KeyCombo,
     behavior: OutputBehavior,
     mut local_combo: Signal<KeyCombo>,
-    mut capture_active: Signal<bool>,
-    mut capture_hint: Signal<Option<String>>,
     mapping_key: &MappingKey,
     stage_id: &StageId,
     root_actions: &[Action],
@@ -315,37 +248,24 @@ fn apply_capture_outcome(
     cmd_tx: &std::sync::mpsc::Sender<EngineCommand>,
     undo_log: &mut Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
 ) {
-    match outcome {
-        CaptureOutcome::Continue { hint } => {
-            capture_hint.set(hint.map(str::to_owned));
-        }
-        CaptureOutcome::Cancel { hint } => {
-            capture_active.set(false);
-            capture_hint.set(hint.map(str::to_owned));
-        }
-        CaptureOutcome::Commit(new_combo) => {
-            let old_combo = local_combo.peek().clone();
-            local_combo.set(new_combo.clone());
-            capture_active.set(false);
-            capture_hint.set(None);
+    let old_combo = local_combo.peek().clone();
+    local_combo.set(new_combo.clone());
 
-            if new_combo == old_combo {
-                return;
-            }
-            dispatch_keyboard(
-                new_combo,
-                behavior,
-                "key",
-                mapping_key,
-                stage_id,
-                root_actions,
-                before,
-                current_name,
-                cmd_tx,
-                undo_log,
-            );
-        }
+    if new_combo == old_combo {
+        return;
     }
+    dispatch_keyboard(
+        new_combo,
+        behavior,
+        "key",
+        mapping_key,
+        stage_id,
+        root_actions,
+        before,
+        current_name,
+        cmd_tx,
+        undo_log,
+    );
 }
 
 fn is_output_behavior_click_noop(

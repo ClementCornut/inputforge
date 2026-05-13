@@ -257,13 +257,13 @@ impl PhysicalKey {
             Semicolon, ShiftLeft, ShiftRight, Slash, Space, Tab,
         };
         match self {
-            ControlLeft => "Left Ctrl",
+            ControlLeft => "Ctrl",
             ControlRight => "Right Ctrl",
-            ShiftLeft => "Left Shift",
+            ShiftLeft => "Shift",
             ShiftRight => "Right Shift",
-            AltLeft => "Left Alt",
+            AltLeft => "Alt",
             AltRight => "Right Alt",
-            MetaLeft => "Left Win",
+            MetaLeft => "Win",
             MetaRight => "Right Win",
             KeyA => "A",
             KeyB => "B",
@@ -641,13 +641,13 @@ mod tests {
     #[test]
     fn physical_modifier_labels_are_side_specific() {
         let cases = [
-            (KeyModifier::CONTROL_LEFT, "Left Ctrl"),
+            (KeyModifier::CONTROL_LEFT, "Ctrl"),
             (KeyModifier::CONTROL_RIGHT, "Right Ctrl"),
-            (KeyModifier::SHIFT_LEFT, "Left Shift"),
+            (KeyModifier::SHIFT_LEFT, "Shift"),
             (KeyModifier::SHIFT_RIGHT, "Right Shift"),
-            (KeyModifier::ALT_LEFT, "Left Alt"),
+            (KeyModifier::ALT_LEFT, "Alt"),
             (KeyModifier::ALT_RIGHT, "Right Alt"),
-            (KeyModifier::META_LEFT, "Left Win"),
+            (KeyModifier::META_LEFT, "Win"),
             (KeyModifier::META_RIGHT, "Right Win"),
         ];
 

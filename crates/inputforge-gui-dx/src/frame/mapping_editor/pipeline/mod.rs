@@ -18,7 +18,6 @@
 
 mod add_palette;
 pub(crate) mod dnd;
-mod keyboard_capture;
 mod stage;
 mod stage_actions_menu;
 pub(crate) mod stage_body;

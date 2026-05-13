@@ -29,6 +29,7 @@ use crate::context::{
 };
 use crate::frame::mapping_editor::{MappingEditor, use_editor_state_provider};
 use crate::frame::view_state::use_view_state_provider;
+use crate::patterns::keyboard_capture::use_keyboard_capture_provider;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::toast::{ToastQueue, ToastState};
 
@@ -640,6 +641,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
         .replace(("Default".to_owned(), addr));
     use_context_provider(|| view);
     use_live_capture_provider();
+    use_keyboard_capture_provider();
     let editor = use_editor_state_provider();
     for stage_id in pre_expanded_stages {
         editor.expanded_stages.clone().write().insert(stage_id);
@@ -693,6 +695,7 @@ fn KeyboardPropSyncHarness() -> Element {
         live: use_signal(LiveSnapshot::default),
     };
     use_context_provider(|| ctx);
+    use_keyboard_capture_provider();
     use_editor_state_provider();
 
     let mut use_next_combo = use_signal(|| false);
@@ -1123,8 +1126,12 @@ fn summary_map_to_keyboard_renders_combo() {
         },
         &synth_cfg(),
     );
-    assert!(s.contains("Left Ctrl"), "missing Left Ctrl in: {s}");
-    assert!(s.contains("Left Shift"), "missing Left Shift in: {s}");
+    assert!(s.contains("Ctrl"), "missing Ctrl in: {s}");
+    assert!(s.contains("Shift"), "missing Shift in: {s}");
+    assert!(
+        !s.contains("Left Ctrl") && !s.contains("Left Shift"),
+        "left modifier labels should be compact in: {s}"
+    );
     let key_q_label = PhysicalKey::KeyQ.display_label();
     assert!(
         s.contains(key_q_label.as_ref()),
@@ -1142,8 +1149,12 @@ fn summary_map_to_keyboard_renders_combo() {
         &synth_cfg(),
     );
     assert!(
-        numpad.contains("Left Alt + Num /"),
+        numpad.contains("Alt + Num /"),
         "missing numpad physical label in: {numpad}"
+    );
+    assert!(
+        !numpad.contains("Left Alt"),
+        "left alt label should be compact in: {numpad}"
     );
 }
 
@@ -1261,7 +1272,7 @@ fn map_to_keyboard_body_renders_single_capture_control() {
     let pre_expanded = vec![StageId(vec![StageIdSegment::Index(0)])];
     let html = render_with_expanded(state, addr, pre_expanded, &["Default"]);
     let key_q_label = PhysicalKey::KeyQ.display_label();
-    let expected_combo = format!("Left Ctrl + {key_q_label}");
+    let expected_combo = format!("Ctrl + {key_q_label}");
 
     assert!(
         !html.contains("Modifiers")
@@ -1274,6 +1285,10 @@ fn map_to_keyboard_body_renders_single_capture_control() {
             && html.contains(r#"aria-label="Capture keyboard shortcut""#)
             && html.contains(&expected_combo),
         "expected physical key capture surface in body: {html}"
+    );
+    assert!(
+        !html.contains("Left Ctrl"),
+        "left ctrl label should be compact in body: {html}"
     );
     assert!(
         !html.contains(r#"type="text""#),
