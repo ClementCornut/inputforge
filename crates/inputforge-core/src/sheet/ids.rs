@@ -6,21 +6,28 @@ use serde::{Deserialize, Serialize};
 use ulid::Ulid;
 
 macro_rules! stable_id_type {
-    ($name:ident) => {
+    ($name:ident, $summary:literal) => {
+        #[doc = $summary]
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
         pub struct $name(String);
 
         impl $name {
+            /// Generates a new ULID-backed ID.
             #[must_use]
             pub fn new() -> Self {
                 Self(Ulid::new().to_string())
             }
 
+            /// Imports an existing persisted ID string.
+            ///
+            /// This intentionally does not validate ULID shape because fixtures and migrations may
+            /// preserve older or future stable IDs.
             #[must_use]
             pub fn from_string(value: impl Into<String>) -> Self {
                 Self(value.into())
             }
 
+            /// Returns the persisted string representation.
             #[must_use]
             pub fn as_str(&self) -> &str {
                 &self.0
@@ -41,15 +48,21 @@ macro_rules! stable_id_type {
     };
 }
 
-stable_id_type!(TemplateId);
-stable_id_type!(AssetId);
-stable_id_type!(SheetId);
-stable_id_type!(TemplateInstanceId);
-stable_id_type!(AnchorId);
-stable_id_type!(BlockId);
-stable_id_type!(LineId);
-stable_id_type!(MappingMetadataId);
-stable_id_type!(RecoverySnapshotId);
+stable_id_type!(TemplateId, "Identifies a mapping sheet template.");
+stable_id_type!(AssetId, "Identifies an imported mapping sheet asset.");
+stable_id_type!(SheetId, "Identifies a mapping sheet.");
+stable_id_type!(
+    TemplateInstanceId,
+    "Identifies a template instance on a mapping sheet."
+);
+stable_id_type!(AnchorId, "Identifies an anchor in a mapping sheet.");
+stable_id_type!(BlockId, "Identifies a block in a mapping sheet.");
+stable_id_type!(LineId, "Identifies a line in a mapping sheet.");
+stable_id_type!(MappingMetadataId, "Identifies mapping sheet metadata.");
+stable_id_type!(
+    RecoverySnapshotId,
+    "Identifies a mapping sheet recovery snapshot."
+);
 
 #[cfg(test)]
 mod tests {
@@ -79,6 +92,6 @@ mod tests {
         let roundtripped: Wrapper = toml::from_str(&toml).unwrap();
 
         assert_eq!(roundtripped, wrapper);
-        assert!(toml.contains("template-stick-left"));
+        assert_eq!(toml, "id = \"template-stick-left\"\n");
     }
 }
