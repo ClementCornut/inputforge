@@ -20,6 +20,214 @@ use crate::error::{EngineError, Result};
 use crate::mode::Modes;
 use crate::types::{InputAddress, InputId};
 
+#[derive(Debug)]
+struct MigratedProfileToml {
+    value: toml::Value,
+    changed: bool,
+}
+
+fn migrate_profile_toml(input: &str) -> Result<MigratedProfileToml> {
+    let mut value: toml::Value = toml::from_str(input)?;
+    let changed = migrate_profile_value(&mut value)?;
+    Ok(MigratedProfileToml { value, changed })
+}
+
+fn migrate_profile_value(value: &mut toml::Value) -> Result<bool> {
+    let Some(mappings) = value
+        .get_mut("mappings")
+        .and_then(toml::Value::as_array_mut)
+    else {
+        return Ok(false);
+    };
+
+    let mut changed = false;
+    for mapping in mappings {
+        if let Some(actions) = mapping.get_mut("actions") {
+            changed |= migrate_actions(actions)?;
+        }
+    }
+    Ok(changed)
+}
+
+fn migrate_actions(actions: &mut toml::Value) -> Result<bool> {
+    let Some(actions) = actions.as_array_mut() else {
+        return Ok(false);
+    };
+
+    let mut changed = false;
+    for action in actions {
+        changed |= migrate_action(action)?;
+    }
+    Ok(changed)
+}
+
+fn migrate_action(action: &mut toml::Value) -> Result<bool> {
+    let Some(action) = action.as_table_mut() else {
+        return Ok(false);
+    };
+
+    let mut changed = false;
+    if action.get("type").and_then(toml::Value::as_str) == Some("map_to_keyboard") {
+        if let Some(key) = action.get_mut("key") {
+            changed |= migrate_keyboard_combo(key)?;
+        }
+    }
+
+    if action.get("type").and_then(toml::Value::as_str) == Some("conditional") {
+        if let Some(if_true) = action.get_mut("if_true") {
+            changed |= migrate_actions(if_true)?;
+        }
+        if let Some(if_false) = action.get_mut("if_false") {
+            changed |= migrate_actions(if_false)?;
+        }
+    }
+
+    Ok(changed)
+}
+
+fn migrate_keyboard_combo(combo: &mut toml::Value) -> Result<bool> {
+    let Some(combo) = combo.as_table_mut() else {
+        return Ok(false);
+    };
+
+    let mut changed = false;
+    if let Some(key) = combo.get_mut("key") {
+        changed |= migrate_keyboard_key(key)?;
+    }
+    if let Some(modifiers) = combo
+        .get_mut("modifiers")
+        .and_then(toml::Value::as_array_mut)
+    {
+        for modifier in modifiers {
+            changed |= migrate_keyboard_modifier(modifier);
+        }
+    }
+
+    Ok(changed)
+}
+
+fn migrate_keyboard_key(key: &mut toml::Value) -> Result<bool> {
+    let Some(name) = key.as_str() else {
+        return Ok(false);
+    };
+    let Some(migrated) = legacy_keyboard_key_name(name)? else {
+        return Ok(false);
+    };
+
+    *key = toml::Value::String(migrated.to_owned());
+    Ok(true)
+}
+
+fn migrate_keyboard_modifier(modifier: &mut toml::Value) -> bool {
+    let migrated = match modifier.as_str() {
+        Some("Ctrl") => "ControlLeft",
+        Some("Shift") => "ShiftLeft",
+        Some("Alt") => "AltLeft",
+        Some("Win") => "MetaLeft",
+        _ => return false,
+    };
+
+    *modifier = toml::Value::String(migrated.to_owned());
+    true
+}
+
+fn legacy_keyboard_key_name(name: &str) -> Result<Option<&'static str>> {
+    if name.len() == 1 {
+        let byte = name.as_bytes()[0];
+        if byte.is_ascii_alphabetic() {
+            return Ok(Some(match byte.to_ascii_uppercase() {
+                b'A' => "KeyA",
+                b'B' => "KeyB",
+                b'C' => "KeyC",
+                b'D' => "KeyD",
+                b'E' => "KeyE",
+                b'F' => "KeyF",
+                b'G' => "KeyG",
+                b'H' => "KeyH",
+                b'I' => "KeyI",
+                b'J' => "KeyJ",
+                b'K' => "KeyK",
+                b'L' => "KeyL",
+                b'M' => "KeyM",
+                b'N' => "KeyN",
+                b'O' => "KeyO",
+                b'P' => "KeyP",
+                b'Q' => "KeyQ",
+                b'R' => "KeyR",
+                b'S' => "KeyS",
+                b'T' => "KeyT",
+                b'U' => "KeyU",
+                b'V' => "KeyV",
+                b'W' => "KeyW",
+                b'X' => "KeyX",
+                b'Y' => "KeyY",
+                b'Z' => "KeyZ",
+                _ => unreachable!("checked is_ascii_alphabetic"),
+            }));
+        }
+        if byte.is_ascii_digit() {
+            return Ok(Some(match byte {
+                b'0' => "Digit0",
+                b'1' => "Digit1",
+                b'2' => "Digit2",
+                b'3' => "Digit3",
+                b'4' => "Digit4",
+                b'5' => "Digit5",
+                b'6' => "Digit6",
+                b'7' => "Digit7",
+                b'8' => "Digit8",
+                b'9' => "Digit9",
+                _ => unreachable!("checked is_ascii_digit"),
+            }));
+        }
+    }
+
+    if let Some(function_number) = name
+        .strip_prefix('F')
+        .and_then(|suffix| suffix.parse::<u8>().ok())
+    {
+        if (13..=24).contains(&function_number) {
+            return Err(EngineError::InvalidConfig {
+                reason: format!("unsupported legacy keyboard key: {name}"),
+            });
+        }
+        return Ok(match function_number {
+            1 => Some("F1"),
+            2 => Some("F2"),
+            3 => Some("F3"),
+            4 => Some("F4"),
+            5 => Some("F5"),
+            6 => Some("F6"),
+            7 => Some("F7"),
+            8 => Some("F8"),
+            9 => Some("F9"),
+            10 => Some("F10"),
+            11 => Some("F11"),
+            12 => Some("F12"),
+            _ => None,
+        });
+    }
+
+    Ok(match name {
+        "Space" => Some("Space"),
+        "Enter" | "Return" => Some("Enter"),
+        "Tab" => Some("Tab"),
+        "Escape" | "Esc" => Some("Escape"),
+        "Backspace" => Some("Backspace"),
+        "Delete" | "Del" => Some("Delete"),
+        "Insert" => Some("Insert"),
+        "Up" => Some("ArrowUp"),
+        "Down" => Some("ArrowDown"),
+        "Left" => Some("ArrowLeft"),
+        "Right" => Some("ArrowRight"),
+        "Home" => Some("Home"),
+        "End" => Some("End"),
+        "PageUp" | "PgUp" => Some("PageUp"),
+        "PageDown" | "PgDn" => Some("PageDown"),
+        _ => None,
+    })
+}
+
 /// Discriminator for `reorder_mapping_in_group` that mirrors the GUI's
 /// visual bucketing of inputs (Axes / Buttons / Hats). Engine-side
 /// reorder operates within one of these buckets at a time.
@@ -123,7 +331,8 @@ impl Profile {
     /// [`EngineError::InvalidConfig`] if validation fails (e.g., startup
     /// mode not in modes, mapping references unknown mode).
     pub fn from_toml(s: &str) -> Result<Self> {
-        let raw: ProfileRaw = toml::from_str(s)?;
+        let migrated = migrate_profile_toml(s)?;
+        let raw: ProfileRaw = migrated.value.try_into()?;
         Self::from_raw(raw)
     }
 
@@ -151,7 +360,13 @@ impl Profile {
             });
         }
         let contents = std::fs::read_to_string(path)?;
-        Self::from_toml(&contents)
+        let migrated = migrate_profile_toml(&contents)?;
+        let raw: ProfileRaw = migrated.value.try_into()?;
+        let profile = Self::from_raw(raw)?;
+        if migrated.changed {
+            profile.save(path)?;
+        }
+        Ok(profile)
     }
 
     /// Save the profile to a TOML file.
@@ -642,6 +857,127 @@ startup_mode = "Default"
 
         let reparsed = Profile::from_toml(&saved).unwrap();
         assert_eq!(reparsed, profile);
+    }
+
+    fn legacy_keyboard_profile_toml(key: &str, modifiers: &str) -> String {
+        format!(
+            r#"
+modes = ["Default"]
+
+[profile]
+id = "01J00000000000000000000000"
+name = "Legacy Keyboard"
+startup_mode = "Default"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "dev-1"
+
+[mappings.input.input]
+type = "button"
+index = 0
+
+[[mappings.actions]]
+type = "map_to_keyboard"
+behavior = "hold"
+
+[mappings.actions.key]
+key = "{key}"
+modifiers = [{modifiers}]
+"#
+        )
+    }
+
+    fn assert_keyboard_action(
+        action: &Action,
+        expected_key: PhysicalKey,
+        expected_modifiers: &[KeyModifier],
+    ) {
+        let Action::MapToKeyboard { key, behavior } = action else {
+            panic!("expected map_to_keyboard action, got {action:?}");
+        };
+
+        assert_eq!(key.key, expected_key);
+        assert_eq!(key.modifiers, expected_modifiers);
+        assert_eq!(*behavior, OutputBehavior::Hold);
+    }
+
+    #[test]
+    fn profile_from_toml_migrates_legacy_keyboard() {
+        let toml = legacy_keyboard_profile_toml("F1", r#""Ctrl", "Shift", "Alt", "Win""#);
+
+        let profile = Profile::from_toml(&toml).unwrap();
+        let action = &profile.mappings()[0].actions[0];
+
+        assert_keyboard_action(
+            action,
+            PhysicalKey::F1,
+            &[
+                KeyModifier::CONTROL_LEFT,
+                KeyModifier::SHIFT_LEFT,
+                KeyModifier::ALT_LEFT,
+                KeyModifier::META_LEFT,
+            ],
+        );
+    }
+
+    #[test]
+    fn profile_from_toml_migrates_legacy_keyboard_aliases() {
+        for (legacy, expected) in [
+            ("Return", PhysicalKey::Enter),
+            ("Esc", PhysicalKey::Escape),
+            ("Del", PhysicalKey::Delete),
+            ("PgUp", PhysicalKey::PageUp),
+            ("PgDn", PhysicalKey::PageDown),
+        ] {
+            let toml = legacy_keyboard_profile_toml(legacy, "");
+            let profile = Profile::from_toml(&toml).unwrap();
+
+            assert_keyboard_action(&profile.mappings()[0].actions[0], expected, &[]);
+        }
+    }
+
+    #[test]
+    fn profile_from_toml_rejects_legacy_f13_to_f24() {
+        for key in ["F13", "F18", "F24"] {
+            let toml = legacy_keyboard_profile_toml(key, "");
+            let err = Profile::from_toml(&toml).unwrap_err();
+
+            assert!(
+                err.to_string()
+                    .contains(&format!("unsupported legacy keyboard key: {key}")),
+                "unexpected error for {key}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn profile_load_saves_migrated_keyboard_mapping() {
+        let dir = std::env::temp_dir().join(format!(
+            "inputforge_legacy_keyboard_migration_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("legacy_profile.toml");
+        let toml = legacy_keyboard_profile_toml("A", r#""Ctrl""#);
+        std::fs::write(&path, toml).unwrap();
+
+        let profile = Profile::load(&path).unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+
+        assert_keyboard_action(
+            &profile.mappings()[0].actions[0],
+            PhysicalKey::KeyA,
+            &[KeyModifier::CONTROL_LEFT],
+        );
+        assert!(saved.contains("KeyA"));
+        assert!(saved.contains("ControlLeft"));
+        assert!(!saved.contains("\"Ctrl\""));
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
     }
 
     #[test]
