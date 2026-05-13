@@ -1123,8 +1123,8 @@ fn summary_map_to_keyboard_renders_combo() {
         },
         &synth_cfg(),
     );
-    assert!(s.contains("Ctrl"), "missing Ctrl in: {s}");
-    assert!(s.contains("Shift"), "missing Shift in: {s}");
+    assert!(s.contains("Left Ctrl"), "missing Left Ctrl in: {s}");
+    assert!(s.contains("Left Shift"), "missing Left Shift in: {s}");
     let key_q_label = PhysicalKey::KeyQ.display_label();
     assert!(
         s.contains(key_q_label.as_ref()),
@@ -1142,9 +1142,43 @@ fn summary_map_to_keyboard_renders_combo() {
         &synth_cfg(),
     );
     assert!(
-        numpad.contains("Alt + Num /"),
+        numpad.contains("Left Alt + Num /"),
         "missing numpad physical label in: {numpad}"
     );
+}
+
+#[test]
+fn summary_map_to_keyboard_renders_right_alt_label() {
+    let s = stage_summary_for(
+        &Action::MapToKeyboard {
+            key: KeyCombo {
+                key: PhysicalKey::KeyA,
+                modifiers: vec![KeyModifier::ALT_RIGHT],
+            },
+            behavior: OutputBehavior::Hold,
+        },
+        &synth_cfg(),
+    );
+    let key_a_label = PhysicalKey::KeyA.display_label();
+    let expected = format!("Right Alt + {key_a_label}");
+
+    assert!(s.contains(&expected), "missing {expected} in: {s}");
+}
+
+#[test]
+fn summary_map_to_keyboard_renders_right_win_standalone_label() {
+    let s = stage_summary_for(
+        &Action::MapToKeyboard {
+            key: KeyCombo {
+                key: PhysicalKey::MetaRight,
+                modifiers: Vec::new(),
+            },
+            behavior: OutputBehavior::Hold,
+        },
+        &synth_cfg(),
+    );
+
+    assert!(s.contains("Right Win"), "missing Right Win in: {s}");
 }
 
 #[test]
@@ -1227,7 +1261,7 @@ fn map_to_keyboard_body_renders_single_capture_control() {
     let pre_expanded = vec![StageId(vec![StageIdSegment::Index(0)])];
     let html = render_with_expanded(state, addr, pre_expanded, &["Default"]);
     let key_q_label = PhysicalKey::KeyQ.display_label();
-    let expected_combo = format!("Ctrl + {key_q_label}");
+    let expected_combo = format!("Left Ctrl + {key_q_label}");
 
     assert!(
         !html.contains("Modifiers")
