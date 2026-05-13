@@ -13,6 +13,7 @@ pub mod pipeline;
 pub mod processing;
 pub mod profile;
 pub mod settings;
+pub mod sheet;
 pub mod snapshot;
 pub mod state;
 pub mod types;
