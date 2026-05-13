@@ -39,8 +39,8 @@ impl OutputAction {
     )]
     pub(crate) fn into_event(self) -> OutputEvent {
         match self {
-            Self::Release { event, .. } => event,
-            Self::HoldStart {
+            Self::Release { event, .. }
+            | Self::HoldStart {
                 event: Some(event), ..
             } => event,
             Self::HoldStart { event: None, .. } => {
@@ -99,7 +99,7 @@ impl OutputRuntimeState {
         match behavior {
             OutputBehavior::Hold => self.reconcile_hold(
                 owner,
-                destination,
+                &destination,
                 active,
                 OutputEvent::KeyDown(key.clone()),
                 OutputEvent::KeyUp(key),
@@ -128,7 +128,7 @@ impl OutputRuntimeState {
         match behavior {
             OutputBehavior::Hold => self.reconcile_hold(
                 owner,
-                destination,
+                &destination,
                 active,
                 OutputEvent::MouseDown(target),
                 OutputEvent::MouseUp(target),
@@ -209,7 +209,7 @@ impl OutputRuntimeState {
     fn reconcile_hold(
         &mut self,
         owner: OutputOwner,
-        destination: OutputDestination,
+        destination: &OutputDestination,
         active: bool,
         down: OutputEvent,
         up: OutputEvent,
@@ -219,7 +219,7 @@ impl OutputRuntimeState {
                 return Vec::new();
             }
 
-            let event = if self.hold_counts.contains_key(&destination) {
+            let event = if self.hold_counts.contains_key(destination) {
                 None
             } else {
                 Some(down)
@@ -251,7 +251,7 @@ impl OutputRuntimeState {
             }
         } else {
             if self.partial_pulse_owners.contains(&owner) {
-                self.release_event_for_owner(&owner)
+                Self::release_event_for_owner(&owner)
                     .map(|event| OutputAction::Release { owner, event })
                     .into_iter()
                     .collect()
@@ -263,7 +263,7 @@ impl OutputRuntimeState {
     }
 
     fn stage_release_owner(&mut self, owner: OutputOwner) -> Option<OutputAction> {
-        let event = self.release_event_for_owner(&owner)?;
+        let event = Self::release_event_for_owner(&owner)?;
         self.stage_release_owner_with_event(owner, event)
     }
 
@@ -298,7 +298,7 @@ impl OutputRuntimeState {
         }
     }
 
-    fn release_event_for_owner(&self, owner: &OutputOwner) -> Option<OutputEvent> {
+    fn release_event_for_owner(owner: &OutputOwner) -> Option<OutputEvent> {
         match &owner.destination {
             OutputDestination::Keyboard(key) => Some(OutputEvent::KeyUp(key.clone())),
             OutputDestination::Mouse(target) if !target.is_wheel() => {

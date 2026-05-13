@@ -907,7 +907,7 @@ fn map_to_keyboard_body_renders_behavior_selector() {
         .expect("Hold behavior option must render");
     let hold_slice = &html[hold_idx..hold_idx + 220];
     assert!(
-        hold_slice.contains(r#"if-stage__body-strategy-pill"#),
+        hold_slice.contains(r"if-stage__body-strategy-pill"),
         "Hold behavior must reuse strategy pill styling: {hold_slice}"
     );
     assert!(
@@ -925,7 +925,7 @@ fn map_to_mouse_body_renders_targets_and_button_behavior() {
     });
 
     assert!(
-        html.contains(r#"<select"#),
+        html.contains(r"<select"),
         "mouse target must render as a Select: {html}"
     );
     assert!(html.contains(r#"value="left_button" selected=true>Left click</option>"#));
@@ -940,7 +940,7 @@ fn map_to_mouse_body_renders_targets_and_button_behavior() {
         .expect("Hold behavior option must render");
     let hold_slice = &html[hold_idx..hold_idx + 220];
     assert!(
-        hold_slice.contains(r#"if-stage__body-strategy-pill"#),
+        hold_slice.contains(r"if-stage__body-strategy-pill"),
         "Hold behavior must reuse strategy pill styling: {hold_slice}"
     );
     assert!(

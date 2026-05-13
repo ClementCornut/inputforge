@@ -424,6 +424,10 @@ fn emit_predicate(
     });
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Recursive analyzer keeps branch traversal state together for readability."
+)]
 fn walk(
     context: &AnalysisContext<'_>,
     actions: &[Action],

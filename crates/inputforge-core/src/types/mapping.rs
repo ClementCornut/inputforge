@@ -125,6 +125,10 @@ pub struct PhysicalKeyScanCode {
 impl PhysicalKey {
     /// Return the Win32 Set 1 scan code for this physical key.
     #[must_use]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Exhaustive physical-key scan-code table is clearer in one match."
+    )]
     pub const fn scan_code(self) -> PhysicalKeyScanCode {
         use PhysicalKey::{
             AltLeft, AltRight, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Backquote, Backslash,
@@ -235,6 +239,10 @@ impl PhysicalKey {
 
     /// Return the compact label shown in the GUI.
     #[must_use]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Exhaustive physical-key label table is clearer in one match."
+    )]
     pub const fn label(self) -> &'static str {
         use PhysicalKey::{
             AltLeft, AltRight, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Backquote, Backslash,
@@ -382,12 +390,14 @@ fn windows_layout_label(key: PhysicalKey) -> Option<String> {
     };
 
     let scan_code = key.scan_code();
+    // SAFETY: `GetKeyboardLayout` accepts zero to query the current thread layout.
     let hkl = unsafe { GetKeyboardLayout(0) };
     let scan = if scan_code.extended {
         u32::from(scan_code.code) | EXTENDED_SCAN_CODE_PREFIX
     } else {
         u32::from(scan_code.code)
     };
+    // SAFETY: `scan` is a Set 1 scan code with optional E0 prefix; `hkl` is from User32.
     let virtual_key = unsafe { MapVirtualKeyExW(scan, MAPVK_VSC_TO_VK_EX, Some(hkl)) };
     if virtual_key == 0 {
         return None;
@@ -395,6 +405,7 @@ fn windows_layout_label(key: PhysicalKey) -> Option<String> {
 
     let key_state = [0_u8; 256];
     let mut buffer = [0_u16; 8];
+    // SAFETY: buffers are valid for the call duration and `ToUnicodeEx` does not retain them.
     let written = unsafe {
         ToUnicodeEx(
             virtual_key,

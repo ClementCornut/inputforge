@@ -14,6 +14,10 @@ pub(super) enum CaptureKeyEventKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Dioxus keyboard events expose modifier state as independent booleans."
+)]
 pub(super) struct CaptureKeyEvent {
     pub kind: CaptureKeyEventKind,
     pub code: Code,

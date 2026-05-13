@@ -67,10 +67,10 @@ fn migrate_action(action: &mut toml::Value) -> Result<bool> {
     };
 
     let mut changed = false;
-    if action.get("type").and_then(toml::Value::as_str) == Some("map_to_keyboard") {
-        if let Some(key) = action.get_mut("key") {
-            changed |= migrate_keyboard_combo(key)?;
-        }
+    if action.get("type").and_then(toml::Value::as_str) == Some("map_to_keyboard")
+        && let Some(key) = action.get_mut("key")
+    {
+        changed |= migrate_keyboard_combo(key)?;
     }
 
     if action.get("type").and_then(toml::Value::as_str) == Some("conditional") {
