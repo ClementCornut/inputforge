@@ -23,3 +23,7 @@ The CDP flag is gated `#[cfg(all(debug_assertions, target_os = "windows"))]` in
 
 If `/json` returns empty against `127.0.0.1`, try `localhost` (and vice versa);
 WebView2Feedback#4709 documents an IPv4/IPv6 binding quirk on this exact path.
+
+## Git ignore safety
+
+Never stage or commit files matched by `.gitignore`, and never use `git add -f` / `git add --force`, unless the user explicitly asks to force-add an ignored file.
