@@ -26,12 +26,15 @@ use dioxus::prelude::*;
 
 use inputforge_core::action::{Action, Mapping, OutputBehavior};
 use inputforge_core::engine::EngineCommand;
-use inputforge_core::types::{KeyCombo, KeyModifier, PhysicalKey};
+use inputforge_core::types::KeyCombo;
 
 use crate::components::{SegmentedControl, SegmentedControlOption};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
+use crate::frame::mapping_editor::pipeline::keyboard_capture::{
+    CaptureKeyEvent, CaptureKeyEventKind, CaptureOutcome, KeyboardCapture,
+};
 use crate::frame::mapping_editor::pipeline::replace_at_path;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 
@@ -62,6 +65,7 @@ pub(crate) fn MapToKeyboardBody(
     let mut local_combo: Signal<KeyCombo> = use_signal(|| combo.clone());
     let mut capture_active: Signal<bool> = use_signal(|| false);
     let mut capture_hint: Signal<Option<String>> = use_signal(|| None);
+    let mut capture_state: Signal<KeyboardCapture> = use_signal(KeyboardCapture::default);
     if !*capture_active.peek() && *local_combo.peek() != combo {
         local_combo.set(combo.clone());
     }
@@ -81,6 +85,7 @@ pub(crate) fn MapToKeyboardBody(
     drop(cfg);
 
     let on_capture_start = move |_| {
+        capture_state.set(KeyboardCapture::default());
         capture_active.set(true);
         capture_hint.set(None);
     };
@@ -99,37 +104,15 @@ pub(crate) fn MapToKeyboardBody(
         evt.prevent_default();
         evt.stop_propagation();
 
-        let code = evt.code();
-        if is_capture_cancel_event(&evt, code) {
-            capture_active.set(false);
-            capture_hint.set(None);
-            return;
-        }
-
-        if is_modifier_code(code) {
-            capture_hint.set(Some("Press a base key with any modifiers held".to_owned()));
-            return;
-        }
-
-        let Some(key) = physical_key_from_code(code) else {
-            capture_hint.set(Some("Unsupported key".to_owned()));
-            return;
-        };
-
-        let new_combo = build_combo_from_key(key, modifier_state_from_event(&evt));
-        let old_combo = local_combo.peek().clone();
-
-        local_combo.set(new_combo.clone());
-        capture_active.set(false);
-        capture_hint.set(None);
-
-        if new_combo == old_combo {
-            return;
-        }
-        dispatch_keyboard(
-            new_combo,
+        let outcome = capture_state
+            .write()
+            .handle_event(capture_key_event(&evt, CaptureKeyEventKind::KeyDown));
+        apply_capture_outcome(
+            outcome,
             behavior,
-            "key",
+            local_combo,
+            capture_active,
+            capture_hint,
             &mapping_key_capture,
             &stage_id_capture,
             &root_actions_capture,
@@ -137,6 +120,39 @@ pub(crate) fn MapToKeyboardBody(
             current_name_capture.clone(),
             &cmd_tx_capture,
             &mut undo_log_capture,
+        );
+    };
+
+    let mapping_key_keyup = mapping_key.clone();
+    let stage_id_keyup = stage_id.clone();
+    let root_actions_keyup = root_actions.clone();
+    let before_keyup = before_mapping.clone();
+    let current_name_keyup = current_name.clone();
+    let cmd_tx_keyup = ctx.commands.clone();
+    let mut undo_log_keyup = editor.undo_log;
+    let on_capture_keyup = move |evt: KeyboardEvent| {
+        if !*capture_active.peek() {
+            return;
+        }
+        evt.prevent_default();
+        evt.stop_propagation();
+
+        let outcome = capture_state
+            .write()
+            .handle_event(capture_key_event(&evt, CaptureKeyEventKind::KeyUp));
+        apply_capture_outcome(
+            outcome,
+            behavior,
+            local_combo,
+            capture_active,
+            capture_hint,
+            &mapping_key_keyup,
+            &stage_id_keyup,
+            &root_actions_keyup,
+            &before_keyup,
+            current_name_keyup.clone(),
+            &cmd_tx_keyup,
+            &mut undo_log_keyup,
         );
     };
 
@@ -224,6 +240,7 @@ pub(crate) fn MapToKeyboardBody(
                         "data-key-capture": if is_listening { "active" } else { "idle" },
                         onclick: on_capture_start,
                         onkeydown: on_capture_keydown,
+                        onkeyup: on_capture_keyup,
                         span { class: "if-key-capture__value", "{capture_text}" }
                     }
                     if let Some(message) = capture_message {
@@ -256,23 +273,6 @@ pub(crate) fn MapToKeyboardBody(
 // Private helpers
 // ---------------------------------------------------------------------------
 
-fn build_combo_from_key(key: PhysicalKey, (ctrl, alt, shift, win): ModifierState) -> KeyCombo {
-    let mut modifiers = Vec::new();
-    if ctrl {
-        modifiers.push(KeyModifier::CONTROL_LEFT);
-    }
-    if alt {
-        modifiers.push(KeyModifier::ALT_LEFT);
-    }
-    if shift {
-        modifiers.push(KeyModifier::SHIFT_LEFT);
-    }
-    if win {
-        modifiers.push(KeyModifier::META_LEFT);
-    }
-    KeyCombo { key, modifiers }
-}
-
 fn format_key_combo(combo: &KeyCombo) -> String {
     let mut parts: Vec<String> = combo
         .modifiers
@@ -284,134 +284,67 @@ fn format_key_combo(combo: &KeyCombo) -> String {
     parts.join(" + ")
 }
 
-type ModifierState = (bool, bool, bool, bool);
-
-fn modifier_state_from_event(evt: &KeyboardEvent) -> ModifierState {
+fn capture_key_event(evt: &KeyboardEvent, kind: CaptureKeyEventKind) -> CaptureKeyEvent {
     let modifiers = evt.modifiers();
-    (
-        modifiers.ctrl(),
-        modifiers.alt(),
-        modifiers.shift(),
-        modifiers.meta(),
-    )
+    CaptureKeyEvent {
+        kind,
+        code: evt.code(),
+        ctrl: modifiers.ctrl(),
+        alt: modifiers.alt(),
+        shift: modifiers.shift(),
+        meta: modifiers.meta(),
+        key_is_escape: evt.key() == Key::Escape || matches!(evt.code(), Code::Escape),
+    }
 }
 
-const fn is_modifier_code(code: Code) -> bool {
-    matches!(
-        code,
-        Code::ControlLeft
-            | Code::ControlRight
-            | Code::ShiftLeft
-            | Code::ShiftRight
-            | Code::AltLeft
-            | Code::AltRight
-            | Code::MetaLeft
-            | Code::MetaRight
-    )
-}
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Capture outcome handling needs the same dispatch context as the field handlers."
+)]
+fn apply_capture_outcome(
+    outcome: CaptureOutcome,
+    behavior: OutputBehavior,
+    mut local_combo: Signal<KeyCombo>,
+    mut capture_active: Signal<bool>,
+    mut capture_hint: Signal<Option<String>>,
+    mapping_key: &MappingKey,
+    stage_id: &StageId,
+    root_actions: &[Action],
+    before: &Mapping,
+    current_name: Option<String>,
+    cmd_tx: &std::sync::mpsc::Sender<EngineCommand>,
+    undo_log: &mut Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
+) {
+    match outcome {
+        CaptureOutcome::Continue { hint } => {
+            capture_hint.set(hint.map(str::to_owned));
+        }
+        CaptureOutcome::Cancel { hint } => {
+            capture_active.set(false);
+            capture_hint.set(hint.map(str::to_owned));
+        }
+        CaptureOutcome::Commit(new_combo) => {
+            let old_combo = local_combo.peek().clone();
+            local_combo.set(new_combo.clone());
+            capture_active.set(false);
+            capture_hint.set(None);
 
-const fn is_capture_cancel_code(code: Code) -> bool {
-    matches!(code, Code::Escape)
-}
-
-fn is_capture_cancel_event(evt: &KeyboardEvent, code: Code) -> bool {
-    evt.key() == Key::Escape || is_capture_cancel_code(code)
-}
-
-const fn physical_key_from_code(code: Code) -> Option<PhysicalKey> {
-    match code {
-        Code::KeyA => Some(PhysicalKey::KeyA),
-        Code::KeyB => Some(PhysicalKey::KeyB),
-        Code::KeyC => Some(PhysicalKey::KeyC),
-        Code::KeyD => Some(PhysicalKey::KeyD),
-        Code::KeyE => Some(PhysicalKey::KeyE),
-        Code::KeyF => Some(PhysicalKey::KeyF),
-        Code::KeyG => Some(PhysicalKey::KeyG),
-        Code::KeyH => Some(PhysicalKey::KeyH),
-        Code::KeyI => Some(PhysicalKey::KeyI),
-        Code::KeyJ => Some(PhysicalKey::KeyJ),
-        Code::KeyK => Some(PhysicalKey::KeyK),
-        Code::KeyL => Some(PhysicalKey::KeyL),
-        Code::KeyM => Some(PhysicalKey::KeyM),
-        Code::KeyN => Some(PhysicalKey::KeyN),
-        Code::KeyO => Some(PhysicalKey::KeyO),
-        Code::KeyP => Some(PhysicalKey::KeyP),
-        Code::KeyQ => Some(PhysicalKey::KeyQ),
-        Code::KeyR => Some(PhysicalKey::KeyR),
-        Code::KeyS => Some(PhysicalKey::KeyS),
-        Code::KeyT => Some(PhysicalKey::KeyT),
-        Code::KeyU => Some(PhysicalKey::KeyU),
-        Code::KeyV => Some(PhysicalKey::KeyV),
-        Code::KeyW => Some(PhysicalKey::KeyW),
-        Code::KeyX => Some(PhysicalKey::KeyX),
-        Code::KeyY => Some(PhysicalKey::KeyY),
-        Code::KeyZ => Some(PhysicalKey::KeyZ),
-        Code::Digit0 => Some(PhysicalKey::Digit0),
-        Code::Digit1 => Some(PhysicalKey::Digit1),
-        Code::Digit2 => Some(PhysicalKey::Digit2),
-        Code::Digit3 => Some(PhysicalKey::Digit3),
-        Code::Digit4 => Some(PhysicalKey::Digit4),
-        Code::Digit5 => Some(PhysicalKey::Digit5),
-        Code::Digit6 => Some(PhysicalKey::Digit6),
-        Code::Digit7 => Some(PhysicalKey::Digit7),
-        Code::Digit8 => Some(PhysicalKey::Digit8),
-        Code::Digit9 => Some(PhysicalKey::Digit9),
-        Code::F1 => Some(PhysicalKey::F1),
-        Code::F2 => Some(PhysicalKey::F2),
-        Code::F3 => Some(PhysicalKey::F3),
-        Code::F4 => Some(PhysicalKey::F4),
-        Code::F5 => Some(PhysicalKey::F5),
-        Code::F6 => Some(PhysicalKey::F6),
-        Code::F7 => Some(PhysicalKey::F7),
-        Code::F8 => Some(PhysicalKey::F8),
-        Code::F9 => Some(PhysicalKey::F9),
-        Code::F10 => Some(PhysicalKey::F10),
-        Code::F11 => Some(PhysicalKey::F11),
-        Code::F12 => Some(PhysicalKey::F12),
-        Code::Space => Some(PhysicalKey::Space),
-        Code::Enter => Some(PhysicalKey::Enter),
-        Code::Tab => Some(PhysicalKey::Tab),
-        Code::Escape => Some(PhysicalKey::Escape),
-        Code::Backspace => Some(PhysicalKey::Backspace),
-        Code::Delete => Some(PhysicalKey::Delete),
-        Code::Insert => Some(PhysicalKey::Insert),
-        Code::ArrowUp => Some(PhysicalKey::ArrowUp),
-        Code::ArrowDown => Some(PhysicalKey::ArrowDown),
-        Code::ArrowLeft => Some(PhysicalKey::ArrowLeft),
-        Code::ArrowRight => Some(PhysicalKey::ArrowRight),
-        Code::Home => Some(PhysicalKey::Home),
-        Code::End => Some(PhysicalKey::End),
-        Code::PageUp => Some(PhysicalKey::PageUp),
-        Code::PageDown => Some(PhysicalKey::PageDown),
-        Code::Minus => Some(PhysicalKey::Minus),
-        Code::Equal => Some(PhysicalKey::Equal),
-        Code::BracketLeft => Some(PhysicalKey::BracketLeft),
-        Code::BracketRight => Some(PhysicalKey::BracketRight),
-        Code::Backslash => Some(PhysicalKey::Backslash),
-        Code::IntlBackslash => Some(PhysicalKey::IntlBackslash),
-        Code::Semicolon => Some(PhysicalKey::Semicolon),
-        Code::Quote => Some(PhysicalKey::Quote),
-        Code::Backquote => Some(PhysicalKey::Backquote),
-        Code::Comma => Some(PhysicalKey::Comma),
-        Code::Period => Some(PhysicalKey::Period),
-        Code::Slash => Some(PhysicalKey::Slash),
-        Code::Numpad0 => Some(PhysicalKey::Numpad0),
-        Code::Numpad1 => Some(PhysicalKey::Numpad1),
-        Code::Numpad2 => Some(PhysicalKey::Numpad2),
-        Code::Numpad3 => Some(PhysicalKey::Numpad3),
-        Code::Numpad4 => Some(PhysicalKey::Numpad4),
-        Code::Numpad5 => Some(PhysicalKey::Numpad5),
-        Code::Numpad6 => Some(PhysicalKey::Numpad6),
-        Code::Numpad7 => Some(PhysicalKey::Numpad7),
-        Code::Numpad8 => Some(PhysicalKey::Numpad8),
-        Code::Numpad9 => Some(PhysicalKey::Numpad9),
-        Code::NumpadAdd => Some(PhysicalKey::NumpadAdd),
-        Code::NumpadSubtract => Some(PhysicalKey::NumpadSubtract),
-        Code::NumpadMultiply => Some(PhysicalKey::NumpadMultiply),
-        Code::NumpadDivide => Some(PhysicalKey::NumpadDivide),
-        Code::NumpadDecimal => Some(PhysicalKey::NumpadDecimal),
-        Code::NumpadEnter => Some(PhysicalKey::NumpadEnter),
-        _ => None,
+            if new_combo == old_combo {
+                return;
+            }
+            dispatch_keyboard(
+                new_combo,
+                behavior,
+                "key",
+                mapping_key,
+                stage_id,
+                root_actions,
+                before,
+                current_name,
+                cmd_tx,
+                undo_log,
+            );
+        }
     }
 }
 
@@ -500,52 +433,5 @@ mod tests {
             OutputBehavior::Hold,
             OutputBehavior::Pulse
         ));
-    }
-
-    #[test]
-    fn physical_key_capture_maps_dom_codes_to_physical_keys() {
-        assert_eq!(physical_key_from_code(Code::KeyA), Some(PhysicalKey::KeyA));
-        assert_eq!(
-            physical_key_from_code(Code::Digit7),
-            Some(PhysicalKey::Digit7)
-        );
-        assert_eq!(physical_key_from_code(Code::F12), Some(PhysicalKey::F12));
-        assert_eq!(
-            physical_key_from_code(Code::Slash),
-            Some(PhysicalKey::Slash)
-        );
-        assert_eq!(
-            physical_key_from_code(Code::BracketLeft),
-            Some(PhysicalKey::BracketLeft)
-        );
-        assert_eq!(
-            physical_key_from_code(Code::IntlBackslash),
-            Some(PhysicalKey::IntlBackslash)
-        );
-        assert_eq!(
-            physical_key_from_code(Code::NumpadDivide),
-            Some(PhysicalKey::NumpadDivide)
-        );
-        assert_eq!(
-            physical_key_from_code(Code::NumpadEnter),
-            Some(PhysicalKey::NumpadEnter)
-        );
-        assert_eq!(physical_key_from_code(Code::AudioVolumeUp), None);
-    }
-
-    #[test]
-    fn modifier_dom_codes_are_not_base_keys() {
-        assert!(is_modifier_code(Code::ControlLeft));
-        assert!(is_modifier_code(Code::MetaRight));
-        assert_eq!(physical_key_from_code(Code::ControlLeft), None);
-    }
-
-    #[test]
-    fn escape_code_aborts_capture_before_key_mapping() {
-        assert!(is_capture_cancel_code(Code::Escape));
-        assert_eq!(
-            physical_key_from_code(Code::Escape),
-            Some(PhysicalKey::Escape)
-        );
     }
 }
