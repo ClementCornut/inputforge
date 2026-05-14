@@ -249,11 +249,11 @@ fn commit_capture_combo(
     undo_log: &mut Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
 ) {
     let old_combo = local_combo.peek().clone();
-    local_combo.set(new_combo.clone());
-
     if new_combo == old_combo {
         return;
     }
+    local_combo.set(new_combo.clone());
+
     dispatch_keyboard(
         new_combo,
         behavior,
