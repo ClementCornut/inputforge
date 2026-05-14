@@ -440,6 +440,26 @@ mod tests {
     }
 
     #[test]
+    fn external_profile_sidecar_dir_requires_caller_canonicalization() {
+        // The hash namespace is derived from to_string_lossy of the input
+        // path, so two non-canonical representations of the same logical file
+        // produce different sidecar directories. This locks the documented
+        // precondition: callers must canonicalize before calling.
+        let config_dir = Path::new("app-config");
+        let with_backslashes = PathBuf::from(r"C:\external\profile.toml");
+        let with_forward_slashes = PathBuf::from("C:/external/profile.toml");
+        let with_dot_segment = PathBuf::from(r"C:\external\.\profile.toml");
+
+        let backslash_dir = external_profile_sidecar_dir(config_dir, &with_backslashes);
+        let forward_slash_dir = external_profile_sidecar_dir(config_dir, &with_forward_slashes);
+        let dot_segment_dir = external_profile_sidecar_dir(config_dir, &with_dot_segment);
+
+        assert_ne!(backslash_dir, forward_slash_dir);
+        assert_ne!(backslash_dir, dot_segment_dir);
+        assert_ne!(forward_slash_dir, dot_segment_dir);
+    }
+
+    #[test]
     fn failed_save_restores_previous_last_saved_version() {
         let mut document = template_store_document();
         document.header.app_version_last_saved = "0.0.0".to_owned();
