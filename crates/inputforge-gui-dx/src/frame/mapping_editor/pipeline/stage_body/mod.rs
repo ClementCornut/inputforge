@@ -131,6 +131,9 @@ pub(crate) fn StageBody(
                 root_actions: root_actions.clone(),
             }
         },
+        Action::TapGesture { .. } | Action::PressGesture { .. } => rsx! {
+            div { class: "if-stage__placeholder" }
+        },
     }
 }
 

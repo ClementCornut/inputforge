@@ -120,7 +120,10 @@ pub(crate) fn Stage(
         | Action::MapToKeyboard { .. }
         | Action::MapToMouse { .. }
         | Action::MergeAxis { .. } => "is-output",
-        Action::ChangeMode { .. } | Action::Conditional { .. } => "is-control",
+        Action::ChangeMode { .. }
+        | Action::Conditional { .. }
+        | Action::TapGesture { .. }
+        | Action::PressGesture { .. } => "is-control",
     };
 
     // Derive the group-local index and parent pipeline length for the sortable
@@ -246,6 +249,8 @@ pub(crate) fn stage_title_for(action: &Action) -> &'static str {
         Action::MergeAxis { .. } => "Merge axis",
         Action::ChangeMode { .. } => "Change mode",
         Action::Conditional { .. } => "Conditional",
+        Action::TapGesture { .. } => "Tap gesture",
+        Action::PressGesture { .. } => "Press gesture",
     }
 }
 
@@ -311,6 +316,10 @@ pub(crate) fn stage_summary_for(action: &Action, cfg: &ConfigSnapshot) -> String
         Action::ChangeMode { strategy } => format_mode_strategy(strategy),
 
         Action::Conditional { condition, .. } => format_condition(condition, cfg),
+
+        Action::TapGesture { threshold_ms, .. } => format!("{threshold_ms} ms"),
+
+        Action::PressGesture { threshold_ms, .. } => format!("{threshold_ms} ms"),
     }
 }
 

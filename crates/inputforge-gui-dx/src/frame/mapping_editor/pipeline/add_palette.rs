@@ -369,5 +369,7 @@ fn action_palette_label(action: &Action) -> &'static str {
         Action::MergeAxis { .. } => "Merge axis",
         Action::Conditional { .. } => "Conditional",
         Action::ChangeMode { .. } => "Change mode",
+        Action::TapGesture { .. } => "Tap gesture",
+        Action::PressGesture { .. } => "Press gesture",
     }
 }

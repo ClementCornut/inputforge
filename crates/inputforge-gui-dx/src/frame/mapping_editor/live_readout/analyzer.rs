@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use inputforge_core::action::{Action, Condition, MouseTarget, OutputBehavior};
+use inputforge_core::action::{Action, ActionBranch, Condition, MouseTarget, OutputBehavior};
 use inputforge_core::pipeline::{
     BranchStep, InputCache, button_pressed_from_value, evaluate_actions_through_path,
     evaluate_condition,
@@ -219,8 +219,19 @@ impl AnalysisContext<'_> {
 
         for step in branch_path {
             let (index, wants_true) = match *step {
-                BranchStep::IfTrue(index) => (index, true),
-                BranchStep::IfFalse(index) => (index, false),
+                BranchStep::Branch {
+                    index,
+                    branch: ActionBranch::ConditionalTrue,
+                } => (index, true),
+                BranchStep::Branch {
+                    index,
+                    branch: ActionBranch::ConditionalFalse,
+                } => (index, false),
+                BranchStep::Branch { index, branch } => {
+                    panic!(
+                        "branch path target at index {index} must be a conditional branch, got {branch:?}"
+                    )
+                }
             };
             append_non_conditional_actions(&current[..index], &mut flattened);
             match &current[index] {
@@ -515,7 +526,10 @@ fn walk(
                     super::predicate::format_condition_label(condition, context.cfg);
                 let evaluated = evaluate_condition(condition, &context.state.input_cache);
 
-                branch_path.push(BranchStep::IfTrue(i));
+                branch_path.push(BranchStep::Branch {
+                    index: i,
+                    branch: ActionBranch::ConditionalTrue,
+                });
                 chain_stack.push(ChainStep::Conditional {
                     condition_label: condition_label.clone(),
                     evaluated,
@@ -533,7 +547,10 @@ fn walk(
                 chain_stack.pop();
                 branch_path.pop();
 
-                branch_path.push(BranchStep::IfFalse(i));
+                branch_path.push(BranchStep::Branch {
+                    index: i,
+                    branch: ActionBranch::ConditionalFalse,
+                });
                 chain_stack.push(ChainStep::Conditional {
                     condition_label,
                     evaluated,
@@ -554,7 +571,9 @@ fn walk(
             Action::ResponseCurve { .. }
             | Action::Deadzone { .. }
             | Action::Invert
-            | Action::ChangeMode { .. } => {}
+            | Action::ChangeMode { .. }
+            | Action::TapGesture { .. }
+            | Action::PressGesture { .. } => {}
         }
     }
 
