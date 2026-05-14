@@ -182,16 +182,11 @@ fn legacy_keyboard_key_name(name: &str) -> Result<Option<&'static str>> {
         }
     }
 
-    if let Some(function_number) = name
-        .strip_prefix('F')
-        .and_then(|suffix| suffix.parse::<u8>().ok())
+    if let Some(suffix) = name.strip_prefix('F')
+        && !suffix.is_empty()
+        && suffix.bytes().all(|b| b.is_ascii_digit())
     {
-        if (13..=24).contains(&function_number) {
-            return Err(EngineError::InvalidConfig {
-                reason: format!("unsupported legacy keyboard key: {name}"),
-            });
-        }
-        return Ok(match function_number {
+        let canonical = suffix.parse::<u32>().ok().and_then(|n| match n {
             1 => Some("F1"),
             2 => Some("F2"),
             3 => Some("F3"),
@@ -206,6 +201,12 @@ fn legacy_keyboard_key_name(name: &str) -> Result<Option<&'static str>> {
             12 => Some("F12"),
             _ => None,
         });
+        return match canonical {
+            Some(canon) => Ok(Some(canon)),
+            None => Err(EngineError::InvalidConfig {
+                reason: format!("unsupported legacy keyboard key: {name}"),
+            }),
+        };
     }
 
     Ok(match name {
@@ -942,6 +943,20 @@ modifiers = [{modifiers}]
     #[test]
     fn profile_from_toml_rejects_legacy_f13_to_f24() {
         for key in ["F13", "F18", "F24"] {
+            let toml = legacy_keyboard_profile_toml(key, "");
+            let err = Profile::from_toml(&toml).unwrap_err();
+
+            assert!(
+                err.to_string()
+                    .contains(&format!("unsupported legacy keyboard key: {key}")),
+                "unexpected error for {key}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn profile_from_toml_rejects_out_of_range_function_keys() {
+        for key in ["F0", "F25", "F99", "F100", "F9999999999"] {
             let toml = legacy_keyboard_profile_toml(key, "");
             let err = Profile::from_toml(&toml).unwrap_err();
 
