@@ -84,6 +84,26 @@ fn create_recovery_snapshot_with_copy(
     let snapshot_dir = recovery_root.join(id.to_string());
     std::fs::create_dir_all(&snapshot_dir)?;
 
+    let result = populate_recovery_snapshot(
+        &snapshot_dir,
+        id,
+        label.into(),
+        sidecar_files,
+        &mut copy_file,
+    );
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&snapshot_dir);
+    }
+    result
+}
+
+fn populate_recovery_snapshot(
+    snapshot_dir: &Path,
+    id: RecoverySnapshotId,
+    label: String,
+    sidecar_files: &[PathBuf],
+    copy_file: &mut dyn FnMut(&Path, &Path) -> std::io::Result<u64>,
+) -> Result<RecoverySnapshotManifest> {
     let mut files = Vec::with_capacity(sidecar_files.len());
     for (index, source_path) in sidecar_files.iter().enumerate() {
         let copied_path = if source_path.try_exists()? {
@@ -110,7 +130,7 @@ fn create_recovery_snapshot_with_copy(
 
     let manifest = RecoverySnapshotManifest {
         id,
-        label: label.into(),
+        label,
         taken_at: Utc::now(),
         files,
     };
@@ -215,6 +235,37 @@ mod tests {
                 .join(manifest.id.to_string())
                 .join("manifest.toml")
                 .is_file()
+        );
+    }
+
+    #[test]
+    fn recovery_snapshot_cleans_up_snapshot_dir_on_copy_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let recovery_root = dir.path().join("recovery");
+        let sidecar = dir.path().join("mapping-sheets.toml");
+        std::fs::write(&sidecar, "sheets = []\n").unwrap();
+
+        let err = create_recovery_snapshot_with_copy(
+            &recovery_root,
+            "before save",
+            std::slice::from_ref(&sidecar),
+            |_, _| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "denied",
+                ))
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(err, crate::error::EngineError::Io(_)));
+        let leftover_snapshots: Vec<_> = std::fs::read_dir(&recovery_root)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        assert!(
+            leftover_snapshots.is_empty(),
+            "expected no orphan snapshot dirs, found {leftover_snapshots:?}"
         );
     }
 
