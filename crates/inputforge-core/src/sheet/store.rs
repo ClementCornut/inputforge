@@ -84,7 +84,10 @@ pub fn profile_mapping_metadata_path(profile_path: &Path) -> Result<PathBuf> {
     Ok(profile_sidecar_dir(profile_path)?.join(MAPPING_METADATA_FILE_NAME))
 }
 
-/// Returns the config-owned sidecar directory for an external profile.
+/// Returns the config-owned sidecar directory for a canonical external profile.
+///
+/// Callers must pass a canonical profile path; the hash namespace is derived
+/// directly from the provided path string.
 #[must_use]
 pub fn external_profile_sidecar_dir(config_dir: &Path, canonical_profile_path: &Path) -> PathBuf {
     let hash = Sha256::digest(canonical_profile_path.to_string_lossy().as_bytes());
@@ -192,9 +195,18 @@ fn save_toml<T>(path: &Path, document: &mut T) -> Result<()>
 where
     T: Serialize + SidecarDocument,
 {
+    let previous_last_saved = document.header_mut().app_version_last_saved.clone();
     document.header_mut().mark_saved_by_current_app();
-    let toml = toml::to_string_pretty(document)?;
-    atomic_write(path, toml.as_bytes())
+
+    let result = toml::to_string_pretty(document)
+        .map_err(EngineError::from)
+        .and_then(|toml| atomic_write(path, toml.as_bytes()));
+
+    if result.is_err() {
+        document.header_mut().app_version_last_saved = previous_last_saved;
+    }
+
+    result
 }
 
 fn load_toml_or_default<T>(path: &Path) -> Result<T>
@@ -234,9 +246,11 @@ mod tests {
     use crate::error::EngineError;
     use crate::profile::ProfileId;
     use crate::sheet::{
-        AssetManifestDocument, DeviceTemplate, MappingMetadataDocument, ProfileSheetsDocument,
-        TemplateId, TemplateStoreDocument, TokenPreset,
+        AssetManifestDocument, DeviceTemplate, MappingDisplayMetadata, MappingMetadataDocument,
+        MappingMetadataId, MappingRef, ProfileSheetsDocument, TemplateId, TemplateStoreDocument,
+        TokenPreset,
     };
+    use crate::types::{DeviceId, InputAddress, InputId};
     use sha2::{Digest, Sha256};
 
     fn profile_sheets_document() -> ProfileSheetsDocument {
@@ -254,6 +268,44 @@ mod tests {
             profile_id: ProfileId::default(),
             records: Vec::new(),
             extensions: Default::default(),
+        }
+    }
+
+    fn mapping_ref() -> MappingRef {
+        MappingRef {
+            mode_id: "combat".to_owned(),
+            input: InputAddress::Bound {
+                device: DeviceId("stick-alpha".to_owned()),
+                input: InputId::Button { index: 1 },
+            },
+            fallback_label: Some("Fire".to_owned()),
+            fallback_details: None,
+        }
+    }
+
+    fn duplicate_mapping_metadata_document() -> MappingMetadataDocument {
+        let mapping_ref = mapping_ref();
+
+        MappingMetadataDocument {
+            records: vec![
+                MappingDisplayMetadata {
+                    id: MappingMetadataId::from_string("metadata-a"),
+                    mapping_ref: mapping_ref.clone(),
+                    display_name: "Fire primary".to_owned(),
+                    category: None,
+                    classification_token: None,
+                    extensions: Default::default(),
+                },
+                MappingDisplayMetadata {
+                    id: MappingMetadataId::from_string("metadata-b"),
+                    mapping_ref,
+                    display_name: "Fire duplicate".to_owned(),
+                    category: None,
+                    classification_token: None,
+                    extensions: Default::default(),
+                },
+            ],
+            ..mapping_metadata_document()
         }
     }
 
@@ -360,6 +412,67 @@ mod tests {
             !external_profile_sheets_path(config_dir, &external_profile)
                 .starts_with(external_profile.parent().unwrap())
         );
+    }
+
+    #[test]
+    fn external_profile_sidecar_uses_canonical_path_namespace() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        let profile_path = dir.path().join("external").join("profile.toml");
+        std::fs::create_dir_all(profile_path.parent().unwrap()).unwrap();
+        std::fs::write(&profile_path, "").unwrap();
+        let canonical_profile = std::fs::canonicalize(&profile_path).unwrap();
+
+        let sidecar_dir = external_profile_sidecar_dir(&config_dir, &canonical_profile);
+
+        assert!(
+            sidecar_dir.starts_with(global_sheet_store_dir(&config_dir).join("external_profiles"))
+        );
+        assert_eq!(
+            sidecar_dir,
+            global_sheet_store_dir(&config_dir)
+                .join("external_profiles")
+                .join(hex::encode(Sha256::digest(
+                    canonical_profile.to_string_lossy().as_bytes(),
+                )))
+        );
+    }
+
+    #[test]
+    fn failed_save_restores_previous_last_saved_version() {
+        let mut document = template_store_document();
+        document.header.app_version_last_saved = "0.0.0".to_owned();
+
+        let err = save_template_store(Path::new("templates.toml"), &mut document).unwrap_err();
+
+        assert!(matches!(err, EngineError::ProfilePathHasNoParent { .. }));
+        assert_eq!(document.header.app_version_last_saved, "0.0.0");
+    }
+
+    #[test]
+    fn save_mapping_metadata_rejects_duplicate_mapping_refs() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut document = duplicate_mapping_metadata_document();
+
+        let err = save_mapping_metadata(
+            &dir.path().join("mapping-display-metadata.toml"),
+            &mut document,
+        )
+        .unwrap_err();
+
+        assert!(matches!(err, EngineError::InvalidConfig { .. }));
+    }
+
+    #[test]
+    fn load_mapping_metadata_rejects_duplicate_mapping_refs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mapping-display-metadata.toml");
+        let document = duplicate_mapping_metadata_document();
+        std::fs::write(&path, toml::to_string_pretty(&document).unwrap()).unwrap();
+
+        let err = load_mapping_metadata(&path).unwrap_err();
+
+        assert!(matches!(err, EngineError::InvalidConfig { .. }));
     }
 
     #[test]
