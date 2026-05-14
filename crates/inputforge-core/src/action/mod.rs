@@ -569,28 +569,70 @@ mod tests {
 
     #[test]
     fn branch_helpers_return_all_gesture_and_conditional_branches() {
-        let mut action = Action::TapGesture {
+        let conditional = Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: test_input_address(),
+            },
+            if_true: vec![Action::Invert],
+            if_false: vec![Action::Deadzone {
+                config: DeadzoneConfig::default(),
+            }],
+        };
+        assert_eq!(
+            branch_actions(&conditional, ActionBranch::ConditionalTrue)
+                .expect("conditional true branch exists")
+                .len(),
+            1
+        );
+        assert_eq!(
+            branch_actions(&conditional, ActionBranch::ConditionalFalse)
+                .expect("conditional false branch exists")
+                .len(),
+            1
+        );
+
+        let mut tap = Action::TapGesture {
             threshold_ms: 500,
             fire_single_immediately: false,
             single_tap: vec![Action::Invert],
             double_tap: Vec::new(),
         };
-
         assert_eq!(
-            branch_actions(&action, ActionBranch::TapSingle)
+            branch_actions(&tap, ActionBranch::TapSingle)
                 .expect("tap single branch exists")
                 .len(),
             1
         );
-        branch_actions_mut(&mut action, ActionBranch::TapDouble)
+        branch_actions_mut(&mut tap, ActionBranch::TapDouble)
             .expect("tap double branch exists")
             .push(Action::Invert);
         assert_eq!(
-            branch_actions(&action, ActionBranch::TapDouble)
+            branch_actions(&tap, ActionBranch::TapDouble)
                 .expect("tap double branch exists")
                 .len(),
             1
         );
-        assert!(branch_actions(&action, ActionBranch::PressLong).is_none());
+
+        let press = Action::PressGesture {
+            threshold_ms: 500,
+            fire_long_when_threshold_crossed: false,
+            short_press: vec![Action::Invert],
+            long_press: vec![Action::Deadzone {
+                config: DeadzoneConfig::default(),
+            }],
+        };
+        assert_eq!(
+            branch_actions(&press, ActionBranch::PressShort)
+                .expect("press short branch exists")
+                .len(),
+            1
+        );
+        assert_eq!(
+            branch_actions(&press, ActionBranch::PressLong)
+                .expect("press long branch exists")
+                .len(),
+            1
+        );
+        assert!(branch_actions(&tap, ActionBranch::PressLong).is_none());
     }
 }
