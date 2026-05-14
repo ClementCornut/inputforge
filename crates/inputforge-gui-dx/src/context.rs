@@ -5,6 +5,7 @@ use std::sync::{Arc, mpsc};
 use dioxus::prelude::*;
 use parking_lot::RwLock;
 
+use inputforge_core::action::DEFAULT_GESTURE_THRESHOLD_MS;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::pipeline::InputCache;
 use inputforge_core::settings::StartupSettings;
@@ -36,13 +37,25 @@ pub(crate) struct RawHandles {
 /// snapshot mutation). The count is consumed by the F15 settings panel to
 /// derive `would_prune` at commit time without an additional engine query
 /// channel.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SettingsSnapshot {
     pub snapshot: SnapshotConfig,
     pub unpinned_snapshot_count: usize,
     pub startup: StartupSettings,
     pub default_double_tap_threshold_ms: u64,
     pub default_long_press_threshold_ms: u64,
+}
+
+impl Default for SettingsSnapshot {
+    fn default() -> Self {
+        Self {
+            snapshot: SnapshotConfig::default(),
+            unpinned_snapshot_count: 0,
+            startup: StartupSettings::default(),
+            default_double_tap_threshold_ms: DEFAULT_GESTURE_THRESHOLD_MS,
+            default_long_press_threshold_ms: DEFAULT_GESTURE_THRESHOLD_MS,
+        }
+    }
 }
 
 impl SettingsSnapshot {
@@ -2090,6 +2103,8 @@ mod tests {
     fn settings_snapshot_default_is_zero_count() {
         let snap = SettingsSnapshot::default();
         assert_eq!(snap.unpinned_snapshot_count, 0);
+        assert_eq!(snap.default_double_tap_threshold_ms, 500);
+        assert_eq!(snap.default_long_press_threshold_ms, 500);
     }
 
     #[test]

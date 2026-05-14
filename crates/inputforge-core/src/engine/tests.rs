@@ -907,6 +907,36 @@ fn set_default_double_tap_threshold_persists_and_mirrors() {
 }
 
 #[test]
+fn set_default_double_tap_threshold_save_failure_rolls_back_state_and_warns() {
+    let mut harness = EngineHarness::new();
+    let settings_path = harness.engine.settings_path.clone();
+    let original = harness.engine.settings.default_double_tap_threshold_ms;
+    let warnings_before = harness.state().warnings.len();
+
+    harness.force_settings_path_to_unwritable();
+
+    harness
+        .dispatch(EngineCommand::SetDefaultDoubleTapThreshold { threshold_ms: 375 })
+        .unwrap();
+
+    assert_eq!(
+        harness.engine.settings.default_double_tap_threshold_ms,
+        original
+    );
+    assert_eq!(harness.state().default_double_tap_threshold_ms, original);
+
+    let persisted = AppSettings::load_from(&settings_path);
+    assert_eq!(persisted.default_double_tap_threshold_ms, original);
+
+    let warnings = harness.state().warnings.clone();
+    assert_eq!(warnings.len(), warnings_before + 1);
+    assert!(
+        warnings.last().unwrap().contains("Could not save settings"),
+        "expected save-failure warning; got {warnings:?}"
+    );
+}
+
+#[test]
 fn set_default_long_press_threshold_rejects_out_of_range() {
     let settings = AppSettings::default();
     let (mut engine, _settings_path) = test_engine_with_settings_path(settings);
