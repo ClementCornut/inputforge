@@ -59,7 +59,7 @@ pub enum PipelineOutput {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActionPathSegment {
     Index(usize),
     Branch(ActionBranch),
