@@ -33,7 +33,7 @@ use inputforge_core::types::{
 };
 
 use crate::components::{Anchor, Icon, MenuItem, MenuItems, MenuRoot, MenuTrigger};
-use crate::context::AppContext;
+use crate::context::{AppContext, SettingsSnapshot};
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::pipeline::{insert_at_path, path_invalidated_by_mutation};
@@ -127,6 +127,24 @@ fn default_change_mode() -> Action {
     }
 }
 
+pub(crate) fn default_tap_gesture_from_settings(settings: &SettingsSnapshot) -> Action {
+    Action::TapGesture {
+        threshold_ms: settings.default_double_tap_threshold_ms,
+        fire_single_immediately: false,
+        single_tap: Vec::new(),
+        double_tap: Vec::new(),
+    }
+}
+
+pub(crate) fn default_press_gesture_from_settings(settings: &SettingsSnapshot) -> Action {
+    Action::PressGesture {
+        threshold_ms: settings.default_long_press_threshold_ms,
+        fire_long_when_threshold_crossed: false,
+        short_press: Vec::new(),
+        long_press: Vec::new(),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Palette section descriptors
 // ---------------------------------------------------------------------------
@@ -214,6 +232,7 @@ pub(crate) fn AddPalette(
     let path_prefix_clone = path_prefix.clone();
     let mapping_key_clone = mapping_key.clone();
     let root_actions_clone = root_actions.clone();
+    let show_gestures = mapping_key.1.is_button_shaped();
 
     // Shared do_insert closure factory. Returns a MouseEvent handler that
     // inserts `action` at the target position. Menu auto-closes via
@@ -307,6 +326,7 @@ pub(crate) fn AddPalette(
         // Icon-only trigger: must carry an accessible name. WCAG 2.1 SC 4.1.2.
         Some("Add stage".to_owned())
     };
+    let settings_snapshot = ctx.settings.read().clone();
 
     rsx! {
         MenuRoot { class: "if-add-palette if-menu--block".to_owned(),
@@ -349,6 +369,18 @@ pub(crate) fn AddPalette(
                             class: "if-add-palette__item".to_owned(),
                             onclick: make_insert_handler((item.make)()),
                             "{item.label}"
+                        }
+                    }
+                    if show_gestures {
+                        MenuItem {
+                            class: "if-add-palette__item".to_owned(),
+                            onclick: make_insert_handler(default_tap_gesture_from_settings(&settings_snapshot)),
+                            "Tap gesture"
+                        }
+                        MenuItem {
+                            class: "if-add-palette__item".to_owned(),
+                            onclick: make_insert_handler(default_press_gesture_from_settings(&settings_snapshot)),
+                            "Press gesture"
                         }
                     }
                 }

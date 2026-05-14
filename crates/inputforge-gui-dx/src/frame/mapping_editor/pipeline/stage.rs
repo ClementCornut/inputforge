@@ -316,9 +316,31 @@ pub(crate) fn stage_summary_for(action: &Action, cfg: &ConfigSnapshot) -> String
 
         Action::Conditional { condition, .. } => format_condition(condition, cfg),
 
-        Action::TapGesture { threshold_ms, .. } => format!("{threshold_ms} ms"),
+        Action::TapGesture {
+            threshold_ms,
+            fire_single_immediately,
+            ..
+        } => {
+            let mode = if *fire_single_immediately {
+                "immediate single"
+            } else {
+                "exclusive single/double"
+            };
+            format!("{threshold_ms} ms, {mode}")
+        }
 
-        Action::PressGesture { threshold_ms, .. } => format!("{threshold_ms} ms"),
+        Action::PressGesture {
+            threshold_ms,
+            fire_long_when_threshold_crossed,
+            ..
+        } => {
+            let mode = if *fire_long_when_threshold_crossed {
+                "long fires while held"
+            } else {
+                "decide on release"
+            };
+            format!("{threshold_ms} ms, {mode}")
+        }
     }
 }
 

@@ -1216,6 +1216,37 @@
     gap: 8px;
 }
 
+.if-stage__branches {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.if-stage__gesture-body {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.if-stage__gesture-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.if-stage__gesture-control,
+.if-stage__gesture-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.if-stage__gesture-label,
+.if-stage__gesture-unit {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-label);
+    font-weight: var(--font-weight-medium);
+}
+
 .if-stage__branch {
     margin-left: 16px;
     margin-top: 8px;

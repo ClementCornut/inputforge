@@ -36,7 +36,7 @@ use crate::patterns::keyboard_capture::use_keyboard_capture_provider;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::toast::{ToastQueue, ToastState};
 
-use super::super::undo_log::{StageId, StageIdSegment};
+use super::super::undo_log::{StageId, StageIdSegment, UndoKind, UndoLog};
 use super::{at_path, insert_at_path, remove_at_path, replace_at_path, stage_body};
 
 // ---------------------------------------------------------------------------
@@ -404,6 +404,68 @@ fn branch_path_helpers_traverse_all_action_branch_variants() {
     }
 }
 
+#[test]
+fn generic_branch_paths_insert_replace_remove_and_reorder() {
+    let actions = vec![Action::TapGesture {
+        threshold_ms: 275,
+        fire_single_immediately: false,
+        single_tap: vec![Action::Invert],
+        double_tap: vec![Action::Deadzone {
+            config: DeadzoneConfig::default(),
+        }],
+    }];
+    let single = StageId(vec![
+        StageIdSegment::Index(0),
+        StageIdSegment::Branch(ActionBranch::TapSingle),
+        StageIdSegment::Index(0),
+    ]);
+    let double_insert = StageId(vec![
+        StageIdSegment::Index(0),
+        StageIdSegment::Branch(ActionBranch::TapDouble),
+        StageIdSegment::Index(1),
+    ]);
+
+    let replaced = replace_at_path(
+        &actions,
+        &single,
+        Action::MergeAxis {
+            second_input: synth_addr(),
+            operation: MergeOp::Average,
+        },
+    )
+    .expect("generic branch path replacement succeeds");
+    assert!(matches!(
+        at_path(&replaced, &single),
+        Some(Action::MergeAxis { .. })
+    ));
+
+    let inserted =
+        insert_at_path(&replaced, &double_insert, Action::Invert).expect("branch insert succeeds");
+    match &inserted[0] {
+        Action::TapGesture { double_tap, .. } => assert_eq!(double_tap.len(), 2),
+        _ => panic!("outer wrapper should remain TapGesture"),
+    }
+
+    let double_first = StageId(vec![
+        StageIdSegment::Index(0),
+        StageIdSegment::Branch(ActionBranch::TapDouble),
+        StageIdSegment::Index(0),
+    ]);
+    let moved = at_path(&inserted, &double_first)
+        .cloned()
+        .expect("source resolves");
+    let after_remove = remove_at_path(&inserted, &double_first).expect("branch remove succeeds");
+    let after_reorder =
+        insert_at_path(&after_remove, &double_insert, moved).expect("branch reorder succeeds");
+    match &after_reorder[0] {
+        Action::TapGesture { double_tap, .. } => {
+            assert!(matches!(double_tap[0], Action::Invert));
+            assert!(matches!(double_tap[1], Action::Deadzone { .. }));
+        }
+        _ => panic!("outer wrapper should remain TapGesture"),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // SSR helpers for pipeline rendering tests (Task 20)
 // ---------------------------------------------------------------------------
@@ -565,7 +627,6 @@ pub(crate) fn simulate_dispatch_strategy_change(
 ) -> (Vec<inputforge_core::engine::EngineCommand>, Option<String>) {
     use crate::frame::MappingKey;
     use crate::frame::mapping_editor::pipeline::stage_body::change_mode::dispatch_strategy_change_into;
-    use crate::frame::mapping_editor::undo_log::UndoLog;
     use inputforge_core::action::ModeChangeStrategy;
     use inputforge_core::engine::EngineCommand;
 
@@ -614,7 +675,6 @@ pub(crate) fn simulate_dispatch_target_change(
 ) -> (Vec<inputforge_core::engine::EngineCommand>, Option<String>) {
     use crate::frame::MappingKey;
     use crate::frame::mapping_editor::pipeline::stage_body::change_mode::dispatch_target_change_into;
-    use crate::frame::mapping_editor::undo_log::UndoLog;
     use inputforge_core::engine::EngineCommand;
 
     let addr = parse_primary_for_test(primary);
@@ -795,8 +855,23 @@ fn render_add_palette() -> String {
     render_with_expanded(state, addr, vec![], &["Default"])
 }
 
+fn render_add_palette_for_addr(addr: InputAddress) -> String {
+    let (state, addr) = build_state_with_mapping(vec![], addr);
+    render_with_expanded(state, addr, vec![], &["Default"])
+}
+
 fn render_stage_body(action: Action) -> String {
     let (state, addr) = build_state(vec![action]);
+    render_with_expanded(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    )
+}
+
+fn render_stage_body_with_addr(action: Action, addr: InputAddress) -> String {
+    let (state, addr) = build_state_with_mapping(vec![action], addr);
     render_with_expanded(
         state,
         addr,
@@ -1081,6 +1156,366 @@ fn add_palette_includes_map_to_mouse() {
     let html = render_add_palette();
 
     assert!(html.contains("Map to mouse"));
+}
+
+#[test]
+fn add_palette_shows_gestures_for_button_mapping_only() {
+    let axis_html = render_add_palette_for_addr(InputAddress::Bound {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Axis { index: 0 },
+    });
+    assert!(
+        !axis_html.contains("Tap gesture"),
+        "axis palette: {axis_html}"
+    );
+    assert!(
+        !axis_html.contains("Press gesture"),
+        "axis palette: {axis_html}"
+    );
+
+    let button_html = render_add_palette_for_addr(InputAddress::Bound {
+        device: DeviceId("dev-1".to_owned()),
+        input: InputId::Button { index: 0 },
+    });
+    assert!(
+        button_html.contains("Tap gesture"),
+        "button palette: {button_html}"
+    );
+    assert!(
+        button_html.contains("Press gesture"),
+        "button palette: {button_html}"
+    );
+}
+
+#[test]
+fn add_palette_seeds_gesture_thresholds_from_settings() {
+    let settings = SettingsSnapshot {
+        default_double_tap_threshold_ms: 333,
+        default_long_press_threshold_ms: 777,
+        ..SettingsSnapshot::default()
+    };
+
+    assert!(matches!(
+        super::add_palette::default_tap_gesture_from_settings(&settings),
+        Action::TapGesture {
+            threshold_ms: 333,
+            fire_single_immediately: false,
+            ..
+        }
+    ));
+    assert!(matches!(
+        super::add_palette::default_press_gesture_from_settings(&settings),
+        Action::PressGesture {
+            threshold_ms: 777,
+            fire_long_when_threshold_crossed: false,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn tap_gesture_body_renders_timing_controls_and_branches() {
+    let html = render_stage_body_with_addr(
+        Action::TapGesture {
+            threshold_ms: 250,
+            fire_single_immediately: true,
+            single_tap: vec![Action::Invert],
+            double_tap: Vec::new(),
+        },
+        InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        },
+    );
+
+    assert!(html.contains("if-stage__gesture-body"), "{html}");
+    assert!(html.contains(r#"min="1""#), "{html}");
+    assert!(html.contains(r#"max="10000""#), "{html}");
+    assert!(html.contains(r#"value="250""#), "{html}");
+    assert!(html.contains("Fire single tap immediately"), "{html}");
+    assert!(html.contains("Single tap"), "{html}");
+    assert!(html.contains("Double tap"), "{html}");
+}
+
+#[test]
+fn press_gesture_body_renders_timing_controls_and_branches() {
+    let html = render_stage_body_with_addr(
+        Action::PressGesture {
+            threshold_ms: 650,
+            fire_long_when_threshold_crossed: true,
+            short_press: vec![Action::Invert],
+            long_press: Vec::new(),
+        },
+        InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        },
+    );
+
+    assert!(html.contains("if-stage__gesture-body"), "{html}");
+    assert!(html.contains(r#"min="1""#), "{html}");
+    assert!(html.contains(r#"max="10000""#), "{html}");
+    assert!(html.contains(r#"value="650""#), "{html}");
+    assert!(
+        html.contains("Fire long press when threshold is crossed"),
+        "{html}"
+    );
+    assert!(html.contains("Short press"), "{html}");
+    assert!(html.contains("Long press"), "{html}");
+}
+
+#[test]
+fn tap_gesture_threshold_edit_sends_replacement() {
+    let mapping_key = ("Default".to_owned(), synth_addr());
+    let stage_id = StageId(vec![StageIdSegment::Index(0)]);
+    let root_actions = vec![Action::TapGesture {
+        threshold_ms: 250,
+        fire_single_immediately: false,
+        single_tap: vec![Action::Invert],
+        double_tap: Vec::new(),
+    }];
+    let (tx, rx) = mpsc::channel();
+    let mut undo_log = UndoLog::default();
+
+    stage_body::tap_gesture::dispatch_tap_gesture_edit_into(
+        &mut undo_log,
+        &mapping_key,
+        &stage_id,
+        &root_actions,
+        Some("Named mapping".to_owned()),
+        &tx,
+        "Tap gesture: threshold 250 ms -> 375 ms".to_owned(),
+        375,
+        false,
+        vec![Action::Invert],
+        Vec::new(),
+    );
+
+    let command = rx.try_recv().expect("threshold edit sends SetMapping");
+    match command {
+        inputforge_core::engine::EngineCommand::SetMapping { name, actions, .. } => {
+            assert_eq!(name.as_deref(), Some("Named mapping"));
+            assert!(matches!(
+                actions.first(),
+                Some(Action::TapGesture {
+                    threshold_ms: 375,
+                    fire_single_immediately: false,
+                    ..
+                })
+            ));
+        }
+        other => panic!("expected SetMapping, got {other:?}"),
+    }
+    let history = undo_log
+        .stacks
+        .get(&mapping_key)
+        .expect("gesture edit records undo");
+    assert!(matches!(history.undo[0].kind, UndoKind::StageEdit));
+    assert_eq!(
+        history.undo[0].label,
+        "Tap gesture: threshold 250 ms -> 375 ms"
+    );
+}
+
+#[test]
+fn tap_gesture_toggle_edit_sends_replacement() {
+    let mapping_key = ("Default".to_owned(), synth_addr());
+    let stage_id = StageId(vec![StageIdSegment::Index(0)]);
+    let root_actions = vec![Action::TapGesture {
+        threshold_ms: 250,
+        fire_single_immediately: false,
+        single_tap: Vec::new(),
+        double_tap: vec![Action::Invert],
+    }];
+    let (tx, rx) = mpsc::channel();
+    let mut undo_log = UndoLog::default();
+
+    stage_body::tap_gesture::dispatch_tap_gesture_edit_into(
+        &mut undo_log,
+        &mapping_key,
+        &stage_id,
+        &root_actions,
+        Some("Named mapping".to_owned()),
+        &tx,
+        "Tap gesture: single timing exclusive single/double -> immediate single".to_owned(),
+        250,
+        true,
+        Vec::new(),
+        vec![Action::Invert],
+    );
+
+    let command = rx.try_recv().expect("toggle edit sends SetMapping");
+    match command {
+        inputforge_core::engine::EngineCommand::SetMapping { actions, .. } => {
+            assert!(matches!(
+                actions.first(),
+                Some(Action::TapGesture {
+                    threshold_ms: 250,
+                    fire_single_immediately: true,
+                    double_tap,
+                    ..
+                }) if matches!(double_tap.as_slice(), [Action::Invert])
+            ));
+        }
+        other => panic!("expected SetMapping, got {other:?}"),
+    }
+    assert_eq!(
+        undo_log.last_label(&mapping_key).as_deref(),
+        Some("Tap gesture: single timing exclusive single/double -> immediate single")
+    );
+}
+
+#[test]
+fn press_gesture_threshold_edit_sends_replacement() {
+    let mapping_key = ("Default".to_owned(), synth_addr());
+    let stage_id = StageId(vec![StageIdSegment::Index(0)]);
+    let root_actions = vec![Action::PressGesture {
+        threshold_ms: 500,
+        fire_long_when_threshold_crossed: false,
+        short_press: vec![Action::Invert],
+        long_press: Vec::new(),
+    }];
+    let (tx, rx) = mpsc::channel();
+    let mut undo_log = UndoLog::default();
+
+    stage_body::press_gesture::dispatch_press_gesture_edit_into(
+        &mut undo_log,
+        &mapping_key,
+        &stage_id,
+        &root_actions,
+        Some("Named mapping".to_owned()),
+        &tx,
+        "Press gesture: threshold 500 ms -> 900 ms".to_owned(),
+        900,
+        false,
+        vec![Action::Invert],
+        Vec::new(),
+    );
+
+    let command = rx.try_recv().expect("threshold edit sends SetMapping");
+    match command {
+        inputforge_core::engine::EngineCommand::SetMapping { name, actions, .. } => {
+            assert_eq!(name.as_deref(), Some("Named mapping"));
+            assert!(matches!(
+                actions.first(),
+                Some(Action::PressGesture {
+                    threshold_ms: 900,
+                    fire_long_when_threshold_crossed: false,
+                    ..
+                })
+            ));
+        }
+        other => panic!("expected SetMapping, got {other:?}"),
+    }
+    let history = undo_log
+        .stacks
+        .get(&mapping_key)
+        .expect("gesture edit records undo");
+    assert!(matches!(history.undo[0].kind, UndoKind::StageEdit));
+    assert_eq!(
+        history.undo[0].label,
+        "Press gesture: threshold 500 ms -> 900 ms"
+    );
+}
+
+#[test]
+fn press_gesture_toggle_edit_sends_replacement() {
+    let mapping_key = ("Default".to_owned(), synth_addr());
+    let stage_id = StageId(vec![StageIdSegment::Index(0)]);
+    let root_actions = vec![Action::PressGesture {
+        threshold_ms: 500,
+        fire_long_when_threshold_crossed: false,
+        short_press: Vec::new(),
+        long_press: vec![Action::Invert],
+    }];
+    let (tx, rx) = mpsc::channel();
+    let mut undo_log = UndoLog::default();
+
+    stage_body::press_gesture::dispatch_press_gesture_edit_into(
+        &mut undo_log,
+        &mapping_key,
+        &stage_id,
+        &root_actions,
+        Some("Named mapping".to_owned()),
+        &tx,
+        "Press gesture: long timing decide on release -> long fires while held".to_owned(),
+        500,
+        true,
+        Vec::new(),
+        vec![Action::Invert],
+    );
+
+    let command = rx.try_recv().expect("toggle edit sends SetMapping");
+    match command {
+        inputforge_core::engine::EngineCommand::SetMapping { actions, .. } => {
+            assert!(matches!(
+                actions.first(),
+                Some(Action::PressGesture {
+                    threshold_ms: 500,
+                    fire_long_when_threshold_crossed: true,
+                    long_press,
+                    ..
+                }) if matches!(long_press.as_slice(), [Action::Invert])
+            ));
+        }
+        other => panic!("expected SetMapping, got {other:?}"),
+    }
+    assert_eq!(
+        undo_log.last_label(&mapping_key).as_deref(),
+        Some("Press gesture: long timing decide on release -> long fires while held")
+    );
+}
+
+#[test]
+fn gesture_branch_container_matches_conditional_empty_branch_behavior() {
+    let html = render_stage_body_with_addr(
+        Action::TapGesture {
+            threshold_ms: 250,
+            fire_single_immediately: false,
+            single_tap: Vec::new(),
+            double_tap: Vec::new(),
+        },
+        InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        },
+    );
+
+    assert!(html.contains("Single tap"), "{html}");
+    assert!(html.contains("Double tap"), "{html}");
+    assert!(
+        html.matches("Add first stage").count() >= 2,
+        "both empty gesture branches should use the standard empty pipeline affordance: {html}"
+    );
+}
+
+#[test]
+fn gesture_branch_container_supports_nested_pipeline_behavior() {
+    let html = render_stage_body_with_addr(
+        Action::PressGesture {
+            threshold_ms: 500,
+            fire_long_when_threshold_crossed: false,
+            short_press: vec![Action::Conditional {
+                condition: Condition::ButtonPressed {
+                    input: synth_addr(),
+                },
+                if_true: vec![Action::Invert],
+                if_false: Vec::new(),
+            }],
+            long_press: Vec::new(),
+        },
+        InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        },
+    );
+
+    assert!(html.contains("Short press"), "{html}");
+    assert!(html.contains("Conditional"), "{html}");
+    assert!(
+        html.contains("if-stage__branch"),
+        "nested branch pipeline should render normal branch containers: {html}"
+    );
 }
 
 #[test]

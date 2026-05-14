@@ -26,7 +26,9 @@ mod map_to_mouse;
 mod map_to_vjoy;
 mod merge_axis;
 pub(crate) mod predicate;
+pub(crate) mod press_gesture;
 mod response_curve;
+pub(crate) mod tap_gesture;
 
 #[component]
 pub(crate) fn StageBody(
@@ -90,21 +92,7 @@ pub(crate) fn StageBody(
                 if_true: if_true.clone(),
                 if_false: if_false.clone(),
                 root_actions: root_actions.clone(),
-                depth: u8::try_from(
-                    stage_id
-                        .0
-                        .iter()
-                        .filter(|s| {
-                            matches!(
-                                s,
-                                crate::frame::mapping_editor::undo_log::StageIdSegment::Branch(_)
-                            )
-                        })
-                        .count(),
-                )
-                // Nesting depth cannot exceed MAX_CONDITION_DEPTH (32) in practice;
-                // saturate on overflow so pathological inputs do not panic.
-                .unwrap_or(u8::MAX),
+                depth: branch_depth(&stage_id),
             }
         },
         Action::ResponseCurve { curve } => rsx! {
@@ -131,10 +119,57 @@ pub(crate) fn StageBody(
                 root_actions: root_actions.clone(),
             }
         },
-        Action::TapGesture { .. } | Action::PressGesture { .. } => rsx! {
-            div { class: "if-stage__placeholder" }
+        Action::TapGesture {
+            threshold_ms,
+            fire_single_immediately,
+            single_tap,
+            double_tap,
+        } => rsx! {
+            tap_gesture::TapGestureBody {
+                mapping_key: mapping_key.clone(),
+                stage_id: stage_id.clone(),
+                threshold_ms: *threshold_ms,
+                fire_single_immediately: *fire_single_immediately,
+                single_tap: single_tap.clone(),
+                double_tap: double_tap.clone(),
+                root_actions: root_actions.clone(),
+                depth: branch_depth(&stage_id),
+            }
+        },
+        Action::PressGesture {
+            threshold_ms,
+            fire_long_when_threshold_crossed,
+            short_press,
+            long_press,
+        } => rsx! {
+            press_gesture::PressGestureBody {
+                mapping_key: mapping_key.clone(),
+                stage_id: stage_id.clone(),
+                threshold_ms: *threshold_ms,
+                fire_long_when_threshold_crossed: *fire_long_when_threshold_crossed,
+                short_press: short_press.clone(),
+                long_press: long_press.clone(),
+                root_actions: root_actions.clone(),
+                depth: branch_depth(&stage_id),
+            }
         },
     }
+}
+
+fn branch_depth(stage_id: &StageId) -> u8 {
+    u8::try_from(
+        stage_id
+            .0
+            .iter()
+            .filter(|s| {
+                matches!(
+                    s,
+                    crate::frame::mapping_editor::undo_log::StageIdSegment::Branch(_)
+                )
+            })
+            .count(),
+    )
+    .unwrap_or(u8::MAX)
 }
 
 /// Per-variant `right_slot` for `StageHeader`. Called from `Stage::render`.
