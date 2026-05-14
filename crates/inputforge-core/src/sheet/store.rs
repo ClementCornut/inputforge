@@ -318,6 +318,7 @@ mod tests {
                 matching_hints: Vec::new(),
                 asset_ids: Vec::new(),
                 anchors: Vec::new(),
+                default_anchor_bindings: Vec::new(),
                 grouping_hints: Vec::new(),
                 default_token_preset: TokenPreset::Standard,
                 extensions: BTreeMap::default(),

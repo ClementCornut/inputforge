@@ -142,6 +142,8 @@ pub struct DeviceTemplate {
     #[serde(default)]
     pub anchors: Vec<TemplateAnchor>,
     #[serde(default)]
+    pub default_anchor_bindings: Vec<AnchorBinding>,
+    #[serde(default)]
     pub grouping_hints: Vec<GroupingHint>,
     pub default_token_preset: TokenPreset,
     #[serde(default, flatten, skip_serializing_if = "extension_payload_is_empty")]
@@ -568,6 +570,210 @@ mod tests {
             fallback_label: format!("Button {index}"),
             fallback_details: Some("Primary stick".to_owned()),
         }
+    }
+
+    #[test]
+    fn legacy_template_without_default_anchor_bindings_loads_empty_bindings() {
+        let toml = r#"
+schema_version = 1
+app_version_created = "0.2.0"
+app_version_last_saved = "0.2.0"
+
+[[templates]]
+template_id = "template-stick-left"
+display_name = "Left Stick"
+default_token_preset = "standard"
+"#;
+
+        let document: TemplateStoreDocument = toml::from_str(toml).unwrap();
+
+        assert_eq!(document.templates.len(), 1);
+        assert!(document.templates[0].default_anchor_bindings.is_empty());
+    }
+
+    #[test]
+    fn template_default_anchor_bindings_roundtrip() {
+        let anchor_id = AnchorId::from_string("anchor-trigger");
+        let document = TemplateStoreDocument {
+            templates: vec![DeviceTemplate {
+                template_id: TemplateId::from_string("template-stick-left"),
+                display_name: "Left Stick".to_owned(),
+                matching_hints: Vec::new(),
+                asset_ids: Vec::new(),
+                anchors: vec![TemplateAnchor {
+                    anchor_id: anchor_id.clone(),
+                    label: "Trigger".to_owned(),
+                    position: AnchorPosition { x: 0.42, y: 0.18 },
+                    input_type_hint: Some(InputTypeHint::Button),
+                    grouping_hint: None,
+                    device_matching_hint: None,
+                    extensions: BTreeMap::default(),
+                }],
+                default_anchor_bindings: vec![AnchorBinding {
+                    anchor_id: anchor_id.clone(),
+                    input: InputAddress::Bound {
+                        device: DeviceId("stick-alpha".to_owned()),
+                        input: InputId::Button { index: 1 },
+                    },
+                    captured_device_fingerprint: Some("vid:044f pid:b10a".to_owned()),
+                    assignment: AnchorAssignment::Captured,
+                }],
+                grouping_hints: Vec::new(),
+                default_token_preset: TokenPreset::Standard,
+                extensions: BTreeMap::default(),
+            }],
+            ..TemplateStoreDocument::default()
+        };
+
+        let toml = toml::to_string_pretty(&document).unwrap();
+        let roundtripped: TemplateStoreDocument = toml::from_str(&toml).unwrap();
+
+        assert_eq!(roundtripped, document);
+        assert_eq!(
+            roundtripped.templates[0].default_anchor_bindings[0].anchor_id,
+            anchor_id
+        );
+        assert_eq!(
+            roundtripped.templates[0].default_anchor_bindings[0].assignment,
+            AnchorAssignment::Captured
+        );
+    }
+
+    #[test]
+    fn template_default_binding_edits_do_not_mutate_sheet_instance_bindings_or_overrides() {
+        let anchor_id = AnchorId::from_string("anchor-trigger");
+        let template_id = TemplateId::from_string("template-stick-left");
+        let sheet_binding = AnchorBinding {
+            anchor_id: anchor_id.clone(),
+            input: InputAddress::Bound {
+                device: DeviceId("stick-bravo".to_owned()),
+                input: InputId::Button { index: 7 },
+            },
+            captured_device_fingerprint: None,
+            assignment: AnchorAssignment::Manual,
+        };
+        let override_position = AnchorPosition { x: 128.0, y: 64.0 };
+        let template_document = TemplateStoreDocument {
+            templates: vec![DeviceTemplate {
+                template_id: template_id.clone(),
+                display_name: "Left Stick".to_owned(),
+                matching_hints: Vec::new(),
+                asset_ids: Vec::new(),
+                anchors: vec![TemplateAnchor {
+                    anchor_id: anchor_id.clone(),
+                    label: "Trigger".to_owned(),
+                    position: AnchorPosition { x: 0.2, y: 0.3 },
+                    input_type_hint: Some(InputTypeHint::Button),
+                    grouping_hint: None,
+                    device_matching_hint: None,
+                    extensions: BTreeMap::default(),
+                }],
+                default_anchor_bindings: vec![AnchorBinding {
+                    anchor_id: anchor_id.clone(),
+                    input: InputAddress::Bound {
+                        device: DeviceId("stick-alpha".to_owned()),
+                        input: InputId::Button { index: 1 },
+                    },
+                    captured_device_fingerprint: None,
+                    assignment: AnchorAssignment::Manual,
+                }],
+                grouping_hints: Vec::new(),
+                default_token_preset: TokenPreset::Standard,
+                extensions: BTreeMap::default(),
+            }],
+            ..TemplateStoreDocument::default()
+        };
+        let profile_id = ProfileId::new();
+        let sheet_document = ProfileSheetsDocument {
+            header: SidecarHeader::new(),
+            profile_id: profile_id.clone(),
+            sheets: vec![MappingSheet {
+                id: SheetId::from_string("sheet-primary"),
+                display_name: "Flight".to_owned(),
+                profile_id,
+                layout_preset: LayoutPreset::FreeBoard,
+                board_size: BoardSize {
+                    width: 1920.0,
+                    height: 1080.0,
+                },
+                zoom_default: 1.0,
+                export: ExportSettings::default(),
+                template_instances: vec![TemplateInstance {
+                    id: TemplateInstanceId::from_string("instance-left"),
+                    template_id,
+                    rect: BoardRect {
+                        x: 10.0,
+                        y: 20.0,
+                        width: 400.0,
+                        height: 300.0,
+                    },
+                    anchor_bindings: vec![sheet_binding.clone()],
+                    extensions: BTreeMap::default(),
+                }],
+                mode_slots: Vec::new(),
+                blocks: Vec::new(),
+                lines: Vec::new(),
+                anchor_overrides: vec![SheetAnchorOverride {
+                    template_instance_id: TemplateInstanceId::from_string("instance-left"),
+                    anchor_id: anchor_id.clone(),
+                    position: override_position,
+                    extensions: BTreeMap::default(),
+                }],
+                sheet_text: Vec::new(),
+                extensions: BTreeMap::default(),
+            }],
+            extensions: BTreeMap::default(),
+        };
+
+        let template_toml = toml::to_string_pretty(&template_document).unwrap();
+        let sheet_toml = toml::to_string_pretty(&sheet_document).unwrap();
+        let mut loaded_template_document: TemplateStoreDocument =
+            toml::from_str(&template_toml).unwrap();
+        let loaded_sheet_document: ProfileSheetsDocument = toml::from_str(&sheet_toml).unwrap();
+        let expected_sheet_document = loaded_sheet_document.clone();
+
+        loaded_template_document.templates[0].default_anchor_bindings[0].input =
+            InputAddress::Bound {
+                device: DeviceId("stick-alpha".to_owned()),
+                input: InputId::Button { index: 2 },
+            };
+        loaded_template_document.templates[0].anchors[0].position =
+            AnchorPosition { x: 0.4, y: 0.5 };
+
+        let updated_template_toml = toml::to_string_pretty(&loaded_template_document).unwrap();
+        let reloaded_template_document: TemplateStoreDocument =
+            toml::from_str(&updated_template_toml).unwrap();
+        let reloaded_sheet_toml = toml::to_string_pretty(&loaded_sheet_document).unwrap();
+        let reloaded_sheet_document: ProfileSheetsDocument =
+            toml::from_str(&reloaded_sheet_toml).unwrap();
+
+        assert_eq!(
+            reloaded_template_document.templates[0].default_anchor_bindings[0].input,
+            InputAddress::Bound {
+                device: DeviceId("stick-alpha".to_owned()),
+                input: InputId::Button { index: 2 },
+            }
+        );
+        assert_eq!(
+            reloaded_template_document.templates[0].anchors[0].position,
+            AnchorPosition { x: 0.4, y: 0.5 }
+        );
+        assert_eq!(reloaded_sheet_document, expected_sheet_document);
+        assert_eq!(
+            reloaded_sheet_document.sheets[0].template_instances[0].anchor_bindings,
+            vec![sheet_binding]
+        );
+        assert_eq!(
+            reloaded_sheet_document.sheets[0].anchor_overrides[0].position,
+            override_position
+        );
+        assert_ne!(
+            reloaded_sheet_document.sheets[0].template_instances[0].anchor_bindings[0].input,
+            InputAddress::Bound {
+                device: DeviceId("stick-alpha".to_owned()),
+                input: InputId::Button { index: 2 },
+            }
+        );
     }
 
     #[test]
