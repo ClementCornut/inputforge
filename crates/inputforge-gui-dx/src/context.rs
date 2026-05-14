@@ -5,7 +5,7 @@ use std::sync::{Arc, mpsc};
 use dioxus::prelude::*;
 use parking_lot::RwLock;
 
-use inputforge_core::action::DEFAULT_GESTURE_THRESHOLD_MS;
+use inputforge_core::action::{ActionBranch, DEFAULT_GESTURE_THRESHOLD_MS, branch_actions};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::pipeline::InputCache;
 use inputforge_core::settings::StartupSettings;
@@ -558,6 +558,17 @@ fn derive_glyphs(actions: &[inputforge_core::action::Action]) -> GlyphFlags {
     out
 }
 
+fn action_branches() -> [ActionBranch; 6] {
+    [
+        ActionBranch::ConditionalTrue,
+        ActionBranch::ConditionalFalse,
+        ActionBranch::TapSingle,
+        ActionBranch::TapDouble,
+        ActionBranch::PressShort,
+        ActionBranch::PressLong,
+    ]
+}
+
 fn walk_actions(actions: &[inputforge_core::action::Action], out: &mut GlyphFlags) {
     use inputforge_core::action::Action;
     for action in actions {
@@ -568,20 +579,19 @@ fn walk_actions(actions: &[inputforge_core::action::Action], out: &mut GlyphFlag
             Action::MergeAxis { second_input, .. } if out.merge_secondary.is_none() => {
                 out.merge_secondary = Some(second_input.clone());
             }
-            Action::Conditional {
-                condition,
-                if_true,
-                if_false,
-            } => {
+            Action::Conditional { condition, .. } => {
                 if out.first_input_predicate.is_none()
                     && let Some(addr) = first_input_predicate(condition)
                 {
                     out.first_input_predicate = Some(addr);
                 }
-                walk_actions(if_true, out);
-                walk_actions(if_false, out);
             }
             _ => {}
+        }
+        for branch in action_branches() {
+            if let Some(actions) = branch_actions(action, branch) {
+                walk_actions(actions, out);
+            }
         }
     }
 }
@@ -636,16 +646,15 @@ fn derive_referenced_devices(
         for action in actions {
             match action {
                 Action::MergeAxis { second_input, .. } => push_addr(out, second_input),
-                Action::Conditional {
-                    condition,
-                    if_true,
-                    if_false,
-                } => {
+                Action::Conditional { condition, .. } => {
                     walk_condition(out, condition);
-                    walk_actions(out, if_true);
-                    walk_actions(out, if_false);
                 }
                 _ => {}
+            }
+            for branch in action_branches() {
+                if let Some(actions) = branch_actions(action, branch) {
+                    walk_actions(out, actions);
+                }
             }
         }
     }
@@ -661,17 +670,14 @@ fn first_vjoy_output(actions: &[inputforge_core::action::Action]) -> Option<Outp
     for action in actions {
         match action {
             Action::MapToVJoy { output } => return Some(output.clone()),
-            Action::Conditional {
-                if_true, if_false, ..
-            } => {
-                if let Some(output) = first_vjoy_output(if_true) {
-                    return Some(output);
-                }
-                if let Some(output) = first_vjoy_output(if_false) {
-                    return Some(output);
-                }
-            }
             _ => {}
+        }
+        for branch in action_branches() {
+            if let Some(actions) = branch_actions(action, branch)
+                && let Some(output) = first_vjoy_output(actions)
+            {
+                return Some(output);
+            }
         }
     }
     None
@@ -836,16 +842,15 @@ fn record_referenced_input_kinds(
                 record_input_kind(second_input, axes, buttons, hats);
                 found = true;
             }
-            Action::Conditional {
-                condition,
-                if_true,
-                if_false,
-            } => {
+            Action::Conditional { condition, .. } => {
                 found |= record_condition_input_kinds(device_id, condition, axes, buttons, hats);
-                found |= record_referenced_input_kinds(device_id, if_true, axes, buttons, hats);
-                found |= record_referenced_input_kinds(device_id, if_false, axes, buttons, hats);
             }
             _ => {}
+        }
+        for branch in action_branches() {
+            if let Some(actions) = branch_actions(action, branch) {
+                found |= record_referenced_input_kinds(device_id, actions, axes, buttons, hats);
+            }
         }
     }
     found
@@ -1859,6 +1864,67 @@ mod tests {
             cfg.mappings[0].first_vjoy_output.as_ref(),
             Some(&true_output)
         );
+    }
+
+    #[test]
+    fn config_snapshot_glyph_walker_descends_into_gesture_branches() {
+        use inputforge_core::action::{Action, Mapping};
+        use inputforge_core::mode::Modes;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::state::AppState;
+        use inputforge_core::types::{
+            DeviceId, InputAddress, InputId, MergeOp, OutputAddress, OutputId, VJoyAxis,
+        };
+
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
+        let primary = InputAddress::Bound {
+            device: DeviceId("stick".to_owned()),
+            input: InputId::Button { index: 0 },
+        };
+        let secondary = InputAddress::Bound {
+            device: DeviceId("pedals".to_owned()),
+            input: InputId::Axis { index: 1 },
+        };
+        let output = OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        };
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            vec![Mapping {
+                input: primary.clone(),
+                mode: "Default".to_owned(),
+                name: None,
+                actions: vec![Action::TapGesture {
+                    threshold_ms: 300,
+                    fire_single_immediately: false,
+                    single_tap: Vec::new(),
+                    double_tap: vec![
+                        Action::MergeAxis {
+                            second_input: secondary.clone(),
+                            operation: MergeOp::Average,
+                        },
+                        Action::MapToVJoy {
+                            output: output.clone(),
+                        },
+                    ],
+                }],
+            }],
+            vec![],
+            "Default".to_owned(),
+        );
+
+        let cfg = ConfigSnapshot::from_state(&AppState::with_profile(profile), None);
+        let summary = &cfg.mappings[0];
+
+        assert_eq!(summary.glyphs.merge_secondary.as_ref(), Some(&secondary));
+        assert_eq!(
+            summary.referenced_devices,
+            vec![DeviceId("stick".to_owned()), DeviceId("pedals".to_owned())]
+        );
+        assert_eq!(summary.first_vjoy_output.as_ref(), Some(&output));
     }
 
     #[test]

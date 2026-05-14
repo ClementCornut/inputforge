@@ -2,7 +2,9 @@
 
 use std::collections::HashSet;
 
-use inputforge_core::action::{Action, ActionBranch, Condition, MouseTarget, OutputBehavior};
+use inputforge_core::action::{
+    Action, ActionBranch, Condition, MouseTarget, OutputBehavior, branch_actions,
+};
 use inputforge_core::pipeline::{
     BranchStep, InputCache, button_pressed_from_value, evaluate_actions_through_path,
     evaluate_condition,
@@ -101,6 +103,8 @@ pub(super) enum Branch {
     IfTrue,
     /// The false branch of a condition.
     IfFalse,
+    /// A gesture outcome branch; runtime gesture telemetry is not sampled here.
+    Gesture(ActionBranch),
 }
 
 /// Predicate row shown beside conditional output state.
@@ -218,35 +222,19 @@ impl AnalysisContext<'_> {
         let mut current = self.top_level;
 
         for step in branch_path {
-            let (index, wants_true) = match *step {
-                BranchStep::Branch {
-                    index,
-                    branch: ActionBranch::ConditionalTrue,
-                } => (index, true),
-                BranchStep::Branch {
-                    index,
-                    branch: ActionBranch::ConditionalFalse,
-                } => (index, false),
-                BranchStep::Branch { index, branch } => {
-                    panic!(
-                        "branch path target at index {index} must be a conditional branch, got {branch:?}"
-                    )
-                }
-            };
-            append_non_conditional_actions(&current[..index], &mut flattened);
-            match &current[index] {
-                Action::Conditional {
-                    if_true, if_false, ..
-                } => {
-                    current = if wants_true { if_true } else { if_false };
-                }
-                other => {
-                    panic!("branch path target at index {index} must be Conditional, got {other:?}")
-                }
+            let BranchStep::Branch { index, branch } = *step;
+            append_non_branch_actions(&current[..index], &mut flattened);
+            let action = &current[index];
+            if let Some(actions) = branch_actions(action, branch) {
+                current = actions;
+            } else {
+                panic!(
+                    "branch path target at index {index} must support {branch:?}, got {action:?}"
+                );
             }
         }
 
-        append_non_conditional_actions(&current[..=local_idx], &mut flattened);
+        append_non_branch_actions(&current[..=local_idx], &mut flattened);
         flattened
     }
 
@@ -262,11 +250,18 @@ impl AnalysisContext<'_> {
     }
 }
 
-fn append_non_conditional_actions(actions: &[Action], out: &mut Vec<Action>) {
+fn append_non_branch_actions(actions: &[Action], out: &mut Vec<Action>) {
     out.extend(
         actions
             .iter()
-            .filter(|action| !matches!(action, Action::Conditional { .. }))
+            .filter(|action| {
+                !matches!(
+                    action,
+                    Action::Conditional { .. }
+                        | Action::TapGesture { .. }
+                        | Action::PressGesture { .. }
+                )
+            })
             .cloned(),
     );
 }
@@ -276,7 +271,11 @@ fn compute_is_active(chain: &[ChainStep]) -> bool {
         ChainStep::Merge { .. } => true,
         ChainStep::Conditional {
             evaluated, branch, ..
-        } => *evaluated == matches!(branch, Branch::IfTrue),
+        } => match branch {
+            Branch::IfTrue => *evaluated,
+            Branch::IfFalse => !*evaluated,
+            Branch::Gesture(_) => false,
+        },
     })
 }
 
@@ -568,16 +567,57 @@ fn walk(
                 chain_stack.pop();
                 branch_path.pop();
             }
+            Action::TapGesture { .. } | Action::PressGesture { .. } => {
+                for &branch in gesture_branches_for(action) {
+                    let Some(actions) = branch_actions(action, branch) else {
+                        continue;
+                    };
+                    branch_path.push(BranchStep::Branch { index: i, branch });
+                    chain_stack.push(ChainStep::Conditional {
+                        condition_label: gesture_branch_label(branch).to_owned(),
+                        evaluated: false,
+                        branch: Branch::Gesture(branch),
+                    });
+                    walk(
+                        context,
+                        actions,
+                        model,
+                        chain_stack,
+                        branch_path,
+                        predicate_keys,
+                        depth + 1,
+                    );
+                    chain_stack.pop();
+                    branch_path.pop();
+                }
+            }
             Action::ResponseCurve { .. }
             | Action::Deadzone { .. }
             | Action::Invert
-            | Action::ChangeMode { .. }
-            | Action::TapGesture { .. }
-            | Action::PressGesture { .. } => {}
+            | Action::ChangeMode { .. } => {}
         }
     }
 
     chain_stack.truncate(stack_baseline);
+}
+
+fn gesture_branches_for(action: &Action) -> &'static [ActionBranch] {
+    match action {
+        Action::TapGesture { .. } => &[ActionBranch::TapSingle, ActionBranch::TapDouble],
+        Action::PressGesture { .. } => &[ActionBranch::PressShort, ActionBranch::PressLong],
+        _ => &[],
+    }
+}
+
+fn gesture_branch_label(branch: ActionBranch) -> &'static str {
+    match branch {
+        ActionBranch::TapSingle => "Single tap",
+        ActionBranch::TapDouble => "Double tap",
+        ActionBranch::PressShort => "Short press",
+        ActionBranch::PressLong => "Long press",
+        ActionBranch::ConditionalTrue => "If true",
+        ActionBranch::ConditionalFalse => "If false",
+    }
 }
 
 #[cfg(test)]
@@ -1130,6 +1170,73 @@ mod walker_tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn gesture_branches_emit_output_descriptors() {
+        let primary = input(0);
+        let secondary = input(1);
+        let single_output = vjoy_axis(VJoyAxis::X);
+        let double_output = vjoy_axis(VJoyAxis::Y);
+        let mut state = AppState::new();
+        set_axis(&mut state, &primary, 0.25, AxisPolarity::Bipolar);
+        set_axis(&mut state, &secondary, 0.75, AxisPolarity::Bipolar);
+        let actions = vec![Action::TapGesture {
+            threshold_ms: 300,
+            fire_single_immediately: false,
+            single_tap: vec![Action::MapToVJoy {
+                output: single_output.clone(),
+            }],
+            double_tap: vec![
+                Action::MergeAxis {
+                    second_input: secondary.clone(),
+                    operation: MergeOp::Average,
+                },
+                Action::MapToVJoy {
+                    output: double_output.clone(),
+                },
+            ],
+        }];
+
+        let model = analyze_actions_with_state(&actions, &primary, &state);
+
+        assert_eq!(model.outputs.len(), 2);
+        assert_eq!(
+            model.outputs[0],
+            OutputDescriptor {
+                destination: OutputDestination::VJoy(single_output),
+                chain: vec![ChainStep::Conditional {
+                    condition_label: "Single tap".to_owned(),
+                    evaluated: false,
+                    branch: Branch::Gesture(ActionBranch::TapSingle),
+                }],
+                is_active: false,
+                polarity: AxisPolarity::Bipolar,
+            }
+        );
+        assert_eq!(
+            model.outputs[1],
+            OutputDescriptor {
+                destination: OutputDestination::VJoy(double_output),
+                chain: vec![
+                    ChainStep::Conditional {
+                        condition_label: "Double tap".to_owned(),
+                        evaluated: false,
+                        branch: Branch::Gesture(ActionBranch::TapDouble),
+                    },
+                    ChainStep::Merge {
+                        operation: MergeOp::Average,
+                        secondary_input: secondary.clone(),
+                        encoded_value: 0.5,
+                        polarity_at_step: AxisPolarity::Bipolar,
+                    },
+                ],
+                is_active: false,
+                polarity: AxisPolarity::Bipolar,
+            }
+        );
+        assert_eq!(model.pipeline_inputs, vec![primary, secondary]);
+        assert!(model.predicates.is_empty());
     }
 
     #[test]

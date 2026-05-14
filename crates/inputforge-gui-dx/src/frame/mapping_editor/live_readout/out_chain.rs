@@ -82,6 +82,7 @@ fn ChainRow(step: ChainStep, index_in_chain: usize) -> Element {
             branch,
         } => {
             let active = conditional_active(evaluated, branch);
+            let step_label = branch_step_label(branch);
             let outcome = if active {
                 "active branch"
             } else {
@@ -93,7 +94,7 @@ fn ChainRow(step: ChainStep, index_in_chain: usize) -> Element {
 
             rsx! {
                 div { class: "{row_class}",
-                    span { class: "if-editor__readout-chain-step", "COND" }
+                    span { class: "if-editor__readout-chain-step", "{step_label}" }
                     span { class: "if-editor__readout-chain-tag", "{condition_label}" }
                     span { class: "{outcome_class}", "{outcome_text}" }
                 }
@@ -103,7 +104,18 @@ fn ChainRow(step: ChainStep, index_in_chain: usize) -> Element {
 }
 
 fn conditional_active(evaluated: bool, branch: Branch) -> bool {
-    evaluated == matches!(branch, Branch::IfTrue)
+    match branch {
+        Branch::IfTrue => evaluated,
+        Branch::IfFalse => !evaluated,
+        Branch::Gesture(_) => false,
+    }
+}
+
+fn branch_step_label(branch: Branch) -> &'static str {
+    match branch {
+        Branch::IfTrue | Branch::IfFalse => "COND",
+        Branch::Gesture(_) => "GEST",
+    }
 }
 
 fn conditional_row_class(active: bool) -> &'static str {
@@ -165,6 +177,26 @@ mod tests {
         assert!(conditional_active(false, Branch::IfFalse));
         assert!(!conditional_active(false, Branch::IfTrue));
         assert!(!conditional_active(true, Branch::IfFalse));
+    }
+
+    #[test]
+    fn gesture_branch_is_never_active_without_runtime_telemetry() {
+        let branch = Branch::Gesture(inputforge_core::action::ActionBranch::TapSingle);
+
+        assert!(!conditional_active(false, branch));
+        assert!(!conditional_active(true, branch));
+    }
+
+    #[test]
+    fn branch_step_label_distinguishes_gestures_from_conditions() {
+        assert_eq!(branch_step_label(Branch::IfTrue), "COND");
+        assert_eq!(branch_step_label(Branch::IfFalse), "COND");
+        assert_eq!(
+            branch_step_label(Branch::Gesture(
+                inputforge_core::action::ActionBranch::PressLong
+            )),
+            "GEST"
+        );
     }
 
     #[test]
