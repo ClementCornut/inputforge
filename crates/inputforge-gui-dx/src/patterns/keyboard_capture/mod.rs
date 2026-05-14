@@ -17,41 +17,8 @@ const UNSUPPORTED_KEY_HINT: &str = "Unsupported key";
 const MULTI_MODIFIER_ONLY_HINT: &str = "Modifier-only bindings must use one modifier";
 const KEYBOARD_CAPTURE_ARM_JS: &str = "window.__inputforgeKeyboardCaptureArmed = true;";
 const KEYBOARD_CAPTURE_DISARM_JS: &str = "window.__inputforgeKeyboardCaptureArmed = false;";
-const KEYBOARD_CAPTURE_LISTENER_JS: &str = "\
-window.__inputforgeKeyboardCaptureArmed = false;
-const sendCapture = (ev, kind) => {
-  if (!window.__inputforgeKeyboardCaptureArmed) return;
-  ev.preventDefault();
-  ev.stopPropagation();
-  const payload = {
-    kind,
-    key: ev.key || '',
-    code: ev.code || 'Unidentified',
-    location: ev.location || 0,
-    ctrl: !!ev.ctrlKey,
-    alt: !!ev.altKey,
-    shift: !!ev.shiftKey,
-    meta: !!ev.metaKey,
-  };
-  console.debug('[keyboard_capture]', payload);
-  dioxus.send(payload);
-};
-const keydown = (ev) => sendCapture(ev, 'keydown');
-const keyup = (ev) => sendCapture(ev, 'keyup');
-window.addEventListener('keydown', keydown, true);
-window.addEventListener('keyup', keyup, true);
-(async () => {
-  while (true) {
-    const msg = await dioxus.recv();
-    if (msg === '__shutdown__') {
-      window.removeEventListener('keydown', keydown, true);
-      window.removeEventListener('keyup', keyup, true);
-      dioxus.send('__ack__');
-      return;
-    }
-  }
-})();
-";
+const KEYBOARD_CAPTURE_LISTENER_JS: &str =
+    include_str!("../../../assets/patterns/keyboard_capture_listener.js");
 
 static NEXT_CAPTURE_OWNER: AtomicU64 = AtomicU64::new(1);
 
