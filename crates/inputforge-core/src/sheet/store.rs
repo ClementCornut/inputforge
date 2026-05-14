@@ -279,7 +279,7 @@ mod tests {
                 device: DeviceId("stick-alpha".to_owned()),
                 input: InputId::Button { index: 1 },
             },
-            fallback_label: Some("Fire".to_owned()),
+            fallback_label: "Fire".to_owned(),
             fallback_details: None,
         }
     }
@@ -292,7 +292,7 @@ mod tests {
                 MappingDisplayMetadata {
                     id: MappingMetadataId::from_string("metadata-a"),
                     mapping_ref: mapping_ref.clone(),
-                    display_name: "Fire primary".to_owned(),
+                    display_name: Some("Fire primary".to_owned()),
                     category: None,
                     classification_token: None,
                     extensions: BTreeMap::default(),
@@ -300,7 +300,7 @@ mod tests {
                 MappingDisplayMetadata {
                     id: MappingMetadataId::from_string("metadata-b"),
                     mapping_ref,
-                    display_name: "Fire duplicate".to_owned(),
+                    display_name: Some("Fire duplicate".to_owned()),
                     category: None,
                     classification_token: None,
                     extensions: BTreeMap::default(),
@@ -319,7 +319,7 @@ mod tests {
                 asset_ids: Vec::new(),
                 anchors: Vec::new(),
                 grouping_hints: Vec::new(),
-                default_token_preset: Some(TokenPreset::Standard),
+                default_token_preset: TokenPreset::Standard,
                 extensions: BTreeMap::default(),
             }],
             ..TemplateStoreDocument::default()

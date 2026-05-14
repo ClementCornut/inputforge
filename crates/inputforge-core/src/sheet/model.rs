@@ -2,6 +2,7 @@
 // Rust guideline compliant 2026-05-13
 
 use std::collections::{BTreeMap, HashSet};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -142,8 +143,7 @@ pub struct DeviceTemplate {
     pub anchors: Vec<TemplateAnchor>,
     #[serde(default)]
     pub grouping_hints: Vec<GroupingHint>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_token_preset: Option<TokenPreset>,
+    pub default_token_preset: TokenPreset,
     #[serde(default, flatten, skip_serializing_if = "extension_payload_is_empty")]
     pub extensions: ExtensionPayload,
 }
@@ -152,9 +152,9 @@ pub struct DeviceTemplate {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceMatchingHint {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub vendor_id: Option<u16>,
+    pub vendor_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub product_id: Option<u16>,
+    pub product_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name_contains: Option<String>,
 }
@@ -163,13 +163,12 @@ pub struct DeviceMatchingHint {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssetEntry {
     pub asset_id: AssetId,
-    pub copied_path: String,
+    pub copied_path: PathBuf,
     pub content_hash: String,
     pub media_type: String,
+    pub pixel_dimensions: PixelDimensions,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pixel_dimensions: Option<PixelDimensions>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub original_import_path: Option<String>,
+    pub original_import_path: Option<PathBuf>,
     #[serde(default, flatten, skip_serializing_if = "extension_payload_is_empty")]
     pub extensions: ExtensionPayload,
 }
@@ -248,8 +247,7 @@ pub struct MappingSheet {
     pub profile_id: ProfileId,
     pub layout_preset: LayoutPreset,
     pub board_size: BoardSize,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub zoom_default: Option<f64>,
+    pub zoom_default: f64,
     pub export: ExportSettings,
     #[serde(default)]
     pub template_instances: Vec<TemplateInstance>,
@@ -341,8 +339,7 @@ pub struct ModeMappingSlot {
 pub struct MappingRef {
     pub mode_id: String,
     pub input: InputAddress,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fallback_label: Option<String>,
+    pub fallback_label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fallback_details: Option<String>,
 }
@@ -512,11 +509,12 @@ pub enum SheetTextKind {
 pub struct MappingDisplayMetadata {
     pub id: MappingMetadataId,
     pub mapping_ref: MappingRef,
-    pub display_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub classification_token: Option<TokenPreset>,
+    pub classification_token: Option<String>,
     #[serde(default, flatten, skip_serializing_if = "extension_payload_is_empty")]
     pub extensions: ExtensionPayload,
 }
@@ -567,7 +565,7 @@ mod tests {
                 device: DeviceId("stick-alpha".to_owned()),
                 input: InputId::Button { index },
             },
-            fallback_label: Some(format!("Button {index}")),
+            fallback_label: format!("Button {index}"),
             fallback_details: Some("Primary stick".to_owned()),
         }
     }
@@ -585,7 +583,7 @@ mod tests {
                 width: 1920.0,
                 height: 1080.0,
             },
-            zoom_default: Some(0.75),
+            zoom_default: 0.75,
             export: ExportSettings::default(),
             template_instances: Vec::new(),
             mode_slots: vec![ModeMappingSlot {
@@ -695,21 +693,18 @@ height = 480
 
         let document: AssetManifestDocument = toml::from_str(source).unwrap();
         assert_eq!(document.extensions["generator"].as_str(), Some("fixture"));
-        assert_eq!(document.assets[0].copied_path, "assets/stick.png");
         assert_eq!(
-            document.assets[0].pixel_dimensions.as_ref().unwrap().width,
-            640
+            document.assets[0].copied_path,
+            PathBuf::from("assets/stick.png")
         );
+        assert_eq!(document.assets[0].pixel_dimensions.width, 640);
         assert_eq!(document.assets[0].extensions["tint"].as_str(), Some("blue"));
 
         let encoded = toml::to_string(&document).unwrap();
         let decoded: AssetManifestDocument = toml::from_str(&encoded).unwrap();
         assert_eq!(decoded.extensions["generator"].as_str(), Some("fixture"));
         assert_eq!(decoded.assets[0].extensions["tint"].as_str(), Some("blue"));
-        assert_eq!(
-            decoded.assets[0].pixel_dimensions.as_ref().unwrap().height,
-            480
-        );
+        assert_eq!(decoded.assets[0].pixel_dimensions.height, 480);
     }
 
     #[test]
@@ -721,9 +716,9 @@ height = 480
             records: vec![MappingDisplayMetadata {
                 id: MappingMetadataId::from_string("metadata-primary-fire"),
                 mapping_ref: mapping_ref(2),
-                display_name: "Primary fire".to_owned(),
+                display_name: Some("Primary fire".to_owned()),
                 category: Some("Weapons".to_owned()),
-                classification_token: Some(TokenPreset::Warning),
+                classification_token: Some("weapon".to_owned()),
                 extensions: ExtensionPayload::default(),
             }],
             extensions: ExtensionPayload::default(),
@@ -739,8 +734,8 @@ height = 480
         );
         assert_eq!(decoded.records[0].mapping_ref, mapping_ref(2));
         assert_eq!(
-            decoded.records[0].classification_token,
-            Some(TokenPreset::Warning)
+            decoded.records[0].classification_token.as_deref(),
+            Some("weapon")
         );
     }
 
@@ -784,10 +779,7 @@ index = 3
         assert_eq!(decoded.records[0].extensions["color"].as_str(), Some("red"));
         assert_eq!(decoded.records[0].mapping_ref.input, mapping_ref(3).input);
         assert_eq!(decoded.records[0].mapping_ref.mode_id, "combat");
-        assert_eq!(
-            decoded.records[0].mapping_ref.fallback_label.as_deref(),
-            Some("Trigger")
-        );
+        assert_eq!(decoded.records[0].mapping_ref.fallback_label, "Trigger");
     }
 
     #[test]
@@ -800,7 +792,7 @@ index = 3
                 MappingDisplayMetadata {
                     id: MappingMetadataId::from_string("metadata-a"),
                     mapping_ref: duplicate.clone(),
-                    display_name: "First".to_owned(),
+                    display_name: Some("First".to_owned()),
                     category: None,
                     classification_token: None,
                     extensions: ExtensionPayload::default(),
@@ -808,7 +800,7 @@ index = 3
                 MappingDisplayMetadata {
                     id: MappingMetadataId::from_string("metadata-b"),
                     mapping_ref: duplicate,
-                    display_name: "Second".to_owned(),
+                    display_name: Some("Second".to_owned()),
                     category: None,
                     classification_token: None,
                     extensions: ExtensionPayload::default(),
