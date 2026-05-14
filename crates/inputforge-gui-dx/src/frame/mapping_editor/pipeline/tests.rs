@@ -1964,6 +1964,14 @@ fn predicate_editor_preserves_hook_order_when_kind_changes() {
     );
 }
 
+fn css_rule<'a>(css: &'a str, selector: &str) -> Option<&'a str> {
+    let selector_start = format!("{selector} {{");
+    let start = css.find(&selector_start)?;
+    let after_start = &css[start..];
+    let end = after_start.find('}')?;
+    Some(&after_start[..=end])
+}
+
 #[test]
 fn map_to_keyboard_capture_has_css_contract_without_modifier_row() {
     let css = include_str!("../../../../assets/frame/mapping_editor.css");
@@ -1982,6 +1990,34 @@ fn map_to_keyboard_capture_has_css_contract_without_modifier_row() {
             && css.contains(".if-key-capture__surface.is-listening")
             && css.contains(".if-key-capture__hint"),
         "keyboard capture needs styled idle/listening/hint states"
+    );
+}
+
+#[test]
+fn gesture_branch_css_aligns_body_and_branch_grid() {
+    let css = include_str!("../../../../assets/frame/mapping_editor.css");
+    let stage_body = css_rule(css, ".if-stage__body").expect("stage body CSS rule exists");
+    let branches = css_rule(css, ".if-stage__branches").expect("branch grid CSS rule exists");
+    let branch_label =
+        css_rule(css, ".if-stage__branch-label").expect("branch label CSS rule exists");
+
+    assert!(
+        stage_body.contains("padding: 8px 12px 8px 22px;"),
+        "expanded stage bodies should align to the stage header title inset: {stage_body}"
+    );
+    assert!(
+        branches.contains("gap: var(--space-3);"),
+        "branch stack spacing should be owned by the branch grid: {branches}"
+    );
+    if let Some(branch) = css_rule(css, ".if-stage__branch") {
+        assert!(
+            !branch.contains("margin-left") && !branch.contains("margin-top"),
+            "branch wrappers should not add independent left/top offsets: {branch}"
+        );
+    }
+    assert!(
+        !branch_label.contains("margin-bottom"),
+        "branch labels should not add extra vertical margin: {branch_label}"
     );
 }
 
