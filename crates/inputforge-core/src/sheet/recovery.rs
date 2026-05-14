@@ -1,1 +1,202 @@
 // Rust guideline compliant 2026-05-13
+
+use std::path::{Path, PathBuf};
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+use super::ids::RecoverySnapshotId;
+use super::store::{external_profile_sidecar_dir, global_sheet_store_dir, profile_sidecar_dir};
+use crate::error::Result;
+use crate::fs::atomic_write;
+
+const RECOVERY_DIR_NAME: &str = "recovery";
+const MANIFEST_FILE_NAME: &str = "manifest.toml";
+const FALLBACK_SIDECAR_FILE_NAME: &str = "sidecar.toml";
+
+/// Describes one recovery snapshot and the sidecars it captured.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecoverySnapshotManifest {
+    pub id: RecoverySnapshotId,
+    pub label: String,
+    pub taken_at: DateTime<Utc>,
+    pub files: Vec<RecoverySnapshotFile>,
+}
+
+/// Describes one sidecar source and its optional snapshot copy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecoverySnapshotFile {
+    pub source_path: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copied_path: Option<PathBuf>,
+}
+
+/// Returns the global recovery root under the mapping sheet store.
+#[must_use]
+pub fn global_recovery_dir(config_dir: &Path) -> PathBuf {
+    global_sheet_store_dir(config_dir).join(RECOVERY_DIR_NAME)
+}
+
+/// Returns the profile-owned recovery root next to the profile sidecars.
+///
+/// # Errors
+///
+/// Returns an error when [`profile_sidecar_dir`] rejects the profile path.
+pub fn profile_recovery_dir(profile_path: &Path) -> Result<PathBuf> {
+    Ok(profile_sidecar_dir(profile_path)?.join(RECOVERY_DIR_NAME))
+}
+
+/// Returns the config-owned recovery root for an external profile.
+#[must_use]
+pub fn external_profile_recovery_dir(config_dir: &Path, canonical_profile_path: &Path) -> PathBuf {
+    external_profile_sidecar_dir(config_dir, canonical_profile_path).join(RECOVERY_DIR_NAME)
+}
+
+/// Creates a recovery snapshot for the provided sidecar files.
+///
+/// Existing sidecar files are copied under a new snapshot directory. Missing
+/// sidecars are recorded in the manifest without failing the snapshot.
+///
+/// # Errors
+///
+/// Returns serialization or I/O errors from creating directories, copying
+/// existing sidecars, or writing the TOML manifest.
+pub fn create_recovery_snapshot(
+    recovery_root: &Path,
+    label: impl Into<String>,
+    sidecar_files: &[PathBuf],
+) -> Result<RecoverySnapshotManifest> {
+    let id = RecoverySnapshotId::new();
+    let snapshot_dir = recovery_root.join(id.to_string());
+    std::fs::create_dir_all(&snapshot_dir)?;
+
+    let files = sidecar_files
+        .iter()
+        .enumerate()
+        .map(|(index, source_path)| {
+            let copied_path = if source_path.exists() {
+                let file_name = source_path
+                    .file_name()
+                    .and_then(|file_name| file_name.to_str())
+                    .unwrap_or(FALLBACK_SIDECAR_FILE_NAME);
+                let copied_path = snapshot_dir.join(format!("{index:02}-{file_name}"));
+                std::fs::copy(source_path, &copied_path)?;
+                Some(copied_path)
+            } else {
+                None
+            };
+
+            Ok(RecoverySnapshotFile {
+                source_path: source_path.clone(),
+                copied_path,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let manifest = RecoverySnapshotManifest {
+        id,
+        label: label.into(),
+        taken_at: Utc::now(),
+        files,
+    };
+    let manifest_toml = toml::to_string_pretty(&manifest)?;
+    atomic_write(
+        &snapshot_dir.join(MANIFEST_FILE_NAME),
+        manifest_toml.as_bytes(),
+    )?;
+
+    Ok(manifest)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::{
+        create_recovery_snapshot, external_profile_recovery_dir, global_recovery_dir,
+        profile_recovery_dir,
+    };
+    use crate::sheet::{external_profile_sidecar_dir, global_sheet_store_dir, profile_sidecar_dir};
+
+    #[test]
+    fn recovery_roots_live_beside_their_owner_sidecar_namespace() {
+        let config_dir = Path::new("config");
+        let profile_path = Path::new("profiles").join("flight.toml");
+        let external_profile_path = Path::new("external").join("profile.toml");
+
+        assert_eq!(
+            global_recovery_dir(config_dir),
+            global_sheet_store_dir(config_dir).join("recovery")
+        );
+        assert_eq!(
+            profile_recovery_dir(&profile_path).unwrap(),
+            profile_sidecar_dir(&profile_path).unwrap().join("recovery")
+        );
+        assert_eq!(
+            external_profile_recovery_dir(config_dir, &external_profile_path),
+            external_profile_sidecar_dir(config_dir, &external_profile_path).join("recovery")
+        );
+    }
+
+    #[test]
+    fn recovery_snapshot_copies_existing_sidecars_and_writes_manifest_under_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let recovery_root = dir.path().join("recovery");
+        let first_sidecar = dir.path().join("mapping-sheets.toml");
+        let second_sidecar = dir.path().join("mapping-display-metadata.toml");
+        std::fs::write(&first_sidecar, "sheets = []\n").unwrap();
+        std::fs::write(&second_sidecar, "records = []\n").unwrap();
+
+        let manifest = create_recovery_snapshot(
+            &recovery_root,
+            "before import",
+            &[first_sidecar.clone(), second_sidecar.clone()],
+        )
+        .unwrap();
+
+        let snapshot_dir = recovery_root.join(manifest.id.to_string());
+        let manifest_path = snapshot_dir.join("manifest.toml");
+        assert_eq!(manifest.label, "before import");
+        assert_eq!(manifest.files.len(), 2);
+        assert_eq!(manifest.files[0].source_path, first_sidecar);
+        assert_eq!(manifest.files[1].source_path, second_sidecar);
+
+        let first_copy = snapshot_dir.join("00-mapping-sheets.toml");
+        let second_copy = snapshot_dir.join("01-mapping-display-metadata.toml");
+        assert_eq!(manifest.files[0].copied_path, Some(first_copy.clone()));
+        assert_eq!(manifest.files[1].copied_path, Some(second_copy.clone()));
+        assert_eq!(
+            std::fs::read_to_string(first_copy).unwrap(),
+            "sheets = []\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(second_copy).unwrap(),
+            "records = []\n"
+        );
+
+        let persisted: super::RecoverySnapshotManifest =
+            toml::from_str(&std::fs::read_to_string(manifest_path).unwrap()).unwrap();
+        assert_eq!(persisted, manifest);
+    }
+
+    #[test]
+    fn recovery_snapshot_records_missing_sidecars_without_failing() {
+        let dir = tempfile::tempdir().unwrap();
+        let recovery_root = dir.path().join("recovery");
+        let missing_sidecar = dir.path().join("missing.toml");
+
+        let manifest =
+            create_recovery_snapshot(&recovery_root, "before save", &[missing_sidecar.clone()])
+                .unwrap();
+
+        assert_eq!(manifest.files.len(), 1);
+        assert_eq!(manifest.files[0].source_path, missing_sidecar);
+        assert_eq!(manifest.files[0].copied_path, None);
+        assert!(
+            recovery_root
+                .join(manifest.id.to_string())
+                .join("manifest.toml")
+                .is_file()
+        );
+    }
+}

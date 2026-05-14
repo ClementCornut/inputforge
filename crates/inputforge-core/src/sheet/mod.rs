@@ -20,6 +20,10 @@ pub use model::{
     SidecarDocument, SidecarHeader, TemplateAnchor, TemplateInstance, TemplateStoreDocument,
     TokenPreset, validate_unique_mapping_metadata_refs,
 };
+pub use recovery::{
+    RecoverySnapshotFile, RecoverySnapshotManifest, create_recovery_snapshot,
+    external_profile_recovery_dir, global_recovery_dir, profile_recovery_dir,
+};
 pub use store::{
     external_profile_mapping_metadata_path, external_profile_sheets_path,
     external_profile_sidecar_dir, global_asset_manifest_path, global_sheet_store_dir,
