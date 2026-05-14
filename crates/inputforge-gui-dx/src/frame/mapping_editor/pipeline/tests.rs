@@ -24,6 +24,7 @@ use inputforge_core::types::{
 };
 use std::collections::HashMap;
 
+use crate::components::sortable::use_sortable_state;
 use crate::context::{
     AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
 };
@@ -724,6 +725,69 @@ fn KeyboardPropSyncHarness() -> Element {
     }
 }
 
+#[allow(
+    non_snake_case,
+    reason = "Dioxus components are PascalCase by convention"
+)]
+fn PredicateHookOrderHarness() -> Element {
+    let (cmd_tx, _) = mpsc::channel();
+    let state = Arc::new(RwLock::new(AppState::new()));
+    let ctx = AppContext {
+        state,
+        commands: cmd_tx,
+        settings: use_signal(SettingsSnapshot::default),
+        meta: use_signal(MetaSnapshot::default),
+        config: use_signal(ConfigSnapshot::default),
+        live: use_signal(LiveSnapshot::default),
+    };
+    use_context_provider(|| ctx);
+    use_live_capture_provider();
+    use_editor_state_provider();
+    let sortable = use_sortable_state::<StageId>();
+    use_context_provider(|| sortable);
+
+    let mut use_axis = use_signal(|| false);
+    let device = DeviceId("dev-1".to_owned());
+    let condition = if *use_axis.read() {
+        Condition::AxisInRange {
+            input: InputAddress::Bound {
+                device: device.clone(),
+                input: InputId::Axis { index: 0 },
+            },
+            min: -0.5,
+            max: 0.5,
+        }
+    } else {
+        Condition::All {
+            conditions: vec![Condition::ButtonPressed {
+                input: InputAddress::Bound {
+                    device: device.clone(),
+                    input: InputId::Button { index: 0 },
+                },
+            }],
+        }
+    };
+    if !*use_axis.peek() {
+        use_axis.set(true);
+    }
+
+    let action = Action::Conditional {
+        condition,
+        if_true: vec![],
+        if_false: Vec::new(),
+    };
+    let mapping_key = ("Default".to_owned(), synth_addr());
+
+    rsx! {
+        stage_body::StageBody {
+            mapping_key,
+            stage_id: StageId(vec![StageIdSegment::Index(0)]),
+            action: action.clone(),
+            root_actions: vec![action],
+        }
+    }
+}
+
 fn key_combo(key: PhysicalKey) -> KeyCombo {
     KeyCombo {
         key,
@@ -1315,6 +1379,28 @@ fn map_to_keyboard_body_syncs_local_combo_when_props_change() {
     assert!(
         !second_html.contains("F11"),
         "updated combo must replace stale local combo: {second_html}"
+    );
+}
+
+#[test]
+fn predicate_editor_preserves_hook_order_when_kind_changes() {
+    let mut vdom = VirtualDom::new(PredicateHookOrderHarness);
+    vdom.rebuild_in_place();
+    let first_html = render(&vdom);
+    assert!(
+        first_html.contains(">All<"),
+        "first render must show initial predicate kind: {first_html}"
+    );
+
+    vdom.render_immediate(&mut dioxus::core::NoOpMutations);
+    let second_html = render(&vdom);
+    assert!(
+        second_html.contains("AxisInRange"),
+        "second render must show updated predicate kind: {second_html}"
+    );
+    assert!(
+        second_html.matches(r#"type="number""#).count() >= 2,
+        "axis predicate must render min/max number inputs: {second_html}"
     );
 }
 

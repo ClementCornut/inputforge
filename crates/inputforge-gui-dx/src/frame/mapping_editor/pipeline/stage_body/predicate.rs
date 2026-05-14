@@ -489,6 +489,46 @@ pub(crate) fn PredicateEditor(
         kind_signal.set(current_kind);
     }
 
+    let axis_min = match &condition {
+        Condition::AxisInRange { min, .. } => *min,
+        _ => -1.0,
+    };
+    let axis_max = match &condition {
+        Condition::AxisInRange { max, .. } => *max,
+        _ => 1.0,
+    };
+    let mut min_sig: Signal<f64> = use_signal(move || axis_min);
+    let mut max_sig: Signal<f64> = use_signal(move || axis_max);
+    if let Condition::AxisInRange { min, max, .. } = &condition {
+        if *min_sig.peek() != *min {
+            min_sig.set(*min);
+        }
+        if *max_sig.peek() != *max {
+            max_sig.set(*max);
+        }
+    }
+
+    let composite_is_empty = match &condition {
+        Condition::All { conditions } | Condition::Any { conditions } => {
+            Some(conditions.is_empty())
+        }
+        _ => None,
+    };
+    let sid_hint = stage_id.clone();
+    let mut composite_malformed_hints = editor.malformed_hints;
+    use_effect(move || {
+        if let Some(is_empty) = composite_is_empty {
+            if is_empty {
+                composite_malformed_hints.write().insert(
+                    sid_hint.clone(),
+                    "at least one condition is required".to_owned(),
+                );
+            } else {
+                composite_malformed_hints.write().remove(&sid_hint);
+            }
+        }
+    });
+
     // Capture clones for the kind-change handler.
     let mk_kind = mapping_key.clone();
     let sid_kind = stage_id.clone();
@@ -584,14 +624,8 @@ pub(crate) fn PredicateEditor(
         // ---------------------------------------------------------------
         // AxisInRange: source-label + rebind + min/max NumberInput pair.
         // ---------------------------------------------------------------
-        Condition::AxisInRange { input, min, max } => {
+        Condition::AxisInRange { input, .. } => {
             let input_addr = input.clone();
-            let min_val = *min;
-            let max_val = *max;
-
-            // Local Signals drive NumberInput display; committed on step.
-            let mut min_sig: Signal<f64> = use_signal(move || min_val);
-            let mut max_sig: Signal<f64> = use_signal(move || max_val);
 
             // Task 9 + Amendment 5: malformed-hint write / clear on every
             // render. Priority: Unbound > inverted-range. The hint is
@@ -869,23 +903,11 @@ pub(crate) fn PredicateEditor(
             // Amendment 5: malformed hint when no sub-conditions present.
             // REACTIVE-LOOP CONCERN (Task 40): both branches call
             // malformed_hints.write(), dirtying the Signal. No loop forms
-            // because the effect captures is_empty by value (a plain bool,
-            // not a Signal read), so dirtying malformed_hints does not
-            // re-trigger this effect. A read-then-compare guard would be more
-            // explicit but is not required for correctness here.
-            let sid_hint = stage_id.clone();
-            let is_empty = sub_count == 0;
-            let mut malformed_hints = editor.malformed_hints;
-            use_effect(move || {
-                if is_empty {
-                    malformed_hints.write().insert(
-                        sid_hint.clone(),
-                        "at least one condition is required".to_owned(),
-                    );
-                } else {
-                    malformed_hints.write().remove(&sid_hint);
-                }
-            });
+            // because the effect is hoisted above the per-kind match and
+            // captures is_empty by value (a plain bool, not a Signal read), so
+            // dirtying malformed_hints does not re-trigger this effect. A
+            // read-then-compare guard would be more explicit but is not
+            // required for correctness here.
 
             rsx! {
                 div { class: "if-predicate__nested-list",
