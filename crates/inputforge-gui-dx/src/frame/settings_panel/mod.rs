@@ -3,11 +3,13 @@
 use dioxus::prelude::*;
 
 mod field_row;
+mod gestures_section;
 mod prune_confirm;
 mod section;
 mod snapshots_section;
 mod startup_section;
 
+pub(crate) use gestures_section::GesturesSection;
 pub(crate) use snapshots_section::SnapshotsSection;
 pub(crate) use startup_section::StartupSection;
 
@@ -20,6 +22,7 @@ pub(crate) fn SettingsPanel() -> Element {
         Stylesheet { href: SETTINGS_PANEL_CSS }
         div { class: "if-settings-panel",
             StartupSection {}
+            GesturesSection {}
             SnapshotsSection {}
         }
     }
@@ -78,6 +81,14 @@ mod tests {
         assert!(
             html.contains("Start minimized to tray"),
             "expected startup field 2 label: {html}"
+        );
+        assert!(
+            html.contains("Double-tap threshold"),
+            "expected gesture field 1 label: {html}"
+        );
+        assert!(
+            html.contains("Long-press threshold"),
+            "expected gesture field 2 label: {html}"
         );
         assert!(
             html.contains("Snapshot buffer size"),
