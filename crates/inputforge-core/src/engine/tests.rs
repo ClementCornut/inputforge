@@ -13,7 +13,9 @@ use std::time::{Duration, Instant};
 
 use parking_lot::{Mutex, RwLock};
 
-use crate::action::{Action, Condition, Mapping, ModeChangeStrategy, MouseTarget, OutputBehavior};
+use crate::action::{
+    Action, ActionBranch, Condition, Mapping, ModeChangeStrategy, MouseTarget, OutputBehavior,
+};
 use crate::callbacks::{CallbackRegistry, ReleaseCallback};
 use crate::device::mock::{MockDeviceHider, MockInputSource};
 use crate::device::traits::HotplugEvent;
@@ -27,7 +29,8 @@ use crate::profile::Profile;
 use crate::profile::manager::{create_profile_in, sanitize_filename};
 use crate::settings::AppSettings;
 use crate::state::{
-    AppState, DeviceState, EngineStatus, InputCacheStore, OutputCacheStore, ProfileOrigin,
+    AppState, DeviceState, EngineStatus, InputCacheStore, OutputActivityValue, OutputCacheStore,
+    ProfileOrigin,
 };
 use crate::types::{
     AxisPolarity, AxisValue, DeviceConnectionState, DeviceDiagnostics, DeviceId, DeviceInfo,
@@ -97,6 +100,36 @@ fn mouse_owner(target: MouseTarget, index: usize, behavior: OutputBehavior) -> O
         action_path: vec![ActionPathSegment::Index(index)],
         destination: OutputDestination::Mouse(target),
         behavior,
+    }
+}
+
+fn gesture_vjoy_owner(
+    input: &InputAddress,
+    output: OutputAddress,
+    branch: ActionBranch,
+) -> OutputOwner {
+    OutputOwner {
+        profile: "memory-profile".to_owned(),
+        mode: "Default".to_owned(),
+        input: input.clone(),
+        action_path: vec![
+            ActionPathSegment::Index(0),
+            ActionPathSegment::Branch(branch),
+            ActionPathSegment::Index(0),
+        ],
+        destination: OutputDestination::VJoy(output),
+        behavior: OutputBehavior::Hold,
+    }
+}
+
+fn vjoy_owner(output: OutputAddress, index: usize) -> OutputOwner {
+    OutputOwner {
+        profile: "anonymous".to_owned(),
+        mode: "anonymous".to_owned(),
+        input: InputAddress::Unbound,
+        action_path: vec![ActionPathSegment::Index(index)],
+        destination: OutputDestination::VJoy(output),
+        behavior: OutputBehavior::Hold,
     }
 }
 
@@ -696,6 +729,40 @@ fn tap_gesture_delayed_single_dispatches_after_threshold() {
 }
 
 #[test]
+fn tap_gesture_momentary_output_is_latched_for_live_preview() {
+    let button = button_addr(1);
+    let output = vjoy_button_output(1, 3);
+    let owner = gesture_vjoy_owner(&button, output.clone(), ActionBranch::TapSingle);
+    let profile = gesture_profile_with_mapping(
+        button.clone(),
+        vec![Action::TapGesture {
+            threshold_ms: 50,
+            fire_single_immediately: false,
+            single_tap: vec![Action::MapToVJoy {
+                output: output.clone(),
+            }],
+            double_tap: Vec::new(),
+        }],
+    );
+    let mut harness = make_gesture_recording_engine(profile);
+
+    harness.press_button(&button);
+    harness.tick();
+    harness.release_button(&button);
+    harness.tick();
+    harness.advance_time_ms(50);
+    harness.tick();
+
+    let now = *harness.now.lock();
+    let state = harness.engine.state.read();
+    assert_eq!(
+        state.output_activity.get(&owner, now),
+        Some(OutputActivityValue::Button(true))
+    );
+    assert!(!state.output_cache.get_button(1, 3));
+}
+
+#[test]
 fn press_gesture_short_press_runs_on_release() {
     let button = button_addr(1);
     let output = vjoy_button_output(1, 3);
@@ -719,6 +786,54 @@ fn press_gesture_short_press_runs_on_release() {
     harness.tick();
 
     assert!(harness.output_was_set_button(&output, true));
+}
+
+#[test]
+fn press_gesture_held_activity_clears_on_release() {
+    let button = button_addr(1);
+    let output = vjoy_button_output(1, 3);
+    let owner = gesture_vjoy_owner(&button, output.clone(), ActionBranch::PressLong);
+    let profile = gesture_profile_with_mapping(
+        button.clone(),
+        vec![Action::PressGesture {
+            threshold_ms: 50,
+            fire_long_when_threshold_crossed: true,
+            short_press: Vec::new(),
+            long_press: vec![Action::MapToVJoy {
+                output: output.clone(),
+            }],
+        }],
+    );
+    let mut harness = make_gesture_recording_engine(profile);
+
+    harness.press_button(&button);
+    harness.tick();
+    harness.advance_time_ms(50);
+    harness.tick();
+    let active_now = *harness.now.lock();
+    assert_eq!(
+        harness
+            .engine
+            .state
+            .read()
+            .output_activity
+            .get(&owner, active_now),
+        Some(OutputActivityValue::Button(true))
+    );
+
+    harness.release_button(&button);
+    harness.tick();
+
+    let released_now = *harness.now.lock();
+    assert_eq!(
+        harness
+            .engine
+            .state
+            .read()
+            .output_activity
+            .get(&owner, released_now),
+        None
+    );
 }
 
 #[test]
@@ -1552,8 +1667,10 @@ fn set_default_long_press_threshold_rejects_out_of_range() {
 
 #[test]
 fn process_outputs_set_axis() {
+    let output = vjoy_axis_output(1, VJoyAxis::X);
     let outputs = vec![PipelineOutput::SetAxis {
-        output: vjoy_axis_output(1, VJoyAxis::X),
+        owner: vjoy_owner(output.clone(), 0),
+        output,
         value: 0.75,
     }];
 
@@ -1592,8 +1709,10 @@ fn process_outputs_set_axis() {
 
 #[test]
 fn process_outputs_set_button() {
+    let output = vjoy_button_output(1, 3);
     let outputs = vec![PipelineOutput::SetButton {
-        output: vjoy_button_output(1, 3),
+        owner: vjoy_owner(output.clone(), 0),
+        output,
         pressed: true,
     }];
 
@@ -2857,8 +2976,10 @@ fn add_external_profile_to_library_persists_path_to_settings_last_profile() {
 #[test]
 fn process_outputs_set_axis_wrong_output_id() {
     // SetAxis with an OutputId::Button should be skipped (warn path).
+    let output = vjoy_button_output(1, 3);
     let outputs = vec![PipelineOutput::SetAxis {
-        output: vjoy_button_output(1, 3),
+        owner: vjoy_owner(output.clone(), 0),
+        output,
         value: 0.5,
     }];
 
@@ -2890,8 +3011,10 @@ fn process_outputs_set_axis_wrong_output_id() {
 #[test]
 fn process_outputs_set_button_wrong_output_id() {
     // SetButton with an OutputId::Axis should be skipped (warn path).
+    let output = vjoy_axis_output(1, VJoyAxis::X);
     let outputs = vec![PipelineOutput::SetButton {
-        output: vjoy_axis_output(1, VJoyAxis::X),
+        owner: vjoy_owner(output.clone(), 0),
+        output,
         pressed: true,
     }];
 

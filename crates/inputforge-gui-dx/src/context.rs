@@ -1,17 +1,18 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
+use std::time::Instant;
 
 use dioxus::prelude::*;
 use parking_lot::RwLock;
 
 use inputforge_core::action::{ActionBranch, DEFAULT_GESTURE_THRESHOLD_MS, branch_actions};
 use inputforge_core::engine::EngineCommand;
-use inputforge_core::pipeline::InputCache;
+use inputforge_core::pipeline::{InputCache, OutputOwner};
 use inputforge_core::settings::StartupSettings;
 use inputforge_core::snapshot::{SnapshotConfig, SnapshotId};
 use inputforge_core::state::{
-    AppState, DeviceState, EngineStatus, ProfileOrigin as CoreProfileOrigin,
+    AppState, DeviceState, EngineStatus, OutputActivityValue, ProfileOrigin as CoreProfileOrigin,
 };
 use inputforge_core::types::{
     AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, HatDirection, InputAddress, InputId,
@@ -267,6 +268,13 @@ pub(crate) struct GlyphFlags {
 pub(crate) struct LiveSnapshot {
     pub device_inputs: Vec<DeviceInputValues>,
     pub output_values: Vec<VjoyOutputValues>,
+    pub output_activity: Vec<OutputActivitySnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct OutputActivitySnapshot {
+    pub owner: OutputOwner,
+    pub value: OutputActivityValue,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -473,6 +481,11 @@ impl LiveSnapshot {
     /// Takes a pre-built `ConfigSnapshot` so device / virtual-device shape is
     /// read from a single coherent source.
     pub(crate) fn from_state(s: &AppState, cfg: &ConfigSnapshot) -> Self {
+        Self::from_state_at(s, cfg, Instant::now())
+    }
+
+    /// Project live state at a caller-supplied time for deterministic tests.
+    pub(crate) fn from_state_at(s: &AppState, cfg: &ConfigSnapshot, now: Instant) -> Self {
         let device_inputs: Vec<DeviceInputValues> = cfg
             .devices
             .iter()
@@ -541,9 +554,20 @@ impl LiveSnapshot {
             })
             .collect();
 
+        let mut output_activity: Vec<OutputActivitySnapshot> = s
+            .output_activity
+            .active_entries(now)
+            .map(|(owner, value)| OutputActivitySnapshot {
+                owner: owner.clone(),
+                value,
+            })
+            .collect();
+        output_activity.sort_by_cached_key(|entry| format!("{:?}", entry.owner));
+
         Self {
             device_inputs,
             output_values,
+            output_activity,
         }
     }
 }
@@ -965,6 +989,7 @@ fn build_device_display_names(s: &AppState) -> HashMap<DeviceId, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use inputforge_core::pipeline::{ActionPathSegment, OutputDestination};
 
     fn test_device(id: &str, name: &str, axes: u8, buttons: u8, hats: u8) -> DeviceInfo {
         DeviceInfo {
@@ -1070,6 +1095,83 @@ mod tests {
         let l = LiveSnapshot::default();
         assert!(l.device_inputs.is_empty());
         assert!(l.output_values.is_empty());
+        assert!(l.output_activity.is_empty());
+    }
+
+    fn test_output_owner() -> OutputOwner {
+        OutputOwner {
+            profile: "memory-profile".to_owned(),
+            mode: "Default".to_owned(),
+            input: InputAddress::Bound {
+                device: DeviceId("dev-1".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            action_path: vec![
+                ActionPathSegment::Index(0),
+                ActionPathSegment::Branch(ActionBranch::TapSingle),
+                ActionPathSegment::Index(0),
+            ],
+            destination: OutputDestination::Keyboard(inputforge_core::types::KeyCombo {
+                key: inputforge_core::types::PhysicalKey::Space,
+                modifiers: vec![],
+            }),
+            behavior: inputforge_core::action::OutputBehavior::Pulse,
+        }
+    }
+
+    #[test]
+    fn live_snapshot_from_state_at_includes_latched_output_activity() {
+        let now = Instant::now();
+        let mut state = AppState::new();
+        let owner = test_output_owner();
+        state.output_activity.record(
+            owner.clone(),
+            OutputActivityValue::Keyboard(true),
+            now,
+            true,
+        );
+        state.output_activity.record(
+            owner.clone(),
+            OutputActivityValue::Keyboard(false),
+            now,
+            true,
+        );
+
+        let live = LiveSnapshot::from_state_at(&state, &ConfigSnapshot::default(), now);
+
+        assert_eq!(live.output_values, Vec::new());
+        assert_eq!(
+            live.output_activity,
+            vec![OutputActivitySnapshot {
+                owner,
+                value: OutputActivityValue::Keyboard(true),
+            }]
+        );
+    }
+
+    #[test]
+    fn live_snapshot_from_state_at_omits_expired_output_activity() {
+        let now = Instant::now();
+        let mut state = AppState::new();
+        let owner = test_output_owner();
+        state
+            .output_activity
+            .record(owner, OutputActivityValue::Keyboard(true), now, true);
+        state.output_activity.record(
+            test_output_owner(),
+            OutputActivityValue::Keyboard(false),
+            now,
+            true,
+        );
+
+        let live = LiveSnapshot::from_state_at(
+            &state,
+            &ConfigSnapshot::default(),
+            now + inputforge_core::state::OUTPUT_ACTIVITY_PREVIEW_LATCH
+                + std::time::Duration::from_millis(1),
+        );
+
+        assert!(live.output_activity.is_empty());
     }
 
     #[test]

@@ -35,10 +35,12 @@ pub fn button_pressed_from_value(value: f64) -> bool {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PipelineOutput {
     SetAxis {
+        owner: OutputOwner,
         output: OutputAddress,
         value: f64,
     },
     SetButton {
+        owner: OutputOwner,
         output: OutputAddress,
         pressed: bool,
     },
@@ -67,6 +69,7 @@ pub enum ActionPathSegment {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum OutputDestination {
+    VJoy(OutputAddress),
     Keyboard(KeyCombo),
     Mouse(MouseTarget),
 }
@@ -233,12 +236,22 @@ fn execute_pipeline_inner(
             Action::MapToVJoy { output } => match &ctx.input_value {
                 InputValue::Axis { .. } => {
                     ctx.outputs.push(PipelineOutput::SetAxis {
+                        owner: scope.owner(
+                            path,
+                            OutputDestination::VJoy(output.clone()),
+                            OutputBehavior::Hold,
+                        ),
                         output: output.clone(),
                         value: ctx.current_value,
                     });
                 }
                 InputValue::Button { .. } => {
                     ctx.outputs.push(PipelineOutput::SetButton {
+                        owner: scope.owner(
+                            path,
+                            OutputDestination::VJoy(output.clone()),
+                            OutputBehavior::Hold,
+                        ),
                         output: output.clone(),
                         pressed: button_pressed_from_value(ctx.current_value),
                     });
@@ -555,10 +568,22 @@ mod tests {
 
     fn output_owner_path(output: &PipelineOutput) -> Vec<ActionPathSegment> {
         match output {
-            PipelineOutput::Keyboard { owner, .. } | PipelineOutput::Mouse { owner, .. } => {
-                owner.action_path.clone()
-            }
-            _ => Vec::new(),
+            PipelineOutput::SetAxis { owner, .. }
+            | PipelineOutput::SetButton { owner, .. }
+            | PipelineOutput::Keyboard { owner, .. }
+            | PipelineOutput::Mouse { owner, .. } => owner.action_path.clone(),
+            PipelineOutput::ChangeMode { .. } => Vec::new(),
+        }
+    }
+
+    fn vjoy_owner(index: usize, output: OutputAddress) -> OutputOwner {
+        OutputOwner {
+            profile: "anonymous".to_owned(),
+            mode: "anonymous".to_owned(),
+            input: InputAddress::Unbound,
+            action_path: vec![ActionPathSegment::Index(index)],
+            destination: OutputDestination::VJoy(output),
+            behavior: OutputBehavior::Hold,
         }
     }
 
@@ -607,6 +632,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[0],
             PipelineOutput::SetAxis {
+                owner: vjoy_owner(0, test_output()),
                 output: test_output(),
                 value: 0.75,
             }
@@ -627,6 +653,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[0],
             PipelineOutput::SetButton {
+                owner: vjoy_owner(0, button_output()),
                 output: button_output(),
                 pressed: true,
             }
@@ -687,6 +714,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[0],
             PipelineOutput::SetButton {
+                owner: vjoy_owner(1, button_output()),
                 output: button_output(),
                 pressed: false,
             }
@@ -707,6 +735,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[0],
             PipelineOutput::SetButton {
+                owner: vjoy_owner(1, button_output()),
                 output: button_output(),
                 pressed: true,
             }
@@ -727,6 +756,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[0],
             PipelineOutput::SetAxis {
+                owner: vjoy_owner(1, test_output()),
                 output: test_output(),
                 value: -0.5,
             }
@@ -1476,6 +1506,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[0],
             PipelineOutput::SetAxis {
+                owner: vjoy_owner(0, output_x.clone()),
                 output: output_x,
                 value: 0.5,
             }
@@ -1483,6 +1514,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[1],
             PipelineOutput::SetAxis {
+                owner: vjoy_owner(1, output_y.clone()),
                 output: output_y,
                 value: 0.5,
             }
@@ -1565,7 +1597,10 @@ mod tests {
         execute_pipeline(&actions, &mut ctx);
 
         assert_eq!(ctx.outputs.len(), 1);
-        if let PipelineOutput::SetAxis { value, output: out } = &ctx.outputs[0] {
+        if let PipelineOutput::SetAxis {
+            value, output: out, ..
+        } = &ctx.outputs[0]
+        {
             assert_eq!(*out, output);
             assert!(
                 (*value - (-0.25)).abs() < TOLERANCE,

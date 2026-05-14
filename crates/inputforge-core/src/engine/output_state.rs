@@ -304,7 +304,7 @@ impl OutputRuntimeState {
             OutputDestination::Mouse(target) if !target.is_wheel() => {
                 Some(OutputEvent::MouseUp(*target))
             }
-            OutputDestination::Mouse(_) => None,
+            OutputDestination::VJoy(_) | OutputDestination::Mouse(_) => None,
         }
     }
 }

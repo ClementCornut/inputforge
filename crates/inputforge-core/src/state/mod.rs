@@ -9,12 +9,16 @@
 mod cache;
 mod calibration;
 mod device;
+mod output_activity;
 mod output_cache;
 mod status;
 
 pub use cache::{InputCacheEntry, InputCacheStore};
 pub use calibration::DeviceCalibrationStore;
 pub use device::DeviceState;
+pub use output_activity::{
+    OUTPUT_ACTIVITY_PREVIEW_LATCH, OutputActivityStore, OutputActivityValue,
+};
 pub use output_cache::OutputCacheStore;
 pub use status::EngineStatus;
 
@@ -107,6 +111,8 @@ pub struct AppState {
     pub input_cache: InputCacheStore,
     /// Cache of the latest values written to virtual vJoy outputs.
     pub output_cache: OutputCacheStore,
+    /// Display-only activity values for transient output preview.
+    pub output_activity: OutputActivityStore,
     /// Discovered virtual vJoy device configurations.
     ///
     /// Populated by the engine when it probes the vJoy driver at startup.
@@ -143,6 +149,7 @@ impl AppState {
             active_profile: None,
             input_cache: InputCacheStore::new(),
             output_cache: OutputCacheStore::new(),
+            output_activity: OutputActivityStore::new(),
             virtual_devices: Vec::new(),
             calibrations: DeviceCalibrationStore::new(),
             profile_path: None,
@@ -189,6 +196,7 @@ impl AppState {
             active_profile: Some(profile),
             input_cache: InputCacheStore::new(),
             output_cache: OutputCacheStore::new(),
+            output_activity: OutputActivityStore::new(),
             virtual_devices: Vec::new(),
             calibrations,
             profile_path: None,

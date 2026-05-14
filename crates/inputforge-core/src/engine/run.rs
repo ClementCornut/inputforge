@@ -40,8 +40,8 @@ use super::command::EngineCommand;
 use super::dependencies::active_mappings_for_event;
 use super::gestures::{GestureDispatcher, GestureKey, GestureRun, GestureRunPhase};
 use super::output_handler::{
-    dispatch_output_action, process_pipeline_outputs, record_outputs_to_cache,
-    refresh_axes_for_mode_change,
+    dispatch_output_action, process_pipeline_outputs, record_outputs_to_activity,
+    record_outputs_to_cache, refresh_axes_for_mode_change,
 };
 use super::output_state::{OutputAction, OwnerScopeKey};
 
@@ -344,6 +344,9 @@ impl Engine {
                     &mut self.callbacks,
                     &event.source,
                 )?;
+                let mut state = self.state.write();
+                record_outputs_to_activity(&outputs, &mut state.output_activity, now, false);
+                drop(state);
                 for action in self
                     .output_state
                     .reconcile_absent_owners_for_scope(&owner_scope, &current_owners)
@@ -408,6 +411,7 @@ impl Engine {
         if !self.output_buffer.is_empty() {
             let mut state = self.state.write();
             record_outputs_to_cache(&self.output_buffer, &mut state.output_cache);
+            state.output_activity.prune(now);
         }
 
         // Flush output sink.
@@ -516,6 +520,14 @@ impl Engine {
             &mut self.callbacks,
             run.key.input(),
         )?;
+        let mut state = self.state.write();
+        record_outputs_to_activity(
+            &outputs,
+            &mut state.output_activity,
+            (self.now)(),
+            run.phase == GestureRunPhase::Momentary,
+        );
+        drop(state);
         for action in self
             .output_state
             .reconcile_absent_owners_for_scope(&owner_scope, &current_owners)

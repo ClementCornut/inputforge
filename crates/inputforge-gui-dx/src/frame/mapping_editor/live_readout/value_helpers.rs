@@ -6,6 +6,7 @@
 //! the snapshot types.
 
 use inputforge_core::processing::into_natural_domain;
+use inputforge_core::state::OutputActivityValue;
 use inputforge_core::types::{
     AxisPolarity, HatDirection, InputAddress, InputId, InputValue, MergeOp, OutputAddress,
     OutputId, VJoyAxis,
@@ -214,17 +215,30 @@ pub(super) fn read_output_typed_display(
     live: &LiveSnapshot,
     cfg: &ConfigSnapshot,
     polarity: AxisPolarity,
+    activity: Option<OutputActivityValue>,
 ) -> ReadoutDisplay {
     match out.output {
-        OutputId::Axis { .. } => {
-            ReadoutDisplay::Axis(read_output_display(out, live, cfg, polarity))
+        OutputId::Axis { .. } => match activity {
+            Some(OutputActivityValue::Axis(value)) => ReadoutDisplay::Axis(AxisDisplay {
+                value: into_natural_domain(value, polarity),
+                polarity,
+            }),
+            _ => ReadoutDisplay::Axis(read_output_display(out, live, cfg, polarity)),
+        },
+        OutputId::Button { .. } => {
+            let pressed = match activity {
+                Some(OutputActivityValue::Button(pressed)) => pressed,
+                _ => read_output_button(out, live, cfg),
+            };
+            ReadoutDisplay::Button { pressed }
         }
-        OutputId::Button { .. } => ReadoutDisplay::Button {
-            pressed: read_output_button(out, live, cfg),
-        },
-        OutputId::Hat { .. } => ReadoutDisplay::Hat {
-            direction: read_output_hat(out, live, cfg),
-        },
+        OutputId::Hat { .. } => {
+            let direction = match activity {
+                Some(OutputActivityValue::Hat(direction)) => direction,
+                _ => read_output_hat(out, live, cfg),
+            };
+            ReadoutDisplay::Hat { direction }
+        }
     }
 }
 
@@ -379,6 +393,7 @@ mod tests {
                 buttons: vec![],
                 hats: vec![HatDirection::SE],
             }],
+            output_activity: vec![],
         };
         let out = OutputAddress {
             device: 1,
@@ -386,7 +401,7 @@ mod tests {
         };
 
         assert_eq!(
-            read_output_typed_display(&out, &live, &cfg, AxisPolarity::Bipolar),
+            read_output_typed_display(&out, &live, &cfg, AxisPolarity::Bipolar, None),
             ReadoutDisplay::Hat {
                 direction: HatDirection::SE,
             }

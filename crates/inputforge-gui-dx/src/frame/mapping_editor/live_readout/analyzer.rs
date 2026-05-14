@@ -6,15 +6,15 @@ use inputforge_core::action::{
     Action, ActionBranch, Condition, MouseTarget, OutputBehavior, branch_actions,
 };
 use inputforge_core::pipeline::{
-    BranchStep, InputCache, button_pressed_from_value, evaluate_actions_through_path,
-    evaluate_condition,
+    ActionPathSegment, BranchStep, InputCache, OutputDestination as ActivityDestination,
+    OutputOwner, button_pressed_from_value, evaluate_actions_through_path, evaluate_condition,
 };
-use inputforge_core::state::AppState;
+use inputforge_core::state::{AppState, OutputActivityValue};
 use inputforge_core::types::{
     AxisPolarity, HatDirection, InputAddress, KeyCombo, MergeOp, OutputAddress,
 };
 
-use crate::context::ConfigSnapshot;
+use crate::context::{ConfigSnapshot, OutputActivitySnapshot};
 
 /// Maximum action nesting analyzed for live readout.
 ///
@@ -44,6 +44,8 @@ pub(super) struct OutputDescriptor {
     pub is_active: bool,
     /// Polarity used when rendering the final output value.
     pub polarity: AxisPolarity,
+    /// Recent runtime output activity for this exact action path.
+    pub activity: Option<OutputActivityValue>,
 }
 
 /// Destination kind for output rows.
@@ -146,6 +148,7 @@ pub(super) fn analyze(
     primary: &InputAddress,
     state: &AppState,
     cfg: &ConfigSnapshot,
+    output_activity: &[OutputActivitySnapshot],
 ) -> LiveReadoutModel {
     let mut model = LiveReadoutModel {
         pipeline_inputs: vec![primary.clone()],
@@ -157,9 +160,16 @@ pub(super) fn analyze(
         primary,
         state,
         cfg,
+        profile_id: active_profile_id(state),
+        mode: cfg
+            .selected_mapping_key
+            .as_ref()
+            .map_or_else(|| state.current_mode.clone(), |(mode, _)| mode.clone()),
+        output_activity,
     };
     let mut chain_stack = Vec::new();
     let mut branch_path = Vec::new();
+    let mut action_path = Vec::new();
     let mut predicate_keys = HashSet::new();
     walk(
         &context,
@@ -167,10 +177,18 @@ pub(super) fn analyze(
         &mut model,
         &mut chain_stack,
         &mut branch_path,
+        &mut action_path,
         &mut predicate_keys,
         0,
     );
     model
+}
+
+fn active_profile_id(state: &AppState) -> String {
+    state.profile_path.as_ref().map_or_else(
+        || "memory-profile".to_owned(),
+        |path| path.display().to_string(),
+    )
 }
 
 struct AnalysisContext<'a> {
@@ -178,6 +196,9 @@ struct AnalysisContext<'a> {
     primary: &'a InputAddress,
     state: &'a AppState,
     cfg: &'a ConfigSnapshot,
+    profile_id: String,
+    mode: String,
+    output_activity: &'a [OutputActivitySnapshot],
 }
 
 impl AnalysisContext<'_> {
@@ -247,6 +268,26 @@ impl AnalysisContext<'_> {
             local_idx,
         );
         button_pressed_from_value(super::value_helpers::axis_f64(&projected))
+    }
+
+    fn output_activity(
+        &self,
+        action_path: &[ActionPathSegment],
+        destination: ActivityDestination,
+        behavior: OutputBehavior,
+    ) -> Option<OutputActivityValue> {
+        let owner = OutputOwner {
+            profile: self.profile_id.clone(),
+            mode: self.mode.clone(),
+            input: self.primary.clone(),
+            action_path: action_path.to_vec(),
+            destination,
+            behavior,
+        };
+        self.output_activity
+            .iter()
+            .find(|entry| entry.owner == owner)
+            .map(|entry| entry.value)
     }
 }
 
@@ -438,22 +479,30 @@ fn emit_predicate(
     clippy::too_many_lines,
     reason = "Recursive analyzer keeps branch traversal state together for readability."
 )]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Recursive analyzer carries independent traversal stacks explicitly."
+)]
 fn walk(
     context: &AnalysisContext<'_>,
     actions: &[Action],
     model: &mut LiveReadoutModel,
     chain_stack: &mut Vec<ChainStep>,
     branch_path: &mut Vec<BranchStep>,
+    action_path: &mut Vec<ActionPathSegment>,
     predicate_keys: &mut HashSet<PredicateDedupKey>,
     depth: usize,
 ) {
     let stack_baseline = chain_stack.len();
+    let action_path_baseline = action_path.len();
     if depth > MAX_NESTED_ACTION_DEPTH {
         chain_stack.truncate(stack_baseline);
+        action_path.truncate(action_path_baseline);
         return;
     }
 
     for (i, action) in actions.iter().enumerate() {
+        action_path.push(ActionPathSegment::Index(i));
         match action {
             Action::MergeAxis {
                 second_input,
@@ -475,17 +524,31 @@ fn walk(
                 });
             }
             Action::MapToVJoy { output } => {
-                let is_active = compute_is_active(chain_stack);
+                let activity = context.output_activity(
+                    action_path,
+                    ActivityDestination::VJoy(output.clone()),
+                    OutputBehavior::Hold,
+                );
+                let is_active = compute_is_active(chain_stack) || activity.is_some();
                 let polarity = terminal_polarity(chain_stack, context.primary, context.state);
                 model.outputs.push(OutputDescriptor {
                     destination: OutputDestination::VJoy(output.clone()),
                     chain: chain_stack.clone(),
                     is_active,
                     polarity,
+                    activity,
                 });
             }
             Action::MapToKeyboard { key, behavior } => {
-                let pressed = context.keyboard_pressed(branch_path, i);
+                let activity = context.output_activity(
+                    action_path,
+                    ActivityDestination::Keyboard(key.clone()),
+                    *behavior,
+                );
+                let pressed = match activity {
+                    Some(OutputActivityValue::Keyboard(active)) => active,
+                    _ => context.keyboard_pressed(branch_path, i),
+                };
                 model.outputs.push(OutputDescriptor {
                     destination: OutputDestination::Keyboard {
                         key: key.clone(),
@@ -493,16 +556,25 @@ fn walk(
                         pressed,
                     },
                     chain: chain_stack.clone(),
-                    is_active: compute_is_active(chain_stack),
+                    is_active: compute_is_active(chain_stack) || activity.is_some(),
                     polarity: AxisPolarity::Bipolar,
+                    activity,
                 });
             }
             Action::MapToMouse { target, behavior } => {
-                let active = context.keyboard_pressed(branch_path, i);
                 let behavior = if target.is_wheel() {
                     OutputBehavior::Pulse
                 } else {
                     *behavior
+                };
+                let activity = context.output_activity(
+                    action_path,
+                    ActivityDestination::Mouse(*target),
+                    behavior,
+                );
+                let active = match activity {
+                    Some(OutputActivityValue::Mouse(active)) => active,
+                    _ => context.keyboard_pressed(branch_path, i),
                 };
                 model.outputs.push(OutputDescriptor {
                     destination: OutputDestination::Mouse {
@@ -511,8 +583,9 @@ fn walk(
                         active,
                     },
                     chain: chain_stack.clone(),
-                    is_active: compute_is_active(chain_stack),
+                    is_active: compute_is_active(chain_stack) || activity.is_some(),
                     polarity: AxisPolarity::Bipolar,
+                    activity,
                 });
             }
             Action::Conditional {
@@ -529,6 +602,7 @@ fn walk(
                     index: i,
                     branch: ActionBranch::ConditionalTrue,
                 });
+                action_path.push(ActionPathSegment::Branch(ActionBranch::ConditionalTrue));
                 chain_stack.push(ChainStep::Conditional {
                     condition_label: condition_label.clone(),
                     evaluated,
@@ -540,16 +614,19 @@ fn walk(
                     model,
                     chain_stack,
                     branch_path,
+                    action_path,
                     predicate_keys,
                     depth + 1,
                 );
                 chain_stack.pop();
+                action_path.pop();
                 branch_path.pop();
 
                 branch_path.push(BranchStep::Branch {
                     index: i,
                     branch: ActionBranch::ConditionalFalse,
                 });
+                action_path.push(ActionPathSegment::Branch(ActionBranch::ConditionalFalse));
                 chain_stack.push(ChainStep::Conditional {
                     condition_label,
                     evaluated,
@@ -561,10 +638,12 @@ fn walk(
                     model,
                     chain_stack,
                     branch_path,
+                    action_path,
                     predicate_keys,
                     depth + 1,
                 );
                 chain_stack.pop();
+                action_path.pop();
                 branch_path.pop();
             }
             Action::TapGesture { .. } | Action::PressGesture { .. } => {
@@ -573,6 +652,7 @@ fn walk(
                         continue;
                     };
                     branch_path.push(BranchStep::Branch { index: i, branch });
+                    action_path.push(ActionPathSegment::Branch(branch));
                     chain_stack.push(ChainStep::Conditional {
                         condition_label: gesture_branch_label(branch).to_owned(),
                         evaluated: false,
@@ -584,10 +664,12 @@ fn walk(
                         model,
                         chain_stack,
                         branch_path,
+                        action_path,
                         predicate_keys,
                         depth + 1,
                     );
                     chain_stack.pop();
+                    action_path.pop();
                     branch_path.pop();
                 }
             }
@@ -596,9 +678,11 @@ fn walk(
             | Action::Invert
             | Action::ChangeMode { .. } => {}
         }
+        action_path.pop();
     }
 
     chain_stack.truncate(stack_baseline);
+    action_path.truncate(action_path_baseline);
 }
 
 fn gesture_branches_for(action: &Action) -> &'static [ActionBranch] {
@@ -653,6 +737,7 @@ mod tests {
             }],
             is_active: true,
             polarity: AxisPolarity::Bipolar,
+            activity: None,
         };
 
         assert_eq!(output.chain.len(), 1);
@@ -727,6 +812,7 @@ mod walker_tests {
             primary,
             &AppState::new(),
             &ConfigSnapshot::default(),
+            &[],
         )
     }
 
@@ -735,7 +821,7 @@ mod walker_tests {
         primary: &InputAddress,
         state: &AppState,
     ) -> LiveReadoutModel {
-        analyze(actions, primary, state, &ConfigSnapshot::default())
+        analyze(actions, primary, state, &ConfigSnapshot::default(), &[])
     }
 
     fn condition_label(condition: &Condition) -> String {
@@ -831,6 +917,7 @@ mod walker_tests {
                 }],
                 is_active: true,
                 polarity: AxisPolarity::Bipolar,
+                activity: None,
             }]
         );
     }
@@ -1069,6 +1156,7 @@ mod walker_tests {
                 chain: Vec::new(),
                 is_active: true,
                 polarity: AxisPolarity::Bipolar,
+                activity: None,
             }
         );
         assert_eq!(
@@ -1078,6 +1166,7 @@ mod walker_tests {
                 chain: Vec::new(),
                 is_active: true,
                 polarity: AxisPolarity::Bipolar,
+                activity: None,
             }
         );
     }
@@ -1104,6 +1193,7 @@ mod walker_tests {
                 chain: Vec::new(),
                 is_active: true,
                 polarity: AxisPolarity::Bipolar,
+                activity: None,
             }]
         );
     }
@@ -1157,6 +1247,7 @@ mod walker_tests {
                     }],
                     is_active: false,
                     polarity: AxisPolarity::Bipolar,
+                    activity: None,
                 },
                 OutputDescriptor {
                     destination: OutputDestination::VJoy(false_output),
@@ -1167,6 +1258,7 @@ mod walker_tests {
                     }],
                     is_active: true,
                     polarity: AxisPolarity::Bipolar,
+                    activity: None,
                 },
             ]
         );
@@ -1212,6 +1304,7 @@ mod walker_tests {
                 }],
                 is_active: false,
                 polarity: AxisPolarity::Bipolar,
+                activity: None,
             }
         );
         assert_eq!(
@@ -1233,6 +1326,7 @@ mod walker_tests {
                 ],
                 is_active: false,
                 polarity: AxisPolarity::Bipolar,
+                activity: None,
             }
         );
         assert_eq!(model.pipeline_inputs, vec![primary, secondary]);
@@ -1557,6 +1651,7 @@ mod walker_tests {
                     }],
                     is_active: true,
                     polarity: AxisPolarity::Bipolar,
+                    activity: None,
                 },
                 OutputDescriptor {
                     destination: OutputDestination::VJoy(false_output),
@@ -1567,6 +1662,7 @@ mod walker_tests {
                     }],
                     is_active: false,
                     polarity: AxisPolarity::Bipolar,
+                    activity: None,
                 },
             ]
         );
@@ -1645,6 +1741,7 @@ mod walker_tests {
                 chain: Vec::new(),
                 is_active: true,
                 polarity: AxisPolarity::Unipolar,
+                activity: None,
             }]
         );
     }
@@ -1692,6 +1789,7 @@ mod walker_tests {
                 ],
                 is_active: true,
                 polarity: AxisPolarity::Bipolar,
+                activity: None,
             }]
         );
     }
@@ -1730,6 +1828,7 @@ mod walker_tests {
                 }],
                 is_active: true,
                 polarity: AxisPolarity::Bipolar,
+                activity: None,
             }]
         );
     }
