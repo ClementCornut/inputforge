@@ -8,7 +8,9 @@ mod test_helpers;
 pub use condition::evaluate_condition;
 pub use merge::merge_axes;
 
-use crate::action::{Action, ActionBranch, ModeChangeStrategy, MouseTarget, OutputBehavior};
+use crate::action::{
+    Action, ActionBranch, ModeChangeStrategy, MouseTarget, OutputBehavior, branch_actions,
+};
 use crate::processing::invert_axis;
 use crate::types::{
     AxisPolarity, HatDirection, InputAddress, InputId, InputValue, KeyCombo, OutputAddress,
@@ -113,13 +115,10 @@ impl OutputOwnerScope {
     }
 }
 
-/// Selects a conditional branch while resolving a nested action path.
+/// Selects an action branch while resolving a nested action path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BranchStep {
-    /// Selects the `if_true` branch at the given action index.
-    IfTrue(usize),
-    /// Selects the `if_false` branch at the given action index.
-    IfFalse(usize),
+    Branch { index: usize, branch: ActionBranch },
 }
 
 /// Read-only access to the latest input values.
@@ -465,18 +464,18 @@ fn project_input_value(input_value: &InputValue, current_value: f64) -> InputVal
     }
 }
 
-/// Re-run a partial action pipeline through a nested conditional branch path.
+/// Re-run a partial action pipeline through a nested branch path.
 ///
 /// An empty `path` is identical to [`evaluate_actions_through`]. Each path
 /// step executes preceding actions in the current slice, identifies a
-/// conditional by index, then selects that conditional's true or false branch
-/// as the next slice without evaluating the predicate.
+/// branch-capable action by index, then selects that action's requested branch
+/// as the next slice.
 ///
 /// # Panics
 ///
 /// Panics if any path step index is out of range for the current slice.
-/// Panics if any path step points to an action that is not
-/// [`Action::Conditional`]. Also inherits the `primary` invariant panic from
+/// Panics if any path step points to an action that does not expose the
+/// requested branch. Also inherits the `primary` invariant panic from
 /// [`evaluate_actions_through`].
 #[must_use]
 pub fn evaluate_actions_through_path(
@@ -490,10 +489,7 @@ pub fn evaluate_actions_through_path(
     let mut current = actions;
 
     for step in path {
-        let (index, wants_true) = match *step {
-            BranchStep::IfTrue(index) => (index, true),
-            BranchStep::IfFalse(index) => (index, false),
-        };
+        let BranchStep::Branch { index, branch } = *step;
 
         let action = current.get(index).unwrap_or_else(|| {
             panic!(
@@ -504,16 +500,11 @@ pub fn evaluate_actions_through_path(
 
         execute_pipeline(&current[..index], &mut ctx);
 
-        match action {
-            Action::Conditional {
-                if_true, if_false, ..
-            } => {
-                current = if wants_true { if_true } else { if_false };
-            }
-            other => {
-                panic!("branch path target at index {index} must be Conditional, got {other:?}")
-            }
-        }
+        current = branch_actions(action, branch).unwrap_or_else(|| {
+            panic!(
+                "branch path target at index {index} does not expose branch {branch:?}: {action:?}"
+            )
+        });
     }
 
     let stop = stop_at.min(current.len());
@@ -1844,8 +1835,16 @@ mod tests {
             if_false: vec![Action::Invert, Action::Invert],
         }];
 
-        let out =
-            evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfTrue(0)], 1);
+        let out = evaluate_actions_through_path(
+            &actions,
+            &state,
+            &addr,
+            &[BranchStep::Branch {
+                index: 0,
+                branch: ActionBranch::ConditionalTrue,
+            }],
+            1,
+        );
 
         match out {
             InputValue::Axis { value, .. } => {
@@ -1878,8 +1877,16 @@ mod tests {
             },
         ];
 
-        let out =
-            evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfTrue(1)], 1);
+        let out = evaluate_actions_through_path(
+            &actions,
+            &state,
+            &addr,
+            &[BranchStep::Branch {
+                index: 1,
+                branch: ActionBranch::ConditionalTrue,
+            }],
+            1,
+        );
 
         match out {
             InputValue::Axis { value, .. } => {
@@ -1915,12 +1922,58 @@ mod tests {
             ],
         }];
 
-        let out =
-            evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfFalse(0)], 3);
+        let out = evaluate_actions_through_path(
+            &actions,
+            &state,
+            &addr,
+            &[BranchStep::Branch {
+                index: 0,
+                branch: ActionBranch::ConditionalFalse,
+            }],
+            3,
+        );
 
         match out {
             InputValue::Axis { value, .. } => {
                 assert!((value.value() - 0.5).abs() < TOLERANCE);
+            }
+            other => panic!("expected Axis, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn path_tap_single_branch_subset_runs() {
+        let mut state = AppState::new();
+        let addr = axis_input_address();
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
+            },
+        );
+
+        let actions = [Action::TapGesture {
+            threshold_ms: 500,
+            fire_single_immediately: false,
+            single_tap: vec![Action::Invert],
+            double_tap: vec![Action::Invert, Action::Invert],
+        }];
+
+        let out = evaluate_actions_through_path(
+            &actions,
+            &state,
+            &addr,
+            &[BranchStep::Branch {
+                index: 0,
+                branch: ActionBranch::TapSingle,
+            }],
+            1,
+        );
+
+        match out {
+            InputValue::Axis { value, .. } => {
+                assert!((value.value() - (-0.5)).abs() < TOLERANCE);
             }
             other => panic!("expected Axis, got {other:?}"),
         }
@@ -1961,7 +2014,16 @@ mod tests {
             &actions,
             &state,
             &addr,
-            &[BranchStep::IfTrue(0), BranchStep::IfFalse(1)],
+            &[
+                BranchStep::Branch {
+                    index: 0,
+                    branch: ActionBranch::ConditionalTrue,
+                },
+                BranchStep::Branch {
+                    index: 1,
+                    branch: ActionBranch::ConditionalFalse,
+                },
+            ],
             1,
         );
 
@@ -1974,13 +2036,22 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Conditional")]
+    #[should_panic(expected = "does not expose branch")]
     fn path_non_conditional_target_panics() {
         let state = AppState::new();
         let addr = axis_input_address();
         let actions = [Action::Invert];
 
-        let _ = evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfTrue(0)], 1);
+        let _ = evaluate_actions_through_path(
+            &actions,
+            &state,
+            &addr,
+            &[BranchStep::Branch {
+                index: 0,
+                branch: ActionBranch::ConditionalTrue,
+            }],
+            1,
+        );
     }
 
     #[test]
@@ -1996,7 +2067,15 @@ mod tests {
             if_false: Vec::new(),
         }];
 
-        let _ =
-            evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfFalse(1)], 1);
+        let _ = evaluate_actions_through_path(
+            &actions,
+            &state,
+            &addr,
+            &[BranchStep::Branch {
+                index: 1,
+                branch: ActionBranch::ConditionalFalse,
+            }],
+            1,
+        );
     }
 }
