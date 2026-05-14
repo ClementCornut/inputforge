@@ -41,6 +41,8 @@ pub(crate) struct SettingsSnapshot {
     pub snapshot: SnapshotConfig,
     pub unpinned_snapshot_count: usize,
     pub startup: StartupSettings,
+    pub default_double_tap_threshold_ms: u64,
+    pub default_long_press_threshold_ms: u64,
 }
 
 impl SettingsSnapshot {
@@ -63,6 +65,8 @@ impl SettingsSnapshot {
             snapshot,
             unpinned_snapshot_count,
             startup,
+            default_double_tap_threshold_ms: state.default_double_tap_threshold_ms,
+            default_long_press_threshold_ms: state.default_long_press_threshold_ms,
         }
     }
 }
@@ -2156,5 +2160,17 @@ mod tests {
         };
         let snap = SettingsSnapshot::from_state(&state);
         assert_eq!(snap.startup, state.startup);
+    }
+
+    #[test]
+    fn settings_snapshot_from_state_mirrors_gesture_defaults() {
+        let mut state = AppState::new();
+        state.default_double_tap_threshold_ms = 325;
+        state.default_long_press_threshold_ms = 725;
+
+        let snapshot = SettingsSnapshot::from_state(&state);
+
+        assert_eq!(snapshot.default_double_tap_threshold_ms, 325);
+        assert_eq!(snapshot.default_long_press_threshold_ms, 725);
     }
 }

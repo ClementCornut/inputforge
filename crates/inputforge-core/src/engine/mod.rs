@@ -147,6 +147,8 @@ impl Engine {
             state.device_registry.clone_from(&settings.device_registry);
             state.snapshot_config.clone_from(&settings.snapshot);
             state.startup.clone_from(&settings.startup);
+            state.default_double_tap_threshold_ms = settings.default_double_tap_threshold_ms;
+            state.default_long_press_threshold_ms = settings.default_long_press_threshold_ms;
         };
 
         // F16 startup reconciliation. Run BEFORE engine construction so the

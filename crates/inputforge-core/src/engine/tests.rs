@@ -892,6 +892,35 @@ fn test_engine_with_settings_path(settings: AppSettings) -> (Engine, PathBuf) {
     (engine, settings_path)
 }
 
+#[test]
+fn set_default_double_tap_threshold_persists_and_mirrors() {
+    let settings = AppSettings::default();
+    let (mut engine, settings_path) = test_engine_with_settings_path(settings);
+
+    engine
+        .handle_command(EngineCommand::SetDefaultDoubleTapThreshold { threshold_ms: 375 })
+        .expect("command should succeed");
+
+    assert_eq!(engine.state.read().default_double_tap_threshold_ms, 375);
+    let persisted = AppSettings::load_from(&settings_path);
+    assert_eq!(persisted.default_double_tap_threshold_ms, 375);
+}
+
+#[test]
+fn set_default_long_press_threshold_rejects_out_of_range() {
+    let settings = AppSettings::default();
+    let (mut engine, _settings_path) = test_engine_with_settings_path(settings);
+
+    let err = engine
+        .handle_command(EngineCommand::SetDefaultLongPressThreshold { threshold_ms: 0 })
+        .expect_err("zero threshold should be invalid");
+
+    assert!(
+        err.to_string().contains("outside 1..=10000ms"),
+        "unexpected error: {err}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // T1-T7: Output handler unit tests
 // ---------------------------------------------------------------------------

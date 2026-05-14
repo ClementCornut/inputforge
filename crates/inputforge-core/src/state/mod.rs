@@ -23,6 +23,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::action::DEFAULT_GESTURE_THRESHOLD_MS;
 use crate::profile::Profile;
 use crate::settings::{DeviceRecord, StartupSettings};
 use crate::snapshot::SnapshotConfig;
@@ -92,6 +93,10 @@ pub struct AppState {
     pub snapshot_config: SnapshotConfig,
     /// Startup preferences mirrored from `AppSettings.startup` (F16).
     pub startup: StartupSettings,
+    /// Default threshold for newly created tap gesture stages.
+    pub default_double_tap_threshold_ms: u64,
+    /// Default threshold for newly created press gesture stages.
+    pub default_long_press_threshold_ms: u64,
     /// Name of the currently active mode.
     pub current_mode: String,
     /// Current engine lifecycle status.
@@ -131,6 +136,8 @@ impl AppState {
             device_registry: HashMap::new(),
             snapshot_config: SnapshotConfig::default(),
             startup: StartupSettings::default(),
+            default_double_tap_threshold_ms: DEFAULT_GESTURE_THRESHOLD_MS,
+            default_long_press_threshold_ms: DEFAULT_GESTURE_THRESHOLD_MS,
             current_mode: "Default".to_owned(),
             engine_status: EngineStatus::Stopped,
             active_profile: None,
@@ -175,6 +182,8 @@ impl AppState {
             device_registry: HashMap::new(),
             snapshot_config: SnapshotConfig::default(),
             startup: StartupSettings::default(),
+            default_double_tap_threshold_ms: DEFAULT_GESTURE_THRESHOLD_MS,
+            default_long_press_threshold_ms: DEFAULT_GESTURE_THRESHOLD_MS,
             current_mode: startup_mode,
             engine_status: EngineStatus::Stopped,
             active_profile: Some(profile),

@@ -36,7 +36,7 @@ pub struct StartupSettings {
 ///
 /// Stored as TOML at `<config_dir>/inputforge/settings.toml`
 /// (on Windows this is typically `%APPDATA%/inputforge/settings.toml`).
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AppSettings {
     /// Path to the last loaded profile, if any.
     pub last_profile: Option<PathBuf>,
@@ -54,11 +54,31 @@ pub struct AppSettings {
     #[serde(default)]
     pub startup: StartupSettings,
 
+    #[serde(default = "crate::action::default_gesture_threshold_ms")]
+    pub default_double_tap_threshold_ms: u64,
+
+    #[serde(default = "crate::action::default_gesture_threshold_ms")]
+    pub default_long_press_threshold_ms: u64,
+
     #[serde(default)]
     pub device_aliases: HashMap<DeviceId, String>,
 
     #[serde(default)]
     pub device_registry: HashMap<DeviceId, DeviceRecord>,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            last_profile: None,
+            snapshot: SnapshotConfig::default(),
+            startup: StartupSettings::default(),
+            default_double_tap_threshold_ms: crate::action::DEFAULT_GESTURE_THRESHOLD_MS,
+            default_long_press_threshold_ms: crate::action::DEFAULT_GESTURE_THRESHOLD_MS,
+            device_aliases: HashMap::new(),
+            device_registry: HashMap::new(),
+        }
+    }
 }
 
 impl AppSettings {
@@ -484,6 +504,27 @@ mod tests {
         assert_eq!(s.startup, StartupSettings::default());
         assert!(!s.startup.launch_at_startup);
         assert!(!s.startup.start_minimized_to_tray);
+    }
+
+    #[test]
+    fn settings_default_has_gesture_defaults() {
+        let settings = AppSettings::default();
+
+        assert_eq!(settings.default_double_tap_threshold_ms, 500);
+        assert_eq!(settings.default_long_press_threshold_ms, 500);
+    }
+
+    #[test]
+    fn pre_gesture_settings_loads_with_default_thresholds() {
+        let parsed: AppSettings = toml::from_str(
+            r#"
+last_profile = "C:\\profiles\\default.toml"
+"#,
+        )
+        .expect("old settings file should load");
+
+        assert_eq!(parsed.default_double_tap_threshold_ms, 500);
+        assert_eq!(parsed.default_long_press_threshold_ms, 500);
     }
 
     #[test]

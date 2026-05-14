@@ -647,8 +647,38 @@ impl Engine {
                 let mut state = self.state.write();
                 state.snapshot_config = self.settings.snapshot.clone();
                 state.startup = self.settings.startup.clone();
+                state.default_double_tap_threshold_ms =
+                    self.settings.default_double_tap_threshold_ms;
+                state.default_long_press_threshold_ms =
+                    self.settings.default_long_press_threshold_ms;
                 drop(state);
                 tracing::info!(target: "engine", "settings reloaded");
+            }
+            EngineCommand::SetDefaultDoubleTapThreshold { threshold_ms } => {
+                crate::action::validate_gesture_threshold_ms(threshold_ms)?;
+                let prior = self.settings.default_double_tap_threshold_ms;
+                self.settings.default_double_tap_threshold_ms = threshold_ms;
+                self.state.write().default_double_tap_threshold_ms = threshold_ms;
+                if let Err(e) = self.settings.save_to(&self.settings_path) {
+                    self.settings.default_double_tap_threshold_ms = prior;
+                    let mut state = self.state.write();
+                    state.default_double_tap_threshold_ms = prior;
+                    state.warnings.push(format!("Could not save settings: {e}"));
+                    return Ok(());
+                }
+            }
+            EngineCommand::SetDefaultLongPressThreshold { threshold_ms } => {
+                crate::action::validate_gesture_threshold_ms(threshold_ms)?;
+                let prior = self.settings.default_long_press_threshold_ms;
+                self.settings.default_long_press_threshold_ms = threshold_ms;
+                self.state.write().default_long_press_threshold_ms = threshold_ms;
+                if let Err(e) = self.settings.save_to(&self.settings_path) {
+                    self.settings.default_long_press_threshold_ms = prior;
+                    let mut state = self.state.write();
+                    state.default_long_press_threshold_ms = prior;
+                    state.warnings.push(format!("Could not save settings: {e}"));
+                    return Ok(());
+                }
             }
             EngineCommand::SetSnapshotConfig { config } => {
                 // Step 1: capture the prior config for rollback on save failure.

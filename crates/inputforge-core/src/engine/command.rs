@@ -105,6 +105,12 @@ pub enum EngineCommand {
     /// same `process_commands` drain still see the old config.
     ReloadSettings,
 
+    /// Set the default threshold for newly created double-tap gesture stages.
+    SetDefaultDoubleTapThreshold { threshold_ms: u64 },
+
+    /// Set the default threshold for newly created long-press gesture stages.
+    SetDefaultLongPressThreshold { threshold_ms: u64 },
+
     /// Replace `AppSettings.snapshot` with the supplied config.
     ///
     /// Surgical: replaces only `settings.snapshot`, not other
