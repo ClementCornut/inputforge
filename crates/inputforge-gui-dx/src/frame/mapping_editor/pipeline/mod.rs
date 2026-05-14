@@ -39,8 +39,14 @@ pub(super) fn format_stage_id(id: &StageId) -> String {
     id.0.iter()
         .map(|seg| match seg {
             StageIdSegment::Index(i) => format!("{i}"),
-            StageIdSegment::IfTrue => "T".to_owned(),
-            StageIdSegment::IfFalse => "F".to_owned(),
+            StageIdSegment::Branch(branch) => match branch {
+                ActionBranch::ConditionalTrue => "T".to_owned(),
+                ActionBranch::ConditionalFalse => "F".to_owned(),
+                ActionBranch::TapSingle => "TS".to_owned(),
+                ActionBranch::TapDouble => "TD".to_owned(),
+                ActionBranch::PressShort => "PS".to_owned(),
+                ActionBranch::PressLong => "PL".to_owned(),
+            },
         })
         .collect::<Vec<_>>()
         .join(".")
@@ -73,7 +79,7 @@ pub(super) fn path_invalidated_by_mutation(
     }
     match stage_id.0[parent_len] {
         StageIdSegment::Index(idx) => idx >= mutation_index,
-        // Branch segment (IfTrue / IfFalse): different sub-branch from
+        // Branch segment: different sub-branch from
         // the mutation, which targets an Index position. Preserve.
         _ => false,
     }
@@ -81,7 +87,7 @@ pub(super) fn path_invalidated_by_mutation(
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Mapping};
+use inputforge_core::action::{Action, ActionBranch, Mapping, branch_actions, branch_actions_mut};
 use inputforge_core::engine::EngineCommand;
 
 use crate::components::sortable::{SortableGap, SortableState};
@@ -112,14 +118,7 @@ pub(crate) fn at_path<'a>(actions: &'a [Action], path: &StageId) -> Option<&'a A
                 }
                 peek = Some(action);
             }
-            StageIdSegment::IfTrue => match peek? {
-                Action::Conditional { if_true, .. } => cursor = if_true.as_slice(),
-                _ => return None,
-            },
-            StageIdSegment::IfFalse => match peek? {
-                Action::Conditional { if_false, .. } => cursor = if_false.as_slice(),
-                _ => return None,
-            },
+            StageIdSegment::Branch(branch) => cursor = branch_actions(peek?, *branch)?,
         }
     }
     None
@@ -156,20 +155,11 @@ pub(crate) fn replace_at_path(
                 } else {
                     let target = out.get_mut(*i)?;
                     let (branch_seg, rest) = tail.split_first()?;
-                    let Action::Conditional {
-                        if_true, if_false, ..
-                    } = target
-                    else {
-                        return None;
-                    };
                     match branch_seg {
-                        StageIdSegment::IfTrue => {
-                            let new = walk(if_true.as_slice(), rest, replacement)?;
-                            *if_true = new;
-                        }
-                        StageIdSegment::IfFalse => {
-                            let new = walk(if_false.as_slice(), rest, replacement)?;
-                            *if_false = new;
+                        StageIdSegment::Branch(branch) => {
+                            let branch_actions = branch_actions_mut(target, *branch)?;
+                            let new = walk(branch_actions.as_slice(), rest, replacement)?;
+                            *branch_actions = new;
                         }
                         StageIdSegment::Index(_) => return None,
                     }
@@ -177,7 +167,7 @@ pub(crate) fn replace_at_path(
                 }
             }
             // StageId must always start with an Index segment.
-            StageIdSegment::IfTrue | StageIdSegment::IfFalse => None,
+            StageIdSegment::Branch(_) => None,
         }
     }
     walk(actions, &path.0, replacement)
@@ -219,20 +209,12 @@ pub(crate) fn insert_at_path(
                     Some(out)
                 } else {
                     let target = out.get_mut(*i)?;
-                    let Action::Conditional {
-                        if_true, if_false, ..
-                    } = target
-                    else {
-                        return None;
-                    };
                     let (branch_seg, rest) = tail.split_first()?;
                     match branch_seg {
-                        StageIdSegment::IfTrue => {
-                            *if_true = walk(if_true.as_slice(), rest, new_action)?;
-                        }
-                        StageIdSegment::IfFalse => {
-                            let new = walk(if_false.as_slice(), rest, new_action)?;
-                            *if_false = new;
+                        StageIdSegment::Branch(branch) => {
+                            let branch_actions = branch_actions_mut(target, *branch)?;
+                            let new = walk(branch_actions.as_slice(), rest, new_action)?;
+                            *branch_actions = new;
                         }
                         StageIdSegment::Index(_) => return None,
                     }
@@ -240,7 +222,7 @@ pub(crate) fn insert_at_path(
                 }
             }
             // StageId must always start with an Index segment.
-            StageIdSegment::IfTrue | StageIdSegment::IfFalse => None,
+            StageIdSegment::Branch(_) => None,
         }
     }
     walk(actions, &path.0, new_action)
@@ -276,20 +258,12 @@ pub(crate) fn remove_at_path(actions: &[Action], path: &StageId) -> Option<Vec<A
                     Some(out)
                 } else {
                     let target = out.get_mut(*i)?;
-                    let Action::Conditional {
-                        if_true, if_false, ..
-                    } = target
-                    else {
-                        return None;
-                    };
                     let (branch_seg, rest) = tail.split_first()?;
                     match branch_seg {
-                        StageIdSegment::IfTrue => {
-                            *if_true = walk(if_true.as_slice(), rest)?;
-                        }
-                        StageIdSegment::IfFalse => {
-                            let new = walk(if_false.as_slice(), rest)?;
-                            *if_false = new;
+                        StageIdSegment::Branch(branch) => {
+                            let branch_actions = branch_actions_mut(target, *branch)?;
+                            let new = walk(branch_actions.as_slice(), rest)?;
+                            *branch_actions = new;
                         }
                         StageIdSegment::Index(_) => return None,
                     }
@@ -297,7 +271,7 @@ pub(crate) fn remove_at_path(actions: &[Action], path: &StageId) -> Option<Vec<A
                 }
             }
             // StageId must always start with an Index segment.
-            StageIdSegment::IfTrue | StageIdSegment::IfFalse => None,
+            StageIdSegment::Branch(_) => None,
         }
     }
     walk(actions, &path.0)

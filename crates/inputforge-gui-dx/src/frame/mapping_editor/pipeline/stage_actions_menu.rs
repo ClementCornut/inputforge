@@ -18,7 +18,7 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Mapping};
+use inputforge_core::action::{Action, ActionBranch, Mapping, branch_actions};
 use inputforge_core::engine::EngineCommand;
 
 use crate::components::{AnchoredMenu, CloseReason, MenuAnchor, MenuItem};
@@ -64,7 +64,7 @@ fn slice_at_parent<'a>(root: &'a [Action], parent_path: &[StageIdSegment]) -> Op
     }
 
     // Walk: the parent_path is [Index(i), Branch, Index(j), Branch, ...],
-    // always ending at a branch segment (IfTrue / IfFalse) because
+    // always ending at a branch segment because
     // the last Index segment was already stripped by split_stage_path.
     let mut cursor: &[Action] = root;
     let mut staged: Option<&Action> = None;
@@ -80,20 +80,10 @@ fn slice_at_parent<'a>(root: &'a [Action], parent_path: &[StageIdSegment]) -> Op
                 iter.peek()?;
                 staged = Some(action);
             }
-            StageIdSegment::IfTrue => match staged? {
-                Action::Conditional { if_true, .. } => {
-                    cursor = if_true.as_slice();
-                    staged = None;
-                }
-                _ => return None,
-            },
-            StageIdSegment::IfFalse => match staged? {
-                Action::Conditional { if_false, .. } => {
-                    cursor = if_false.as_slice();
-                    staged = None;
-                }
-                _ => return None,
-            },
+            StageIdSegment::Branch(branch) => {
+                cursor = branch_actions(staged?, *branch)?;
+                staged = None;
+            }
         }
     }
     Some(cursor)
@@ -526,13 +516,16 @@ mod tests {
     fn split_nested_into_if_true() {
         let id = make_id(vec![
             StageIdSegment::Index(1),
-            StageIdSegment::IfTrue,
+            StageIdSegment::Branch(ActionBranch::ConditionalTrue),
             StageIdSegment::Index(3),
         ]);
         let (parent, idx) = split_stage_path(&id).unwrap();
         assert_eq!(
             parent,
-            vec![StageIdSegment::Index(1), StageIdSegment::IfTrue]
+            vec![
+                StageIdSegment::Index(1),
+                StageIdSegment::Branch(ActionBranch::ConditionalTrue)
+            ]
         );
         assert_eq!(idx, 3);
     }
@@ -545,7 +538,10 @@ mod tests {
 
     #[test]
     fn make_stage_id_round_trips() {
-        let parent = vec![StageIdSegment::Index(0), StageIdSegment::IfTrue];
+        let parent = vec![
+            StageIdSegment::Index(0),
+            StageIdSegment::Branch(ActionBranch::ConditionalTrue),
+        ];
         let id = make_stage_id(&parent, 2);
         let (back_parent, idx) = split_stage_path(&id).unwrap();
         assert_eq!(back_parent, parent);

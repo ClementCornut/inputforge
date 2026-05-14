@@ -13,7 +13,9 @@ use dioxus::prelude::*;
 use dioxus_ssr::render;
 use parking_lot::RwLock;
 
-use inputforge_core::action::{Action, Condition, Mapping, MouseTarget, OutputBehavior};
+use inputforge_core::action::{
+    Action, ActionBranch, Condition, Mapping, MouseTarget, OutputBehavior,
+};
 use inputforge_core::mode::Modes;
 use inputforge_core::processing::DeadzoneConfig;
 use inputforge_core::profile::Profile;
@@ -70,7 +72,7 @@ fn at_path_into_if_true_branch() {
     }];
     let path = StageId(vec![
         StageIdSegment::Index(0),
-        StageIdSegment::IfTrue,
+        StageIdSegment::Branch(ActionBranch::ConditionalTrue),
         StageIdSegment::Index(0),
     ]);
     assert!(matches!(at_path(&actions, &path), Some(Action::Invert)));
@@ -87,7 +89,7 @@ fn at_path_into_missing_if_false_returns_none() {
     }];
     let path = StageId(vec![
         StageIdSegment::Index(0),
-        StageIdSegment::IfFalse,
+        StageIdSegment::Branch(ActionBranch::ConditionalFalse),
         StageIdSegment::Index(0),
     ]);
     assert!(at_path(&actions, &path).is_none());
@@ -120,7 +122,7 @@ fn replace_at_path_inside_if_true_swaps_action() {
     }];
     let path = StageId(vec![
         StageIdSegment::Index(0),
-        StageIdSegment::IfTrue,
+        StageIdSegment::Branch(ActionBranch::ConditionalTrue),
         StageIdSegment::Index(0),
     ]);
     let new = replace_at_path(
@@ -154,11 +156,14 @@ fn replace_at_path_invalid_path_returns_none() {
     assert!(replace_at_path(&actions, &path, Action::Invert).is_none());
 
     // Path starts with a branch segment.
-    let path = StageId(vec![StageIdSegment::IfTrue]);
+    let path = StageId(vec![StageIdSegment::Branch(ActionBranch::ConditionalTrue)]);
     assert!(replace_at_path(&actions, &path, Action::Invert).is_none());
 
     // Branch segment after a non-Conditional action.
-    let path = StageId(vec![StageIdSegment::Index(0), StageIdSegment::IfTrue]);
+    let path = StageId(vec![
+        StageIdSegment::Index(0),
+        StageIdSegment::Branch(ActionBranch::ConditionalTrue),
+    ]);
     assert!(replace_at_path(&actions, &path, Action::Invert).is_none());
 }
 
@@ -199,7 +204,7 @@ fn insert_at_path_into_if_false_creates_branch() {
     }];
     let path = StageId(vec![
         StageIdSegment::Index(0),
-        StageIdSegment::IfFalse,
+        StageIdSegment::Branch(ActionBranch::ConditionalFalse),
         StageIdSegment::Index(0),
     ]);
     let new = insert_at_path(&actions, &path, Action::Invert).expect("valid path");
@@ -230,7 +235,7 @@ fn remove_at_path_last_in_if_false_leaves_empty_branch() {
     }];
     let path = StageId(vec![
         StageIdSegment::Index(0),
-        StageIdSegment::IfFalse,
+        StageIdSegment::Branch(ActionBranch::ConditionalFalse),
         StageIdSegment::Index(0),
     ]);
     let new = remove_at_path(&actions, &path).expect("valid path");
@@ -259,12 +264,18 @@ fn insert_remove_invalid_paths_return_none() {
     assert!(
         insert_at_path(
             &actions,
-            &StageId(vec![StageIdSegment::IfTrue]),
+            &StageId(vec![StageIdSegment::Branch(ActionBranch::ConditionalTrue)]),
             Action::Invert
         )
         .is_none()
     );
-    assert!(remove_at_path(&actions, &StageId(vec![StageIdSegment::IfTrue])).is_none());
+    assert!(
+        remove_at_path(
+            &actions,
+            &StageId(vec![StageIdSegment::Branch(ActionBranch::ConditionalTrue)])
+        )
+        .is_none()
+    );
 
     // Out-of-range index for remove_at_path.
     assert!(remove_at_path(&actions, &StageId(vec![StageIdSegment::Index(99)])).is_none());
@@ -272,11 +283,65 @@ fn insert_remove_invalid_paths_return_none() {
     // Branch segment after a non-Conditional action.
     let path = StageId(vec![
         StageIdSegment::Index(0),
-        StageIdSegment::IfTrue,
+        StageIdSegment::Branch(ActionBranch::ConditionalTrue),
         StageIdSegment::Index(0),
     ]);
     assert!(insert_at_path(&actions, &path, Action::Invert).is_none());
     assert!(remove_at_path(&actions, &path).is_none());
+}
+
+#[test]
+fn branch_path_helpers_traverse_all_action_branch_variants() {
+    let actions = vec![Action::TapGesture {
+        threshold_ms: 250,
+        fire_single_immediately: false,
+        single_tap: vec![Action::Invert],
+        double_tap: vec![Action::MergeAxis {
+            second_input: synth_addr(),
+            operation: MergeOp::Average,
+        }],
+    }];
+
+    let single_path = StageId(vec![
+        StageIdSegment::Index(0),
+        StageIdSegment::Branch(ActionBranch::TapSingle),
+        StageIdSegment::Index(0),
+    ]);
+    assert!(matches!(
+        at_path(&actions, &single_path),
+        Some(Action::Invert)
+    ));
+
+    let double_path = StageId(vec![
+        StageIdSegment::Index(0),
+        StageIdSegment::Branch(ActionBranch::TapDouble),
+        StageIdSegment::Index(0),
+    ]);
+    assert!(matches!(
+        at_path(&actions, &double_path),
+        Some(Action::MergeAxis { .. })
+    ));
+
+    let replaced = replace_at_path(&actions, &single_path, Action::Invert)
+        .expect("tap single branch path must replace");
+    assert!(matches!(
+        at_path(&replaced, &single_path),
+        Some(Action::Invert)
+    ));
+
+    let inserted = insert_at_path(&actions, &double_path, Action::Invert)
+        .expect("tap double branch path must insert");
+    match &inserted[0] {
+        Action::TapGesture { double_tap, .. } => assert_eq!(double_tap.len(), 2),
+        _ => panic!("outer wrapper should remain TapGesture"),
+    }
+
+    let removed =
+        remove_at_path(&actions, &double_path).expect("tap double branch path must remove");
+    match &removed[0] {
+        Action::TapGesture { double_tap, .. } => assert!(double_tap.is_empty()),
+        _ => panic!("outer wrapper should remain TapGesture"),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1736,14 +1801,14 @@ fn conditional_three_deep_renders_all_branches() {
             StageId(vec![StageIdSegment::Index(0)]),
             StageId(vec![
                 StageIdSegment::Index(0),
-                StageIdSegment::IfTrue,
+                StageIdSegment::Branch(ActionBranch::ConditionalTrue),
                 StageIdSegment::Index(0),
             ]),
             StageId(vec![
                 StageIdSegment::Index(0),
-                StageIdSegment::IfTrue,
+                StageIdSegment::Branch(ActionBranch::ConditionalTrue),
                 StageIdSegment::Index(0),
-                StageIdSegment::IfTrue,
+                StageIdSegment::Branch(ActionBranch::ConditionalTrue),
                 StageIdSegment::Index(0),
             ]),
         ],
@@ -1864,7 +1929,7 @@ fn dnd_descendant_detection_rejects_self_descent() {
     let ancestor = StageId(vec![StageIdSegment::Index(0)]);
     let candidate = StageId(vec![
         StageIdSegment::Index(0),
-        StageIdSegment::IfTrue,
+        StageIdSegment::Branch(ActionBranch::ConditionalTrue),
         StageIdSegment::Index(0),
     ]);
     assert!(
@@ -1920,7 +1985,7 @@ fn dnd_can_move_stage_from_outer_into_conditional_if_true() {
     // Target: inside if_true of the Conditional, at index 0.
     let drop_id = StageId(vec![
         StageIdSegment::Index(0),
-        StageIdSegment::IfTrue,
+        StageIdSegment::Branch(ActionBranch::ConditionalTrue),
         StageIdSegment::Index(0),
     ]);
 
@@ -2033,7 +2098,10 @@ fn dnd_gap_drop_cross_pipeline_no_shift() {
     ];
 
     let src_parent = StageId(Vec::new());
-    let tgt_parent = StageId(vec![StageIdSegment::Index(0), StageIdSegment::IfTrue]);
+    let tgt_parent = StageId(vec![
+        StageIdSegment::Index(0),
+        StageIdSegment::Branch(ActionBranch::ConditionalTrue),
+    ]);
     let src_local_index: usize = 1;
     let gap_index: usize = 0; // before the existing Deadzone in if_true
 
@@ -2116,7 +2184,10 @@ fn dnd_invalid_validator_blocks_drop() {
     // validator must reject the drop because the source's path is a
     // strict prefix of the target's parent path (cycle).
     let src_id = StageId(vec![StageIdSegment::Index(0)]);
-    let tgt_parent = StageId(vec![StageIdSegment::Index(0), StageIdSegment::IfTrue]);
+    let tgt_parent = StageId(vec![
+        StageIdSegment::Index(0),
+        StageIdSegment::Branch(ActionBranch::ConditionalTrue),
+    ]);
 
     // Validator receives parent paths in production: source's stage path
     // (the dragged Conditional's full id) and target gap's parent path

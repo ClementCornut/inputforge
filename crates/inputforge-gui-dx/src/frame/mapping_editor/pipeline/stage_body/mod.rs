@@ -15,6 +15,7 @@ use crate::frame::MappingKey;
 use crate::frame::mapping_editor::undo_log::StageId;
 use crate::icons::{Icon as IconKind, IconSize};
 
+pub(crate) mod branches;
 pub(crate) mod change_mode;
 mod conditional;
 mod deadzone;
@@ -96,8 +97,7 @@ pub(crate) fn StageBody(
                         .filter(|s| {
                             matches!(
                                 s,
-                                crate::frame::mapping_editor::undo_log::StageIdSegment::IfTrue
-                                    | crate::frame::mapping_editor::undo_log::StageIdSegment::IfFalse
+                                crate::frame::mapping_editor::undo_log::StageIdSegment::Branch(_)
                             )
                         })
                         .count(),

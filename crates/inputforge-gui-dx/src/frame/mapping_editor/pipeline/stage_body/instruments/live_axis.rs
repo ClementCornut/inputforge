@@ -7,7 +7,7 @@
 
 use dioxus::prelude::ReadableExt;
 
-use inputforge_core::action::Action;
+use inputforge_core::action::{Action, ActionBranch};
 use inputforge_core::pipeline::evaluate_actions_through;
 use inputforge_core::types::{InputAddress, InputValue};
 
@@ -79,7 +79,10 @@ mod tests {
     use super::*;
 
     fn nested_stage_id() -> StageId {
-        StageId(vec![StageIdSegment::Index(0), StageIdSegment::IfTrue])
+        StageId(vec![
+            StageIdSegment::Index(0),
+            StageIdSegment::Branch(ActionBranch::ConditionalTrue),
+        ])
     }
 
     fn unbound_addr() -> InputAddress {

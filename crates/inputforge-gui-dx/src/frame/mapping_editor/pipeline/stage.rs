@@ -9,7 +9,9 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Condition, ModeChangeStrategy, OutputBehavior};
+use inputforge_core::action::{
+    Action, Condition, ModeChangeStrategy, OutputBehavior, branch_actions,
+};
 use inputforge_core::processing::ResponseCurve;
 use inputforge_core::types::{InputAddress, KeyCombo, OutputAddress, OutputId, VJoyAxis};
 
@@ -50,7 +52,7 @@ fn parent_pipeline_len(root_actions: &[Action], parent_pipeline_path: &StageId) 
     }
     // The parent_pipeline_path segments describe the path from root down to the
     // branch that contains this stage. The path always ends with a branch
-    // segment (IfTrue / IfFalse), not an Index, because Pipeline strips the
+    // segment, not an Index, because Pipeline strips the
     // terminal Index when constructing path_prefix.
     let mut cursor: &[Action] = root_actions;
     let mut last_action: Option<&Action> = None;
@@ -60,16 +62,13 @@ fn parent_pipeline_len(root_actions: &[Action], parent_pipeline_path: &StageId) 
                 let Some(a) = cursor.get(*i) else { return 0 };
                 last_action = Some(a);
             }
-            StageIdSegment::IfTrue => match last_action {
-                Some(Action::Conditional { if_true, .. }) => cursor = if_true.as_slice(),
-                _ => return 0,
-            },
-            StageIdSegment::IfFalse => match last_action {
-                Some(Action::Conditional { if_false, .. }) => {
-                    cursor = if_false.as_slice();
-                }
-                _ => return 0,
-            },
+            StageIdSegment::Branch(branch) => {
+                let Some(action) = last_action else { return 0 };
+                let Some(actions) = branch_actions(action, *branch) else {
+                    return 0;
+                };
+                cursor = actions;
+            }
         }
     }
     cursor.len()
