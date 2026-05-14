@@ -41,6 +41,7 @@ pub(crate) enum MainSurface {
     #[default]
     Mappings,
     BulkMap,
+    Sheets,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

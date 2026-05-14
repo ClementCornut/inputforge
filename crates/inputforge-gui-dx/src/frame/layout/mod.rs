@@ -43,18 +43,33 @@ pub(crate) fn Layout() -> Element {
             Stylesheet { href: LAYOUT_CSS }
             TopBar {}
             ModeDeleteDialog {}
-            if p {
+            match s {
+                MainSurface::Sheets => rsx! {
                 div { class: "if-layout__main",
                     div { class: "if-layout__surface",
-                        match s {
-                            MainSurface::Mappings => rsx! { MappingWorkspace {} },
-                            MainSurface::BulkMap => rsx! { BulkMapWorkspace {} },
-                        }
+                        crate::frame::SheetsWorkbench {}
+                    }
+                }
+                },
+                MainSurface::Mappings if p => rsx! {
+                div { class: "if-layout__main",
+                    div { class: "if-layout__surface",
+                        MappingWorkspace {}
                     }
                     PanelSlotComponent {}
                 }
-            } else {
-                EmptyState {}
+                },
+                MainSurface::BulkMap if p => rsx! {
+                div { class: "if-layout__main",
+                    div { class: "if-layout__surface",
+                        BulkMapWorkspace {}
+                    }
+                    PanelSlotComponent {}
+                }
+                },
+                MainSurface::Mappings | MainSurface::BulkMap => rsx! {
+                    EmptyState {}
+                },
             }
         }
     }
@@ -99,6 +114,28 @@ mod tests {
     use parking_lot::RwLock;
 
     use crate::context::{ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
+
+    #[allow(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn SheetsHarnessWithoutProfile() -> Element {
+        let (tx, _) = mpsc::channel();
+        let ctx = AppContext {
+            state: Arc::new(RwLock::new(AppState::new())),
+            commands: tx,
+            settings: use_signal(SettingsSnapshot::default),
+            meta: use_signal(MetaSnapshot::default),
+            config: use_signal(ConfigSnapshot::default),
+            live: use_signal(LiveSnapshot::default),
+        };
+        use_context_provider(|| ctx.clone());
+        let mut view = crate::frame::use_view_state_provider(ctx.meta);
+        view.main_surface.set(MainSurface::Sheets);
+        use_context_provider(|| view);
+
+        rsx! { Layout {} }
+    }
 
     #[allow(
         non_snake_case,
@@ -153,6 +190,22 @@ mod tests {
         assert!(
             !html.contains("if-layout__center"),
             "mapping editor must not render in Bulk-map mode: {html}"
+        );
+    }
+
+    #[test]
+    fn sheets_surface_mounts_without_active_profile() {
+        let mut vdom = VirtualDom::new(SheetsHarnessWithoutProfile);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+
+        assert!(
+            html.contains("data-testid=\"sheets-workbench\""),
+            "Sheets workbench must mount without an active profile: {html}"
+        );
+        assert!(
+            !html.contains("if-empty-state"),
+            "profile empty-state must not replace Sheets: {html}"
         );
     }
 }
