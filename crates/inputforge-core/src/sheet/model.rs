@@ -197,14 +197,14 @@ pub struct TemplateAnchor {
 }
 
 /// Board-space anchor position.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct AnchorPosition {
     pub x: f64,
     pub y: f64,
 }
 
 /// Coarse physical input type for template authoring.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InputTypeHint {
     Axis,
@@ -213,7 +213,7 @@ pub enum InputTypeHint {
 }
 
 /// Template grouping kind.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GroupingKind {
     Directional,
@@ -222,7 +222,7 @@ pub enum GroupingKind {
 }
 
 /// Display token preset for authored mappings.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TokenPreset {
     Standard,
@@ -266,14 +266,14 @@ pub struct MappingSheet {
 }
 
 /// Layout preset used by a sheet.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LayoutPreset {
     FreeBoard,
 }
 
 /// Sheet board dimensions.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BoardSize {
     pub width: f64,
     pub height: f64,
@@ -318,7 +318,7 @@ pub struct AnchorBinding {
 }
 
 /// Source of an anchor assignment.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AnchorAssignment {
     Captured,
@@ -357,7 +357,7 @@ pub struct SheetBlock {
 }
 
 /// Visual preset for a sheet block.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BlockPreset {
     Mapping,
@@ -429,7 +429,7 @@ impl BlockContent {
 }
 
 /// Board-space rectangle.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BoardRect {
     pub x: f64,
     pub y: f64,
@@ -460,7 +460,7 @@ pub struct LineEndpoint {
 }
 
 /// Visual style for a sheet line.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LineStyle {
     Straight,
@@ -496,7 +496,7 @@ impl SheetText {
 }
 
 /// Kind of free text rendered on a sheet.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SheetTextKind {
     Caption,
