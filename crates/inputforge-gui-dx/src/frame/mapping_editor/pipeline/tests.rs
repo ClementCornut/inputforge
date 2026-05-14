@@ -1277,7 +1277,8 @@ fn tap_gesture_threshold_edit_sends_replacement() {
     let (tx, rx) = mpsc::channel();
     let mut undo_log = UndoLog::default();
 
-    stage_body::tap_gesture::dispatch_tap_gesture_edit_into(
+    stage_body::gesture_body::dispatch_gesture_edit_into(
+        stage_body::gesture_body::GestureKind::Tap,
         &mut undo_log,
         &mapping_key,
         &stage_id,
@@ -1330,7 +1331,8 @@ fn tap_gesture_toggle_edit_sends_replacement() {
     let (tx, rx) = mpsc::channel();
     let mut undo_log = UndoLog::default();
 
-    stage_body::tap_gesture::dispatch_tap_gesture_edit_into(
+    stage_body::gesture_body::dispatch_gesture_edit_into(
+        stage_body::gesture_body::GestureKind::Tap,
         &mut undo_log,
         &mapping_key,
         &stage_id,
@@ -1378,7 +1380,8 @@ fn press_gesture_threshold_edit_sends_replacement() {
     let (tx, rx) = mpsc::channel();
     let mut undo_log = UndoLog::default();
 
-    stage_body::press_gesture::dispatch_press_gesture_edit_into(
+    stage_body::gesture_body::dispatch_gesture_edit_into(
+        stage_body::gesture_body::GestureKind::Press,
         &mut undo_log,
         &mapping_key,
         &stage_id,
@@ -1431,7 +1434,8 @@ fn press_gesture_toggle_edit_sends_replacement() {
     let (tx, rx) = mpsc::channel();
     let mut undo_log = UndoLog::default();
 
-    stage_body::press_gesture::dispatch_press_gesture_edit_into(
+    stage_body::gesture_body::dispatch_gesture_edit_into(
+        stage_body::gesture_body::GestureKind::Press,
         &mut undo_log,
         &mapping_key,
         &stage_id,

@@ -126,4 +126,51 @@ impl OutputActivityStore {
     pub fn clear(&mut self) {
         self.entries.clear();
     }
+
+    /// Drop the entry for `owner` if any. Used by the engine when an output
+    /// owner stops being driven (e.g. a Conditional branch flipped false)
+    /// so the live preview no longer shows the stale "Pressed" state.
+    pub fn clear_owner(&mut self, owner: &OutputOwner) {
+        self.entries.remove(owner);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::action::{MouseTarget, OutputBehavior};
+    use crate::pipeline::{ActionPathSegment, OutputDestination};
+    use crate::types::InputAddress;
+
+    fn owner_with_index(index: usize) -> OutputOwner {
+        OutputOwner {
+            profile: "memory-profile".to_owned(),
+            mode: "Default".to_owned(),
+            input: InputAddress::Unbound,
+            action_path: vec![ActionPathSegment::Index(index)],
+            destination: OutputDestination::Mouse(MouseTarget::LeftButton),
+            behavior: OutputBehavior::Hold,
+        }
+    }
+
+    #[test]
+    fn clear_owner_removes_only_the_target_entry() {
+        let mut store = OutputActivityStore::new();
+        let now = Instant::now();
+        let kept = owner_with_index(0);
+        let dropped = owner_with_index(1);
+
+        store.record(kept.clone(), OutputActivityValue::Mouse(true), now, false);
+        store.record(
+            dropped.clone(),
+            OutputActivityValue::Mouse(true),
+            now,
+            false,
+        );
+
+        store.clear_owner(&dropped);
+
+        assert!(store.get(&kept, now).is_some());
+        assert!(store.get(&dropped, now).is_none());
+    }
 }

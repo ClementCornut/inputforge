@@ -319,37 +319,27 @@ pub(crate) fn stage_summary_for(action: &Action, cfg: &ConfigSnapshot) -> String
         Action::TapGesture {
             threshold_ms,
             fire_single_immediately,
-            single_tap,
-            double_tap,
+            ..
         } => {
             let mode = if *fire_single_immediately {
                 "immediate single"
             } else {
                 "exclusive single/double"
             };
-            format!(
-                "{threshold_ms} ms, {mode}; single {}, double {}",
-                single_tap.len(),
-                double_tap.len()
-            )
+            format!("{threshold_ms} ms, {mode}")
         }
 
         Action::PressGesture {
             threshold_ms,
             fire_long_when_threshold_crossed,
-            short_press,
-            long_press,
+            ..
         } => {
             let mode = if *fire_long_when_threshold_crossed {
                 "long fires while held"
             } else {
                 "decide on release"
             };
-            format!(
-                "{threshold_ms} ms, {mode}; short {}, long {}",
-                short_press.len(),
-                long_press.len()
-            )
+            format!("{threshold_ms} ms, {mode}")
         }
     }
 }

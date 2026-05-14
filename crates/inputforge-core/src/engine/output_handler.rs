@@ -62,7 +62,9 @@ pub(super) fn process_pipeline_outputs(
                 output_sink.set_axis(output.device, *id, *value)?;
             }
             PipelineOutput::SetButton {
-                output, pressed, ..
+                owner,
+                output,
+                pressed,
             } => {
                 let OutputId::Button { id } = &output.output else {
                     tracing::warn!(
@@ -72,6 +74,7 @@ pub(super) fn process_pipeline_outputs(
                     continue;
                 };
                 output_sink.set_button(output.device, *id, *pressed)?;
+                output_state.commit_set_button(owner.clone(), output.clone(), *pressed);
             }
             PipelineOutput::Keyboard {
                 owner,

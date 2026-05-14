@@ -19,6 +19,7 @@ pub(crate) mod branches;
 pub(crate) mod change_mode;
 mod conditional;
 mod deadzone;
+pub(crate) mod gesture_body;
 mod instruments;
 mod invert;
 mod map_to_keyboard;

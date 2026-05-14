@@ -48,7 +48,7 @@ fn commit_threshold_if_changed(
     candidate: usize,
     dispatch: fn(&Sender<EngineCommand>, u64),
 ) -> bool {
-    let threshold_ms = candidate as u64;
+    let threshold_ms = u64::try_from(candidate).unwrap_or(THRESHOLD_MAX_MS as u64);
     if threshold_ms == current_threshold_ms {
         return false;
     }

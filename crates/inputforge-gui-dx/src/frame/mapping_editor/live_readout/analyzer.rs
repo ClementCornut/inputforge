@@ -654,7 +654,7 @@ fn walk(
                     branch_path.push(BranchStep::Branch { index: i, branch });
                     action_path.push(ActionPathSegment::Branch(branch));
                     chain_stack.push(ChainStep::Conditional {
-                        condition_label: gesture_branch_label(branch).to_owned(),
+                        condition_label: branch.label().to_owned(),
                         evaluated: false,
                         branch: Branch::Gesture(branch),
                     });
@@ -690,17 +690,6 @@ fn gesture_branches_for(action: &Action) -> &'static [ActionBranch] {
         Action::TapGesture { .. } => &[ActionBranch::TapSingle, ActionBranch::TapDouble],
         Action::PressGesture { .. } => &[ActionBranch::PressShort, ActionBranch::PressLong],
         _ => &[],
-    }
-}
-
-fn gesture_branch_label(branch: ActionBranch) -> &'static str {
-    match branch {
-        ActionBranch::TapSingle => "Single tap",
-        ActionBranch::TapDouble => "Double tap",
-        ActionBranch::PressShort => "Short press",
-        ActionBranch::PressLong => "Long press",
-        ActionBranch::ConditionalTrue => "If true",
-        ActionBranch::ConditionalFalse => "If false",
     }
 }
 

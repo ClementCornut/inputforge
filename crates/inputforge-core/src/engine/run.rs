@@ -321,6 +321,13 @@ impl Engine {
                         | PipelineOutput::ChangeMode { .. } => None,
                     })
                     .collect::<Vec<_>>();
+                let current_set_button_owners = outputs
+                    .iter()
+                    .filter_map(|output| match output {
+                        PipelineOutput::SetButton { owner, .. } => Some(owner.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
                 let owner_scope = current_owners.first().map_or_else(
                     || {
                         OwnerScopeKey::new(
@@ -344,9 +351,29 @@ impl Engine {
                     &mut self.callbacks,
                     &event.source,
                 )?;
+                let absent_owners = self
+                    .output_state
+                    .absent_owners_for_scope(&owner_scope, &current_owners);
+                let absent_set_button = self
+                    .output_state
+                    .release_absent_set_button_for_scope(&owner_scope, &current_set_button_owners);
                 let mut state = self.state.write();
                 record_outputs_to_activity(&outputs, &mut state.output_activity, now, false);
+                for owner in &absent_owners {
+                    state.output_activity.clear_owner(owner);
+                }
+                for (owner, addr) in &absent_set_button {
+                    state.output_activity.clear_owner(owner);
+                    if let crate::types::OutputId::Button { id } = addr.output {
+                        state.output_cache.set_button(addr.device, id, false);
+                    }
+                }
                 drop(state);
+                for (_, addr) in &absent_set_button {
+                    if let crate::types::OutputId::Button { id } = addr.output {
+                        self.output.as_mut().set_button(addr.device, id, false)?;
+                    }
+                }
                 for action in self
                     .output_state
                     .reconcile_absent_owners_for_scope(&owner_scope, &current_owners)
@@ -450,7 +477,29 @@ impl Engine {
 
     fn release_all_held_outputs(&mut self) -> Result<()> {
         let actions = self.output_state.release_all();
-        self.dispatch_cleanup_actions(actions)
+        self.dispatch_cleanup_actions(actions)?;
+
+        // Drain any tracked SetButton owners and release their vJoy buttons.
+        // SetButton has no Hold/Pulse semantics, so it is not handled by
+        // `release_all` above; it needs its own drain to keep vJoy state from
+        // persisting across mode changes, profile loads, or shutdown.
+        let pending = self.output_state.drain_set_button_owners();
+        if !pending.is_empty() {
+            let mut state = self.state.write();
+            for (owner, addr) in &pending {
+                state.output_activity.clear_owner(owner);
+                if let crate::types::OutputId::Button { id } = addr.output {
+                    state.output_cache.set_button(addr.device, id, false);
+                }
+            }
+            drop(state);
+            for (_, addr) in &pending {
+                if let crate::types::OutputId::Button { id } = addr.output {
+                    self.output.as_mut().set_button(addr.device, id, false)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn dispatch_cleanup_actions(&mut self, actions: Vec<OutputAction>) -> Result<()> {
@@ -498,6 +547,13 @@ impl Engine {
                 | PipelineOutput::ChangeMode { .. } => None,
             })
             .collect::<Vec<_>>();
+        let current_set_button_owners = outputs
+            .iter()
+            .filter_map(|output| match output {
+                PipelineOutput::SetButton { owner, .. } => Some(owner.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
         let owner_scope = current_owners.first().map_or_else(
             || {
                 OwnerScopeKey::new(
@@ -520,6 +576,12 @@ impl Engine {
             &mut self.callbacks,
             run.key.input(),
         )?;
+        let absent_owners = self
+            .output_state
+            .absent_owners_for_scope(&owner_scope, &current_owners);
+        let absent_set_button = self
+            .output_state
+            .release_absent_set_button_for_scope(&owner_scope, &current_set_button_owners);
         let mut state = self.state.write();
         record_outputs_to_activity(
             &outputs,
@@ -527,7 +589,21 @@ impl Engine {
             (self.now)(),
             run.phase == GestureRunPhase::Momentary,
         );
+        for owner in &absent_owners {
+            state.output_activity.clear_owner(owner);
+        }
+        for (owner, addr) in &absent_set_button {
+            state.output_activity.clear_owner(owner);
+            if let crate::types::OutputId::Button { id } = addr.output {
+                state.output_cache.set_button(addr.device, id, false);
+            }
+        }
         drop(state);
+        for (_, addr) in &absent_set_button {
+            if let crate::types::OutputId::Button { id } = addr.output {
+                self.output.as_mut().set_button(addr.device, id, false)?;
+            }
+        }
         for action in self
             .output_state
             .reconcile_absent_owners_for_scope(&owner_scope, &current_owners)
@@ -754,6 +830,16 @@ impl Engine {
                 name,
                 actions,
             } => {
+                if let Err(e) = crate::profile::validate_mapping_action_tree(&input, &actions) {
+                    tracing::warn!(
+                        target: "engine",
+                        action = "set_mapping_rejected",
+                        mode = %mode,
+                        error = %e,
+                        "SetMapping rejected: invalid action tree; in-memory state unchanged"
+                    );
+                    return Ok(());
+                }
                 self.release_all_held_outputs()?;
                 self.clear_gesture_mapping(&input, &mode);
                 self.set_mapping(&input, &mode, name, actions);

@@ -3596,6 +3596,281 @@ fn set_mapping_refreshes_outputs_from_cached_axis_values() {
     let _ = std::fs::remove_dir(&dir);
 }
 
+#[test]
+fn set_mapping_with_out_of_range_threshold_leaves_existing_mapping_unchanged() {
+    let original_threshold_ms = 250u64;
+    let mapping = Mapping {
+        input: button_addr(0),
+        mode: "Default".to_owned(),
+        name: Some("tap valid".to_owned()),
+        actions: vec![Action::TapGesture {
+            threshold_ms: original_threshold_ms,
+            fire_single_immediately: false,
+            single_tap: Vec::new(),
+            double_tap: Vec::new(),
+        }],
+    };
+    let profile = make_profile(simple_modes(), vec![mapping]);
+
+    let dir = std::env::temp_dir().join("inputforge_engine_test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("set_mapping_invalid_threshold.toml");
+    std::fs::write(&path, profile.to_toml().unwrap()).unwrap();
+
+    let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
+    state.write().profile_path = Some(path.clone());
+
+    tx.send(EngineCommand::SetMapping {
+        input: button_addr(0),
+        mode: "Default".to_owned(),
+        name: Some("tap broken".to_owned()),
+        actions: vec![Action::TapGesture {
+            threshold_ms: 10_001,
+            fire_single_immediately: false,
+            single_tap: Vec::new(),
+            double_tap: Vec::new(),
+        }],
+    })
+    .unwrap();
+
+    engine.tick().unwrap();
+
+    let s = state.read();
+    let mapping = &s.active_profile.as_ref().unwrap().mappings()[0];
+    assert_eq!(mapping.name.as_deref(), Some("tap valid"));
+    match &mapping.actions[0] {
+        Action::TapGesture { threshold_ms, .. } => {
+            assert_eq!(*threshold_ms, original_threshold_ms);
+        }
+        other => panic!("expected TapGesture, got {other:?}"),
+    }
+    drop(s);
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir(&dir);
+}
+
+#[test]
+fn set_mapping_with_nested_gesture_leaves_existing_mapping_unchanged() {
+    let mapping = Mapping {
+        input: button_addr(0),
+        mode: "Default".to_owned(),
+        name: Some("tap valid".to_owned()),
+        actions: vec![Action::TapGesture {
+            threshold_ms: 250,
+            fire_single_immediately: false,
+            single_tap: Vec::new(),
+            double_tap: Vec::new(),
+        }],
+    };
+    let profile = make_profile(simple_modes(), vec![mapping]);
+
+    let dir = std::env::temp_dir().join("inputforge_engine_test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("set_mapping_nested_gesture.toml");
+    std::fs::write(&path, profile.to_toml().unwrap()).unwrap();
+
+    let (mut engine, state, tx) = make_engine(MockInputSource::default(), profile);
+    state.write().profile_path = Some(path.clone());
+
+    // Nest a PressGesture inside the TapGesture single_tap branch.
+    tx.send(EngineCommand::SetMapping {
+        input: button_addr(0),
+        mode: "Default".to_owned(),
+        name: Some("nested broken".to_owned()),
+        actions: vec![Action::TapGesture {
+            threshold_ms: 250,
+            fire_single_immediately: false,
+            single_tap: vec![Action::PressGesture {
+                threshold_ms: 600,
+                fire_long_when_threshold_crossed: false,
+                short_press: Vec::new(),
+                long_press: Vec::new(),
+            }],
+            double_tap: Vec::new(),
+        }],
+    })
+    .unwrap();
+
+    engine.tick().unwrap();
+
+    let s = state.read();
+    let mapping = &s.active_profile.as_ref().unwrap().mappings()[0];
+    assert_eq!(mapping.name.as_deref(), Some("tap valid"));
+    match &mapping.actions[0] {
+        Action::TapGesture { single_tap, .. } => {
+            assert!(
+                single_tap.is_empty(),
+                "single_tap branch must remain unchanged after nested-gesture rejection"
+            );
+        }
+        other => panic!("expected TapGesture, got {other:?}"),
+    }
+    drop(s);
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir(&dir);
+}
+
+#[test]
+fn conditional_branch_release_releases_inner_vjoy_button() {
+    // The deeper twin of `..._clears_inner_mouse_...`: SetButton outputs do
+    // NOT go through reconcile_*, so when a Conditional flips false on the
+    // release event the engine never calls set_button(false) and the vJoy
+    // button stays pressed at the device level (and "Pressed" in the GUI).
+    let predicate_input = button_addr(0);
+    let vjoy_output = vjoy_button_output(1, 1);
+    let mapping = Mapping {
+        input: button_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: predicate_input.clone(),
+            },
+            if_true: vec![Action::MapToVJoy {
+                output: vjoy_output.clone(),
+            }],
+            if_false: Vec::new(),
+        }],
+    };
+    let profile = make_profile(simple_modes(), vec![mapping]);
+
+    let inner_owner = OutputOwner {
+        profile: "memory-profile".to_owned(),
+        mode: "Default".to_owned(),
+        input: button_addr(0),
+        action_path: vec![
+            ActionPathSegment::Index(0),
+            ActionPathSegment::Branch(ActionBranch::ConditionalTrue),
+            ActionPathSegment::Index(0),
+        ],
+        destination: OutputDestination::VJoy(vjoy_output.clone()),
+        behavior: OutputBehavior::Hold,
+    };
+
+    let (mut engine, state, _tx) = make_engine(
+        {
+            let mut src = MockInputSource::default();
+            src.events.push(button_event(0, true));
+            src
+        },
+        profile,
+    );
+
+    engine.tick().unwrap();
+
+    let s_after_press = state.read();
+    assert!(
+        s_after_press.output_cache.get_button(1, 1),
+        "after press: vJoy button should be pressed"
+    );
+    assert_eq!(
+        s_after_press
+            .output_activity
+            .get(&inner_owner, Instant::now()),
+        Some(OutputActivityValue::Button(true)),
+        "after press: OutputActivityStore should hold Button(true)"
+    );
+    drop(s_after_press);
+
+    engine.input = Box::new({
+        let mut src = MockInputSource::default();
+        src.events.push(button_event(0, false));
+        src
+    });
+    engine.tick().unwrap();
+
+    let s = state.read();
+    assert!(
+        !s.output_cache.get_button(1, 1),
+        "after release: vJoy button must be released; conditional false branch did not emit, \
+         engine must release the inner SetButton owner"
+    );
+    assert_eq!(
+        s.output_activity.get(&inner_owner, Instant::now()),
+        None,
+        "after release: OutputActivityStore must clear the inner SetButton owner"
+    );
+}
+
+#[test]
+fn conditional_branch_release_clears_inner_mouse_from_output_activity() {
+    // Regression: when the user releases a button mapped to
+    // `Conditional { ButtonPressed(self), if_true: [MapToMouse Hold] }`,
+    // the conditional re-evaluates to false on the release event and the
+    // MapToMouse stops being emitted. The engine releases the actual mouse
+    // (so clicks fire on each press) but the OutputActivityStore must also
+    // be cleared, otherwise the live preview pill stays "Pressed" forever.
+    let predicate_input = button_addr(0);
+    let mapping = Mapping {
+        input: button_addr(0),
+        mode: "Default".to_owned(),
+        name: None,
+        actions: vec![Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: predicate_input.clone(),
+            },
+            if_true: vec![Action::MapToMouse {
+                target: MouseTarget::LeftButton,
+                behavior: OutputBehavior::Hold,
+            }],
+            if_false: Vec::new(),
+        }],
+    };
+    let profile = make_profile(simple_modes(), vec![mapping]);
+
+    let inner_owner = OutputOwner {
+        profile: "memory-profile".to_owned(),
+        mode: "Default".to_owned(),
+        input: button_addr(0),
+        action_path: vec![
+            ActionPathSegment::Index(0),
+            ActionPathSegment::Branch(ActionBranch::ConditionalTrue),
+            ActionPathSegment::Index(0),
+        ],
+        destination: OutputDestination::Mouse(MouseTarget::LeftButton),
+        behavior: OutputBehavior::Hold,
+    };
+
+    let (mut engine, state, _tx) = make_engine(
+        {
+            let mut src = MockInputSource::default();
+            src.events.push(button_event(0, true));
+            src
+        },
+        profile,
+    );
+
+    engine.tick().unwrap();
+
+    let activity = state
+        .read()
+        .output_activity
+        .get(&inner_owner, Instant::now());
+    assert!(
+        matches!(activity, Some(OutputActivityValue::Mouse(true))),
+        "after press, expected Mouse(true) in activity store, got {activity:?}"
+    );
+
+    engine.input = Box::new({
+        let mut src = MockInputSource::default();
+        src.events.push(button_event(0, false));
+        src
+    });
+    engine.tick().unwrap();
+
+    let activity = state
+        .read()
+        .output_activity
+        .get(&inner_owner, Instant::now());
+    assert_eq!(
+        activity, None,
+        "after release, expected no entry for the inner MapToMouse owner; \
+         conditional false branch did not emit, OutputActivityStore must clear via reconcile"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Snapshot helper: engine backed by a real on-disk profile file.
 // ---------------------------------------------------------------------------

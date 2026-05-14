@@ -25,7 +25,9 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Condition, Mapping, MouseTarget, OutputBehavior};
+use inputforge_core::action::{
+    Action, ActionBranch, Condition, Mapping, MouseTarget, OutputBehavior,
+};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::processing::{DeadzoneConfig, ResponseCurve};
 use inputforge_core::types::{
@@ -40,6 +42,24 @@ use crate::frame::mapping_editor::pipeline::{insert_at_path, path_invalidated_by
 use crate::frame::mapping_editor::undo_log::{
     LabelArgs, StageId, StageIdSegment, UndoKind, format_undo_label,
 };
+
+/// Gestures are terminal control flow on a button mapping. Profile validation
+/// (`inputforge_core::profile::validate_mapping_action_tree`) rejects nested
+/// gestures, so the palette must omit Tap/Press entries when the user is
+/// editing inside a gesture branch.
+fn path_is_inside_gesture_branch(path_prefix: &[StageIdSegment]) -> bool {
+    path_prefix.iter().any(|segment| {
+        matches!(
+            segment,
+            StageIdSegment::Branch(
+                ActionBranch::TapSingle
+                    | ActionBranch::TapDouble
+                    | ActionBranch::PressShort
+                    | ActionBranch::PressLong,
+            )
+        )
+    })
+}
 use crate::icons::{Icon as IconKind, IconSize};
 
 use inputforge_core::action::ModeChangeStrategy;
@@ -232,7 +252,8 @@ pub(crate) fn AddPalette(
     let path_prefix_clone = path_prefix.clone();
     let mapping_key_clone = mapping_key.clone();
     let root_actions_clone = root_actions.clone();
-    let show_gestures = mapping_key.1.is_button_shaped();
+    let show_gestures =
+        mapping_key.1.is_button_shaped() && !path_is_inside_gesture_branch(&path_prefix);
 
     // Shared do_insert closure factory. Returns a MouseEvent handler that
     // inserts `action` at the target position. Menu auto-closes via
@@ -403,5 +424,47 @@ fn action_palette_label(action: &Action) -> &'static str {
         Action::ChangeMode { .. } => "Change mode",
         Action::TapGesture { .. } => "Tap gesture",
         Action::PressGesture { .. } => "Press gesture",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn outer_pipeline_path_is_not_inside_gesture_branch() {
+        assert!(!path_is_inside_gesture_branch(&[]));
+        assert!(!path_is_inside_gesture_branch(&[StageIdSegment::Index(0)]));
+    }
+
+    #[test]
+    fn conditional_branch_path_is_not_inside_gesture_branch() {
+        let path = [
+            StageIdSegment::Index(0),
+            StageIdSegment::Branch(ActionBranch::ConditionalTrue),
+            StageIdSegment::Index(1),
+        ];
+        assert!(!path_is_inside_gesture_branch(&path));
+    }
+
+    #[test]
+    fn tap_single_branch_path_is_inside_gesture_branch() {
+        let path = [
+            StageIdSegment::Index(0),
+            StageIdSegment::Branch(ActionBranch::TapSingle),
+        ];
+        assert!(path_is_inside_gesture_branch(&path));
+    }
+
+    #[test]
+    fn nested_conditional_inside_press_long_branch_is_inside_gesture_branch() {
+        let path = [
+            StageIdSegment::Index(0),
+            StageIdSegment::Branch(ActionBranch::PressLong),
+            StageIdSegment::Index(0),
+            StageIdSegment::Branch(ActionBranch::ConditionalFalse),
+            StageIdSegment::Index(2),
+        ];
+        assert!(path_is_inside_gesture_branch(&path));
     }
 }

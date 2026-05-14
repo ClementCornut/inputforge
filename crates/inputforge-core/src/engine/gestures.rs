@@ -241,6 +241,17 @@ impl GestureDispatcher {
         fire_single_immediately: bool,
         now: Instant,
     ) -> Vec<GestureRun> {
+        // Invariant: every prior single_due_at for this key must have been
+        // cancelled before opening a fresh window. Locks the contract so a
+        // future scheduling site cannot silently leave a stale entry behind.
+        debug_assert!(
+            self.scheduled
+                .iter()
+                .all(|scheduled| &scheduled.run.key != key
+                    || scheduled.run.branch != ActionBranch::TapSingle),
+            "start_tap_window must be preceded by cancel_exact for the prior single_due_at"
+        );
+
         let single_due_at =
             (!fire_single_immediately).then(|| now + Duration::from_millis(threshold_ms));
         self.taps.insert(
@@ -251,16 +262,9 @@ impl GestureDispatcher {
             },
         );
 
-        if fire_single_immediately {
-            vec![Self::run_for(
-                key,
-                ActionBranch::TapSingle,
-                action,
-                GestureRunPhase::Momentary,
-            )]
-        } else {
+        if let Some(due_at) = single_due_at {
             self.schedule(
-                single_due_at.expect("delayed single tap has a due instant"),
+                due_at,
                 Self::run_for(
                     key,
                     ActionBranch::TapSingle,
@@ -269,6 +273,13 @@ impl GestureDispatcher {
                 ),
             );
             Vec::new()
+        } else {
+            vec![Self::run_for(
+                key,
+                ActionBranch::TapSingle,
+                action,
+                GestureRunPhase::Momentary,
+            )]
         }
     }
 
