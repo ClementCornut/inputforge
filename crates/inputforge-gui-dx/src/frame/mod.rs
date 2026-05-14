@@ -7,6 +7,7 @@ mod mapping_list;
 mod panel_slot;
 mod profiles;
 mod settings_panel;
+mod sheets;
 mod top_bar;
 mod view_state;
 
@@ -14,6 +15,11 @@ pub(crate) use layout::Layout;
 pub(crate) use mapping_editor::{MappingEditor, use_editor_state_provider};
 pub(crate) use mapping_list::MappingList;
 pub(crate) use profiles::snapshot_drawer::install_snapshot_shortcut_listener;
+#[allow(
+    unused_imports,
+    reason = "Forward-exported for the Sheets navigation task that mounts the workbench."
+)]
+pub(crate) use sheets::SheetsWorkbench;
 // `PanelSlot` and `ViewState` are not re-exported here, every consumer
 // imports them directly via `crate::frame::view_state::*` so a single
 // path style stays consistent across regions.
