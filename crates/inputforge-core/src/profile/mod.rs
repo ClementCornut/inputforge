@@ -20,6 +20,9 @@ use crate::error::{EngineError, Result};
 use crate::mode::Modes;
 use crate::types::{InputAddress, InputId};
 
+// Keeps authored action trees bounded enough for validation and UI traversal.
+const MAX_ACTION_BRANCH_DEPTH: usize = 8;
+
 #[derive(Debug)]
 struct MigratedProfileToml {
     value: toml::Value,
@@ -673,6 +676,7 @@ impl Profile {
                     reason: format!("mapping references unknown mode '{}'", mapping.mode),
                 });
             }
+            validate_mapping_actions(mapping)?;
         }
 
         // Validate all calibration entries.
@@ -718,19 +722,33 @@ impl Profile {
 
 fn validate_profile_actions(profile: &Profile) -> Result<()> {
     for mapping in profile.mappings() {
-        validate_actions_for_serialization(&mapping.actions)?;
+        validate_mapping_actions(mapping)?;
     }
     Ok(())
 }
 
-fn validate_actions_for_serialization(actions: &[Action]) -> Result<()> {
+fn validate_mapping_actions(mapping: &Mapping) -> Result<()> {
+    validate_actions_for_mapping(&mapping.actions, &mapping.input, 0)
+}
+
+fn validate_actions_for_mapping(
+    actions: &[Action],
+    mapping_input: &InputAddress,
+    depth: usize,
+) -> Result<()> {
+    if depth > MAX_ACTION_BRANCH_DEPTH {
+        return Err(EngineError::InvalidConfig {
+            reason: format!("action branch depth exceeds maximum of {MAX_ACTION_BRANCH_DEPTH}"),
+        });
+    }
+
     for action in actions {
         match action {
             Action::Conditional {
                 if_true, if_false, ..
             } => {
-                validate_actions_for_serialization(if_true)?;
-                validate_actions_for_serialization(if_false)?;
+                validate_actions_for_mapping(if_true, mapping_input, depth + 1)?;
+                validate_actions_for_mapping(if_false, mapping_input, depth + 1)?;
             }
             Action::TapGesture {
                 threshold_ms,
@@ -739,8 +757,9 @@ fn validate_actions_for_serialization(actions: &[Action]) -> Result<()> {
                 ..
             } => {
                 validate_gesture_threshold_ms(*threshold_ms)?;
-                validate_actions_for_serialization(single_tap)?;
-                validate_actions_for_serialization(double_tap)?;
+                validate_gesture_mapping_shape(mapping_input)?;
+                validate_actions_for_mapping(single_tap, mapping_input, depth + 1)?;
+                validate_actions_for_mapping(double_tap, mapping_input, depth + 1)?;
             }
             Action::PressGesture {
                 threshold_ms,
@@ -749,8 +768,9 @@ fn validate_actions_for_serialization(actions: &[Action]) -> Result<()> {
                 ..
             } => {
                 validate_gesture_threshold_ms(*threshold_ms)?;
-                validate_actions_for_serialization(short_press)?;
-                validate_actions_for_serialization(long_press)?;
+                validate_gesture_mapping_shape(mapping_input)?;
+                validate_actions_for_mapping(short_press, mapping_input, depth + 1)?;
+                validate_actions_for_mapping(long_press, mapping_input, depth + 1)?;
             }
             Action::ResponseCurve { .. }
             | Action::Deadzone { .. }
@@ -763,6 +783,16 @@ fn validate_actions_for_serialization(actions: &[Action]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn validate_gesture_mapping_shape(mapping_input: &InputAddress) -> Result<()> {
+    if mapping_input.is_button_shaped() {
+        return Ok(());
+    }
+
+    Err(EngineError::InvalidConfig {
+        reason: "gesture stages require a button mapping".to_owned(),
+    })
 }
 
 /// Walk an action graph in place, rewriting every `from` mode-name reference
@@ -959,6 +989,123 @@ mod tests {
             .expect_err("invalid press threshold should not serialize");
 
         assert!(err.to_string().contains("outside 1..=10000ms"));
+    }
+
+    #[test]
+    fn profile_rejects_tap_gesture_on_axis_mapping() {
+        let input = r#"
+modes = ["Default"]
+
+[profile]
+id = "01J00000000000000000000000"
+name = "Invalid Gesture"
+startup_mode = "Default"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "dev-1"
+
+[mappings.input.input]
+type = "axis"
+index = 0
+
+[[mappings.actions]]
+type = "tap_gesture"
+threshold_ms = 500
+fire_single_immediately = false
+single_tap = []
+double_tap = []
+"#;
+
+        let err = Profile::from_toml(input).expect_err("axis mapping gesture should fail");
+
+        assert!(
+            err.to_string()
+                .contains("gesture stages require a button mapping"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn profile_rejects_out_of_range_gesture_threshold() {
+        let input = r#"
+modes = ["Default"]
+
+[profile]
+id = "01J00000000000000000000000"
+name = "Invalid Threshold"
+startup_mode = "Default"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "dev-1"
+
+[mappings.input.input]
+type = "button"
+index = 0
+
+[[mappings.actions]]
+type = "press_gesture"
+threshold_ms = 10001
+fire_long_when_threshold_crossed = false
+short_press = []
+long_press = []
+"#;
+
+        let err = Profile::from_toml(input).expect_err("large gesture threshold should fail");
+
+        assert!(err.to_string().contains("outside 1..=10000ms"));
+    }
+
+    #[test]
+    fn profile_rejects_deep_action_branch_tree() {
+        fn button_input(index: u8) -> InputAddress {
+            InputAddress::Bound {
+                device: DeviceId("dev-1".to_owned()),
+                input: InputId::Button { index },
+            }
+        }
+
+        fn nested_conditional(depth: usize) -> Action {
+            if depth == 0 {
+                return Action::Invert;
+            }
+            Action::Conditional {
+                condition: Condition::ButtonPressed {
+                    input: button_input(1),
+                },
+                if_true: vec![nested_conditional(depth - 1)],
+                if_false: Vec::new(),
+            }
+        }
+
+        let raw = ProfileRaw {
+            modes: Modes::new(vec!["Default".to_owned()]).unwrap(),
+            profile: ProfileMeta {
+                id: ProfileId::new(),
+                name: "Too Deep".to_owned(),
+                startup_mode: "Default".to_owned(),
+            },
+            devices: Vec::new(),
+            mappings: vec![Mapping {
+                input: button_input(0),
+                mode: "Default".to_owned(),
+                name: None,
+                actions: vec![nested_conditional(MAX_ACTION_BRANCH_DEPTH + 1)],
+            }],
+            calibrations: Vec::new(),
+        };
+
+        let err = Profile::from_raw(raw).expect_err("deep action tree should fail");
+
+        assert!(
+            err.to_string().contains("action branch depth exceeds"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
