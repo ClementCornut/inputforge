@@ -1,15 +1,76 @@
+#![expect(
+    unused_qualifications,
+    reason = "rsx! macro expansion triggers false-positive unused_qualifications warnings on onclick:"
+)]
+
 use dioxus::prelude::*;
 
 use crate::frame::sheets::state::SheetsState;
 
 #[component]
-pub(crate) fn SheetsLeftRail(sheets: Signal<SheetsState>) -> Element {
-    let template_count = sheets.read().templates.len();
+pub(crate) fn SheetsLeftRail(
+    sheets: Signal<SheetsState>,
+    on_import_image: EventHandler<()>,
+) -> Element {
+    let snapshot = sheets.read();
+    let templates = snapshot.templates.clone();
+    let assets = snapshot.assets.clone();
+    let selected_template_id = snapshot.selected_template_id.clone();
+    drop(snapshot);
+
+    let template_count = templates.len();
+    let asset_count = assets.len();
+    let handle_import_image = move |_| on_import_image.call(());
 
     rsx! {
         aside { "data-testid": "sheets-left-rail",
-            h2 { "Templates" }
-            p { "{template_count} templates" }
+            nav { "aria-label": "Sheet asset library",
+                button { "type": "button", "Templates" }
+                button { "type": "button", "Assets" }
+            }
+            section { "data-testid": "sheets-template-section",
+                h2 { "Templates" }
+                p { "{template_count} templates" }
+                button {
+                    "type": "button",
+                    onclick: handle_import_image,
+                    "Import image"
+                }
+                if !templates.is_empty() {
+                    ul {
+                        for template in templates {
+                            {
+                                let anchor_count = template.anchors.len();
+                                let selected = selected_template_id
+                                    .as_ref()
+                                    .is_some_and(|template_id| template_id == &template.template_id);
+                                rsx! {
+                                    li {
+                                        key: "{template.template_id}",
+                                        "data-selected": selected,
+                                        span { "{template.display_name}" }
+                                        span { "{anchor_count} anchors" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            section { "data-testid": "sheets-asset-section",
+                h2 { "Assets" }
+                p { "{asset_count} assets" }
+                ul {
+                    for asset in assets {
+                        li { key: "{asset.asset_id}",
+                            span { "{asset.copied_path.display()}" }
+                            span {
+                                "{asset.pixel_dimensions.width} x {asset.pixel_dimensions.height}"
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -69,25 +69,39 @@ pub(crate) fn SheetsWorkbench() -> Element {
     });
 
     let import_asset = use_callback(move |source_path: PathBuf| {
-        let previous_autosave = sheets.read().autosave;
         let Some(mut next_documents) = documents.read().clone() else {
             sheets
                 .write()
                 .mark_failed("sheet documents are not loaded".to_owned());
             return;
         };
+        let display_name = template_display_name_from_path(&source_path);
 
         sheets.read().apply_to_documents(&mut next_documents);
 
         match authoring::import_template_asset_into(&source_path, &mut next_documents) {
-            Ok(_imported) => {
-                let mut next_state = SheetsState::from_documents(&next_documents);
-                next_state.autosave = previous_autosave;
+            Ok(imported) => {
+                let mut next_state = sheets.read().clone();
+                next_state.assets = next_documents.assets.assets.clone();
+                next_state.asset_health = next_documents.asset_health.clone();
+                next_state.create_template_from_asset(imported.entry.asset_id, display_name);
+                next_state.apply_to_documents(&mut next_documents);
                 documents.set(Some(next_documents));
                 sheets.set(next_state);
             }
             Err(err) => sheets.write().mark_failed(err.to_string()),
         }
+    });
+
+    let on_import_image = use_callback(move |()| {
+        let Some(source_path) = rfd::FileDialog::new()
+            .add_filter("Images", &["png", "jpg", "jpeg", "gif", "bmp", "webp"])
+            .pick_file()
+        else {
+            return;
+        };
+
+        import_asset.call(source_path);
     });
 
     use_context_provider(|| SheetsWorkbenchActions {
@@ -103,9 +117,19 @@ pub(crate) fn SheetsWorkbench() -> Element {
             class: "if-sheets",
             "data-testid": "sheets-workbench",
             "data-documents-loaded": documents_loaded,
-            left_rail::SheetsLeftRail { sheets }
-            canvas::SheetsCanvas { sheets }
+            left_rail::SheetsLeftRail { sheets, on_import_image }
+            canvas::SheetsCanvas { sheets, on_import_image }
             inspector::SheetsInspector { sheets }
         }
     }
+}
+
+fn template_display_name_from_path(source_path: &std::path::Path) -> String {
+    source_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(str::trim)
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or("Imported template")
+        .to_owned()
 }

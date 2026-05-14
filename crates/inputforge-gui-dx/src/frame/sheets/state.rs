@@ -1,6 +1,6 @@
 use inputforge_core::sheet::{
-    AnchorAssignment, AnchorBinding, AnchorId, AnchorPosition, AssetEntry, DeviceTemplate,
-    TemplateId,
+    AnchorAssignment, AnchorBinding, AnchorId, AnchorPosition, AssetEntry, AssetId, DeviceTemplate,
+    ExtensionPayload, TemplateId, TokenPreset,
 };
 use inputforge_core::types::InputAddress;
 
@@ -88,6 +88,29 @@ impl SheetsState {
     ) {
         documents.templates.templates = self.templates.clone();
         documents.assets.assets = self.assets.clone();
+    }
+
+    pub(crate) fn create_template_from_asset(
+        &mut self,
+        asset_id: AssetId,
+        display_name: impl Into<String>,
+    ) -> TemplateId {
+        let template_id = TemplateId::new();
+        self.templates.push(DeviceTemplate {
+            template_id: template_id.clone(),
+            display_name: display_name.into(),
+            matching_hints: Vec::new(),
+            asset_ids: vec![asset_id],
+            anchors: Vec::new(),
+            default_anchor_bindings: Vec::new(),
+            grouping_hints: Vec::new(),
+            default_token_preset: TokenPreset::Standard,
+            extensions: ExtensionPayload::default(),
+        });
+        self.selected_template_id = Some(template_id.clone());
+        self.selected_anchor_id = None;
+        self.mark_dirty();
+        template_id
     }
 
     pub(crate) fn update_selected_anchor_label(&mut self, label: impl Into<String>) {
@@ -182,9 +205,7 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    use inputforge_core::sheet::{
-        ExtensionPayload, InputTypeHint, PixelDimensions, TemplateAnchor, TokenPreset,
-    };
+    use inputforge_core::sheet::{InputTypeHint, PixelDimensions, TemplateAnchor};
     use inputforge_core::types::{DeviceId, InputId};
 
     fn button_input(index: u8) -> InputAddress {
@@ -195,7 +216,7 @@ mod tests {
     }
 
     fn state_with_template() -> SheetsState {
-        let asset_id = inputforge_core::sheet::AssetId::from_string("asset-1");
+        let asset_id = AssetId::from_string("asset-1");
         let template_id = TemplateId::from_string("template-1");
         let anchor_id = AnchorId::from_string("anchor-1");
 
