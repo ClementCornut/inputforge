@@ -10,6 +10,7 @@
 
 mod command;
 mod dependencies;
+pub(crate) mod gestures;
 mod output_handler;
 mod output_state;
 mod run;
