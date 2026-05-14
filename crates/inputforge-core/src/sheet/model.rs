@@ -44,7 +44,7 @@ impl SidecarHeader {
 
     /// Marks the document as saved by the current crate version.
     pub fn mark_saved_by_current_app(&mut self) {
-        self.app_version_last_saved = env!("CARGO_PKG_VERSION").to_owned();
+        env!("CARGO_PKG_VERSION").clone_into(&mut self.app_version_last_saved);
     }
 }
 
@@ -60,7 +60,7 @@ pub trait SidecarDocument {
 }
 
 /// Persisted device template collection.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TemplateStoreDocument {
     #[serde(flatten)]
     pub header: SidecarHeader,
@@ -70,16 +70,6 @@ pub struct TemplateStoreDocument {
     pub extensions: ExtensionPayload,
 }
 
-impl Default for TemplateStoreDocument {
-    fn default() -> Self {
-        Self {
-            header: SidecarHeader::new(),
-            templates: Vec::new(),
-            extensions: ExtensionPayload::default(),
-        }
-    }
-}
-
 impl SidecarDocument for TemplateStoreDocument {
     fn header_mut(&mut self) -> &mut SidecarHeader {
         &mut self.header
@@ -87,7 +77,7 @@ impl SidecarDocument for TemplateStoreDocument {
 }
 
 /// Persisted imported asset manifest.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct AssetManifestDocument {
     #[serde(flatten)]
     pub header: SidecarHeader,
@@ -95,16 +85,6 @@ pub struct AssetManifestDocument {
     pub assets: Vec<AssetEntry>,
     #[serde(default, flatten, skip_serializing_if = "extension_payload_is_empty")]
     pub extensions: ExtensionPayload,
-}
-
-impl Default for AssetManifestDocument {
-    fn default() -> Self {
-        Self {
-            header: SidecarHeader::new(),
-            assets: Vec::new(),
-            extensions: ExtensionPayload::default(),
-        }
-    }
 }
 
 impl SidecarDocument for AssetManifestDocument {

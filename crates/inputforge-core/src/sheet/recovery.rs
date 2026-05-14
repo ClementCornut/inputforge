@@ -200,9 +200,12 @@ mod tests {
         let recovery_root = dir.path().join("recovery");
         let missing_sidecar = dir.path().join("missing.toml");
 
-        let manifest =
-            create_recovery_snapshot(&recovery_root, "before save", &[missing_sidecar.clone()])
-                .unwrap();
+        let manifest = create_recovery_snapshot(
+            &recovery_root,
+            "before save",
+            std::slice::from_ref(&missing_sidecar),
+        )
+        .unwrap();
 
         assert_eq!(manifest.files.len(), 1);
         assert_eq!(manifest.files[0].source_path, missing_sidecar);
@@ -225,7 +228,7 @@ mod tests {
         let manifest = create_recovery_snapshot_with_copy(
             &recovery_root,
             "before save",
-            &[sidecar.clone()],
+            std::slice::from_ref(&sidecar),
             |_, _| {
                 Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,

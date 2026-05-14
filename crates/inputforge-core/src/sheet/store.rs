@@ -233,6 +233,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
 
     use super::{
@@ -247,27 +248,27 @@ mod tests {
     use crate::profile::ProfileId;
     use crate::sheet::{
         AssetManifestDocument, DeviceTemplate, MappingDisplayMetadata, MappingMetadataDocument,
-        MappingMetadataId, MappingRef, ProfileSheetsDocument, TemplateId, TemplateStoreDocument,
-        TokenPreset,
+        MappingMetadataId, MappingRef, ProfileSheetsDocument, SidecarHeader, TemplateId,
+        TemplateStoreDocument, TokenPreset,
     };
     use crate::types::{DeviceId, InputAddress, InputId};
     use sha2::{Digest, Sha256};
 
     fn profile_sheets_document() -> ProfileSheetsDocument {
         ProfileSheetsDocument {
-            header: Default::default(),
+            header: SidecarHeader::default(),
             profile_id: ProfileId::default(),
             sheets: Vec::new(),
-            extensions: Default::default(),
+            extensions: BTreeMap::default(),
         }
     }
 
     fn mapping_metadata_document() -> MappingMetadataDocument {
         MappingMetadataDocument {
-            header: Default::default(),
+            header: SidecarHeader::default(),
             profile_id: ProfileId::default(),
             records: Vec::new(),
-            extensions: Default::default(),
+            extensions: BTreeMap::default(),
         }
     }
 
@@ -294,7 +295,7 @@ mod tests {
                     display_name: "Fire primary".to_owned(),
                     category: None,
                     classification_token: None,
-                    extensions: Default::default(),
+                    extensions: BTreeMap::default(),
                 },
                 MappingDisplayMetadata {
                     id: MappingMetadataId::from_string("metadata-b"),
@@ -302,7 +303,7 @@ mod tests {
                     display_name: "Fire duplicate".to_owned(),
                     category: None,
                     classification_token: None,
-                    extensions: Default::default(),
+                    extensions: BTreeMap::default(),
                 },
             ],
             ..mapping_metadata_document()
@@ -319,9 +320,9 @@ mod tests {
                 anchors: Vec::new(),
                 grouping_hints: Vec::new(),
                 default_token_preset: Some(TokenPreset::Standard),
-                extensions: Default::default(),
+                extensions: BTreeMap::default(),
             }],
-            ..Default::default()
+            ..TemplateStoreDocument::default()
         }
     }
 
