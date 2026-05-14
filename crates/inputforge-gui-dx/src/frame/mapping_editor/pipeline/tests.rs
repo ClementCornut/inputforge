@@ -292,15 +292,29 @@ fn insert_remove_invalid_paths_return_none() {
 
 #[test]
 fn branch_path_helpers_traverse_all_action_branch_variants() {
-    let actions = vec![Action::TapGesture {
-        threshold_ms: 250,
-        fire_single_immediately: false,
-        single_tap: vec![Action::Invert],
-        double_tap: vec![Action::MergeAxis {
-            second_input: synth_addr(),
-            operation: MergeOp::Average,
-        }],
-    }];
+    let actions = vec![
+        Action::TapGesture {
+            threshold_ms: 250,
+            fire_single_immediately: false,
+            single_tap: vec![Action::Invert],
+            double_tap: vec![Action::MergeAxis {
+                second_input: synth_addr(),
+                operation: MergeOp::Average,
+            }],
+        },
+        Action::PressGesture {
+            threshold_ms: 500,
+            fire_long_when_threshold_crossed: false,
+            short_press: vec![Action::MapToMouse {
+                target: MouseTarget::LeftButton,
+                behavior: OutputBehavior::Pulse,
+            }],
+            long_press: vec![Action::MapToMouse {
+                target: MouseTarget::RightButton,
+                behavior: OutputBehavior::Pulse,
+            }],
+        },
+    ];
 
     let single_path = StageId(vec![
         StageIdSegment::Index(0),
@@ -341,6 +355,52 @@ fn branch_path_helpers_traverse_all_action_branch_variants() {
     match &removed[0] {
         Action::TapGesture { double_tap, .. } => assert!(double_tap.is_empty()),
         _ => panic!("outer wrapper should remain TapGesture"),
+    }
+
+    let short_path = StageId(vec![
+        StageIdSegment::Index(1),
+        StageIdSegment::Branch(ActionBranch::PressShort),
+        StageIdSegment::Index(0),
+    ]);
+    assert!(matches!(
+        at_path(&actions, &short_path),
+        Some(Action::MapToMouse {
+            target: MouseTarget::LeftButton,
+            ..
+        })
+    ));
+
+    let long_path = StageId(vec![
+        StageIdSegment::Index(1),
+        StageIdSegment::Branch(ActionBranch::PressLong),
+        StageIdSegment::Index(0),
+    ]);
+    assert!(matches!(
+        at_path(&actions, &long_path),
+        Some(Action::MapToMouse {
+            target: MouseTarget::RightButton,
+            ..
+        })
+    ));
+
+    let replaced = replace_at_path(&actions, &short_path, Action::Invert)
+        .expect("press short branch path must replace");
+    assert!(matches!(
+        at_path(&replaced, &short_path),
+        Some(Action::Invert)
+    ));
+
+    let inserted = insert_at_path(&actions, &long_path, Action::Invert)
+        .expect("press long branch path must insert");
+    match &inserted[1] {
+        Action::PressGesture { long_press, .. } => assert_eq!(long_press.len(), 2),
+        _ => panic!("outer wrapper should remain PressGesture"),
+    }
+
+    let removed = remove_at_path(&actions, &long_path).expect("press long branch path must remove");
+    match &removed[1] {
+        Action::PressGesture { long_press, .. } => assert!(long_press.is_empty()),
+        _ => panic!("outer wrapper should remain PressGesture"),
     }
 }
 

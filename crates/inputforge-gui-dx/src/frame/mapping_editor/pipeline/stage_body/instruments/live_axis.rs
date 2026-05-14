@@ -7,7 +7,7 @@
 
 use dioxus::prelude::ReadableExt;
 
-use inputforge_core::action::{Action, ActionBranch};
+use inputforge_core::action::Action;
 use inputforge_core::pipeline::evaluate_actions_through;
 use inputforge_core::types::{InputAddress, InputValue};
 
@@ -77,6 +77,8 @@ pub(crate) fn compute_live_axis_value(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use inputforge_core::action::ActionBranch;
 
     fn nested_stage_id() -> StageId {
         StageId(vec![

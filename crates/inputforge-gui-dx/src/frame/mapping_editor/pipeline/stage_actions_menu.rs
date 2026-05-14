@@ -18,7 +18,7 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, ActionBranch, Mapping, branch_actions};
+use inputforge_core::action::{Action, Mapping, branch_actions};
 use inputforge_core::engine::EngineCommand;
 
 use crate::components::{AnchoredMenu, CloseReason, MenuAnchor, MenuItem};
@@ -491,6 +491,8 @@ pub(crate) fn StageActionsMenu(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use inputforge_core::action::ActionBranch;
 
     fn make_id(segs: Vec<StageIdSegment>) -> StageId {
         StageId(segs)
