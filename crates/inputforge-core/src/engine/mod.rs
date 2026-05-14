@@ -23,6 +23,7 @@ pub use run::MAX_MODE_NAME_GRAPHEMES;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc;
+use std::time::Instant;
 
 use parking_lot::RwLock;
 
@@ -56,6 +57,8 @@ pub struct Engine {
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Receiver<EngineCommand>,
     callbacks: CallbackRegistry,
+    gesture_dispatcher: gestures::GestureDispatcher,
+    now: Box<dyn Fn() -> Instant + Send + Sync>,
     pub(crate) mode_state: ModeState,
     /// Reused across frames to avoid per-frame allocation.
     event_buffer: Vec<InputEvent>,
@@ -213,6 +216,8 @@ impl Engine {
             state,
             commands,
             callbacks: CallbackRegistry::new(),
+            gesture_dispatcher: gestures::GestureDispatcher::default(),
+            now: Box::new(Instant::now),
             mode_state: ModeState::new(startup_mode),
             event_buffer: Vec::with_capacity(64),
             output_buffer: Vec::new(),

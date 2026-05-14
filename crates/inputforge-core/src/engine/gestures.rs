@@ -1,9 +1,4 @@
 // Rust guideline compliant 2026-05-14
-#![cfg_attr(
-    not(test),
-    expect(dead_code, reason = "runtime integration is scheduled for Task 9")
-)]
-
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
@@ -32,6 +27,22 @@ impl GestureKey {
             input,
             action_path,
         }
+    }
+
+    pub(crate) fn profile(&self) -> &str {
+        &self.profile
+    }
+
+    pub(crate) fn mode(&self) -> &str {
+        &self.mode
+    }
+
+    pub(crate) fn input(&self) -> &InputAddress {
+        &self.input
+    }
+
+    pub(crate) fn action_path(&self) -> &[ActionPathSegment] {
+        &self.action_path
     }
 }
 
@@ -168,6 +179,15 @@ impl GestureDispatcher {
         self.taps.clear();
         self.presses.clear();
         self.scheduled.clear();
+    }
+
+    pub(crate) fn clear_mapping(&mut self, profile: &str, mode: &str, input: &InputAddress) {
+        self.taps
+            .retain(|key, _| !key.matches_mapping(profile, mode, input));
+        self.presses
+            .retain(|key, _| !key.matches_mapping(profile, mode, input));
+        self.scheduled
+            .retain(|scheduled| !scheduled.run.key.matches_mapping(profile, mode, input));
     }
 
     fn observe_tap_release(
@@ -369,6 +389,12 @@ impl GestureDispatcher {
                 state.long_fired = true;
             }
         }
+    }
+}
+
+impl GestureKey {
+    fn matches_mapping(&self, profile: &str, mode: &str, input: &InputAddress) -> bool {
+        self.profile == profile && self.mode == mode && self.input == *input
     }
 }
 

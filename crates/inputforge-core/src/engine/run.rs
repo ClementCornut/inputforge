@@ -9,15 +9,15 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 
-use crate::action::{Action, Mapping};
+use crate::action::{Action, ActionBranch, Mapping};
 use crate::callbacks::ReleaseCallback;
 use crate::device::traits::HotplugEvent;
 use crate::error::Result;
-use crate::pipeline::{self, OutputOwnerScope, PipelineContext, PipelineOutput};
+use crate::pipeline::{self, ActionPathSegment, OutputOwnerScope, PipelineContext, PipelineOutput};
 use crate::profile::library::{
     add_external_profile_to_library, duplicate_library_profile, rename_library_profile,
 };
@@ -38,6 +38,7 @@ use crate::types::{DeviceDiagnostics, DeviceInfo, InputAddress, InputEvent, Inpu
 use super::Engine;
 use super::command::EngineCommand;
 use super::dependencies::active_mappings_for_event;
+use super::gestures::{GestureDispatcher, GestureKey, GestureRun, GestureRunPhase};
 use super::output_handler::{
     dispatch_output_action, process_pipeline_outputs, record_outputs_to_cache,
     refresh_axes_for_mode_change,
@@ -213,12 +214,28 @@ impl Engine {
         // a new input event.
         self.apply_activation_refresh(&mappings)?;
 
+        let now = (self.now)();
+        self.output_buffer.clear();
+        let due_runs = self.gesture_dispatcher.drain_due(now);
+        for run in due_runs {
+            if !gesture_run_matches_active_profile(
+                &run,
+                &profile_id,
+                self.mode_state.current(),
+                &mappings,
+            ) {
+                continue;
+            }
+            if self.process_gesture_run(&run, &mode_list, &mappings)? {
+                break;
+            }
+        }
+
         // Process each input event.
         // Move the buffer out of self so the loop body can borrow other
         // &mut self fields (state, mode_state, callbacks). After the loop
         // the cleared buffer is restored to reuse its heap allocation.
         let mut events = std::mem::take(&mut self.event_buffer);
-        self.output_buffer.clear();
         for event in &events {
             // Update the input cache.
             let mut state = self.state.write();
@@ -248,6 +265,7 @@ impl Engine {
             }
             if callbacks_changed_mode {
                 self.release_all_held_outputs()?;
+                self.gesture_dispatcher.clear_all();
                 let mut guard = self.state.write();
                 let state: &mut AppState = &mut guard;
                 refresh_axes_for_mode_change(
@@ -346,6 +364,7 @@ impl Engine {
                     self.release_all_held_outputs()?;
                     let mut guard = self.state.write();
                     let state: &mut AppState = &mut guard;
+                    self.gesture_dispatcher.clear_all();
                     refresh_axes_for_mode_change(
                         &state.input_cache,
                         &mappings,
@@ -354,6 +373,28 @@ impl Engine {
                         &mut state.output_cache,
                     )?;
                     self.output_buffer.clear();
+                    break;
+                }
+
+                let gesture_runs = {
+                    let state = self.state.read();
+                    collect_gesture_runs_for_event(
+                        &mut self.gesture_dispatcher,
+                        &profile_id,
+                        mapping,
+                        event,
+                        &state,
+                        now,
+                    )
+                };
+                let mut gesture_changed_mode = false;
+                for run in gesture_runs {
+                    if self.process_gesture_run(&run, &mode_list, &mappings)? {
+                        gesture_changed_mode = true;
+                        break;
+                    }
+                }
+                if gesture_changed_mode {
                     break;
                 }
             }
@@ -420,6 +461,93 @@ impl Engine {
         Ok(())
     }
 
+    fn clear_gesture_mapping(&mut self, input: &InputAddress, mode: &str) {
+        let profile_id = {
+            let state = self.state.read();
+            active_profile_id(&state)
+        };
+        self.gesture_dispatcher
+            .clear_mapping(&profile_id, mode, input);
+    }
+
+    fn process_gesture_run(
+        &mut self,
+        run: &GestureRun,
+        mode_list: &crate::mode::Modes,
+        mappings: &[Mapping],
+    ) -> Result<bool> {
+        let outputs = {
+            let state = self.state.read();
+            let mut outputs = Vec::new();
+            execute_gesture_run(run, &state, &mut outputs);
+            outputs
+        };
+
+        let current_owners = outputs
+            .iter()
+            .filter_map(|output| match output {
+                PipelineOutput::Keyboard { owner, .. } | PipelineOutput::Mouse { owner, .. } => {
+                    Some(owner.clone())
+                }
+                PipelineOutput::SetAxis { .. }
+                | PipelineOutput::SetButton { .. }
+                | PipelineOutput::ChangeMode { .. } => None,
+            })
+            .collect::<Vec<_>>();
+        let owner_scope = current_owners.first().map_or_else(
+            || {
+                OwnerScopeKey::new(
+                    run.key.profile().to_owned(),
+                    run.key.mode().to_owned(),
+                    run.key.input().clone(),
+                )
+            },
+            OwnerScopeKey::from_owner,
+        );
+
+        let result = process_pipeline_outputs(
+            &outputs,
+            self.output.as_mut(),
+            self.keyboard.as_mut(),
+            self.mouse.as_mut(),
+            &mut self.output_state,
+            &mut self.mode_state,
+            mode_list,
+            &mut self.callbacks,
+            run.key.input(),
+        )?;
+        for action in self
+            .output_state
+            .reconcile_absent_owners_for_scope(&owner_scope, &current_owners)
+        {
+            dispatch_output_action(
+                action,
+                &mut self.output_state,
+                self.keyboard.as_mut(),
+                self.mouse.as_mut(),
+            )?;
+        }
+
+        self.output_buffer.extend_from_slice(&outputs);
+
+        if result.mode_changed {
+            self.release_all_held_outputs()?;
+            let mut guard = self.state.write();
+            let state: &mut AppState = &mut guard;
+            self.gesture_dispatcher.clear_all();
+            refresh_axes_for_mode_change(
+                &state.input_cache,
+                mappings,
+                self.mode_state.current(),
+                self.output.as_mut(),
+                &mut state.output_cache,
+            )?;
+            self.output_buffer.clear();
+        }
+
+        Ok(result.mode_changed)
+    }
+
     /// Process all pending commands from the GUI.
     fn process_commands(&mut self) -> Result<()> {
         loop {
@@ -434,6 +562,7 @@ impl Engine {
                             "engine.output.release_on_disconnect_failed"
                         );
                     }
+                    self.gesture_dispatcher.clear_all();
                     self.shutdown = true;
                     break;
                 }
@@ -452,6 +581,7 @@ impl Engine {
         match cmd {
             EngineCommand::LoadProfile(path) => {
                 self.release_all_held_outputs()?;
+                self.gesture_dispatcher.clear_all();
                 self.purge_all_namespaces();
                 self.reload_profile_from_disk(&path)?;
                 let origin = self.profile_origin_for_path(&path);
@@ -475,6 +605,7 @@ impl Engine {
             }
             EngineCommand::CreateProfile { name } => {
                 self.release_all_held_outputs()?;
+                self.gesture_dispatcher.clear_all();
                 let path = create_profile_in(&name, &self.profile_library_dir())?;
                 self.reload_profile_from_disk(&path)?;
                 self.mark_profile_loaded(ProfileOrigin::Library);
@@ -484,6 +615,7 @@ impl Engine {
             }
             EngineCommand::LoadExternalProfileOnce(path) => {
                 self.release_all_held_outputs()?;
+                self.gesture_dispatcher.clear_all();
                 self.purge_all_namespaces();
                 self.reload_profile_from_disk(&path)?;
                 self.mark_profile_loaded(ProfileOrigin::External);
@@ -502,6 +634,7 @@ impl Engine {
             }
             EngineCommand::AddExternalProfileToLibrary { path, name } => {
                 self.release_all_held_outputs()?;
+                self.gesture_dispatcher.clear_all();
                 let imported =
                     add_external_profile_to_library(&path, &name, &self.profile_library_dir())?;
                 self.reload_profile_from_disk(&imported.path)?;
@@ -520,6 +653,7 @@ impl Engine {
                     .is_some_and(|path| path == &old_path);
                 if was_active {
                     self.release_all_held_outputs()?;
+                    self.gesture_dispatcher.clear_all();
                 }
                 let renamed = rename_library_profile(&old_path, &new_name)?;
                 if was_active {
@@ -545,6 +679,7 @@ impl Engine {
                     .is_some_and(|profile_path| profile_path == &path);
                 if was_active {
                     self.release_all_held_outputs()?;
+                    self.gesture_dispatcher.clear_all();
                 }
                 delete_profile(&path)?;
                 if was_active {
@@ -579,12 +714,14 @@ impl Engine {
             }
             EngineCommand::Deactivate => {
                 self.release_all_held_outputs()?;
+                self.gesture_dispatcher.clear_all();
                 self.output.flush()?;
                 let mut state = self.state.write();
                 state.engine_status = EngineStatus::Stopped;
             }
             EngineCommand::Pause => {
                 self.release_all_held_outputs()?;
+                self.gesture_dispatcher.clear_all();
                 let mut state = self.state.write();
                 state.engine_status = EngineStatus::Paused;
             }
@@ -606,6 +743,7 @@ impl Engine {
                 actions,
             } => {
                 self.release_all_held_outputs()?;
+                self.clear_gesture_mapping(&input, &mode);
                 self.set_mapping(&input, &mode, name, actions);
                 self.pending_output_refresh = true;
             }
@@ -615,10 +753,12 @@ impl Engine {
                 target_index_in_group,
             } => {
                 self.release_all_held_outputs()?;
+                self.clear_gesture_mapping(&input, &mode);
                 self.reorder_mapping_in_group(&input, &mode, target_index_in_group);
             }
             EngineCommand::Shutdown => {
                 self.release_all_held_outputs()?;
+                self.gesture_dispatcher.clear_all();
                 self.shutdown = true;
             }
             EngineCommand::SwitchMode { mode } => {
@@ -626,6 +766,7 @@ impl Engine {
                     return Ok(());
                 }
                 self.release_all_held_outputs()?;
+                self.gesture_dispatcher.clear_all();
                 let modes = if let Some(p) = self.state.read().active_profile.as_ref() {
                     p.modes().clone()
                 } else {
@@ -862,6 +1003,7 @@ impl Engine {
                     profile.modes().with_renamed(&from, &to)?
                 };
                 self.release_all_held_outputs()?;
+                self.gesture_dispatcher.clear_all();
                 let mut state = self.state.write();
                 let Some(profile) = state.active_profile.as_mut() else {
                     tracing::warn!(target: "engine", "RenameMode dispatched with no profile; ignoring");
@@ -958,6 +1100,7 @@ impl Engine {
                 };
 
                 self.release_all_held_outputs()?;
+                self.gesture_dispatcher.clear_all();
                 let mut state = self.state.write();
                 let Some(profile) = state.active_profile.as_mut() else {
                     tracing::warn!(target: "engine", "DeleteMode dispatched with no profile; ignoring");
@@ -1038,6 +1181,7 @@ impl Engine {
             }
             EngineCommand::RestoreSnapshot { id } => {
                 self.release_all_held_outputs()?;
+                self.gesture_dispatcher.clear_all();
                 let Some((path, namespace_dir)) = self.resolved_snapshot_target() else {
                     tracing::warn!(target: "snapshot", "RestoreSnapshot dispatched with no profile loaded");
                     return Ok(());
@@ -1094,6 +1238,7 @@ impl Engine {
 
             EngineCommand::RemoveMapping { input, mode } => {
                 self.release_all_held_outputs()?;
+                self.clear_gesture_mapping(&input, &mode);
                 self.remove_mapping(&input, &mode);
                 self.pending_output_refresh = true;
             }
@@ -1102,6 +1247,7 @@ impl Engine {
                 snapshot_label,
             } => {
                 self.release_all_held_outputs()?;
+                self.gesture_dispatcher.clear_all();
                 self.set_mappings_bulk(&entries, snapshot_label);
                 self.pending_output_refresh = true;
             }
@@ -1742,6 +1888,189 @@ fn current_unix_ms() -> u64 {
         .map_or(0, |duration| {
             duration.as_millis().try_into().unwrap_or(u64::MAX)
         })
+}
+
+fn active_profile_id(state: &AppState) -> String {
+    state.profile_path.as_ref().map_or_else(
+        || "memory-profile".to_owned(),
+        |path| path.display().to_string(),
+    )
+}
+
+fn gesture_run_matches_active_profile(
+    run: &GestureRun,
+    profile_id: &str,
+    current_mode: &str,
+    mappings: &[Mapping],
+) -> bool {
+    run.key.profile() == profile_id
+        && run.key.mode() == current_mode
+        && mappings
+            .iter()
+            .any(|mapping| mapping.mode == run.key.mode() && mapping.input == *run.key.input())
+}
+
+fn collect_gesture_runs_for_event(
+    dispatcher: &mut GestureDispatcher,
+    profile_id: &str,
+    mapping: &Mapping,
+    event: &InputEvent,
+    state: &AppState,
+    now: Instant,
+) -> Vec<GestureRun> {
+    if mapping.input != event.source {
+        return Vec::new();
+    }
+
+    let InputValue::Button { pressed } = event.value else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    collect_gesture_runs_in_actions(
+        dispatcher,
+        profile_id,
+        mapping,
+        &mapping.actions,
+        &mut Vec::new(),
+        pressed,
+        state,
+        now,
+        &mut out,
+    );
+    out
+}
+
+fn collect_gesture_runs_in_actions(
+    dispatcher: &mut GestureDispatcher,
+    profile_id: &str,
+    mapping: &Mapping,
+    actions: &[Action],
+    path: &mut Vec<ActionPathSegment>,
+    pressed: bool,
+    state: &AppState,
+    now: Instant,
+    out: &mut Vec<GestureRun>,
+) {
+    for (index, action) in actions.iter().enumerate() {
+        path.push(ActionPathSegment::Index(index));
+
+        match action {
+            Action::TapGesture { .. } if !pressed => {
+                out.extend(dispatcher.observe_release(
+                    GestureKey::new(
+                        profile_id.to_owned(),
+                        mapping.mode.clone(),
+                        mapping.input.clone(),
+                        path.clone(),
+                    ),
+                    action,
+                    now,
+                ));
+            }
+            Action::PressGesture { .. } if pressed => {
+                out.extend(dispatcher.observe_press(
+                    GestureKey::new(
+                        profile_id.to_owned(),
+                        mapping.mode.clone(),
+                        mapping.input.clone(),
+                        path.clone(),
+                    ),
+                    action,
+                    now,
+                ));
+            }
+            Action::PressGesture { .. } => {
+                out.extend(dispatcher.observe_release(
+                    GestureKey::new(
+                        profile_id.to_owned(),
+                        mapping.mode.clone(),
+                        mapping.input.clone(),
+                        path.clone(),
+                    ),
+                    action,
+                    now,
+                ));
+            }
+            _ => {}
+        }
+
+        if let Action::Conditional {
+            condition,
+            if_true,
+            if_false,
+        } = action
+        {
+            let (branch, branch_actions) =
+                if pipeline::evaluate_condition(condition, &state.input_cache) {
+                    (ActionBranch::ConditionalTrue, if_true.as_slice())
+                } else {
+                    (ActionBranch::ConditionalFalse, if_false.as_slice())
+                };
+            path.push(ActionPathSegment::Branch(branch));
+            collect_gesture_runs_in_actions(
+                dispatcher,
+                profile_id,
+                mapping,
+                branch_actions,
+                path,
+                pressed,
+                state,
+                now,
+                out,
+            );
+            path.pop();
+        }
+
+        path.pop();
+    }
+}
+
+fn execute_gesture_run(
+    run: &GestureRun,
+    state: &AppState,
+    output_buffer: &mut Vec<PipelineOutput>,
+) {
+    match run.phase {
+        GestureRunPhase::Momentary => {
+            execute_gesture_run_pass(run, state, output_buffer, true);
+            execute_gesture_run_pass(run, state, output_buffer, false);
+        }
+        GestureRunPhase::Active => {
+            execute_gesture_run_pass(run, state, output_buffer, true);
+        }
+        GestureRunPhase::Release => {
+            execute_gesture_run_pass(run, state, output_buffer, false);
+        }
+    }
+}
+
+fn execute_gesture_run_pass(
+    run: &GestureRun,
+    state: &AppState,
+    output_buffer: &mut Vec<PipelineOutput>,
+    pressed: bool,
+) {
+    let input_value = InputValue::Button { pressed };
+    let mut ctx = PipelineContext {
+        current_value: if pressed { 1.0 } else { 0.0 },
+        input_value,
+        outputs: Vec::new(),
+        input_cache: &state.input_cache,
+    };
+    let mut action_path = run.key.action_path().to_vec();
+    action_path.push(ActionPathSegment::Branch(run.branch));
+    pipeline::execute_pipeline_with_scope_and_path(
+        &run.actions,
+        &mut ctx,
+        OutputOwnerScope::new(
+            run.key.profile().to_owned(),
+            run.key.mode().to_owned(),
+            run.key.input().clone(),
+        ),
+        action_path,
+    );
+    output_buffer.extend(ctx.outputs);
 }
 
 fn pipeline_input_for_mapping(

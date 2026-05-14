@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use parking_lot::{Mutex, RwLock};
 
@@ -21,7 +21,7 @@ use crate::mode::{ModeState, Modes};
 use crate::output::mock::{
     KeyboardCall, MockKeyboardSink, MockMouseSink, MockOutputSink, MouseCall, OutputCall,
 };
-use crate::output::traits::{KeyboardSink, MouseSink};
+use crate::output::traits::{KeyboardSink, MouseSink, OutputSink};
 use crate::pipeline::{ActionPathSegment, OutputDestination, OutputOwner, PipelineOutput};
 use crate::profile::Profile;
 use crate::profile::manager::{create_profile_in, sanitize_filename};
@@ -322,6 +322,126 @@ impl MouseSink for RecordingMouseSink {
     }
 }
 
+#[derive(Debug, Default)]
+struct RecordingOutputState {
+    calls: Mutex<Vec<OutputCall>>,
+}
+
+impl RecordingOutputState {
+    fn calls(&self) -> Vec<OutputCall> {
+        self.calls.lock().clone()
+    }
+
+    fn was_set_button(&self, output: &OutputAddress, pressed: bool) -> bool {
+        self.calls().iter().any(|call| {
+            matches!(
+                call,
+                OutputCall::SetButton { device, button, pressed: value }
+                    if *device == output.device
+                        && *button == output_button_id(output)
+                        && *value == pressed
+            )
+        })
+    }
+
+    fn set_button_count(&self, output: &OutputAddress, pressed: bool) -> usize {
+        self.calls()
+            .iter()
+            .filter(|call| {
+                matches!(
+                    call,
+                    OutputCall::SetButton { device, button, pressed: value }
+                        if *device == output.device
+                            && *button == output_button_id(output)
+                            && *value == pressed
+                )
+            })
+            .count()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RecordingOutputSink {
+    state: Arc<RecordingOutputState>,
+}
+
+impl RecordingOutputSink {
+    fn new() -> (Self, Arc<RecordingOutputState>) {
+        let state = Arc::new(RecordingOutputState::default());
+        (
+            Self {
+                state: Arc::clone(&state),
+            },
+            state,
+        )
+    }
+}
+
+impl OutputSink for RecordingOutputSink {
+    fn create_device(
+        &mut self,
+        config: &crate::types::VirtualDeviceConfig,
+    ) -> crate::error::Result<()> {
+        self.state
+            .calls
+            .lock()
+            .push(OutputCall::CreateDevice(config.clone()));
+        Ok(())
+    }
+
+    fn set_axis(&mut self, device: u8, axis: VJoyAxis, value: f64) -> crate::error::Result<()> {
+        self.state.calls.lock().push(OutputCall::SetAxis {
+            device,
+            axis,
+            value,
+        });
+        Ok(())
+    }
+
+    fn set_button(&mut self, device: u8, button: u8, pressed: bool) -> crate::error::Result<()> {
+        self.state.calls.lock().push(OutputCall::SetButton {
+            device,
+            button,
+            pressed,
+        });
+        Ok(())
+    }
+
+    fn set_hat(
+        &mut self,
+        device: u8,
+        hat: u8,
+        direction: HatDirection,
+    ) -> crate::error::Result<()> {
+        self.state.calls.lock().push(OutputCall::SetHat {
+            device,
+            hat,
+            direction,
+        });
+        Ok(())
+    }
+
+    fn release_device(&mut self, device: u8) -> crate::error::Result<()> {
+        self.state
+            .calls
+            .lock()
+            .push(OutputCall::ReleaseDevice(device));
+        Ok(())
+    }
+
+    fn flush(&mut self) -> crate::error::Result<()> {
+        self.state.calls.lock().push(OutputCall::Flush);
+        Ok(())
+    }
+}
+
+fn output_button_id(output: &OutputAddress) -> u8 {
+    let OutputId::Button { id } = output.output else {
+        panic!("expected vJoy button output");
+    };
+    id
+}
+
 type RecordingEngineHarness = (
     Engine,
     Arc<RwLock<AppState>>,
@@ -368,6 +488,481 @@ fn make_recording_engine_with_settings_path(
     );
 
     (engine, state, tx, keyboard_state, mouse_state)
+}
+
+struct GestureEngineHarness {
+    engine: Engine,
+    tx: mpsc::Sender<EngineCommand>,
+    output: Arc<RecordingOutputState>,
+    now: Arc<Mutex<Instant>>,
+    settings_path: PathBuf,
+}
+
+impl GestureEngineHarness {
+    fn tick(&mut self) {
+        self.engine.tick().expect("engine tick should succeed");
+    }
+
+    fn press_button(&mut self, input: &InputAddress) {
+        self.engine.input = Box::new(input_source_with_button(input.clone(), true));
+    }
+
+    fn release_button(&mut self, input: &InputAddress) {
+        self.engine.input = Box::new(input_source_with_button(input.clone(), false));
+    }
+
+    fn advance_time_ms(&self, ms: u64) {
+        *self.now.lock() += Duration::from_millis(ms);
+    }
+
+    fn output_was_set_button(&self, output: &OutputAddress, pressed: bool) -> bool {
+        self.output.was_set_button(output, pressed)
+    }
+
+    fn output_set_count(&self, output: &OutputAddress, pressed: bool) -> usize {
+        self.output.set_button_count(output, pressed)
+    }
+
+    fn output_events(&self) -> Vec<OutputCall> {
+        self.output
+            .calls()
+            .into_iter()
+            .filter(|call| !matches!(call, OutputCall::Flush))
+            .collect()
+    }
+
+    fn set_input(&mut self, input: InputAddress, pressed: bool) {
+        self.engine.input = Box::new(input_source_with_button(input, pressed));
+        self.tick();
+    }
+
+    fn set_mapping(&mut self, input: InputAddress, actions: Vec<Action>) {
+        self.tx
+            .send(EngineCommand::SetMapping {
+                input,
+                mode: "Default".to_owned(),
+                name: None,
+                actions,
+            })
+            .expect("command should be sent");
+        self.tick();
+    }
+
+    fn remove_mapping(&mut self, input: InputAddress) {
+        self.tx
+            .send(EngineCommand::RemoveMapping {
+                input,
+                mode: "Default".to_owned(),
+            })
+            .expect("command should be sent");
+        self.tick();
+    }
+
+    fn load_profile(&mut self, profile: Profile) {
+        let path = temp_profile_path("gesture-profile-change");
+        profile.save(&path).expect("profile should save");
+        self.tx
+            .send(EngineCommand::LoadExternalProfileOnce(path))
+            .expect("command should be sent");
+        self.tick();
+    }
+
+    fn deactivate(&mut self) {
+        self.tx
+            .send(EngineCommand::Deactivate)
+            .expect("command should be sent");
+        self.tick();
+    }
+
+    fn resume(&mut self) {
+        self.tx
+            .send(EngineCommand::Resume)
+            .expect("command should be sent");
+        self.tick();
+    }
+
+    fn switch_mode(&mut self, mode: &str) {
+        self.tx
+            .send(EngineCommand::SwitchMode {
+                mode: mode.to_owned(),
+            })
+            .expect("command should be sent");
+        self.tick();
+    }
+
+    fn library_profile_path(&self, name: &str) -> PathBuf {
+        let profile_dir = self
+            .settings_path
+            .parent()
+            .expect("settings path should have parent")
+            .join("profiles");
+        std::fs::create_dir_all(&profile_dir).expect("profile dir should be created");
+        profile_dir.join(format!("{}.toml", sanitize_filename(name)))
+    }
+}
+
+fn input_source_with_button(input: InputAddress, pressed: bool) -> MockInputSource {
+    let mut source = MockInputSource::default();
+    source.events.push(InputEvent {
+        source: input,
+        value: InputValue::Button { pressed },
+        timestamp: Instant::now(),
+    });
+    source
+}
+
+fn make_gesture_recording_engine(profile: Profile) -> GestureEngineHarness {
+    let settings_path = temp_settings_path("gesture-runtime");
+    let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    state.write().engine_status = EngineStatus::Running;
+    let (tx, rx) = mpsc::channel();
+    let (output, output_state) = RecordingOutputSink::new();
+    let (keyboard, _keyboard_state) = RecordingKeyboardSink::new();
+    let (mouse, _mouse_state) = RecordingMouseSink::new();
+    let now = Arc::new(Mutex::new(Instant::now()));
+    let now_for_engine = Arc::clone(&now);
+    let mut engine = Engine::new(
+        Box::new(MockInputSource::default()),
+        Box::new(output),
+        Box::new(keyboard),
+        Box::new(mouse),
+        Box::new(MockDeviceHider::default()),
+        Arc::clone(&state),
+        rx,
+        AppSettings::default(),
+        settings_path.clone(),
+        Box::new(MockAutostart::new()),
+    );
+    engine.now = Box::new(move || *now_for_engine.lock());
+
+    GestureEngineHarness {
+        engine,
+        tx,
+        output: output_state,
+        now,
+        settings_path,
+    }
+}
+
+fn gesture_profile_with_mapping(input: InputAddress, actions: Vec<Action>) -> Profile {
+    gesture_profile_named("Test", input, actions)
+}
+
+fn gesture_profile_named(name: &str, input: InputAddress, actions: Vec<Action>) -> Profile {
+    Profile::new(
+        name.to_owned(),
+        vec![],
+        Modes::new(vec!["Default".to_owned(), "Alternate".to_owned()]).unwrap(),
+        vec![Mapping {
+            input,
+            mode: "Default".to_owned(),
+            name: None,
+            actions,
+        }],
+        vec![],
+        "Default".to_owned(),
+    )
+}
+
+#[test]
+fn tap_gesture_delayed_single_dispatches_after_threshold() {
+    let button = button_addr(1);
+    let output = vjoy_button_output(1, 3);
+    let profile = gesture_profile_with_mapping(
+        button.clone(),
+        vec![Action::TapGesture {
+            threshold_ms: 50,
+            fire_single_immediately: false,
+            single_tap: vec![Action::MapToVJoy {
+                output: output.clone(),
+            }],
+            double_tap: Vec::new(),
+        }],
+    );
+    let mut harness = make_gesture_recording_engine(profile);
+
+    harness.press_button(&button);
+    harness.tick();
+    harness.release_button(&button);
+    harness.tick();
+    harness.advance_time_ms(49);
+    harness.tick();
+    assert!(!harness.output_was_set_button(&output, true));
+
+    harness.advance_time_ms(1);
+    harness.tick();
+
+    assert!(harness.output_was_set_button(&output, true));
+}
+
+#[test]
+fn press_gesture_short_press_runs_on_release() {
+    let button = button_addr(1);
+    let output = vjoy_button_output(1, 3);
+    let profile = gesture_profile_with_mapping(
+        button.clone(),
+        vec![Action::PressGesture {
+            threshold_ms: 500,
+            fire_long_when_threshold_crossed: false,
+            short_press: vec![Action::MapToVJoy {
+                output: output.clone(),
+            }],
+            long_press: Vec::new(),
+        }],
+    );
+    let mut harness = make_gesture_recording_engine(profile);
+
+    harness.press_button(&button);
+    harness.tick();
+    harness.advance_time_ms(100);
+    harness.release_button(&button);
+    harness.tick();
+
+    assert!(harness.output_was_set_button(&output, true));
+}
+
+#[test]
+fn press_gesture_threshold_fired_long_releases_without_replaying_active_branch() {
+    let button = button_addr(1);
+    let output = vjoy_button_output(1, 3);
+    let profile = gesture_profile_with_mapping(
+        button.clone(),
+        vec![Action::PressGesture {
+            threshold_ms: 50,
+            fire_long_when_threshold_crossed: true,
+            short_press: Vec::new(),
+            long_press: vec![Action::MapToVJoy {
+                output: output.clone(),
+            }],
+        }],
+    );
+    let mut harness = make_gesture_recording_engine(profile);
+
+    harness.press_button(&button);
+    harness.tick();
+    harness.advance_time_ms(50);
+    harness.tick();
+    assert_eq!(harness.output_set_count(&output, true), 1);
+
+    harness.release_button(&button);
+    harness.tick();
+
+    assert_eq!(harness.output_set_count(&output, true), 1);
+    assert!(harness.output_was_set_button(&output, false));
+}
+
+fn schedule_pending_single_tap() -> (GestureEngineHarness, InputAddress) {
+    schedule_pending_single_tap_with_profile_path(None)
+}
+
+fn schedule_pending_single_tap_with_profile_path(
+    profile_path: Option<PathBuf>,
+) -> (GestureEngineHarness, InputAddress) {
+    let button = button_addr(1);
+    let output = vjoy_button_output(1, 4);
+    let profile = gesture_profile_with_mapping(
+        button.clone(),
+        vec![Action::TapGesture {
+            threshold_ms: 500,
+            fire_single_immediately: false,
+            single_tap: vec![Action::MapToVJoy { output }],
+            double_tap: Vec::new(),
+        }],
+    );
+    let mut harness = make_gesture_recording_engine(profile);
+    if let Some(path) = profile_path {
+        harness.engine.state.write().profile_path = Some(path);
+    }
+
+    harness.press_button(&button);
+    harness.tick();
+    harness.release_button(&button);
+    harness.tick();
+
+    (harness, button)
+}
+
+#[test]
+fn pending_tap_is_cleared_when_mapping_is_replaced() {
+    let (mut harness, button) = schedule_pending_single_tap();
+
+    harness.set_mapping(button, Vec::new());
+    harness.advance_time_ms(500);
+    harness.tick();
+
+    assert!(harness.output_events().is_empty());
+}
+
+#[test]
+fn inactive_conditional_gesture_branch_is_not_observed() {
+    let button = button_addr(1);
+    let output = vjoy_button_output(1, 5);
+    let profile = gesture_profile_with_mapping(
+        button.clone(),
+        vec![Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: button_addr(2),
+            },
+            if_true: vec![Action::TapGesture {
+                threshold_ms: 50,
+                fire_single_immediately: false,
+                single_tap: vec![Action::MapToVJoy {
+                    output: output.clone(),
+                }],
+                double_tap: Vec::new(),
+            }],
+            if_false: Vec::new(),
+        }],
+    );
+    let mut harness = make_gesture_recording_engine(profile);
+
+    harness.press_button(&button);
+    harness.tick();
+    harness.release_button(&button);
+    harness.tick();
+    harness.advance_time_ms(50);
+    harness.tick();
+
+    assert!(!harness.output_was_set_button(&output, true));
+}
+
+#[test]
+fn pending_gestures_clear_on_runtime_mode_change() {
+    let button = button_addr(1);
+    let to_alternate = button_addr(2);
+    let to_default = button_addr(3);
+    let output = vjoy_button_output(1, 6);
+    let profile = make_profile(
+        Modes::new(vec!["Default".to_owned(), "Alternate".to_owned()]).unwrap(),
+        vec![
+            Mapping {
+                input: button.clone(),
+                mode: "Default".to_owned(),
+                name: None,
+                actions: vec![Action::TapGesture {
+                    threshold_ms: 500,
+                    fire_single_immediately: false,
+                    single_tap: vec![Action::MapToVJoy {
+                        output: output.clone(),
+                    }],
+                    double_tap: Vec::new(),
+                }],
+            },
+            Mapping {
+                input: to_alternate.clone(),
+                mode: "Default".to_owned(),
+                name: None,
+                actions: vec![Action::ChangeMode {
+                    strategy: ModeChangeStrategy::SwitchTo {
+                        mode: "Alternate".to_owned(),
+                    },
+                }],
+            },
+            Mapping {
+                input: to_default.clone(),
+                mode: "Alternate".to_owned(),
+                name: None,
+                actions: vec![Action::ChangeMode {
+                    strategy: ModeChangeStrategy::SwitchTo {
+                        mode: "Default".to_owned(),
+                    },
+                }],
+            },
+        ],
+    );
+    let mut harness = make_gesture_recording_engine(profile);
+
+    harness.press_button(&button);
+    harness.tick();
+    harness.release_button(&button);
+    harness.tick();
+    harness.advance_time_ms(100);
+    harness.set_input(to_alternate, true);
+    harness.advance_time_ms(100);
+    harness.set_input(to_default, true);
+    harness.advance_time_ms(300);
+    harness.tick();
+
+    assert!(!harness.output_was_set_button(&output, true));
+}
+
+#[test]
+fn pending_gestures_clear_on_mapping_removal() {
+    let (mut harness, button) = schedule_pending_single_tap();
+    let output = vjoy_button_output(1, 4);
+
+    harness.remove_mapping(button);
+    harness.set_mapping(
+        button_addr(1),
+        vec![Action::MapToVJoy {
+            output: output.clone(),
+        }],
+    );
+    harness.advance_time_ms(500);
+    harness.tick();
+
+    assert!(!harness.output_was_set_button(&output, true));
+}
+
+#[test]
+fn pending_gestures_clear_on_profile_change() {
+    let initial_profile = gesture_profile_named(
+        "Original Gesture",
+        button_addr(1),
+        vec![Action::TapGesture {
+            threshold_ms: 500,
+            fire_single_immediately: false,
+            single_tap: vec![Action::MapToVJoy {
+                output: vjoy_button_output(1, 4),
+            }],
+            double_tap: Vec::new(),
+        }],
+    );
+    let harness_for_path = make_gesture_recording_engine(initial_profile.clone());
+    let original_path = harness_for_path.library_profile_path("Original Gesture");
+    initial_profile
+        .save(&original_path)
+        .expect("original profile should save");
+    let (mut harness, _button) =
+        schedule_pending_single_tap_with_profile_path(Some(original_path.clone()));
+    let output = vjoy_button_output(1, 4);
+
+    harness.load_profile(gesture_profile_with_mapping(button_addr(2), Vec::new()));
+    harness
+        .tx
+        .send(EngineCommand::LoadProfile(original_path))
+        .expect("command should be sent");
+    harness.tick();
+    harness.advance_time_ms(500);
+    harness.tick();
+
+    assert!(!harness.output_was_set_button(&output, true));
+}
+
+#[test]
+fn pending_gestures_clear_on_engine_stop() {
+    let (mut harness, _button) = schedule_pending_single_tap();
+    let output = vjoy_button_output(1, 4);
+
+    harness.deactivate();
+    harness.resume();
+    harness.advance_time_ms(500);
+    harness.tick();
+
+    assert!(!harness.output_was_set_button(&output, true));
+}
+
+#[test]
+fn pending_gestures_clear_on_relevant_mode_change() {
+    let (mut harness, _button) = schedule_pending_single_tap();
+    let output = vjoy_button_output(1, 4);
+
+    harness.switch_mode("Alternate");
+    harness.switch_mode("Default");
+    harness.advance_time_ms(500);
+    harness.tick();
+
+    assert!(!harness.output_was_set_button(&output, true));
 }
 
 fn held_keyboard_mapping(key: &str) -> Mapping {
@@ -3588,7 +4183,7 @@ fn sequential_eight_then_ninth_evicts_oldest() {
         })
         .unwrap();
         engine.tick().unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(2));
+        std::thread::sleep(Duration::from_millis(2));
     }
     let listed = crate::snapshot::list(&path).unwrap();
     assert_eq!(listed.len(), 8);
