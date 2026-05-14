@@ -317,6 +317,16 @@ impl From<ActionSerde> for Action {
     }
 }
 
+fn validate_action_serde(action: &ActionSerde) -> crate::error::Result<()> {
+    match action {
+        ActionSerde::TapGesture { threshold_ms, .. }
+        | ActionSerde::PressGesture { threshold_ms, .. } => {
+            validate_gesture_threshold_ms(*threshold_ms)
+        }
+        _ => Ok(()),
+    }
+}
+
 impl Serialize for Action {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -331,7 +341,9 @@ impl<'de> Deserialize<'de> for Action {
     where
         D: serde::Deserializer<'de>,
     {
-        ActionSerde::deserialize(deserializer).map(Self::from)
+        let action = ActionSerde::deserialize(deserializer)?;
+        validate_action_serde(&action).map_err(serde::de::Error::custom)?;
+        Ok(Self::from(action))
     }
 }
 
@@ -565,6 +577,68 @@ mod tests {
         let parsed: Action = toml::from_str(&toml).expect("press gesture should deserialize");
 
         assert_eq!(parsed, action);
+    }
+
+    #[test]
+    fn tap_gesture_rejects_zero_threshold_on_deserialize() {
+        let toml = r#"
+type = "tap_gesture"
+threshold_ms = 0
+"#;
+
+        let err = toml::from_str::<Action>(toml).expect_err("zero threshold should fail");
+
+        assert!(err.to_string().contains("outside 1..=10000ms"));
+    }
+
+    #[test]
+    fn press_gesture_rejects_above_max_threshold_on_deserialize() {
+        let toml = r#"
+type = "press_gesture"
+threshold_ms = 10001
+"#;
+
+        let err = toml::from_str::<Action>(toml).expect_err("large threshold should fail");
+
+        assert!(err.to_string().contains("outside 1..=10000ms"));
+    }
+
+    #[test]
+    fn tap_gesture_defaults_threshold_and_branches_on_deserialize() {
+        let toml = r#"
+type = "tap_gesture"
+"#;
+
+        let parsed: Action = toml::from_str(toml).expect("tap gesture defaults should load");
+
+        assert_eq!(
+            parsed,
+            Action::TapGesture {
+                threshold_ms: DEFAULT_GESTURE_THRESHOLD_MS,
+                fire_single_immediately: false,
+                single_tap: Vec::new(),
+                double_tap: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn press_gesture_defaults_threshold_and_branches_on_deserialize() {
+        let toml = r#"
+type = "press_gesture"
+"#;
+
+        let parsed: Action = toml::from_str(toml).expect("press gesture defaults should load");
+
+        assert_eq!(
+            parsed,
+            Action::PressGesture {
+                threshold_ms: DEFAULT_GESTURE_THRESHOLD_MS,
+                fire_long_when_threshold_crossed: false,
+                short_press: Vec::new(),
+                long_press: Vec::new(),
+            }
+        );
     }
 
     #[test]

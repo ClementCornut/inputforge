@@ -738,6 +738,34 @@ fn rewrite_mode_in_action(action: &mut Action, from: &str, to: &str) -> bool {
             }
             changed
         }
+        Action::TapGesture {
+            single_tap,
+            double_tap,
+            ..
+        } => {
+            let mut changed = false;
+            for a in single_tap {
+                changed |= rewrite_mode_in_action(a, from, to);
+            }
+            for a in double_tap {
+                changed |= rewrite_mode_in_action(a, from, to);
+            }
+            changed
+        }
+        Action::PressGesture {
+            short_press,
+            long_press,
+            ..
+        } => {
+            let mut changed = false;
+            for a in short_press {
+                changed |= rewrite_mode_in_action(a, from, to);
+            }
+            for a in long_press {
+                changed |= rewrite_mode_in_action(a, from, to);
+            }
+            changed
+        }
         _ => false,
     }
 }
@@ -1920,6 +1948,43 @@ enabled = true
 
         let touched = profile.rename_mode_refs("Combat", "Fighter");
         assert_eq!(touched, 1);
+    }
+
+    #[test]
+    fn rename_mode_refs_walks_into_gesture_branches() {
+        let mut profile = test_profile_with_two_modes();
+        profile.set_mapping(
+            &test_input(),
+            "Default",
+            Some("gesture".to_owned()),
+            vec![Action::PressGesture {
+                threshold_ms: 500,
+                fire_long_when_threshold_crossed: false,
+                short_press: vec![Action::ChangeMode {
+                    strategy: ModeChangeStrategy::SwitchTo {
+                        mode: "Combat".to_owned(),
+                    },
+                }],
+                long_press: Vec::new(),
+            }],
+        );
+
+        let changed = profile.rename_mode_refs("Combat", "Landing");
+
+        assert_eq!(changed, 1);
+        let mapping = profile
+            .find_mapping(&test_input(), "Default")
+            .expect("mapping should remain");
+        let Action::PressGesture { short_press, .. } = &mapping.actions[0] else {
+            panic!("expected press gesture");
+        };
+        let Action::ChangeMode {
+            strategy: ModeChangeStrategy::SwitchTo { mode },
+        } = &short_press[0]
+        else {
+            panic!("expected change mode");
+        };
+        assert_eq!(mode, "Landing");
     }
 
     // --- remove_mapping ---
