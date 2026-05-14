@@ -329,6 +329,7 @@ pub(crate) fn use_keyboard_capture_provider() -> KeyboardCaptureContext {
     let mut hint: Signal<Option<&'static str>> = use_signal(|| None);
     let delivery: Signal<Option<CaptureDelivery>> = use_signal(|| None);
     let mut listener_mounted: Signal<bool> = use_signal(|| false);
+    let mut listener_eval: Signal<Option<document::Eval>> = use_signal(|| None);
 
     let cancel = use_callback(move |owner: KeyboardCaptureOwner| {
         cancel_owner(owner, core, active_owner, hint_owner, hint, delivery, None);
@@ -368,8 +369,11 @@ pub(crate) fn use_keyboard_capture_provider() -> KeyboardCaptureContext {
         }
         mounted.set(true);
 
+        let handle = document::eval(KEYBOARD_CAPTURE_LISTENER_JS);
+        listener_eval.set(Some(handle));
+
         spawn(async move {
-            let mut handle = document::eval(KEYBOARD_CAPTURE_LISTENER_JS);
+            let mut handle = handle;
             loop {
                 let Ok(payload) = handle.recv::<BrowserKeyboardPayload>().await else {
                     break;
@@ -381,7 +385,16 @@ pub(crate) fn use_keyboard_capture_provider() -> KeyboardCaptureContext {
                 apply_update(update, active_owner, hint_owner, hint, delivery);
             }
             listener_mounted.set(false);
+            listener_eval.set(None);
         });
+    });
+
+    use_drop(move || {
+        if let Some(handle) = listener_eval.peek().as_ref() {
+            let _ = handle.send("__shutdown__".to_owned());
+        }
+        listener_mounted.set(false);
+        listener_eval.set(None);
     });
 
     let context = KeyboardCaptureContext {
