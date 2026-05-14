@@ -668,9 +668,8 @@ fn derive_referenced_devices(
 fn first_vjoy_output(actions: &[inputforge_core::action::Action]) -> Option<OutputAddress> {
     use inputforge_core::action::Action;
     for action in actions {
-        match action {
-            Action::MapToVJoy { output } => return Some(output.clone()),
-            _ => {}
+        if let Action::MapToVJoy { output } = action {
+            return Some(output.clone());
         }
         for branch in action_branches() {
             if let Some(actions) = branch_actions(action, branch)

@@ -83,8 +83,8 @@ pub(crate) fn TapGestureBody(
             threshold_signal.set(candidate);
             let label = edit_label(
                 "threshold",
-                format!("{current_threshold_ms} ms"),
-                format!("{new_threshold_ms} ms"),
+                &format!("{current_threshold_ms} ms"),
+                &format!("{new_threshold_ms} ms"),
             );
             dispatch_stage_edit(
                 &actions_before,
@@ -126,8 +126,8 @@ pub(crate) fn TapGestureBody(
             immediate_signal.set(new_value);
             let label = edit_label(
                 "single timing",
-                single_timing_label(!new_value),
-                single_timing_label(new_value),
+                &single_timing_label(!new_value),
+                &single_timing_label(new_value),
             );
             dispatch_stage_edit(
                 &actions_before,
@@ -198,6 +198,10 @@ pub(crate) fn TapGestureBody(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "test helper mirrors the complete TapGesture edit payload"
+)]
 pub(crate) fn dispatch_tap_gesture_edit_into(
     undo_log: &mut UndoLog,
     mapping_key: &MappingKey,
@@ -229,13 +233,13 @@ pub(crate) fn dispatch_tap_gesture_edit_into(
     );
 }
 
-fn edit_label(field: &'static str, before: String, after: String) -> String {
+fn edit_label(field: &'static str, before: &str, after: &str) -> String {
     format_undo_label(
         UndoKind::StageEdit,
         LabelArgs {
             stage_name: Some("Tap gesture"),
             field: Some(field),
-            before_after: Some((&before, &after)),
+            before_after: Some((before, after)),
             ..LabelArgs::default()
         },
     )

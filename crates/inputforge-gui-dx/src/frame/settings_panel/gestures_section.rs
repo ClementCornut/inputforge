@@ -168,11 +168,10 @@ mod tests {
         let meta = use_signal(MetaSnapshot::default);
         let config = use_signal(ConfigSnapshot::default);
         let live = use_signal(LiveSnapshot::default);
-        let settings = use_signal(|| {
-            let mut s = SettingsSnapshot::default();
-            s.default_double_tap_threshold_ms = double_tap_threshold_ms;
-            s.default_long_press_threshold_ms = long_press_threshold_ms;
-            s
+        let settings = use_signal(|| SettingsSnapshot {
+            default_double_tap_threshold_ms: double_tap_threshold_ms,
+            default_long_press_threshold_ms: long_press_threshold_ms,
+            ..SettingsSnapshot::default()
         });
 
         use_context_provider(|| AppContext {
@@ -247,7 +246,7 @@ mod tests {
             super::dispatch_default_double_tap_threshold,
         ));
 
-        assert!(rx.try_recv().is_err());
+        rx.try_recv().unwrap_err();
     }
 
     #[test]

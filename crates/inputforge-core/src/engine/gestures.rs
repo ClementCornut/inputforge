@@ -89,7 +89,7 @@ pub(crate) struct GestureDispatcher {
 impl GestureDispatcher {
     pub(crate) fn observe_release(
         &mut self,
-        key: GestureKey,
+        key: &GestureKey,
         action: &Action,
         now: Instant,
     ) -> Vec<GestureRun> {
@@ -118,7 +118,7 @@ impl GestureDispatcher {
 
     pub(crate) fn observe_press(
         &mut self,
-        key: GestureKey,
+        key: &GestureKey,
         action: &Action,
         now: Instant,
     ) -> Vec<GestureRun> {
@@ -131,7 +131,7 @@ impl GestureDispatcher {
             return Vec::new();
         };
 
-        if self.presses.contains_key(&key) {
+        if self.presses.contains_key(key) {
             return Vec::new();
         }
 
@@ -146,8 +146,8 @@ impl GestureDispatcher {
         if *fire_long_when_threshold_crossed {
             self.schedule(
                 now + Duration::from_millis(*threshold_ms),
-                self.run_for(
-                    &key,
+                Self::run_for(
+                    key,
                     ActionBranch::PressLong,
                     action,
                     GestureRunPhase::Active,
@@ -192,19 +192,19 @@ impl GestureDispatcher {
 
     fn observe_tap_release(
         &mut self,
-        key: GestureKey,
+        key: &GestureKey,
         action: &Action,
         threshold_ms: u64,
         fire_single_immediately: bool,
         now: Instant,
     ) -> Vec<GestureRun> {
-        if let Some(first) = self.taps.remove(&key) {
+        if let Some(first) = self.taps.remove(key) {
             if now.duration_since(first.first_release_at) <= Duration::from_millis(threshold_ms) {
                 if let Some(single_due_at) = first.single_due_at {
-                    self.cancel_exact(&key, ActionBranch::TapSingle, single_due_at);
+                    self.cancel_exact(key, ActionBranch::TapSingle, single_due_at);
                 }
-                return vec![self.run_for(
-                    &key,
+                return vec![Self::run_for(
+                    key,
                     ActionBranch::TapDouble,
                     action,
                     GestureRunPhase::Momentary,
@@ -212,9 +212,9 @@ impl GestureDispatcher {
             }
 
             if let Some(single_due_at) = first.single_due_at {
-                self.cancel_exact(&key, ActionBranch::TapSingle, single_due_at);
-                let mut runs = vec![self.run_for(
-                    &key,
+                self.cancel_exact(key, ActionBranch::TapSingle, single_due_at);
+                let mut runs = vec![Self::run_for(
+                    key,
                     ActionBranch::TapSingle,
                     action,
                     GestureRunPhase::Momentary,
@@ -235,7 +235,7 @@ impl GestureDispatcher {
 
     fn start_tap_window(
         &mut self,
-        key: GestureKey,
+        key: &GestureKey,
         action: &Action,
         threshold_ms: u64,
         fire_single_immediately: bool,
@@ -252,8 +252,8 @@ impl GestureDispatcher {
         );
 
         if fire_single_immediately {
-            vec![self.run_for(
-                &key,
+            vec![Self::run_for(
+                key,
                 ActionBranch::TapSingle,
                 action,
                 GestureRunPhase::Momentary,
@@ -261,8 +261,8 @@ impl GestureDispatcher {
         } else {
             self.schedule(
                 single_due_at.expect("delayed single tap has a due instant"),
-                self.run_for(
-                    &key,
+                Self::run_for(
+                    key,
                     ActionBranch::TapSingle,
                     action,
                     GestureRunPhase::Momentary,
@@ -274,22 +274,22 @@ impl GestureDispatcher {
 
     fn observe_press_release(
         &mut self,
-        key: GestureKey,
+        key: &GestureKey,
         action: &Action,
         threshold_ms: u64,
         fire_long_when_threshold_crossed: bool,
         now: Instant,
     ) -> Vec<GestureRun> {
-        let Some(state) = self.presses.remove(&key) else {
+        let Some(state) = self.presses.remove(key) else {
             return Vec::new();
         };
 
-        self.cancel(&key, ActionBranch::PressLong);
+        self.cancel(key, ActionBranch::PressLong);
 
         if fire_long_when_threshold_crossed {
             if state.long_fired {
-                return vec![self.run_for(
-                    &key,
+                return vec![Self::run_for(
+                    key,
                     ActionBranch::PressLong,
                     action,
                     GestureRunPhase::Release,
@@ -298,14 +298,14 @@ impl GestureDispatcher {
 
             if now.duration_since(state.pressed_at) >= Duration::from_millis(threshold_ms) {
                 return vec![
-                    self.run_for(
-                        &key,
+                    Self::run_for(
+                        key,
                         ActionBranch::PressLong,
                         action,
                         GestureRunPhase::Active,
                     ),
-                    self.run_for(
-                        &key,
+                    Self::run_for(
+                        key,
                         ActionBranch::PressLong,
                         action,
                         GestureRunPhase::Release,
@@ -313,8 +313,8 @@ impl GestureDispatcher {
                 ];
             }
 
-            return vec![self.run_for(
-                &key,
+            return vec![Self::run_for(
+                key,
                 ActionBranch::PressShort,
                 action,
                 GestureRunPhase::Momentary,
@@ -322,15 +322,15 @@ impl GestureDispatcher {
         }
 
         if now.duration_since(state.pressed_at) >= Duration::from_millis(threshold_ms) {
-            vec![self.run_for(
-                &key,
+            vec![Self::run_for(
+                key,
                 ActionBranch::PressLong,
                 action,
                 GestureRunPhase::Momentary,
             )]
         } else {
-            vec![self.run_for(
-                &key,
+            vec![Self::run_for(
+                key,
                 ActionBranch::PressShort,
                 action,
                 GestureRunPhase::Momentary,
@@ -339,7 +339,6 @@ impl GestureDispatcher {
     }
 
     fn run_for(
-        &self,
         key: &GestureKey,
         branch: ActionBranch,
         action: &Action,
@@ -384,10 +383,10 @@ impl GestureDispatcher {
             self.taps.remove(&scheduled.run.key);
         }
 
-        if scheduled.run.branch == ActionBranch::PressLong {
-            if let Some(state) = self.presses.get_mut(&scheduled.run.key) {
-                state.long_fired = true;
-            }
+        if scheduled.run.branch == ActionBranch::PressLong
+            && let Some(state) = self.presses.get_mut(&scheduled.run.key)
+        {
+            state.long_fired = true;
         }
     }
 }
@@ -438,7 +437,7 @@ mod tests {
 
         assert!(
             gestures
-                .observe_release(key(ActionBranch::TapSingle), &action, now)
+                .observe_release(&key(ActionBranch::TapSingle), &action, now)
                 .is_empty()
         );
         assert!(
@@ -469,12 +468,8 @@ mod tests {
         };
         let key = key(ActionBranch::TapSingle);
 
-        assert!(
-            gestures
-                .observe_release(key.clone(), &action, now)
-                .is_empty()
-        );
-        let immediate = gestures.observe_release(key, &action, now + Duration::from_millis(250));
+        assert!(gestures.observe_release(&key, &action, now).is_empty());
+        let immediate = gestures.observe_release(&key, &action, now + Duration::from_millis(250));
 
         assert_eq!(immediate.len(), 1);
         assert_eq!(immediate[0].branch, ActionBranch::TapDouble);
@@ -498,7 +493,7 @@ mod tests {
             double_tap: Vec::new(),
         };
 
-        let immediate = gestures.observe_release(key(ActionBranch::TapSingle), &action, now);
+        let immediate = gestures.observe_release(&key(ActionBranch::TapSingle), &action, now);
 
         assert_eq!(immediate.len(), 1);
         assert_eq!(immediate[0].branch, ActionBranch::TapSingle);
@@ -519,8 +514,8 @@ mod tests {
         };
         let key = key(ActionBranch::TapSingle);
 
-        assert_eq!(gestures.observe_release(key.clone(), &action, now).len(), 1);
-        let second = gestures.observe_release(key, &action, now + Duration::from_millis(250));
+        assert_eq!(gestures.observe_release(&key, &action, now).len(), 1);
+        let second = gestures.observe_release(&key, &action, now + Duration::from_millis(250));
 
         assert_eq!(second.len(), 1);
         assert_eq!(second[0].branch, ActionBranch::TapDouble);
@@ -539,14 +534,14 @@ mod tests {
         };
         let key = key(ActionBranch::PressLong);
 
-        assert!(gestures.observe_press(key.clone(), &action, now).is_empty());
+        assert!(gestures.observe_press(&key, &action, now).is_empty());
         let due = gestures.drain_due(now + Duration::from_millis(500));
 
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].branch, ActionBranch::PressLong);
         assert!(matches!(due[0].phase, GestureRunPhase::Active));
 
-        let release = gestures.observe_release(key, &action, now + Duration::from_millis(550));
+        let release = gestures.observe_release(&key, &action, now + Duration::from_millis(550));
 
         assert_eq!(release.len(), 1);
         assert_eq!(release[0].branch, ActionBranch::PressLong);
@@ -565,8 +560,8 @@ mod tests {
         };
         let key = key(ActionBranch::PressLong);
 
-        assert!(gestures.observe_press(key.clone(), &action, now).is_empty());
-        let release = gestures.observe_release(key, &action, now + Duration::from_millis(500));
+        assert!(gestures.observe_press(&key, &action, now).is_empty());
+        let release = gestures.observe_release(&key, &action, now + Duration::from_millis(500));
 
         assert_eq!(release.len(), 1);
         assert_eq!(release[0].branch, ActionBranch::PressLong);
@@ -587,8 +582,8 @@ mod tests {
         };
         let key = key(ActionBranch::PressLong);
 
-        assert!(gestures.observe_press(key.clone(), &action, now).is_empty());
-        let release = gestures.observe_release(key, &action, now + Duration::from_millis(250));
+        assert!(gestures.observe_press(&key, &action, now).is_empty());
+        let release = gestures.observe_release(&key, &action, now + Duration::from_millis(250));
 
         assert_eq!(release.len(), 1);
         assert_eq!(release[0].branch, ActionBranch::PressShort);
@@ -614,18 +609,14 @@ mod tests {
         };
         let key = key(ActionBranch::TapSingle);
 
-        assert!(
-            gestures
-                .observe_release(key.clone(), &action, now)
-                .is_empty()
-        );
+        assert!(gestures.observe_release(&key, &action, now).is_empty());
         let second_release =
-            gestures.observe_release(key.clone(), &action, now + Duration::from_millis(600));
+            gestures.observe_release(&key, &action, now + Duration::from_millis(600));
         assert_eq!(second_release.len(), 1);
         assert_eq!(second_release[0].branch, ActionBranch::TapSingle);
 
         let third_release =
-            gestures.observe_release(key, &action, now + Duration::from_millis(700));
+            gestures.observe_release(&key, &action, now + Duration::from_millis(700));
 
         assert_eq!(third_release.len(), 1);
         assert_eq!(third_release[0].branch, ActionBranch::TapDouble);
@@ -650,12 +641,12 @@ mod tests {
 
         assert!(
             gestures
-                .observe_release(key(ActionBranch::TapSingle), &tap, now)
+                .observe_release(&key(ActionBranch::TapSingle), &tap, now)
                 .is_empty()
         );
         assert!(
             gestures
-                .observe_press(key(ActionBranch::PressLong), &press, now)
+                .observe_press(&key(ActionBranch::PressLong), &press, now)
                 .is_empty()
         );
 
@@ -682,13 +673,9 @@ mod tests {
         };
         let key = key(ActionBranch::TapSingle);
 
-        assert!(
-            gestures
-                .observe_release(key.clone(), &action, now)
-                .is_empty()
-        );
+        assert!(gestures.observe_release(&key, &action, now).is_empty());
         let second_release =
-            gestures.observe_release(key.clone(), &action, now + Duration::from_millis(600));
+            gestures.observe_release(&key, &action, now + Duration::from_millis(600));
 
         assert_eq!(second_release.len(), 1);
         assert_eq!(second_release[0].branch, ActionBranch::TapSingle);
@@ -698,7 +685,7 @@ mod tests {
         ));
 
         let third_release =
-            gestures.observe_release(key, &action, now + Duration::from_millis(700));
+            gestures.observe_release(&key, &action, now + Duration::from_millis(700));
 
         assert_eq!(third_release.len(), 1);
         assert_eq!(third_release[0].branch, ActionBranch::TapDouble);
@@ -723,8 +710,8 @@ mod tests {
         };
         let key = key(ActionBranch::PressLong);
 
-        assert!(gestures.observe_press(key.clone(), &action, now).is_empty());
-        let release = gestures.observe_release(key, &action, now + Duration::from_millis(600));
+        assert!(gestures.observe_press(&key, &action, now).is_empty());
+        let release = gestures.observe_release(&key, &action, now + Duration::from_millis(600));
 
         assert_eq!(release.len(), 2);
         assert_eq!(release[0].branch, ActionBranch::PressLong);
@@ -750,10 +737,10 @@ mod tests {
         };
         let key = key(ActionBranch::PressLong);
 
-        assert!(gestures.observe_press(key.clone(), &action, now).is_empty());
+        assert!(gestures.observe_press(&key, &action, now).is_empty());
         assert!(
             gestures
-                .observe_press(key.clone(), &action, now + Duration::from_millis(250))
+                .observe_press(&key, &action, now + Duration::from_millis(250))
                 .is_empty()
         );
 
@@ -764,10 +751,10 @@ mod tests {
 
         assert!(
             gestures
-                .observe_press(key.clone(), &action, now + Duration::from_millis(550))
+                .observe_press(&key, &action, now + Duration::from_millis(550))
                 .is_empty()
         );
-        let release = gestures.observe_release(key, &action, now + Duration::from_millis(600));
+        let release = gestures.observe_release(&key, &action, now + Duration::from_millis(600));
 
         assert_eq!(release.len(), 1);
         assert_eq!(release[0].branch, ActionBranch::PressLong);

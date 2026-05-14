@@ -1927,70 +1927,67 @@ fn collect_gesture_runs_for_event(
     };
 
     let mut out = Vec::new();
-    collect_gesture_runs_in_actions(
+    let mut ctx = GestureCollection {
         dispatcher,
         profile_id,
         mapping,
-        &mapping.actions,
-        &mut Vec::new(),
         pressed,
         state,
         now,
-        &mut out,
-    );
+        out: &mut out,
+    };
+    collect_gesture_runs_in_actions(&mut ctx, &mapping.actions, &mut Vec::new());
     out
 }
 
+struct GestureCollection<'a> {
+    dispatcher: &'a mut GestureDispatcher,
+    profile_id: &'a str,
+    mapping: &'a Mapping,
+    pressed: bool,
+    state: &'a AppState,
+    now: Instant,
+    out: &'a mut Vec<GestureRun>,
+}
+
 fn collect_gesture_runs_in_actions(
-    dispatcher: &mut GestureDispatcher,
-    profile_id: &str,
-    mapping: &Mapping,
+    ctx: &mut GestureCollection<'_>,
     actions: &[Action],
     path: &mut Vec<ActionPathSegment>,
-    pressed: bool,
-    state: &AppState,
-    now: Instant,
-    out: &mut Vec<GestureRun>,
 ) {
     for (index, action) in actions.iter().enumerate() {
         path.push(ActionPathSegment::Index(index));
 
         match action {
-            Action::TapGesture { .. } if !pressed => {
-                out.extend(dispatcher.observe_release(
-                    GestureKey::new(
-                        profile_id.to_owned(),
-                        mapping.mode.clone(),
-                        mapping.input.clone(),
-                        path.clone(),
-                    ),
-                    action,
-                    now,
-                ));
+            Action::TapGesture { .. } if !ctx.pressed => {
+                let key = GestureKey::new(
+                    ctx.profile_id.to_owned(),
+                    ctx.mapping.mode.clone(),
+                    ctx.mapping.input.clone(),
+                    path.clone(),
+                );
+                ctx.out
+                    .extend(ctx.dispatcher.observe_release(&key, action, ctx.now));
             }
-            Action::PressGesture { .. } if pressed => {
-                out.extend(dispatcher.observe_press(
-                    GestureKey::new(
-                        profile_id.to_owned(),
-                        mapping.mode.clone(),
-                        mapping.input.clone(),
-                        path.clone(),
-                    ),
-                    action,
-                    now,
-                ));
+            Action::PressGesture { .. } if ctx.pressed => {
+                let key = GestureKey::new(
+                    ctx.profile_id.to_owned(),
+                    ctx.mapping.mode.clone(),
+                    ctx.mapping.input.clone(),
+                    path.clone(),
+                );
+                ctx.out
+                    .extend(ctx.dispatcher.observe_press(&key, action, ctx.now));
             }
             Action::PressGesture { .. } => {
-                out.extend(dispatcher.observe_release(
-                    GestureKey::new(
-                        profile_id.to_owned(),
-                        mapping.mode.clone(),
-                        mapping.input.clone(),
-                        path.clone(),
-                    ),
-                    action,
-                    now,
-                ));
+                let key = GestureKey::new(
+                    ctx.profile_id.to_owned(),
+                    ctx.mapping.mode.clone(),
+                    ctx.mapping.input.clone(),
+                    path.clone(),
+                );
+                ctx.out
+                    .extend(ctx.dispatcher.observe_release(&key, action, ctx.now));
             }
             _ => {}
         }
@@ -2002,23 +1999,13 @@ fn collect_gesture_runs_in_actions(
         } = action
         {
             let (branch, branch_actions) =
-                if pipeline::evaluate_condition(condition, &state.input_cache) {
+                if pipeline::evaluate_condition(condition, &ctx.state.input_cache) {
                     (ActionBranch::ConditionalTrue, if_true.as_slice())
                 } else {
                     (ActionBranch::ConditionalFalse, if_false.as_slice())
                 };
             path.push(ActionPathSegment::Branch(branch));
-            collect_gesture_runs_in_actions(
-                dispatcher,
-                profile_id,
-                mapping,
-                branch_actions,
-                path,
-                pressed,
-                state,
-                now,
-                out,
-            );
+            collect_gesture_runs_in_actions(ctx, branch_actions, path);
             path.pop();
         }
 

@@ -558,7 +558,7 @@ impl GestureEngineHarness {
         self.tick();
     }
 
-    fn load_profile(&mut self, profile: Profile) {
+    fn load_profile(&mut self, profile: &Profile) {
         let path = temp_profile_path("gesture-profile-change");
         profile.save(&path).expect("profile should save");
         self.tx
@@ -927,7 +927,7 @@ fn pending_gestures_clear_on_profile_change() {
         schedule_pending_single_tap_with_profile_path(Some(original_path.clone()));
     let output = vjoy_button_output(1, 4);
 
-    harness.load_profile(gesture_profile_with_mapping(button_addr(2), Vec::new()));
+    harness.load_profile(&gesture_profile_with_mapping(button_addr(2), Vec::new()));
     harness
         .tx
         .send(EngineCommand::LoadProfile(original_path))

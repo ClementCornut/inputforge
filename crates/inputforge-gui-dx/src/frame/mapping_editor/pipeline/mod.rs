@@ -81,7 +81,7 @@ pub(super) fn path_invalidated_by_mutation(
         StageIdSegment::Index(idx) => idx >= mutation_index,
         // Branch segment: different sub-branch from
         // the mutation, which targets an Index position. Preserve.
-        _ => false,
+        StageIdSegment::Branch(_) => false,
     }
 }
 
