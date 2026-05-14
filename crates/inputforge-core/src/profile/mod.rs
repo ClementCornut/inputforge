@@ -15,7 +15,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::action::{Action, Mapping};
+use crate::action::{Action, Mapping, validate_gesture_threshold_ms};
 use crate::error::{EngineError, Result};
 use crate::mode::Modes;
 use crate::types::{InputAddress, InputId};
@@ -343,6 +343,7 @@ impl Profile {
     ///
     /// Returns [`EngineError::ProfileWrite`] on serialization failure.
     pub fn to_toml(&self) -> Result<String> {
+        validate_profile_actions(self)?;
         let raw = self.to_raw();
         Ok(toml::to_string(&raw)?)
     }
@@ -715,6 +716,55 @@ impl Profile {
     }
 }
 
+fn validate_profile_actions(profile: &Profile) -> Result<()> {
+    for mapping in profile.mappings() {
+        validate_actions_for_serialization(&mapping.actions)?;
+    }
+    Ok(())
+}
+
+fn validate_actions_for_serialization(actions: &[Action]) -> Result<()> {
+    for action in actions {
+        match action {
+            Action::Conditional {
+                if_true, if_false, ..
+            } => {
+                validate_actions_for_serialization(if_true)?;
+                validate_actions_for_serialization(if_false)?;
+            }
+            Action::TapGesture {
+                threshold_ms,
+                single_tap,
+                double_tap,
+                ..
+            } => {
+                validate_gesture_threshold_ms(*threshold_ms)?;
+                validate_actions_for_serialization(single_tap)?;
+                validate_actions_for_serialization(double_tap)?;
+            }
+            Action::PressGesture {
+                threshold_ms,
+                short_press,
+                long_press,
+                ..
+            } => {
+                validate_gesture_threshold_ms(*threshold_ms)?;
+                validate_actions_for_serialization(short_press)?;
+                validate_actions_for_serialization(long_press)?;
+            }
+            Action::ResponseCurve { .. }
+            | Action::Deadzone { .. }
+            | Action::Invert
+            | Action::MapToVJoy { .. }
+            | Action::MapToKeyboard { .. }
+            | Action::MapToMouse { .. }
+            | Action::MergeAxis { .. }
+            | Action::ChangeMode { .. } => {}
+        }
+    }
+    Ok(())
+}
+
 /// Walk an action graph in place, rewriting every `from` mode-name reference
 /// to `to`. Returns whether any rewrite happened.
 fn rewrite_mode_in_action(action: &mut Action, from: &str, to: &str) -> bool {
@@ -865,6 +915,50 @@ mod tests {
             profile.settings().startup_mode(),
             back.settings().startup_mode()
         );
+    }
+
+    #[test]
+    fn profile_to_toml_rejects_programmatic_tap_gesture_zero_threshold() {
+        let mut profile = minimal_profile();
+        profile.set_mapping(
+            &test_input(),
+            "Default",
+            Some("invalid tap".to_owned()),
+            vec![Action::TapGesture {
+                threshold_ms: 0,
+                fire_single_immediately: false,
+                single_tap: Vec::new(),
+                double_tap: Vec::new(),
+            }],
+        );
+
+        let err = profile
+            .to_toml()
+            .expect_err("invalid tap threshold should not serialize");
+
+        assert!(err.to_string().contains("outside 1..=10000ms"));
+    }
+
+    #[test]
+    fn profile_to_toml_rejects_programmatic_press_gesture_above_max_threshold() {
+        let mut profile = minimal_profile();
+        profile.set_mapping(
+            &test_input(),
+            "Default",
+            Some("invalid press".to_owned()),
+            vec![Action::PressGesture {
+                threshold_ms: 10001,
+                fire_long_when_threshold_crossed: false,
+                short_press: Vec::new(),
+                long_press: Vec::new(),
+            }],
+        );
+
+        let err = profile
+            .to_toml()
+            .expect_err("invalid press threshold should not serialize");
+
+        assert!(err.to_string().contains("outside 1..=10000ms"));
     }
 
     #[test]
