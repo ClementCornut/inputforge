@@ -676,6 +676,9 @@ impl Profile {
                     reason: format!("mapping references unknown mode '{}'", mapping.mode),
                 });
             }
+        }
+
+        for mapping in &raw.mappings {
             validate_mapping_actions(mapping)?;
         }
 
@@ -1024,6 +1027,53 @@ double_tap = []
         assert!(
             err.to_string()
                 .contains("gesture stages require a button mapping"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn profile_reports_unknown_mapping_mode_before_action_validation() {
+        let input = r#"
+modes = ["Default"]
+
+[profile]
+id = "01J00000000000000000000000"
+name = "Invalid Precedence"
+startup_mode = "Default"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "dev-1"
+
+[mappings.input.input]
+type = "axis"
+index = 0
+
+[[mappings.actions]]
+type = "tap_gesture"
+threshold_ms = 500
+fire_single_immediately = false
+single_tap = []
+double_tap = []
+
+[[mappings]]
+mode = "Unknown"
+actions = []
+
+[mappings.input]
+device = "dev-1"
+
+[mappings.input.input]
+type = "button"
+index = 0
+"#;
+
+        let err = Profile::from_toml(input).expect_err("profile should fail validation");
+
+        assert!(
+            err.to_string().contains("mapping references unknown mode"),
             "unexpected error: {err}"
         );
     }
