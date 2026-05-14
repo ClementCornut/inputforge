@@ -168,6 +168,10 @@ pub fn execute_pipeline(actions: &[Action], ctx: &mut PipelineContext<'_>) {
     );
 }
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Public helper owns ad hoc scope values at call sites and borrows internally."
+)]
 pub fn execute_pipeline_with_scope(
     actions: &[Action],
     ctx: &mut PipelineContext<'_>,
@@ -177,6 +181,10 @@ pub fn execute_pipeline_with_scope(
     execute_pipeline_inner(actions, ctx, &scope, &mut path);
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Pipeline action dispatch is intentionally kept in one exhaustive match."
+)]
 fn execute_pipeline_inner(
     actions: &[Action],
     ctx: &mut PipelineContext<'_>,
@@ -227,11 +235,10 @@ fn execute_pipeline_inner(
                     tracing::debug!("hat-to-vJoy mapping not yet implemented");
                 }
             },
-            Action::MapToKeyboard { key, behavior } => match &ctx.input_value {
-                InputValue::Hat { .. } => {
+            Action::MapToKeyboard { key, behavior } => {
+                if let InputValue::Hat { .. } = &ctx.input_value {
                     tracing::debug!("hat-to-keyboard mapping not yet implemented");
-                }
-                _ => {
+                } else {
                     let active = button_pressed_from_value(ctx.current_value);
                     ctx.outputs.push(PipelineOutput::Keyboard {
                         owner: scope.owner(
@@ -244,12 +251,11 @@ fn execute_pipeline_inner(
                         active,
                     });
                 }
-            },
-            Action::MapToMouse { target, behavior } => match &ctx.input_value {
-                InputValue::Hat { .. } => {
+            }
+            Action::MapToMouse { target, behavior } => {
+                if let InputValue::Hat { .. } = &ctx.input_value {
                     tracing::debug!("hat-to-mouse mapping not yet implemented");
-                }
-                _ => {
+                } else {
                     let active = button_pressed_from_value(ctx.current_value);
                     let behavior = if target.is_wheel() {
                         OutputBehavior::Pulse
@@ -263,7 +269,7 @@ fn execute_pipeline_inner(
                         active,
                     });
                 }
-            },
+            }
             Action::MergeAxis {
                 second_input,
                 operation,
@@ -1007,7 +1013,7 @@ mod tests {
         let mut ctx = button_ctx(&cache, true);
         let key = KeyCombo {
             key: PhysicalKey::Space,
-            modifiers: vec![KeyModifier::Ctrl],
+            modifiers: vec![KeyModifier::CONTROL_LEFT],
         };
         let actions = [Action::MapToKeyboard {
             key: key.clone(),

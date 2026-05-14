@@ -11,11 +11,6 @@ use crate::types::{KeyCombo, KeyModifier, PhysicalKeyScanCode};
 
 use super::traits::KeyboardSink;
 
-/// Maximum number of `INPUT` events per key combination.
-///
-/// This accounts for the 4 possible modifier keys plus 1 main key.
-const MAX_COMBO_INPUTS: usize = 5;
-
 /// Keyboard output that simulates key presses via Win32 `SendInput`.
 #[derive(Debug, Default)]
 pub struct KeyboardOutput;
@@ -36,8 +31,8 @@ impl KeyboardOutput {
     ///
     /// Returns [`EngineError::OutputFailed`] if `SendInput` fails to inject the events.
     pub fn send_key(&self, combo: &KeyCombo, pressed: bool) -> Result<()> {
-        let (inputs, count) = build_key_inputs(combo, pressed);
-        send_inputs(&inputs[..count])
+        let inputs = build_key_inputs(combo, pressed);
+        send_inputs(&inputs)
     }
 }
 
@@ -78,27 +73,22 @@ fn make_input(scan_code: PhysicalKeyScanCode, key_up: bool) -> INPUT {
     }
 }
 
-fn build_key_inputs(combo: &KeyCombo, pressed: bool) -> ([INPUT; MAX_COMBO_INPUTS], usize) {
-    let mut inputs = [INPUT::default(); MAX_COMBO_INPUTS];
-    let mut count = 0;
+fn build_key_inputs(combo: &KeyCombo, pressed: bool) -> Vec<INPUT> {
+    let mut inputs = Vec::with_capacity(combo.modifiers.len() + 1);
 
     if pressed {
         for modifier in &combo.modifiers {
-            inputs[count] = make_input(modifier_to_scan_code(*modifier), false);
-            count += 1;
+            inputs.push(make_input(modifier_to_scan_code(*modifier), false));
         }
-        inputs[count] = make_input(combo.key.scan_code(), false);
-        count += 1;
+        inputs.push(make_input(combo.key.scan_code(), false));
     } else {
-        inputs[count] = make_input(combo.key.scan_code(), true);
-        count += 1;
+        inputs.push(make_input(combo.key.scan_code(), true));
         for modifier in combo.modifiers.iter().rev() {
-            inputs[count] = make_input(modifier_to_scan_code(*modifier), true);
-            count += 1;
+            inputs.push(make_input(modifier_to_scan_code(*modifier), true));
         }
     }
 
-    (inputs, count)
+    inputs
 }
 
 /// Call Win32 `SendInput` with the given array of inputs.
@@ -142,29 +132,8 @@ fn send_inputs(inputs: &[INPUT]) -> Result<()> {
     }
 }
 
-/// Maps a key modifier to its corresponding left-side scan code.
-///
-/// All modifiers are sent as the left-hand variant. Left Windows uses an
-/// extended scan code; Ctrl, Shift, and Alt do not.
 fn modifier_to_scan_code(modifier: KeyModifier) -> PhysicalKeyScanCode {
-    match modifier {
-        KeyModifier::Ctrl => PhysicalKeyScanCode {
-            code: 0x1d,
-            extended: false,
-        },
-        KeyModifier::Shift => PhysicalKeyScanCode {
-            code: 0x2a,
-            extended: false,
-        },
-        KeyModifier::Alt => PhysicalKeyScanCode {
-            code: 0x38,
-            extended: false,
-        },
-        KeyModifier::Win => PhysicalKeyScanCode {
-            code: 0x5b,
-            extended: true,
-        },
-    }
+    modifier.physical_key().scan_code()
 }
 
 #[cfg(test)]
@@ -183,30 +152,41 @@ mod tests {
     #[test]
     fn modifier_to_scan_code_all_variants() {
         assert_eq!(
-            modifier_to_scan_code(KeyModifier::Ctrl),
+            modifier_to_scan_code(KeyModifier::CONTROL_LEFT),
             PhysicalKeyScanCode {
                 code: 0x1d,
                 extended: false,
             }
         );
         assert_eq!(
-            modifier_to_scan_code(KeyModifier::Shift),
+            modifier_to_scan_code(KeyModifier::SHIFT_LEFT),
             PhysicalKeyScanCode {
                 code: 0x2a,
                 extended: false,
             }
         );
         assert_eq!(
-            modifier_to_scan_code(KeyModifier::Alt),
+            modifier_to_scan_code(KeyModifier::ALT_LEFT),
             PhysicalKeyScanCode {
                 code: 0x38,
                 extended: false,
             }
         );
         assert_eq!(
-            modifier_to_scan_code(KeyModifier::Win),
+            modifier_to_scan_code(KeyModifier::META_LEFT),
             PhysicalKeyScanCode {
                 code: 0x5b,
+                extended: true,
+            }
+        );
+    }
+
+    #[test]
+    fn modifier_to_scan_code_uses_physical_key() {
+        assert_eq!(
+            modifier_to_scan_code(KeyModifier::ALT_RIGHT),
+            PhysicalKeyScanCode {
+                code: 0x38,
                 extended: true,
             }
         );
@@ -267,12 +247,12 @@ mod tests {
     fn build_key_inputs_presses_modifiers_before_key() {
         let combo = KeyCombo {
             key: PhysicalKey::NumpadEnter,
-            modifiers: vec![KeyModifier::Ctrl, KeyModifier::Shift],
+            modifiers: vec![KeyModifier::CONTROL_LEFT, KeyModifier::SHIFT_LEFT],
         };
 
-        let (inputs, count) = build_key_inputs(&combo, true);
+        let inputs = build_key_inputs(&combo, true);
 
-        assert_eq!(count, 3);
+        assert_eq!(inputs.len(), 3);
         assert_eq!(
             keyboard_input_parts(inputs[0]),
             (VIRTUAL_KEY(0), 0x1d, KEYEVENTF_SCANCODE)
@@ -295,12 +275,12 @@ mod tests {
     fn build_key_inputs_releases_key_before_modifiers_in_reverse_order() {
         let combo = KeyCombo {
             key: PhysicalKey::NumpadDivide,
-            modifiers: vec![KeyModifier::Ctrl, KeyModifier::Alt],
+            modifiers: vec![KeyModifier::CONTROL_LEFT, KeyModifier::ALT_LEFT],
         };
 
-        let (inputs, count) = build_key_inputs(&combo, false);
+        let inputs = build_key_inputs(&combo, false);
 
-        assert_eq!(count, 3);
+        assert_eq!(inputs.len(), 3);
         assert_eq!(
             keyboard_input_parts(inputs[0]),
             (
@@ -317,5 +297,43 @@ mod tests {
             keyboard_input_parts(inputs[2]),
             (VIRTUAL_KEY(0), 0x1d, KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP)
         );
+    }
+
+    #[test]
+    fn build_key_inputs_handles_modifier_only_base_key() {
+        let combo = KeyCombo {
+            key: PhysicalKey::AltRight,
+            modifiers: Vec::new(),
+        };
+
+        let inputs = build_key_inputs(&combo, true);
+
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(
+            keyboard_input_parts(inputs[0]),
+            (
+                VIRTUAL_KEY(0),
+                0x38,
+                KEYEVENTF_SCANCODE | KEYEVENTF_EXTENDEDKEY
+            )
+        );
+    }
+
+    #[test]
+    fn build_key_inputs_does_not_assume_four_modifiers() {
+        let combo = KeyCombo {
+            key: PhysicalKey::KeyA,
+            modifiers: vec![
+                KeyModifier::CONTROL_LEFT,
+                KeyModifier::CONTROL_RIGHT,
+                KeyModifier::SHIFT_LEFT,
+                KeyModifier::SHIFT_RIGHT,
+                KeyModifier::ALT_RIGHT,
+            ],
+        };
+
+        let inputs = build_key_inputs(&combo, true);
+
+        assert_eq!(inputs.len(), combo.modifiers.len() + 1);
     }
 }

@@ -424,6 +424,10 @@ fn emit_predicate(
     });
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Recursive analyzer keeps branch traversal state together for readability."
+)]
 fn walk(
     context: &AnalysisContext<'_>,
     actions: &[Action],
@@ -638,7 +642,7 @@ mod walker_tests {
     fn keyboard_combo(key: PhysicalKey) -> KeyCombo {
         KeyCombo {
             key,
-            modifiers: vec![KeyModifier::Ctrl, KeyModifier::Shift],
+            modifiers: vec![KeyModifier::CONTROL_LEFT, KeyModifier::SHIFT_LEFT],
         }
     }
 

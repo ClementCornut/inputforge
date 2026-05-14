@@ -16,6 +16,7 @@ use dioxus_ssr::render;
 
 use crate::context::AppContext;
 use crate::frame::mapping_editor::use_editor_state_provider;
+use crate::patterns::keyboard_capture::use_keyboard_capture_provider;
 use crate::patterns::live_capture::use_live_capture_provider;
 
 #[derive(Clone, Props, PartialEq)]
@@ -39,6 +40,7 @@ pub(crate) struct MountStageBodyProps {
 pub(crate) fn MountStageBodyHarness(props: MountStageBodyProps) -> Element {
     build_and_provide_app_context();
     use_live_capture_provider();
+    use_keyboard_capture_provider();
     use_editor_state_provider();
     (props.body_fn)()
 }

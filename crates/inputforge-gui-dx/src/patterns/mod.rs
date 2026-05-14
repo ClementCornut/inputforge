@@ -4,6 +4,7 @@
 
 pub mod destructive_confirm;
 pub mod dirty_confirm;
+pub mod keyboard_capture;
 pub mod live_capture;
 
 pub use destructive_confirm::DestructiveConfirmDialog;

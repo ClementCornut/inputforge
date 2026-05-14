@@ -20,7 +20,7 @@ impl InputSize {
     }
 }
 
-fn should_stop_text_navigation_propagation(key: Key) -> bool {
+fn should_stop_text_navigation_propagation(key: &Key) -> bool {
     matches!(
         key,
         Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown | Key::Home | Key::End
@@ -77,7 +77,7 @@ pub fn TextInput(
         }
     };
     let keydown_handler = move |evt: KeyboardEvent| {
-        if should_stop_text_navigation_propagation(evt.key()) {
+        if should_stop_text_navigation_propagation(&evt.key()) {
             evt.stop_propagation();
         }
         if let Some(handler) = &onkeydown {
@@ -142,7 +142,7 @@ mod tests {
             Key::End,
         ] {
             assert!(
-                should_stop_text_navigation_propagation(key),
+                should_stop_text_navigation_propagation(&key),
                 "text navigation key should not bubble to parent shortcuts"
             );
         }
@@ -152,7 +152,7 @@ mod tests {
     fn commit_and_cancel_keys_still_bubble_to_inline_editors() {
         for key in [Key::Enter, Key::Escape] {
             assert!(
-                !should_stop_text_navigation_propagation(key),
+                !should_stop_text_navigation_propagation(&key),
                 "inline editors must still receive commit/cancel keys"
             );
         }

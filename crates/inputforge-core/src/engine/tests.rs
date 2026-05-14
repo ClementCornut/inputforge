@@ -322,17 +322,19 @@ impl MouseSink for RecordingMouseSink {
     }
 }
 
-fn make_recording_engine(
-    input: MockInputSource,
-    profile: Profile,
-    profile_path: Option<PathBuf>,
-) -> (
+type RecordingEngineHarness = (
     Engine,
     Arc<RwLock<AppState>>,
     mpsc::Sender<EngineCommand>,
     Arc<RecordingKeyboardState>,
     Arc<RecordingMouseState>,
-) {
+);
+
+fn make_recording_engine(
+    input: MockInputSource,
+    profile: Profile,
+    profile_path: Option<PathBuf>,
+) -> RecordingEngineHarness {
     make_recording_engine_with_settings_path(input, profile, profile_path, PathBuf::new())
 }
 
@@ -341,19 +343,12 @@ fn make_recording_engine_with_settings_path(
     profile: Profile,
     profile_path: Option<PathBuf>,
     settings_path: PathBuf,
-) -> (
-    Engine,
-    Arc<RwLock<AppState>>,
-    mpsc::Sender<EngineCommand>,
-    Arc<RecordingKeyboardState>,
-    Arc<RecordingMouseState>,
-) {
+) -> RecordingEngineHarness {
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
-    {
-        let mut state = state.write();
-        state.engine_status = EngineStatus::Running;
-        state.profile_path = profile_path;
-    }
+    let mut state_write = state.write();
+    state_write.engine_status = EngineStatus::Running;
+    state_write.profile_path = profile_path;
+    drop(state_write);
 
     let (tx, rx) = mpsc::channel();
     let (keyboard, keyboard_state) = RecordingKeyboardSink::new();

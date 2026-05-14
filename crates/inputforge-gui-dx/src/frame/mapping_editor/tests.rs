@@ -1775,7 +1775,7 @@ fn editor_live_readout_keyboard_active_renders_live_chip() {
         if_true: vec![Action::MapToKeyboard {
             key: KeyCombo {
                 key: PhysicalKey::Space,
-                modifiers: vec![KeyModifier::Ctrl],
+                modifiers: vec![KeyModifier::CONTROL_LEFT],
             },
             behavior: OutputBehavior::Hold,
         }],
@@ -1802,7 +1802,7 @@ fn editor_live_readout_keyboard_active_below_threshold_renders_idle_chip() {
         if_true: vec![Action::MapToKeyboard {
             key: KeyCombo {
                 key: PhysicalKey::Space,
-                modifiers: vec![KeyModifier::Ctrl],
+                modifiers: vec![KeyModifier::CONTROL_LEFT],
             },
             behavior: OutputBehavior::Hold,
         }],
@@ -1829,7 +1829,7 @@ fn editor_live_readout_keyboard_inactive_renders_idle_chip() {
         if_true: vec![Action::MapToKeyboard {
             key: KeyCombo {
                 key: PhysicalKey::Space,
-                modifiers: vec![KeyModifier::Ctrl],
+                modifiers: vec![KeyModifier::CONTROL_LEFT],
             },
             behavior: OutputBehavior::Hold,
         }],

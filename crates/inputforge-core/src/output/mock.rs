@@ -296,7 +296,7 @@ mod tests {
         let mut mock = MockKeyboardSink::new();
         let combo = KeyCombo {
             key: PhysicalKey::Space,
-            modifiers: vec![KeyModifier::Ctrl],
+            modifiers: vec![KeyModifier::CONTROL_LEFT],
         };
         mock.pulse_key(&combo).unwrap();
         assert_eq!(mock.calls(), &[KeyboardCall::PulseKey(combo)]);

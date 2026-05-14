@@ -29,6 +29,7 @@ use crate::context::{
 };
 use crate::frame::mapping_editor::{MappingEditor, use_editor_state_provider};
 use crate::frame::view_state::use_view_state_provider;
+use crate::patterns::keyboard_capture::use_keyboard_capture_provider;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::toast::{ToastQueue, ToastState};
 
@@ -640,6 +641,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
         .replace(("Default".to_owned(), addr));
     use_context_provider(|| view);
     use_live_capture_provider();
+    use_keyboard_capture_provider();
     let editor = use_editor_state_provider();
     for stage_id in pre_expanded_stages {
         editor.expanded_stages.clone().write().insert(stage_id);
@@ -693,6 +695,7 @@ fn KeyboardPropSyncHarness() -> Element {
         live: use_signal(LiveSnapshot::default),
     };
     use_context_provider(|| ctx);
+    use_keyboard_capture_provider();
     use_editor_state_provider();
 
     let mut use_next_combo = use_signal(|| false);
@@ -907,7 +910,7 @@ fn map_to_keyboard_body_renders_behavior_selector() {
         .expect("Hold behavior option must render");
     let hold_slice = &html[hold_idx..hold_idx + 220];
     assert!(
-        hold_slice.contains(r#"if-stage__body-strategy-pill"#),
+        hold_slice.contains(r"if-stage__body-strategy-pill"),
         "Hold behavior must reuse strategy pill styling: {hold_slice}"
     );
     assert!(
@@ -925,7 +928,7 @@ fn map_to_mouse_body_renders_targets_and_button_behavior() {
     });
 
     assert!(
-        html.contains(r#"<select"#),
+        html.contains(r"<select"),
         "mouse target must render as a Select: {html}"
     );
     assert!(html.contains(r#"value="left_button" selected=true>Left click</option>"#));
@@ -940,7 +943,7 @@ fn map_to_mouse_body_renders_targets_and_button_behavior() {
         .expect("Hold behavior option must render");
     let hold_slice = &html[hold_idx..hold_idx + 220];
     assert!(
-        hold_slice.contains(r#"if-stage__body-strategy-pill"#),
+        hold_slice.contains(r"if-stage__body-strategy-pill"),
         "Hold behavior must reuse strategy pill styling: {hold_slice}"
     );
     assert!(
@@ -1117,7 +1120,7 @@ fn summary_map_to_keyboard_renders_combo() {
         &Action::MapToKeyboard {
             key: KeyCombo {
                 key: PhysicalKey::KeyQ,
-                modifiers: vec![KeyModifier::Ctrl, KeyModifier::Shift],
+                modifiers: vec![KeyModifier::CONTROL_LEFT, KeyModifier::SHIFT_LEFT],
             },
             behavior: OutputBehavior::Hold,
         },
@@ -1125,6 +1128,10 @@ fn summary_map_to_keyboard_renders_combo() {
     );
     assert!(s.contains("Ctrl"), "missing Ctrl in: {s}");
     assert!(s.contains("Shift"), "missing Shift in: {s}");
+    assert!(
+        !s.contains("Left Ctrl") && !s.contains("Left Shift"),
+        "left modifier labels should be compact in: {s}"
+    );
     let key_q_label = PhysicalKey::KeyQ.display_label();
     assert!(
         s.contains(key_q_label.as_ref()),
@@ -1135,7 +1142,7 @@ fn summary_map_to_keyboard_renders_combo() {
         &Action::MapToKeyboard {
             key: KeyCombo {
                 key: PhysicalKey::NumpadDivide,
-                modifiers: vec![KeyModifier::Alt],
+                modifiers: vec![KeyModifier::ALT_LEFT],
             },
             behavior: OutputBehavior::Pulse,
         },
@@ -1145,6 +1152,44 @@ fn summary_map_to_keyboard_renders_combo() {
         numpad.contains("Alt + Num /"),
         "missing numpad physical label in: {numpad}"
     );
+    assert!(
+        !numpad.contains("Left Alt"),
+        "left alt label should be compact in: {numpad}"
+    );
+}
+
+#[test]
+fn summary_map_to_keyboard_renders_right_alt_label() {
+    let s = stage_summary_for(
+        &Action::MapToKeyboard {
+            key: KeyCombo {
+                key: PhysicalKey::KeyA,
+                modifiers: vec![KeyModifier::ALT_RIGHT],
+            },
+            behavior: OutputBehavior::Hold,
+        },
+        &synth_cfg(),
+    );
+    let key_a_label = PhysicalKey::KeyA.display_label();
+    let expected = format!("Right Alt + {key_a_label}");
+
+    assert!(s.contains(&expected), "missing {expected} in: {s}");
+}
+
+#[test]
+fn summary_map_to_keyboard_renders_right_win_standalone_label() {
+    let s = stage_summary_for(
+        &Action::MapToKeyboard {
+            key: KeyCombo {
+                key: PhysicalKey::MetaRight,
+                modifiers: Vec::new(),
+            },
+            behavior: OutputBehavior::Hold,
+        },
+        &synth_cfg(),
+    );
+
+    assert!(s.contains("Right Win"), "missing Right Win in: {s}");
 }
 
 #[test]
@@ -1219,7 +1264,7 @@ fn map_to_keyboard_body_renders_single_capture_control() {
     let actions = vec![Action::MapToKeyboard {
         key: KeyCombo {
             key: PhysicalKey::KeyQ,
-            modifiers: vec![KeyModifier::Ctrl],
+            modifiers: vec![KeyModifier::CONTROL_LEFT],
         },
         behavior: OutputBehavior::Hold,
     }];
@@ -1240,6 +1285,10 @@ fn map_to_keyboard_body_renders_single_capture_control() {
             && html.contains(r#"aria-label="Capture keyboard shortcut""#)
             && html.contains(&expected_combo),
         "expected physical key capture surface in body: {html}"
+    );
+    assert!(
+        !html.contains("Left Ctrl"),
+        "left ctrl label should be compact in body: {html}"
     );
     assert!(
         !html.contains(r#"type="text""#),

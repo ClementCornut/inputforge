@@ -75,8 +75,8 @@ fn button_flags(target: MouseTarget, down: bool) -> Option<(MOUSE_EVENT_FLAGS, u
 
 fn wheel_data(target: MouseTarget) -> Option<i32> {
     match target {
-        MouseTarget::WheelUp => Some(WIN32_WHEEL_DELTA as i32),
-        MouseTarget::WheelDown => Some(-(WIN32_WHEEL_DELTA as i32)),
+        MouseTarget::WheelUp => Some(WIN32_WHEEL_DELTA.cast_signed()),
+        MouseTarget::WheelDown => Some(-WIN32_WHEEL_DELTA.cast_signed()),
         MouseTarget::LeftButton
         | MouseTarget::RightButton
         | MouseTarget::MiddleButton
@@ -92,7 +92,7 @@ fn make_mouse_input(flags: MOUSE_EVENT_FLAGS, mouse_data: impl Into<i32>) -> INP
             mi: MOUSEINPUT {
                 dx: 0,
                 dy: 0,
-                mouseData: mouse_data.into() as u32,
+                mouseData: mouse_data.into().cast_unsigned(),
                 dwFlags: flags,
                 time: 0,
                 dwExtraInfo: 0,
@@ -101,12 +101,8 @@ fn make_mouse_input(flags: MOUSE_EVENT_FLAGS, mouse_data: impl Into<i32>) -> INP
     }
 }
 
-#[expect(
-    clippy::cast_possible_wrap,
-    reason = "mouse button data values are small"
-)]
 fn mouse_data_to_i32(data: u32) -> i32 {
-    data as i32
+    i32::try_from(data).expect("Win32 mouse button data fits in i32")
 }
 
 /// Call Win32 `SendInput` with a single mouse input.
@@ -178,11 +174,11 @@ mod tests {
     fn wheel_targets_map_to_standard_notches() {
         assert_eq!(
             wheel_data(MouseTarget::WheelUp).unwrap(),
-            WHEEL_DELTA as i32
+            WHEEL_DELTA.cast_signed()
         );
         assert_eq!(
             wheel_data(MouseTarget::WheelDown).unwrap(),
-            -(WHEEL_DELTA as i32)
+            -WHEEL_DELTA.cast_signed()
         );
         assert!(wheel_data(MouseTarget::LeftButton).is_none());
     }
@@ -190,10 +186,12 @@ mod tests {
     #[test]
     #[expect(unsafe_code, reason = "accessing INPUT union field in test")]
     fn wheel_input_uses_mouse_wheel_flag() {
-        let input = make_mouse_input(MOUSEEVENTF_WHEEL, WHEEL_DELTA as i32);
+        let input = make_mouse_input(MOUSEEVENTF_WHEEL, WHEEL_DELTA.cast_signed());
 
         assert_eq!(input.r#type, INPUT_MOUSE);
+        // SAFETY: the test only reads fields from an INPUT initialized as mouse input.
         assert_eq!(unsafe { input.Anonymous.mi.dwFlags }, MOUSEEVENTF_WHEEL);
+        // SAFETY: the test only reads fields from an INPUT initialized as mouse input.
         assert_eq!(unsafe { input.Anonymous.mi.mouseData }, WHEEL_DELTA);
     }
 }

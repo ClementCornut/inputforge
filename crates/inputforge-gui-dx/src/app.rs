@@ -7,6 +7,7 @@ use crate::context::{
 };
 use crate::frame;
 use crate::frame::use_editor_state_provider;
+use crate::patterns::keyboard_capture::use_keyboard_capture_provider;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::theme::ThemeProvider;
 use crate::toast::{ToastQueue, ToastState, ToastViewport, install_warnings_bridge};
@@ -49,6 +50,10 @@ pub(crate) fn app_root() -> Element {
     // F8: live-capture primitive. Single instance, sibling of ToastQueue.
     // Provider self-installs the context.
     use_live_capture_provider();
+
+    // Keyboard capture primitive. Single root listener bridge, armed by callers
+    // only while they need global shortcut capture.
+    use_keyboard_capture_provider();
 
     // F9: editor-internal state. Single instance, sibling of LiveCapture.
     use_editor_state_provider();
@@ -197,6 +202,10 @@ mod tests {
         // any consumer that lands inside `app_root_view` and reads the
         // context resolves successfully under the test harness too.
         crate::patterns::live_capture::use_live_capture_provider();
+
+        // Mirror the runtime path's keyboard-capture provider so consumers can
+        // read the root capture context under SSR tests.
+        crate::patterns::keyboard_capture::use_keyboard_capture_provider();
 
         // F9: mirror the runtime path's editor-state provider install.
         frame::use_editor_state_provider();

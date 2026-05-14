@@ -32,6 +32,10 @@ pub(super) struct OutputResult {
 ///
 /// Uses exhaustive matching on [`PipelineOutput`] so new variants
 /// cause compile errors rather than silent no-ops.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Engine run loop owns these mutable subsystems separately; grouping would obscure borrows."
+)]
 pub(super) fn process_pipeline_outputs(
     outputs: &[PipelineOutput],
     output_sink: &mut dyn OutputSink,
@@ -123,11 +127,11 @@ pub(super) fn dispatch_output_action(
             finish,
         } => {
             dispatch_event(start, keyboard, mouse)?;
-            if let Some(finish) = finish {
-                if let Err(err) = dispatch_event(finish, keyboard, mouse) {
-                    output_state.mark_partial_pulse(owner);
-                    return Err(err);
-                }
+            if let Some(finish) = finish
+                && let Err(err) = dispatch_event(finish, keyboard, mouse)
+            {
+                output_state.mark_partial_pulse(owner);
+                return Err(err);
             }
             output_state.commit_pulse(owner);
         }
@@ -135,7 +139,7 @@ pub(super) fn dispatch_output_action(
             dispatch_event(event, keyboard, mouse)?;
             output_state.commit_release(&owner);
         }
-    };
+    }
 
     Ok(())
 }

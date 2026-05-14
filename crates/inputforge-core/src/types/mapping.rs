@@ -2,7 +2,7 @@
 
 use std::{borrow::Cow, fmt};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A keyboard key combination (key + modifiers).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -14,6 +14,14 @@ pub struct KeyCombo {
 /// Physical keyboard key identified by its position, not by keyboard layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PhysicalKey {
+    ControlLeft,
+    ControlRight,
+    ShiftLeft,
+    ShiftRight,
+    AltLeft,
+    AltRight,
+    MetaLeft,
+    MetaRight,
     KeyA,
     KeyB,
     KeyC,
@@ -117,20 +125,33 @@ pub struct PhysicalKeyScanCode {
 impl PhysicalKey {
     /// Return the Win32 Set 1 scan code for this physical key.
     #[must_use]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Exhaustive physical-key scan-code table is clearer in one match."
+    )]
     pub const fn scan_code(self) -> PhysicalKeyScanCode {
         use PhysicalKey::{
-            ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Backquote, Backslash, Backspace,
-            BracketLeft, BracketRight, Comma, Delete, Digit0, Digit1, Digit2, Digit3, Digit4,
-            Digit5, Digit6, Digit7, Digit8, Digit9, End, Enter, Equal, Escape, F1, F2, F3, F4, F5,
-            F6, F7, F8, F9, F10, F11, F12, Home, Insert, IntlBackslash, KeyA, KeyB, KeyC, KeyD,
-            KeyE, KeyF, KeyG, KeyH, KeyI, KeyJ, KeyK, KeyL, KeyM, KeyN, KeyO, KeyP, KeyQ, KeyR,
-            KeyS, KeyT, KeyU, KeyV, KeyW, KeyX, KeyY, KeyZ, Minus, Numpad0, Numpad1, Numpad2,
-            Numpad3, Numpad4, Numpad5, Numpad6, Numpad7, Numpad8, Numpad9, NumpadAdd,
-            NumpadDecimal, NumpadDivide, NumpadEnter, NumpadMultiply, NumpadSubtract, PageDown,
-            PageUp, Period, Quote, Semicolon, Slash, Space, Tab,
+            AltLeft, AltRight, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Backquote, Backslash,
+            Backspace, BracketLeft, BracketRight, Comma, ControlLeft, ControlRight, Delete, Digit0,
+            Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9, End, Enter,
+            Equal, Escape, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, Home, Insert,
+            IntlBackslash, KeyA, KeyB, KeyC, KeyD, KeyE, KeyF, KeyG, KeyH, KeyI, KeyJ, KeyK, KeyL,
+            KeyM, KeyN, KeyO, KeyP, KeyQ, KeyR, KeyS, KeyT, KeyU, KeyV, KeyW, KeyX, KeyY, KeyZ,
+            MetaLeft, MetaRight, Minus, Numpad0, Numpad1, Numpad2, Numpad3, Numpad4, Numpad5,
+            Numpad6, Numpad7, Numpad8, Numpad9, NumpadAdd, NumpadDecimal, NumpadDivide,
+            NumpadEnter, NumpadMultiply, NumpadSubtract, PageDown, PageUp, Period, Quote,
+            Semicolon, ShiftLeft, ShiftRight, Slash, Space, Tab,
         };
 
         let (code, extended) = match self {
+            ControlLeft => (0x1d, false),
+            ControlRight => (0x1d, true),
+            ShiftLeft => (0x2a, false),
+            ShiftRight => (0x36, false),
+            AltLeft => (0x38, false),
+            AltRight => (0x38, true),
+            MetaLeft => (0x5b, true),
+            MetaRight => (0x5c, true),
             KeyA => (0x1e, false),
             KeyB => (0x30, false),
             KeyC => (0x2e, false),
@@ -218,19 +239,32 @@ impl PhysicalKey {
 
     /// Return the compact label shown in the GUI.
     #[must_use]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Exhaustive physical-key label table is clearer in one match."
+    )]
     pub const fn label(self) -> &'static str {
         use PhysicalKey::{
-            ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Backquote, Backslash, Backspace,
-            BracketLeft, BracketRight, Comma, Delete, Digit0, Digit1, Digit2, Digit3, Digit4,
-            Digit5, Digit6, Digit7, Digit8, Digit9, End, Enter, Equal, Escape, F1, F2, F3, F4, F5,
-            F6, F7, F8, F9, F10, F11, F12, Home, Insert, IntlBackslash, KeyA, KeyB, KeyC, KeyD,
-            KeyE, KeyF, KeyG, KeyH, KeyI, KeyJ, KeyK, KeyL, KeyM, KeyN, KeyO, KeyP, KeyQ, KeyR,
-            KeyS, KeyT, KeyU, KeyV, KeyW, KeyX, KeyY, KeyZ, Minus, Numpad0, Numpad1, Numpad2,
-            Numpad3, Numpad4, Numpad5, Numpad6, Numpad7, Numpad8, Numpad9, NumpadAdd,
-            NumpadDecimal, NumpadDivide, NumpadEnter, NumpadMultiply, NumpadSubtract, PageDown,
-            PageUp, Period, Quote, Semicolon, Slash, Space, Tab,
+            AltLeft, AltRight, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Backquote, Backslash,
+            Backspace, BracketLeft, BracketRight, Comma, ControlLeft, ControlRight, Delete, Digit0,
+            Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9, End, Enter,
+            Equal, Escape, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, Home, Insert,
+            IntlBackslash, KeyA, KeyB, KeyC, KeyD, KeyE, KeyF, KeyG, KeyH, KeyI, KeyJ, KeyK, KeyL,
+            KeyM, KeyN, KeyO, KeyP, KeyQ, KeyR, KeyS, KeyT, KeyU, KeyV, KeyW, KeyX, KeyY, KeyZ,
+            MetaLeft, MetaRight, Minus, Numpad0, Numpad1, Numpad2, Numpad3, Numpad4, Numpad5,
+            Numpad6, Numpad7, Numpad8, Numpad9, NumpadAdd, NumpadDecimal, NumpadDivide,
+            NumpadEnter, NumpadMultiply, NumpadSubtract, PageDown, PageUp, Period, Quote,
+            Semicolon, ShiftLeft, ShiftRight, Slash, Space, Tab,
         };
         match self {
+            ControlLeft => "Ctrl",
+            ControlRight => "Right Ctrl",
+            ShiftLeft => "Shift",
+            ShiftRight => "Right Shift",
+            AltLeft => "Alt",
+            AltRight => "Right Alt",
+            MetaLeft => "Win",
+            MetaRight => "Right Win",
             KeyA => "A",
             KeyB => "B",
             KeyC => "C",
@@ -356,12 +390,14 @@ fn windows_layout_label(key: PhysicalKey) -> Option<String> {
     };
 
     let scan_code = key.scan_code();
+    // SAFETY: `GetKeyboardLayout` accepts zero to query the current thread layout.
     let hkl = unsafe { GetKeyboardLayout(0) };
     let scan = if scan_code.extended {
         u32::from(scan_code.code) | EXTENDED_SCAN_CODE_PREFIX
     } else {
         u32::from(scan_code.code)
     };
+    // SAFETY: `scan` is a Set 1 scan code with optional E0 prefix; `hkl` is from User32.
     let virtual_key = unsafe { MapVirtualKeyExW(scan, MAPVK_VSC_TO_VK_EX, Some(hkl)) };
     if virtual_key == 0 {
         return None;
@@ -369,6 +405,7 @@ fn windows_layout_label(key: PhysicalKey) -> Option<String> {
 
     let key_state = [0_u8; 256];
     let mut buffer = [0_u16; 8];
+    // SAFETY: buffers are valid for the call duration and `ToUnicodeEx` does not retain them.
     let written = unsafe {
         ToUnicodeEx(
             virtual_key,
@@ -410,13 +447,77 @@ impl fmt::Display for PhysicalKey {
     }
 }
 
-/// Keyboard modifier keys.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum KeyModifier {
-    Ctrl,
-    Shift,
-    Alt,
-    Win,
+/// Keyboard modifier key identified by physical key position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct KeyModifier {
+    physical_key: PhysicalKey,
+}
+
+impl KeyModifier {
+    pub const CONTROL_LEFT: Self = Self::new_unchecked(PhysicalKey::ControlLeft);
+    pub const CONTROL_RIGHT: Self = Self::new_unchecked(PhysicalKey::ControlRight);
+    pub const SHIFT_LEFT: Self = Self::new_unchecked(PhysicalKey::ShiftLeft);
+    pub const SHIFT_RIGHT: Self = Self::new_unchecked(PhysicalKey::ShiftRight);
+    pub const ALT_LEFT: Self = Self::new_unchecked(PhysicalKey::AltLeft);
+    pub const ALT_RIGHT: Self = Self::new_unchecked(PhysicalKey::AltRight);
+    pub const META_LEFT: Self = Self::new_unchecked(PhysicalKey::MetaLeft);
+    pub const META_RIGHT: Self = Self::new_unchecked(PhysicalKey::MetaRight);
+
+    #[must_use]
+    pub const fn new(physical_key: PhysicalKey) -> Option<Self> {
+        if matches!(
+            physical_key,
+            PhysicalKey::ControlLeft
+                | PhysicalKey::ControlRight
+                | PhysicalKey::ShiftLeft
+                | PhysicalKey::ShiftRight
+                | PhysicalKey::AltLeft
+                | PhysicalKey::AltRight
+                | PhysicalKey::MetaLeft
+                | PhysicalKey::MetaRight
+        ) {
+            Some(Self::new_unchecked(physical_key))
+        } else {
+            None
+        }
+    }
+
+    #[must_use]
+    pub const fn physical_key(self) -> PhysicalKey {
+        self.physical_key
+    }
+
+    #[must_use]
+    pub const fn display_label(self) -> &'static str {
+        self.physical_key.label()
+    }
+
+    const fn new_unchecked(physical_key: PhysicalKey) -> Self {
+        Self { physical_key }
+    }
+}
+
+impl Serialize for KeyModifier {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.physical_key.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for KeyModifier {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let name = String::deserialize(deserializer)?;
+        let physical_key =
+            PhysicalKey::deserialize(serde::de::value::StrDeserializer::<D::Error>::new(&name))?;
+
+        Self::new(physical_key)
+            .ok_or_else(|| serde::de::Error::custom(format!("{name} is not a physical modifier")))
+    }
 }
 
 /// Axis merge operation.
@@ -435,11 +536,145 @@ mod tests {
     fn key_combo_serde_roundtrip() {
         let combo = KeyCombo {
             key: PhysicalKey::IntlBackslash,
-            modifiers: vec![KeyModifier::Ctrl, KeyModifier::Shift],
+            modifiers: vec![KeyModifier::CONTROL_LEFT, KeyModifier::SHIFT_LEFT],
         };
         let json = serde_json::to_string(&combo).unwrap();
         let back: KeyCombo = serde_json::from_str(&json).unwrap();
         assert_eq!(combo, back);
+    }
+
+    #[test]
+    fn key_modifier_accepts_only_physical_modifier_keys() {
+        let accepted = [
+            PhysicalKey::ControlLeft,
+            PhysicalKey::ControlRight,
+            PhysicalKey::ShiftLeft,
+            PhysicalKey::ShiftRight,
+            PhysicalKey::AltLeft,
+            PhysicalKey::AltRight,
+            PhysicalKey::MetaLeft,
+            PhysicalKey::MetaRight,
+        ];
+
+        for key in accepted {
+            assert_eq!(
+                KeyModifier::new(key).map(KeyModifier::physical_key),
+                Some(key)
+            );
+        }
+
+        for key in [
+            PhysicalKey::KeyA,
+            PhysicalKey::Space,
+            PhysicalKey::NumpadEnter,
+        ] {
+            assert_eq!(KeyModifier::new(key), None);
+        }
+    }
+
+    #[test]
+    fn physical_modifier_scan_codes_are_side_specific() {
+        let cases = [
+            (
+                PhysicalKey::ControlLeft,
+                PhysicalKeyScanCode {
+                    code: 0x1d,
+                    extended: false,
+                },
+            ),
+            (
+                PhysicalKey::ControlRight,
+                PhysicalKeyScanCode {
+                    code: 0x1d,
+                    extended: true,
+                },
+            ),
+            (
+                PhysicalKey::ShiftLeft,
+                PhysicalKeyScanCode {
+                    code: 0x2a,
+                    extended: false,
+                },
+            ),
+            (
+                PhysicalKey::ShiftRight,
+                PhysicalKeyScanCode {
+                    code: 0x36,
+                    extended: false,
+                },
+            ),
+            (
+                PhysicalKey::AltLeft,
+                PhysicalKeyScanCode {
+                    code: 0x38,
+                    extended: false,
+                },
+            ),
+            (
+                PhysicalKey::AltRight,
+                PhysicalKeyScanCode {
+                    code: 0x38,
+                    extended: true,
+                },
+            ),
+            (
+                PhysicalKey::MetaLeft,
+                PhysicalKeyScanCode {
+                    code: 0x5b,
+                    extended: true,
+                },
+            ),
+            (
+                PhysicalKey::MetaRight,
+                PhysicalKeyScanCode {
+                    code: 0x5c,
+                    extended: true,
+                },
+            ),
+        ];
+
+        for (key, scan_code) in cases {
+            assert_eq!(key.scan_code(), scan_code);
+        }
+    }
+
+    #[test]
+    fn physical_modifier_labels_are_side_specific() {
+        let cases = [
+            (KeyModifier::CONTROL_LEFT, "Ctrl"),
+            (KeyModifier::CONTROL_RIGHT, "Right Ctrl"),
+            (KeyModifier::SHIFT_LEFT, "Shift"),
+            (KeyModifier::SHIFT_RIGHT, "Right Shift"),
+            (KeyModifier::ALT_LEFT, "Alt"),
+            (KeyModifier::ALT_RIGHT, "Right Alt"),
+            (KeyModifier::META_LEFT, "Win"),
+            (KeyModifier::META_RIGHT, "Right Win"),
+        ];
+
+        for (modifier, label) in cases {
+            assert_eq!(modifier.display_label(), label);
+            assert_eq!(modifier.physical_key().label(), label);
+        }
+    }
+
+    #[test]
+    fn key_modifier_serde_uses_physical_key_names() {
+        let json = serde_json::to_string(&KeyModifier::ALT_RIGHT).unwrap();
+        assert_eq!(json, "\"AltRight\"");
+
+        let modifier: KeyModifier = serde_json::from_str("\"ControlRight\"").unwrap();
+        assert_eq!(modifier, KeyModifier::CONTROL_RIGHT);
+    }
+
+    #[test]
+    fn key_modifier_serde_rejects_non_modifier_physical_keys() {
+        let error = serde_json::from_str::<KeyModifier>("\"KeyA\"").unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("KeyA is not a physical modifier"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
