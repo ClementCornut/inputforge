@@ -20,3 +20,10 @@ pub use model::{
     SidecarDocument, SidecarHeader, TemplateAnchor, TemplateInstance, TemplateStoreDocument,
     TokenPreset, validate_unique_mapping_metadata_refs,
 };
+pub use store::{
+    external_profile_mapping_metadata_path, external_profile_sheets_path,
+    external_profile_sidecar_dir, global_asset_manifest_path, global_sheet_store_dir,
+    global_templates_path, load_asset_manifest, load_mapping_metadata, load_profile_sheets,
+    load_template_store, profile_mapping_metadata_path, profile_sheets_path, profile_sidecar_dir,
+    save_asset_manifest, save_mapping_metadata, save_profile_sheets, save_template_store,
+};
