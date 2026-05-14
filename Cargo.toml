@@ -68,6 +68,7 @@ sdl3 = "0.17"
 dirs = "6"
 tempfile = "3"
 rfd = "0.17"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
 
 # Output
 vjoy = "0.7"

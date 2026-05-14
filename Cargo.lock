@@ -2679,6 +2679,7 @@ dependencies = [
  "chrono",
  "dirs",
  "hex",
+ "image",
  "indexmap",
  "inputforge-autostart",
  "opener",

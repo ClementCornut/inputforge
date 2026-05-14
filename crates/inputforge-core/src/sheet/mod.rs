@@ -1,10 +1,13 @@
 //! Mapping Sheet Builder sidecar contracts.
 
+pub mod assets;
 pub mod ids;
 pub mod model;
 pub mod recovery;
 pub mod store;
 
+#[doc(inline)]
+pub use assets::{AssetHealth, ImportedAsset, asset_health, global_asset_dir, import_image_asset};
 #[doc(inline)]
 pub use ids::{
     AnchorId, AssetId, BlockId, LineId, MappingMetadataId, RecoverySnapshotId, SheetId, TemplateId,
