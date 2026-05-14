@@ -8,7 +8,7 @@ mod test_helpers;
 pub use condition::evaluate_condition;
 pub use merge::merge_axes;
 
-use crate::action::{Action, ModeChangeStrategy, MouseTarget, OutputBehavior};
+use crate::action::{Action, ActionBranch, ModeChangeStrategy, MouseTarget, OutputBehavior};
 use crate::processing::invert_axis;
 use crate::types::{
     AxisPolarity, HatDirection, InputAddress, InputId, InputValue, KeyCombo, OutputAddress,
@@ -57,11 +57,10 @@ pub enum PipelineOutput {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ActionPathSegment {
     Index(usize),
-    IfTrue,
-    IfFalse,
+    Branch(ActionBranch),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -178,6 +177,20 @@ pub fn execute_pipeline_with_scope(
     scope: OutputOwnerScope,
 ) {
     let mut path = Vec::new();
+    execute_pipeline_inner(actions, ctx, &scope, &mut path);
+}
+
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Public helper owns ad hoc scope and path values at call sites and borrows internally."
+)]
+pub fn execute_pipeline_with_scope_and_path(
+    actions: &[Action],
+    ctx: &mut PipelineContext<'_>,
+    scope: OutputOwnerScope,
+    path_prefix: Vec<ActionPathSegment>,
+) {
+    let mut path = path_prefix;
     execute_pipeline_inner(actions, ctx, &scope, &mut path);
 }
 
@@ -340,11 +353,11 @@ fn execute_pipeline_inner(
                 if_false,
             } => {
                 if evaluate_condition(condition, ctx.input_cache) {
-                    path.push(ActionPathSegment::IfTrue);
+                    path.push(ActionPathSegment::Branch(ActionBranch::ConditionalTrue));
                     execute_pipeline_inner(if_true, ctx, scope, path);
                     path.pop();
                 } else {
-                    path.push(ActionPathSegment::IfFalse);
+                    path.push(ActionPathSegment::Branch(ActionBranch::ConditionalFalse));
                     execute_pipeline_inner(if_false, ctx, scope, path);
                     path.pop();
                 }
@@ -1159,7 +1172,7 @@ mod tests {
             output_owner_path(&ctx.outputs[0]),
             vec![
                 ActionPathSegment::Index(0),
-                ActionPathSegment::IfTrue,
+                ActionPathSegment::Branch(ActionBranch::ConditionalTrue),
                 ActionPathSegment::Index(0),
             ]
         );
@@ -1177,7 +1190,75 @@ mod tests {
             output_owner_path(&ctx.outputs[0]),
             vec![
                 ActionPathSegment::Index(0),
-                ActionPathSegment::IfFalse,
+                ActionPathSegment::Branch(ActionBranch::ConditionalFalse),
+                ActionPathSegment::Index(0),
+            ]
+        );
+    }
+
+    #[test]
+    fn conditional_action_paths_use_generic_branch_segments() {
+        let actions = vec![Action::Conditional {
+            condition: Condition::ButtonPressed { input: button(1) },
+            if_true: vec![Action::MapToMouse {
+                target: MouseTarget::LeftButton,
+                behavior: OutputBehavior::Hold,
+            }],
+            if_false: vec![Action::MapToMouse {
+                target: MouseTarget::LeftButton,
+                behavior: OutputBehavior::Hold,
+            }],
+        }];
+        let mut cache = MockCache::new();
+        cache.buttons.insert(button(1), true);
+        let mut ctx = PipelineContext {
+            current_value: 1.0,
+            input_value: InputValue::Button { pressed: true },
+            outputs: Vec::new(),
+            input_cache: &cache,
+        };
+
+        execute_pipeline(&actions, &mut ctx);
+
+        assert_eq!(
+            output_owner_path(&ctx.outputs[0]),
+            vec![
+                ActionPathSegment::Index(0),
+                ActionPathSegment::Branch(ActionBranch::ConditionalTrue),
+                ActionPathSegment::Index(0),
+            ]
+        );
+    }
+
+    #[test]
+    fn execute_pipeline_with_path_prefix_keeps_branch_owner_identity() {
+        let actions = vec![Action::MapToMouse {
+            target: MouseTarget::LeftButton,
+            behavior: OutputBehavior::Hold,
+        }];
+        let cache = MockCache::new();
+        let mut ctx = PipelineContext {
+            current_value: 1.0,
+            input_value: InputValue::Button { pressed: true },
+            outputs: Vec::new(),
+            input_cache: &cache,
+        };
+
+        execute_pipeline_with_scope_and_path(
+            &actions,
+            &mut ctx,
+            OutputOwnerScope::new("profile", "Default", button(2)),
+            vec![
+                ActionPathSegment::Index(3),
+                ActionPathSegment::Branch(ActionBranch::TapDouble),
+            ],
+        );
+
+        assert_eq!(
+            output_owner_path(&ctx.outputs[0]),
+            vec![
+                ActionPathSegment::Index(3),
+                ActionPathSegment::Branch(ActionBranch::TapDouble),
                 ActionPathSegment::Index(0),
             ]
         );
