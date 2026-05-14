@@ -349,6 +349,7 @@ fn execute_pipeline_inner(
                     path.pop();
                 }
             }
+            Action::TapGesture { .. } | Action::PressGesture { .. } => {}
         }
         path.pop();
     }

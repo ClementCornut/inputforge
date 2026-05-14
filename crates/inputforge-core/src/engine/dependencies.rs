@@ -77,6 +77,8 @@ fn collect_action_dependencies(actions: &[Action], out: &mut Vec<InputAddress>) 
             | Action::MapToVJoy { .. }
             | Action::MapToKeyboard { .. }
             | Action::MapToMouse { .. }
+            | Action::TapGesture { .. }
+            | Action::PressGesture { .. }
             | Action::ChangeMode { .. } => {}
         }
     }
