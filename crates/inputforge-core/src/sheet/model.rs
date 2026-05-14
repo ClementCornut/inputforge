@@ -623,13 +623,7 @@ mod tests {
         assert!(encoded.contains("app_version_last_saved"));
 
         let decoded: ProfileSheetsDocument = toml::from_str(&encoded).unwrap();
-        assert_eq!(decoded.profile_id, document.profile_id);
-        assert_eq!(decoded.sheets[0].id, SheetId::from_string("sheet-main"));
-        assert_eq!(
-            decoded.sheets[0].mode_slots[0].mapping_refs[0].mode_id,
-            "combat"
-        );
-        assert_eq!(decoded.sheets[0].sheet_text[0].text, "Combat bindings");
+        assert_eq!(decoded, document);
     }
 
     #[test]
