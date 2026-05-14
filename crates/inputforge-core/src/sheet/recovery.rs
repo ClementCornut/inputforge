@@ -66,32 +66,47 @@ pub fn create_recovery_snapshot(
     label: impl Into<String>,
     sidecar_files: &[PathBuf],
 ) -> Result<RecoverySnapshotManifest> {
+    create_recovery_snapshot_with_copy(
+        recovery_root,
+        label,
+        sidecar_files,
+        |source, destination| std::fs::copy(source, destination),
+    )
+}
+
+fn create_recovery_snapshot_with_copy(
+    recovery_root: &Path,
+    label: impl Into<String>,
+    sidecar_files: &[PathBuf],
+    mut copy_file: impl FnMut(&Path, &Path) -> std::io::Result<u64>,
+) -> Result<RecoverySnapshotManifest> {
     let id = RecoverySnapshotId::new();
     let snapshot_dir = recovery_root.join(id.to_string());
     std::fs::create_dir_all(&snapshot_dir)?;
 
-    let files = sidecar_files
-        .iter()
-        .enumerate()
-        .map(|(index, source_path)| {
-            let copied_path = if source_path.exists() {
-                let file_name = source_path
-                    .file_name()
-                    .and_then(|file_name| file_name.to_str())
-                    .unwrap_or(FALLBACK_SIDECAR_FILE_NAME);
-                let copied_path = snapshot_dir.join(format!("{index:02}-{file_name}"));
-                std::fs::copy(source_path, &copied_path)?;
-                Some(copied_path)
-            } else {
-                None
-            };
+    let mut files = Vec::with_capacity(sidecar_files.len());
+    for (index, source_path) in sidecar_files.iter().enumerate() {
+        let copied_path = if source_path.try_exists()? {
+            let file_name = source_path
+                .file_name()
+                .and_then(|file_name| file_name.to_str())
+                .unwrap_or(FALLBACK_SIDECAR_FILE_NAME);
+            let copied_path = snapshot_dir.join(format!("{index:02}-{file_name}"));
 
-            Ok(RecoverySnapshotFile {
-                source_path: source_path.clone(),
-                copied_path,
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
+            match copy_file(source_path, &copied_path) {
+                Ok(_) => Some(copied_path),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+                Err(err) => return Err(err.into()),
+            }
+        } else {
+            None
+        };
+
+        files.push(RecoverySnapshotFile {
+            source_path: source_path.clone(),
+            copied_path,
+        });
+    }
 
     let manifest = RecoverySnapshotManifest {
         id,
@@ -113,8 +128,8 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        create_recovery_snapshot, external_profile_recovery_dir, global_recovery_dir,
-        profile_recovery_dir,
+        create_recovery_snapshot, create_recovery_snapshot_with_copy,
+        external_profile_recovery_dir, global_recovery_dir, profile_recovery_dir,
     };
     use crate::sheet::{external_profile_sidecar_dir, global_sheet_store_dir, profile_sidecar_dir};
 
@@ -191,6 +206,37 @@ mod tests {
 
         assert_eq!(manifest.files.len(), 1);
         assert_eq!(manifest.files[0].source_path, missing_sidecar);
+        assert_eq!(manifest.files[0].copied_path, None);
+        assert!(
+            recovery_root
+                .join(manifest.id.to_string())
+                .join("manifest.toml")
+                .is_file()
+        );
+    }
+
+    #[test]
+    fn recovery_snapshot_records_sidecar_missing_during_copy_without_failing() {
+        let dir = tempfile::tempdir().unwrap();
+        let recovery_root = dir.path().join("recovery");
+        let sidecar = dir.path().join("mapping-sheets.toml");
+        std::fs::write(&sidecar, "sheets = []\n").unwrap();
+
+        let manifest = create_recovery_snapshot_with_copy(
+            &recovery_root,
+            "before save",
+            &[sidecar.clone()],
+            |_, _| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "source disappeared",
+                ))
+            },
+        )
+        .unwrap();
+
+        assert_eq!(manifest.files.len(), 1);
+        assert_eq!(manifest.files[0].source_path, sidecar);
         assert_eq!(manifest.files[0].copied_path, None);
         assert!(
             recovery_root
