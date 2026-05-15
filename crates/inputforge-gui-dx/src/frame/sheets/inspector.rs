@@ -84,15 +84,15 @@ pub(crate) fn SheetsInspector(
         aside { "data-testid": "sheets-inspector",
             h2 { "Inspector" }
             p { "{save_status}" }
-            if save_status == "Save failed" {
-                button {
-                    r#type: "button",
-                    onclick: move |_| on_retry_save.call(()),
-                    "Retry save"
-                }
-            }
             if let Some(error) = last_error {
-                p { role: "alert", "{error}" }
+                div { role: "alert",
+                    p { "{error}" }
+                    button {
+                        r#type: "button",
+                        onclick: move |_| on_retry_save.call(()),
+                        "Retry save"
+                    }
+                }
             }
 
             if let Some(template_name) = selected_template_name {

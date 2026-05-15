@@ -41,9 +41,10 @@ pub(crate) fn save_sheets_documents(documents: &mut SheetsDocuments) -> Result<(
 
     documents.asset_health = asset_health(&config_dir, &documents.assets);
 
-    asset_result?;
-    template_result?;
-    Ok(())
+    match asset_result {
+        Err(err) => Err(err),
+        Ok(()) => template_result,
+    }
 }
 
 pub(crate) fn import_template_asset(

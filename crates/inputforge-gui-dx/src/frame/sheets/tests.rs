@@ -51,6 +51,19 @@ fn render_inspector_state(initial_state: SheetsState) -> String {
 }
 
 #[test]
+fn autosave_failure_renders_retry_action() {
+    let html = render_inspector_state(SheetsState {
+        autosave: AutosaveStatus::Failed,
+        last_error: Some("disk is full".to_owned()),
+        ..SheetsState::default()
+    });
+
+    assert!(html.contains("Save failed"));
+    assert!(html.contains("disk is full"));
+    assert!(html.contains("Retry save"));
+}
+
+#[test]
 fn inspector_disables_capture_when_unavailable_but_keeps_manual_assignment_visible() {
     let html = render_inspector_state(SheetsState::default());
 

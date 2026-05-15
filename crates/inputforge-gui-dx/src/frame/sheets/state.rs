@@ -496,6 +496,48 @@ mod tests {
     }
 
     #[test]
+    fn save_failure_keeps_dirty_draft_and_retry_error() {
+        let mut state = state_with_template();
+        state.update_selected_anchor_label("Fire");
+
+        let mut failed_documents = crate::frame::sheets::authoring::SheetsDocuments {
+            templates: inputforge_core::sheet::TemplateStoreDocument::default(),
+            assets: inputforge_core::sheet::AssetManifestDocument::default(),
+            asset_health: Vec::new(),
+        };
+        state.apply_to_documents(&mut failed_documents);
+        state.mark_saving();
+        state.mark_failed("asset manifest write failed");
+
+        assert_eq!(state.autosave, AutosaveStatus::Failed);
+        assert_eq!(
+            state.last_error,
+            Some("asset manifest write failed".to_owned())
+        );
+        assert_eq!(state.templates[0].anchors[0].label, "Fire");
+        assert_eq!(failed_documents.templates.templates, state.templates);
+        assert_eq!(failed_documents.assets.assets, state.assets);
+
+        let mut retry_documents = crate::frame::sheets::authoring::SheetsDocuments {
+            templates: inputforge_core::sheet::TemplateStoreDocument::default(),
+            assets: inputforge_core::sheet::AssetManifestDocument::default(),
+            asset_health: Vec::new(),
+        };
+        state.apply_to_documents(&mut retry_documents);
+        state.mark_saving();
+        state.mark_failed("template store write failed");
+
+        assert_eq!(state.autosave, AutosaveStatus::Failed);
+        assert_eq!(
+            state.last_error,
+            Some("template store write failed".to_owned())
+        );
+        assert_eq!(state.templates[0].anchors[0].label, "Fire");
+        assert_eq!(retry_documents.templates.templates, state.templates);
+        assert_eq!(retry_documents.assets.assets, state.assets);
+    }
+
+    #[test]
     fn applying_state_to_documents_preserves_document_metadata() {
         let mut state = state_with_template();
         state.update_selected_anchor_label("Fire");

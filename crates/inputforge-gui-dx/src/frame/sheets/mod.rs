@@ -11,15 +11,17 @@ pub(crate) mod state;
 #[cfg(test)]
 mod tests;
 
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use dioxus::prelude::*;
 use inputforge_core::sheet::AnchorAssignment;
-use state::{CaptureStatus, SheetsState};
+use state::{AutosaveStatus, CaptureStatus, SheetsState};
 
 use crate::patterns::live_capture::{CaptureFilter, LiveCapture, is_current_capture_session};
 
 const SHEETS_CSS: Asset = asset!("/assets/frame/sheets.css");
+// Short enough to feel live while coalescing rapid inspector and canvas edits.
+const AUTOSAVE_DEBOUNCE: Duration = Duration::from_millis(400);
 
 #[derive(Clone, Copy)]
 pub(crate) struct SheetsWorkbenchActions {
@@ -33,6 +35,7 @@ pub(crate) fn SheetsWorkbench() -> Element {
     let mut sheets = use_signal(SheetsState::default);
     let mut documents = use_signal(|| Option::<authoring::SheetsDocuments>::None);
     let mut loaded = use_signal(|| false);
+    let autosave_generation = use_signal(|| 0_u64);
     let capture = try_use_context::<LiveCapture>();
     let armed_capture_session: Signal<Option<u64>> = use_signal(|| None);
 
@@ -59,8 +62,9 @@ pub(crate) fn SheetsWorkbench() -> Element {
             return;
         };
 
+        let current_state = sheets.read().clone();
         sheets.write().mark_saving();
-        sheets.read().apply_to_documents(&mut next_documents);
+        current_state.apply_to_documents(&mut next_documents);
 
         match authoring::save_sheets_documents(&mut next_documents) {
             Ok(()) => {
@@ -71,8 +75,38 @@ pub(crate) fn SheetsWorkbench() -> Element {
         }
     });
 
+    let mut autosave_generation_for_retry = autosave_generation;
     let retry_save = use_callback(move |()| {
+        let generation = *autosave_generation_for_retry.peek() + 1;
+        autosave_generation_for_retry.set(generation);
         save_now.call(());
+    });
+
+    let save_now_for_autosave = save_now;
+    let mut autosave_generation_for_effect = autosave_generation;
+    use_effect(move || {
+        if !matches!(sheets.read().autosave, AutosaveStatus::Dirty) {
+            return;
+        }
+
+        let generation = *autosave_generation_for_effect.peek() + 1;
+        autosave_generation_for_effect.set(generation);
+        let generation_for_save = autosave_generation_for_effect;
+        let sheets_for_save = sheets;
+        let save_now_for_save = save_now_for_autosave;
+
+        spawn(async move {
+            tokio::time::sleep(AUTOSAVE_DEBOUNCE).await;
+
+            if *generation_for_save.read() != generation {
+                return;
+            }
+            if !matches!(sheets_for_save.read().autosave, AutosaveStatus::Dirty) {
+                return;
+            }
+
+            save_now_for_save.call(());
+        });
     });
 
     let import_asset = use_callback(move |source_path: PathBuf| {
