@@ -17,6 +17,7 @@ pub(crate) fn SheetsLeftRail(
     let templates = snapshot.templates.clone();
     let assets = snapshot.assets.clone();
     let selected_template_id = snapshot.selected_template_id.clone();
+    let selected_asset_id = snapshot.selected_asset_id().cloned();
     drop(snapshot);
 
     let template_count = templates.len();
@@ -75,12 +76,9 @@ pub(crate) fn SheetsLeftRail(
                 ul {
                     for asset in assets {
                         {
-                            let selected = selected_template_id.as_ref().is_some_and(|template_id| {
-                                template_assets.iter().any(|(candidate_template_id, asset_ids)| {
-                                    candidate_template_id == template_id
-                                        && asset_ids.iter().any(|id| id == &asset.asset_id)
-                                })
-                            });
+                            let selected = selected_asset_id
+                                .as_ref()
+                                .is_some_and(|asset_id| asset_id == &asset.asset_id);
                             let can_select = template_assets
                                 .iter()
                                 .any(|(_, asset_ids)| asset_ids.iter().any(|id| id == &asset.asset_id));

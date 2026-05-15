@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use dioxus::prelude::*;
 use inputforge_core::sheet::{
-    AnchorPosition, AssetEntry, AssetHealth, AssetId, ExtensionPayload, PixelDimensions,
-    TemplateAnchor, TokenPreset,
+    AnchorPosition, AssetEntry, AssetHealth, AssetId, DeviceTemplate, ExtensionPayload,
+    PixelDimensions, TemplateAnchor, TemplateId, TokenPreset,
 };
 
 use super::SheetsWorkbench;
@@ -190,6 +190,7 @@ fn creating_template_from_asset_selects_template_and_marks_dirty() {
 
     assert_eq!(state.templates.len(), 1);
     assert_eq!(state.selected_template_id, Some(template_id.clone()));
+    assert_eq!(state.selected_asset_id, Some(asset_id.clone()));
     assert_eq!(state.selected_anchor_id, None);
     assert_eq!(state.autosave, AutosaveStatus::Dirty);
 
@@ -257,6 +258,172 @@ fn valid_asset_canvas_uses_file_url_for_image_source() {
         !html.contains("src=\"assets/asset-1.png\""),
         "valid copied asset must not render the manifest-relative copied_path: {html}"
     );
+}
+
+#[test]
+fn selecting_non_first_asset_makes_it_canvas_asset() {
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness() -> Element {
+        let first_asset_id = AssetId::from_string("asset-1");
+        let second_asset_id = AssetId::from_string("asset-2");
+        let first_asset = AssetEntry {
+            asset_id: first_asset_id.clone(),
+            copied_path: PathBuf::from("assets/asset-1.png"),
+            content_hash: "hash-1".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 320,
+                height: 240,
+            },
+            original_import_path: None,
+            extensions: ExtensionPayload::default(),
+        };
+        let second_asset = AssetEntry {
+            asset_id: second_asset_id.clone(),
+            copied_path: PathBuf::from("assets/asset-2.png"),
+            content_hash: "hash-2".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 640,
+                height: 480,
+            },
+            original_import_path: Some(PathBuf::from("D:/imports/asset-2.png")),
+            extensions: ExtensionPayload::default(),
+        };
+        let template_id = TemplateId::from_string("template-1");
+        let mut initial_state = SheetsState {
+            templates: vec![DeviceTemplate {
+                template_id: template_id.clone(),
+                display_name: "Arcade panel".to_owned(),
+                matching_hints: Vec::new(),
+                asset_ids: vec![first_asset_id, second_asset_id.clone()],
+                anchors: Vec::new(),
+                default_anchor_bindings: Vec::new(),
+                grouping_hints: Vec::new(),
+                default_token_preset: TokenPreset::Standard,
+                extensions: ExtensionPayload::default(),
+            }],
+            assets: vec![first_asset.clone(), second_asset.clone()],
+            asset_health: vec![
+                AssetHealth {
+                    entry: first_asset,
+                    copied_absolute_path: PathBuf::from(r"C:\InputForge\assets\asset-1.png"),
+                    missing: false,
+                },
+                AssetHealth {
+                    entry: second_asset,
+                    copied_absolute_path: PathBuf::from(r"C:\InputForge\assets\asset-2.png"),
+                    missing: false,
+                },
+            ],
+            selected_template_id: Some(template_id),
+            ..SheetsState::default()
+        };
+        initial_state.select_first_template_for_asset(second_asset_id);
+        let sheets = use_signal(|| initial_state);
+
+        rsx! {
+            SheetsCanvas {
+                sheets,
+                on_import_image: move |()| {},
+                on_arm_capture: move |_| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(html.contains("data-asset-id=\"asset-2\""));
+    assert!(html.contains("src=\"file:///C:/InputForge/assets/asset-2.png\""));
+    assert!(!html.contains("src=\"file:///C:/InputForge/assets/asset-1.png\""));
+}
+
+#[test]
+fn selecting_non_first_missing_asset_renders_its_recovery_paths() {
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness() -> Element {
+        let first_asset_id = AssetId::from_string("asset-1");
+        let second_asset_id = AssetId::from_string("asset-2");
+        let first_asset = AssetEntry {
+            asset_id: first_asset_id.clone(),
+            copied_path: PathBuf::from("assets/asset-1.png"),
+            content_hash: "hash-1".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 320,
+                height: 240,
+            },
+            original_import_path: Some(PathBuf::from("D:/imports/asset-1.png")),
+            extensions: ExtensionPayload::default(),
+        };
+        let second_asset = AssetEntry {
+            asset_id: second_asset_id.clone(),
+            copied_path: PathBuf::from("assets/asset-2.png"),
+            content_hash: "hash-2".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 640,
+                height: 480,
+            },
+            original_import_path: Some(PathBuf::from("D:/imports/asset-2.png")),
+            extensions: ExtensionPayload::default(),
+        };
+        let mut initial_state = SheetsState {
+            templates: vec![DeviceTemplate {
+                template_id: TemplateId::from_string("template-1"),
+                display_name: "Arcade panel".to_owned(),
+                matching_hints: Vec::new(),
+                asset_ids: vec![first_asset_id, second_asset_id.clone()],
+                anchors: Vec::new(),
+                default_anchor_bindings: Vec::new(),
+                grouping_hints: Vec::new(),
+                default_token_preset: TokenPreset::Standard,
+                extensions: ExtensionPayload::default(),
+            }],
+            assets: vec![first_asset.clone(), second_asset.clone()],
+            asset_health: vec![
+                AssetHealth {
+                    entry: first_asset,
+                    copied_absolute_path: PathBuf::from("C:/InputForge/assets/asset-1.png"),
+                    missing: false,
+                },
+                AssetHealth {
+                    entry: second_asset,
+                    copied_absolute_path: PathBuf::from("C:/InputForge/assets/asset-2.png"),
+                    missing: true,
+                },
+            ],
+            ..SheetsState::default()
+        };
+        initial_state.select_first_template_for_asset(second_asset_id);
+        let sheets = use_signal(|| initial_state);
+
+        rsx! {
+            SheetsCanvas {
+                sheets,
+                on_import_image: move |()| {},
+                on_arm_capture: move |_| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(html.contains("Missing image asset"));
+    assert!(html.contains("C:/InputForge/assets/asset-2.png"));
+    assert!(html.contains("D:/imports/asset-2.png"));
+    assert!(!html.contains("C:/InputForge/assets/asset-1.png"));
+    assert!(!html.contains("D:/imports/asset-1.png"));
 }
 
 #[test]
@@ -513,4 +680,85 @@ fn left_rail_renders_template_and_asset_rows_as_selectable_controls() {
 
     assert!(html.contains("aria-label=\"Select template Arcade panel\""));
     assert!(html.contains("aria-label=\"Select first template using assets/asset-1.png\""));
+}
+
+#[test]
+fn left_rail_marks_only_selected_non_first_asset_row() {
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness() -> Element {
+        let first_asset_id = AssetId::from_string("asset-1");
+        let second_asset_id = AssetId::from_string("asset-2");
+        let mut initial_state = SheetsState {
+            templates: vec![DeviceTemplate {
+                template_id: TemplateId::from_string("template-1"),
+                display_name: "Arcade panel".to_owned(),
+                matching_hints: Vec::new(),
+                asset_ids: vec![first_asset_id.clone(), second_asset_id.clone()],
+                anchors: Vec::new(),
+                default_anchor_bindings: Vec::new(),
+                grouping_hints: Vec::new(),
+                default_token_preset: TokenPreset::Standard,
+                extensions: ExtensionPayload::default(),
+            }],
+            assets: vec![
+                AssetEntry {
+                    asset_id: first_asset_id,
+                    copied_path: PathBuf::from("assets/asset-1.png"),
+                    content_hash: "hash-1".to_owned(),
+                    media_type: "image/png".to_owned(),
+                    pixel_dimensions: PixelDimensions {
+                        width: 320,
+                        height: 240,
+                    },
+                    original_import_path: None,
+                    extensions: ExtensionPayload::default(),
+                },
+                AssetEntry {
+                    asset_id: second_asset_id.clone(),
+                    copied_path: PathBuf::from("assets/asset-2.png"),
+                    content_hash: "hash-2".to_owned(),
+                    media_type: "image/png".to_owned(),
+                    pixel_dimensions: PixelDimensions {
+                        width: 640,
+                        height: 480,
+                    },
+                    original_import_path: None,
+                    extensions: ExtensionPayload::default(),
+                },
+            ],
+            ..SheetsState::default()
+        };
+        initial_state.select_first_template_for_asset(second_asset_id);
+        let sheets = use_signal(|| initial_state);
+
+        rsx! {
+            SheetsLeftRail {
+                sheets,
+                on_import_image: move |()| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+    let asset_1_start = html.find("assets/asset-1.png").unwrap();
+    let asset_2_start = html.find("assets/asset-2.png").unwrap();
+    let asset_1_row = &html[..asset_1_start]
+        .rsplit_once("<li")
+        .map(|(_, row)| row)
+        .unwrap();
+    let asset_2_row = &html[..asset_2_start]
+        .rsplit_once("<li")
+        .map(|(_, row)| row)
+        .unwrap();
+
+    let row_is_selected =
+        |row: &str| row.contains("data-selected=\"true\"") || row.contains("data-selected=true");
+
+    assert!(!row_is_selected(asset_1_row));
+    assert!(row_is_selected(asset_2_row));
 }

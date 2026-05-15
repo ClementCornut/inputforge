@@ -46,6 +46,7 @@ pub(crate) struct SheetsState {
     pub assets: Vec<AssetEntry>,
     pub asset_health: Vec<inputforge_core::sheet::AssetHealth>,
     pub selected_template_id: Option<TemplateId>,
+    pub selected_asset_id: Option<AssetId>,
     pub selected_anchor_id: Option<AnchorId>,
     pub tool: SheetTool,
     pub autosave: AutosaveStatus,
@@ -60,6 +61,7 @@ impl Default for SheetsState {
             assets: Vec::new(),
             asset_health: Vec::new(),
             selected_template_id: None,
+            selected_asset_id: None,
             selected_anchor_id: None,
             tool: SheetTool::Select,
             autosave: AutosaveStatus::Clean,
@@ -73,15 +75,21 @@ impl SheetsState {
     pub(crate) fn from_documents(
         documents: &crate::frame::sheets::authoring::SheetsDocuments,
     ) -> Self {
+        let templates = documents.templates.templates.clone();
+        let selected_template_id = templates
+            .first()
+            .map(|template| template.template_id.clone());
+        let selected_asset_id = templates
+            .first()
+            .and_then(|template| template.asset_ids.first())
+            .cloned();
+
         Self {
-            templates: documents.templates.templates.clone(),
+            templates,
             assets: documents.assets.assets.clone(),
             asset_health: documents.asset_health.clone(),
-            selected_template_id: documents
-                .templates
-                .templates
-                .first()
-                .map(|template| template.template_id.clone()),
+            selected_template_id,
+            selected_asset_id,
             selected_anchor_id: None,
             tool: SheetTool::Select,
             autosave: AutosaveStatus::Clean,
@@ -108,7 +116,7 @@ impl SheetsState {
             template_id: template_id.clone(),
             display_name: display_name.into(),
             matching_hints: Vec::new(),
-            asset_ids: vec![asset_id],
+            asset_ids: vec![asset_id.clone()],
             anchors: Vec::new(),
             default_anchor_bindings: Vec::new(),
             grouping_hints: Vec::new(),
@@ -116,6 +124,7 @@ impl SheetsState {
             extensions: ExtensionPayload::default(),
         });
         self.selected_template_id = Some(template_id.clone());
+        self.selected_asset_id = Some(asset_id);
         self.selected_anchor_id = None;
         self.mark_dirty();
         template_id
@@ -152,12 +161,13 @@ impl SheetsState {
     }
 
     pub(crate) fn select_template(&mut self, template_id: TemplateId) {
-        if self
+        if let Some(template) = self
             .templates
             .iter()
-            .any(|template| template.template_id == template_id)
+            .find(|template| template.template_id == template_id)
         {
             self.selected_template_id = Some(template_id);
+            self.selected_asset_id = template.asset_ids.first().cloned();
             self.selected_anchor_id = None;
         }
     }
@@ -169,12 +179,23 @@ impl SheetsState {
             .find(|template| template.asset_ids.iter().any(|id| id == &asset_id))
             .map(|template| template.template_id.clone())
         {
-            self.select_template(template_id);
+            self.selected_template_id = Some(template_id);
+            self.selected_asset_id = Some(asset_id);
+            self.selected_anchor_id = None;
         }
     }
 
     pub(crate) fn selected_asset_id(&self) -> Option<&AssetId> {
-        self.selected_template()?.asset_ids.first()
+        let template = self.selected_template()?;
+        if let Some(asset_id) = self
+            .selected_asset_id
+            .as_ref()
+            .filter(|asset_id| template.asset_ids.iter().any(|id| id == *asset_id))
+        {
+            return Some(asset_id);
+        }
+
+        template.asset_ids.first()
     }
 
     pub(crate) fn selected_asset(&self) -> Option<&AssetEntry> {
@@ -378,7 +399,7 @@ mod tests {
                 extensions: ExtensionPayload::default(),
             }],
             assets: vec![AssetEntry {
-                asset_id,
+                asset_id: asset_id.clone(),
                 copied_path: PathBuf::from("assets/asset-1.png"),
                 content_hash: "hash".to_owned(),
                 media_type: "image/png".to_owned(),
@@ -391,6 +412,7 @@ mod tests {
             }],
             asset_health: Vec::new(),
             selected_template_id: Some(template_id),
+            selected_asset_id: Some(asset_id),
             selected_anchor_id: Some(anchor_id),
             tool: SheetTool::Select,
             autosave: AutosaveStatus::Clean,
@@ -460,10 +482,30 @@ mod tests {
     fn selecting_template_clears_anchor_without_marking_dirty() {
         let mut state = state_with_template();
         let template_id = state.templates[0].template_id.clone();
+        let asset_id = state.templates[0].asset_ids[0].clone();
 
         state.select_template(template_id.clone());
 
         assert_eq!(state.selected_template_id, Some(template_id));
+        assert_eq!(state.selected_asset_id, Some(asset_id));
+        assert_eq!(state.selected_anchor_id, None);
+        assert_eq!(state.autosave, AutosaveStatus::Clean);
+    }
+
+    #[test]
+    fn selecting_multi_asset_template_selects_first_asset_without_marking_dirty() {
+        let mut state = state_with_template();
+        let template_id = state.templates[0].template_id.clone();
+        let first_asset_id = state.templates[0].asset_ids[0].clone();
+        state.templates[0]
+            .asset_ids
+            .push(AssetId::from_string("asset-2"));
+        state.selected_asset_id = Some(AssetId::from_string("asset-2"));
+
+        state.select_template(template_id.clone());
+
+        assert_eq!(state.selected_template_id, Some(template_id));
+        assert_eq!(state.selected_asset_id, Some(first_asset_id));
         assert_eq!(state.selected_anchor_id, None);
         assert_eq!(state.autosave, AutosaveStatus::Clean);
     }
@@ -487,9 +529,56 @@ mod tests {
         });
         state.selected_template_id = Some(second_template_id);
 
-        state.select_first_template_for_asset(asset_id);
+        state.select_first_template_for_asset(asset_id.clone());
 
         assert_eq!(state.selected_template_id, Some(first_template_id));
+        assert_eq!(state.selected_asset_id, Some(asset_id));
+        assert_eq!(state.selected_anchor_id, None);
+        assert_eq!(state.autosave, AutosaveStatus::Clean);
+    }
+
+    #[test]
+    fn selecting_non_first_asset_makes_it_active_asset_without_marking_dirty() {
+        let mut state = state_with_template();
+        let first_asset = state.assets[0].clone();
+        let second_asset_id = AssetId::from_string("asset-2");
+        let second_asset = AssetEntry {
+            asset_id: second_asset_id.clone(),
+            copied_path: PathBuf::from("assets/asset-2.png"),
+            content_hash: "hash-2".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 128,
+                height: 64,
+            },
+            original_import_path: None,
+            extensions: ExtensionPayload::default(),
+        };
+        state.templates[0].asset_ids.push(second_asset_id.clone());
+        state.assets.push(second_asset.clone());
+        state.asset_health = vec![
+            AssetHealth {
+                entry: first_asset,
+                copied_absolute_path: PathBuf::from("assets/asset-1.png"),
+                missing: false,
+            },
+            AssetHealth {
+                entry: second_asset.clone(),
+                copied_absolute_path: PathBuf::from("assets/asset-2.png"),
+                missing: false,
+            },
+        ];
+
+        state.select_first_template_for_asset(second_asset_id.clone());
+
+        assert_eq!(state.selected_asset_id(), Some(&second_asset_id));
+        assert_eq!(state.selected_asset(), Some(&second_asset));
+        assert_eq!(
+            state
+                .selected_asset_health()
+                .map(|health| &health.entry.asset_id),
+            Some(&second_asset_id)
+        );
         assert_eq!(state.selected_anchor_id, None);
         assert_eq!(state.autosave, AutosaveStatus::Clean);
     }
