@@ -384,7 +384,7 @@ fn body_omits_live_dot_for_nested_stage() {
     use crate::frame::mapping_editor::pipeline::stage_body::response_curve::ResponseCurveBody;
     use crate::frame::mapping_editor::test_helpers::mount_stage_body_test;
     use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
-    use inputforge_core::action::Action;
+    use inputforge_core::action::{Action, ActionBranch};
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
     fn body() -> Element {
@@ -395,7 +395,7 @@ fn body_omits_live_dot_for_nested_stage() {
         // anything that is not exactly `[Index(n)]` and return None.
         let stage_id = StageId(vec![
             StageIdSegment::Index(0),
-            StageIdSegment::IfTrue,
+            StageIdSegment::Branch(ActionBranch::ConditionalTrue),
             StageIdSegment::Index(0),
         ]);
         let key = (

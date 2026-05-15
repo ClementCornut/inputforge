@@ -9,6 +9,7 @@ use std::rc::Rc;
 use dioxus::prelude::*;
 
 use inputforge_core::action::OutputBehavior;
+use inputforge_core::state::OutputActivityValue;
 use inputforge_core::types::OutputId;
 
 use crate::components::Icon;
@@ -96,9 +97,13 @@ pub(super) fn OutRow(
                 let live = ctx.live.read();
                 let cfg = ctx.config.read();
                 let tag = format_output_label(out);
-                let ReadoutDisplay::Axis(display) =
-                    read_output_typed_display(out, &live, &cfg, descriptor.polarity)
-                else {
+                let ReadoutDisplay::Axis(display) = read_output_typed_display(
+                    out,
+                    &live,
+                    &cfg,
+                    descriptor.polarity,
+                    descriptor.activity,
+                ) else {
                     unreachable!("axis output should produce axis readout display");
                 };
 
@@ -115,9 +120,13 @@ pub(super) fn OutRow(
                 let live = ctx.live.read();
                 let cfg = ctx.config.read();
                 let tag = format_output_label(out);
-                let ReadoutDisplay::Button { pressed } =
-                    read_output_typed_display(out, &live, &cfg, descriptor.polarity)
-                else {
+                let ReadoutDisplay::Button { pressed } = read_output_typed_display(
+                    out,
+                    &live,
+                    &cfg,
+                    descriptor.polarity,
+                    descriptor.activity,
+                ) else {
                     unreachable!("button output should produce button readout display");
                 };
 
@@ -134,9 +143,13 @@ pub(super) fn OutRow(
                 let live = ctx.live.read();
                 let cfg = ctx.config.read();
                 let tag = format_output_label(out);
-                let ReadoutDisplay::Hat { direction } =
-                    read_output_typed_display(out, &live, &cfg, descriptor.polarity)
-                else {
+                let ReadoutDisplay::Hat { direction } = read_output_typed_display(
+                    out,
+                    &live,
+                    &cfg,
+                    descriptor.polarity,
+                    descriptor.activity,
+                ) else {
                     unreachable!("hat output should produce hat readout display");
                 };
 
@@ -157,7 +170,12 @@ pub(super) fn OutRow(
         } => {
             let combo_text = format_key_combo(key);
             let tag = format!("Keyboard - {}", format_behavior(*behavior));
-            let key_live = engine_running && descriptor.is_active && *pressed;
+            let key_live = engine_running
+                && descriptor.is_active
+                && match descriptor.activity {
+                    Some(OutputActivityValue::Keyboard(active)) => active,
+                    _ => *pressed,
+                };
             let row_class = keyboard_row_class(frozen);
             let chip_class = keyboard_chip_class(key_live);
             let label = row_label.clone();
@@ -178,7 +196,12 @@ pub(super) fn OutRow(
             behavior,
             active,
         } => {
-            let is_live = engine_running && descriptor.is_active && *active;
+            let is_live = engine_running
+                && descriptor.is_active
+                && match descriptor.activity {
+                    Some(OutputActivityValue::Mouse(active)) => active,
+                    _ => *active,
+                };
             let tag = if target.is_wheel() {
                 target.label().to_owned()
             } else {

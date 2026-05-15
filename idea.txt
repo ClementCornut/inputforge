@@ -1,0 +1,2 @@
+Ecran de cheetsheet avec live preview et label (possibilité d'en avoir 2 côte à côte ?) Ligne pour pointer le bouton ? Fenêtre pour mettre des légendes
+Peut être avec possibilité d'importer un png en fond et de déplacer les boutons au bon endroits

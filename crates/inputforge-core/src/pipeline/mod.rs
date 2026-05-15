@@ -8,7 +8,9 @@ mod test_helpers;
 pub use condition::evaluate_condition;
 pub use merge::merge_axes;
 
-use crate::action::{Action, ModeChangeStrategy, MouseTarget, OutputBehavior};
+use crate::action::{
+    Action, ActionBranch, ModeChangeStrategy, MouseTarget, OutputBehavior, branch_actions,
+};
 use crate::processing::invert_axis;
 use crate::types::{
     AxisPolarity, HatDirection, InputAddress, InputId, InputValue, KeyCombo, OutputAddress,
@@ -33,10 +35,12 @@ pub fn button_pressed_from_value(value: f64) -> bool {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PipelineOutput {
     SetAxis {
+        owner: OutputOwner,
         output: OutputAddress,
         value: f64,
     },
     SetButton {
+        owner: OutputOwner,
         output: OutputAddress,
         pressed: bool,
     },
@@ -60,12 +64,12 @@ pub enum PipelineOutput {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActionPathSegment {
     Index(usize),
-    IfTrue,
-    IfFalse,
+    Branch(ActionBranch),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum OutputDestination {
+    VJoy(OutputAddress),
     Keyboard(KeyCombo),
     Mouse(MouseTarget),
 }
@@ -114,13 +118,10 @@ impl OutputOwnerScope {
     }
 }
 
-/// Selects a conditional branch while resolving a nested action path.
+/// Selects an action branch while resolving a nested action path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BranchStep {
-    /// Selects the `if_true` branch at the given action index.
-    IfTrue(usize),
-    /// Selects the `if_false` branch at the given action index.
-    IfFalse(usize),
+    Branch { index: usize, branch: ActionBranch },
 }
 
 /// Read-only access to the latest input values.
@@ -182,6 +183,20 @@ pub fn execute_pipeline_with_scope(
 }
 
 #[expect(
+    clippy::needless_pass_by_value,
+    reason = "Public helper owns ad hoc scope and path values at call sites and borrows internally."
+)]
+pub fn execute_pipeline_with_scope_and_path(
+    actions: &[Action],
+    ctx: &mut PipelineContext<'_>,
+    scope: OutputOwnerScope,
+    path_prefix: Vec<ActionPathSegment>,
+) {
+    let mut path = path_prefix;
+    execute_pipeline_inner(actions, ctx, &scope, &mut path);
+}
+
+#[expect(
     clippy::too_many_lines,
     reason = "Pipeline action dispatch is intentionally kept in one exhaustive match."
 )]
@@ -221,12 +236,22 @@ fn execute_pipeline_inner(
             Action::MapToVJoy { output } => match &ctx.input_value {
                 InputValue::Axis { .. } => {
                     ctx.outputs.push(PipelineOutput::SetAxis {
+                        owner: scope.owner(
+                            path,
+                            OutputDestination::VJoy(output.clone()),
+                            OutputBehavior::Hold,
+                        ),
                         output: output.clone(),
                         value: ctx.current_value,
                     });
                 }
                 InputValue::Button { .. } => {
                     ctx.outputs.push(PipelineOutput::SetButton {
+                        owner: scope.owner(
+                            path,
+                            OutputDestination::VJoy(output.clone()),
+                            OutputBehavior::Hold,
+                        ),
                         output: output.clone(),
                         pressed: button_pressed_from_value(ctx.current_value),
                     });
@@ -340,15 +365,16 @@ fn execute_pipeline_inner(
                 if_false,
             } => {
                 if evaluate_condition(condition, ctx.input_cache) {
-                    path.push(ActionPathSegment::IfTrue);
+                    path.push(ActionPathSegment::Branch(ActionBranch::ConditionalTrue));
                     execute_pipeline_inner(if_true, ctx, scope, path);
                     path.pop();
                 } else {
-                    path.push(ActionPathSegment::IfFalse);
+                    path.push(ActionPathSegment::Branch(ActionBranch::ConditionalFalse));
                     execute_pipeline_inner(if_false, ctx, scope, path);
                     path.pop();
                 }
             }
+            Action::TapGesture { .. } | Action::PressGesture { .. } => {}
         }
         path.pop();
     }
@@ -451,18 +477,18 @@ fn project_input_value(input_value: &InputValue, current_value: f64) -> InputVal
     }
 }
 
-/// Re-run a partial action pipeline through a nested conditional branch path.
+/// Re-run a partial action pipeline through a nested branch path.
 ///
 /// An empty `path` is identical to [`evaluate_actions_through`]. Each path
 /// step executes preceding actions in the current slice, identifies a
-/// conditional by index, then selects that conditional's true or false branch
-/// as the next slice without evaluating the predicate.
+/// branch-capable action by index, then selects that action's requested branch
+/// as the next slice.
 ///
 /// # Panics
 ///
 /// Panics if any path step index is out of range for the current slice.
-/// Panics if any path step points to an action that is not
-/// [`Action::Conditional`]. Also inherits the `primary` invariant panic from
+/// Panics if any path step points to an action that does not expose the
+/// requested branch. Also inherits the `primary` invariant panic from
 /// [`evaluate_actions_through`].
 #[must_use]
 pub fn evaluate_actions_through_path(
@@ -476,10 +502,7 @@ pub fn evaluate_actions_through_path(
     let mut current = actions;
 
     for step in path {
-        let (index, wants_true) = match *step {
-            BranchStep::IfTrue(index) => (index, true),
-            BranchStep::IfFalse(index) => (index, false),
-        };
+        let BranchStep::Branch { index, branch } = *step;
 
         let action = current.get(index).unwrap_or_else(|| {
             panic!(
@@ -490,16 +513,11 @@ pub fn evaluate_actions_through_path(
 
         execute_pipeline(&current[..index], &mut ctx);
 
-        match action {
-            Action::Conditional {
-                if_true, if_false, ..
-            } => {
-                current = if wants_true { if_true } else { if_false };
-            }
-            other => {
-                panic!("branch path target at index {index} must be Conditional, got {other:?}")
-            }
-        }
+        current = branch_actions(action, branch).unwrap_or_else(|| {
+            panic!(
+                "branch path target at index {index} does not expose branch {branch:?}: {action:?}"
+            )
+        });
     }
 
     let stop = stop_at.min(current.len());
@@ -550,10 +568,22 @@ mod tests {
 
     fn output_owner_path(output: &PipelineOutput) -> Vec<ActionPathSegment> {
         match output {
-            PipelineOutput::Keyboard { owner, .. } | PipelineOutput::Mouse { owner, .. } => {
-                owner.action_path.clone()
-            }
-            _ => Vec::new(),
+            PipelineOutput::SetAxis { owner, .. }
+            | PipelineOutput::SetButton { owner, .. }
+            | PipelineOutput::Keyboard { owner, .. }
+            | PipelineOutput::Mouse { owner, .. } => owner.action_path.clone(),
+            PipelineOutput::ChangeMode { .. } => Vec::new(),
+        }
+    }
+
+    fn vjoy_owner(index: usize, output: OutputAddress) -> OutputOwner {
+        OutputOwner {
+            profile: "anonymous".to_owned(),
+            mode: "anonymous".to_owned(),
+            input: InputAddress::Unbound,
+            action_path: vec![ActionPathSegment::Index(index)],
+            destination: OutputDestination::VJoy(output),
+            behavior: OutputBehavior::Hold,
         }
     }
 
@@ -602,6 +632,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[0],
             PipelineOutput::SetAxis {
+                owner: vjoy_owner(0, test_output()),
                 output: test_output(),
                 value: 0.75,
             }
@@ -622,6 +653,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[0],
             PipelineOutput::SetButton {
+                owner: vjoy_owner(0, button_output()),
                 output: button_output(),
                 pressed: true,
             }
@@ -682,6 +714,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[0],
             PipelineOutput::SetButton {
+                owner: vjoy_owner(1, button_output()),
                 output: button_output(),
                 pressed: false,
             }
@@ -702,6 +735,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[0],
             PipelineOutput::SetButton {
+                owner: vjoy_owner(1, button_output()),
                 output: button_output(),
                 pressed: true,
             }
@@ -722,6 +756,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[0],
             PipelineOutput::SetAxis {
+                owner: vjoy_owner(1, test_output()),
                 output: test_output(),
                 value: -0.5,
             }
@@ -1158,7 +1193,7 @@ mod tests {
             output_owner_path(&ctx.outputs[0]),
             vec![
                 ActionPathSegment::Index(0),
-                ActionPathSegment::IfTrue,
+                ActionPathSegment::Branch(ActionBranch::ConditionalTrue),
                 ActionPathSegment::Index(0),
             ]
         );
@@ -1176,7 +1211,75 @@ mod tests {
             output_owner_path(&ctx.outputs[0]),
             vec![
                 ActionPathSegment::Index(0),
-                ActionPathSegment::IfFalse,
+                ActionPathSegment::Branch(ActionBranch::ConditionalFalse),
+                ActionPathSegment::Index(0),
+            ]
+        );
+    }
+
+    #[test]
+    fn conditional_action_paths_use_generic_branch_segments() {
+        let actions = vec![Action::Conditional {
+            condition: Condition::ButtonPressed { input: button(1) },
+            if_true: vec![Action::MapToMouse {
+                target: MouseTarget::LeftButton,
+                behavior: OutputBehavior::Hold,
+            }],
+            if_false: vec![Action::MapToMouse {
+                target: MouseTarget::LeftButton,
+                behavior: OutputBehavior::Hold,
+            }],
+        }];
+        let mut cache = MockCache::new();
+        cache.buttons.insert(button(1), true);
+        let mut ctx = PipelineContext {
+            current_value: 1.0,
+            input_value: InputValue::Button { pressed: true },
+            outputs: Vec::new(),
+            input_cache: &cache,
+        };
+
+        execute_pipeline(&actions, &mut ctx);
+
+        assert_eq!(
+            output_owner_path(&ctx.outputs[0]),
+            vec![
+                ActionPathSegment::Index(0),
+                ActionPathSegment::Branch(ActionBranch::ConditionalTrue),
+                ActionPathSegment::Index(0),
+            ]
+        );
+    }
+
+    #[test]
+    fn execute_pipeline_with_path_prefix_keeps_branch_owner_identity() {
+        let actions = vec![Action::MapToMouse {
+            target: MouseTarget::LeftButton,
+            behavior: OutputBehavior::Hold,
+        }];
+        let cache = MockCache::new();
+        let mut ctx = PipelineContext {
+            current_value: 1.0,
+            input_value: InputValue::Button { pressed: true },
+            outputs: Vec::new(),
+            input_cache: &cache,
+        };
+
+        execute_pipeline_with_scope_and_path(
+            &actions,
+            &mut ctx,
+            OutputOwnerScope::new("profile", "Default", button(2)),
+            vec![
+                ActionPathSegment::Index(3),
+                ActionPathSegment::Branch(ActionBranch::TapDouble),
+            ],
+        );
+
+        assert_eq!(
+            output_owner_path(&ctx.outputs[0]),
+            vec![
+                ActionPathSegment::Index(3),
+                ActionPathSegment::Branch(ActionBranch::TapDouble),
                 ActionPathSegment::Index(0),
             ]
         );
@@ -1403,6 +1506,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[0],
             PipelineOutput::SetAxis {
+                owner: vjoy_owner(0, output_x.clone()),
                 output: output_x,
                 value: 0.5,
             }
@@ -1410,6 +1514,7 @@ mod tests {
         assert_eq!(
             ctx.outputs[1],
             PipelineOutput::SetAxis {
+                owner: vjoy_owner(1, output_y.clone()),
                 output: output_y,
                 value: 0.5,
             }
@@ -1492,7 +1597,10 @@ mod tests {
         execute_pipeline(&actions, &mut ctx);
 
         assert_eq!(ctx.outputs.len(), 1);
-        if let PipelineOutput::SetAxis { value, output: out } = &ctx.outputs[0] {
+        if let PipelineOutput::SetAxis {
+            value, output: out, ..
+        } = &ctx.outputs[0]
+        {
             assert_eq!(*out, output);
             assert!(
                 (*value - (-0.25)).abs() < TOLERANCE,
@@ -1762,8 +1870,16 @@ mod tests {
             if_false: vec![Action::Invert, Action::Invert],
         }];
 
-        let out =
-            evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfTrue(0)], 1);
+        let out = evaluate_actions_through_path(
+            &actions,
+            &state,
+            &addr,
+            &[BranchStep::Branch {
+                index: 0,
+                branch: ActionBranch::ConditionalTrue,
+            }],
+            1,
+        );
 
         match out {
             InputValue::Axis { value, .. } => {
@@ -1796,8 +1912,16 @@ mod tests {
             },
         ];
 
-        let out =
-            evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfTrue(1)], 1);
+        let out = evaluate_actions_through_path(
+            &actions,
+            &state,
+            &addr,
+            &[BranchStep::Branch {
+                index: 1,
+                branch: ActionBranch::ConditionalTrue,
+            }],
+            1,
+        );
 
         match out {
             InputValue::Axis { value, .. } => {
@@ -1833,12 +1957,58 @@ mod tests {
             ],
         }];
 
-        let out =
-            evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfFalse(0)], 3);
+        let out = evaluate_actions_through_path(
+            &actions,
+            &state,
+            &addr,
+            &[BranchStep::Branch {
+                index: 0,
+                branch: ActionBranch::ConditionalFalse,
+            }],
+            3,
+        );
 
         match out {
             InputValue::Axis { value, .. } => {
                 assert!((value.value() - 0.5).abs() < TOLERANCE);
+            }
+            other => panic!("expected Axis, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn path_tap_single_branch_subset_runs() {
+        let mut state = AppState::new();
+        let addr = axis_input_address();
+        state.input_cache.update(
+            &addr,
+            &InputValue::Axis {
+                value: AxisValue::new(0.5),
+                polarity: AxisPolarity::Bipolar,
+            },
+        );
+
+        let actions = [Action::TapGesture {
+            threshold_ms: 500,
+            fire_single_immediately: false,
+            single_tap: vec![Action::Invert],
+            double_tap: vec![Action::Invert, Action::Invert],
+        }];
+
+        let out = evaluate_actions_through_path(
+            &actions,
+            &state,
+            &addr,
+            &[BranchStep::Branch {
+                index: 0,
+                branch: ActionBranch::TapSingle,
+            }],
+            1,
+        );
+
+        match out {
+            InputValue::Axis { value, .. } => {
+                assert!((value.value() - (-0.5)).abs() < TOLERANCE);
             }
             other => panic!("expected Axis, got {other:?}"),
         }
@@ -1879,7 +2049,16 @@ mod tests {
             &actions,
             &state,
             &addr,
-            &[BranchStep::IfTrue(0), BranchStep::IfFalse(1)],
+            &[
+                BranchStep::Branch {
+                    index: 0,
+                    branch: ActionBranch::ConditionalTrue,
+                },
+                BranchStep::Branch {
+                    index: 1,
+                    branch: ActionBranch::ConditionalFalse,
+                },
+            ],
             1,
         );
 
@@ -1892,13 +2071,22 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Conditional")]
+    #[should_panic(expected = "does not expose branch")]
     fn path_non_conditional_target_panics() {
         let state = AppState::new();
         let addr = axis_input_address();
         let actions = [Action::Invert];
 
-        let _ = evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfTrue(0)], 1);
+        let _ = evaluate_actions_through_path(
+            &actions,
+            &state,
+            &addr,
+            &[BranchStep::Branch {
+                index: 0,
+                branch: ActionBranch::ConditionalTrue,
+            }],
+            1,
+        );
     }
 
     #[test]
@@ -1914,7 +2102,15 @@ mod tests {
             if_false: Vec::new(),
         }];
 
-        let _ =
-            evaluate_actions_through_path(&actions, &state, &addr, &[BranchStep::IfFalse(1)], 1);
+        let _ = evaluate_actions_through_path(
+            &actions,
+            &state,
+            &addr,
+            &[BranchStep::Branch {
+                index: 1,
+                branch: ActionBranch::ConditionalFalse,
+            }],
+            1,
+        );
     }
 }

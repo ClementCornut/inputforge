@@ -78,8 +78,13 @@ pub(crate) fn compute_live_axis_value(
 mod tests {
     use super::*;
 
+    use inputforge_core::action::ActionBranch;
+
     fn nested_stage_id() -> StageId {
-        StageId(vec![StageIdSegment::Index(0), StageIdSegment::IfTrue])
+        StageId(vec![
+            StageIdSegment::Index(0),
+            StageIdSegment::Branch(ActionBranch::ConditionalTrue),
+        ])
     }
 
     fn unbound_addr() -> InputAddress {

@@ -15,10 +15,13 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::action::{Action, Mapping};
+use crate::action::{Action, Mapping, validate_gesture_threshold_ms};
 use crate::error::{EngineError, Result};
 use crate::mode::Modes;
 use crate::types::{InputAddress, InputId};
+
+// Keeps authored action trees bounded enough for validation and UI traversal.
+const MAX_ACTION_BRANCH_DEPTH: usize = 8;
 
 #[derive(Debug)]
 struct MigratedProfileToml {
@@ -343,6 +346,7 @@ impl Profile {
     ///
     /// Returns [`EngineError::ProfileWrite`] on serialization failure.
     pub fn to_toml(&self) -> Result<String> {
+        validate_profile_actions(self)?;
         let raw = self.to_raw();
         Ok(toml::to_string(&raw)?)
     }
@@ -674,6 +678,10 @@ impl Profile {
             }
         }
 
+        for mapping in &raw.mappings {
+            validate_mapping_actions(mapping)?;
+        }
+
         // Validate all calibration entries.
         for entry in &raw.calibrations {
             entry
@@ -715,6 +723,112 @@ impl Profile {
     }
 }
 
+fn validate_profile_actions(profile: &Profile) -> Result<()> {
+    for mapping in profile.mappings() {
+        validate_mapping_actions(mapping)?;
+    }
+    Ok(())
+}
+
+fn validate_mapping_actions(mapping: &Mapping) -> Result<()> {
+    validate_actions_for_mapping(&mapping.actions, &mapping.input, 0, false)
+}
+
+fn validate_actions_for_mapping(
+    actions: &[Action],
+    mapping_input: &InputAddress,
+    depth: usize,
+    inside_gesture: bool,
+) -> Result<()> {
+    if depth > MAX_ACTION_BRANCH_DEPTH {
+        return Err(EngineError::InvalidConfig {
+            reason: format!("action branch depth exceeds maximum of {MAX_ACTION_BRANCH_DEPTH}"),
+        });
+    }
+
+    for action in actions {
+        match action {
+            Action::Conditional {
+                if_true, if_false, ..
+            } => {
+                validate_actions_for_mapping(if_true, mapping_input, depth + 1, inside_gesture)?;
+                validate_actions_for_mapping(if_false, mapping_input, depth + 1, inside_gesture)?;
+            }
+            Action::TapGesture {
+                threshold_ms,
+                single_tap,
+                double_tap,
+                ..
+            } => {
+                if inside_gesture {
+                    return Err(nested_gesture_error());
+                }
+                validate_gesture_threshold_ms(*threshold_ms)?;
+                validate_gesture_mapping_shape(mapping_input)?;
+                validate_actions_for_mapping(single_tap, mapping_input, depth + 1, true)?;
+                validate_actions_for_mapping(double_tap, mapping_input, depth + 1, true)?;
+            }
+            Action::PressGesture {
+                threshold_ms,
+                short_press,
+                long_press,
+                ..
+            } => {
+                if inside_gesture {
+                    return Err(nested_gesture_error());
+                }
+                validate_gesture_threshold_ms(*threshold_ms)?;
+                validate_gesture_mapping_shape(mapping_input)?;
+                validate_actions_for_mapping(short_press, mapping_input, depth + 1, true)?;
+                validate_actions_for_mapping(long_press, mapping_input, depth + 1, true)?;
+            }
+            Action::ResponseCurve { .. }
+            | Action::Deadzone { .. }
+            | Action::Invert
+            | Action::MapToVJoy { .. }
+            | Action::MapToKeyboard { .. }
+            | Action::MapToMouse { .. }
+            | Action::MergeAxis { .. }
+            | Action::ChangeMode { .. } => {}
+        }
+    }
+    Ok(())
+}
+
+fn nested_gesture_error() -> EngineError {
+    EngineError::InvalidConfig {
+        reason: "gesture stages cannot be nested inside another gesture branch".to_owned(),
+    }
+}
+
+/// Validate an action tree against a mapping input without mutating the profile.
+///
+/// Used by engine command handlers to reject malformed mappings before
+/// touching in-memory state. Mirrors the validation performed by
+/// [`Profile::to_toml`] on save.
+///
+/// # Errors
+///
+/// Returns [`EngineError::InvalidConfig`] when thresholds are out of range,
+/// when gesture stages target a non-button mapping, when gestures are nested,
+/// or when the action tree exceeds the supported depth.
+pub fn validate_mapping_action_tree(
+    mapping_input: &InputAddress,
+    actions: &[Action],
+) -> Result<()> {
+    validate_actions_for_mapping(actions, mapping_input, 0, false)
+}
+
+fn validate_gesture_mapping_shape(mapping_input: &InputAddress) -> Result<()> {
+    if mapping_input.is_button_shaped() {
+        return Ok(());
+    }
+
+    Err(EngineError::InvalidConfig {
+        reason: "gesture stages require a button mapping".to_owned(),
+    })
+}
+
 /// Walk an action graph in place, rewriting every `from` mode-name reference
 /// to `to`. Returns whether any rewrite happened.
 fn rewrite_mode_in_action(action: &mut Action, from: &str, to: &str) -> bool {
@@ -734,6 +848,34 @@ fn rewrite_mode_in_action(action: &mut Action, from: &str, to: &str) -> bool {
                 changed |= rewrite_mode_in_action(a, from, to);
             }
             for a in if_false {
+                changed |= rewrite_mode_in_action(a, from, to);
+            }
+            changed
+        }
+        Action::TapGesture {
+            single_tap,
+            double_tap,
+            ..
+        } => {
+            let mut changed = false;
+            for a in single_tap {
+                changed |= rewrite_mode_in_action(a, from, to);
+            }
+            for a in double_tap {
+                changed |= rewrite_mode_in_action(a, from, to);
+            }
+            changed
+        }
+        Action::PressGesture {
+            short_press,
+            long_press,
+            ..
+        } => {
+            let mut changed = false;
+            for a in short_press {
+                changed |= rewrite_mode_in_action(a, from, to);
+            }
+            for a in long_press {
                 changed |= rewrite_mode_in_action(a, from, to);
             }
             changed
@@ -837,6 +979,299 @@ mod tests {
             profile.settings().startup_mode(),
             back.settings().startup_mode()
         );
+    }
+
+    #[test]
+    fn profile_to_toml_rejects_programmatic_tap_gesture_zero_threshold() {
+        let mut profile = minimal_profile();
+        profile.set_mapping(
+            &test_input(),
+            "Default",
+            Some("invalid tap".to_owned()),
+            vec![Action::TapGesture {
+                threshold_ms: 0,
+                fire_single_immediately: false,
+                single_tap: Vec::new(),
+                double_tap: Vec::new(),
+            }],
+        );
+
+        let err = profile
+            .to_toml()
+            .expect_err("invalid tap threshold should not serialize");
+
+        assert!(err.to_string().contains("outside 1..=10000ms"));
+    }
+
+    #[test]
+    fn profile_to_toml_rejects_programmatic_press_gesture_above_max_threshold() {
+        let mut profile = minimal_profile();
+        profile.set_mapping(
+            &test_input(),
+            "Default",
+            Some("invalid press".to_owned()),
+            vec![Action::PressGesture {
+                threshold_ms: 10001,
+                fire_long_when_threshold_crossed: false,
+                short_press: Vec::new(),
+                long_press: Vec::new(),
+            }],
+        );
+
+        let err = profile
+            .to_toml()
+            .expect_err("invalid press threshold should not serialize");
+
+        assert!(err.to_string().contains("outside 1..=10000ms"));
+    }
+
+    #[test]
+    fn profile_rejects_tap_gesture_on_axis_mapping() {
+        let input = r#"
+modes = ["Default"]
+
+[profile]
+id = "01J00000000000000000000000"
+name = "Invalid Gesture"
+startup_mode = "Default"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "dev-1"
+
+[mappings.input.input]
+type = "axis"
+index = 0
+
+[[mappings.actions]]
+type = "tap_gesture"
+threshold_ms = 500
+fire_single_immediately = false
+single_tap = []
+double_tap = []
+"#;
+
+        let err = Profile::from_toml(input).expect_err("axis mapping gesture should fail");
+
+        assert!(
+            err.to_string()
+                .contains("gesture stages require a button mapping"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn profile_reports_unknown_mapping_mode_before_action_validation() {
+        let input = r#"
+modes = ["Default"]
+
+[profile]
+id = "01J00000000000000000000000"
+name = "Invalid Precedence"
+startup_mode = "Default"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "dev-1"
+
+[mappings.input.input]
+type = "axis"
+index = 0
+
+[[mappings.actions]]
+type = "tap_gesture"
+threshold_ms = 500
+fire_single_immediately = false
+single_tap = []
+double_tap = []
+
+[[mappings]]
+mode = "Unknown"
+actions = []
+
+[mappings.input]
+device = "dev-1"
+
+[mappings.input.input]
+type = "button"
+index = 0
+"#;
+
+        let err = Profile::from_toml(input).expect_err("profile should fail validation");
+
+        assert!(
+            err.to_string().contains("mapping references unknown mode"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn profile_rejects_out_of_range_gesture_threshold() {
+        let input = r#"
+modes = ["Default"]
+
+[profile]
+id = "01J00000000000000000000000"
+name = "Invalid Threshold"
+startup_mode = "Default"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "dev-1"
+
+[mappings.input.input]
+type = "button"
+index = 0
+
+[[mappings.actions]]
+type = "press_gesture"
+threshold_ms = 10001
+fire_long_when_threshold_crossed = false
+short_press = []
+long_press = []
+"#;
+
+        let err = Profile::from_toml(input).expect_err("large gesture threshold should fail");
+
+        assert!(err.to_string().contains("outside 1..=10000ms"));
+    }
+
+    #[test]
+    fn profile_rejects_deep_action_branch_tree() {
+        fn button_input(index: u8) -> InputAddress {
+            InputAddress::Bound {
+                device: DeviceId("dev-1".to_owned()),
+                input: InputId::Button { index },
+            }
+        }
+
+        fn nested_conditional(depth: usize) -> Action {
+            if depth == 0 {
+                return Action::Invert;
+            }
+            Action::Conditional {
+                condition: Condition::ButtonPressed {
+                    input: button_input(1),
+                },
+                if_true: vec![nested_conditional(depth - 1)],
+                if_false: Vec::new(),
+            }
+        }
+
+        let raw = ProfileRaw {
+            modes: Modes::new(vec!["Default".to_owned()]).unwrap(),
+            profile: ProfileMeta {
+                id: ProfileId::new(),
+                name: "Too Deep".to_owned(),
+                startup_mode: "Default".to_owned(),
+            },
+            devices: Vec::new(),
+            mappings: vec![Mapping {
+                input: button_input(0),
+                mode: "Default".to_owned(),
+                name: None,
+                actions: vec![nested_conditional(MAX_ACTION_BRANCH_DEPTH + 1)],
+            }],
+            calibrations: Vec::new(),
+        };
+
+        let err = Profile::from_raw(raw).expect_err("deep action tree should fail");
+
+        assert!(
+            err.to_string().contains("action branch depth exceeds"),
+            "unexpected error: {err}"
+        );
+    }
+
+    fn button_mapping_input() -> InputAddress {
+        InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        }
+    }
+
+    fn predicate_button_input() -> InputAddress {
+        InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 1 },
+        }
+    }
+
+    #[test]
+    fn validate_rejects_nested_tap_in_tap() {
+        let actions = vec![Action::TapGesture {
+            threshold_ms: 250,
+            fire_single_immediately: false,
+            single_tap: vec![Action::TapGesture {
+                threshold_ms: 250,
+                fire_single_immediately: false,
+                single_tap: Vec::new(),
+                double_tap: Vec::new(),
+            }],
+            double_tap: Vec::new(),
+        }];
+
+        let err = validate_mapping_action_tree(&button_mapping_input(), &actions)
+            .expect_err("nested tap inside tap should be rejected");
+
+        assert!(
+            err.to_string().contains("cannot be nested"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_nested_press_in_tap_via_conditional() {
+        let actions = vec![Action::TapGesture {
+            threshold_ms: 250,
+            fire_single_immediately: false,
+            single_tap: vec![Action::Conditional {
+                condition: Condition::ButtonPressed {
+                    input: predicate_button_input(),
+                },
+                if_true: vec![Action::PressGesture {
+                    threshold_ms: 600,
+                    fire_long_when_threshold_crossed: false,
+                    short_press: Vec::new(),
+                    long_press: Vec::new(),
+                }],
+                if_false: Vec::new(),
+            }],
+            double_tap: Vec::new(),
+        }];
+
+        let err = validate_mapping_action_tree(&button_mapping_input(), &actions)
+            .expect_err("press nested inside tap branch via conditional should be rejected");
+
+        assert!(
+            err.to_string().contains("cannot be nested"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_accepts_conditional_inside_gesture_branch() {
+        let actions = vec![Action::TapGesture {
+            threshold_ms: 250,
+            fire_single_immediately: false,
+            single_tap: vec![Action::Conditional {
+                condition: Condition::ButtonPressed {
+                    input: predicate_button_input(),
+                },
+                if_true: vec![Action::Invert],
+                if_false: Vec::new(),
+            }],
+            double_tap: Vec::new(),
+        }];
+
+        validate_mapping_action_tree(&button_mapping_input(), &actions)
+            .expect("conditional inside a gesture branch is allowed");
     }
 
     #[test]
@@ -1920,6 +2355,43 @@ enabled = true
 
         let touched = profile.rename_mode_refs("Combat", "Fighter");
         assert_eq!(touched, 1);
+    }
+
+    #[test]
+    fn rename_mode_refs_walks_into_gesture_branches() {
+        let mut profile = test_profile_with_two_modes();
+        profile.set_mapping(
+            &test_input(),
+            "Default",
+            Some("gesture".to_owned()),
+            vec![Action::PressGesture {
+                threshold_ms: 500,
+                fire_long_when_threshold_crossed: false,
+                short_press: vec![Action::ChangeMode {
+                    strategy: ModeChangeStrategy::SwitchTo {
+                        mode: "Combat".to_owned(),
+                    },
+                }],
+                long_press: Vec::new(),
+            }],
+        );
+
+        let changed = profile.rename_mode_refs("Combat", "Landing");
+
+        assert_eq!(changed, 1);
+        let mapping = profile
+            .find_mapping(&test_input(), "Default")
+            .expect("mapping should remain");
+        let Action::PressGesture { short_press, .. } = &mapping.actions[0] else {
+            panic!("expected press gesture");
+        };
+        let Action::ChangeMode {
+            strategy: ModeChangeStrategy::SwitchTo { mode },
+        } = &short_press[0]
+        else {
+            panic!("expected change mode");
+        };
+        assert_eq!(mode, "Landing");
     }
 
     // --- remove_mapping ---

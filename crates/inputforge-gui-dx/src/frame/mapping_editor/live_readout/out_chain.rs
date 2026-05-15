@@ -82,6 +82,7 @@ fn ChainRow(step: ChainStep, index_in_chain: usize) -> Element {
             branch,
         } => {
             let active = conditional_active(evaluated, branch);
+            let step_label = branch_step_label(branch);
             let outcome = if active {
                 "active branch"
             } else {
@@ -93,7 +94,7 @@ fn ChainRow(step: ChainStep, index_in_chain: usize) -> Element {
 
             rsx! {
                 div { class: "{row_class}",
-                    span { class: "if-editor__readout-chain-step", "COND" }
+                    span { class: "if-editor__readout-chain-step", "{step_label}" }
                     span { class: "if-editor__readout-chain-tag", "{condition_label}" }
                     span { class: "{outcome_class}", "{outcome_text}" }
                 }
@@ -103,7 +104,18 @@ fn ChainRow(step: ChainStep, index_in_chain: usize) -> Element {
 }
 
 fn conditional_active(evaluated: bool, branch: Branch) -> bool {
-    evaluated == matches!(branch, Branch::IfTrue)
+    match branch {
+        Branch::IfTrue => evaluated,
+        Branch::IfFalse => !evaluated,
+        Branch::Gesture(_) => false,
+    }
+}
+
+fn branch_step_label(branch: Branch) -> &'static str {
+    match branch {
+        Branch::IfTrue | Branch::IfFalse => "COND",
+        Branch::Gesture(_) => "GEST",
+    }
 }
 
 fn conditional_row_class(active: bool) -> &'static str {
@@ -165,6 +177,26 @@ mod tests {
         assert!(conditional_active(false, Branch::IfFalse));
         assert!(!conditional_active(false, Branch::IfTrue));
         assert!(!conditional_active(true, Branch::IfFalse));
+    }
+
+    #[test]
+    fn gesture_branch_is_never_active_without_runtime_telemetry() {
+        let branch = Branch::Gesture(inputforge_core::action::ActionBranch::TapSingle);
+
+        assert!(!conditional_active(false, branch));
+        assert!(!conditional_active(true, branch));
+    }
+
+    #[test]
+    fn branch_step_label_distinguishes_gestures_from_conditions() {
+        assert_eq!(branch_step_label(Branch::IfTrue), "COND");
+        assert_eq!(branch_step_label(Branch::IfFalse), "COND");
+        assert_eq!(
+            branch_step_label(Branch::Gesture(
+                inputforge_core::action::ActionBranch::PressLong
+            )),
+            "GEST"
+        );
     }
 
     #[test]
@@ -231,13 +263,14 @@ mod tests {
         let css = include_str!("../../../../assets/frame/mapping_editor.css");
 
         assert!(
-            css.contains(
-                ".if-editor__readout-chain {\n    grid-column: 1 / -1;\n    display: grid;"
-            ),
+            css_rule_contains(css, ".if-editor__readout-chain", "grid-column: 1 / -1;")
+                && css_rule_contains(css, ".if-editor__readout-chain", "display: grid;"),
             "expanded chain block must establish a grid aligned to the parent readout"
         );
         assert!(
-            css.contains(
+            css_rule_contains(
+                css,
+                ".if-editor__readout-chain",
                 "grid-template-columns: var(--if-editor__readout-label-col) \
                  var(--if-editor__readout-tag-col) minmax(0, 1fr) \
                  var(--if-editor__readout-pct-col) \
@@ -245,17 +278,18 @@ mod tests {
             ),
             "chain preview rows must use the parent readout column tokens"
         );
-        for declaration in [
-            ".if-editor__readout-chain-row {\n    display: contents;",
-            ".if-editor__readout-chain-bar {\n    grid-column: 3;",
-            ".if-editor__readout-chain-pct {\n    grid-column: 4;",
-            ".if-editor__readout-chain-outcome {\n    grid-column: 3 / 5;",
-            ".if-editor__readout-chain-step {\n    grid-column: 1;\n    padding-left: 8px;",
-            "white-space: nowrap;",
+        for (selector, declaration) in [
+            (".if-editor__readout-chain-row", "display: contents;"),
+            (".if-editor__readout-chain-bar", "grid-column: 3;"),
+            (".if-editor__readout-chain-pct", "grid-column: 4;"),
+            (".if-editor__readout-chain-outcome", "grid-column: 3 / 5;"),
+            (".if-editor__readout-chain-step", "grid-column: 1;"),
+            (".if-editor__readout-chain-step", "padding-left: 8px;"),
+            (".if-editor__readout-chain-step", "white-space: nowrap;"),
         ] {
             assert!(
-                css.contains(declaration),
-                "missing chain alignment declaration: {declaration}"
+                css_rule_contains(css, selector, declaration),
+                "missing chain alignment declaration {declaration} in {selector}"
             );
         }
         assert!(
@@ -266,6 +300,26 @@ mod tests {
             !css.contains("padding: 6px 0 6px 28px;"),
             "chain indentation must not move the preview bar scale"
         );
+    }
+
+    fn css_rule_contains(css: &str, selector: &str, declaration: &str) -> bool {
+        let declaration = compact_css_fragment(declaration);
+        css.split('}').any(|block| {
+            let Some((selectors, body)) = block.split_once('{') else {
+                return false;
+            };
+            selectors
+                .split(',')
+                .any(|candidate| candidate.trim().ends_with(selector))
+                && compact_css_fragment(body).contains(&declaration)
+        })
+    }
+
+    fn compact_css_fragment(fragment: &str) -> String {
+        fragment
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect()
     }
 
     #[test]

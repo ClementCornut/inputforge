@@ -12,7 +12,7 @@ use crate::error::Result;
 use crate::mode::{ModeState, Modes};
 use crate::output::traits::{KeyboardSink, MouseSink, OutputSink};
 use crate::pipeline::{self, PipelineContext, PipelineOutput};
-use crate::state::{InputCacheStore, OutputCacheStore};
+use crate::state::{InputCacheStore, OutputActivityStore, OutputActivityValue, OutputCacheStore};
 use crate::types::{AxisValue, InputAddress, InputValue, OutputId};
 
 use super::output_state::{OutputAction, OutputEvent, OutputRuntimeState};
@@ -51,7 +51,7 @@ pub(super) fn process_pipeline_outputs(
 
     for output in outputs {
         match output {
-            PipelineOutput::SetAxis { output, value } => {
+            PipelineOutput::SetAxis { output, value, .. } => {
                 let OutputId::Axis { id } = &output.output else {
                     tracing::warn!(
                         output_id = ?output.output,
@@ -61,7 +61,11 @@ pub(super) fn process_pipeline_outputs(
                 };
                 output_sink.set_axis(output.device, *id, *value)?;
             }
-            PipelineOutput::SetButton { output, pressed } => {
+            PipelineOutput::SetButton {
+                owner,
+                output,
+                pressed,
+            } => {
                 let OutputId::Button { id } = &output.output else {
                     tracing::warn!(
                         output_id = ?output.output,
@@ -70,6 +74,7 @@ pub(super) fn process_pipeline_outputs(
                     continue;
                 };
                 output_sink.set_button(output.device, *id, *pressed)?;
+                output_state.commit_set_button(owner.clone(), output.clone(), *pressed);
             }
             PipelineOutput::Keyboard {
                 owner,
@@ -212,6 +217,7 @@ pub(super) fn record_outputs_to_cache(outputs: &[PipelineOutput], cache: &mut Ou
             PipelineOutput::SetAxis {
                 output: addr,
                 value,
+                ..
             } => {
                 if let OutputId::Axis { id } = &addr.output {
                     cache.set_axis(addr.device, *id, *value);
@@ -220,6 +226,7 @@ pub(super) fn record_outputs_to_cache(outputs: &[PipelineOutput], cache: &mut Ou
             PipelineOutput::SetButton {
                 output: addr,
                 pressed,
+                ..
             } => {
                 if let OutputId::Button { id } = &addr.output {
                     cache.set_button(addr.device, *id, *pressed);
@@ -228,6 +235,58 @@ pub(super) fn record_outputs_to_cache(outputs: &[PipelineOutput], cache: &mut Ou
             PipelineOutput::Keyboard { .. }
             | PipelineOutput::Mouse { .. }
             | PipelineOutput::ChangeMode { .. } => {}
+        }
+    }
+}
+
+pub(super) fn record_outputs_to_activity(
+    outputs: &[PipelineOutput],
+    activity: &mut OutputActivityStore,
+    now: std::time::Instant,
+    latch_inactive: bool,
+) {
+    activity.prune(now);
+    for output in outputs {
+        match output {
+            PipelineOutput::SetAxis { owner, value, .. } => {
+                activity.record(
+                    owner.clone(),
+                    OutputActivityValue::Axis(*value),
+                    now,
+                    latch_inactive,
+                );
+            }
+            PipelineOutput::SetButton { owner, pressed, .. } => {
+                activity.record(
+                    owner.clone(),
+                    OutputActivityValue::Button(*pressed),
+                    now,
+                    latch_inactive,
+                );
+            }
+            PipelineOutput::Keyboard { owner, active, .. } => {
+                activity.record(
+                    owner.clone(),
+                    OutputActivityValue::Keyboard(*active),
+                    now,
+                    latch_inactive,
+                );
+            }
+            PipelineOutput::Mouse {
+                owner,
+                target,
+                active,
+                ..
+            } => {
+                let active = *active && !target.is_wheel();
+                activity.record(
+                    owner.clone(),
+                    OutputActivityValue::Mouse(active),
+                    now,
+                    latch_inactive,
+                );
+            }
+            PipelineOutput::ChangeMode { .. } => {}
         }
     }
 }
@@ -267,6 +326,7 @@ pub(super) fn refresh_axes_for_mode_change(
                     PipelineOutput::SetAxis {
                         output: addr,
                         value: v,
+                        ..
                     } => {
                         let OutputId::Axis { id } = &addr.output else {
                             tracing::warn!(
@@ -281,6 +341,7 @@ pub(super) fn refresh_axes_for_mode_change(
                     PipelineOutput::SetButton {
                         output: addr,
                         pressed,
+                        ..
                     } => {
                         let OutputId::Button { id } = &addr.output else {
                             tracing::warn!(

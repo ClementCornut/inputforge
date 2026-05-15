@@ -2,11 +2,17 @@
 
 mod bulk;
 mod condition;
+mod gesture;
 mod mapping;
 mod mode_change;
 
 pub use bulk::BulkMapEntry;
 pub use condition::{Condition, validate_depth};
+pub use gesture::{
+    ActionBranch, DEFAULT_GESTURE_THRESHOLD_MS, MAX_GESTURE_THRESHOLD_MS, MIN_GESTURE_THRESHOLD_MS,
+    branch_actions, branch_actions_mut, default_gesture_threshold_ms,
+    validate_gesture_threshold_ms,
+};
 pub use mapping::Mapping;
 pub use mode_change::ModeChangeStrategy;
 
@@ -122,6 +128,18 @@ pub enum Action {
         /// pre-2026-05-02 profiles that omit the field.
         if_false: Vec<Action>,
     },
+    TapGesture {
+        threshold_ms: u64,
+        fire_single_immediately: bool,
+        single_tap: Vec<Action>,
+        double_tap: Vec<Action>,
+    },
+    PressGesture {
+        threshold_ms: u64,
+        fire_long_when_threshold_crossed: bool,
+        short_press: Vec<Action>,
+        long_press: Vec<Action>,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -163,6 +181,26 @@ enum ActionSerde {
         #[serde(default)]
         if_false: Vec<Action>,
     },
+    TapGesture {
+        #[serde(default = "default_gesture_threshold_ms")]
+        threshold_ms: u64,
+        #[serde(default)]
+        fire_single_immediately: bool,
+        #[serde(default)]
+        single_tap: Vec<Action>,
+        #[serde(default)]
+        double_tap: Vec<Action>,
+    },
+    PressGesture {
+        #[serde(default = "default_gesture_threshold_ms")]
+        threshold_ms: u64,
+        #[serde(default)]
+        fire_long_when_threshold_crossed: bool,
+        #[serde(default)]
+        short_press: Vec<Action>,
+        #[serde(default)]
+        long_press: Vec<Action>,
+    },
 }
 
 impl From<Action> for ActionSerde {
@@ -198,6 +236,28 @@ impl From<Action> for ActionSerde {
                 if_true,
                 if_false,
             },
+            Action::TapGesture {
+                threshold_ms,
+                fire_single_immediately,
+                single_tap,
+                double_tap,
+            } => Self::TapGesture {
+                threshold_ms,
+                fire_single_immediately,
+                single_tap,
+                double_tap,
+            },
+            Action::PressGesture {
+                threshold_ms,
+                fire_long_when_threshold_crossed,
+                short_press,
+                long_press,
+            } => Self::PressGesture {
+                threshold_ms,
+                fire_long_when_threshold_crossed,
+                short_press,
+                long_press,
+            },
         }
     }
 }
@@ -231,7 +291,39 @@ impl From<ActionSerde> for Action {
                 if_true,
                 if_false,
             },
+            ActionSerde::TapGesture {
+                threshold_ms,
+                fire_single_immediately,
+                single_tap,
+                double_tap,
+            } => Self::TapGesture {
+                threshold_ms,
+                fire_single_immediately,
+                single_tap,
+                double_tap,
+            },
+            ActionSerde::PressGesture {
+                threshold_ms,
+                fire_long_when_threshold_crossed,
+                short_press,
+                long_press,
+            } => Self::PressGesture {
+                threshold_ms,
+                fire_long_when_threshold_crossed,
+                short_press,
+                long_press,
+            },
         }
+    }
+}
+
+fn validate_action_serde(action: &ActionSerde) -> crate::error::Result<()> {
+    match action {
+        ActionSerde::TapGesture { threshold_ms, .. }
+        | ActionSerde::PressGesture { threshold_ms, .. } => {
+            validate_gesture_threshold_ms(*threshold_ms)
+        }
+        _ => Ok(()),
     }
 }
 
@@ -249,7 +341,9 @@ impl<'de> Deserialize<'de> for Action {
     where
         D: serde::Deserializer<'de>,
     {
-        ActionSerde::deserialize(deserializer).map(Self::from)
+        let action = ActionSerde::deserialize(deserializer)?;
+        validate_action_serde(&action).map_err(serde::de::Error::custom)?;
+        Ok(Self::from(action))
     }
 }
 
@@ -449,5 +543,170 @@ mod tests {
         assert!(json.contains("\"type\":\"conditional\""));
         let back: Action = serde_json::from_str(&json).unwrap();
         assert_eq!(action, back);
+    }
+
+    #[test]
+    fn action_tap_gesture_serde_roundtrip() {
+        let action = Action::TapGesture {
+            threshold_ms: 275,
+            fire_single_immediately: true,
+            single_tap: vec![Action::Invert],
+            double_tap: vec![Action::Deadzone {
+                config: DeadzoneConfig::default(),
+            }],
+        };
+
+        let toml = toml::to_string(&action).expect("tap gesture should serialize");
+        let parsed: Action = toml::from_str(&toml).expect("tap gesture should deserialize");
+
+        assert_eq!(parsed, action);
+    }
+
+    #[test]
+    fn action_press_gesture_serde_roundtrip() {
+        let action = Action::PressGesture {
+            threshold_ms: 900,
+            fire_long_when_threshold_crossed: true,
+            short_press: vec![Action::Invert],
+            long_press: vec![Action::Deadzone {
+                config: DeadzoneConfig::default(),
+            }],
+        };
+
+        let toml = toml::to_string(&action).expect("press gesture should serialize");
+        let parsed: Action = toml::from_str(&toml).expect("press gesture should deserialize");
+
+        assert_eq!(parsed, action);
+    }
+
+    #[test]
+    fn tap_gesture_rejects_zero_threshold_on_deserialize() {
+        let toml = r#"
+type = "tap_gesture"
+threshold_ms = 0
+"#;
+
+        let err = toml::from_str::<Action>(toml).expect_err("zero threshold should fail");
+
+        assert!(err.to_string().contains("outside 1..=10000ms"));
+    }
+
+    #[test]
+    fn press_gesture_rejects_above_max_threshold_on_deserialize() {
+        let toml = r#"
+type = "press_gesture"
+threshold_ms = 10001
+"#;
+
+        let err = toml::from_str::<Action>(toml).expect_err("large threshold should fail");
+
+        assert!(err.to_string().contains("outside 1..=10000ms"));
+    }
+
+    #[test]
+    fn tap_gesture_defaults_threshold_and_branches_on_deserialize() {
+        let toml = r#"
+type = "tap_gesture"
+"#;
+
+        let parsed: Action = toml::from_str(toml).expect("tap gesture defaults should load");
+
+        assert_eq!(
+            parsed,
+            Action::TapGesture {
+                threshold_ms: DEFAULT_GESTURE_THRESHOLD_MS,
+                fire_single_immediately: false,
+                single_tap: Vec::new(),
+                double_tap: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn press_gesture_defaults_threshold_and_branches_on_deserialize() {
+        let toml = r#"
+type = "press_gesture"
+"#;
+
+        let parsed: Action = toml::from_str(toml).expect("press gesture defaults should load");
+
+        assert_eq!(
+            parsed,
+            Action::PressGesture {
+                threshold_ms: DEFAULT_GESTURE_THRESHOLD_MS,
+                fire_long_when_threshold_crossed: false,
+                short_press: Vec::new(),
+                long_press: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn branch_helpers_return_all_gesture_and_conditional_branches() {
+        let conditional = Action::Conditional {
+            condition: Condition::ButtonPressed {
+                input: test_input_address(),
+            },
+            if_true: vec![Action::Invert],
+            if_false: vec![Action::Deadzone {
+                config: DeadzoneConfig::default(),
+            }],
+        };
+        assert_eq!(
+            branch_actions(&conditional, ActionBranch::ConditionalTrue)
+                .expect("conditional true branch exists")
+                .len(),
+            1
+        );
+        assert_eq!(
+            branch_actions(&conditional, ActionBranch::ConditionalFalse)
+                .expect("conditional false branch exists")
+                .len(),
+            1
+        );
+
+        let mut tap = Action::TapGesture {
+            threshold_ms: 500,
+            fire_single_immediately: false,
+            single_tap: vec![Action::Invert],
+            double_tap: Vec::new(),
+        };
+        assert_eq!(
+            branch_actions(&tap, ActionBranch::TapSingle)
+                .expect("tap single branch exists")
+                .len(),
+            1
+        );
+        branch_actions_mut(&mut tap, ActionBranch::TapDouble)
+            .expect("tap double branch exists")
+            .push(Action::Invert);
+        assert_eq!(
+            branch_actions(&tap, ActionBranch::TapDouble)
+                .expect("tap double branch exists")
+                .len(),
+            1
+        );
+
+        let press = Action::PressGesture {
+            threshold_ms: 500,
+            fire_long_when_threshold_crossed: false,
+            short_press: vec![Action::Invert],
+            long_press: vec![Action::Deadzone {
+                config: DeadzoneConfig::default(),
+            }],
+        };
+        assert_eq!(
+            branch_actions(&press, ActionBranch::PressShort)
+                .expect("press short branch exists")
+                .len(),
+            1
+        );
+        assert_eq!(
+            branch_actions(&press, ActionBranch::PressLong)
+                .expect("press long branch exists")
+                .len(),
+            1
+        );
+        assert!(branch_actions(&tap, ActionBranch::PressLong).is_none());
     }
 }

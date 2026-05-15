@@ -10,6 +10,7 @@
 
 mod command;
 mod dependencies;
+pub(crate) mod gestures;
 mod output_handler;
 mod output_state;
 mod run;
@@ -22,6 +23,7 @@ pub use run::MAX_MODE_NAME_GRAPHEMES;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc;
+use std::time::Instant;
 
 use parking_lot::RwLock;
 
@@ -55,6 +57,8 @@ pub struct Engine {
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Receiver<EngineCommand>,
     callbacks: CallbackRegistry,
+    gesture_dispatcher: gestures::GestureDispatcher,
+    now: Box<dyn Fn() -> Instant + Send + Sync>,
     pub(crate) mode_state: ModeState,
     /// Reused across frames to avoid per-frame allocation.
     event_buffer: Vec<InputEvent>,
@@ -147,6 +151,8 @@ impl Engine {
             state.device_registry.clone_from(&settings.device_registry);
             state.snapshot_config.clone_from(&settings.snapshot);
             state.startup.clone_from(&settings.startup);
+            state.default_double_tap_threshold_ms = settings.default_double_tap_threshold_ms;
+            state.default_long_press_threshold_ms = settings.default_long_press_threshold_ms;
         };
 
         // F16 startup reconciliation. Run BEFORE engine construction so the
@@ -210,6 +216,8 @@ impl Engine {
             state,
             commands,
             callbacks: CallbackRegistry::new(),
+            gesture_dispatcher: gestures::GestureDispatcher::default(),
+            now: Box::new(Instant::now),
             mode_state: ModeState::new(startup_mode),
             event_buffer: Vec::with_capacity(64),
             output_buffer: Vec::new(),
