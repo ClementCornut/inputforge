@@ -364,3 +364,153 @@ fn missing_asset_canvas_preserves_anchor_count_message() {
         "missing asset message should keep anchor count visible: {html}"
     );
 }
+
+#[test]
+fn missing_asset_canvas_renders_recovery_paths_with_anchor_count() {
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness() -> Element {
+        let asset_id = AssetId::from_string("asset-1");
+        let mut initial_state = SheetsState {
+            assets: vec![AssetEntry {
+                asset_id: asset_id.clone(),
+                copied_path: PathBuf::from("assets/copied-panel.png"),
+                content_hash: "hash".to_owned(),
+                media_type: "image/png".to_owned(),
+                pixel_dimensions: PixelDimensions {
+                    width: 320,
+                    height: 240,
+                },
+                original_import_path: Some(PathBuf::from("D:/imports/original-panel.png")),
+                extensions: ExtensionPayload::default(),
+            }],
+            ..SheetsState::default()
+        };
+        initial_state.create_template_from_asset(asset_id, "Arcade panel");
+        let selected_asset = initial_state.assets[0].clone();
+        initial_state.templates[0].anchors.push(TemplateAnchor {
+            anchor_id: inputforge_core::sheet::AnchorId::from_string("anchor-1"),
+            label: "Trigger".to_owned(),
+            position: AnchorPosition { x: 0.25, y: 0.5 },
+            input_type_hint: None,
+            grouping_hint: None,
+            device_matching_hint: None,
+            extensions: ExtensionPayload::default(),
+        });
+        initial_state.asset_health = vec![AssetHealth {
+            entry: selected_asset,
+            copied_absolute_path: PathBuf::from("C:/InputForge/assets/copied-panel.png"),
+            missing: true,
+        }];
+        let sheets = use_signal(|| initial_state);
+
+        rsx! {
+            SheetsCanvas {
+                sheets,
+                on_import_image: move |()| {},
+                on_arm_capture: move |_| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(html.contains("Missing image asset"));
+    assert!(html.contains("Copied path"));
+    assert!(html.contains("C:/InputForge/assets/copied-panel.png"));
+    assert!(html.contains("Original import path"));
+    assert!(html.contains("D:/imports/original-panel.png"));
+    assert!(html.contains("1 anchor"));
+}
+
+#[test]
+fn canvas_treats_template_asset_without_health_as_missing() {
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness() -> Element {
+        let asset_id = AssetId::from_string("asset-1");
+        let mut initial_state = SheetsState {
+            assets: vec![AssetEntry {
+                asset_id: asset_id.clone(),
+                copied_path: PathBuf::from("assets/asset-1.png"),
+                content_hash: "hash".to_owned(),
+                media_type: "image/png".to_owned(),
+                pixel_dimensions: PixelDimensions {
+                    width: 320,
+                    height: 240,
+                },
+                original_import_path: None,
+                extensions: ExtensionPayload::default(),
+            }],
+            ..SheetsState::default()
+        };
+        initial_state.create_template_from_asset(asset_id, "Arcade panel");
+        let sheets = use_signal(|| initial_state);
+
+        rsx! {
+            SheetsCanvas {
+                sheets,
+                on_import_image: move |()| {},
+                on_arm_capture: move |_| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(html.contains("Missing image asset"));
+    assert!(
+        !html.contains("data-testid=\"sheets-image-stage\""),
+        "asset without health should not render an empty image stage: {html}"
+    );
+}
+
+#[test]
+fn left_rail_renders_template_and_asset_rows_as_selectable_controls() {
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness() -> Element {
+        let asset_id = AssetId::from_string("asset-1");
+        let mut initial_state = SheetsState {
+            assets: vec![AssetEntry {
+                asset_id: asset_id.clone(),
+                copied_path: PathBuf::from("assets/asset-1.png"),
+                content_hash: "hash".to_owned(),
+                media_type: "image/png".to_owned(),
+                pixel_dimensions: PixelDimensions {
+                    width: 320,
+                    height: 240,
+                },
+                original_import_path: None,
+                extensions: ExtensionPayload::default(),
+            }],
+            ..SheetsState::default()
+        };
+        initial_state.create_template_from_asset(asset_id, "Arcade panel");
+        let sheets = use_signal(|| initial_state);
+
+        rsx! {
+            SheetsLeftRail {
+                sheets,
+                on_import_image: move |()| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(html.contains("aria-label=\"Select template Arcade panel\""));
+    assert!(html.contains("aria-label=\"Select first template using assets/asset-1.png\""));
+}

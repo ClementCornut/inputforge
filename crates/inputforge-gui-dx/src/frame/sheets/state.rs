@@ -151,21 +151,53 @@ impl SheetsState {
             .find(|template| &template.template_id == selected_template_id)
     }
 
+    pub(crate) fn select_template(&mut self, template_id: TemplateId) {
+        if self
+            .templates
+            .iter()
+            .any(|template| template.template_id == template_id)
+        {
+            self.selected_template_id = Some(template_id);
+            self.selected_anchor_id = None;
+        }
+    }
+
+    pub(crate) fn select_first_template_for_asset(&mut self, asset_id: AssetId) {
+        if let Some(template_id) = self
+            .templates
+            .iter()
+            .find(|template| template.asset_ids.iter().any(|id| id == &asset_id))
+            .map(|template| template.template_id.clone())
+        {
+            self.select_template(template_id);
+        }
+    }
+
+    pub(crate) fn selected_asset_id(&self) -> Option<&AssetId> {
+        self.selected_template()?.asset_ids.first()
+    }
+
     pub(crate) fn selected_asset(&self) -> Option<&AssetEntry> {
-        let asset_id = self.selected_template()?.asset_ids.first()?;
+        let asset_id = self.selected_asset_id()?;
         self.assets.iter().find(|asset| &asset.asset_id == asset_id)
     }
 
     pub(crate) fn selected_asset_health(&self) -> Option<&inputforge_core::sheet::AssetHealth> {
-        let asset_id = &self.selected_asset()?.asset_id;
+        let asset_id = self.selected_asset_id()?;
         self.asset_health
             .iter()
             .find(|health| &health.entry.asset_id == asset_id)
     }
 
     pub(crate) fn selected_asset_missing(&self) -> bool {
-        self.selected_asset_health()
-            .is_some_and(|health| health.missing)
+        let Some(_asset_id) = self.selected_asset_id() else {
+            return false;
+        };
+
+        self.selected_asset().is_none()
+            || self
+                .selected_asset_health()
+                .map_or(true, |health| health.missing)
     }
 
     pub(crate) fn arm_capture(&mut self, anchor_id: AnchorId) {
@@ -415,6 +447,51 @@ mod tests {
         assert!(state.selected_asset_missing());
         assert_eq!(state.templates[0].anchors.len(), 1);
         assert_eq!(state.templates[0].anchors[0].label, "Trigger");
+    }
+
+    #[test]
+    fn selected_template_asset_without_health_is_missing() {
+        let state = state_with_template();
+
+        assert!(state.selected_asset_missing());
+    }
+
+    #[test]
+    fn selecting_template_clears_anchor_without_marking_dirty() {
+        let mut state = state_with_template();
+        let template_id = state.templates[0].template_id.clone();
+
+        state.select_template(template_id.clone());
+
+        assert_eq!(state.selected_template_id, Some(template_id));
+        assert_eq!(state.selected_anchor_id, None);
+        assert_eq!(state.autosave, AutosaveStatus::Clean);
+    }
+
+    #[test]
+    fn selecting_by_asset_uses_first_template_without_marking_dirty() {
+        let mut state = state_with_template();
+        let asset_id = state.assets[0].asset_id.clone();
+        let first_template_id = state.templates[0].template_id.clone();
+        let second_template_id = TemplateId::from_string("template-2");
+        state.templates.push(DeviceTemplate {
+            template_id: second_template_id.clone(),
+            display_name: "Second template".to_owned(),
+            matching_hints: Vec::new(),
+            asset_ids: vec![asset_id.clone()],
+            anchors: Vec::new(),
+            default_anchor_bindings: Vec::new(),
+            grouping_hints: Vec::new(),
+            default_token_preset: TokenPreset::Standard,
+            extensions: ExtensionPayload::default(),
+        });
+        state.selected_template_id = Some(second_template_id);
+
+        state.select_first_template_for_asset(asset_id);
+
+        assert_eq!(state.selected_template_id, Some(first_template_id));
+        assert_eq!(state.selected_anchor_id, None);
+        assert_eq!(state.autosave, AutosaveStatus::Clean);
     }
 
     #[test]

@@ -165,6 +165,26 @@
     background: color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg-sunken));
 }
 
+.if-sheets li:has(> button) {
+    padding: 0;
+}
+
+.if-sheets li > button {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-content: stretch;
+    width: 100%;
+    min-height: 0;
+    padding: 8px 10px;
+    border: 0;
+    background: transparent;
+    text-align: left;
+}
+
+.if-sheets li[data-selected="true"] > button {
+    background: transparent;
+}
+
 .if-sheets li span {
     overflow: hidden;
     color: var(--color-text);

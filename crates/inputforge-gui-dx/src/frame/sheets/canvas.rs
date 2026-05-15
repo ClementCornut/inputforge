@@ -39,9 +39,7 @@ pub(crate) fn SheetsCanvas(
     let selected_template = state.selected_template().cloned();
     let selected_asset = state.selected_asset().cloned();
     let selected_asset_health = state.selected_asset_health().cloned();
-    let selected_asset_missing = selected_asset_health
-        .as_ref()
-        .is_some_and(|health| health.missing);
+    let selected_asset_missing = state.selected_asset_missing();
     let selected_anchor_id = state.selected_anchor_id.clone();
     let tool = state.tool;
     drop(state);
@@ -70,6 +68,17 @@ pub(crate) fn SheetsCanvas(
         .filter(|health| !health.missing)
         .map(|health| file_url_from_path(&health.copied_absolute_path))
         .unwrap_or_default();
+    let missing_asset_entry = selected_asset_health
+        .as_ref()
+        .map(|health| &health.entry)
+        .or(selected_asset.as_ref());
+    let missing_copied_path = selected_asset_health
+        .as_ref()
+        .map(|health| health.copied_absolute_path.display().to_string())
+        .or_else(|| missing_asset_entry.map(|asset| asset.copied_path.display().to_string()));
+    let missing_original_path = missing_asset_entry
+        .and_then(|asset| asset.original_import_path.as_ref())
+        .map(|path| path.display().to_string());
     let current_stage_listener_key =
         stage_subscription_key(has_template, selected_asset_missing, &asset_id)
             .map(|stage_key| stage_resize_listener_key(&stage_key));
@@ -155,6 +164,18 @@ pub(crate) fn SheetsCanvas(
                     if selected_asset_missing {
                         div { class: "if-sheets__image-status",
                             p { "Missing image asset" }
+                            if let Some(copied_path) = missing_copied_path {
+                                p {
+                                    span { "Copied path" }
+                                    code { "{copied_path}" }
+                                }
+                            }
+                            if let Some(original_path) = missing_original_path {
+                                p {
+                                    span { "Original import path" }
+                                    code { "{original_path}" }
+                                }
+                            }
                             p { "{anchor_count_label}" }
                         }
                     } else {

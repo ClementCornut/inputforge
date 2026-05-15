@@ -4,6 +4,7 @@
 )]
 
 use dioxus::prelude::*;
+use inputforge_core::sheet::{AssetId, TemplateId};
 
 use crate::frame::sheets::state::SheetsState;
 
@@ -20,6 +21,10 @@ pub(crate) fn SheetsLeftRail(
 
     let template_count = templates.len();
     let asset_count = assets.len();
+    let template_assets: Vec<(TemplateId, Vec<AssetId>)> = templates
+        .iter()
+        .map(|template| (template.template_id.clone(), template.asset_ids.clone()))
+        .collect();
     let handle_import_image = move |_| on_import_image.call(());
 
     rsx! {
@@ -48,8 +53,15 @@ pub(crate) fn SheetsLeftRail(
                                     li {
                                         key: "{template.template_id}",
                                         "data-selected": selected,
-                                        span { "{template.display_name}" }
-                                        span { "{anchor_count} anchors" }
+                                        button {
+                                            "type": "button",
+                                            "aria-label": "Select template {template.display_name}",
+                                            onclick: move |_| {
+                                                sheets.write().select_template(template.template_id.clone());
+                                            },
+                                            span { "{template.display_name}" }
+                                            span { "{anchor_count} anchors" }
+                                        }
                                     }
                                 }
                             }
@@ -62,10 +74,39 @@ pub(crate) fn SheetsLeftRail(
                 p { "{asset_count} assets" }
                 ul {
                     for asset in assets {
+                        {
+                            let selected = selected_template_id.as_ref().is_some_and(|template_id| {
+                                template_assets.iter().any(|(candidate_template_id, asset_ids)| {
+                                    candidate_template_id == template_id
+                                        && asset_ids.iter().any(|id| id == &asset.asset_id)
+                                })
+                            });
+                            let can_select = template_assets
+                                .iter()
+                                .any(|(_, asset_ids)| asset_ids.iter().any(|id| id == &asset.asset_id));
+                            let asset_label = asset.copied_path.display().to_string();
+                            rsx! {
                         li { key: "{asset.asset_id}",
-                            span { "{asset.copied_path.display()}" }
-                            span {
-                                "{asset.pixel_dimensions.width} x {asset.pixel_dimensions.height}"
+                            "data-selected": selected,
+                            if can_select {
+                                button {
+                                    "type": "button",
+                                    "aria-label": "Select first template using {asset_label}",
+                                    onclick: move |_| {
+                                        sheets.write().select_first_template_for_asset(asset.asset_id.clone());
+                                    },
+                                    span { "{asset_label}" }
+                                    span {
+                                        "{asset.pixel_dimensions.width} x {asset.pixel_dimensions.height}"
+                                    }
+                                }
+                            } else {
+                                span { "{asset_label}" }
+                                span {
+                                    "{asset.pixel_dimensions.width} x {asset.pixel_dimensions.height}"
+                                }
+                            }
+                        }
                             }
                         }
                     }
