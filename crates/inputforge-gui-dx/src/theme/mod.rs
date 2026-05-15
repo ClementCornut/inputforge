@@ -49,6 +49,7 @@ const TOAST_CSS: Asset = asset!("/assets/toast/toast.css");
 
 const RESPONSE_CURVE_CSS: Asset = asset!("/assets/frame/response_curve.css");
 const DEADZONE_CSS: Asset = asset!("/assets/frame/deadzone.css");
+const SHEETS_CSS: Asset = asset!("/assets/frame/sheets.css");
 
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
@@ -108,6 +109,7 @@ pub fn ThemeProvider(children: Element) -> Element {
         // Frame stylesheets (editor panels, curve editor, etc.).
         Stylesheet { href: RESPONSE_CURVE_CSS }
         Stylesheet { href: DEADZONE_CSS }
+        Stylesheet { href: SHEETS_CSS }
 
         // Toast overlay, last so its z-index cascade wins.
         Stylesheet { href: TOAST_CSS }

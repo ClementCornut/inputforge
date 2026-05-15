@@ -19,7 +19,6 @@ use state::{AutosaveStatus, CaptureStatus, SheetsState};
 
 use crate::patterns::live_capture::{CaptureFilter, LiveCapture, is_current_capture_session};
 
-const SHEETS_CSS: Asset = asset!("/assets/frame/sheets.css");
 // Short enough to feel live while coalescing rapid inspector and canvas edits.
 const AUTOSAVE_DEBOUNCE: Duration = Duration::from_millis(400);
 
@@ -245,7 +244,6 @@ pub(crate) fn SheetsWorkbench() -> Element {
     let documents_loaded = documents.read().is_some();
 
     rsx! {
-        Stylesheet { href: SHEETS_CSS }
         div {
             class: "if-sheets",
             "data-testid": "sheets-workbench",

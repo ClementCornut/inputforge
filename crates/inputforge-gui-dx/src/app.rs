@@ -131,11 +131,12 @@ fn app_root_view() -> Element {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
     use std::sync::{Arc, mpsc};
 
     use dioxus::prelude::*;
     use dioxus_ssr::render;
-    use parking_lot::RwLock;
+    use parking_lot::{Mutex, RwLock};
 
     use inputforge_core::state::AppState;
 
@@ -146,6 +147,31 @@ mod tests {
     use crate::frame;
     use crate::toast::{ToastQueue, ToastState};
     use crate::tray::action::TrayMenuIds;
+
+    #[derive(Clone, Default)]
+    struct RecordingDocument {
+        stylesheet_hrefs: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl document::Document for RecordingDocument {
+        fn eval(&self, js: String) -> document::Eval {
+            <document::NoOpDocument as document::Document>::eval(&document::NoOpDocument, js)
+        }
+
+        fn create_link(&self, props: document::LinkProps) {
+            if props.rel.as_deref() == Some("stylesheet")
+                && let Some(href) = props.href
+            {
+                self.stylesheet_hrefs.lock().push(href);
+            }
+        }
+    }
+
+    fn app_root_view_with_recording_document(document: RecordingDocument) -> Element {
+        use_context_provider(|| Rc::new(document.clone()) as Rc<dyn document::Document>);
+
+        app_root_view_with_stub_contexts()
+    }
 
     /// Test harness: provides every context that `app_root_view` reads
     /// (`AppContext`, `ViewState`, `ToastQueue`, plus the upstream
@@ -220,9 +246,36 @@ mod tests {
     /// for any other component is caught here.
     #[test]
     fn app_root_mounts_frame_layout_not_placeholder_shell() {
-        let mut vdom = VirtualDom::new(app_root_view_with_stub_contexts);
+        let document = RecordingDocument::default();
+        let stylesheet_hrefs = Arc::clone(&document.stylesheet_hrefs);
+        let mut vdom = VirtualDom::new_with_props(app_root_view_with_recording_document, document);
         vdom.rebuild_in_place();
         let html = render(&vdom);
+        let stylesheets = stylesheet_hrefs.lock();
+        let normalized_stylesheets: Vec<String> = stylesheets
+            .iter()
+            .map(|href| href.replace('\\', "/"))
+            .collect();
+        let deadzone_css = normalized_stylesheets
+            .iter()
+            .position(|href| href.contains("/assets/frame/deadzone.css"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "ThemeProvider should mount deadzone stylesheet, got: {normalized_stylesheets:?}"
+                )
+            });
+        let sheets_css = normalized_stylesheets
+            .iter()
+            .position(|href| href.contains("/assets/frame/sheets.css"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "ThemeProvider should mount sheets stylesheet, got: {normalized_stylesheets:?}"
+                )
+            });
+        assert!(
+            deadzone_css < sheets_css,
+            "sheets stylesheet should mount after deadzone stylesheet, got: {normalized_stylesheets:?}"
+        );
         assert!(
             html.contains("if-layout"),
             "frame::Layout should mount: expected `if-layout` class in rendered HTML, got: {html}"
