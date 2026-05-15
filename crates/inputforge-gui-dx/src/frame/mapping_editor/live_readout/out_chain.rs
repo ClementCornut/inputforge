@@ -263,13 +263,14 @@ mod tests {
         let css = include_str!("../../../../assets/frame/mapping_editor.css");
 
         assert!(
-            css.contains(
-                ".if-editor__readout-chain {\n    grid-column: 1 / -1;\n    display: grid;"
-            ),
+            css_rule_contains(css, ".if-editor__readout-chain", "grid-column: 1 / -1;")
+                && css_rule_contains(css, ".if-editor__readout-chain", "display: grid;"),
             "expanded chain block must establish a grid aligned to the parent readout"
         );
         assert!(
-            css.contains(
+            css_rule_contains(
+                css,
+                ".if-editor__readout-chain",
                 "grid-template-columns: var(--if-editor__readout-label-col) \
                  var(--if-editor__readout-tag-col) minmax(0, 1fr) \
                  var(--if-editor__readout-pct-col) \
@@ -277,17 +278,18 @@ mod tests {
             ),
             "chain preview rows must use the parent readout column tokens"
         );
-        for declaration in [
-            ".if-editor__readout-chain-row {\n    display: contents;",
-            ".if-editor__readout-chain-bar {\n    grid-column: 3;",
-            ".if-editor__readout-chain-pct {\n    grid-column: 4;",
-            ".if-editor__readout-chain-outcome {\n    grid-column: 3 / 5;",
-            ".if-editor__readout-chain-step {\n    grid-column: 1;\n    padding-left: 8px;",
-            "white-space: nowrap;",
+        for (selector, declaration) in [
+            (".if-editor__readout-chain-row", "display: contents;"),
+            (".if-editor__readout-chain-bar", "grid-column: 3;"),
+            (".if-editor__readout-chain-pct", "grid-column: 4;"),
+            (".if-editor__readout-chain-outcome", "grid-column: 3 / 5;"),
+            (".if-editor__readout-chain-step", "grid-column: 1;"),
+            (".if-editor__readout-chain-step", "padding-left: 8px;"),
+            (".if-editor__readout-chain-step", "white-space: nowrap;"),
         ] {
             assert!(
-                css.contains(declaration),
-                "missing chain alignment declaration: {declaration}"
+                css_rule_contains(css, selector, declaration),
+                "missing chain alignment declaration {declaration} in {selector}"
             );
         }
         assert!(
@@ -298,6 +300,26 @@ mod tests {
             !css.contains("padding: 6px 0 6px 28px;"),
             "chain indentation must not move the preview bar scale"
         );
+    }
+
+    fn css_rule_contains(css: &str, selector: &str, declaration: &str) -> bool {
+        let declaration = compact_css_fragment(declaration);
+        css.split('}').any(|block| {
+            let Some((selectors, body)) = block.split_once('{') else {
+                return false;
+            };
+            selectors
+                .split(',')
+                .any(|candidate| candidate.trim().ends_with(selector))
+                && compact_css_fragment(body).contains(&declaration)
+        })
+    }
+
+    fn compact_css_fragment(fragment: &str) -> String {
+        fragment
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect()
     }
 
     #[test]

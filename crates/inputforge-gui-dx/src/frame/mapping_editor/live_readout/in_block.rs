@@ -499,6 +499,7 @@ mod tests {
     }
 
     fn css_rule_contains(css: &str, selector: &str, declaration: &str) -> bool {
+        let declaration = compact_css_fragment(declaration);
         css.split('}').any(|block| {
             let Some((selectors, body)) = block.split_once('{') else {
                 return false;
@@ -506,7 +507,14 @@ mod tests {
             selectors
                 .split(',')
                 .any(|candidate| candidate.trim().ends_with(selector))
-                && body.contains(declaration)
+                && compact_css_fragment(body).contains(&declaration)
         })
+    }
+
+    fn compact_css_fragment(fragment: &str) -> String {
+        fragment
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect()
     }
 }
