@@ -16,6 +16,8 @@ use std::path::PathBuf;
 use dioxus::prelude::*;
 use state::SheetsState;
 
+const SHEETS_CSS: Asset = asset!("/assets/frame/sheets.css");
+
 #[derive(Clone, Copy)]
 pub(crate) struct SheetsWorkbenchActions {
     pub save_now: Callback<()>,
@@ -104,6 +106,10 @@ pub(crate) fn SheetsWorkbench() -> Element {
         import_asset.call(source_path);
     });
 
+    let on_arm_capture = use_callback(move |anchor_id| {
+        sheets.write().arm_capture(anchor_id);
+    });
+
     use_context_provider(|| SheetsWorkbenchActions {
         save_now,
         retry_save,
@@ -113,12 +119,13 @@ pub(crate) fn SheetsWorkbench() -> Element {
     let documents_loaded = documents.read().is_some();
 
     rsx! {
+        Stylesheet { href: SHEETS_CSS }
         div {
             class: "if-sheets",
             "data-testid": "sheets-workbench",
             "data-documents-loaded": documents_loaded,
             left_rail::SheetsLeftRail { sheets, on_import_image }
-            canvas::SheetsCanvas { sheets, on_import_image }
+            canvas::SheetsCanvas { sheets, on_import_image, on_arm_capture }
             inspector::SheetsInspector { sheets }
         }
     }

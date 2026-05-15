@@ -113,6 +113,57 @@ impl SheetsState {
         template_id
     }
 
+    pub(crate) fn place_anchor(&mut self, position: AnchorPosition) -> AnchorId {
+        let anchor_id = AnchorId::new();
+        let Some(template) = self.selected_template_mut() else {
+            return anchor_id;
+        };
+
+        let label = format!("Anchor {}", template.anchors.len() + 1);
+        template
+            .anchors
+            .push(inputforge_core::sheet::TemplateAnchor {
+                anchor_id: anchor_id.clone(),
+                label,
+                position,
+                input_type_hint: None,
+                grouping_hint: None,
+                device_matching_hint: None,
+                extensions: ExtensionPayload::default(),
+            });
+        self.selected_anchor_id = Some(anchor_id.clone());
+        self.mark_dirty();
+        anchor_id
+    }
+
+    pub(crate) fn selected_template(&self) -> Option<&DeviceTemplate> {
+        let selected_template_id = self.selected_template_id.as_ref()?;
+        self.templates
+            .iter()
+            .find(|template| &template.template_id == selected_template_id)
+    }
+
+    pub(crate) fn selected_asset(&self) -> Option<&AssetEntry> {
+        let asset_id = self.selected_template()?.asset_ids.first()?;
+        self.assets.iter().find(|asset| &asset.asset_id == asset_id)
+    }
+
+    pub(crate) fn selected_asset_health(&self) -> Option<&inputforge_core::sheet::AssetHealth> {
+        let asset_id = &self.selected_asset()?.asset_id;
+        self.asset_health
+            .iter()
+            .find(|health| &health.entry.asset_id == asset_id)
+    }
+
+    pub(crate) fn selected_asset_missing(&self) -> bool {
+        self.selected_asset_health()
+            .is_some_and(|health| health.missing)
+    }
+
+    pub(crate) fn arm_capture(&mut self, anchor_id: AnchorId) {
+        self.capture = CaptureStatus::Armed(anchor_id);
+    }
+
     pub(crate) fn update_selected_anchor_label(&mut self, label: impl Into<String>) {
         if let Some(anchor) = self.selected_anchor_mut() {
             anchor.label = label.into();
@@ -200,12 +251,30 @@ impl SheetsState {
     }
 }
 
+pub(crate) fn normalized_image_point(
+    client_x: f64,
+    client_y: f64,
+    stage_left: f64,
+    stage_top: f64,
+    stage_width: f64,
+    stage_height: f64,
+) -> Option<AnchorPosition> {
+    if stage_width <= 0.0 || stage_height <= 0.0 {
+        return None;
+    }
+
+    Some(AnchorPosition {
+        x: ((client_x - stage_left) / stage_width).clamp(0.0, 1.0),
+        y: ((client_y - stage_top) / stage_height).clamp(0.0, 1.0),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    use inputforge_core::sheet::{InputTypeHint, PixelDimensions, TemplateAnchor};
+    use inputforge_core::sheet::{AssetHealth, InputTypeHint, PixelDimensions, TemplateAnchor};
     use inputforge_core::types::{DeviceId, InputId};
 
     fn button_input(index: u8) -> InputAddress {
@@ -275,6 +344,41 @@ mod tests {
         assert_eq!(anchor.label, "Fire");
         assert_eq!(anchor.position, AnchorPosition { x: 0.5, y: 0.75 });
         assert_eq!(state.autosave, AutosaveStatus::Dirty);
+    }
+
+    #[test]
+    fn placing_anchor_adds_selected_anchor_in_image_space() {
+        let mut state = state_with_template();
+
+        let anchor_id = state.place_anchor(AnchorPosition { x: 0.75, y: 0.125 });
+
+        let template = &state.templates[0];
+        let anchor = template
+            .anchors
+            .iter()
+            .find(|anchor| anchor.anchor_id == anchor_id)
+            .unwrap();
+        assert_eq!(template.anchors.len(), 2);
+        assert_eq!(anchor.label, "Anchor 2");
+        assert_eq!(anchor.position, AnchorPosition { x: 0.75, y: 0.125 });
+        assert_eq!(state.selected_anchor_id, Some(anchor_id));
+        assert_eq!(state.autosave, AutosaveStatus::Dirty);
+    }
+
+    #[test]
+    fn missing_selected_asset_is_reported_without_dropping_template_data() {
+        let mut state = state_with_template();
+        let asset = state.assets[0].clone();
+        state.asset_health = vec![AssetHealth {
+            entry: asset.clone(),
+            copied_absolute_path: PathBuf::from("missing/asset-1.png"),
+            missing: true,
+        }];
+
+        assert_eq!(state.selected_asset(), Some(&asset));
+        assert!(state.selected_asset_missing());
+        assert_eq!(state.templates[0].anchors.len(), 1);
+        assert_eq!(state.templates[0].anchors[0].label, "Trigger");
     }
 
     #[test]
