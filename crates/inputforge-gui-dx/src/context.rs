@@ -1,16 +1,18 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
+use std::time::Instant;
 
 use dioxus::prelude::*;
 use parking_lot::RwLock;
 
+use inputforge_core::action::{ActionBranch, DEFAULT_GESTURE_THRESHOLD_MS, branch_actions};
 use inputforge_core::engine::EngineCommand;
-use inputforge_core::pipeline::InputCache;
+use inputforge_core::pipeline::{InputCache, OutputOwner};
 use inputforge_core::settings::StartupSettings;
 use inputforge_core::snapshot::{SnapshotConfig, SnapshotId};
 use inputforge_core::state::{
-    AppState, DeviceState, EngineStatus, ProfileOrigin as CoreProfileOrigin,
+    AppState, DeviceState, EngineStatus, OutputActivityValue, ProfileOrigin as CoreProfileOrigin,
 };
 use inputforge_core::types::{
     AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, HatDirection, InputAddress, InputId,
@@ -36,11 +38,25 @@ pub(crate) struct RawHandles {
 /// snapshot mutation). The count is consumed by the F15 settings panel to
 /// derive `would_prune` at commit time without an additional engine query
 /// channel.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SettingsSnapshot {
     pub snapshot: SnapshotConfig,
     pub unpinned_snapshot_count: usize,
     pub startup: StartupSettings,
+    pub default_double_tap_threshold_ms: u64,
+    pub default_long_press_threshold_ms: u64,
+}
+
+impl Default for SettingsSnapshot {
+    fn default() -> Self {
+        Self {
+            snapshot: SnapshotConfig::default(),
+            unpinned_snapshot_count: 0,
+            startup: StartupSettings::default(),
+            default_double_tap_threshold_ms: DEFAULT_GESTURE_THRESHOLD_MS,
+            default_long_press_threshold_ms: DEFAULT_GESTURE_THRESHOLD_MS,
+        }
+    }
 }
 
 impl SettingsSnapshot {
@@ -63,6 +79,8 @@ impl SettingsSnapshot {
             snapshot,
             unpinned_snapshot_count,
             startup,
+            default_double_tap_threshold_ms: state.default_double_tap_threshold_ms,
+            default_long_press_threshold_ms: state.default_long_press_threshold_ms,
         }
     }
 }
@@ -250,6 +268,13 @@ pub(crate) struct GlyphFlags {
 pub(crate) struct LiveSnapshot {
     pub device_inputs: Vec<DeviceInputValues>,
     pub output_values: Vec<VjoyOutputValues>,
+    pub output_activity: Vec<OutputActivitySnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct OutputActivitySnapshot {
+    pub owner: OutputOwner,
+    pub value: OutputActivityValue,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -456,6 +481,11 @@ impl LiveSnapshot {
     /// Takes a pre-built `ConfigSnapshot` so device / virtual-device shape is
     /// read from a single coherent source.
     pub(crate) fn from_state(s: &AppState, cfg: &ConfigSnapshot) -> Self {
+        Self::from_state_at(s, cfg, Instant::now())
+    }
+
+    /// Project live state at a caller-supplied time for deterministic tests.
+    pub(crate) fn from_state_at(s: &AppState, cfg: &ConfigSnapshot, now: Instant) -> Self {
         let device_inputs: Vec<DeviceInputValues> = cfg
             .devices
             .iter()
@@ -524,9 +554,20 @@ impl LiveSnapshot {
             })
             .collect();
 
+        let mut output_activity: Vec<OutputActivitySnapshot> = s
+            .output_activity
+            .active_entries(now)
+            .map(|(owner, value)| OutputActivitySnapshot {
+                owner: owner.clone(),
+                value,
+            })
+            .collect();
+        output_activity.sort_by_cached_key(|entry| format!("{:?}", entry.owner));
+
         Self {
             device_inputs,
             output_values,
+            output_activity,
         }
     }
 }
@@ -541,6 +582,17 @@ fn derive_glyphs(actions: &[inputforge_core::action::Action]) -> GlyphFlags {
     out
 }
 
+fn action_branches() -> [ActionBranch; 6] {
+    [
+        ActionBranch::ConditionalTrue,
+        ActionBranch::ConditionalFalse,
+        ActionBranch::TapSingle,
+        ActionBranch::TapDouble,
+        ActionBranch::PressShort,
+        ActionBranch::PressLong,
+    ]
+}
+
 fn walk_actions(actions: &[inputforge_core::action::Action], out: &mut GlyphFlags) {
     use inputforge_core::action::Action;
     for action in actions {
@@ -551,20 +603,19 @@ fn walk_actions(actions: &[inputforge_core::action::Action], out: &mut GlyphFlag
             Action::MergeAxis { second_input, .. } if out.merge_secondary.is_none() => {
                 out.merge_secondary = Some(second_input.clone());
             }
-            Action::Conditional {
-                condition,
-                if_true,
-                if_false,
-            } => {
+            Action::Conditional { condition, .. } => {
                 if out.first_input_predicate.is_none()
                     && let Some(addr) = first_input_predicate(condition)
                 {
                     out.first_input_predicate = Some(addr);
                 }
-                walk_actions(if_true, out);
-                walk_actions(if_false, out);
             }
             _ => {}
+        }
+        for branch in action_branches() {
+            if let Some(actions) = branch_actions(action, branch) {
+                walk_actions(actions, out);
+            }
         }
     }
 }
@@ -619,16 +670,15 @@ fn derive_referenced_devices(
         for action in actions {
             match action {
                 Action::MergeAxis { second_input, .. } => push_addr(out, second_input),
-                Action::Conditional {
-                    condition,
-                    if_true,
-                    if_false,
-                } => {
+                Action::Conditional { condition, .. } => {
                     walk_condition(out, condition);
-                    walk_actions(out, if_true);
-                    walk_actions(out, if_false);
                 }
                 _ => {}
+            }
+            for branch in action_branches() {
+                if let Some(actions) = branch_actions(action, branch) {
+                    walk_actions(out, actions);
+                }
             }
         }
     }
@@ -642,19 +692,15 @@ fn derive_referenced_devices(
 fn first_vjoy_output(actions: &[inputforge_core::action::Action]) -> Option<OutputAddress> {
     use inputforge_core::action::Action;
     for action in actions {
-        match action {
-            Action::MapToVJoy { output } => return Some(output.clone()),
-            Action::Conditional {
-                if_true, if_false, ..
-            } => {
-                if let Some(output) = first_vjoy_output(if_true) {
-                    return Some(output);
-                }
-                if let Some(output) = first_vjoy_output(if_false) {
-                    return Some(output);
-                }
+        if let Action::MapToVJoy { output } = action {
+            return Some(output.clone());
+        }
+        for branch in action_branches() {
+            if let Some(actions) = branch_actions(action, branch)
+                && let Some(output) = first_vjoy_output(actions)
+            {
+                return Some(output);
             }
-            _ => {}
         }
     }
     None
@@ -819,16 +865,15 @@ fn record_referenced_input_kinds(
                 record_input_kind(second_input, axes, buttons, hats);
                 found = true;
             }
-            Action::Conditional {
-                condition,
-                if_true,
-                if_false,
-            } => {
+            Action::Conditional { condition, .. } => {
                 found |= record_condition_input_kinds(device_id, condition, axes, buttons, hats);
-                found |= record_referenced_input_kinds(device_id, if_true, axes, buttons, hats);
-                found |= record_referenced_input_kinds(device_id, if_false, axes, buttons, hats);
             }
             _ => {}
+        }
+        for branch in action_branches() {
+            if let Some(actions) = branch_actions(action, branch) {
+                found |= record_referenced_input_kinds(device_id, actions, axes, buttons, hats);
+            }
         }
     }
     found
@@ -944,6 +989,7 @@ fn build_device_display_names(s: &AppState) -> HashMap<DeviceId, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use inputforge_core::pipeline::{ActionPathSegment, OutputDestination};
 
     fn test_device(id: &str, name: &str, axes: u8, buttons: u8, hats: u8) -> DeviceInfo {
         DeviceInfo {
@@ -1049,6 +1095,83 @@ mod tests {
         let l = LiveSnapshot::default();
         assert!(l.device_inputs.is_empty());
         assert!(l.output_values.is_empty());
+        assert!(l.output_activity.is_empty());
+    }
+
+    fn test_output_owner() -> OutputOwner {
+        OutputOwner {
+            profile: "memory-profile".to_owned(),
+            mode: "Default".to_owned(),
+            input: InputAddress::Bound {
+                device: DeviceId("dev-1".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            action_path: vec![
+                ActionPathSegment::Index(0),
+                ActionPathSegment::Branch(ActionBranch::TapSingle),
+                ActionPathSegment::Index(0),
+            ],
+            destination: OutputDestination::Keyboard(inputforge_core::types::KeyCombo {
+                key: inputforge_core::types::PhysicalKey::Space,
+                modifiers: vec![],
+            }),
+            behavior: inputforge_core::action::OutputBehavior::Pulse,
+        }
+    }
+
+    #[test]
+    fn live_snapshot_from_state_at_includes_latched_output_activity() {
+        let now = Instant::now();
+        let mut state = AppState::new();
+        let owner = test_output_owner();
+        state.output_activity.record(
+            owner.clone(),
+            OutputActivityValue::Keyboard(true),
+            now,
+            true,
+        );
+        state.output_activity.record(
+            owner.clone(),
+            OutputActivityValue::Keyboard(false),
+            now,
+            true,
+        );
+
+        let live = LiveSnapshot::from_state_at(&state, &ConfigSnapshot::default(), now);
+
+        assert_eq!(live.output_values, Vec::new());
+        assert_eq!(
+            live.output_activity,
+            vec![OutputActivitySnapshot {
+                owner,
+                value: OutputActivityValue::Keyboard(true),
+            }]
+        );
+    }
+
+    #[test]
+    fn live_snapshot_from_state_at_omits_expired_output_activity() {
+        let now = Instant::now();
+        let mut state = AppState::new();
+        let owner = test_output_owner();
+        state
+            .output_activity
+            .record(owner, OutputActivityValue::Keyboard(true), now, true);
+        state.output_activity.record(
+            test_output_owner(),
+            OutputActivityValue::Keyboard(false),
+            now,
+            true,
+        );
+
+        let live = LiveSnapshot::from_state_at(
+            &state,
+            &ConfigSnapshot::default(),
+            now + inputforge_core::state::OUTPUT_ACTIVITY_PREVIEW_LATCH
+                + std::time::Duration::from_millis(1),
+        );
+
+        assert!(live.output_activity.is_empty());
     }
 
     #[test]
@@ -1845,6 +1968,67 @@ mod tests {
     }
 
     #[test]
+    fn config_snapshot_glyph_walker_descends_into_gesture_branches() {
+        use inputforge_core::action::{Action, Mapping};
+        use inputforge_core::mode::Modes;
+        use inputforge_core::profile::Profile;
+        use inputforge_core::state::AppState;
+        use inputforge_core::types::{
+            DeviceId, InputAddress, InputId, MergeOp, OutputAddress, OutputId, VJoyAxis,
+        };
+
+        let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
+        let primary = InputAddress::Bound {
+            device: DeviceId("stick".to_owned()),
+            input: InputId::Button { index: 0 },
+        };
+        let secondary = InputAddress::Bound {
+            device: DeviceId("pedals".to_owned()),
+            input: InputId::Axis { index: 1 },
+        };
+        let output = OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        };
+        let profile = Profile::new(
+            "P".to_owned(),
+            vec![],
+            modes,
+            vec![Mapping {
+                input: primary.clone(),
+                mode: "Default".to_owned(),
+                name: None,
+                actions: vec![Action::TapGesture {
+                    threshold_ms: 300,
+                    fire_single_immediately: false,
+                    single_tap: Vec::new(),
+                    double_tap: vec![
+                        Action::MergeAxis {
+                            second_input: secondary.clone(),
+                            operation: MergeOp::Average,
+                        },
+                        Action::MapToVJoy {
+                            output: output.clone(),
+                        },
+                    ],
+                }],
+            }],
+            vec![],
+            "Default".to_owned(),
+        );
+
+        let cfg = ConfigSnapshot::from_state(&AppState::with_profile(profile), None);
+        let summary = &cfg.mappings[0];
+
+        assert_eq!(summary.glyphs.merge_secondary.as_ref(), Some(&secondary));
+        assert_eq!(
+            summary.referenced_devices,
+            vec![DeviceId("stick".to_owned()), DeviceId("pedals".to_owned())]
+        );
+        assert_eq!(summary.first_vjoy_output.as_ref(), Some(&output));
+    }
+
+    #[test]
     fn config_from_state_with_selection_clones_actions() {
         use inputforge_core::action::{Action, Mapping};
         use inputforge_core::mode::Modes;
@@ -2086,6 +2270,8 @@ mod tests {
     fn settings_snapshot_default_is_zero_count() {
         let snap = SettingsSnapshot::default();
         assert_eq!(snap.unpinned_snapshot_count, 0);
+        assert_eq!(snap.default_double_tap_threshold_ms, 500);
+        assert_eq!(snap.default_long_press_threshold_ms, 500);
     }
 
     #[test]
@@ -2156,5 +2342,17 @@ mod tests {
         };
         let snap = SettingsSnapshot::from_state(&state);
         assert_eq!(snap.startup, state.startup);
+    }
+
+    #[test]
+    fn settings_snapshot_from_state_mirrors_gesture_defaults() {
+        let mut state = AppState::new();
+        state.default_double_tap_threshold_ms = 325;
+        state.default_long_press_threshold_ms = 725;
+
+        let snapshot = SettingsSnapshot::from_state(&state);
+
+        assert_eq!(snapshot.default_double_tap_threshold_ms, 325);
+        assert_eq!(snapshot.default_long_press_threshold_ms, 725);
     }
 }

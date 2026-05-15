@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::action::{MouseTarget, OutputBehavior};
 use crate::pipeline::{OutputDestination, OutputOwner};
-use crate::types::{InputAddress, KeyCombo};
+use crate::types::{InputAddress, KeyCombo, OutputAddress};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum OutputEvent {
@@ -85,6 +85,11 @@ pub(crate) struct OutputRuntimeState {
     active_owners: HashSet<OutputOwner>,
     partial_pulse_owners: HashSet<OutputOwner>,
     hold_counts: HashMap<OutputDestination, usize>,
+    /// Owners that emitted a `SetButton(pressed=true)` whose vJoy button is
+    /// still held. `SetButton` is otherwise stateless (direct vJoy call), so
+    /// the engine needs this map to know which buttons to release when a
+    /// pipeline branch (e.g. a `Conditional`) stops emitting them.
+    set_button_owners: HashMap<OutputOwner, OutputAddress>,
 }
 
 impl OutputRuntimeState {
@@ -142,17 +147,32 @@ impl OutputRuntimeState {
         }
     }
 
-    pub(crate) fn reconcile_absent_owners_for_scope(
-        &mut self,
+    /// Owners currently active in `scope` that are not in `current`.
+    ///
+    /// Read-only sibling of [`Self::reconcile_absent_owners_for_scope`]:
+    /// callers (e.g. the engine's per-event loop) need this list both to
+    /// stage output releases AND to clear the corresponding entries from
+    /// `OutputActivityStore` so the live-preview pill does not stay
+    /// "Pressed" after a Conditional branch stops emitting.
+    pub(crate) fn absent_owners_for_scope(
+        &self,
         scope: &OwnerScopeKey,
         current: &[OutputOwner],
-    ) -> Vec<OutputAction> {
+    ) -> Vec<OutputOwner> {
         let current: HashSet<&OutputOwner> = current.iter().collect();
         self.active_owners
             .iter()
             .filter(|owner| OwnerScopeKey::from_owner(owner) == *scope && !current.contains(owner))
             .cloned()
-            .collect::<Vec<_>>()
+            .collect()
+    }
+
+    pub(crate) fn reconcile_absent_owners_for_scope(
+        &mut self,
+        scope: &OwnerScopeKey,
+        current: &[OutputOwner],
+    ) -> Vec<OutputAction> {
+        self.absent_owners_for_scope(scope, current)
             .into_iter()
             .filter_map(|owner| self.stage_release_owner(owner))
             .collect()
@@ -166,6 +186,54 @@ impl OutputRuntimeState {
             .into_iter()
             .filter_map(|owner| self.stage_release_owner(owner))
             .collect()
+    }
+
+    /// Track that `owner` is currently driving vJoy `output` to the given
+    /// `pressed` state. Mirrors the in/out lifecycle that `commit_hold` /
+    /// `commit_release` provide for keyboard and mouse Hold owners.
+    pub(crate) fn commit_set_button(
+        &mut self,
+        owner: OutputOwner,
+        output: OutputAddress,
+        pressed: bool,
+    ) {
+        if pressed {
+            self.set_button_owners.insert(owner, output);
+        } else {
+            self.set_button_owners.remove(&owner);
+        }
+    }
+
+    /// `SetButton` siblings of [`Self::absent_owners_for_scope`]: returns the
+    /// (owner, address) pairs in `scope` whose owner is not in `current` and
+    /// removes them from the tracking map. The caller is responsible for
+    /// driving the vJoy button to `false` and clearing the matching
+    /// `OutputActivityStore` entry.
+    pub(crate) fn release_absent_set_button_for_scope(
+        &mut self,
+        scope: &OwnerScopeKey,
+        current: &[OutputOwner],
+    ) -> Vec<(OutputOwner, OutputAddress)> {
+        let current: HashSet<&OutputOwner> = current.iter().collect();
+        let absent: Vec<(OutputOwner, OutputAddress)> = self
+            .set_button_owners
+            .iter()
+            .filter(|(owner, _)| {
+                OwnerScopeKey::from_owner(owner) == *scope && !current.contains(owner)
+            })
+            .map(|(owner, output)| (owner.clone(), output.clone()))
+            .collect();
+        for (owner, _) in &absent {
+            self.set_button_owners.remove(owner);
+        }
+        absent
+    }
+
+    /// Drain the entire `set_button_owners` map. Used by `release_all` paths
+    /// (mode change, profile load, shutdown) so vJoy buttons do not persist
+    /// across context switches.
+    pub(crate) fn drain_set_button_owners(&mut self) -> Vec<(OutputOwner, OutputAddress)> {
+        self.set_button_owners.drain().collect()
     }
 
     pub(crate) fn commit_release(&mut self, owner: &OutputOwner) {
@@ -304,7 +372,7 @@ impl OutputRuntimeState {
             OutputDestination::Mouse(target) if !target.is_wheel() => {
                 Some(OutputEvent::MouseUp(*target))
             }
-            OutputDestination::Mouse(_) => None,
+            OutputDestination::VJoy(_) | OutputDestination::Mouse(_) => None,
         }
     }
 }

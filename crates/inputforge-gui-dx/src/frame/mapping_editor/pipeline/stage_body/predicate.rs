@@ -500,10 +500,10 @@ pub(crate) fn PredicateEditor(
     let mut min_sig: Signal<f64> = use_signal(move || axis_min);
     let mut max_sig: Signal<f64> = use_signal(move || axis_max);
     if let Condition::AxisInRange { min, max, .. } = &condition {
-        if *min_sig.peek() != *min {
+        if (*min_sig.peek()).to_bits() != min.to_bits() {
             min_sig.set(*min);
         }
-        if *max_sig.peek() != *max {
+        if (*max_sig.peek()).to_bits() != max.to_bits() {
             max_sig.set(*max);
         }
     }

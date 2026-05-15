@@ -71,6 +71,22 @@ fn collect_action_dependencies(actions: &[Action], out: &mut Vec<InputAddress>) 
                 collect_action_dependencies(if_true, out);
                 collect_action_dependencies(if_false, out);
             }
+            Action::TapGesture {
+                single_tap,
+                double_tap,
+                ..
+            } => {
+                collect_action_dependencies(single_tap, out);
+                collect_action_dependencies(double_tap, out);
+            }
+            Action::PressGesture {
+                short_press,
+                long_press,
+                ..
+            } => {
+                collect_action_dependencies(short_press, out);
+                collect_action_dependencies(long_press, out);
+            }
             Action::ResponseCurve { .. }
             | Action::Deadzone { .. }
             | Action::Invert
@@ -246,6 +262,22 @@ mod tests {
         }]));
 
         assert_eq!(deps, vec![axis(0), axis(1)]);
+    }
+
+    #[test]
+    fn gesture_branch_dependencies_are_collected() {
+        let secondary = axis(2);
+        let deps = mapping_dependencies(&mapping(vec![Action::TapGesture {
+            threshold_ms: 500,
+            fire_single_immediately: false,
+            single_tap: vec![Action::MergeAxis {
+                second_input: secondary.clone(),
+                operation: MergeOp::Average,
+            }],
+            double_tap: Vec::new(),
+        }]));
+
+        assert_eq!(deps, vec![axis(0), secondary]);
     }
 
     #[test]

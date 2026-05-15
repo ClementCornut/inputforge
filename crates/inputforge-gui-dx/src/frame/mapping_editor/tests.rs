@@ -3,22 +3,25 @@
 //! SSR tests for the F9 mapping editor.
 
 use std::sync::{Arc, mpsc};
+use std::time::{Duration, Instant};
 
 use dioxus::prelude::*;
 use dioxus_ssr::render;
 use parking_lot::RwLock;
 
-use inputforge_core::action::{Action, Mapping, MouseTarget, OutputBehavior};
+use inputforge_core::action::{Action, ActionBranch, Mapping, MouseTarget, OutputBehavior};
 use inputforge_core::mode::Modes;
+use inputforge_core::pipeline::{ActionPathSegment, OutputDestination, OutputOwner};
 use inputforge_core::profile::Profile;
-use inputforge_core::state::{AppState, EngineStatus};
+use inputforge_core::state::{AppState, EngineStatus, OutputActivityValue};
 use inputforge_core::types::{
     AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId, KeyCombo,
     OutputAddress, OutputId, PhysicalKey, VJoyAxis, VirtualDeviceConfig,
 };
 
 use crate::context::{
-    AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
+    AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, OutputActivitySnapshot, RawHandles,
+    SettingsSnapshot,
 };
 use crate::frame::mapping_editor::{EditorState, MappingEditor, use_editor_state_provider};
 use crate::frame::view_state::use_view_state_provider;
@@ -144,6 +147,7 @@ fn live_snapshot_with_axes(axes: Vec<(f64, AxisPolarity)>) -> LiveSnapshot {
             hats: vec![],
         }],
         output_values: vec![],
+        output_activity: vec![],
     }
 }
 
@@ -170,6 +174,7 @@ fn live_snapshot_with_axes_and_outputs(
             buttons: vec![],
             hats: vec![],
         }],
+        output_activity: vec![],
     }
 }
 
@@ -319,6 +324,48 @@ fn vjoy_hat(id: u8) -> OutputAddress {
     }
 }
 
+fn tap_single_action_path() -> Vec<ActionPathSegment> {
+    vec![
+        ActionPathSegment::Index(0),
+        ActionPathSegment::Branch(ActionBranch::TapSingle),
+        ActionPathSegment::Index(0),
+    ]
+}
+
+fn output_owner(
+    primary: &InputAddress,
+    action_path: Vec<ActionPathSegment>,
+    destination: OutputDestination,
+    behavior: OutputBehavior,
+) -> OutputOwner {
+    OutputOwner {
+        profile: "memory-profile".to_owned(),
+        mode: "Default".to_owned(),
+        input: primary.clone(),
+        action_path,
+        destination,
+        behavior,
+    }
+}
+
+fn seed_latched_output_activity(
+    state: &mut AppState,
+    owner: OutputOwner,
+    active_value: OutputActivityValue,
+    age: Duration,
+) {
+    let started_at = Instant::now()
+        .checked_sub(age)
+        .expect("test activity age should fit within Instant range");
+    state
+        .output_activity
+        .record(owner.clone(), active_value, started_at, true);
+    let released_value = active_value.released_like();
+    state
+        .output_activity
+        .record(owner, released_value, started_at, true);
+}
+
 fn input_index(addr: &InputAddress) -> u8 {
     match addr {
         InputAddress::Bound { input, .. } => match input {
@@ -414,6 +461,7 @@ fn render_with_pipeline_and_engine(
             buttons: vec![],
             hats: vec![],
         }],
+        output_activity: vec![],
     };
 
     for (addr, polarity, value) in axes {
@@ -1239,6 +1287,7 @@ fn editor_live_readout_button_mapping_uses_binary_in_and_out_rows() {
             buttons: vec![false],
             hats: vec![],
         }],
+        output_activity: vec![],
     };
     let mut vdom = harness_with_live(state, primary.clone(), live);
     vdom.rebuild_in_place();
@@ -1267,6 +1316,7 @@ fn editor_live_readout_button_mapping_uses_binary_in_and_out_rows() {
             buttons: vec![true],
             hats: vec![],
         }],
+        output_activity: vec![],
     };
     let mut vdom = harness_with_live(state, primary, live);
     vdom.rebuild_in_place();
@@ -1276,6 +1326,194 @@ fn editor_live_readout_button_mapping_uses_binary_in_and_out_rows() {
     assert!(
         html.contains("if-editor__readout-button-pill--live"),
         "pressed buttons need the live state treatment: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_tap_gesture_vjoy_button_uses_latched_activity() {
+    let primary = btn_addr(0);
+    let output = vjoy_button(1);
+    let actions = vec![Action::TapGesture {
+        threshold_ms: 50,
+        fire_single_immediately: false,
+        single_tap: vec![Action::MapToVJoy {
+            output: output.clone(),
+        }],
+        double_tap: Vec::new(),
+    }];
+    let owner = output_owner(
+        &primary,
+        tap_single_action_path(),
+        OutputDestination::VJoy(output),
+        OutputBehavior::Hold,
+    );
+    let mut state = seeded_profile_with_input_mapping(primary.clone(), actions, 0, 1, 0);
+    add_vjoy_device_with_controls(&mut state, 1, vec![], 1, 0);
+    let live = LiveSnapshot {
+        device_inputs: vec![crate::context::DeviceInputValues {
+            axes: vec![],
+            buttons: vec![false],
+            hats: vec![],
+        }],
+        output_values: vec![crate::context::VjoyOutputValues {
+            axes: vec![],
+            buttons: vec![false],
+            hats: vec![],
+        }],
+        output_activity: vec![OutputActivitySnapshot {
+            owner,
+            value: OutputActivityValue::Button(true),
+        }],
+    };
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(html.contains("Pressed"), "latched gesture output: {html}");
+    assert!(
+        html.contains("if-editor__readout-button-pill--live"),
+        "latched vJoy button should use live styling: {html}"
+    );
+    assert!(
+        !html.contains("if-editor__readout-row-wrap--frozen"),
+        "latched gesture output should not be frozen: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_tap_gesture_mouse_button_uses_latched_activity() {
+    let primary = btn_addr(0);
+    let actions = vec![Action::TapGesture {
+        threshold_ms: 50,
+        fire_single_immediately: false,
+        single_tap: vec![Action::MapToMouse {
+            target: MouseTarget::LeftButton,
+            behavior: OutputBehavior::Pulse,
+        }],
+        double_tap: Vec::new(),
+    }];
+    let owner = output_owner(
+        &primary,
+        tap_single_action_path(),
+        OutputDestination::Mouse(MouseTarget::LeftButton),
+        OutputBehavior::Pulse,
+    );
+    let state = seeded_profile_with_input_mapping(primary.clone(), actions, 0, 1, 0);
+    let live = LiveSnapshot {
+        device_inputs: vec![crate::context::DeviceInputValues {
+            axes: vec![],
+            buttons: vec![false],
+            hats: vec![],
+        }],
+        output_values: vec![],
+        output_activity: vec![OutputActivitySnapshot {
+            owner,
+            value: OutputActivityValue::Mouse(true),
+        }],
+    };
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(html.contains("Pressed"), "latched mouse output: {html}");
+    assert!(
+        html.contains("if-editor__readout-button-pill--live"),
+        "latched mouse button should use live styling: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_tap_gesture_keyboard_uses_latched_activity() {
+    let primary = btn_addr(0);
+    let key = KeyCombo {
+        key: PhysicalKey::Space,
+        modifiers: vec![],
+    };
+    let actions = vec![Action::TapGesture {
+        threshold_ms: 50,
+        fire_single_immediately: false,
+        single_tap: vec![Action::MapToKeyboard {
+            key: key.clone(),
+            behavior: OutputBehavior::Pulse,
+        }],
+        double_tap: Vec::new(),
+    }];
+    let owner = output_owner(
+        &primary,
+        tap_single_action_path(),
+        OutputDestination::Keyboard(key),
+        OutputBehavior::Pulse,
+    );
+    let state = seeded_profile_with_input_mapping(primary.clone(), actions, 0, 1, 0);
+    let live = LiveSnapshot {
+        device_inputs: vec![crate::context::DeviceInputValues {
+            axes: vec![],
+            buttons: vec![false],
+            hats: vec![],
+        }],
+        output_values: vec![],
+        output_activity: vec![OutputActivitySnapshot {
+            owner,
+            value: OutputActivityValue::Keyboard(true),
+        }],
+    };
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(
+        html.contains("if-editor__readout-kb-chip--live"),
+        "latched keyboard output should use live styling: {html}"
+    );
+}
+
+#[test]
+fn editor_live_readout_expired_tap_gesture_activity_returns_idle() {
+    let primary = btn_addr(0);
+    let output = vjoy_button(1);
+    let actions = vec![Action::TapGesture {
+        threshold_ms: 50,
+        fire_single_immediately: false,
+        single_tap: vec![Action::MapToVJoy {
+            output: output.clone(),
+        }],
+        double_tap: Vec::new(),
+    }];
+    let owner = output_owner(
+        &primary,
+        tap_single_action_path(),
+        OutputDestination::VJoy(output),
+        OutputBehavior::Hold,
+    );
+    let mut state = seeded_profile_with_input_mapping(primary.clone(), actions, 0, 1, 0);
+    add_vjoy_device_with_controls(&mut state, 1, vec![], 1, 0);
+    seed_latched_output_activity(
+        &mut state,
+        owner,
+        OutputActivityValue::Button(true),
+        Duration::from_millis(250),
+    );
+    let live = LiveSnapshot {
+        device_inputs: vec![crate::context::DeviceInputValues {
+            axes: vec![],
+            buttons: vec![false],
+            hats: vec![],
+        }],
+        output_values: vec![crate::context::VjoyOutputValues {
+            axes: vec![],
+            buttons: vec![false],
+            hats: vec![],
+        }],
+        output_activity: vec![],
+    };
+    let mut vdom = harness_with_live(state, primary, live);
+    vdom.rebuild_in_place();
+    let html = render(&vdom);
+
+    assert!(html.contains("Released"), "expired gesture output: {html}");
+    assert!(
+        html.contains("if-editor__readout-row-wrap--frozen"),
+        "expired gesture output should return to frozen branch state: {html}"
     );
 }
 
@@ -1300,6 +1538,7 @@ fn editor_live_readout_hat_mapping_uses_compass_rows() {
             buttons: vec![],
             hats: vec![HatDirection::NW],
         }],
+        output_activity: vec![],
     };
     let mut vdom = harness_with_live(state, primary, live);
     vdom.rebuild_in_place();
@@ -1346,6 +1585,7 @@ fn editor_live_readout_output_button_freezes_binary_state_when_engine_stopped() 
             buttons: vec![true],
             hats: vec![],
         }],
+        output_activity: vec![],
     };
     let mut vdom = harness_with_live_and_status(state, primary, live, EngineStatus::Stopped);
     vdom.rebuild_in_place();

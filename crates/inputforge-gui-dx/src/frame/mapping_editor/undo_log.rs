@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use inputforge_core::action::Mapping;
+use inputforge_core::action::{ActionBranch, Mapping};
 
 use crate::frame::MappingKey;
 
@@ -13,8 +13,8 @@ use crate::frame::MappingKey;
 /// Examples (using the `StageIdSegment` variants below):
 /// - `[Index(0)]`                              outer-pipeline first stage
 /// - `[Index(2)]`                              outer-pipeline third stage
-/// - `[Index(2), IfTrue, Index(1)]`            Conditional at outer index 2, `if_true` branch, second stage
-/// - `[Index(2), IfFalse, Index(0)]`           Conditional at outer index 2, `if_false` branch, first stage
+/// - `[Index(2), Branch(ConditionalTrue), Index(1)]`  Conditional at outer index 2, true branch, second stage
+/// - `[Index(2), Branch(ConditionalFalse), Index(0)]` Conditional at outer index 2, false branch, first stage
 ///
 /// Paths are positional, NOT identity-based. Structural mutations
 /// (insert/remove) invalidate every `StageId` at or after the mutation point.
@@ -28,10 +28,8 @@ pub(crate) struct StageId(pub Vec<StageIdSegment>);
 pub(crate) enum StageIdSegment {
     /// Zero-based index into a pipeline's stage list.
     Index(usize),
-    /// The `if_true` branch of a `Conditional` stage.
-    IfTrue,
-    /// The `if_false` branch of a `Conditional` stage.
-    IfFalse,
+    /// A branch of a control-flow stage.
+    Branch(ActionBranch),
 }
 
 /// Kinds of change recorded in the undo stack.
@@ -266,8 +264,8 @@ mod tests {
     #[test]
     fn stage_id_segment_variants_present() {
         let _ = StageIdSegment::Index(0);
-        let _ = StageIdSegment::IfTrue;
-        let _ = StageIdSegment::IfFalse;
+        let _ = StageIdSegment::Branch(ActionBranch::ConditionalTrue);
+        let _ = StageIdSegment::Branch(ActionBranch::ConditionalFalse);
     }
 
     // --- Task 7 tests ---

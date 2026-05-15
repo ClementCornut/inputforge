@@ -27,12 +27,12 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Condition};
+use inputforge_core::action::{Action, ActionBranch, Condition};
 
 use crate::frame::MappingKey;
-use crate::frame::mapping_editor::pipeline::Pipeline;
+use crate::frame::mapping_editor::pipeline::stage_body::branches::{BranchContainer, BranchSpec};
 use crate::frame::mapping_editor::pipeline::stage_body::predicate::PredicateEditor;
-use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
+use crate::frame::mapping_editor::undo_log::StageId;
 
 /// `Conditional` body component.
 ///
@@ -60,28 +60,20 @@ pub(crate) fn ConditionalBody(
     /// indent child stages correctly.
     depth: u8,
 ) -> Element {
-    // Build the `path_prefix` for each branch by appending the branch segment
-    // to the current stage_id's segments.
-    let if_true_prefix: Vec<StageIdSegment> = {
-        let mut p = stage_id.0.clone();
-        p.push(StageIdSegment::IfTrue);
-        p
-    };
-    let if_false_prefix: Vec<StageIdSegment> = {
-        let mut p = stage_id.0.clone();
-        p.push(StageIdSegment::IfFalse);
-        p
-    };
-
-    // Nested pipelines receive `root_actions` UNCHANGED (Task 20 threading rule).
-    let root_for_if_true = root_actions.clone();
-    let root_for_if_false = root_actions.clone();
-    let mapping_key_if_true = mapping_key.clone();
-    let mapping_key_if_false = mapping_key.clone();
-
-    // Child depth: one hop deeper than the current nesting.
-    // Saturating add prevents overflow on pathological deep nesting.
-    let child_depth = depth.saturating_add(1);
+    let branches = vec![
+        BranchSpec {
+            branch: ActionBranch::ConditionalTrue,
+            label: "if true",
+            aria_label: "if true branch",
+            actions: if_true.clone(),
+        },
+        BranchSpec {
+            branch: ActionBranch::ConditionalFalse,
+            label: "if false",
+            aria_label: "if false branch",
+            actions: if_false.clone(),
+        },
+    ];
 
     rsx! {
         div { class: "if-stage__conditional-body",
@@ -94,30 +86,12 @@ pub(crate) fn ConditionalBody(
                 root_actions: root_actions.clone(),
             }
 
-            div {
-                class: "if-stage__branch",
-                "aria-label": "if true branch",
-                div { class: "if-stage__branch-label", "if true" }
-                Pipeline {
-                    mapping_key: mapping_key_if_true,
-                    actions: if_true.clone(),
-                    root_actions: root_for_if_true,
-                    path_prefix: if_true_prefix,
-                    depth: child_depth,
-                }
-            }
-
-            div {
-                class: "if-stage__branch",
-                "aria-label": "if false branch",
-                div { class: "if-stage__branch-label", "if false" }
-                Pipeline {
-                    mapping_key: mapping_key_if_false,
-                    actions: if_false.clone(),
-                    root_actions: root_for_if_false,
-                    path_prefix: if_false_prefix,
-                    depth: child_depth,
-                }
+            BranchContainer {
+                mapping_key: mapping_key.clone(),
+                stage_id: stage_id.clone(),
+                specs: branches,
+                root_actions: root_actions.clone(),
+                depth,
             }
         }
     }

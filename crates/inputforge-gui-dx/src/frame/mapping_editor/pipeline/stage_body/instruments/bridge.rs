@@ -9,6 +9,7 @@
 use std::fmt::Write as _;
 
 use dioxus::prelude::*;
+use inputforge_core::action::ActionBranch;
 use serde::Deserialize;
 
 use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
@@ -139,8 +140,12 @@ pub(crate) fn stage_id_dom_id(prefix: &str, stage_id: &StageId) -> String {
             StageIdSegment::Index(n) => {
                 let _ = write!(s, "-i{n}");
             }
-            StageIdSegment::IfTrue => s.push_str("-t"),
-            StageIdSegment::IfFalse => s.push_str("-f"),
+            StageIdSegment::Branch(ActionBranch::ConditionalTrue) => s.push_str("-t"),
+            StageIdSegment::Branch(ActionBranch::ConditionalFalse) => s.push_str("-f"),
+            StageIdSegment::Branch(ActionBranch::TapSingle) => s.push_str("-ts"),
+            StageIdSegment::Branch(ActionBranch::TapDouble) => s.push_str("-td"),
+            StageIdSegment::Branch(ActionBranch::PressShort) => s.push_str("-ps"),
+            StageIdSegment::Branch(ActionBranch::PressLong) => s.push_str("-pl"),
         }
     }
     s
@@ -184,7 +189,7 @@ mod tests {
     fn dom_id_for_nested_stage() {
         let id = StageId(vec![
             StageIdSegment::Index(0),
-            StageIdSegment::IfTrue,
+            StageIdSegment::Branch(ActionBranch::ConditionalTrue),
             StageIdSegment::Index(1),
         ]);
         assert_eq!(

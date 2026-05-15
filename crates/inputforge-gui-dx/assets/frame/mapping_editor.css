@@ -1,60 +1,60 @@
 /* F9 mapping editor styling. See spec § "Editor frame anatomy". */
 
 .if-editor {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    height: 100%;
-    overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .if-editor__empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    height: 100%;
-    padding: 32px;
-    text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  padding: 32px;
+  text-align: center;
 }
 
 .if-editor__empty-title {
-    font-family: var(--font-sans);
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
 }
 
 .if-editor__empty-helper {
-    font-family: var(--font-sans);
-    font-size: 12px;
-    line-height: 18px;
-    color: var(--color-text-muted);
-    max-width: 360px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--color-text-muted);
+  max-width: 360px;
 }
 
 .if-editor__kbd {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: var(--color-bg-sunken);
-    border: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--color-bg-sunken);
+  border: 1px solid var(--color-border);
 }
 
 /* Task 13: engine-offline sticky banner */
 
 .if-editor__offline-banner {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 8px 16px;
-    /* Flat full-width strip at the top of the editor pane: opaque bg
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  /* Flat full-width strip at the top of the editor pane: opaque bg
        so scrolled content disappears under it cleanly, no margin or
        border-radius so the strip reads as page chrome rather than a
        floating card. The earlier translucent (8% alpha) bg let the
@@ -62,25 +62,25 @@
        sticky banner. rgb(242, 85, 85) is the spec-mandated error red;
        the dark mix below is the same hue at 18% over the editor bg so
        the banner stays unmistakably a warning while occluding content. */
-    background: #3a1f24;
-    border-bottom: 1px solid rgba(242, 85, 85, 0.32);
+  background: #3a1f24;
+  border-bottom: 1px solid rgba(242, 85, 85, 0.32);
 }
 
 .if-editor__offline-text {
-    font-family: var(--font-sans);
-    font-size: 12px;
-    color: var(--color-error);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--color-error);
 }
 
 .if-editor__offline-action {
-    font-family: var(--font-sans);
-    font-size: 12px;
-    background: transparent;
-    color: var(--color-error);
-    border: 1px solid rgba(242, 85, 85, 0.32);
-    border-radius: 4px;
-    padding: 4px 10px;
-    cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  background: transparent;
+  color: var(--color-error);
+  border: 1px solid rgba(242, 85, 85, 0.32);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
 }
 
 /* Editor header.
@@ -94,78 +94,78 @@
  */
 
 .if-editor__header {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .if-editor__title {
-    font-family: var(--font-sans);
-    font-size: 20px;
-    font-weight: 600;
-    line-height: 28px;
-    margin: 0;
-    color: var(--color-text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  margin: 0;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .if-editor__title:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 2px;
-    border-radius: 2px;
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* Inline rename editor. Inherits the h2 visual size + weight so the
    swap from display to edit produces no layout jitter. */
 .if-editor__title-input {
-    width: 100%;
-    font-family: var(--font-sans);
-    font-size: 20px;
-    font-weight: 600;
-    line-height: 28px;
-    margin: 0;
-    padding: 0;
-    color: var(--color-text);
-    background: transparent;
-    border: 0;
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  margin: 0;
+  padding: 0;
+  color: var(--color-text);
+  background: transparent;
+  border: 0;
 }
 
 .if-editor__title-input:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 2px;
-    border-radius: 2px;
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 .if-editor__subtitle {
-    display: flex;
-    flex-wrap: wrap;
-    /* `center` (not `baseline`) so the rebind ghost button (height 23px,
+  display: flex;
+  flex-wrap: wrap;
+  /* `center` (not `baseline`) so the rebind ghost button (height 23px,
      * inner padding) and the listening cue (inline-flex with a centered
      * pulse dot) line up with the plain-text source / output labels on
      * the row's vertical centerline. Baseline alignment shifted the
      * button up by ~2.6px and the listening span by ~1.3px. */
-    align-items: center;
-    gap: 8px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    line-height: 18px;
-    color: var(--color-text-muted);
-    overflow-wrap: anywhere;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
 }
 
 .if-editor__subtitle-source,
 .if-editor__subtitle-output {
-    /* The two label spans inherit subtitle typography; declared so they
+  /* The two label spans inherit subtitle typography; declared so they
        carry overflow-wrap when device names exceed the column width. */
-    overflow-wrap: anywhere;
+  overflow-wrap: anywhere;
 }
 
 .if-editor__subtitle-arrow {
-    color: var(--color-text-subtle);
+  color: var(--color-text-subtle);
 }
 
 /* Rebind composite: bordered cluster wrapping a value (source label or
@@ -182,78 +182,78 @@
  */
 
 .if-rebind-composite {
-    display: inline-flex;
-    align-items: center;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg-sunken);
-    overflow: hidden;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    line-height: 18px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-sunken);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .if-rebind-composite__label {
-    padding: 4px 10px;
-    color: var(--color-text);
+  padding: 4px 10px;
+  color: var(--color-text);
 }
 
 .if-rebind-composite__listening {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    color: var(--color-control-badge-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  color: var(--color-control-badge-text);
 }
 
 .if-rebind-composite__listening::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--color-live);
-    animation: if-add-pulse-dot 1100ms ease-in-out infinite;
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-live);
+  animation: if-add-pulse-dot 1100ms ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .if-rebind-composite__listening::before {
-        animation: none;
-        opacity: 0.85;
-    }
+  .if-rebind-composite__listening::before {
+    animation: none;
+    opacity: 0.85;
+  }
 }
 
 .if-rebind-composite__action {
-    appearance: none;
-    border: 0;
-    border-left: 1px solid var(--color-border);
-    background: transparent;
-    padding: 4px 10px;
-    color: var(--color-text-muted);
-    font-family: inherit;
-    font-size: inherit;
-    line-height: inherit;
-    cursor: pointer;
-    transition:
-        background var(--duration-fast) var(--easing-fast),
-        color var(--duration-fast) var(--easing-fast);
+  appearance: none;
+  border: 0;
+  border-left: 1px solid var(--color-border);
+  background: transparent;
+  padding: 4px 10px;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--easing-fast),
+    color var(--duration-fast) var(--easing-fast);
 }
 
 .if-rebind-composite__action:hover {
-    background: var(--color-bg-elevated);
-    color: var(--color-text);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
 }
 
 .if-rebind-composite__action:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: -2px;
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
 }
 
 .if-rebind-composite--listening {
-    border-color: var(--color-control-badge-text);
+  border-color: var(--color-control-badge-text);
 }
 
 .if-rebind-composite--listening .if-rebind-composite__action {
-    border-left-color: var(--color-control-badge-text);
+  border-left-color: var(--color-control-badge-text);
 }
 
 /* Unbound placeholder treatment: when the rebind composite carries the
@@ -263,72 +263,72 @@
    binding. Italic + muted color keeps the label legible while making the
    empty state visually distinct from a bound source label. */
 .if-rebind-composite--unbound .if-rebind-composite__label {
-    color: var(--color-text-muted);
-    font-style: italic;
+  color: var(--color-text-muted);
+  font-style: italic;
 }
 
 .if-key-capture {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
 }
 
 .if-key-capture__surface {
-    appearance: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 112px;
-    min-height: 32px;
-    padding: 0 12px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg-sunken);
-    color: var(--color-text);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-text) 5%, transparent);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    line-height: 1;
-    letter-spacing: 0;
-    cursor: pointer;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 112px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-sunken);
+  color: var(--color-text);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-text) 5%, transparent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0;
+  cursor: pointer;
 }
 
 .if-key-capture__surface:hover {
-    border-color: var(--color-border-strong);
-    background: var(--color-bg-elevated);
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-elevated);
 }
 
 .if-key-capture__surface:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 2px;
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 .if-key-capture__surface.is-listening {
-    border-color: var(--color-control);
-    background: var(--color-control-bg);
-    color: var(--color-control-badge-text);
+  border-color: var(--color-control);
+  background: var(--color-control-bg);
+  color: var(--color-control-badge-text);
 }
 
 .if-key-capture__surface.is-listening::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    margin-right: 8px;
-    border-radius: 50%;
-    background: var(--color-live);
-    animation: if-add-pulse-dot 1100ms ease-in-out infinite;
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--color-live);
+  animation: if-add-pulse-dot 1100ms ease-in-out infinite;
 }
 
 .if-key-capture__hint {
-    color: var(--color-text-muted);
-    font-size: 12px;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .if-key-capture__surface.is-listening::before {
-        animation: none;
-    }
+  .if-key-capture__surface.is-listening::before {
+    animation: none;
+  }
 }
 
 /* Stage-body form layout: 2-column grid (label, control). Each body
@@ -347,22 +347,22 @@
 .if-stage__body-keyboard,
 .if-stage__body-mouse,
 .if-stage__body-change-mode {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    column-gap: 16px;
-    row-gap: 8px;
-    align-items: center;
-    justify-items: start;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 16px;
+  row-gap: 8px;
+  align-items: center;
+  justify-items: start;
 }
 
 .if-stage__body-field {
-    display: contents;
+  display: contents;
 }
 
 .if-stage__body-label {
-    font-family: var(--font-sans);
-    font-size: 12px;
-    color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
 /* SegmentedControl primitive. Active pill carries the control-violet badge
@@ -370,62 +370,62 @@
    sits on bg-elevated; active-pill contrast tested per DESIGN.md §2. */
 
 .if-stage__body-strategy {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-full);
-    background: var(--color-bg-elevated);
-    /* Match Select baseline (32px) on the second row of the change-mode
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-elevated);
+  /* Match Select baseline (32px) on the second row of the change-mode
        grid. The pill itself stays at 24px; the row absorbs the padding. */
-    min-height: 32px;
+  min-height: 32px;
 }
 
 .if-stage__body-strategy-pill {
-    appearance: none;
-    display: inline-flex;
-    align-items: center;
-    height: 24px;
-    padding: 0 12px;
-    border-radius: var(--radius-full);
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--color-text-muted);
-    font-family: var(--font-sans);
-    font-size: 13px;
-    cursor: pointer;
-    /* Segmented toggle: instant state swap, no easing. */
-    transition: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  cursor: pointer;
+  /* Segmented toggle: instant state swap, no easing. */
+  transition: none;
 }
 
 .if-stage__body-strategy-pill:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 2px;
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 .if-stage__body-strategy-pill:hover:not([aria-disabled="true"]) {
-    color: var(--color-text);
+  color: var(--color-text);
 }
 
 .if-stage__body-strategy-pill[aria-pressed="true"] {
-    color: var(--color-control-badge-text);
-    background: var(--color-control-bg);
-    border-color: var(--color-control);
+  color: var(--color-control-badge-text);
+  background: var(--color-control-bg);
+  border-color: var(--color-control);
 }
 
 .if-stage__body-strategy-pill[aria-disabled="true"] {
-    opacity: 0.5;
-    cursor: not-allowed;
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Selected-but-disabled (Hold persisted then primary rebound to non-button).
    Per DESIGN.md §7 Tabs disabled-active rule: keep the tint but desaturate. */
 .if-stage__body-strategy-pill[aria-pressed="true"][aria-disabled="true"] {
-    color: var(--color-control-badge-text);
-    background: var(--color-control-bg);
-    border-color: var(--color-control);
-    opacity: 0.5;
+  color: var(--color-control-badge-text);
+  background: var(--color-control-bg);
+  border-color: var(--color-control);
+  opacity: 0.5;
 }
 
 /* Orphaned mode option in the target Select dropdown (hint priority 2).
@@ -433,91 +433,91 @@
    precedent at assets/components/badge.css:20; the canonical
    --color-error fails AA on the bg-elevated/UA-owned <option> surface. */
 .if-select__option--orphan {
-    color: var(--color-error-hover);
-    font-style: italic;
+  color: var(--color-error-hover);
+  font-style: italic;
 }
 
 /* Task 26b: predicate editor */
 
 .if-predicate {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
 }
 
 .if-predicate__input-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .if-predicate__range-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .if-predicate__range-label {
-    font-family: var(--font-sans);
-    font-size: 12px;
-    color: var(--color-text-muted);
-    min-width: 24px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  min-width: 24px;
 }
 
 /* Nested condition list for All / Any / Not. */
 .if-predicate__nested-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding-left: 16px;
-    border-left: 2px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 16px;
+  border-left: 2px solid var(--color-border);
 }
 
 .if-predicate__nested-item {
-    display: flex;
-    flex-direction: column;
+  display: flex;
+  flex-direction: column;
 }
 
 .if-predicate__nested-empty {
-    font-family: var(--font-sans);
-    font-size: 12px;
-    color: var(--color-text-muted);
-    font-style: italic;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-style: italic;
 }
 
 /* 3-column compass grid for HatDirection checkboxes.
    Fixed 120px width so the grid never reflows on long labels. */
 .if-hat-direction-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 4px;
-    width: 120px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  width: 120px;
 }
 
 .if-hat-direction-grid__cell {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-family: var(--font-sans);
-    font-size: 12px;
-    color: var(--color-text);
-    cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--color-text);
+  cursor: pointer;
 }
 
 /* Task 17: live readout (IN/OUT bars + merge layout) */
 
 .if-editor__readout {
-    --if-editor__readout-label-col: 60px;
-    --if-editor__readout-tag-col: clamp(120px, 18vw, 260px);
-    --if-editor__readout-pct-col: 60px;
-    --if-editor__readout-chevron-col: 24px;
+  --if-editor__readout-label-col: 60px;
+  --if-editor__readout-tag-col: clamp(120px, 18vw, 260px);
+  --if-editor__readout-pct-col: 60px;
+  --if-editor__readout-chevron-col: 24px;
 
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 8px 16px;
-    border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border);
 }
 
 /* A readout group: IN and OUT remain separate DOM sections, but they
@@ -525,54 +525,56 @@
    one instrument scale. Rows use `display: contents` to dissolve into
    the group grid so each row's cells become grid items. */
 .if-editor__readout-group {
-    display: grid;
-    /* label | tag | bar | percentage | reserved chevron */
-    grid-template-columns: var(--if-editor__readout-label-col) var(--if-editor__readout-tag-col) minmax(0, 1fr) var(--if-editor__readout-pct-col) var(--if-editor__readout-chevron-col);
-    column-gap: 12px;
-    row-gap: 8px;
-    align-items: center;
+  display: grid;
+  /* label | tag | bar | percentage | reserved chevron */
+  grid-template-columns: var(--if-editor__readout-label-col) var(--if-editor__readout-tag-col) minmax(0, 1fr) var(
+      --if-editor__readout-pct-col
+    ) var(--if-editor__readout-chevron-col);
+  column-gap: 12px;
+  row-gap: 8px;
+  align-items: center;
 }
 
 .if-editor__readout-row {
-    display: contents;
+  display: contents;
 }
 
 .if-editor__readout-label {
-    grid-column: 1;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    text-transform: uppercase;
-    font-weight: 500;
-    color: var(--color-text-subtle);
+  grid-column: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--color-text-subtle);
 }
 
 .if-editor__readout-tag {
-    grid-column: 2;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--color-text-subtle);
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  grid-column: 2;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-subtle);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .if-editor__readout-bar {
-    grid-column: 3;
-    position: relative;
-    height: 8px;
-    /* Brighter bg + inset border for an at-idle visible track; the
+  grid-column: 3;
+  position: relative;
+  height: 8px;
+  /* Brighter bg + inset border for an at-idle visible track; the
        inset shadow gives a 1px border without affecting layout so the
        8px fill area is preserved. */
-    background: var(--color-bg-elevated);
-    border-radius: 2px;
-    box-shadow: inset 0 0 0 1px var(--color-border);
-    /* Clip the absolutely-positioned fill so any math regression (off-by
+  background: var(--color-bg-elevated);
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  /* Clip the absolutely-positioned fill so any math regression (off-by
      * one, a polled value escaping [-1, 1] from a calibration bug, etc)
      * stays bounded to the cell instead of overflowing into the layout
      * and triggering a horizontal scrollbar. The `border-radius`
      * survives because the fill clips to the rounded corners. */
-    overflow: hidden;
+  overflow: hidden;
 }
 
 /* Bipolar bars carry a 1px center tick so the user can tell at idle
@@ -581,30 +583,30 @@
    in source order, so an active fill covers the tick where it
    overlaps. */
 .if-editor__readout-bar--bipolar::before {
-    content: "";
-    position: absolute;
-    left: 50%;
-    top: 0;
-    width: 1px;
-    height: 100%;
-    background: var(--color-border-strong);
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--color-border-strong);
 }
 
 .if-editor__readout-fill {
-    position: absolute;
-    top: 0;
-    height: 100%;
-    background: var(--color-live);
-    border-radius: 2px;
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: var(--color-live);
+  border-radius: 2px;
 }
 
 .if-editor__readout-pct {
-    grid-column: 4;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-    color: var(--color-text);
+  grid-column: 4;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--color-text);
 }
 
 /* Engine-stopped: OUT row reads as frozen at the last engine output.
@@ -612,476 +614,478 @@
    percentage dims one step. Label and tag stay at full strength because
    they describe the row, not its (stale) value. */
 .if-editor__readout-row--frozen .if-editor__readout-fill {
-    background: var(--color-text-muted);
+  background: var(--color-text-muted);
 }
 
 .if-editor__readout-row--frozen .if-editor__readout-pct {
-    opacity: 0.7;
+  opacity: 0.7;
 }
 
 /* Plain separator between IN and OUT sections. It stays decorative-only;
    output chain expansion lives on each row's chevron so the divider does
    not compete with the live readout controls. */
 .if-editor__readout-divider {
-    margin: 8px 0;
-    border-top: 1px dashed var(--color-border-strong);
+  margin: 8px 0;
+  border-top: 1px dashed var(--color-border-strong);
 }
 
 .if-editor__readout-divider::before,
 .if-editor__readout-divider::after {
-    content: none;
+  content: none;
 }
 
 .if-editor__readout-divider-label {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    text-transform: uppercase;
-    color: var(--color-text-subtle);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--color-text-subtle);
 }
 
 /* Task 18: analyzer-driven readout primitives */
 
 .if-editor__readout-section {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .if-editor__readout-section-label {
-    font-family: var(--font-sans);
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1.45;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--color-text-subtle);
-    margin: 8px 0 2px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-subtle);
+  margin: 8px 0 2px;
 }
 
 .if-editor__readout-predicate-row {
-    display: contents;
+  display: contents;
 }
 
 .if-editor__readout-predicate-label {
-    grid-column: 1;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    text-transform: uppercase;
-    font-weight: 500;
-    color: var(--color-text-subtle);
+  grid-column: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--color-text-subtle);
 }
 
 .if-editor__readout-chips {
-    grid-column: 2 / -1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    min-width: 0;
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
 }
 
 .if-editor__readout-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    border: 1px solid var(--color-border);
-    color: var(--color-text-subtle);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-subtle);
 }
 
 .if-editor__readout-chip--live {
-    color: var(--color-live);
-    border-color: var(--color-live);
-    background: rgba(46, 224, 160, 0.10);
+  color: var(--color-live);
+  border-color: var(--color-live);
+  background: rgba(46, 224, 160, 0.1);
 }
 
 .if-editor__readout-chip-dot {
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: currentColor;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .if-editor__readout-chip-dot--hollow {
-    background: transparent;
-    border: 1.5px solid currentColor;
+  background: transparent;
+  border: 1.5px solid currentColor;
 }
 
 .if-editor__readout-chip-label {
-    color: inherit;
+  color: inherit;
 }
 
 .if-editor__readout-hat-glyph {
-    grid-column: 3;
+  grid-column: 3;
 }
 
 .if-editor__readout-row--hat .if-editor__readout-hat-glyph {
-    font-family: var(--font-mono);
-    font-size: 16px;
-    text-align: center;
-    color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  text-align: center;
+  color: var(--color-text);
 }
 
 .if-editor__readout-row-wrap--frozen .if-editor__readout-row--hat .if-editor__readout-hat-glyph {
-    color: var(--color-text-muted);
+  color: var(--color-text-muted);
 }
 
 .if-editor__readout-button-cell {
-    grid-column: 3;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
+  grid-column: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .if-editor__readout-button-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    border: 1px solid var(--color-border-strong);
-    background: transparent;
-    flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border-strong);
+  background: transparent;
+  flex: 0 0 auto;
 }
 
 .if-editor__readout-button-dot--live {
-    border-color: var(--color-live);
-    background: var(--color-live);
+  border-color: var(--color-live);
+  background: var(--color-live);
 }
 
 .if-editor__readout-button-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 72px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    border: 1px solid var(--color-border);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    line-height: 1.2;
-    color: var(--color-text-subtle);
-    background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--color-text-subtle);
+  background: transparent;
 }
 
 .if-editor__readout-button-pill--live {
-    color: var(--color-live);
-    border-color: var(--color-live);
-    background: rgba(46, 224, 160, 0.10);
+  color: var(--color-live);
+  border-color: var(--color-live);
+  background: rgba(46, 224, 160, 0.1);
 }
 
 .if-editor__readout-button-cell--frozen {
-    opacity: 0.7;
+  opacity: 0.7;
 }
 
 .if-editor__readout-button-cell--frozen .if-editor__readout-button-dot--live {
-    border-color: var(--color-text-muted);
-    background: var(--color-text-muted);
+  border-color: var(--color-text-muted);
+  background: var(--color-text-muted);
 }
 
 .if-editor__readout-button-cell--frozen .if-editor__readout-button-pill--live {
-    color: var(--color-text-muted);
-    border-color: var(--color-border-strong);
-    background: transparent;
+  color: var(--color-text-muted);
+  border-color: var(--color-border-strong);
+  background: transparent;
 }
 
 .if-editor__readout-hat-compass {
-    grid-column: 3;
-    display: grid;
-    grid-template-columns: repeat(3, 20px) max-content;
-    grid-template-rows: repeat(3, 18px);
-    column-gap: 4px;
-    row-gap: 2px;
-    align-items: center;
-    justify-content: start;
-    min-width: 0;
+  grid-column: 3;
+  display: grid;
+  grid-template-columns: repeat(3, 20px) max-content;
+  grid-template-rows: repeat(3, 18px);
+  column-gap: 4px;
+  row-gap: 2px;
+  align-items: center;
+  justify-content: start;
+  min-width: 0;
 }
 
 .if-editor__readout-hat-spoke {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 18px;
-    border-radius: 2px;
-    border: 1px solid var(--color-border);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    line-height: 1;
-    color: var(--color-text-subtle);
-    background: var(--color-bg-sunken);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  border-radius: 2px;
+  border: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--color-text-subtle);
+  background: var(--color-bg-sunken);
 }
 
 .if-editor__readout-hat-spoke--live {
-    color: var(--color-live);
-    border-color: var(--color-live);
-    background: rgba(46, 224, 160, 0.10);
+  color: var(--color-live);
+  border-color: var(--color-live);
+  background: rgba(46, 224, 160, 0.1);
 }
 
 .if-editor__readout-hat-state {
-    grid-column: 4;
-    grid-row: 1 / -1;
-    align-self: center;
-    padding-left: 4px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--color-text);
-    white-space: nowrap;
+  grid-column: 4;
+  grid-row: 1 / -1;
+  align-self: center;
+  padding-left: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text);
+  white-space: nowrap;
 }
 
 .if-editor__readout-hat-compass--frozen {
-    opacity: 0.7;
+  opacity: 0.7;
 }
 
 .if-editor__readout-hat-compass--frozen .if-editor__readout-hat-spoke--live {
-    color: var(--color-text-muted);
-    border-color: var(--color-border-strong);
-    background: transparent;
+  color: var(--color-text-muted);
+  border-color: var(--color-border-strong);
+  background: transparent;
 }
 
 .if-editor__readout-hat-compass--frozen .if-editor__readout-hat-state {
-    color: var(--color-text-muted);
+  color: var(--color-text-muted);
 }
 
 .if-editor__readout-kb-cell {
-    grid-column: 3;
+  grid-column: 3;
 }
 
 .if-editor__readout-row--kb .if-editor__readout-kb-cell {
-    display: flex;
-    align-items: center;
+  display: flex;
+  align-items: center;
 }
 
 .if-editor__readout-kb-chip {
-    display: inline-flex;
-    align-items: center;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    border: 1px solid var(--color-control);
-    color: var(--color-control-badge-text);
-    background: var(--color-control-bg);
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-control);
+  color: var(--color-control-badge-text);
+  background: var(--color-control-bg);
 }
 
 .if-editor__readout-kb-chip--idle {
-    color: var(--color-text-subtle);
-    border-color: var(--color-border);
-    background: transparent;
+  color: var(--color-text-subtle);
+  border-color: var(--color-border);
+  background: transparent;
 }
 
 .if-editor__readout-row-wrap {
-    display: contents;
+  display: contents;
 }
 
 .if-editor__readout-row-wrap--frozen .if-editor__readout-fill {
-    background: var(--color-text-muted);
+  background: var(--color-text-muted);
 }
 
 .if-editor__readout-row-wrap--frozen .if-editor__readout-pct {
-    opacity: 0.7;
+  opacity: 0.7;
 }
 
 .if-editor__readout-row-wrap--frozen .if-editor__readout-chain {
-    opacity: 0.7;
+  opacity: 0.7;
 }
 
 .if-editor__readout-row-wrap--frozen .if-editor__readout-chain-fill {
-    background: var(--color-text-muted);
+  background: var(--color-text-muted);
 }
 
 .if-editor__readout-chevron {
-    grid-column: 5;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    background: transparent;
-    border: 0;
-    color: var(--color-text-subtle);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 0;
-    border-radius: 2px;
+  grid-column: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 0;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 0;
+  border-radius: 2px;
 }
 
 .if-editor__readout-chevron:hover {
-    color: var(--color-text);
+  color: var(--color-text);
 }
 
 .if-editor__readout-chevron:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 2px;
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 .if-editor__readout-chevron-spacer {
-    grid-column: 5;
-    width: 24px;
-    height: 24px;
+  grid-column: 5;
+  width: 24px;
+  height: 24px;
 }
 
 .if-editor__readout-chain {
-    grid-column: 1 / -1;
-    display: grid;
-    /* label | tag | bar | percentage | reserved chevron */
-    grid-template-columns: var(--if-editor__readout-label-col) var(--if-editor__readout-tag-col) minmax(0, 1fr) var(--if-editor__readout-pct-col) var(--if-editor__readout-chevron-col);
-    column-gap: 12px;
-    row-gap: 2px;
-    align-items: center;
-    background: var(--color-bg-sunken);
-    padding: 6px 0;
-    margin: 0;
+  grid-column: 1 / -1;
+  display: grid;
+  /* label | tag | bar | percentage | reserved chevron */
+  grid-template-columns: var(--if-editor__readout-label-col) var(--if-editor__readout-tag-col) minmax(0, 1fr) var(
+      --if-editor__readout-pct-col
+    ) var(--if-editor__readout-chevron-col);
+  column-gap: 12px;
+  row-gap: 2px;
+  align-items: center;
+  background: var(--color-bg-sunken);
+  padding: 6px 0;
+  margin: 0;
 }
 
 .if-editor__readout-chain-row {
-    display: contents;
-    font-size: 11px;
-    color: var(--color-text-muted);
+  display: contents;
+  font-size: 11px;
+  color: var(--color-text-muted);
 }
 
 .if-editor__readout-chain-row.is-cond {
-    display: contents;
+  display: contents;
 }
 
 .if-editor__readout-chain-row.is-inactive > * {
-    opacity: 0.6;
+  opacity: 0.6;
 }
 
 .if-editor__readout-chain-step {
-    grid-column: 1;
-    padding-left: 8px;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--color-output);
-    font-weight: 500;
-    white-space: nowrap;
+  grid-column: 1;
+  padding-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-output);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .if-editor__readout-chain-row.is-cond .if-editor__readout-chain-step {
-    color: var(--color-control);
+  color: var(--color-control);
 }
 
 .if-editor__readout-chain-tag {
-    grid-column: 2;
-    color: var(--color-text-muted);
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  grid-column: 2;
+  color: var(--color-text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .if-editor__readout-chain-bar {
-    grid-column: 3;
-    position: relative;
-    height: 4px;
-    background: var(--color-bg-elevated);
-    border-radius: 2px;
-    overflow: hidden;
+  grid-column: 3;
+  position: relative;
+  height: 4px;
+  background: var(--color-bg-elevated);
+  border-radius: 2px;
+  overflow: hidden;
 }
 
 .if-editor__readout-chain-bar--bipolar::before {
-    content: "";
-    position: absolute;
-    left: 50%;
-    top: 0;
-    width: 1px;
-    height: 100%;
-    background: var(--color-border-strong);
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--color-border-strong);
 }
 
 .if-editor__readout-chain-fill {
-    position: absolute;
-    top: 0;
-    height: 100%;
-    background: var(--color-processing);
-    border-radius: 2px;
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: var(--color-processing);
+  border-radius: 2px;
 }
 
 .if-editor__readout-chain-pct {
-    grid-column: 4;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--color-text-subtle);
-    text-align: right;
+  grid-column: 4;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-text-subtle);
+  text-align: right;
 }
 
 .if-editor__readout-chain-outcome {
-    grid-column: 3 / 5;
-    justify-self: end;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--color-text-subtle);
-    text-align: right;
+  grid-column: 3 / 5;
+  justify-self: end;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-text-subtle);
+  text-align: right;
 }
 
 .if-editor__readout-chain-outcome--active {
-    color: var(--color-control);
+  color: var(--color-control);
 }
 
 /* Task 18: inactive-runtime hint banner */
 
 .if-editor__inactive-hint {
-    margin: 8px 16px;
-    padding: 8px 12px;
-    background: rgba(154, 120, 214, 0.08);
-    border: 1px solid rgba(154, 120, 214, 0.22);
-    border-radius: 6px;
-    font-family: var(--font-sans);
-    font-size: 12px;
-    color: var(--color-control-badge-text);
-    transition: opacity 150ms ease-out;
+  margin: 8px 16px;
+  padding: 8px 12px;
+  background: rgba(154, 120, 214, 0.08);
+  border: 1px solid rgba(154, 120, 214, 0.22);
+  border-radius: 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--color-control-badge-text);
+  transition: opacity 150ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .if-editor__inactive-hint {
-        transition: none;
-    }
+  .if-editor__inactive-hint {
+    transition: none;
+  }
 }
 
 /* Task 19: undo recap footer */
 
 .if-editor__footer {
-    padding: 6px 16px;
-    border-top: 1px solid var(--color-border);
-    font-family: var(--font-sans);
-    font-size: 11px;
-    color: var(--color-text-muted);
-    display: flex;
-    align-items: center;
-    gap: 4px;
+  padding: 6px 16px;
+  border-top: 1px solid var(--color-border);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .if-editor__footer-label {
-    color: var(--color-text);
+  color: var(--color-text);
 }
 
 /* Task 20: pipeline ordered list + stage cards */
 
 .if-pipeline {
-    list-style: none;
-    padding: 8px 16px;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    /* Inter-stage spacing is owned by the `SortableGap` `<li>` elements
+  list-style: none;
+  padding: 0px 8px 16px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  /* Inter-stage spacing is owned by the `SortableGap` `<li>` elements
        between every pair of stages (plus a leading and trailing gap),
        not by the flex `gap`. The gap is the drop target; setting flex
        `gap: 0` lets the gap's CSS `height` define the visual rhythm. */
-    gap: 0;
+  gap: 0;
 }
 
 .if-pipeline--empty {
-    padding: 16px;
+  padding: 0px 8px 16px;
 }
 
 .if-pipeline__add-end {
-    list-style: none;
+  list-style: none;
 }
 
 /* Pipeline drop-zone height. Sized larger than the rail's gap (8 px)
@@ -1090,17 +1094,17 @@
    at rest and during drag, so no layout shift; the bar fades in inside
    the gap when the cursor enters during a drag. */
 .if-pipeline > .if-sortable-gap {
-    height: 16px;
+  height: 16px;
 }
 
 .if-stage {
-    /* `position: relative` anchors the absolutely-positioned
+  /* `position: relative` anchors the absolutely-positioned
        `.if-sortable-handle` (and the `.if-sortable--drop-before/after`
        insertion bars) to the stage box rather than a higher ancestor. */
-    position: relative;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    overflow: hidden;
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 /* Anchor the drag handle vertically against the header strip rather than
@@ -1109,19 +1113,19 @@
    handle aligned with the title even when the stage body is open and the
    stage box is several hundred px tall. */
 .if-stage > .if-sortable-handle {
-    top: 16px;
+  top: 16px;
 }
 
 .if-stage.is-processing {
-    background: var(--color-stage-tint-processing);
+  background: var(--color-stage-tint-processing);
 }
 
 .if-stage.is-output {
-    background: var(--color-stage-tint-output);
+  background: var(--color-stage-tint-output);
 }
 
 .if-stage.is-control {
-    background: var(--color-stage-tint-control);
+  background: var(--color-stage-tint-control);
 }
 
 /* grid: fixed 32px chevron slot + collapsing summary column.
@@ -1130,43 +1134,43 @@
    overlap the grip. The padding holds at rest too so the layout stays
    stable when the handle reveals on hover. */
 .if-stage__header {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 1fr auto 32px;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 12px 8px 22px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto 32px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px 8px 22px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
 }
 
 .if-stage__title {
-    font-family: var(--font-sans);
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 16px;
-    color: var(--color-text);
-    text-align: left;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--color-text);
+  text-align: left;
 }
 
 /* Task 35: error-tint variant applied when a body writes a malformed hint. */
 .if-stage__title--error {
-    color: var(--color-error);
+  color: var(--color-error);
 }
 
 .if-stage__summary {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--color-text-muted);
-    text-align: right;
-    /* Defense-in-depth for any stage body that has not adopted the
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-align: right;
+  /* Defense-in-depth for any stage body that has not adopted the
        compact summary tag: clip overlong prose hints rather than letting
        them spill into the chevron column. */
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 /* The right slot is the 32px column at the end of every stage header.
@@ -1176,34 +1180,34 @@
    color gives the chevron the same quiet treatment as the select
    chevron without per-icon overrides. */
 .if-stage__right-slot {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
 }
 
 .if-stage__chevron {
-    transition: transform 180ms ease-out;
+  transition: transform 180ms ease-out;
 }
 
 .if-stage__chevron--collapsed {
-    transform: rotate(-90deg);
+  transform: rotate(-90deg);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .if-stage__chevron {
-        transition: none;
-    }
+  .if-stage__chevron {
+    transition: none;
+  }
 }
 
 .if-stage__header:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 2px;
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 .if-stage__body {
-    padding: 8px 12px;
-    border-top: 1px solid var(--color-border);
+  padding: 8px 12px 8px 22px;
+  border-top: 1px solid var(--color-border);
 }
 
 /* -------------------------------------------------------------------------
@@ -1211,23 +1215,48 @@
  * ---------------------------------------------------------------------- */
 
 .if-stage__conditional-body {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.if-stage__branch {
-    margin-left: 16px;
-    margin-top: 8px;
+.if-stage__branches {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.if-stage__gesture-body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.if-stage__gesture-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.if-stage__gesture-control,
+.if-stage__gesture-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.if-stage__gesture-label,
+.if-stage__gesture-unit {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 
 .if-stage__branch-label {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    text-transform: uppercase;
-    font-weight: 500;
-    color: var(--color-control-badge-text);
-    margin-bottom: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--color-control-badge-text);
 }
 
 /* Task 28: categorized add palette. Now built on the shared MenuRoot
@@ -1247,47 +1276,47 @@
    on MenuTrigger means we own the surface entirely; the .if-menu__trigger
    defaults are skipped. */
 .if-add-palette__trigger {
-    width: 100%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    min-height: 28px;
-    background: rgba(154, 120, 214, 0.03);
-    border: 1px dashed rgba(184, 155, 234, 0.20);
-    border-radius: 6px;
-    padding: 6px 12px;
-    color: var(--color-control-badge-text);
-    font-family: var(--font-sans);
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 1;
-    cursor: pointer;
-    transition:
-        background var(--duration-fast) var(--easing-fast),
-        border-color var(--duration-fast) var(--easing-fast);
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+  background: rgba(154, 120, 214, 0.03);
+  border: 1px dashed rgba(184, 155, 234, 0.2);
+  border-radius: 6px;
+  padding: 6px 12px;
+  color: var(--color-control-badge-text);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--easing-fast),
+    border-color var(--duration-fast) var(--easing-fast);
 }
 
 .if-add-palette__trigger:hover {
-    background: rgba(154, 120, 214, 0.06);
-    border-color: rgba(184, 155, 234, 0.40);
+  background: rgba(154, 120, 214, 0.06);
+  border-color: rgba(184, 155, 234, 0.4);
 }
 
 .if-add-palette__trigger:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 2px;
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 .if-add-palette__trigger--louder {
-    background: rgba(154, 120, 214, 0.06);
-    border-color: rgba(184, 155, 234, 0.40);
-    padding: 10px 12px;
-    line-height: 1.45;
+  background: rgba(154, 120, 214, 0.06);
+  border-color: rgba(184, 155, 234, 0.4);
+  padding: 10px 12px;
+  line-height: 1.45;
 }
 
 .if-add-palette__trigger--louder:hover {
-    background: rgba(154, 120, 214, 0.10);
-    border-color: rgba(184, 155, 234, 0.60);
+  background: rgba(154, 120, 214, 0.1);
+  border-color: rgba(184, 155, 234, 0.6);
 }
 
 /* Menu list: extends .if-menu__list with palette-specific min-width.
@@ -1295,44 +1324,44 @@
    chrome layer); the old absolutely-positioned `.if-menu__items` wrapper
    is gone post-popper-refactor. Both classes coexist on the same element. */
 .if-add-palette__menu {
-    min-width: 180px;
+  min-width: 180px;
 }
 
 .if-add-palette__section {
-    padding: 4px;
+  padding: 4px;
 }
 
 .if-add-palette__section-title {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    text-transform: uppercase;
-    font-weight: 500;
-    color: var(--color-text-subtle);
-    padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--color-text-subtle);
+  padding: 2px 8px;
 }
 
 .if-add-palette__section.is-processing {
-    background: var(--color-stage-tint-processing);
+  background: var(--color-stage-tint-processing);
 }
 
 .if-add-palette__section.is-output {
-    background: var(--color-stage-tint-output);
+  background: var(--color-stage-tint-output);
 }
 
 .if-add-palette__section.is-control {
-    background: var(--color-stage-tint-control);
+  background: var(--color-stage-tint-control);
 }
 
 .if-add-palette__section.is-processing .if-add-palette__section-title {
-    color: var(--color-processing);
+  color: var(--color-processing);
 }
 
 .if-add-palette__section.is-output .if-add-palette__section-title {
-    color: var(--color-output);
+  color: var(--color-output);
 }
 
 .if-add-palette__section.is-control .if-add-palette__section-title {
-    color: var(--color-control-badge-text);
+  color: var(--color-control-badge-text);
 }
 
 /* Per-item modifier: tightens MenuItem's default padding to keep the
@@ -1340,8 +1369,8 @@
    and disabled state. Equal-specificity override wins by source order
    because MAPPING_EDITOR_CSS is loaded after MENU_CSS (theme/mod.rs). */
 .if-add-palette__item {
-    padding: 4px 8px;
-    font-size: 12px;
+  padding: 4px 8px;
+  font-size: 12px;
 }
 
 /* Task 29: right-click stage actions menu. Built on AnchoredMenu
@@ -1353,7 +1382,7 @@
    has a hook to land on. */
 
 .if-stage-menu__item--danger {
-    /* Hex fallback protects against silent invisible-text in any
+  /* Hex fallback protects against silent invisible-text in any
        partially-loaded theme where --color-error is undefined. */
-    color: var(--color-error, #F25555);
+  color: var(--color-error, #f25555);
 }
