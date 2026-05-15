@@ -14,7 +14,10 @@ mod tests;
 use std::path::PathBuf;
 
 use dioxus::prelude::*;
-use state::SheetsState;
+use inputforge_core::sheet::AnchorAssignment;
+use state::{CaptureStatus, SheetsState};
+
+use crate::patterns::live_capture::{CaptureFilter, LiveCapture, is_current_capture_session};
 
 const SHEETS_CSS: Asset = asset!("/assets/frame/sheets.css");
 
@@ -30,6 +33,8 @@ pub(crate) fn SheetsWorkbench() -> Element {
     let mut sheets = use_signal(SheetsState::default);
     let mut documents = use_signal(|| Option::<authoring::SheetsDocuments>::None);
     let mut loaded = use_signal(|| false);
+    let capture = try_use_context::<LiveCapture>();
+    let armed_capture_session: Signal<Option<u64>> = use_signal(|| None);
 
     use_effect(move || {
         if *loaded.read() {
@@ -84,8 +89,10 @@ pub(crate) fn SheetsWorkbench() -> Element {
         match authoring::import_template_asset_into(&source_path, &mut next_documents) {
             Ok(imported) => {
                 let mut next_state = sheets.read().clone();
-                next_state.assets = next_documents.assets.assets.clone();
-                next_state.asset_health = next_documents.asset_health.clone();
+                next_state.assets.clone_from(&next_documents.assets.assets);
+                next_state
+                    .asset_health
+                    .clone_from(&next_documents.asset_health);
                 next_state.create_template_from_asset(imported.entry.asset_id, display_name);
                 next_state.apply_to_documents(&mut next_documents);
                 documents.set(Some(next_documents));
@@ -106,8 +113,93 @@ pub(crate) fn SheetsWorkbench() -> Element {
         import_asset.call(source_path);
     });
 
+    let capture_for_availability = capture;
+    use_effect(move || {
+        if capture_for_availability.is_some()
+            && matches!(sheets.read().capture, CaptureStatus::Unavailable(_))
+        {
+            sheets.write().capture = CaptureStatus::Idle;
+        }
+    });
+
+    let capture_for_arm = capture;
+    let mut sheets_for_arm = sheets;
+    let mut armed_capture_session_for_arm = armed_capture_session;
     let on_arm_capture = use_callback(move |anchor_id| {
-        sheets.write().arm_capture(anchor_id);
+        let Some(capture) = capture_for_arm else {
+            sheets_for_arm.write().capture =
+                CaptureStatus::Unavailable("live input is not available".to_owned());
+            return;
+        };
+
+        capture.start.call(CaptureFilter::Any);
+        armed_capture_session_for_arm.set(Some(*capture.session.peek()));
+        sheets_for_arm.write().arm_capture(anchor_id);
+    });
+
+    let capture_for_cancel = capture;
+    let mut sheets_for_cancel = sheets;
+    let mut armed_capture_session_for_cancel = armed_capture_session;
+    let on_cancel_capture = use_callback(move |()| {
+        if let Some(capture) = capture_for_cancel {
+            capture.cancel.call(());
+        }
+        armed_capture_session_for_cancel.set(None);
+        sheets_for_cancel.write().cancel_capture();
+    });
+
+    let capture_for_external_cancel = capture;
+    let mut sheets_for_external_cancel = sheets;
+    let mut armed_capture_session_for_external_cancel = armed_capture_session;
+    use_effect(move || {
+        let Some(capture) = capture_for_external_cancel else {
+            return;
+        };
+        if !should_clear_armed_capture_session(
+            *armed_capture_session_for_external_cancel.peek(),
+            *capture.active.read(),
+            *capture.session.read(),
+            capture.captured.read().is_some(),
+        ) {
+            return;
+        }
+
+        armed_capture_session_for_external_cancel.set(None);
+        sheets_for_external_cancel.write().cancel_capture();
+    });
+
+    let capture_for_assignment = capture;
+    let mut sheets_for_assignment = sheets;
+    let mut armed_capture_session_for_assignment = armed_capture_session;
+    use_effect(move || {
+        let Some(capture) = capture_for_assignment else {
+            return;
+        };
+        let captured_input = capture.captured.read().clone();
+        if !is_current_capture_session(
+            *armed_capture_session_for_assignment.peek(),
+            *capture.session.peek(),
+        ) {
+            return;
+        }
+        let Some(input) = captured_input else {
+            return;
+        };
+
+        let CaptureStatus::Armed(anchor_id) = sheets_for_assignment.read().capture.clone() else {
+            armed_capture_session_for_assignment.set(None);
+            return;
+        };
+
+        {
+            let mut state = sheets_for_assignment.write();
+            state.selected_anchor_id = Some(anchor_id.clone());
+            state.assign_selected_anchor(input, AnchorAssignment::Captured);
+            state.capture = CaptureStatus::Assigned(anchor_id);
+        };
+        armed_capture_session_for_assignment.set(None);
+        let mut captured = capture.captured;
+        captured.set(None);
     });
 
     use_context_provider(|| SheetsWorkbenchActions {
@@ -126,7 +218,12 @@ pub(crate) fn SheetsWorkbench() -> Element {
             "data-documents-loaded": documents_loaded,
             left_rail::SheetsLeftRail { sheets, on_import_image }
             canvas::SheetsCanvas { sheets, on_import_image, on_arm_capture }
-            inspector::SheetsInspector { sheets }
+            inspector::SheetsInspector {
+                sheets,
+                on_arm_capture,
+                on_cancel_capture,
+                on_retry_save: retry_save,
+            }
         }
     }
 }
@@ -139,4 +236,37 @@ fn template_display_name_from_path(source_path: &std::path::Path) -> String {
         .filter(|stem| !stem.is_empty())
         .unwrap_or("Imported template")
         .to_owned()
+}
+
+fn should_clear_armed_capture_session(
+    owned_session: Option<u64>,
+    active_now: bool,
+    current_session: u64,
+    captured_input_pending: bool,
+) -> bool {
+    let owns_current_session = is_current_capture_session(owned_session, current_session);
+    let captured_input_pending_for_owned_session = captured_input_pending && owns_current_session;
+
+    owned_session.is_some()
+        && !captured_input_pending_for_owned_session
+        && (!active_now || !owns_current_session)
+}
+
+#[cfg(test)]
+mod capture_session_tests {
+    use super::*;
+
+    #[test]
+    fn watcher_clears_owned_capture_after_cancel_or_supersede_without_pending_input() {
+        assert!(should_clear_armed_capture_session(Some(7), false, 7, false));
+        assert!(should_clear_armed_capture_session(Some(7), true, 8, false));
+        assert!(!should_clear_armed_capture_session(Some(7), false, 7, true));
+        assert!(!should_clear_armed_capture_session(None, false, 7, false));
+        assert!(!should_clear_armed_capture_session(Some(7), true, 7, false));
+    }
+
+    #[test]
+    fn watcher_clears_superseded_owned_capture_with_pending_foreign_input() {
+        assert!(should_clear_armed_capture_session(Some(7), true, 8, true));
+    }
 }

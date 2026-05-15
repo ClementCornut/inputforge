@@ -2,7 +2,7 @@ use inputforge_core::sheet::{
     AnchorAssignment, AnchorBinding, AnchorId, AnchorPosition, AssetEntry, AssetId, DeviceTemplate,
     ExtensionPayload, TemplateId, TokenPreset,
 };
-use inputforge_core::types::InputAddress;
+use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum SheetTool {
@@ -30,6 +30,14 @@ pub(crate) enum CaptureStatus {
     Assigned(AnchorId),
     TimedOut(AnchorId),
     Canceled(AnchorId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum ManualInputKind {
+    #[default]
+    Button,
+    Axis,
+    Hat,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -86,8 +94,8 @@ impl SheetsState {
         &self,
         documents: &mut crate::frame::sheets::authoring::SheetsDocuments,
     ) {
-        documents.templates.templates = self.templates.clone();
-        documents.assets.assets = self.assets.clone();
+        documents.templates.templates.clone_from(&self.templates);
+        documents.assets.assets.clone_from(&self.assets);
     }
 
     pub(crate) fn create_template_from_asset(
@@ -203,6 +211,35 @@ impl SheetsState {
         self.mark_dirty();
     }
 
+    pub(crate) fn assign_manual_selected_anchor(
+        &mut self,
+        device_id: impl AsRef<str>,
+        input_kind: ManualInputKind,
+        input_index: u8,
+    ) -> Result<(), String> {
+        let trimmed_device_id = device_id.as_ref().trim();
+        if trimmed_device_id.is_empty() {
+            let message = "Device id is required for manual assignment.".to_owned();
+            self.last_error = Some(message.clone());
+            return Err(message);
+        }
+
+        let input = match input_kind {
+            ManualInputKind::Button => InputId::Button { index: input_index },
+            ManualInputKind::Axis => InputId::Axis { index: input_index },
+            ManualInputKind::Hat => InputId::Hat { index: input_index },
+        };
+
+        self.assign_selected_anchor(
+            InputAddress::Bound {
+                device: DeviceId(trimmed_device_id.to_owned()),
+                input,
+            },
+            AnchorAssignment::Manual,
+        );
+        Ok(())
+    }
+
     pub(crate) fn cancel_capture(&mut self) {
         if let CaptureStatus::Armed(anchor_id) = &self.capture {
             self.capture = CaptureStatus::Canceled(anchor_id.clone());
@@ -275,7 +312,6 @@ mod tests {
     use std::path::PathBuf;
 
     use inputforge_core::sheet::{AssetHealth, InputTypeHint, PixelDimensions, TemplateAnchor};
-    use inputforge_core::types::{DeviceId, InputId};
 
     fn button_input(index: u8) -> InputAddress {
         InputAddress::Bound {
@@ -399,6 +435,51 @@ mod tests {
         assert_eq!(bindings[0].input, button_input(2));
         assert_eq!(bindings[0].assignment, AnchorAssignment::Manual);
         assert_eq!(state.autosave, AutosaveStatus::Dirty);
+    }
+
+    #[test]
+    fn manual_assignment_builds_structured_input_address_and_marks_dirty() {
+        let mut state = state_with_template();
+
+        let result = state.assign_manual_selected_anchor(
+            " device:stick-1/button-7 ",
+            ManualInputKind::Axis,
+            7,
+        );
+
+        assert_eq!(result, Ok(()));
+        assert_eq!(state.templates[0].default_anchor_bindings.len(), 1);
+        assert_eq!(
+            state.templates[0].default_anchor_bindings[0].input,
+            InputAddress::Bound {
+                device: DeviceId("device:stick-1/button-7".to_owned()),
+                input: InputId::Axis { index: 7 },
+            }
+        );
+        assert_eq!(
+            state.templates[0].default_anchor_bindings[0].assignment,
+            AnchorAssignment::Manual
+        );
+        assert_eq!(state.autosave, AutosaveStatus::Dirty);
+        assert_eq!(state.last_error, None);
+    }
+
+    #[test]
+    fn manual_assignment_rejects_empty_device_id_without_mutating_bindings() {
+        let mut state = state_with_template();
+
+        let result = state.assign_manual_selected_anchor("   ", ManualInputKind::Button, 0);
+
+        assert_eq!(
+            result,
+            Err("Device id is required for manual assignment.".to_owned())
+        );
+        assert!(state.templates[0].default_anchor_bindings.is_empty());
+        assert_eq!(state.autosave, AutosaveStatus::Clean);
+        assert_eq!(
+            state.last_error,
+            Some("Device id is required for manual assignment.".to_owned())
+        );
     }
 
     #[test]

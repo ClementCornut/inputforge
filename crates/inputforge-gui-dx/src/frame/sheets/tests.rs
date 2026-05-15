@@ -11,8 +11,9 @@ use super::canvas::{
     SheetsCanvas, cleanup_stage_resize_listener_script, file_url_from_path,
     install_stage_resize_listener_script, stage_subscription_key,
 };
+use super::inspector::SheetsInspector;
 use super::left_rail::SheetsLeftRail;
-use super::state::{AutosaveStatus, SheetsState};
+use super::state::{AutosaveStatus, CaptureStatus, SheetsState};
 
 #[test]
 fn empty_sheets_workbench_exposes_import_create_path() {
@@ -24,6 +25,101 @@ fn empty_sheets_workbench_exposes_import_create_path() {
     assert!(html.contains("Import image"));
     assert!(html.contains("Templates"));
     assert!(html.contains("Assets"));
+}
+
+fn render_inspector_state(initial_state: SheetsState) -> String {
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness(initial_state: SheetsState) -> Element {
+        let sheets = use_signal(|| initial_state);
+
+        rsx! {
+            SheetsInspector {
+                sheets,
+                on_arm_capture: move |_| {},
+                on_cancel_capture: move |()| {},
+                on_retry_save: move |()| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new_with_props(Harness, initial_state);
+    vdom.rebuild_in_place();
+    dioxus_ssr::render(&vdom)
+}
+
+#[test]
+fn inspector_disables_capture_when_unavailable_but_keeps_manual_assignment_visible() {
+    let html = render_inspector_state(SheetsState::default());
+
+    assert!(html.contains("Capture input"));
+    assert!(html.contains("disabled"));
+    assert!(html.contains("live input is not available"));
+    assert!(html.contains("Manual assignment"));
+    assert!(html.contains("Input address"));
+}
+
+#[test]
+fn inspector_disables_manual_assignment_while_capture_is_armed() {
+    let anchor_id = inputforge_core::sheet::AnchorId::from_string("anchor-1");
+    let html = render_inspector_state(SheetsState {
+        selected_anchor_id: Some(anchor_id.clone()),
+        capture: CaptureStatus::Armed(anchor_id),
+        ..SheetsState::default()
+    });
+    let assign_button_start = html
+        .find("Assign input")
+        .expect("inspector should render manual assign button");
+    let assign_button_tag = &html[..assign_button_start];
+    let assign_button_tag = assign_button_tag
+        .rsplit_once("<button")
+        .map(|(_, tag)| tag)
+        .expect("assign label should be inside a button");
+
+    assert!(
+        assign_button_tag.contains("disabled"),
+        "manual assign button should be disabled while capture is armed: {html}"
+    );
+}
+
+fn control_tag_after_label<'a>(html: &'a str, label: &str, tag_name: &str) -> &'a str {
+    let label_start = html
+        .find(label)
+        .unwrap_or_else(|| panic!("inspector should render {label} label: {html}"));
+    let html_after_label = &html[label_start..];
+    let tag_start = html_after_label
+        .find(&format!("<{tag_name}"))
+        .unwrap_or_else(|| panic!("{label} should include a {tag_name} control: {html}"));
+    let html_after_tag = &html_after_label[tag_start..];
+    let tag_end = html_after_tag
+        .find('>')
+        .unwrap_or_else(|| panic!("{label} {tag_name} control should have a closing tag: {html}"));
+
+    &html_after_tag[..=tag_end]
+}
+
+#[test]
+fn inspector_disables_manual_form_controls_while_capture_is_armed() {
+    let anchor_id = inputforge_core::sheet::AnchorId::from_string("anchor-1");
+    let html = render_inspector_state(SheetsState {
+        selected_anchor_id: Some(anchor_id.clone()),
+        capture: CaptureStatus::Armed(anchor_id),
+        ..SheetsState::default()
+    });
+
+    for (label, tag_name) in [
+        ("Device id", "input"),
+        ("Input kind", "select"),
+        ("Input index", "input"),
+    ] {
+        let control_tag = control_tag_after_label(&html, label, tag_name);
+        assert!(
+            control_tag.contains("disabled"),
+            "{label} control should be disabled while capture is armed: {html}"
+        );
+    }
 }
 
 #[test]
