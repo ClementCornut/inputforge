@@ -240,6 +240,7 @@ impl SheetsState {
         self.selected_template_id = Some(template_id.clone());
         self.selected_asset_id = Some(asset_id);
         self.selected_anchor_id = None;
+        self.push_event(SheetsEventKind::CreateTemplate(template_id.clone()));
         self.mark_dirty();
         template_id
     }
@@ -261,6 +262,7 @@ impl SheetsState {
         self.selected_template_id = Some(template_id.clone());
         self.selected_asset_id = None;
         self.selected_anchor_id = None;
+        self.push_event(SheetsEventKind::CreateTemplate(template_id.clone()));
         self.mark_dirty();
         template_id
     }
@@ -278,7 +280,14 @@ impl SheetsState {
             return;
         }
 
-        template.display_name = display_name.to_owned();
+        let after = display_name.to_owned();
+        let before = std::mem::replace(&mut template.display_name, after.clone());
+        let template_id = template.template_id.clone();
+        self.push_event(SheetsEventKind::RenameTemplate {
+            template_id,
+            before,
+            after,
+        });
         self.mark_dirty();
     }
 
@@ -289,7 +298,7 @@ impl SheetsState {
         };
 
         let label = format!("Anchor {}", template.anchors.len() + 1);
-        template.anchors.push(TemplateAnchor {
+        let anchor = TemplateAnchor {
             anchor_id: anchor_id.clone(),
             label,
             position,
@@ -298,8 +307,14 @@ impl SheetsState {
             grouping_hint: None,
             device_matching_hint: None,
             extensions: ExtensionPayload::default(),
-        });
+        };
+        template.anchors.push(anchor.clone());
+        let template_id = template.template_id.clone();
         self.selected_anchor_id = Some(anchor_id.clone());
+        self.push_event(SheetsEventKind::PlaceAnchor {
+            template_id,
+            anchor,
+        });
         self.mark_dirty();
         anchor_id
     }
@@ -377,17 +392,43 @@ impl SheetsState {
     }
 
     pub(crate) fn update_selected_anchor_label(&mut self, label: impl Into<String>) {
-        if let Some(anchor) = self.selected_anchor_mut() {
-            anchor.label = label.into();
-            self.mark_dirty();
-        }
+        let after = label.into();
+        let Some(anchor) = self.selected_anchor_mut() else {
+            return;
+        };
+        let anchor_id = anchor.anchor_id.clone();
+        let before = std::mem::replace(&mut anchor.label, after.clone());
+        let template_id = self
+            .selected_template_id
+            .clone()
+            .expect("selected_anchor_mut implies selected template");
+        self.push_event(SheetsEventKind::RenameAnchor {
+            template_id,
+            anchor_id,
+            before,
+            after,
+        });
+        self.mark_dirty();
     }
 
     pub(crate) fn update_selected_anchor_position(&mut self, position: AnchorPosition) {
-        if let Some(anchor) = self.selected_anchor_mut() {
-            anchor.position = position;
-            self.mark_dirty();
-        }
+        let Some(anchor) = self.selected_anchor_mut() else {
+            return;
+        };
+        let anchor_id = anchor.anchor_id.clone();
+        let before = anchor.position;
+        anchor.position = position;
+        let template_id = self
+            .selected_template_id
+            .clone()
+            .expect("selected_anchor_mut implies selected template");
+        self.push_event(SheetsEventKind::MoveAnchor {
+            template_id,
+            anchor_id,
+            before,
+            after: position,
+        });
+        self.mark_dirty();
     }
 
     pub(crate) fn assign_selected_anchor(
@@ -403,14 +444,27 @@ impl SheetsState {
             return;
         };
 
+        let before = template
+            .default_anchor_bindings
+            .iter()
+            .find(|binding| binding.anchor_id == anchor_id)
+            .cloned();
         template
             .default_anchor_bindings
             .retain(|binding| binding.anchor_id != anchor_id);
-        template.default_anchor_bindings.push(AnchorBinding {
-            anchor_id,
+        let binding = AnchorBinding {
+            anchor_id: anchor_id.clone(),
             input,
             captured_device_fingerprint: None,
             assignment,
+        };
+        template.default_anchor_bindings.push(binding.clone());
+        let template_id = template.template_id.clone();
+        self.push_event(SheetsEventKind::AssignAnchor {
+            template_id,
+            anchor_id,
+            before,
+            after: Some(binding),
         });
         self.mark_dirty();
     }
@@ -970,6 +1024,58 @@ mod tests {
             )));
         }
         assert_eq!(state.history.len(), 200);
+    }
+
+    #[test]
+    fn existing_mutators_each_push_one_history_event() {
+        let mut state = state_with_template();
+        let baseline = state.history.len();
+
+        state.rename_selected_template("Renamed");
+        state.update_selected_anchor_label("Fire");
+        state.update_selected_anchor_position(AnchorPosition { x: 0.4, y: 0.6 });
+        state.assign_selected_anchor(button_input(1), AnchorAssignment::Captured);
+
+        assert_eq!(state.history.len() - baseline, 4);
+        assert!(matches!(
+            state.history[baseline].kind,
+            SheetsEventKind::RenameTemplate { .. }
+        ));
+        assert!(matches!(
+            state.history[baseline + 1].kind,
+            SheetsEventKind::RenameAnchor { .. }
+        ));
+        assert!(matches!(
+            state.history[baseline + 2].kind,
+            SheetsEventKind::MoveAnchor { .. }
+        ));
+        assert!(matches!(
+            state.history[baseline + 3].kind,
+            SheetsEventKind::AssignAnchor { .. }
+        ));
+    }
+
+    #[test]
+    fn create_blank_template_pushes_create_template_event() {
+        let mut state = SheetsState::default();
+        let template_id = state.create_blank_template();
+        assert_eq!(state.history.len(), 1);
+        assert!(matches!(
+            &state.history[0].kind,
+            SheetsEventKind::CreateTemplate(id) if id == &template_id
+        ));
+    }
+
+    #[test]
+    fn place_anchor_pushes_place_anchor_event() {
+        let mut state = state_with_template();
+        let baseline = state.history.len();
+        let anchor_id = state.place_anchor(AnchorPosition { x: 0.1, y: 0.2 });
+        assert_eq!(state.history.len() - baseline, 1);
+        assert!(matches!(
+            &state.history[baseline].kind,
+            SheetsEventKind::PlaceAnchor { anchor, .. } if anchor.anchor_id == anchor_id
+        ));
     }
 
     #[test]
