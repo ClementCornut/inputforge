@@ -248,6 +248,7 @@ pub(crate) fn SheetsCanvas(
     };
     let empty_dropzone_template_id_for_drop = empty_dropzone_template_id.clone();
     let handle_empty_dropzone_drop = move |evt: Event<DragData>| {
+        evt.stop_propagation();
         evt.prevent_default();
         let Some(template_id) = empty_dropzone_template_id_for_drop.clone() else {
             return;
@@ -403,6 +404,7 @@ pub(crate) fn SheetsCanvas(
                                             style: "left:{left}%;top:{top}%;width:{width}%;height:{height}%;",
                                             ondragover: move |evt| evt.prevent_default(),
                                             ondrop: move |evt| {
+                                                evt.stop_propagation();
                                                 evt.prevent_default();
                                                 let Some(template_id) = template_id_for_drop.clone() else {
                                                     return;
