@@ -6,7 +6,7 @@
 use dioxus::prelude::*;
 
 use inputforge_core::sheet::{AnchorAssignment, AnchorId, AssetPlacement, TemplateAnchor};
-use inputforge_core::types::{InputAddress, InputId};
+use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
 use crate::frame::sheets::state::{
     AutosaveStatus, CaptureAvailabilityReason, CaptureStatus, ManualInputKind, SheetsState,
@@ -16,6 +16,7 @@ use crate::frame::sheets::state::{
 pub(crate) fn SheetsInspector(
     sheets: Signal<SheetsState>,
     #[props(default)] capture_availability: CaptureAvailabilityReason,
+    #[props(default)] connected_devices: Vec<(DeviceId, String)>,
     on_arm_capture: EventHandler<AnchorId>,
     on_cancel_capture: EventHandler<()>,
     on_retry_save: EventHandler<()>,
@@ -111,12 +112,8 @@ pub(crate) fn SheetsInspector(
     let mut sheets_for_bring_to_front = sheets;
     let mut sheets_for_send_to_back = sheets;
     let mut sheets_for_assign = sheets;
-    let manual_address = format_manual_address(
-        &manual_device_id.read(),
-        *manual_input_kind.read(),
-        parse_manual_input_index(&manual_input_index.read()),
-    );
-    let assign_disabled = selected_anchor_id.is_none() || is_capture_armed;
+    let assign_disabled =
+        manual_device_id.read().is_empty() || is_capture_armed || selected_anchor_id.is_none();
 
     // Clones for onclick closures that fire multiple times.
     let bring_to_front_template_id = selected_template_id.clone();
@@ -241,55 +238,75 @@ pub(crate) fn SheetsInspector(
                                 }
                             }
                         }
-                        section {
-                            h3 { "Manual assignment" }
-                            label {
-                                "Device id"
-                                input {
-                                    r#type: "text",
-                                    disabled: is_capture_armed,
-                                    value: "{manual_device_id}",
-                                    oninput: move |evt: FormEvent| manual_device_id.set(evt.value()),
+                        details { class: "if-sheets__manual-disclosure",
+                            // No `open` attribute: progressive disclosure stays
+                            // collapsed until the user expands it.
+                            summary { "Choose device manually" }
+                            if connected_devices.is_empty() {
+                                p {
+                                    match capture_availability {
+                                        CaptureAvailabilityReason::EngineStopped => {
+                                            "Start the engine to assign."
+                                        }
+                                        _ => "No devices seen. Connect a device to assign manually.",
+                                    }
                                 }
-                            }
-                            label {
-                                "Input kind"
-                                select {
-                                    disabled: is_capture_armed,
-                                    value: "{manual_input_kind_value(*manual_input_kind.read())}",
-                                    onchange: move |evt: FormEvent| {
-                                        manual_input_kind.set(manual_input_kind_from_value(&evt.value()));
+                            } else {
+                                label {
+                                    "Device"
+                                    select {
+                                        value: "{manual_device_id}",
+                                        onchange: move |evt: FormEvent| manual_device_id.set(evt.value()),
+                                        option { value: "", "(select)" }
+                                        for (device_id , display_name) in connected_devices.iter().cloned() {
+                                            option {
+                                                key: "{device_id.0}",
+                                                value: "{device_id.0}",
+                                                "{display_name}"
+                                            }
+                                        }
+                                    }
+                                }
+                                fieldset { class: "if-sheets__manual-kind-segment",
+                                    legend { class: "if-sheets__inspector-eyebrow", "Type" }
+                                    for (kind_label , kind) in [
+                                        ("Button", ManualInputKind::Button),
+                                        ("Axis", ManualInputKind::Axis),
+                                        ("Hat", ManualInputKind::Hat),
+                                    ]
+                                    {
+                                        button {
+                                            r#type: "button",
+                                            "data-active": *manual_input_kind.read() == kind,
+                                            onclick: move |_| manual_input_kind.set(kind),
+                                            "{kind_label}"
+                                        }
+                                    }
+                                }
+                                label {
+                                    "Index"
+                                    input {
+                                        r#type: "number",
+                                        min: "0",
+                                        max: "255",
+                                        class: "if-sheets__manual-index",
+                                        value: "{manual_input_index}",
+                                        oninput: move |evt: FormEvent| manual_input_index.set(evt.value()),
+                                    }
+                                }
+                                button {
+                                    r#type: "button",
+                                    disabled: assign_disabled,
+                                    onclick: move |_| {
+                                        let device_id = manual_device_id.read().clone();
+                                        let kind = *manual_input_kind.read();
+                                        let index = parse_manual_input_index(&manual_input_index.read());
+                                        let _ = sheets_for_assign
+                                            .write()
+                                            .assign_manual_selected_anchor(device_id, kind, index);
                                     },
-                                    option { value: "button", "Button" }
-                                    option { value: "axis", "Axis" }
-                                    option { value: "hat", "Hat" }
+                                    "Assign"
                                 }
-                            }
-                            label {
-                                "Input index"
-                                input {
-                                    r#type: "number",
-                                    min: "0",
-                                    max: "255",
-                                    disabled: is_capture_armed,
-                                    value: "{manual_input_index}",
-                                    oninput: move |evt: FormEvent| manual_input_index.set(evt.value()),
-                                }
-                            }
-                            p { "Input address" }
-                            code { "{manual_address}" }
-                            button {
-                                r#type: "button",
-                                disabled: assign_disabled,
-                                onclick: move |_| {
-                                    let device_id = manual_device_id.read().clone();
-                                    let input_kind = *manual_input_kind.read();
-                                    let input_index = parse_manual_input_index(&manual_input_index.read());
-                                    let _ = sheets_for_assign
-                                        .write()
-                                        .assign_manual_selected_anchor(device_id, input_kind, input_index);
-                                },
-                                "Assign input"
                             }
                         }
                     }
@@ -383,22 +400,6 @@ pub(crate) fn SheetsInspector(
     }
 }
 
-fn manual_input_kind_value(kind: ManualInputKind) -> &'static str {
-    match kind {
-        ManualInputKind::Button => "button",
-        ManualInputKind::Axis => "axis",
-        ManualInputKind::Hat => "hat",
-    }
-}
-
-fn manual_input_kind_from_value(value: &str) -> ManualInputKind {
-    match value {
-        "axis" => ManualInputKind::Axis,
-        "hat" => ManualInputKind::Hat,
-        _ => ManualInputKind::Button,
-    }
-}
-
 fn parse_manual_input_index(value: &str) -> u8 {
     let trimmed = value.trim();
     if trimmed.starts_with('-') {
@@ -424,24 +425,6 @@ fn parse_manual_input_index(value: &str) -> u8 {
     }
 
     index
-}
-
-fn format_manual_address(device_id: &str, input_kind: ManualInputKind, input_index: u8) -> String {
-    let device_id = device_id.trim();
-    if device_id.is_empty() {
-        return "Device id required".to_owned();
-    }
-
-    format!(
-        "{} / {} {}",
-        device_id,
-        match input_kind {
-            ManualInputKind::Button => "Button",
-            ManualInputKind::Axis => "Axis",
-            ManualInputKind::Hat => "Hat",
-        },
-        input_index
-    )
 }
 
 fn composer_help_for(

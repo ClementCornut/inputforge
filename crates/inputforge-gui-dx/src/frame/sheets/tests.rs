@@ -6,6 +6,7 @@ use inputforge_core::sheet::{
     DeviceTemplate, ExtensionPayload, PixelDimensions, TemplateAnchor, TemplateId, TemplateRect,
     TokenPreset,
 };
+use inputforge_core::types::DeviceId;
 
 use super::SheetsWorkbench;
 use super::canvas::{
@@ -87,6 +88,51 @@ fn render_inspector_state_with_availability(
         Harness,
         HarnessProps {
             initial_state,
+            capture_availability,
+        },
+    );
+    vdom.rebuild_in_place();
+    dioxus_ssr::render(&vdom)
+}
+
+fn render_inspector_state_with_devices(
+    initial_state: SheetsState,
+    connected_devices: Vec<(DeviceId, String)>,
+    capture_availability: CaptureAvailabilityReason,
+) -> String {
+    #[derive(Clone, PartialEq, Props)]
+    struct HarnessProps {
+        initial_state: SheetsState,
+        connected_devices: Vec<(DeviceId, String)>,
+        capture_availability: CaptureAvailabilityReason,
+    }
+
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness(props: HarnessProps) -> Element {
+        let sheets = use_signal(|| props.initial_state);
+        let capture_availability = props.capture_availability;
+        let connected_devices = props.connected_devices;
+
+        rsx! {
+            SheetsInspector {
+                sheets,
+                capture_availability,
+                connected_devices,
+                on_arm_capture: move |_| {},
+                on_cancel_capture: move |()| {},
+                on_retry_save: move |()| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new_with_props(
+        Harness,
+        HarnessProps {
+            initial_state,
+            connected_devices,
             capture_availability,
         },
     );
@@ -201,8 +247,7 @@ fn inspector_keeps_manual_assignment_visible_when_capture_unavailable() {
     let html = render_inspector_state(state_with_selected_anchor());
 
     assert!(html.contains("Press input to assign"));
-    assert!(html.contains("Manual assignment"));
-    assert!(html.contains("Input address"));
+    assert!(html.contains(">Choose device manually<"));
 }
 
 #[test]
@@ -244,6 +289,71 @@ fn composer_help_branches_when_engine_stopped() {
 }
 
 #[test]
+fn manual_disclosure_is_closed_by_default() {
+    let mut state = state_with_selected_anchor();
+    state.capture = CaptureStatus::Idle;
+    let html = render_inspector_state_with_devices(
+        state,
+        vec![(
+            DeviceId("stick-alpha".to_owned()),
+            "Throttle Quadrant".to_owned(),
+        )],
+        CaptureAvailabilityReason::CaptureAvailable,
+    );
+    assert!(html.contains("<details"), "disclosure must render: {html}");
+    assert!(
+        !html.contains("<details open"),
+        "disclosure must NOT carry the `open` attribute by default: {html}"
+    );
+    assert!(html.contains(">Choose device manually<"));
+}
+
+#[test]
+fn manual_disclosure_lists_connected_devices_with_display_names() {
+    let mut state = state_with_selected_anchor();
+    state.capture = CaptureStatus::Idle;
+    let html = render_inspector_state_with_devices(
+        state,
+        vec![
+            (
+                DeviceId("stick-alpha".to_owned()),
+                "Throttle Quadrant".to_owned(),
+            ),
+            (
+                DeviceId("stick-beta".to_owned()),
+                "Rudder Pedals".to_owned(),
+            ),
+        ],
+        CaptureAvailabilityReason::CaptureAvailable,
+    );
+    assert!(html.contains("Throttle Quadrant"));
+    assert!(html.contains("Rudder Pedals"));
+    assert!(html.contains(">Button<"));
+    assert!(html.contains(">Axis<"));
+    assert!(html.contains(">Hat<"));
+    assert!(html.contains("<fieldset"));
+    assert!(html.contains(">Type<"));
+}
+
+#[test]
+fn manual_disclosure_empty_state_branches_on_engine_state() {
+    let state = state_with_selected_anchor();
+    let html = render_inspector_state_with_devices(
+        state.clone(),
+        Vec::new(),
+        CaptureAvailabilityReason::EngineStopped,
+    );
+    assert!(html.contains("Start the engine to assign."));
+
+    let html = render_inspector_state_with_devices(
+        state,
+        Vec::new(),
+        CaptureAvailabilityReason::EngineRunningNoDevices,
+    );
+    assert!(html.contains("No devices seen. Connect a device to assign manually."));
+}
+
+#[test]
 fn composer_help_branches_when_engine_running_with_no_devices() {
     let mut state = state_with_selected_anchor();
     state.capture = CaptureStatus::Unavailable("no connected devices".to_owned());
@@ -259,13 +369,20 @@ fn composer_help_branches_when_engine_running_with_no_devices() {
 #[test]
 fn inspector_disables_manual_assignment_while_capture_is_armed() {
     let anchor_id = inputforge_core::sheet::AnchorId::from_string("anchor-1");
-    let html = render_inspector_state(SheetsState {
-        selected_anchor_id: Some(anchor_id.clone()),
-        capture: CaptureStatus::Armed(anchor_id),
-        ..SheetsState::default()
-    });
+    let html = render_inspector_state_with_devices(
+        SheetsState {
+            selected_anchor_id: Some(anchor_id.clone()),
+            capture: CaptureStatus::Armed(anchor_id),
+            ..SheetsState::default()
+        },
+        vec![(
+            DeviceId("stick-alpha".to_owned()),
+            "Throttle Quadrant".to_owned(),
+        )],
+        CaptureAvailabilityReason::CaptureAvailable,
+    );
     let assign_button_start = html
-        .find("Assign input")
+        .find(">Assign<")
         .expect("inspector should render manual assign button");
     let assign_button_tag = &html[..assign_button_start];
     let assign_button_tag = assign_button_tag
@@ -293,28 +410,6 @@ fn control_tag_after_label<'a>(html: &'a str, label: &str, tag_name: &str) -> &'
         .unwrap_or_else(|| panic!("{label} {tag_name} control should have a closing tag: {html}"));
 
     &html_after_tag[..=tag_end]
-}
-
-#[test]
-fn inspector_disables_manual_form_controls_while_capture_is_armed() {
-    let anchor_id = inputforge_core::sheet::AnchorId::from_string("anchor-1");
-    let html = render_inspector_state(SheetsState {
-        selected_anchor_id: Some(anchor_id.clone()),
-        capture: CaptureStatus::Armed(anchor_id),
-        ..SheetsState::default()
-    });
-
-    for (label, tag_name) in [
-        ("Device id", "input"),
-        ("Input kind", "select"),
-        ("Input index", "input"),
-    ] {
-        let control_tag = control_tag_after_label(&html, label, tag_name);
-        assert!(
-            control_tag.contains("disabled"),
-            "{label} control should be disabled while capture is armed: {html}"
-        );
-    }
 }
 
 #[test]

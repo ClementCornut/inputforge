@@ -15,8 +15,10 @@ use std::{path::PathBuf, time::Duration};
 
 use dioxus::prelude::*;
 use inputforge_core::sheet::AnchorAssignment;
+use inputforge_core::types::DeviceId;
 use state::{AutosaveStatus, CaptureAvailabilityReason, CaptureStatus, SheetsState};
 
+use crate::context::AppContext;
 use crate::patterns::live_capture::{CaptureFilter, LiveCapture, is_current_capture_session};
 
 // Short enough to feel live while coalescing rapid inspector and canvas edits.
@@ -258,6 +260,21 @@ pub(crate) fn SheetsWorkbench() -> Element {
         CaptureAvailabilityReason::EngineStopped
     };
 
+    let connected_devices: Vec<(DeviceId, String)> = try_use_context::<AppContext>()
+        .map(|ctx| {
+            let cfg = ctx.config.read();
+            cfg.devices
+                .iter()
+                .filter(|d| d.connected)
+                .map(|d| {
+                    let id = d.info.id.clone();
+                    let display = cfg.device_display_name(&id);
+                    (id, display)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     rsx! {
         div {
             class: "if-sheets",
@@ -268,6 +285,7 @@ pub(crate) fn SheetsWorkbench() -> Element {
             inspector::SheetsInspector {
                 sheets,
                 capture_availability,
+                connected_devices,
                 on_arm_capture,
                 on_cancel_capture,
                 on_retry_save: retry_save,
