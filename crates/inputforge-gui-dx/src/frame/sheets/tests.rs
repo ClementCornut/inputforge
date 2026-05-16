@@ -2760,3 +2760,111 @@ fn install_anchor_drag_bridge_emits_script_referencing_target_data_attribute() {
         "script must reference the listener key: {js}"
     );
 }
+
+#[test]
+fn selected_placement_renders_asset_name_chip() {
+    use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness() -> Element {
+        let mut state = SheetsState::default();
+        state.create_blank_template();
+        let asset_id = AssetId::from_string("asset-name-chip");
+        state.assets.push(AssetEntry {
+            asset_id: asset_id.clone(),
+            copied_path: PathBuf::from("assets/cockpit.png"),
+            content_hash: "h".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 1,
+                height: 1,
+            },
+            original_import_path: Some(PathBuf::from("D:/imports/cockpit.png")),
+            extensions: ExtensionPayload::default(),
+        });
+        // Seed asset_health so the placement render path executes (not the missing-asset recovery panel).
+        state.asset_health.push(AssetHealth {
+            entry: state.assets[0].clone(),
+            copied_absolute_path: PathBuf::from("/tmp/cockpit.png"),
+            missing: false,
+        });
+        let placement_id = AssetPlacementId::from_string("p-selected");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id,
+            position: TemplateRect {
+                x: 0.1,
+                y: 0.1,
+                w: 0.4,
+                h: 0.4,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+        state.selected_placement_id = Some(placement_id);
+        let sheets = use_signal(|| state);
+        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+    }
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+    assert!(
+        html.contains("if-sheets__placement-name"),
+        "selected placement must render the name chip: {html}"
+    );
+    assert!(
+        html.contains("cockpit.png"),
+        "name chip must show the asset filename: {html}"
+    );
+}
+
+#[test]
+fn unselected_placement_does_not_render_asset_name_chip() {
+    use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness() -> Element {
+        let mut state = SheetsState::default();
+        state.create_blank_template();
+        let asset_id = AssetId::from_string("asset-chip-no");
+        state.assets.push(AssetEntry {
+            asset_id: asset_id.clone(),
+            copied_path: PathBuf::from("assets/cockpit.png"),
+            content_hash: "h".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 1,
+                height: 1,
+            },
+            original_import_path: None,
+            extensions: ExtensionPayload::default(),
+        });
+        // Seed asset_health so the placement render path executes (not the missing-asset recovery panel).
+        state.asset_health.push(AssetHealth {
+            entry: state.assets[0].clone(),
+            copied_absolute_path: PathBuf::from("/tmp/cockpit.png"),
+            missing: false,
+        });
+        let placement_id = AssetPlacementId::from_string("p-unsel");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id,
+            asset_id,
+            position: TemplateRect {
+                x: 0.1,
+                y: 0.1,
+                w: 0.4,
+                h: 0.4,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+        // selected_placement_id stays None.
+        let sheets = use_signal(|| state);
+        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+    }
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+    assert!(
+        !html.contains("if-sheets__placement-name"),
+        "unselected placement must NOT render the name chip: {html}"
+    );
+}

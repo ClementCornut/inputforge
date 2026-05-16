@@ -68,6 +68,7 @@ pub(crate) fn SheetsCanvas(
     let selected_placement_id = state.selected_placement_id.clone();
     let tool = state.tool;
     let asset_health_all = state.asset_health.clone();
+    let assets_all = state.assets.clone();
     drop(state);
 
     let mut placements_sorted = selected_template
@@ -536,6 +537,14 @@ pub(crate) fn SheetsCanvas(
                                     let z = placement.z_index;
                                     let is_selected = selected_placement_id.as_ref()
                                         == Some(&placement.placement_id);
+                                    let placement_filename = is_selected
+                                        .then(|| {
+                                            assets_all
+                                                .iter()
+                                                .find(|a| a.asset_id == placement.asset_id)
+                                                .map(crate::frame::sheets::state::filename_of)
+                                        })
+                                        .flatten();
                                     let placement_id_for_click = placement.placement_id.clone();
                                     rsx! {
                                         div {
@@ -564,6 +573,9 @@ pub(crate) fn SheetsCanvas(
                                                         image_load_failed.set(true);
                                                     },
                                                 }
+                                            }
+                                            if let Some(name) = placement_filename {
+                                                span { class: "if-sheets__placement-name", "{name}" }
                                             }
                                             if is_selected {
                                                 for token in ["nw", "n", "ne", "e", "se", "s", "sw", "w"] {
