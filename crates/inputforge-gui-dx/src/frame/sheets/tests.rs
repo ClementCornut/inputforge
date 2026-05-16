@@ -14,7 +14,10 @@ use super::canvas::{
 };
 use super::inspector::SheetsInspector;
 use super::left_rail::SheetsLeftRail;
-use super::state::{AutosaveStatus, CaptureStatus, SheetsEventKind, SheetsLibraryTab, SheetsState};
+use super::state::{
+    AutosaveStatus, CaptureStatus, SheetLayoutPreset, SheetsEventKind, SheetsLibraryTab,
+    SheetsState,
+};
 
 #[test]
 fn empty_sheets_workbench_exposes_import_create_path() {
@@ -1401,4 +1404,42 @@ fn autosave_chip_status_and_tone_follow_the_state_machine() {
             "expected label `{expected_label}` for {status:?}: {html}"
         );
     }
+}
+
+#[test]
+fn canvas_with_template_and_no_placements_renders_full_canvas_drop_zone_copy() {
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness() -> Element {
+        let mut state = SheetsState::default();
+        state.create_blank_template();
+        let sheets = use_signal(|| state);
+        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+    }
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(html.contains("No images yet. Drop an asset from the rail or click + to import."));
+    assert!(html.contains("data-testid=\"sheets-empty-dropzone\""));
+}
+
+#[test]
+fn canvas_after_preset_pick_renders_preset_slot_drop_zones() {
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness() -> Element {
+        let mut state = SheetsState::default();
+        state.apply_preset_after_create(SheetLayoutPreset::HorizontalPair);
+        let sheets = use_signal(|| state);
+        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+    }
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    let slot_count = html.matches("data-testid=\"sheets-preset-slot\"").count();
+    assert_eq!(
+        slot_count, 2,
+        "H-pair should render 2 slot drop zones: {html}"
+    );
+    assert!(html.contains("+ Add image"));
 }

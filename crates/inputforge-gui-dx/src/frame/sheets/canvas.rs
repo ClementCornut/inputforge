@@ -234,6 +234,58 @@ pub(crate) fn SheetsCanvas(
             .add_placement(template_id, asset_id, drop_rect);
     };
 
+    let pending_slots = sheets.read().pending_preset_slots.clone();
+    let placements_empty = selected_template
+        .as_ref()
+        .map_or(true, |template| template.placements.is_empty());
+    let show_empty_dropzone = placements_empty && pending_slots.is_empty() && has_template;
+    let empty_dropzone_template_id = selected_template
+        .as_ref()
+        .map(|template| template.template_id.clone());
+    let handle_empty_dropzone_dragover = move |evt: Event<DragData>| {
+        evt.prevent_default();
+        evt.data_transfer().set_drop_effect("copy");
+    };
+    let empty_dropzone_template_id_for_drop = empty_dropzone_template_id.clone();
+    let handle_empty_dropzone_drop = move |evt: Event<DragData>| {
+        evt.prevent_default();
+        let Some(template_id) = empty_dropzone_template_id_for_drop.clone() else {
+            return;
+        };
+        let Some(raw_asset_id) = evt.data_transfer().get_data("text/plain") else {
+            return;
+        };
+        if raw_asset_id.is_empty() {
+            return;
+        }
+        let asset_id = AssetId::from_string(raw_asset_id);
+        let coordinates = evt.client_coordinates();
+        let rect = *stage_rect.read();
+        let Some(position) = normalized_image_point(
+            coordinates.x,
+            coordinates.y,
+            rect.left,
+            rect.top,
+            rect.width,
+            rect.height,
+        ) else {
+            return;
+        };
+        let pixel_dimensions = sheets
+            .read()
+            .assets
+            .iter()
+            .find(|asset| asset.asset_id == asset_id)
+            .map(|asset| asset.pixel_dimensions.clone());
+        let Some(pixel_dimensions) = pixel_dimensions else {
+            return;
+        };
+        let drop_rect = default_rect_at(position.x as f32, position.y as f32, pixel_dimensions);
+        let _ = sheets
+            .write()
+            .add_placement(template_id, asset_id, drop_rect);
+    };
+
     rsx! {
         main { "data-testid": "sheets-canvas",
             section { "data-testid": "sheets-toolbar",
@@ -325,6 +377,54 @@ pub(crate) fn SheetsCanvas(
                                     onerror: move |_| {
                                         image_load_failed.set(true);
                                     },
+                                }
+                            }
+                            if show_empty_dropzone {
+                                div {
+                                    class: "if-sheets__empty-dropzone",
+                                    "data-testid": "sheets-empty-dropzone",
+                                    ondragover: handle_empty_dropzone_dragover,
+                                    ondrop: handle_empty_dropzone_drop,
+                                    p { "No images yet. Drop an asset from the rail or click + to import." }
+                                }
+                            }
+                            for slot in pending_slots.iter().copied() {
+                                {
+                                    let slot_rect = slot;
+                                    let template_id_for_drop = empty_dropzone_template_id.clone();
+                                    let left = slot.x * 100.0;
+                                    let top = slot.y * 100.0;
+                                    let width = slot.w * 100.0;
+                                    let height = slot.h * 100.0;
+                                    rsx! {
+                                        div {
+                                            class: "if-sheets__preset-slot",
+                                            "data-testid": "sheets-preset-slot",
+                                            style: "left:{left}%;top:{top}%;width:{width}%;height:{height}%;",
+                                            ondragover: move |evt| evt.prevent_default(),
+                                            ondrop: move |evt| {
+                                                evt.prevent_default();
+                                                let Some(template_id) = template_id_for_drop.clone() else {
+                                                    return;
+                                                };
+                                                let Some(raw_asset_id) = evt.data_transfer().get_data("text/plain") else {
+                                                    return;
+                                                };
+                                                if raw_asset_id.is_empty() {
+                                                    return;
+                                                }
+                                                let asset_id = AssetId::from_string(raw_asset_id);
+                                                let mut state = sheets.write();
+                                                if state
+                                                    .add_placement(template_id, asset_id, slot_rect)
+                                                    .is_ok()
+                                                {
+                                                    state.pending_preset_slots.retain(|rect| rect != &slot_rect);
+                                                }
+                                            },
+                                            span { "+ Add image" }
+                                        }
+                                    }
                                 }
                             }
                             for anchor in template.anchors {
