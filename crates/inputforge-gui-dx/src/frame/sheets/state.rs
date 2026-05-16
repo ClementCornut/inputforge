@@ -1929,4 +1929,45 @@ mod tests {
         );
         assert_eq!(documents.assets.header.app_version_created, "asset-created");
     }
+
+    #[test]
+    fn moving_a_placement_leaves_attached_anchor_positions_unchanged() {
+        use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateAnchor};
+        let mut state = state_with_template();
+        let template_id = state.selected_template_id.clone().unwrap();
+        let placement_id = AssetPlacementId::from_string("p-1");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: AssetId::from_string("asset-1"),
+            position: TemplateRect {
+                x: 0.1,
+                y: 0.1,
+                w: 0.5,
+                h: 0.5,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+        state.templates[0].anchors.push(TemplateAnchor {
+            anchor_id: AnchorId::from_string("anchor-att"),
+            label: "Attached".to_owned(),
+            position: AnchorPosition { x: 0.4, y: 0.6 },
+            attached_to: Some(placement_id.clone()),
+            input_type_hint: None,
+            grouping_hint: None,
+            device_matching_hint: None,
+            extensions: ExtensionPayload::default(),
+        });
+
+        state
+            .move_placement(template_id, placement_id, 0.7, 0.2)
+            .unwrap();
+
+        let anchor = state.templates[0]
+            .anchors
+            .iter()
+            .find(|a| a.anchor_id.as_str() == "anchor-att")
+            .unwrap();
+        assert_eq!(anchor.position, AnchorPosition { x: 0.4, y: 0.6 });
+    }
 }
