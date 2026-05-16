@@ -319,6 +319,233 @@ impl SheetsState {
         anchor_id
     }
 
+    pub(crate) fn add_placement(
+        &mut self,
+        template_id: TemplateId,
+        asset_id: AssetId,
+        position: TemplateRect,
+    ) -> Result<AssetPlacementId, String> {
+        let template = self
+            .templates
+            .iter_mut()
+            .find(|template| template.template_id == template_id)
+            .ok_or_else(|| format!("template {} not found", template_id.as_str()))?;
+        let auto_z = template
+            .placements
+            .iter()
+            .map(|p| p.z_index)
+            .max()
+            .unwrap_or(-1)
+            + 1;
+        let placement_id = AssetPlacementId::new();
+        let placement = AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id,
+            position,
+            z_index: auto_z,
+            extensions: ExtensionPayload::default(),
+        };
+        template.placements.push(placement.clone());
+        self.push_event(SheetsEventKind::AddPlacement {
+            template_id,
+            placement,
+        });
+        self.mark_dirty();
+        Ok(placement_id)
+    }
+
+    pub(crate) fn remove_placement(
+        &mut self,
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+    ) -> Result<(), String> {
+        let template = self
+            .templates
+            .iter_mut()
+            .find(|template| template.template_id == template_id)
+            .ok_or_else(|| format!("template {} not found", template_id.as_str()))?;
+        let index = template
+            .placements
+            .iter()
+            .position(|p| p.placement_id == placement_id)
+            .ok_or_else(|| format!("placement {} not found", placement_id.as_str()))?;
+        let placement = template.placements.remove(index);
+        let mut dropped_anchors = Vec::new();
+        template.anchors.retain(|anchor| {
+            if anchor.attached_to.as_ref() == Some(&placement_id) {
+                dropped_anchors.push(anchor.clone());
+                false
+            } else {
+                true
+            }
+        });
+        self.push_event(SheetsEventKind::RemovePlacement {
+            template_id,
+            placement,
+            dropped_anchors,
+        });
+        self.mark_dirty();
+        Ok(())
+    }
+
+    pub(crate) fn move_placement(
+        &mut self,
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+        x: f32,
+        y: f32,
+    ) -> Result<(), String> {
+        let template = self
+            .templates
+            .iter_mut()
+            .find(|template| template.template_id == template_id)
+            .ok_or_else(|| format!("template {} not found", template_id.as_str()))?;
+        let placement = template
+            .placements
+            .iter_mut()
+            .find(|p| p.placement_id == placement_id)
+            .ok_or_else(|| format!("placement {} not found", placement_id.as_str()))?;
+        let before = placement.position;
+        let after = TemplateRect {
+            x,
+            y,
+            w: before.w,
+            h: before.h,
+        };
+        placement.position = after;
+        self.push_event(SheetsEventKind::MovePlacement {
+            template_id,
+            placement_id,
+            before,
+            after,
+        });
+        self.mark_dirty();
+        Ok(())
+    }
+
+    pub(crate) fn resize_placement(
+        &mut self,
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+        after: TemplateRect,
+    ) -> Result<(), String> {
+        let template = self
+            .templates
+            .iter_mut()
+            .find(|template| template.template_id == template_id)
+            .ok_or_else(|| format!("template {} not found", template_id.as_str()))?;
+        let placement = template
+            .placements
+            .iter_mut()
+            .find(|p| p.placement_id == placement_id)
+            .ok_or_else(|| format!("placement {} not found", placement_id.as_str()))?;
+        let before = placement.position;
+        placement.position = after;
+        self.push_event(SheetsEventKind::ResizePlacement {
+            template_id,
+            placement_id,
+            before,
+            after,
+        });
+        self.mark_dirty();
+        Ok(())
+    }
+
+    pub(crate) fn set_z_index(
+        &mut self,
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+        z: i32,
+    ) -> Result<(), String> {
+        let template = self
+            .templates
+            .iter_mut()
+            .find(|template| template.template_id == template_id)
+            .ok_or_else(|| format!("template {} not found", template_id.as_str()))?;
+        let placement = template
+            .placements
+            .iter_mut()
+            .find(|p| p.placement_id == placement_id)
+            .ok_or_else(|| format!("placement {} not found", placement_id.as_str()))?;
+        let before = placement.z_index;
+        if before == z {
+            return Ok(());
+        }
+        placement.z_index = z;
+        self.push_event(SheetsEventKind::ReorderZ {
+            template_id,
+            placement_id,
+            before,
+            after: z,
+        });
+        self.mark_dirty();
+        Ok(())
+    }
+
+    pub(crate) fn bring_to_front(
+        &mut self,
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+    ) -> Result<(), String> {
+        let Some(template) = self
+            .templates
+            .iter()
+            .find(|template| template.template_id == template_id)
+        else {
+            return Ok(());
+        };
+        let Some(sibling_max) = template
+            .placements
+            .iter()
+            .filter(|p| p.placement_id != placement_id)
+            .map(|p| p.z_index)
+            .max()
+        else {
+            return Ok(());
+        };
+        let current_z = template
+            .placements
+            .iter()
+            .find(|p| p.placement_id == placement_id)
+            .map(|p| p.z_index);
+        if current_z.is_some_and(|z| z >= sibling_max) {
+            return Ok(());
+        }
+        self.set_z_index(template_id, placement_id, sibling_max.saturating_add(1))
+    }
+
+    pub(crate) fn send_to_back(
+        &mut self,
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+    ) -> Result<(), String> {
+        let Some(template) = self
+            .templates
+            .iter()
+            .find(|template| template.template_id == template_id)
+        else {
+            return Ok(());
+        };
+        let Some(sibling_min) = template
+            .placements
+            .iter()
+            .filter(|p| p.placement_id != placement_id)
+            .map(|p| p.z_index)
+            .min()
+        else {
+            return Ok(());
+        };
+        let current_z = template
+            .placements
+            .iter()
+            .find(|p| p.placement_id == placement_id)
+            .map(|p| p.z_index);
+        if current_z.is_some_and(|z| z <= sibling_min) {
+            return Ok(());
+        }
+        self.set_z_index(template_id, placement_id, sibling_min.saturating_sub(1))
+    }
+
     pub(crate) fn selected_template(&self) -> Option<&DeviceTemplate> {
         let selected_template_id = self.selected_template_id.as_ref()?;
         self.templates
@@ -1076,6 +1303,240 @@ mod tests {
             &state.history[baseline].kind,
             SheetsEventKind::PlaceAnchor { anchor, .. } if anchor.anchor_id == anchor_id
         ));
+    }
+
+    #[test]
+    fn add_placement_appends_to_template_and_pushes_event() {
+        let mut state = state_with_template();
+        let template_id = state.selected_template_id.clone().unwrap();
+        let asset_id = state.templates[0].placements.first().map_or_else(
+            || AssetId::from_string("asset-extra"),
+            |p| p.asset_id.clone(),
+        );
+        let baseline = state.history.len();
+
+        let placement_id = state
+            .add_placement(
+                template_id.clone(),
+                asset_id.clone(),
+                inputforge_core::sheet::TemplateRect {
+                    x: 0.1,
+                    y: 0.1,
+                    w: 0.3,
+                    h: 0.3,
+                },
+            )
+            .unwrap();
+
+        let placements = &state.templates[0].placements;
+        assert!(placements.iter().any(|p| p.placement_id == placement_id));
+        assert_eq!(state.history.len() - baseline, 1);
+        assert!(matches!(
+            &state.history[baseline].kind,
+            SheetsEventKind::AddPlacement { placement, .. } if placement.placement_id == placement_id
+        ));
+    }
+
+    #[test]
+    fn remove_placement_cascades_attached_anchors_and_records_them_in_event() {
+        use inputforge_core::sheet::{
+            AssetPlacement, AssetPlacementId, TemplateAnchor, TemplateRect,
+        };
+        let mut state = state_with_template();
+        let template_id = state.selected_template_id.clone().unwrap();
+        let placement_id = AssetPlacementId::from_string("placement-cascade");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: AssetId::from_string("asset-1"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 1.0,
+                h: 1.0,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+        state.templates[0].anchors.push(TemplateAnchor {
+            anchor_id: AnchorId::from_string("anchor-attached"),
+            label: "Attached".to_owned(),
+            position: AnchorPosition { x: 0.5, y: 0.5 },
+            attached_to: Some(placement_id.clone()),
+            input_type_hint: None,
+            grouping_hint: None,
+            device_matching_hint: None,
+            extensions: ExtensionPayload::default(),
+        });
+        state.templates[0].anchors.push(TemplateAnchor {
+            anchor_id: AnchorId::from_string("anchor-floating"),
+            label: "Floating".to_owned(),
+            position: AnchorPosition { x: 0.5, y: 0.5 },
+            attached_to: None,
+            input_type_hint: None,
+            grouping_hint: None,
+            device_matching_hint: None,
+            extensions: ExtensionPayload::default(),
+        });
+
+        state
+            .remove_placement(template_id, placement_id.clone())
+            .unwrap();
+
+        let template = &state.templates[0];
+        assert!(
+            template
+                .placements
+                .iter()
+                .all(|p| p.placement_id != placement_id)
+        );
+        assert!(
+            template
+                .anchors
+                .iter()
+                .all(|a| a.anchor_id.as_str() != "anchor-attached")
+        );
+        assert!(
+            template
+                .anchors
+                .iter()
+                .any(|a| a.anchor_id.as_str() == "anchor-floating")
+        );
+
+        let event = state
+            .history
+            .back()
+            .expect("history should record the removal");
+        match &event.kind {
+            SheetsEventKind::RemovePlacement {
+                placement,
+                dropped_anchors,
+                ..
+            } => {
+                assert_eq!(placement.placement_id, placement_id);
+                assert_eq!(dropped_anchors.len(), 1);
+                assert_eq!(dropped_anchors[0].anchor_id.as_str(), "anchor-attached");
+            }
+            other => panic!("expected RemovePlacement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn move_and_resize_placement_emit_distinct_events() {
+        use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+        let mut state = state_with_template();
+        let template_id = state.selected_template_id.clone().unwrap();
+        let placement_id = AssetPlacementId::from_string("placement-move");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: AssetId::from_string("asset-1"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 0.5,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+
+        state
+            .move_placement(template_id.clone(), placement_id.clone(), 0.2, 0.2)
+            .unwrap();
+        state
+            .resize_placement(
+                template_id,
+                placement_id,
+                TemplateRect {
+                    x: 0.2,
+                    y: 0.2,
+                    w: 0.7,
+                    h: 0.7,
+                },
+            )
+            .unwrap();
+
+        let kinds: Vec<_> = state
+            .history
+            .iter()
+            .rev()
+            .take(2)
+            .map(|e| &e.kind)
+            .collect();
+        assert!(matches!(kinds[0], SheetsEventKind::ResizePlacement { .. }));
+        assert!(matches!(kinds[1], SheetsEventKind::MovePlacement { .. }));
+    }
+
+    #[test]
+    fn bring_to_front_and_send_to_back_set_extreme_z_values_and_push_reorder_z() {
+        use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+        let mut state = state_with_template();
+        let template_id = state.selected_template_id.clone().unwrap();
+        let a = AssetPlacementId::from_string("a");
+        let b = AssetPlacementId::from_string("b");
+        for (id, z) in [(a.clone(), 0), (b.clone(), 5)] {
+            state.templates[0].placements.push(AssetPlacement {
+                placement_id: id,
+                asset_id: AssetId::from_string("asset-1"),
+                position: TemplateRect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 0.5,
+                    h: 0.5,
+                },
+                z_index: z,
+                extensions: ExtensionPayload::default(),
+            });
+        }
+
+        state
+            .bring_to_front(template_id.clone(), a.clone())
+            .unwrap();
+        let z_a = state.templates[0]
+            .placements
+            .iter()
+            .find(|p| p.placement_id == a)
+            .unwrap()
+            .z_index;
+        assert!(z_a > 5);
+
+        state.send_to_back(template_id, b.clone()).unwrap();
+        let z_b = state.templates[0]
+            .placements
+            .iter()
+            .find(|p| p.placement_id == b)
+            .unwrap()
+            .z_index;
+        assert!(z_b < z_a);
+        assert!(matches!(
+            state.history.back().unwrap().kind,
+            SheetsEventKind::ReorderZ { .. }
+        ));
+    }
+
+    #[test]
+    fn bring_to_front_on_lone_placement_is_a_silent_noop() {
+        use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+        let mut state = state_with_template();
+        let template_id = state.selected_template_id.clone().unwrap();
+        let only = AssetPlacementId::from_string("only");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: only.clone(),
+            asset_id: AssetId::from_string("asset-1"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 0.5,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+        let baseline = state.history.len();
+        state
+            .bring_to_front(template_id.clone(), only.clone())
+            .unwrap();
+        state.send_to_back(template_id, only).unwrap();
+        assert_eq!(state.history.len(), baseline);
     }
 
     #[test]
