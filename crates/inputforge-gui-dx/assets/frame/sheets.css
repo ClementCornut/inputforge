@@ -174,7 +174,7 @@
 }
 
 .if-sheets li[data-selected="true"] {
-    border-color: var(--color-border-focus);
+    border-color: var(--color-primary);
     background: color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg-sunken));
 }
 
@@ -318,7 +318,7 @@
 }
 
 .if-sheets__anchor[aria-pressed="true"] {
-    outline: 2px solid var(--color-border-focus);
+    outline: 2px solid var(--color-primary);
     outline-offset: 2px;
 }
 
@@ -479,4 +479,147 @@
     font-family: var(--font-mono);
     font-size: 11px;
     line-height: 16px;
+}
+
+.if-sheets__anchor {
+    /* Position is set inline (translate from rect); class chains layer the visual identity. */
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    margin: -7px;
+    border-radius: 999px;
+    box-shadow: 0 0 0 1px var(--color-bg-elevated), 0 0 0 2px var(--color-border-strong);
+    background: transparent;
+}
+.if-sheets__anchor--unassigned { border: 1px solid var(--color-primary); background: transparent; }
+.if-sheets__anchor--captured { background: var(--color-primary); border: 1px solid var(--color-primary); }
+.if-sheets__anchor--manual {
+    background: var(--color-primary);
+    border: 1px solid var(--color-primary);
+    /* Donut: outer halo rings + 4px inset of bg-elevated clears the central core so the manual
+       shape reads as a ring at glance. The disc is 14px with a 1px border on each side; the inset
+       stacks INSIDE the border on the bg-elevated layer, so the effective transparent core is
+       14 - 2*(1 + 4) = 4px wide, matching the spec's "6px-ish inner cutout" target within tolerance.
+       Adjust this single inset value if visual tests show drift. */
+    box-shadow: 0 0 0 1px var(--color-bg-elevated), 0 0 0 2px var(--color-border-strong),
+                inset 0 0 0 4px var(--color-bg-elevated);
+}
+.if-sheets__anchor--selected::before,
+.if-sheets__anchor--selected::after {
+    content: "";
+    position: absolute;
+    background: var(--color-primary);
+}
+.if-sheets__anchor--selected::before {
+    /* N-S crosshair extension */
+    left: 50%; top: -8px; width: 1px; height: 4px;
+}
+.if-sheets__anchor--selected::after {
+    /* E-W crosshair extension */
+    left: -8px; top: 50%; width: 4px; height: 1px;
+}
+
+.if-sheets__anchor-mount {
+    position: absolute; /* anchor position lives on the mount; children use static layout */
+    transform: translate(-50%, -50%); /* center the disc on the recorded coords */
+}
+
+.if-sheets__anchor-label {
+    display: inline-block; /* sit beside the disc; not absolute, so it always tracks the mount */
+    margin-left: 14px;
+    padding: 2px 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-elevated);
+    color: var(--color-text);
+    font-size: 11px;
+    line-height: 14px;
+    white-space: nowrap;
+}
+
+.if-sheets__empty-dropzone {
+    display: flex; /* center the call-to-action copy */
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    inset: 0;
+    border: 1px dashed var(--color-border-strong);
+    border-radius: var(--radius-md);
+    color: var(--color-text-muted);
+}
+
+.if-sheets__preset-slot {
+    display: flex; /* center the "+ Add image" affordance */
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    border: 1px dashed var(--color-border-strong);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+    color: var(--color-text-muted);
+    font-size: 12px;
+}
+
+.if-sheets__placement[data-selected="true"] {
+    outline: 1px solid var(--color-primary);
+    outline-offset: -1px;
+}
+
+.if-sheets__resize-handle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    margin: -4px;
+    background: var(--color-primary);
+    border: 1px solid var(--color-bg-elevated);
+}
+.if-sheets__resize-handle--nw { top: 0; left: 0; cursor: nwse-resize; }
+.if-sheets__resize-handle--n  { top: 0; left: 50%; cursor: ns-resize; }
+.if-sheets__resize-handle--ne { top: 0; left: 100%; cursor: nesw-resize; }
+.if-sheets__resize-handle--e  { top: 50%; left: 100%; cursor: ew-resize; }
+.if-sheets__resize-handle--se { top: 100%; left: 100%; cursor: nwse-resize; }
+.if-sheets__resize-handle--s  { top: 100%; left: 50%; cursor: ns-resize; }
+.if-sheets__resize-handle--sw { top: 100%; left: 0; cursor: nesw-resize; }
+.if-sheets__resize-handle--w  { top: 50%; left: 0; cursor: ew-resize; }
+
+[data-testid="sheets-toolbar"] {
+    display: flex; /* horizontal row */
+    align-items: center;
+    justify-content: space-between;
+    height: 36px;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+}
+.if-sheets__toolbar-tools {
+    display: flex; /* tool segment + import button row */
+    align-items: center;
+    gap: 12px;
+}
+.if-sheets__toolbar-segment {
+    display: inline-flex; /* segmented control */
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+.if-sheets__toolbar-segment button {
+    min-height: 26px;
+    padding: 0 10px;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+}
+.if-sheets__toolbar-segment button[data-active="true"] {
+    background: color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg-elevated));
+    color: var(--color-text);
+}
+
+/* Keyboard focus ring. --color-border-focus is reserved for :focus-visible only; selected-row
+   visuals use --color-primary instead. */
+.if-sheets__anchor:focus-visible,
+.if-sheets__placement:focus-visible,
+.if-sheets__toolbar-segment button:focus-visible,
+.if-sheets__resize-handle:focus-visible {
+    outline: 1px solid var(--color-border-focus);
+    outline-offset: 2px;
 }

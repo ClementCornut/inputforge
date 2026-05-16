@@ -2015,3 +2015,46 @@ fn every_non_flex_display_value_in_sheets_css_has_inline_justification() {
         );
     }
 }
+
+#[test]
+fn sheets_css_defines_all_four_anchor_shape_classes_and_halo() {
+    let css = include_str!("../../../assets/frame/sheets.css");
+    for token in [
+        ".if-sheets__anchor--unassigned",
+        ".if-sheets__anchor--captured",
+        ".if-sheets__anchor--manual",
+        ".if-sheets__anchor--selected",
+        ".if-sheets__anchor-label",
+        ".if-sheets__empty-dropzone",
+        ".if-sheets__preset-slot",
+        ".if-sheets__resize-handle",
+        ".if-sheets__toolbar-segment",
+    ] {
+        assert!(css.contains(token), "css missing class {token}");
+    }
+    assert!(css.contains("var(--color-bg-elevated)"));
+    assert!(css.contains("var(--color-border-strong)"));
+}
+
+#[test]
+fn manual_anchor_donut_uses_a_4px_inset_for_the_inner_cutout() {
+    let css = include_str!("../../../assets/frame/sheets.css");
+    assert!(
+        css.contains("inset 0 0 0 4px var(--color-bg-elevated)"),
+        "manual anchor box-shadow must include the 4px-inset cutout"
+    );
+}
+
+#[test]
+fn color_border_focus_is_only_used_inside_focus_visible_selectors() {
+    let css = include_str!("../../../assets/frame/sheets.css");
+    for rule in css.split('}') {
+        if !rule.contains("var(--color-border-focus)") {
+            continue;
+        }
+        assert!(
+            rule.contains(":focus-visible"),
+            "--color-border-focus is reserved for :focus-visible only, found in rule: {rule}"
+        );
+    }
+}
