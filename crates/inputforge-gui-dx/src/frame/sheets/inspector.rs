@@ -27,6 +27,8 @@ pub(crate) fn SheetsInspector(
 
     // Pull every read-only snapshot we need in one borrow so we never hold a `read()` guard
     // across an `rsx!` expression that also has to `write()` to the same signal.
+    let template_name_draft = sheets.read().template_display_name_draft.clone();
+    let anchor_label_draft = sheets.read().anchor_label_draft.clone();
     let (
         save_status,
         selected_template_name,
@@ -143,14 +145,25 @@ pub(crate) fn SheetsInspector(
                 section { "data-testid": "sheets-inspector-anchor",
                     span { class: "if-sheets__eyebrow", "ANCHOR" }
                     if let Some(anchor) = selected_anchor {
-                        label {
-                            "Label"
-                            input {
-                                r#type: "text",
-                                value: "{anchor.label}",
-                                oninput: move |evt: FormEvent| {
-                                    sheets_for_anchor_label.write().update_selected_anchor_label(evt.value());
-                                },
+                        {
+                            let displayed_label = anchor_label_draft
+                                .clone()
+                                .unwrap_or_else(|| anchor.label.clone());
+                            let mut sheets_for_anchor_label_blur = sheets_for_anchor_label;
+                            rsx! {
+                                label {
+                                    "Label"
+                                    input {
+                                        r#type: "text",
+                                        value: "{displayed_label}",
+                                        oninput: move |evt: FormEvent| {
+                                            sheets_for_anchor_label.write().update_anchor_label_draft(evt.value());
+                                        },
+                                        onblur: move |_| {
+                                            sheets_for_anchor_label_blur.write().commit_anchor_label_draft();
+                                        },
+                                    }
+                                }
                             }
                         }
                         {
@@ -381,14 +394,25 @@ pub(crate) fn SheetsInspector(
                 section { "data-testid": "sheets-inspector-template",
                     span { class: "if-sheets__eyebrow", "TEMPLATE" }
                     if let Some(template_name) = selected_template_name {
-                        label {
-                            "Template display name"
-                            input {
-                                r#type: "text",
-                                value: "{template_name}",
-                                oninput: move |evt: FormEvent| {
-                                    sheets_for_template_name.write().rename_selected_template(evt.value());
-                                },
+                        {
+                            let displayed_name = template_name_draft
+                                .clone()
+                                .unwrap_or(template_name);
+                            let mut sheets_for_template_name_blur = sheets_for_template_name;
+                            rsx! {
+                                label {
+                                    "Template display name"
+                                    input {
+                                        r#type: "text",
+                                        value: "{displayed_name}",
+                                        oninput: move |evt: FormEvent| {
+                                            sheets_for_template_name.write().update_template_display_name_draft(evt.value());
+                                        },
+                                        onblur: move |_| {
+                                            sheets_for_template_name_blur.write().commit_template_display_name_draft();
+                                        },
+                                    }
+                                }
                             }
                         }
                     }

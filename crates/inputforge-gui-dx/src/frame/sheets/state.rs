@@ -288,6 +288,8 @@ pub(crate) struct SheetsState {
     pub history: VecDeque<SheetsEvent>,
     pub preset_picker_open: bool,
     pub pending_preset_slots: Vec<TemplateRect>,
+    pub template_display_name_draft: Option<String>,
+    pub anchor_label_draft: Option<String>,
 }
 
 impl Default for SheetsState {
@@ -308,6 +310,8 @@ impl Default for SheetsState {
             history: VecDeque::new(),
             preset_picker_open: false,
             pending_preset_slots: Vec::new(),
+            template_display_name_draft: None,
+            anchor_label_draft: None,
         }
     }
 }
@@ -356,6 +360,8 @@ impl SheetsState {
             history: VecDeque::new(),
             preset_picker_open: false,
             pending_preset_slots: Vec::new(),
+            template_display_name_draft: None,
+            anchor_label_draft: None,
         }
     }
 
@@ -453,6 +459,36 @@ impl SheetsState {
         } else {
             Some(self.pending_preset_slots.remove(0))
         }
+    }
+
+    pub(crate) fn update_template_display_name_draft(&mut self, value: String) {
+        self.template_display_name_draft = Some(value);
+    }
+
+    pub(crate) fn commit_template_display_name_draft(&mut self) {
+        let Some(draft) = self.template_display_name_draft.take() else {
+            return;
+        };
+        let trimmed = draft.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        self.rename_selected_template(trimmed.to_owned());
+    }
+
+    pub(crate) fn update_anchor_label_draft(&mut self, value: String) {
+        self.anchor_label_draft = Some(value);
+    }
+
+    pub(crate) fn commit_anchor_label_draft(&mut self) {
+        let Some(draft) = self.anchor_label_draft.take() else {
+            return;
+        };
+        let trimmed = draft.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        self.update_selected_anchor_label(trimmed.to_owned());
     }
 
     pub(crate) fn rename_selected_template(&mut self, display_name: impl AsRef<str>) {
@@ -1276,7 +1312,64 @@ mod tests {
             history: VecDeque::new(),
             preset_picker_open: false,
             pending_preset_slots: Vec::new(),
+            template_display_name_draft: None,
+            anchor_label_draft: None,
         }
+    }
+
+    #[test]
+    fn typing_into_template_display_name_does_not_commit_until_blur() {
+        let mut state = SheetsState::default();
+        state.create_blank_template();
+        let baseline_history = state.history.len();
+        state.update_template_display_name_draft("Th".to_owned());
+        state.update_template_display_name_draft("Throttle".to_owned());
+        assert_eq!(
+            state.history.len(),
+            baseline_history,
+            "draft edits must not push history events"
+        );
+        state.commit_template_display_name_draft();
+        assert_eq!(state.templates[0].display_name, "Throttle");
+        assert_eq!(state.history.len() - baseline_history, 1);
+    }
+
+    #[test]
+    fn committing_empty_template_name_draft_keeps_persisted_value_and_pushes_no_event() {
+        let mut state = SheetsState::default();
+        state.create_blank_template();
+        let original = state.templates[0].display_name.clone();
+        let baseline_history = state.history.len();
+
+        for blank in ["", "   ", "\t\n"] {
+            state.update_template_display_name_draft(blank.to_owned());
+            state.commit_template_display_name_draft();
+        }
+
+        assert_eq!(
+            state.templates[0].display_name, original,
+            "persisted name must survive empty commits"
+        );
+        assert_eq!(
+            state.history.len(),
+            baseline_history,
+            "empty commits must not push history events"
+        );
+    }
+
+    #[test]
+    fn committing_empty_anchor_label_draft_keeps_persisted_value() {
+        let mut state = state_with_template();
+        let original = state.templates[0].anchors[0].label.clone();
+        let baseline_history = state.history.len();
+
+        state.update_anchor_label_draft("".to_owned());
+        state.commit_anchor_label_draft();
+        state.update_anchor_label_draft("   ".to_owned());
+        state.commit_anchor_label_draft();
+
+        assert_eq!(state.templates[0].anchors[0].label, original);
+        assert_eq!(state.history.len(), baseline_history);
     }
 
     #[test]
