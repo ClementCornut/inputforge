@@ -421,6 +421,7 @@ pub(crate) fn SheetsCanvas(
                                                     class: "if-sheets__placement-image",
                                                     src: "{placement_src}",
                                                     "data-source-path": "{placement_source_path}",
+                                                    draggable: "false",
                                                     onload: move |_| {
                                                         image_load_failed.set(false);
                                                     },

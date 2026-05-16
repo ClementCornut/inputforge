@@ -2266,6 +2266,128 @@ fn manual_assign_commits_anchor_binding_with_assignment_manual() {
 }
 
 #[test]
+fn placement_wrapper_is_positioned_absolutely_and_blocks_user_select() {
+    let css = include_str!("../../../assets/frame/sheets.css");
+    let mut block = String::new();
+    let mut in_block = false;
+    let mut depth = 0_i32;
+    for line in css.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with(".if-sheets__placement {") {
+            in_block = true;
+        }
+        if in_block {
+            block.push_str(line);
+            block.push('\n');
+            depth += line.matches('{').count() as i32;
+            depth -= line.matches('}').count() as i32;
+            if depth <= 0 {
+                in_block = false;
+            }
+        }
+    }
+    assert!(
+        block.contains("position: absolute"),
+        "placement wrapper missing position: absolute: {block}"
+    );
+    assert!(
+        block.contains("user-select: none"),
+        "placement wrapper missing user-select: none: {block}"
+    );
+}
+
+#[test]
+fn placement_image_uses_object_fit_contain_and_fills_wrapper() {
+    let css = include_str!("../../../assets/frame/sheets.css");
+    let mut block = String::new();
+    let mut in_block = false;
+    let mut depth = 0_i32;
+    for line in css.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with(".if-sheets__placement-image {") {
+            in_block = true;
+        }
+        if in_block {
+            block.push_str(line);
+            block.push('\n');
+            depth += line.matches('{').count() as i32;
+            depth -= line.matches('}').count() as i32;
+            if depth <= 0 {
+                in_block = false;
+            }
+        }
+    }
+    assert!(
+        block.contains("object-fit: contain"),
+        "image rule missing object-fit: contain: {block}"
+    );
+    assert!(
+        block.contains("width: 100%"),
+        "image rule missing width: 100%: {block}"
+    );
+    assert!(
+        block.contains("height: 100%"),
+        "image rule missing height: 100%: {block}"
+    );
+    assert!(
+        block.contains("pointer-events: none"),
+        "image rule missing pointer-events: none: {block}"
+    );
+}
+
+#[test]
+fn placement_image_carries_draggable_false_attribute() {
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness(copied_path: PathBuf) -> Element {
+        let mut state = SheetsState::default();
+        state.create_blank_template();
+        let asset_id = AssetId::from_string("a");
+        state.assets.push(AssetEntry {
+            asset_id: asset_id.clone(),
+            copied_path: PathBuf::from("a.png"),
+            content_hash: "h".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 1,
+                height: 1,
+            },
+            original_import_path: None,
+            extensions: ExtensionPayload::default(),
+        });
+        state.asset_health.push(AssetHealth {
+            entry: state.assets[0].clone(),
+            copied_absolute_path: copied_path,
+            missing: false,
+        });
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: AssetPlacementId::from_string("p"),
+            asset_id,
+            position: TemplateRect {
+                x: 0.1,
+                y: 0.1,
+                w: 0.4,
+                h: 0.4,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+        let sheets = use_signal(|| state);
+        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+    }
+    let copied_path =
+        std::env::temp_dir().join(format!("inputforge-sheets-{}.png", ulid::Ulid::new()));
+    std::fs::write(&copied_path, [0x89, b'P', b'N', b'G']).unwrap();
+    let mut vdom = VirtualDom::new_with_props(Harness, copied_path.clone());
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+    let _ = std::fs::remove_file(copied_path);
+    assert!(
+        html.contains("draggable=\"false\""),
+        "placement image must render draggable=\"false\": {html}"
+    );
+}
+
+#[test]
 fn toolbar_plus_import_emits_one_import_asset_event() {
     let mut state = SheetsState::default();
     let baseline = state.history.len();

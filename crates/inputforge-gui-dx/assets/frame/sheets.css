@@ -560,6 +560,20 @@
     font-size: 12px;
 }
 
+.if-sheets__placement {
+    position: absolute; /* establishes containing block for percentage-positioned children plus the 8 resize handles */
+    user-select: none; /* the placement is a drag handle, not a text/image-selection target */
+    -webkit-user-drag: none;
+}
+
+.if-sheets__placement-image {
+    display: block; /* removes the inline-baseline gap so the image fills the wrapper exactly */
+    width: 100%;
+    height: 100%;
+    object-fit: contain; /* letterbox preserves aspect; the frame rect is the authoritative bounding box */
+    pointer-events: none; /* drag interactions live on the wrapper and handles, not the raster */
+}
+
 .if-sheets__placement[data-selected="true"] {
     outline: 1px solid var(--color-primary);
     outline-offset: -1px;
