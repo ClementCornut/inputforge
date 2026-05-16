@@ -24,7 +24,6 @@ fn empty_sheets_workbench_exposes_import_create_path() {
 
     assert!(html.contains("data-testid=\"sheets-workbench\""));
     assert!(html.contains("New template"));
-    assert!(!html.contains("Import image"));
     assert!(html.contains("Templates"));
     assert!(html.contains("Assets"));
 }
@@ -345,7 +344,6 @@ fn canvas_without_template_uses_centered_empty_state() {
 
     assert!(html.contains("if-sheets__canvas-empty"));
     assert!(html.contains("No template selected"));
-    assert!(!html.contains("Import image"));
     assert!(!html.contains("New template"));
 }
 
@@ -376,7 +374,6 @@ fn template_without_background_image_renders_blank_canvas_stage() {
     assert!(html.contains("data-testid=\"sheets-image-stage\""));
     assert!(html.contains("data-asset-id=\"\""));
     assert!(!html.contains("<img"));
-    assert!(!html.contains("Import image"));
 }
 
 #[test]
@@ -1335,4 +1332,73 @@ fn asset_row_when_a_template_is_selected_is_draggable_and_carries_asset_id() {
         html.contains("cockpit.png"),
         "expected filename label: {html}"
     );
+}
+
+#[test]
+fn canvas_renders_toolbar_with_segmented_select_anchor_plus_import_and_status_chip() {
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness() -> Element {
+        let mut initial_state = SheetsState::default();
+        initial_state.create_blank_template();
+        initial_state.autosave = AutosaveStatus::Clean;
+        let sheets = use_signal(|| initial_state);
+        rsx! {
+            SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} }
+        }
+    }
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(html.contains("data-testid=\"sheets-toolbar\""));
+    assert!(html.contains(">Select<"));
+    assert!(html.contains(">Anchor<"));
+    assert!(html.contains("aria-label=\"Import image\""));
+    assert!(html.contains("data-testid=\"sheets-autosave-chip\""));
+    // The + button is the Phosphor plus icon, not a literal `+` character.
+    // The Icon component injects the SVG via dangerous_inner_html; the rendered HTML will
+    // contain the SVG path data. The robust check is for the icon's containing class.
+    assert!(
+        html.contains("if-icon"),
+        "import button should render an icon (if-icon class): {html}"
+    );
+    // Default (no mutation, no failure) lands in the Clean/neutral tone.
+    assert!(html.contains("data-status=\"clean\""));
+    assert!(html.contains("data-tone=\"neutral\""));
+    assert!(html.contains("Saved"));
+}
+
+#[test]
+fn autosave_chip_status_and_tone_follow_the_state_machine() {
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness(status: AutosaveStatus) -> Element {
+        let mut initial = SheetsState::default();
+        initial.create_blank_template();
+        initial.autosave = status;
+        let sheets = use_signal(|| initial);
+        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+    }
+
+    for (status, expected_status, expected_tone, expected_label) in [
+        (AutosaveStatus::Clean, "clean", "neutral", "Saved"),
+        (AutosaveStatus::Saving, "saving", "neutral", "Saving"),
+        (AutosaveStatus::Dirty, "dirty", "amber", "Unsaved"),
+        (AutosaveStatus::Failed, "failed", "red", "Save failed"),
+    ] {
+        let mut vdom = VirtualDom::new_with_props(Harness, status);
+        vdom.rebuild_in_place();
+        let html = dioxus_ssr::render(&vdom);
+        assert!(
+            html.contains(&format!("data-status=\"{expected_status}\"")),
+            "expected status `{expected_status}` for {status:?}: {html}"
+        );
+        assert!(
+            html.contains(&format!("data-tone=\"{expected_tone}\"")),
+            "expected tone `{expected_tone}` for {status:?}: {html}"
+        );
+        assert!(
+            html.contains(expected_label),
+            "expected label `{expected_label}` for {status:?}: {html}"
+        );
+    }
 }

@@ -10,9 +10,11 @@ use dioxus::prelude::*;
 use inputforge_core::sheet::{AnchorId, AssetHealth};
 use serde::Deserialize;
 
+use crate::components::Icon;
 use crate::frame::sheets::state::{
-    SheetTool, SheetsState, default_rect_at, normalized_image_point,
+    AutosaveStatus, SheetTool, SheetsState, default_rect_at, normalized_image_point,
 };
+use crate::icons::{Icon as IconKind, IconSize};
 use inputforge_core::sheet::AssetId;
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -31,7 +33,6 @@ pub(crate) fn SheetsCanvas(
     on_import_image: EventHandler<()>,
     on_arm_capture: EventHandler<AnchorId>,
 ) -> Element {
-    let _ = on_import_image;
     let _ = on_arm_capture;
     let stage_rect = use_signal(|| StageRectPayload {
         left: 0.0,
@@ -51,6 +52,18 @@ pub(crate) fn SheetsCanvas(
     drop(state);
 
     let has_template = selected_template.is_some();
+    let toolbar_name = selected_template
+        .as_ref()
+        .map(|t| t.display_name.clone())
+        .unwrap_or_else(|| "No template".to_owned());
+    let tool_is_select = matches!(tool, SheetTool::Select);
+    let tool_is_anchor = matches!(tool, SheetTool::Anchor);
+    let (autosave_status_token, autosave_tone, autosave_label) = match sheets.read().autosave {
+        AutosaveStatus::Clean => ("clean", "neutral", "Saved"),
+        AutosaveStatus::Saving => ("saving", "neutral", "Saving"),
+        AutosaveStatus::Dirty => ("dirty", "amber", "Unsaved"),
+        AutosaveStatus::Failed => ("failed", "red", "Save failed"),
+    };
     let anchor_count = selected_template
         .as_ref()
         .map_or(0, |template| template.anchors.len());
@@ -223,6 +236,48 @@ pub(crate) fn SheetsCanvas(
 
     rsx! {
         main { "data-testid": "sheets-canvas",
+            section { "data-testid": "sheets-toolbar",
+                div { class: "if-sheets__toolbar-tools",
+                    h2 { class: "if-sheets__toolbar-name", "{toolbar_name}" }
+                    div { class: "if-sheets__toolbar-segment", role: "tablist",
+                        button {
+                            "type": "button",
+                            "data-active": tool_is_select,
+                            onclick: move |_| {
+                                sheets.write().tool = SheetTool::Select;
+                            },
+                            "Select"
+                        }
+                        button {
+                            "type": "button",
+                            "data-active": tool_is_anchor,
+                            onclick: move |_| {
+                                sheets.write().tool = SheetTool::Anchor;
+                            },
+                            "Anchor"
+                        }
+                    }
+                    button {
+                        "type": "button",
+                        class: "if-sheets__toolbar-import",
+                        "aria-label": "Import image",
+                        disabled: !has_template,
+                        title: if has_template { "Import image" } else { "Select a template first" },
+                        onclick: move |_| {
+                            on_import_image.call(());
+                        },
+                        Icon { name: IconKind::Plus, size: IconSize::Sm }
+                    }
+                }
+                div {
+                    class: "if-sheets__autosave-chip",
+                    "data-testid": "sheets-autosave-chip",
+                    "data-status": autosave_status_token,
+                    "data-tone": autosave_tone,
+                    span { class: "if-sheets__autosave-dot" }
+                    span { "{autosave_label}" }
+                }
+            }
             if !has_template {
                 div { class: "if-sheets__canvas-empty",
                     h2 { "No template selected" }
