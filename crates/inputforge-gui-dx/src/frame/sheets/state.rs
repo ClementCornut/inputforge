@@ -3,8 +3,8 @@ use std::time::Instant;
 
 use inputforge_core::sheet::{
     AnchorAssignment, AnchorBinding, AnchorId, AnchorPosition, AssetEntry, AssetId, AssetPlacement,
-    AssetPlacementId, DeviceTemplate, ExtensionPayload, TemplateAnchor, TemplateId, TemplateRect,
-    TokenPreset,
+    AssetPlacementId, DeviceTemplate, ExtensionPayload, PixelDimensions, TemplateAnchor,
+    TemplateId, TemplateRect, TokenPreset,
 };
 use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
@@ -1108,12 +1108,31 @@ pub(crate) fn normalized_image_point(
     })
 }
 
+pub(crate) fn default_rect_at(x: f32, y: f32, pixel_dimensions: PixelDimensions) -> TemplateRect {
+    let aspect = pixel_dimensions.width as f32 / pixel_dimensions.height.max(1) as f32;
+
+    // Target a quarter-canvas width first; if that would produce a height larger than half the
+    // canvas (portrait images), clamp on the height axis and recompute the width.
+    let target_w = 0.25_f32;
+    let target_h = target_w / aspect;
+    let (w, h) = if target_h > 0.5 {
+        let clamped_h = 0.5;
+        (clamped_h * aspect, clamped_h)
+    } else {
+        (target_w, target_h)
+    };
+
+    let x0 = (x - w / 2.0).clamp(0.0, 1.0 - w);
+    let y0 = (y - h / 2.0).clamp(0.0, 1.0 - h);
+    TemplateRect { x: x0, y: y0, w, h }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    use inputforge_core::sheet::{AssetHealth, InputTypeHint, PixelDimensions};
+    use inputforge_core::sheet::{AssetHealth, InputTypeHint};
 
     fn button_input(index: u8) -> InputAddress {
         InputAddress::Bound {
@@ -2223,5 +2242,70 @@ mod tests {
             .find(|a| a.anchor_id == anchor_id)
             .unwrap();
         assert_eq!(anchor.attached_to, None);
+    }
+
+    #[test]
+    fn default_rect_at_square_asset_yields_quarter_canvas() {
+        use crate::frame::sheets::state::default_rect_at;
+        use inputforge_core::sheet::PixelDimensions;
+        let rect = default_rect_at(
+            0.5,
+            0.5,
+            PixelDimensions {
+                width: 100,
+                height: 100,
+            },
+        );
+        assert!((rect.w - 0.25).abs() < 1e-6);
+        assert!((rect.h - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn default_rect_at_landscape_asset_keeps_aspect() {
+        use crate::frame::sheets::state::default_rect_at;
+        use inputforge_core::sheet::PixelDimensions;
+        let rect = default_rect_at(
+            0.5,
+            0.5,
+            PixelDimensions {
+                width: 400,
+                height: 100,
+            },
+        );
+        assert!((rect.w - 0.25).abs() < 1e-6);
+        assert!((rect.h - 0.0625).abs() < 1e-6);
+    }
+
+    #[test]
+    fn default_rect_at_portrait_asset_clamps_to_half_height() {
+        use crate::frame::sheets::state::default_rect_at;
+        use inputforge_core::sheet::PixelDimensions;
+        let rect = default_rect_at(
+            0.5,
+            0.5,
+            PixelDimensions {
+                width: 100,
+                height: 400,
+            },
+        );
+        // aspect = 0.25, target_h = 0.25 / 0.25 = 1.0 > 0.5, clamp to h=0.5, w = 0.5 * 0.25 = 0.125
+        assert!((rect.h - 0.5).abs() < 1e-6);
+        assert!((rect.w - 0.125).abs() < 1e-6);
+    }
+
+    #[test]
+    fn default_rect_at_clamps_so_rect_stays_inside_canvas() {
+        use crate::frame::sheets::state::default_rect_at;
+        use inputforge_core::sheet::PixelDimensions;
+        let rect = default_rect_at(
+            1.0,
+            1.0,
+            PixelDimensions {
+                width: 100,
+                height: 100,
+            },
+        );
+        assert!(rect.x + rect.w <= 1.0 + f32::EPSILON);
+        assert!(rect.y + rect.h <= 1.0 + f32::EPSILON);
     }
 }

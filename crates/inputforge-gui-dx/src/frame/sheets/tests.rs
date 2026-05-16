@@ -1286,3 +1286,53 @@ fn template_card_pluralizes_frame_and_anchor_counts() {
         );
     }
 }
+
+#[test]
+fn asset_row_when_a_template_is_selected_is_draggable_and_carries_asset_id() {
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness() -> Element {
+        let asset_id = AssetId::from_string("asset-drag");
+        let mut initial_state = SheetsState {
+            assets: vec![AssetEntry {
+                asset_id: asset_id.clone(),
+                copied_path: PathBuf::from("imports/cockpit.png"),
+                content_hash: "hash".to_owned(),
+                media_type: "image/png".to_owned(),
+                pixel_dimensions: PixelDimensions {
+                    width: 320,
+                    height: 240,
+                },
+                original_import_path: Some(PathBuf::from("D:/imports/cockpit.png")),
+                extensions: ExtensionPayload::default(),
+            }],
+            library_tab: SheetsLibraryTab::Assets,
+            ..SheetsState::default()
+        };
+        initial_state.create_blank_template();
+        initial_state.library_tab = SheetsLibraryTab::Assets;
+        let sheets = use_signal(|| initial_state);
+
+        rsx! {
+            SheetsLeftRail {
+                sheets,
+                on_import_image: move |()| {},
+                on_create_template: move |()| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+    assert!(
+        html.contains("draggable=\"true\""),
+        "expected draggable=\"true\" attribute: {html}"
+    );
+    assert!(
+        html.contains("data-asset-id=\"asset-drag\""),
+        "expected data-asset-id=\"asset-drag\": {html}"
+    );
+    assert!(
+        html.contains("cockpit.png"),
+        "expected filename label: {html}"
+    );
+}

@@ -4,9 +4,19 @@
 )]
 
 use dioxus::prelude::*;
-use inputforge_core::sheet::{AssetId, TemplateId};
+use inputforge_core::sheet::{AssetEntry, AssetId, TemplateId};
 
 use crate::frame::sheets::state::{SheetLayoutPreset, SheetsLibraryTab, SheetsState, pluralize};
+
+fn filename_of(asset: &AssetEntry) -> String {
+    asset
+        .original_import_path
+        .as_ref()
+        .and_then(|p| p.file_name())
+        .or_else(|| asset.copied_path.file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| asset.copied_path.display().to_string())
+}
 
 const PRESET_OPTIONS: &[(&str, SheetLayoutPreset)] = &[
     ("Single", SheetLayoutPreset::Single),
@@ -33,6 +43,7 @@ pub(crate) fn SheetsLeftRail(
     let preset_picker_open = snapshot.preset_picker_open;
     let selected_template_id = snapshot.selected_template_id.clone();
     let selected_asset_id = snapshot.selected_asset_id().cloned();
+    let has_selected_template = snapshot.selected_template_id.is_some();
     drop(snapshot);
 
     let template_count = templates.len();
@@ -195,26 +206,42 @@ pub(crate) fn SheetsLeftRail(
                                         .iter()
                                         .any(|(_, asset_ids)| asset_ids.iter().any(|id| id == &asset.asset_id));
                                     let asset_label = asset.copied_path.display().to_string();
+                                    let filename_label = filename_of(&asset);
+                                    let pixel_width = asset.pixel_dimensions.width;
+                                    let pixel_height = asset.pixel_dimensions.height;
+                                    let asset_id_str = asset.asset_id.as_str().to_owned();
+                                    let row_asset_id = asset.asset_id.clone();
+                                    let click_asset_id = asset.asset_id.clone();
+                                    let dragstart_asset_id = asset.asset_id;
+                                    let draggable_value = if has_selected_template {
+                                        "true"
+                                    } else {
+                                        "false"
+                                    };
                                     rsx! {
-                                        li { key: "{asset.asset_id}",
+                                        li { key: "{row_asset_id}",
                                             "data-selected": selected,
+                                            draggable: draggable_value,
+                                            "data-asset-id": "{asset_id_str}",
+                                            ondragstart: move |evt| {
+                                                let _ = evt
+                                                    .data_transfer()
+                                                    .set_data("text/plain", dragstart_asset_id.as_str());
+                                                evt.data_transfer().set_effect_allowed("copy");
+                                            },
                                             if can_select {
                                                 button {
                                                     "type": "button",
                                                     "aria-label": "Select first template using {asset_label}",
                                                     onclick: move |_| {
-                                                        sheets.write().select_first_template_for_asset(asset.asset_id.clone());
+                                                        sheets.write().select_first_template_for_asset(click_asset_id.clone());
                                                     },
-                                                    span { "{asset_label}" }
-                                                    span {
-                                                        "{asset.pixel_dimensions.width} x {asset.pixel_dimensions.height}"
-                                                    }
+                                                    span { "{filename_label}" }
+                                                    span { "{pixel_width} x {pixel_height}" }
                                                 }
                                             } else {
-                                                span { "{asset_label}" }
-                                                span {
-                                                    "{asset.pixel_dimensions.width} x {asset.pixel_dimensions.height}"
-                                                }
+                                                span { "{filename_label}" }
+                                                span { "{pixel_width} x {pixel_height}" }
                                             }
                                         }
                                     }

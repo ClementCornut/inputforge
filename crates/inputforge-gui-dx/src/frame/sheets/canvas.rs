@@ -10,7 +10,10 @@ use dioxus::prelude::*;
 use inputforge_core::sheet::{AnchorId, AssetHealth};
 use serde::Deserialize;
 
-use crate::frame::sheets::state::{SheetTool, SheetsState, normalized_image_point};
+use crate::frame::sheets::state::{
+    SheetTool, SheetsState, default_rect_at, normalized_image_point,
+};
+use inputforge_core::sheet::AssetId;
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 struct StageRectPayload {
@@ -170,6 +173,54 @@ pub(crate) fn SheetsCanvas(
         }
     };
 
+    let handle_stage_dragover = move |evt: Event<DragData>| {
+        // preventDefault on dragover is required for the subsequent drop event to fire.
+        evt.prevent_default();
+        evt.data_transfer().set_drop_effect("copy");
+    };
+
+    let drop_template_id = selected_template
+        .as_ref()
+        .map(|template| template.template_id.clone());
+    let handle_stage_drop = move |evt: Event<DragData>| {
+        evt.prevent_default();
+        let Some(template_id) = drop_template_id.clone() else {
+            return;
+        };
+        let Some(raw_asset_id) = evt.data_transfer().get_data("text/plain") else {
+            return;
+        };
+        if raw_asset_id.is_empty() {
+            return;
+        }
+        let asset_id = AssetId::from_string(raw_asset_id);
+        let coordinates = evt.client_coordinates();
+        let rect = *stage_rect.read();
+        let Some(position) = normalized_image_point(
+            coordinates.x,
+            coordinates.y,
+            rect.left,
+            rect.top,
+            rect.width,
+            rect.height,
+        ) else {
+            return;
+        };
+        let pixel_dimensions = sheets
+            .read()
+            .assets
+            .iter()
+            .find(|asset| asset.asset_id == asset_id)
+            .map(|asset| asset.pixel_dimensions.clone());
+        let Some(pixel_dimensions) = pixel_dimensions else {
+            return;
+        };
+        let drop_rect = default_rect_at(position.x as f32, position.y as f32, pixel_dimensions);
+        let _ = sheets
+            .write()
+            .add_placement(template_id, asset_id, drop_rect);
+    };
+
     rsx! {
         main { "data-testid": "sheets-canvas",
             if !has_template {
@@ -205,6 +256,8 @@ pub(crate) fn SheetsCanvas(
                             "data-testid": "sheets-image-stage",
                             "data-asset-id": "{asset_id}",
                             onclick: handle_stage_click,
+                            ondragover: handle_stage_dragover,
+                            ondrop: handle_stage_drop,
                             if !asset_src.is_empty() {
                                 img {
                                     class: "if-sheets__image",
