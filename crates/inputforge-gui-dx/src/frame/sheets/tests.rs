@@ -672,9 +672,12 @@ fn selecting_non_first_asset_makes_it_canvas_asset() {
     let _ = std::fs::remove_file(first_path);
     let _ = std::fs::remove_file(second_path);
 
+    // The stage carries the selected asset's id; the multi-image canvas renders every
+    // placement's own image, so the selected asset is identified via the stage attribute
+    // rather than being the only rendered image.
     assert!(html.contains("data-asset-id=\"asset-2\""));
     assert!(html.contains(&format!("data-source-path=\"{expected_second_path}\"")));
-    assert!(!html.contains(&format!("data-source-path=\"{expected_first_path}\"")));
+    assert!(html.contains(&format!("data-source-path=\"{expected_first_path}\"")));
 }
 
 #[test]
@@ -1442,4 +1445,82 @@ fn canvas_after_preset_pick_renders_preset_slot_drop_zones() {
         "H-pair should render 2 slot drop zones: {html}"
     );
     assert!(html.contains("+ Add image"));
+}
+
+#[test]
+fn canvas_renders_each_placement_clipped_to_its_rect_and_sorted_by_z_index() {
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness() -> Element {
+        let asset_a = AssetEntry {
+            asset_id: AssetId::from_string("asset-a"),
+            copied_path: PathBuf::from("assets/asset-a.png"),
+            content_hash: "ha".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 64,
+                height: 32,
+            },
+            original_import_path: None,
+            extensions: ExtensionPayload::default(),
+        };
+        let asset_b = AssetEntry {
+            asset_id: AssetId::from_string("asset-b"),
+            ..asset_a.clone()
+        };
+        let mut state = SheetsState {
+            assets: vec![asset_a.clone(), asset_b.clone()],
+            asset_health: vec![
+                AssetHealth {
+                    entry: asset_a.clone(),
+                    copied_absolute_path: PathBuf::from("/tmp/a"),
+                    missing: false,
+                },
+                AssetHealth {
+                    entry: asset_b.clone(),
+                    copied_absolute_path: PathBuf::from("/tmp/b"),
+                    missing: false,
+                },
+            ],
+            ..SheetsState::default()
+        };
+        state.create_blank_template();
+        let template_id = state.templates[0].template_id.clone();
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: AssetPlacementId::from_string("p-bottom"),
+            asset_id: asset_a.asset_id,
+            position: TemplateRect {
+                x: 0.1,
+                y: 0.1,
+                w: 0.4,
+                h: 0.4,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: AssetPlacementId::from_string("p-top"),
+            asset_id: asset_b.asset_id,
+            position: TemplateRect {
+                x: 0.2,
+                y: 0.2,
+                w: 0.4,
+                h: 0.4,
+            },
+            z_index: 5,
+            extensions: ExtensionPayload::default(),
+        });
+        state.selected_template_id = Some(template_id);
+        let sheets = use_signal(|| state);
+        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+    }
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    let bottom = html.find("data-placement-id=\"p-bottom\"").unwrap();
+    let top = html.find("data-placement-id=\"p-top\"").unwrap();
+    assert!(
+        bottom < top,
+        "lower-z placement should render before higher-z so DOM order matches paint order: {html}"
+    );
 }

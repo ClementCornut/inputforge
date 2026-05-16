@@ -49,7 +49,14 @@ pub(crate) fn SheetsCanvas(
     let selected_asset_missing = state.selected_asset_missing();
     let selected_anchor_id = state.selected_anchor_id.clone();
     let tool = state.tool;
+    let asset_health_all = state.asset_health.clone();
     drop(state);
+
+    let mut placements_sorted = selected_template
+        .as_ref()
+        .map(|t| t.placements.clone())
+        .unwrap_or_default();
+    placements_sorted.sort_by_key(|p| p.z_index);
 
     let has_template = selected_template.is_some();
     let toolbar_name = selected_template
@@ -366,18 +373,44 @@ pub(crate) fn SheetsCanvas(
                             onclick: handle_stage_click,
                             ondragover: handle_stage_dragover,
                             ondrop: handle_stage_drop,
-                            if !asset_src.is_empty() {
-                                img {
-                                    class: "if-sheets__image",
-                                    src: "{asset_src}",
-                                    "data-source-path": "{asset_source_path}",
-                                    alt: "{template.display_name}",
-                                    onload: move |_| {
-                                        image_load_failed.set(false);
-                                    },
-                                    onerror: move |_| {
-                                        image_load_failed.set(true);
-                                    },
+                            for placement in placements_sorted.iter().cloned() {
+                                {
+                                    let health = asset_health_all
+                                        .iter()
+                                        .find(|h| h.entry.asset_id == placement.asset_id);
+                                    let placement_src = health
+                                        .filter(|h| !h.missing)
+                                        .and_then(|h| asset_data_url(h).ok())
+                                        .unwrap_or_default();
+                                    let placement_source_path = health
+                                        .filter(|h| !h.missing)
+                                        .map(|h| file_url_from_path(&h.copied_absolute_path))
+                                        .unwrap_or_default();
+                                    let left = placement.position.x * 100.0;
+                                    let top = placement.position.y * 100.0;
+                                    let width = placement.position.w * 100.0;
+                                    let height = placement.position.h * 100.0;
+                                    let z = placement.z_index;
+                                    rsx! {
+                                        div {
+                                            class: "if-sheets__placement",
+                                            "data-placement-id": "{placement.placement_id}",
+                                            style: "left:{left}%;top:{top}%;width:{width}%;height:{height}%;z-index:{z};",
+                                            if !placement_src.is_empty() {
+                                                img {
+                                                    class: "if-sheets__placement-image",
+                                                    src: "{placement_src}",
+                                                    "data-source-path": "{placement_source_path}",
+                                                    onload: move |_| {
+                                                        image_load_failed.set(false);
+                                                    },
+                                                    onerror: move |_| {
+                                                        image_load_failed.set(true);
+                                                    },
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             if show_empty_dropzone {
