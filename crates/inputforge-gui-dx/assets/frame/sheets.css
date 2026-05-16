@@ -70,7 +70,7 @@
 }
 
 .if-sheets button {
-    display: inline-flex;
+    display: inline-flex; /* inline-flex so buttons sit inline with surrounding text while still centring their label */
     align-items: center;
     justify-content: center;
     min-height: 28px;
@@ -106,7 +106,7 @@
 }
 
 .if-sheets [data-testid="sheets-left-rail"] nav {
-    display: grid;
+    display: grid; /* grid so the Templates/Assets tabs share two equal columns regardless of label length */
     grid-template-columns: 1fr 1fr;
     gap: 4px;
     padding: 12px;
@@ -164,7 +164,7 @@
 }
 
 .if-sheets li {
-    display: grid;
+    display: grid; /* grid clamps the single text column with minmax so long names truncate instead of overflowing */
     grid-template-columns: minmax(0, 1fr);
     gap: 2px;
     padding: 8px 10px;
@@ -183,7 +183,7 @@
 }
 
 .if-sheets li > button {
-    display: grid;
+    display: grid; /* grid keeps the row button matching its parent li so the button fills the row identically */
     grid-template-columns: minmax(0, 1fr);
     justify-content: stretch;
     width: 100%;
@@ -269,7 +269,7 @@
 
 .if-sheets__image-stage {
     position: relative;
-    display: block;
+    display: block; /* block establishes the positioning context for absolutely positioned anchors without imposing a flex flow */
     flex: 1 1 auto;
     width: 100%;
     min-height: 0;
@@ -281,7 +281,7 @@
 }
 
 .if-sheets__image {
-    display: block;
+    display: block; /* block removes the inline-image baseline gap so the <img> exactly fills the stage box */
     width: 100%;
     height: 100%;
     object-fit: contain;
@@ -363,9 +363,53 @@
 .if-sheets [data-testid="sheets-inspector"] > p {
     margin-top: 4px;
     margin-bottom: 10px;
-    color: var(--color-live);
+    color: var(--color-text-muted);
     font-family: var(--font-mono);
 }
+
+.if-sheets__inspector-title {
+    /* DESIGN.md Title scale */
+    margin: 14px 12px 6px;
+    color: var(--color-text);
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.45; /* DESIGN.md convention: unitless leading scales with the font size */
+}
+
+.if-sheets__eyebrow {
+    color: var(--color-text-subtle);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 16px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.if-sheets__autosave-chip {
+    display: inline-flex; /* row alignment of dot + label */
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-bg-sunken);
+    color: var(--color-text);
+    font-size: 11px;
+    line-height: 16px;
+}
+
+.if-sheets__autosave-dot {
+    display: block; /* circular puck; flex would stretch the pseudo-square */
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--color-border-strong);
+}
+
+.if-sheets__autosave-chip[data-status="dirty"] .if-sheets__autosave-dot { background: var(--color-warning); }
+.if-sheets__autosave-chip[data-status="failed"] .if-sheets__autosave-dot { background: var(--color-error); }
+.if-sheets__autosave-chip[data-status="saving"] .if-sheets__autosave-dot { background: var(--color-border-strong); }
+.if-sheets__autosave-chip[data-status="clean"] .if-sheets__autosave-dot { background: var(--color-border-strong); }
 
 .if-sheets [role="alert"] {
     display: flex;
@@ -424,7 +468,7 @@
 }
 
 .if-sheets code {
-    display: block;
+    display: block; /* block so the inspector path code chunk reads as its own paragraph instead of inline text */
     max-width: 100%;
     overflow-wrap: anywhere;
     padding: 6px 8px;

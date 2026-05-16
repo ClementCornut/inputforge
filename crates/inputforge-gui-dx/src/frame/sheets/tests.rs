@@ -1957,3 +1957,61 @@ fn unavailable_assignment_renders_unassigned_shape() {
     assert!(!html.contains("if-sheets__anchor--captured"));
     assert!(!html.contains("if-sheets__anchor--manual"));
 }
+
+#[test]
+fn autosave_chip_block_does_not_reference_color_live() {
+    let css = include_str!("../../../assets/frame/sheets.css");
+    let mut autosave_block = String::new();
+    let mut in_block = false;
+    for line in css.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with(".if-sheets__autosave-") {
+            in_block = true;
+        }
+        if in_block {
+            autosave_block.push_str(line);
+            autosave_block.push('\n');
+            if line.contains('}') && !line.contains('{') {
+                in_block = false;
+            }
+        }
+    }
+    assert!(
+        !autosave_block.contains("var(--color-live)"),
+        "autosave chip must not use the engine-truth colour: {autosave_block}"
+    );
+}
+
+#[test]
+fn sheets_css_defines_autosave_status_classes_for_clean_saving_dirty_failed() {
+    let css = include_str!("../../../assets/frame/sheets.css");
+    for token in [
+        "data-status=\"clean\"",
+        "data-status=\"saving\"",
+        "data-status=\"dirty\"",
+        "data-status=\"failed\"",
+    ] {
+        assert!(css.contains(token), "css missing autosave token {token}");
+    }
+}
+
+#[test]
+fn every_non_flex_display_value_in_sheets_css_has_inline_justification() {
+    let css = include_str!("../../../assets/frame/sheets.css");
+    for (line_no, line) in css.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if !trimmed.starts_with("display:") {
+            continue;
+        }
+        if trimmed.starts_with("display: flex") || trimmed.starts_with("display:flex") {
+            continue;
+        }
+        let after_value = trimmed.split(';').next().unwrap_or("");
+        assert!(
+            line.contains("/*"),
+            "line {} has non-flex display without inline /* ... */ justification: {}",
+            line_no + 1,
+            after_value
+        );
+    }
+}
