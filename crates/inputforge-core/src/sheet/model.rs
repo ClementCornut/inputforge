@@ -210,6 +210,8 @@ pub struct TemplateAnchor {
     pub label: String,
     pub position: AnchorPosition,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attached_to: Option<AssetPlacementId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_type_hint: Option<InputTypeHint>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grouping_hint: Option<String>,
@@ -625,6 +627,7 @@ default_token_preset = "standard"
                     anchor_id: anchor_id.clone(),
                     label: "Trigger".to_owned(),
                     position: AnchorPosition { x: 0.42, y: 0.18 },
+                    attached_to: None,
                     input_type_hint: Some(InputTypeHint::Button),
                     grouping_hint: None,
                     device_matching_hint: None,
@@ -684,6 +687,7 @@ default_token_preset = "standard"
                     anchor_id: anchor_id.clone(),
                     label: "Trigger".to_owned(),
                     position: AnchorPosition { x: 0.2, y: 0.3 },
+                    attached_to: None,
                     input_type_hint: Some(InputTypeHint::Button),
                     grouping_hint: None,
                     device_matching_hint: None,
@@ -1097,5 +1101,35 @@ index = 3
         assert_eq!(decoded, template);
         assert_eq!(decoded.placements.len(), 1);
         assert!(!encoded.contains("asset_ids"));
+    }
+
+    #[test]
+    fn template_anchor_attached_to_roundtrips_for_floating_and_attached() {
+        let floating = TemplateAnchor {
+            anchor_id: AnchorId::from_string("anchor-float"),
+            label: "Float".to_owned(),
+            position: AnchorPosition { x: 0.5, y: 0.5 },
+            attached_to: None,
+            input_type_hint: None,
+            grouping_hint: None,
+            device_matching_hint: None,
+            extensions: ExtensionPayload::default(),
+        };
+        let attached = TemplateAnchor {
+            anchor_id: AnchorId::from_string("anchor-att"),
+            label: "Attached".to_owned(),
+            position: AnchorPosition { x: 0.25, y: 0.75 },
+            attached_to: Some(AssetPlacementId::from_string("placement-1")),
+            input_type_hint: None,
+            grouping_hint: None,
+            device_matching_hint: None,
+            extensions: ExtensionPayload::default(),
+        };
+
+        for anchor in [floating, attached] {
+            let encoded = toml::to_string(&anchor).unwrap();
+            let decoded: TemplateAnchor = toml::from_str(&encoded).unwrap();
+            assert_eq!(decoded, anchor);
+        }
     }
 }
