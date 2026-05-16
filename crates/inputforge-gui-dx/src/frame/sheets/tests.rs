@@ -11,6 +11,7 @@ use inputforge_core::types::DeviceId;
 use super::SheetsWorkbench;
 use super::canvas::{
     SheetsCanvas, base64_encode, cleanup_stage_resize_listener_script, file_url_from_path,
+    install_anchor_drag_bridge, install_placement_drag_bridge,
     install_stage_resize_listener_script, stage_subscription_key,
 };
 use super::inspector::SheetsInspector;
@@ -2704,4 +2705,58 @@ fn assigned_binding_wraps_in_if_rebind_composite_block() {
         "Re-assign button should not use the old composer-trigger class: {html}"
     );
     assert!(html.contains(">Re-assign<"));
+}
+
+#[test]
+fn install_placement_drag_bridge_emits_script_referencing_target_data_attribute() {
+    let js = install_placement_drag_bridge("stage-1", "placement-abc", "key-x");
+    assert!(
+        js.contains("data-placement-id"),
+        "script must scope to data-placement-id selector: {js}"
+    );
+    assert!(
+        js.contains("placement-abc"),
+        "script must include the target placement id: {js}"
+    );
+    assert!(
+        js.contains("setPointerCapture"),
+        "script must use pointer capture: {js}"
+    );
+    assert!(
+        js.contains("'pointerup'"),
+        "script must listen for pointerup commit: {js}"
+    );
+    assert!(
+        js.contains("if-sheets__resize-handle"),
+        "script must wire resize handles: {js}"
+    );
+    assert!(
+        js.contains("key-x"),
+        "script must reference the listener key: {js}"
+    );
+}
+
+#[test]
+fn install_anchor_drag_bridge_emits_script_referencing_target_data_attribute() {
+    let js = install_anchor_drag_bridge("stage-1", "anchor-xyz", "key-y");
+    assert!(
+        js.contains("data-anchor-id"),
+        "script must scope to data-anchor-id selector: {js}"
+    );
+    assert!(
+        js.contains("anchor-xyz"),
+        "script must include the target anchor id: {js}"
+    );
+    assert!(
+        js.contains("'pointerup'"),
+        "script must listen for pointerup commit: {js}"
+    );
+    assert!(
+        js.contains("setPointerCapture"),
+        "script must use pointer capture: {js}"
+    );
+    assert!(
+        js.contains("key-y"),
+        "script must reference the listener key: {js}"
+    );
 }

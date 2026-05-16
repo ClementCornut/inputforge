@@ -7,7 +7,9 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use dioxus::prelude::*;
-use inputforge_core::sheet::{AnchorAssignment, AnchorId, AssetHealth};
+use inputforge_core::sheet::{
+    AnchorAssignment, AnchorId, AnchorPosition, AssetHealth, TemplateRect,
+};
 use serde::Deserialize;
 
 use crate::components::Icon;
@@ -25,7 +27,22 @@ struct StageRectPayload {
     height: f64,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+enum PlacementDragPayload {
+    Move { x: f32, y: f32 },
+    Resize { x: f32, y: f32, w: f32, h: f32 },
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+struct AnchorDragPayload {
+    x: f64,
+    y: f64,
+}
+
 const STAGE_RESIZE_LISTENER_PREFIX: &str = "__inputforgeSheetsStageResize_";
+const PLACEMENT_DRAG_LISTENER_PREFIX: &str = "__inputforgeSheetsPlacementDrag_";
+const ANCHOR_DRAG_LISTENER_PREFIX: &str = "__inputforgeSheetsAnchorDrag_";
 
 #[component]
 pub(crate) fn SheetsCanvas(
@@ -160,11 +177,129 @@ pub(crate) fn SheetsCanvas(
         let _ = image_load_key;
         image_load_failed.set(false);
     }));
+    // Placement pointer-drag bridge: install when a placement is selected.
+    let mut sheets_for_placement_drag = sheets;
+    let placement_drag_selection = selected_placement_id.clone();
+    let mut active_placement_drag_key = use_signal(|| Option::<String>::None);
+    use_effect(use_reactive!(|placement_drag_selection| {
+        let previous_key = active_placement_drag_key.peek().clone();
+        let new_key = placement_drag_selection
+            .as_ref()
+            .map(|id| format!("{PLACEMENT_DRAG_LISTENER_PREFIX}{}", id.as_str()));
+        if previous_key == new_key {
+            return;
+        }
+
+        if let Some(listener_key) = previous_key {
+            spawn(async move {
+                let _ = document::eval(&cleanup_drag_bridge_script(&listener_key));
+            });
+        }
+
+        active_placement_drag_key.set(new_key.clone());
+
+        let Some(placement_id) = placement_drag_selection.clone() else {
+            return;
+        };
+        let Some(listener_key) = new_key else {
+            return;
+        };
+        let stage_id = stage_id.to_owned();
+        let placement_id_str = placement_id.as_str().to_owned();
+
+        spawn(async move {
+            let js = install_placement_drag_bridge(&stage_id, &placement_id_str, &listener_key);
+            let mut handle = document::eval(&js);
+            loop {
+                let Ok(payload) = handle.recv::<PlacementDragPayload>().await else {
+                    break;
+                };
+                let template_id = sheets_for_placement_drag
+                    .peek()
+                    .selected_template_id
+                    .clone();
+                let Some(template_id) = template_id else {
+                    continue;
+                };
+                match payload {
+                    PlacementDragPayload::Move { x, y } => {
+                        let _ = sheets_for_placement_drag.write().commit_drag_end_move(
+                            template_id,
+                            placement_id.clone(),
+                            x,
+                            y,
+                        );
+                    }
+                    PlacementDragPayload::Resize { x, y, w, h } => {
+                        let _ = sheets_for_placement_drag.write().commit_drag_end_resize(
+                            template_id,
+                            placement_id.clone(),
+                            TemplateRect { x, y, w, h },
+                        );
+                    }
+                }
+            }
+        });
+    }));
+    // Anchor pointer-drag bridge: install when an anchor is selected.
+    let mut sheets_for_anchor_drag = sheets;
+    let anchor_drag_selection = selected_anchor_id.clone();
+    let mut active_anchor_drag_key = use_signal(|| Option::<String>::None);
+    use_effect(use_reactive!(|anchor_drag_selection| {
+        let previous_key = active_anchor_drag_key.peek().clone();
+        let new_key = anchor_drag_selection
+            .as_ref()
+            .map(|id| format!("{ANCHOR_DRAG_LISTENER_PREFIX}{}", id.as_str()));
+        if previous_key == new_key {
+            return;
+        }
+
+        if let Some(listener_key) = previous_key {
+            spawn(async move {
+                let _ = document::eval(&cleanup_drag_bridge_script(&listener_key));
+            });
+        }
+
+        active_anchor_drag_key.set(new_key.clone());
+
+        let Some(anchor_id) = anchor_drag_selection.clone() else {
+            return;
+        };
+        let Some(listener_key) = new_key else {
+            return;
+        };
+        let stage_id = stage_id.to_owned();
+        let anchor_id_str = anchor_id.as_str().to_owned();
+
+        spawn(async move {
+            let js = install_anchor_drag_bridge(&stage_id, &anchor_id_str, &listener_key);
+            let mut handle = document::eval(&js);
+            loop {
+                let Ok(payload) = handle.recv::<AnchorDragPayload>().await else {
+                    break;
+                };
+                sheets_for_anchor_drag
+                    .write()
+                    .update_selected_anchor_position(AnchorPosition {
+                        x: payload.x.clamp(0.0, 1.0),
+                        y: payload.y.clamp(0.0, 1.0),
+                    });
+            }
+        });
+    }));
     use_drop(move || {
         let listener_key = active_stage_listener_key.peek().clone();
+        let placement_drag_key = active_placement_drag_key.peek().clone();
+        let anchor_drag_key = active_anchor_drag_key.peek().clone();
         spawn(async move {
             if let Some(listener_key) = listener_key {
                 let _ = document::eval(&cleanup_stage_resize_listener_script(&listener_key));
+            }
+            if let Some(listener_key) = placement_drag_key {
+                let _ = document::eval(&cleanup_drag_bridge_script(&listener_key));
+            }
+            if let Some(listener_key) = anchor_drag_key {
+                let _ = document::eval(&cleanup_drag_bridge_script(&listener_key));
             }
         });
     });
@@ -718,6 +853,276 @@ pub(super) fn cleanup_stage_resize_listener_script(listener_key: &str) -> String
            if (h.observer) {{\
              h.observer.disconnect();\
            }}\
+           delete window[{listener_key:?}];\
+         }}"
+    )
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "the function body is a single large JS literal; splitting it would obscure the script"
+)]
+pub(super) fn install_placement_drag_bridge(
+    stage_id: &str,
+    placement_id: &str,
+    listener_key: &str,
+) -> String {
+    format!(
+        r"
+        var stage = document.getElementById({stage_id:?});
+        if (!stage) return;
+        var placementId = {placement_id:?};
+        var placement = stage.querySelector('[data-placement-id=' + JSON.stringify(placementId) + ']');
+        if (!placement) return;
+        var listenerKey = {listener_key:?};
+        var existing = window[listenerKey];
+        if (existing && typeof existing.detach === 'function') {{
+            existing.detach();
+            delete window[listenerKey];
+        }}
+
+        var DRAG_THRESHOLD_PX = 3;
+        var state = null;
+        var handles = placement.querySelectorAll('.if-sheets__resize-handle');
+
+        function stageRect() {{
+            return stage.getBoundingClientRect();
+        }}
+
+        function placementRectNormalized() {{
+            var rect = stageRect();
+            var box = placement.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) {{
+                return {{ x: 0, y: 0, w: 0, h: 0 }};
+            }}
+            return {{
+                x: (box.left - rect.left) / rect.width,
+                y: (box.top - rect.top) / rect.height,
+                w: box.width / rect.width,
+                h: box.height / rect.height
+            }};
+        }}
+
+        function onPointerDownBody(evt) {{
+            if (evt.button !== 0) return;
+            if (state) return;
+            if (evt.target && evt.target.classList && evt.target.classList.contains('if-sheets__resize-handle')) return;
+            evt.preventDefault();
+            if (placement.setPointerCapture) {{
+                try {{ placement.setPointerCapture(evt.pointerId); }} catch (e) {{}}
+            }}
+            state = {{
+                kind: 'move',
+                target: placement,
+                pointerId: evt.pointerId,
+                startX: evt.clientX,
+                startY: evt.clientY,
+                origin: placementRectNormalized(),
+                moved: false
+            }};
+        }}
+
+        function onPointerDownHandle(handle) {{
+            return function(evt) {{
+                if (evt.button !== 0) return;
+                if (state) return;
+                evt.preventDefault();
+                evt.stopPropagation();
+                if (handle.setPointerCapture) {{
+                    try {{ handle.setPointerCapture(evt.pointerId); }} catch (e) {{}}
+                }}
+                state = {{
+                    kind: 'resize',
+                    handle: handle.dataset.handle || '',
+                    target: handle,
+                    pointerId: evt.pointerId,
+                    startX: evt.clientX,
+                    startY: evt.clientY,
+                    origin: placementRectNormalized(),
+                    moved: false
+                }};
+            }};
+        }}
+
+        function onPointerMove(evt) {{
+            if (!state || evt.pointerId !== state.pointerId) return;
+            var dx = evt.clientX - state.startX;
+            var dy = evt.clientY - state.startY;
+            if (Math.abs(dx) >= DRAG_THRESHOLD_PX || Math.abs(dy) >= DRAG_THRESHOLD_PX) {{
+                state.moved = true;
+            }}
+        }}
+
+        function commit(evt) {{
+            if (!state || evt.pointerId !== state.pointerId) return;
+            if (!state.moved) {{
+                state = null;
+                return;
+            }}
+            var rect = stageRect();
+            if (rect.width === 0 || rect.height === 0) {{
+                state = null;
+                return;
+            }}
+            var dxNorm = (evt.clientX - state.startX) / rect.width;
+            var dyNorm = (evt.clientY - state.startY) / rect.height;
+            try {{
+                if (state.kind === 'move') {{
+                    var nx = state.origin.x + dxNorm;
+                    var ny = state.origin.y + dyNorm;
+                    dioxus.send({{ mode: 'move', x: nx, y: ny }});
+                }} else {{
+                    var newX = state.origin.x;
+                    var newY = state.origin.y;
+                    var newW = state.origin.w;
+                    var newH = state.origin.h;
+                    var h = state.handle;
+                    if (h.indexOf('e') !== -1) {{ newW = state.origin.w + dxNorm; }}
+                    if (h.indexOf('w') !== -1) {{ newX = state.origin.x + dxNorm; newW = state.origin.w - dxNorm; }}
+                    if (h.indexOf('s') !== -1) {{ newH = state.origin.h + dyNorm; }}
+                    if (h.indexOf('n') !== -1) {{ newY = state.origin.y + dyNorm; newH = state.origin.h - dyNorm; }}
+                    dioxus.send({{ mode: 'resize', x: newX, y: newY, w: newW, h: newH }});
+                }}
+            }} catch (e) {{
+                // Bridge channel closed or unavailable; abort silently.
+            }}
+            state = null;
+        }}
+
+        function cancel(evt) {{
+            if (!state) return;
+            if (evt && evt.pointerId !== undefined && evt.pointerId !== state.pointerId) return;
+            state = null;
+        }}
+
+        placement.addEventListener('pointerdown', onPointerDownBody);
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', commit);
+        window.addEventListener('pointercancel', cancel);
+        window.addEventListener('blur', cancel);
+
+        var handleListeners = [];
+        handles.forEach(function(h) {{
+            var fn = onPointerDownHandle(h);
+            h.addEventListener('pointerdown', fn);
+            handleListeners.push({{ el: h, fn: fn }});
+        }});
+
+        window[listenerKey] = {{
+            detach: function() {{
+                placement.removeEventListener('pointerdown', onPointerDownBody);
+                window.removeEventListener('pointermove', onPointerMove);
+                window.removeEventListener('pointerup', commit);
+                window.removeEventListener('pointercancel', cancel);
+                window.removeEventListener('blur', cancel);
+                handleListeners.forEach(function(rec) {{
+                    rec.el.removeEventListener('pointerdown', rec.fn);
+                }});
+                state = null;
+            }}
+        }};
+        "
+    )
+}
+
+pub(super) fn install_anchor_drag_bridge(
+    stage_id: &str,
+    anchor_id: &str,
+    listener_key: &str,
+) -> String {
+    format!(
+        r"
+        var stage = document.getElementById({stage_id:?});
+        if (!stage) return;
+        var anchorId = {anchor_id:?};
+        var anchor = stage.querySelector('button[data-anchor-id=' + JSON.stringify(anchorId) + ']');
+        if (!anchor) return;
+        var listenerKey = {listener_key:?};
+        var existing = window[listenerKey];
+        if (existing && typeof existing.detach === 'function') {{
+            existing.detach();
+            delete window[listenerKey];
+        }}
+
+        var DRAG_THRESHOLD_PX = 3;
+        var state = null;
+
+        function stageRect() {{
+            return stage.getBoundingClientRect();
+        }}
+
+        function onPointerDown(evt) {{
+            if (evt.button !== 0) return;
+            if (state) return;
+            evt.preventDefault();
+            evt.stopPropagation();
+            if (anchor.setPointerCapture) {{
+                try {{ anchor.setPointerCapture(evt.pointerId); }} catch (e) {{}}
+            }}
+            state = {{ pointerId: evt.pointerId, startX: evt.clientX, startY: evt.clientY, moved: false }};
+        }}
+
+        function onPointerMove(evt) {{
+            if (!state || evt.pointerId !== state.pointerId) return;
+            var dx = evt.clientX - state.startX;
+            var dy = evt.clientY - state.startY;
+            if (Math.abs(dx) >= DRAG_THRESHOLD_PX || Math.abs(dy) >= DRAG_THRESHOLD_PX) {{
+                state.moved = true;
+            }}
+        }}
+
+        function commit(evt) {{
+            if (!state || evt.pointerId !== state.pointerId) return;
+            if (!state.moved) {{
+                state = null;
+                return;
+            }}
+            var rect = stageRect();
+            if (rect.width === 0 || rect.height === 0) {{
+                state = null;
+                return;
+            }}
+            var nx = (evt.clientX - rect.left) / rect.width;
+            var ny = (evt.clientY - rect.top) / rect.height;
+            try {{
+                dioxus.send({{ x: nx, y: ny }});
+            }} catch (e) {{
+                // Bridge channel closed or unavailable; abort silently.
+            }}
+            state = null;
+        }}
+
+        function cancel(evt) {{
+            if (!state) return;
+            if (evt && evt.pointerId !== undefined && evt.pointerId !== state.pointerId) return;
+            state = null;
+        }}
+
+        anchor.addEventListener('pointerdown', onPointerDown);
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', commit);
+        window.addEventListener('pointercancel', cancel);
+        window.addEventListener('blur', cancel);
+
+        window[listenerKey] = {{
+            detach: function() {{
+                anchor.removeEventListener('pointerdown', onPointerDown);
+                window.removeEventListener('pointermove', onPointerMove);
+                window.removeEventListener('pointerup', commit);
+                window.removeEventListener('pointercancel', cancel);
+                window.removeEventListener('blur', cancel);
+                state = null;
+            }}
+        }};
+        "
+    )
+}
+
+pub(super) fn cleanup_drag_bridge_script(listener_key: &str) -> String {
+    format!(
+        "const h = window[{listener_key:?}];\
+         if (h && typeof h.detach === 'function') {{\
+           h.detach();\
            delete window[{listener_key:?}];\
          }}"
     )
