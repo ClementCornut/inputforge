@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use dioxus::prelude::*;
 use inputforge_core::sheet::{
-    AnchorPosition, AssetEntry, AssetHealth, AssetId, AssetPlacement, AssetPlacementId,
+    AnchorId, AnchorPosition, AssetEntry, AssetHealth, AssetId, AssetPlacement, AssetPlacementId,
     DeviceTemplate, ExtensionPayload, PixelDimensions, TemplateAnchor, TemplateId, TemplateRect,
     TokenPreset,
 };
@@ -14,7 +14,7 @@ use super::canvas::{
 };
 use super::inspector::SheetsInspector;
 use super::left_rail::SheetsLeftRail;
-use super::state::{AutosaveStatus, CaptureStatus, SheetsLibraryTab, SheetsState};
+use super::state::{AutosaveStatus, CaptureStatus, SheetsEventKind, SheetsLibraryTab, SheetsState};
 
 #[test]
 fn empty_sheets_workbench_exposes_import_create_path() {
@@ -1152,4 +1152,137 @@ fn left_rail_marks_only_selected_non_first_asset_row() {
 
     assert!(!row_is_selected(asset_1_row));
     assert!(row_is_selected(asset_2_row));
+}
+
+#[test]
+fn new_template_action_opens_inline_preset_picker_with_five_presets_and_skip() {
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness() -> Element {
+        let sheets = use_signal(|| {
+            let mut s = SheetsState::default();
+            s.open_template_preset_picker();
+            s
+        });
+        rsx! {
+            SheetsLeftRail {
+                sheets,
+                on_import_image: move |()| {},
+                on_create_template: move |()| {},
+            }
+        }
+    }
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    for label in [
+        "Single",
+        "Horizontal pair",
+        "Vertical stack",
+        "2x2 grid",
+        "Freeform",
+        "Skip",
+        "Cancel",
+    ] {
+        assert!(
+            html.contains(label),
+            "preset picker missing {label}: {html}"
+        );
+    }
+    assert!(html.contains("data-testid=\"sheets-preset-picker\""));
+}
+
+#[test]
+fn skip_button_creates_a_blank_template_and_pushes_create_template() {
+    let mut state = SheetsState::default();
+    state.open_template_preset_picker();
+    let baseline = state.history.len();
+
+    state.skip_template_preset_picker();
+
+    assert_eq!(state.templates.len(), 1);
+    assert!(matches!(
+        state.history.back().unwrap().kind,
+        SheetsEventKind::CreateTemplate(_)
+    ));
+    assert_eq!(state.history.len(), baseline + 1);
+    assert!(!state.preset_picker_open);
+}
+
+#[test]
+fn cancel_button_closes_picker_without_creating_a_template() {
+    let mut state = SheetsState::default();
+    state.open_template_preset_picker();
+    let baseline_templates = state.templates.len();
+    let baseline_history = state.history.len();
+
+    state.dismiss_template_preset_picker();
+
+    assert_eq!(state.templates.len(), baseline_templates);
+    assert_eq!(state.history.len(), baseline_history);
+    assert!(!state.preset_picker_open);
+}
+
+#[test]
+fn template_card_pluralizes_frame_and_anchor_counts() {
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness(counts: (usize, usize)) -> Element {
+        let (placements, anchors) = counts;
+        let sheets = use_signal(|| {
+            let mut s = SheetsState::default();
+            s.create_blank_template();
+            for i in 0..placements {
+                s.templates[0].placements.push(AssetPlacement {
+                    placement_id: AssetPlacementId::from_string(format!("p-{i}")),
+                    asset_id: AssetId::from_string("asset-1"),
+                    position: TemplateRect {
+                        x: 0.0,
+                        y: 0.0,
+                        w: 0.1,
+                        h: 0.1,
+                    },
+                    z_index: i as i32,
+                    extensions: ExtensionPayload::default(),
+                });
+            }
+            for i in 0..anchors {
+                s.templates[0].anchors.push(TemplateAnchor {
+                    anchor_id: AnchorId::from_string(format!("a-{i}")),
+                    label: format!("Anchor {i}"),
+                    position: AnchorPosition { x: 0.5, y: 0.5 },
+                    attached_to: None,
+                    input_type_hint: None,
+                    grouping_hint: None,
+                    device_matching_hint: None,
+                    extensions: ExtensionPayload::default(),
+                });
+            }
+            s
+        });
+        rsx! {
+            SheetsLeftRail {
+                sheets,
+                on_import_image: move |()| {},
+                on_create_template: move |()| {},
+            }
+        }
+    }
+
+    for (placements, anchors, frame_word, anchor_word) in [
+        (1, 1, "1 frame", "1 anchor"),
+        (2, 2, "2 frames", "2 anchors"),
+        (0, 0, "0 frames", "0 anchors"),
+    ] {
+        let mut vdom = VirtualDom::new_with_props(Harness, (placements, anchors));
+        vdom.rebuild_in_place();
+        let html = dioxus_ssr::render(&vdom);
+        assert!(
+            html.contains(frame_word),
+            "expected `{frame_word}` in card: {html}"
+        );
+        assert!(
+            html.contains(anchor_word),
+            "expected `{anchor_word}` in card: {html}"
+        );
+    }
 }

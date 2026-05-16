@@ -10,6 +10,14 @@ use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
 const SHEETS_HISTORY_CAP: usize = 200;
 
+pub(crate) fn pluralize(count: usize, singular: &str, plural: &str) -> String {
+    if count == 1 {
+        format!("{count} {singular}")
+    } else {
+        format!("{count} {plural}")
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum SheetTool {
     #[default]
@@ -395,11 +403,20 @@ impl SheetsState {
         self.preset_picker_open = true;
     }
 
+    /// Cancel path: close the picker, do not create a template, do not push any history event.
     pub(crate) fn dismiss_template_preset_picker(&mut self) {
         self.preset_picker_open = false;
     }
 
+    /// Explicit "Skip" path: user wants a blank template without preset slots. Creates the
+    /// template, records the CreateTemplate event, closes the picker.
+    pub(crate) fn skip_template_preset_picker(&mut self) {
+        self.create_blank_template();
+        self.preset_picker_open = false;
+    }
+
     pub(crate) fn apply_preset_after_create(&mut self, preset: SheetLayoutPreset) {
+        self.create_blank_template();
         self.pending_preset_slots = preset.slot_rects();
         self.preset_picker_open = false;
     }
@@ -2142,6 +2159,15 @@ mod tests {
         state.dismiss_template_preset_picker();
         assert!(!state.preset_picker_open);
         assert_eq!(state.history.len(), history_before);
+    }
+
+    #[test]
+    fn pluralize_uses_singular_only_for_count_one() {
+        use super::pluralize;
+        assert_eq!(pluralize(0, "frame", "frames"), "0 frames");
+        assert_eq!(pluralize(1, "frame", "frames"), "1 frame");
+        assert_eq!(pluralize(2, "frame", "frames"), "2 frames");
+        assert_eq!(pluralize(5, "anchor", "anchors"), "5 anchors");
     }
 
     #[test]

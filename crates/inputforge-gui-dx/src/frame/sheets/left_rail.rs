@@ -6,18 +6,31 @@
 use dioxus::prelude::*;
 use inputforge_core::sheet::{AssetId, TemplateId};
 
-use crate::frame::sheets::state::{SheetsLibraryTab, SheetsState};
+use crate::frame::sheets::state::{SheetLayoutPreset, SheetsLibraryTab, SheetsState, pluralize};
+
+const PRESET_OPTIONS: &[(&str, SheetLayoutPreset)] = &[
+    ("Single", SheetLayoutPreset::Single),
+    ("Horizontal pair", SheetLayoutPreset::HorizontalPair),
+    ("Vertical stack", SheetLayoutPreset::VerticalStack),
+    ("2x2 grid", SheetLayoutPreset::TwoByTwo),
+    ("Freeform", SheetLayoutPreset::Freeform),
+];
 
 #[component]
 pub(crate) fn SheetsLeftRail(
     sheets: Signal<SheetsState>,
     on_import_image: EventHandler<()>,
+    #[allow(
+        unused_variables,
+        reason = "kept for backward compat; replaced by inline picker"
+    )]
     on_create_template: EventHandler<()>,
 ) -> Element {
     let snapshot = sheets.read();
     let templates = snapshot.templates.clone();
     let assets = snapshot.assets.clone();
     let library_tab = snapshot.library_tab;
+    let preset_picker_open = snapshot.preset_picker_open;
     let selected_template_id = snapshot.selected_template_id.clone();
     let selected_asset_id = snapshot.selected_asset_id().cloned();
     drop(snapshot);
@@ -38,7 +51,6 @@ pub(crate) fn SheetsLeftRail(
         })
         .collect();
     let handle_import_image = move |_| on_import_image.call(());
-    let handle_create_template = move |_| on_create_template.call(());
     let templates_selected = library_tab == SheetsLibraryTab::Templates;
     let assets_selected = library_tab == SheetsLibraryTab::Assets;
 
@@ -73,20 +85,27 @@ pub(crate) fn SheetsLeftRail(
                             p { "No templates" }
                             button {
                                 "type": "button",
-                                onclick: handle_create_template,
+                                onclick: move |_| {
+                                    sheets.write().open_template_preset_picker();
+                                },
                                 "New template"
                             }
                         }
                     } else {
                         button {
                             "type": "button",
-                            onclick: handle_create_template,
+                            onclick: move |_| {
+                                sheets.write().open_template_preset_picker();
+                            },
                             "New template"
                         }
                         ul {
                             for template in templates {
                                 {
+                                    let frame_count = template.placements.len();
                                     let anchor_count = template.anchors.len();
+                                    let frame_label = pluralize(frame_count, "frame", "frames");
+                                    let anchor_label = pluralize(anchor_count, "anchor", "anchors");
                                     let selected = selected_template_id
                                         .as_ref()
                                         .is_some_and(|template_id| template_id == &template.template_id);
@@ -101,11 +120,47 @@ pub(crate) fn SheetsLeftRail(
                                                     sheets.write().select_template(template.template_id.clone());
                                                 },
                                                 span { "{template.display_name}" }
-                                                span { "{anchor_count} anchors" }
+                                                span { "{frame_label}" }
+                                                span { "{anchor_label}" }
                                             }
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                    if preset_picker_open {
+                        section { "data-testid": "sheets-preset-picker",
+                            h3 { "Pick a layout" }
+                            ul {
+                                for (preset_label , preset) in PRESET_OPTIONS.iter().copied() {
+                                    li { key: "{preset_label}",
+                                        button {
+                                            "type": "button",
+                                            onclick: move |_| {
+                                                sheets.write().apply_preset_after_create(preset);
+                                            },
+                                            "{preset_label}"
+                                        }
+                                    }
+                                }
+                            }
+                            button {
+                                "type": "button",
+                                "data-action": "skip",
+                                onclick: move |_| {
+                                    sheets.write().skip_template_preset_picker();
+                                },
+                                "Skip"
+                            }
+                            button {
+                                "type": "button",
+                                "data-action": "dismiss",
+                                "aria-label": "Close picker without creating a template",
+                                onclick: move |_| {
+                                    sheets.write().dismiss_template_preset_picker();
+                                },
+                                "Cancel"
                             }
                         }
                     }
