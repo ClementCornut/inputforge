@@ -130,6 +130,49 @@ pub(crate) enum SheetsEventKind {
     },
 }
 
+impl SheetsEventKind {
+    pub(crate) fn all_kind_names() -> Vec<&'static str> {
+        // Compiler-enforced exhaustiveness: when a new variant lands without a name entry below,
+        // this match becomes non-exhaustive and the build breaks. Do NOT add a wildcard arm.
+        fn _exhaustiveness(k: &SheetsEventKind) -> &'static str {
+            match k {
+                SheetsEventKind::CreateTemplate(_) => "CreateTemplate",
+                SheetsEventKind::RenameTemplate { .. } => "RenameTemplate",
+                SheetsEventKind::AddPlacement { .. } => "AddPlacement",
+                SheetsEventKind::RemovePlacement { .. } => "RemovePlacement",
+                SheetsEventKind::MovePlacement { .. } => "MovePlacement",
+                SheetsEventKind::ResizePlacement { .. } => "ResizePlacement",
+                SheetsEventKind::ReorderZ { .. } => "ReorderZ",
+                SheetsEventKind::PlaceAnchor { .. } => "PlaceAnchor",
+                SheetsEventKind::RemoveAnchor { .. } => "RemoveAnchor",
+                SheetsEventKind::RenameAnchor { .. } => "RenameAnchor",
+                SheetsEventKind::MoveAnchor { .. } => "MoveAnchor",
+                SheetsEventKind::ToggleAnchorAttach { .. } => "ToggleAnchorAttach",
+                SheetsEventKind::AssignAnchor { .. } => "AssignAnchor",
+                SheetsEventKind::ImportAsset { .. } => "ImportAsset",
+                SheetsEventKind::RemoveAsset { .. } => "RemoveAsset",
+            }
+        }
+        vec![
+            "CreateTemplate",
+            "RenameTemplate",
+            "AddPlacement",
+            "RemovePlacement",
+            "MovePlacement",
+            "ResizePlacement",
+            "ReorderZ",
+            "PlaceAnchor",
+            "RemoveAnchor",
+            "RenameAnchor",
+            "MoveAnchor",
+            "ToggleAnchorAttach",
+            "AssignAnchor",
+            "ImportAsset",
+            "RemoveAsset",
+        ]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SheetsEvent {
     // session-scoped, never serialized; spec line 114
@@ -1825,6 +1868,41 @@ mod tests {
                 assert_eq!(dropped_anchors[0].1.anchor_id.as_str(), "anchor-attached");
             }
             other => panic!("expected RemoveAsset, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn every_event_kind_has_a_documented_inverse() {
+        let inverses: &[(&str, &str)] = &[
+            ("CreateTemplate", "RemovePlacement"),
+            ("RenameTemplate", "RenameTemplate"),
+            ("AddPlacement", "RemovePlacement"),
+            ("RemovePlacement", "AddPlacement"),
+            ("MovePlacement", "MovePlacement"),
+            ("ResizePlacement", "ResizePlacement"),
+            ("ReorderZ", "ReorderZ"),
+            ("PlaceAnchor", "RemoveAnchor"),
+            ("RemoveAnchor", "PlaceAnchor"),
+            ("RenameAnchor", "RenameAnchor"),
+            ("MoveAnchor", "MoveAnchor"),
+            ("ToggleAnchorAttach", "ToggleAnchorAttach"),
+            ("AssignAnchor", "AssignAnchor"),
+            ("ImportAsset", "RemoveAsset"),
+            ("RemoveAsset", "ImportAsset"),
+        ];
+
+        let names = SheetsEventKind::all_kind_names();
+        for (kind, _) in inverses {
+            assert!(
+                names.contains(kind),
+                "missing event kind {kind} in inverses table"
+            );
+        }
+        for name in &names {
+            assert!(
+                inverses.iter().any(|(k, _)| k == name),
+                "event kind {name} lacks a reverse pairing"
+            );
         }
     }
 
