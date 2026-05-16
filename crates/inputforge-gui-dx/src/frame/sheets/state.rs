@@ -823,6 +823,37 @@ mod tests {
     }
 
     #[test]
+    fn classify_save_outcome_maps_all_four_arms() {
+        use crate::frame::sheets::authoring::classify_save_outcome;
+        use inputforge_core::error::EngineError;
+
+        fn asset_err() -> EngineError {
+            EngineError::InvalidConfig {
+                reason: "asset failed".to_owned(),
+            }
+        }
+        fn template_err() -> EngineError {
+            EngineError::InvalidConfig {
+                reason: "template failed".to_owned(),
+            }
+        }
+
+        assert!(classify_save_outcome(Ok(()), Ok(())).is_ok());
+
+        let err = classify_save_outcome(Err(asset_err()), Ok(())).unwrap_err();
+        assert!(err.to_string().contains("asset failed"));
+
+        let err = classify_save_outcome(Ok(()), Err(template_err())).unwrap_err();
+        assert!(err.to_string().contains("template failed"));
+
+        let err = classify_save_outcome(Err(asset_err()), Err(template_err())).unwrap_err();
+        assert!(
+            err.to_string().contains("asset failed"),
+            "both-failed arm reports the asset error first because the manifest write runs first"
+        );
+    }
+
+    #[test]
     fn applying_state_to_documents_preserves_document_metadata() {
         let mut state = state_with_template();
         state.update_selected_anchor_label("Fire");

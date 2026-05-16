@@ -41,9 +41,18 @@ pub(crate) fn save_sheets_documents(documents: &mut SheetsDocuments) -> Result<(
 
     documents.asset_health = asset_health(&config_dir, &documents.assets);
 
-    match asset_result {
-        Err(err) => Err(err),
-        Ok(()) => template_result,
+    classify_save_outcome(asset_result, template_result)
+}
+
+pub(crate) fn classify_save_outcome(
+    asset_result: Result<()>,
+    template_result: Result<()>,
+) -> Result<()> {
+    match (asset_result, template_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(asset_err), Ok(())) => Err(asset_err),
+        (Ok(()), Err(template_err)) => Err(template_err),
+        (Err(asset_err), Err(_template_err)) => Err(asset_err),
     }
 }
 
