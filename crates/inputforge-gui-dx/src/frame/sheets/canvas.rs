@@ -29,6 +29,7 @@ pub(crate) fn SheetsCanvas(
     on_arm_capture: EventHandler<AnchorId>,
 ) -> Element {
     let _ = on_import_image;
+    let _ = on_arm_capture;
     let stage_rect = use_signal(|| StageRectPayload {
         left: 0.0,
         top: 0.0,
@@ -159,14 +160,10 @@ pub(crate) fn SheetsCanvas(
         };
 
         match tool {
-            SheetTool::PlaceAnchor => {
+            SheetTool::Anchor => {
                 sheets.write().place_anchor(position);
             }
-            SheetTool::CaptureAssign => {
-                let anchor_id = sheets.write().place_anchor(position);
-                on_arm_capture.call(anchor_id);
-            }
-            SheetTool::Select | SheetTool::ManualAssign => {}
+            SheetTool::Select => {}
         }
     };
 

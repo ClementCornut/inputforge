@@ -14,9 +14,7 @@ const SHEETS_HISTORY_CAP: usize = 200;
 pub(crate) enum SheetTool {
     #[default]
     Select,
-    PlaceAnchor,
-    CaptureAssign,
-    ManualAssign,
+    Anchor,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2136,5 +2134,17 @@ mod tests {
         state.dismiss_template_preset_picker();
         assert!(!state.preset_picker_open);
         assert_eq!(state.history.len(), history_before);
+    }
+
+    #[test]
+    fn sheet_tool_default_is_select_and_only_anchor_variant_exists_besides_it() {
+        assert_eq!(SheetTool::default(), SheetTool::Select);
+        // Compile-time exhaustiveness: this match must remain total. If a third variant lands
+        // (or Anchor is renamed), the compiler refuses the build.
+        fn _matches(tool: SheetTool) {
+            match tool {
+                SheetTool::Select | SheetTool::Anchor => {}
+            }
+        }
     }
 }
