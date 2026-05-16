@@ -203,6 +203,48 @@ pub struct AssetPlacement {
     pub extensions: ExtensionPayload,
 }
 
+/// Drains a legacy `asset_ids` extension key from every template into
+/// `placements`. Returns true when any template was migrated; callers
+/// should mark the document dirty in that case so the next save persists
+/// the upgraded shape and the legacy key disappears from disk.
+pub fn upgrade_template_store_in_place(document: &mut TemplateStoreDocument) -> bool {
+    let default_rect = TemplateRect {
+        x: 0.05,
+        y: 0.05,
+        w: 0.9,
+        h: 0.9,
+    };
+    let mut any_migrated = false;
+
+    for template in &mut document.templates {
+        let Some(legacy_value) = template.extensions.remove("asset_ids") else {
+            continue;
+        };
+
+        any_migrated = true;
+
+        let Some(array) = legacy_value.as_array() else {
+            continue;
+        };
+
+        for (z_index, value) in array.iter().enumerate() {
+            let Some(asset_id_str) = value.as_str() else {
+                continue;
+            };
+            let z_index = i32::try_from(z_index).unwrap_or(i32::MAX);
+            template.placements.push(AssetPlacement {
+                placement_id: AssetPlacementId::new(),
+                asset_id: AssetId::from_string(asset_id_str),
+                position: default_rect,
+                z_index,
+                extensions: ExtensionPayload::default(),
+            });
+        }
+    }
+
+    any_migrated
+}
+
 /// Template anchor that can be bound to a concrete input.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TemplateAnchor {
@@ -1101,6 +1143,123 @@ index = 3
         assert_eq!(decoded, template);
         assert_eq!(decoded.placements.len(), 1);
         assert!(!encoded.contains("asset_ids"));
+    }
+
+    #[test]
+    fn legacy_template_with_one_asset_id_loads_as_one_full_canvas_placement() {
+        let toml = r#"
+schema_version = 1
+app_version_created = "0.2.0"
+app_version_last_saved = "0.2.0"
+
+[[templates]]
+template_id = "template-stick-left"
+display_name = "Left Stick"
+asset_ids = ["asset-stick"]
+default_token_preset = "standard"
+"#;
+
+        let mut document: TemplateStoreDocument = toml::from_str(toml).unwrap();
+        let migrated = upgrade_template_store_in_place(&mut document);
+
+        assert!(migrated);
+        let template = &document.templates[0];
+        assert_eq!(template.placements.len(), 1);
+        assert_eq!(
+            template.placements[0].asset_id,
+            AssetId::from_string("asset-stick")
+        );
+        assert_eq!(
+            template.placements[0].position,
+            TemplateRect {
+                x: 0.05,
+                y: 0.05,
+                w: 0.9,
+                h: 0.9
+            }
+        );
+        assert_eq!(template.placements[0].z_index, 0);
+        assert!(!template.extensions.contains_key("asset_ids"));
+    }
+
+    #[test]
+    fn legacy_template_with_three_asset_ids_loads_three_overlapping_placements_with_ascending_z() {
+        let toml = r#"
+schema_version = 1
+app_version_created = "0.2.0"
+app_version_last_saved = "0.2.0"
+
+[[templates]]
+template_id = "template-stick-left"
+display_name = "Left Stick"
+asset_ids = ["asset-a", "asset-b", "asset-c"]
+default_token_preset = "standard"
+"#;
+
+        let mut document: TemplateStoreDocument = toml::from_str(toml).unwrap();
+        upgrade_template_store_in_place(&mut document);
+
+        let template = &document.templates[0];
+        assert_eq!(template.placements.len(), 3);
+        assert_eq!(template.placements[0].z_index, 0);
+        assert_eq!(template.placements[1].z_index, 1);
+        assert_eq!(template.placements[2].z_index, 2);
+        for placement in &template.placements {
+            assert_eq!(
+                placement.position,
+                TemplateRect {
+                    x: 0.05,
+                    y: 0.05,
+                    w: 0.9,
+                    h: 0.9
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_template_with_empty_asset_ids_loads_zero_placements_and_no_legacy_key() {
+        let toml = r#"
+schema_version = 1
+app_version_created = "0.2.0"
+app_version_last_saved = "0.2.0"
+
+[[templates]]
+template_id = "template-empty"
+display_name = "Empty"
+asset_ids = []
+default_token_preset = "standard"
+"#;
+
+        let mut document: TemplateStoreDocument = toml::from_str(toml).unwrap();
+        let migrated = upgrade_template_store_in_place(&mut document);
+
+        assert!(
+            migrated,
+            "presence of legacy key should mark the document migrated"
+        );
+        assert!(document.templates[0].placements.is_empty());
+        assert!(!document.templates[0].extensions.contains_key("asset_ids"));
+    }
+
+    #[test]
+    fn template_without_asset_ids_key_is_left_untouched() {
+        let toml = r#"
+schema_version = 1
+app_version_created = "0.2.0"
+app_version_last_saved = "0.2.0"
+
+[[templates]]
+template_id = "template-fresh"
+display_name = "Fresh"
+default_token_preset = "standard"
+"#;
+
+        let mut document: TemplateStoreDocument = toml::from_str(toml).unwrap();
+        let migrated = upgrade_template_store_in_place(&mut document);
+
+        assert!(!migrated);
+        assert!(document.templates[0].placements.is_empty());
     }
 
     #[test]

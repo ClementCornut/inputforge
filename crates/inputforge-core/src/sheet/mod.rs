@@ -22,7 +22,8 @@ pub use model::{
     MappingMetadataDocument, MappingRef, MappingSheet, ModeMappingSlot, PixelDimensions,
     ProfileSheetsDocument, SheetAnchorOverride, SheetBlock, SheetLine, SheetText, SheetTextKind,
     SidecarDocument, SidecarHeader, TemplateAnchor, TemplateInstance, TemplateRect,
-    TemplateStoreDocument, TokenPreset, validate_unique_mapping_metadata_refs,
+    TemplateStoreDocument, TokenPreset, upgrade_template_store_in_place,
+    validate_unique_mapping_metadata_refs,
 };
 #[doc(inline)]
 pub use recovery::{
