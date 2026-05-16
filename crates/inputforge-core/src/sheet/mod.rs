@@ -10,8 +10,8 @@ pub mod store;
 pub use assets::{AssetHealth, ImportedAsset, asset_health, global_asset_dir, import_image_asset};
 #[doc(inline)]
 pub use ids::{
-    AnchorId, AssetId, BlockId, LineId, MappingMetadataId, RecoverySnapshotId, SheetId, TemplateId,
-    TemplateInstanceId,
+    AnchorId, AssetId, AssetPlacementId, BlockId, LineId, MappingMetadataId, RecoverySnapshotId,
+    SheetId, TemplateId, TemplateInstanceId,
 };
 #[doc(inline)]
 pub use model::{

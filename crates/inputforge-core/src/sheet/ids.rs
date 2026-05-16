@@ -63,6 +63,10 @@ stable_id_type!(
     RecoverySnapshotId,
     "Identifies a mapping sheet recovery snapshot."
 );
+stable_id_type!(
+    AssetPlacementId,
+    "Identifies an asset placement within a device template."
+);
 
 #[cfg(test)]
 mod tests {
@@ -75,6 +79,16 @@ mod tests {
 
         assert!(!first.as_str().is_empty());
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn asset_placement_id_is_a_stable_string_id() {
+        let id = AssetPlacementId::from_string("placement-1");
+        assert_eq!(id.as_str(), "placement-1");
+        assert_eq!(format!("{id}"), "placement-1");
+        let generated = AssetPlacementId::new();
+        assert!(!generated.as_str().is_empty());
+        assert_ne!(generated, AssetPlacementId::new());
     }
 
     #[test]
