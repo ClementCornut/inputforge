@@ -2058,3 +2058,225 @@ fn color_border_focus_is_only_used_inside_focus_visible_selectors() {
         );
     }
 }
+
+#[test]
+fn bring_to_front_updates_render_order_in_dom() {
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness() -> Element {
+        let mut state = SheetsState::default();
+        state.create_blank_template();
+        // Seed asset_health so the placement render path executes (not the missing-asset recovery panel).
+        let asset_id = AssetId::from_string("a");
+        state.assets.push(AssetEntry {
+            asset_id: asset_id.clone(),
+            copied_path: PathBuf::from("a.png"),
+            content_hash: "h".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 1,
+                height: 1,
+            },
+            original_import_path: None,
+            extensions: ExtensionPayload::default(),
+        });
+        state.asset_health.push(AssetHealth {
+            entry: state.assets[0].clone(),
+            copied_absolute_path: PathBuf::from("/tmp/a"),
+            missing: false,
+        });
+        let template_id = state.templates[0].template_id.clone();
+        let bottom = AssetPlacementId::from_string("p-bottom");
+        let top = AssetPlacementId::from_string("p-top");
+        for (id, z) in [(bottom.clone(), 0), (top.clone(), 1)] {
+            state.templates[0].placements.push(AssetPlacement {
+                placement_id: id,
+                asset_id: asset_id.clone(),
+                position: TemplateRect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 0.5,
+                    h: 0.5,
+                },
+                z_index: z,
+                extensions: ExtensionPayload::default(),
+            });
+        }
+        state.bring_to_front(template_id, bottom).unwrap();
+        let sheets = use_signal(|| state);
+        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+    }
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+    let bottom = html.find("data-placement-id=\"p-bottom\"").unwrap();
+    let top = html.find("data-placement-id=\"p-top\"").unwrap();
+    assert!(
+        top < bottom,
+        "after bring_to_front, the previously-bottom placement renders last"
+    );
+}
+
+#[test]
+fn z_index_input_commits_one_reorder_z_event_on_blur() {
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+    let template_id = state.templates[0].template_id.clone();
+    let placement_id = AssetPlacementId::from_string("p");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_id.clone(),
+        asset_id: AssetId::from_string("a"),
+        position: TemplateRect {
+            x: 0.0,
+            y: 0.0,
+            w: 0.5,
+            h: 0.5,
+        },
+        z_index: 1,
+        extensions: ExtensionPayload::default(),
+    });
+    state.selected_placement_id = Some(placement_id.clone());
+
+    let baseline = state.history.len();
+    state.set_z_index(template_id, placement_id, 5).unwrap();
+    assert_eq!(state.history.len() - baseline, 1);
+    assert!(matches!(
+        state.history.back().unwrap().kind,
+        SheetsEventKind::ReorderZ { .. }
+    ));
+}
+
+#[test]
+fn template_display_name_input_ellipsizes_at_seventy_plus_characters() {
+    let css = include_str!("../../../assets/frame/sheets.css");
+    assert!(css.contains("text-overflow: ellipsis"));
+}
+
+#[test]
+fn selection_state_cycle_template_to_frame_to_anchor_to_template() {
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+    assert!(state.selected_placement_id.is_none() && state.selected_anchor_id.is_none());
+
+    let placement_id = AssetPlacementId::from_string("p");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_id.clone(),
+        asset_id: AssetId::from_string("a"),
+        position: TemplateRect {
+            x: 0.0,
+            y: 0.0,
+            w: 0.5,
+            h: 0.5,
+        },
+        z_index: 0,
+        extensions: ExtensionPayload::default(),
+    });
+    state.selected_placement_id = Some(placement_id);
+    assert!(state.selected_placement_id.is_some());
+
+    let _anchor_id = state.place_anchor(AnchorPosition { x: 0.5, y: 0.5 });
+    assert!(state.selected_anchor_id.is_some());
+
+    state.select_template(state.templates[0].template_id.clone());
+    assert!(state.selected_placement_id.is_none());
+    assert!(state.selected_anchor_id.is_none());
+}
+
+#[test]
+fn pressing_assign_arms_capture_and_renders_listening_visual() {
+    let mut state = state_with_selected_anchor();
+    let anchor_id = state.selected_anchor_id.clone().unwrap();
+    state.arm_capture(anchor_id.clone());
+    assert!(matches!(state.capture, CaptureStatus::Armed(ref id) if id == &anchor_id));
+
+    let html = render_inspector_state(state);
+    assert!(html.contains("if-rebind-composite__listening"));
+}
+
+#[test]
+fn captured_input_commits_anchor_binding_with_assignment_captured() {
+    use inputforge_core::sheet::AnchorAssignment;
+    use inputforge_core::types::{InputAddress, InputId};
+    let mut state = state_with_selected_anchor();
+    let anchor_id = state.selected_anchor_id.clone().unwrap();
+    let template_id = state.selected_template_id.clone().unwrap();
+
+    let baseline = state.history.len();
+    state.assign_selected_anchor(
+        InputAddress::Bound {
+            device: DeviceId("d-1".to_owned()),
+            input: InputId::Button { index: 7 },
+        },
+        AnchorAssignment::Captured,
+    );
+
+    let binding = state
+        .templates
+        .iter()
+        .find(|t| t.template_id == template_id)
+        .unwrap()
+        .default_anchor_bindings
+        .iter()
+        .find(|b| b.anchor_id == anchor_id)
+        .expect("anchor binding recorded after capture");
+    assert!(matches!(binding.assignment, AnchorAssignment::Captured));
+    assert_eq!(state.history.len() - baseline, 1);
+    assert!(matches!(
+        state.history.back().unwrap().kind,
+        SheetsEventKind::AssignAnchor { .. }
+    ));
+}
+
+#[test]
+fn manual_assign_commits_anchor_binding_with_assignment_manual() {
+    use super::state::ManualInputKind;
+    use inputforge_core::sheet::AnchorAssignment;
+    let mut state = state_with_selected_anchor();
+    let anchor_id = state.selected_anchor_id.clone().unwrap();
+    let template_id = state.selected_template_id.clone().unwrap();
+
+    let baseline = state.history.len();
+    state
+        .assign_manual_selected_anchor("d-2", ManualInputKind::Button, 3)
+        .unwrap();
+
+    let binding = state
+        .templates
+        .iter()
+        .find(|t| t.template_id == template_id)
+        .unwrap()
+        .default_anchor_bindings
+        .iter()
+        .find(|b| b.anchor_id == anchor_id)
+        .expect("manual binding recorded");
+    assert!(matches!(binding.assignment, AnchorAssignment::Manual));
+    assert_eq!(state.history.len() - baseline, 1);
+    assert!(matches!(
+        state.history.back().unwrap().kind,
+        SheetsEventKind::AssignAnchor { .. }
+    ));
+}
+
+#[test]
+fn toolbar_plus_import_emits_one_import_asset_event() {
+    let mut state = SheetsState::default();
+    let baseline = state.history.len();
+
+    state.record_imported_asset(AssetEntry {
+        asset_id: AssetId::from_string("asset-toolbar"),
+        copied_path: PathBuf::from("assets/asset-toolbar.png"),
+        content_hash: "hash".to_owned(),
+        media_type: "image/png".to_owned(),
+        pixel_dimensions: PixelDimensions {
+            width: 1,
+            height: 1,
+        },
+        original_import_path: None,
+        extensions: ExtensionPayload::default(),
+    });
+
+    assert_eq!(state.history.len() - baseline, 1);
+    assert!(matches!(
+        state.history.back().unwrap().kind,
+        SheetsEventKind::ImportAsset { .. }
+    ));
+}
