@@ -1524,3 +1524,60 @@ fn canvas_renders_each_placement_clipped_to_its_rect_and_sorted_by_z_index() {
         "lower-z placement should render before higher-z so DOM order matches paint order: {html}"
     );
 }
+
+#[test]
+fn selecting_a_frame_renders_eight_resize_handles_and_primary_border() {
+    use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness() -> Element {
+        let asset_id = AssetId::from_string("asset-x");
+        let asset = AssetEntry {
+            asset_id: asset_id.clone(),
+            copied_path: PathBuf::from("assets/asset-x.png"),
+            content_hash: "hx".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 64,
+                height: 32,
+            },
+            original_import_path: None,
+            extensions: ExtensionPayload::default(),
+        };
+        let mut state = SheetsState {
+            assets: vec![asset.clone()],
+            asset_health: vec![AssetHealth {
+                entry: asset,
+                copied_absolute_path: PathBuf::from("/tmp/x"),
+                missing: false,
+            }],
+            ..SheetsState::default()
+        };
+        state.create_blank_template();
+        let placement_id = AssetPlacementId::from_string("p-sel");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id,
+            position: TemplateRect {
+                x: 0.1,
+                y: 0.1,
+                w: 0.4,
+                h: 0.4,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+        state.selected_placement_id = Some(placement_id);
+        let sheets = use_signal(|| state);
+        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+    }
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    let handle_count = html.matches("class=\"if-sheets__resize-handle").count();
+    assert_eq!(
+        handle_count, 8,
+        "selected frame should render 8 resize handles: {html}"
+    );
+    assert!(html.contains("data-selected=\"true\""));
+}

@@ -48,6 +48,7 @@ pub(crate) fn SheetsCanvas(
     let selected_asset_health = state.selected_asset_health().cloned();
     let selected_asset_missing = state.selected_asset_missing();
     let selected_anchor_id = state.selected_anchor_id.clone();
+    let selected_placement_id = state.selected_placement_id.clone();
     let tool = state.tool;
     let asset_health_all = state.asset_health.clone();
     drop(state);
@@ -391,11 +392,23 @@ pub(crate) fn SheetsCanvas(
                                     let width = placement.position.w * 100.0;
                                     let height = placement.position.h * 100.0;
                                     let z = placement.z_index;
+                                    let is_selected = selected_placement_id.as_ref()
+                                        == Some(&placement.placement_id);
+                                    let placement_id_for_click = placement.placement_id.clone();
                                     rsx! {
                                         div {
                                             class: "if-sheets__placement",
                                             "data-placement-id": "{placement.placement_id}",
+                                            "data-selected": is_selected.then_some("true"),
+                                            "data-drag-bridge": is_selected.then_some("ready"),
                                             style: "left:{left}%;top:{top}%;width:{width}%;height:{height}%;z-index:{z};",
+                                            onclick: move |evt| {
+                                                if !matches!(tool, SheetTool::Select) {
+                                                    return;
+                                                }
+                                                evt.stop_propagation();
+                                                sheets.write().select_placement(placement_id_for_click.clone());
+                                            },
                                             if !placement_src.is_empty() {
                                                 img {
                                                     class: "if-sheets__placement-image",
@@ -407,6 +420,14 @@ pub(crate) fn SheetsCanvas(
                                                     onerror: move |_| {
                                                         image_load_failed.set(true);
                                                     },
+                                                }
+                                            }
+                                            if is_selected {
+                                                for token in ["nw", "n", "ne", "e", "se", "s", "sw", "w"] {
+                                                    div {
+                                                        class: "if-sheets__resize-handle if-sheets__resize-handle--{token}",
+                                                        "data-handle": "{token}",
+                                                    }
                                                 }
                                             }
                                         }

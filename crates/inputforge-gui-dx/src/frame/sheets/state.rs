@@ -272,6 +272,7 @@ pub(crate) struct SheetsState {
     pub selected_template_id: Option<TemplateId>,
     pub selected_asset_id: Option<AssetId>,
     pub selected_anchor_id: Option<AnchorId>,
+    pub selected_placement_id: Option<AssetPlacementId>,
     pub tool: SheetTool,
     pub autosave: AutosaveStatus,
     pub capture: CaptureStatus,
@@ -291,6 +292,7 @@ impl Default for SheetsState {
             selected_template_id: None,
             selected_asset_id: None,
             selected_anchor_id: None,
+            selected_placement_id: None,
             tool: SheetTool::Select,
             autosave: AutosaveStatus::Clean,
             capture: CaptureStatus::Unavailable("live input is not available".to_owned()),
@@ -300,6 +302,21 @@ impl Default for SheetsState {
             pending_preset_slots: Vec::new(),
         }
     }
+}
+
+/// Minimum normalized width / height a placement frame is allowed to have after a resize commit.
+/// This keeps the frame visible and grabbable by the eight resize handles.
+const MIN_PLACEMENT_DIMENSION: f32 = 0.02;
+
+/// Clamp a placement rectangle so it stays inside the unit canvas and never falls below the
+/// minimum dimensions. Width / height are clamped first (so we know how much breathing room is
+/// left), then the top-left corner is pulled inside `[0.0, 1.0 - dim]`.
+fn clamp_rect_to_canvas(rect: TemplateRect) -> TemplateRect {
+    let w = rect.w.clamp(MIN_PLACEMENT_DIMENSION, 1.0);
+    let h = rect.h.clamp(MIN_PLACEMENT_DIMENSION, 1.0);
+    let x = rect.x.clamp(0.0, 1.0 - w);
+    let y = rect.y.clamp(0.0, 1.0 - h);
+    TemplateRect { x, y, w, h }
 }
 
 impl SheetsState {
@@ -323,6 +340,7 @@ impl SheetsState {
             selected_template_id,
             selected_asset_id,
             selected_anchor_id: None,
+            selected_placement_id: None,
             tool: SheetTool::Select,
             autosave: AutosaveStatus::Clean,
             capture: CaptureStatus::Unavailable("live input is not available".to_owned()),
@@ -732,7 +750,54 @@ impl SheetsState {
             self.selected_template_id = Some(template_id);
             self.selected_asset_id = template.placements.first().map(|p| p.asset_id.clone());
             self.selected_anchor_id = None;
+            self.selected_placement_id = None;
         }
+    }
+
+    /// Mark a placement as the selected frame. Selecting a frame clears any selected anchor so the
+    /// inspector pivots cleanly to the Frame view, mirroring how `select_template` works.
+    pub(crate) fn select_placement(&mut self, placement_id: AssetPlacementId) {
+        self.selected_placement_id = Some(placement_id);
+        self.selected_anchor_id = None;
+    }
+
+    /// Commit the final position of a drag-to-move gesture. Width and height are kept from the
+    /// current placement and the new `(x, y)` is clamped so the frame stays inside the canvas.
+    /// One `MovePlacement` event is recorded.
+    pub(crate) fn commit_drag_end_move(
+        &mut self,
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+        x: f32,
+        y: f32,
+    ) -> Result<(), String> {
+        let current = self
+            .templates
+            .iter()
+            .find(|t| t.template_id == template_id)
+            .and_then(|t| t.placements.iter().find(|p| p.placement_id == placement_id))
+            .map(|p| p.position)
+            .ok_or_else(|| format!("placement {placement_id} not found"))?;
+        let clamped = clamp_rect_to_canvas(TemplateRect {
+            x,
+            y,
+            w: current.w,
+            h: current.h,
+        });
+        self.move_placement(template_id, placement_id, clamped.x, clamped.y)
+    }
+
+    /// Commit the final rect of a drag-to-resize gesture. The incoming rect is clamped so the
+    /// frame stays inside the canvas and never collapses below `MIN_PLACEMENT_DIMENSION`.
+    /// One `ResizePlacement` event is recorded.
+    pub(crate) fn commit_drag_end_resize(
+        &mut self,
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+        after: TemplateRect,
+    ) -> Result<(), String> {
+        let clamped = clamp_rect_to_canvas(after);
+        self.resize_placement(template_id, placement_id, clamped)
     }
 
     pub(crate) fn select_first_template_for_asset(&mut self, asset_id: AssetId) {
@@ -1195,6 +1260,7 @@ mod tests {
             selected_template_id: Some(template_id),
             selected_asset_id: Some(asset_id),
             selected_anchor_id: Some(anchor_id),
+            selected_placement_id: None,
             tool: SheetTool::Select,
             autosave: AutosaveStatus::Clean,
             capture: CaptureStatus::Unavailable("live input is not available".to_owned()),
@@ -2307,5 +2373,139 @@ mod tests {
         );
         assert!(rect.x + rect.w <= 1.0 + f32::EPSILON);
         assert!(rect.y + rect.h <= 1.0 + f32::EPSILON);
+    }
+
+    #[test]
+    fn drag_end_emits_exactly_one_move_placement_event() {
+        use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+        let mut state = state_with_template();
+        let template_id = state.selected_template_id.clone().unwrap();
+        let placement_id = AssetPlacementId::from_string("p-drag");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: AssetId::from_string("asset-1"),
+            position: TemplateRect {
+                x: 0.1,
+                y: 0.1,
+                w: 0.3,
+                h: 0.3,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+        let baseline = state.history.len();
+
+        state
+            .commit_drag_end_move(template_id.clone(), placement_id.clone(), 0.5, 0.5)
+            .unwrap();
+
+        assert_eq!(state.history.len() - baseline, 1);
+        assert!(matches!(
+            state.history.back().unwrap().kind,
+            SheetsEventKind::MovePlacement { .. }
+        ));
+    }
+
+    #[test]
+    fn commit_drag_end_move_clamps_position_so_the_frame_stays_inside_canvas() {
+        use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+        let mut state = state_with_template();
+        let template_id = state.selected_template_id.clone().unwrap();
+        let placement_id = AssetPlacementId::from_string("p-clamp");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: AssetId::from_string("asset-1"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.3,
+                h: 0.3,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+
+        state
+            .commit_drag_end_move(template_id, placement_id.clone(), 5.0, 5.0)
+            .unwrap();
+        let rect = state.templates[0]
+            .placements
+            .iter()
+            .find(|p| p.placement_id == placement_id)
+            .unwrap()
+            .position;
+        assert!(
+            (rect.x + rect.w) <= 1.0 + f32::EPSILON,
+            "right edge inside canvas, got {rect:?}"
+        );
+        assert!(
+            (rect.y + rect.h) <= 1.0 + f32::EPSILON,
+            "bottom edge inside canvas, got {rect:?}"
+        );
+    }
+
+    #[test]
+    fn commit_drag_end_resize_enforces_minimum_frame_size() {
+        use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+        let mut state = state_with_template();
+        let template_id = state.selected_template_id.clone().unwrap();
+        let placement_id = AssetPlacementId::from_string("p-shrink");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: AssetId::from_string("asset-1"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.3,
+                h: 0.3,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+
+        state
+            .commit_drag_end_resize(
+                template_id,
+                placement_id.clone(),
+                TemplateRect {
+                    x: 0.5,
+                    y: 0.5,
+                    w: 0.0,
+                    h: 0.0,
+                },
+            )
+            .unwrap();
+        let rect = state.templates[0]
+            .placements
+            .iter()
+            .find(|p| p.placement_id == placement_id)
+            .unwrap()
+            .position;
+        assert!(rect.w >= 0.02 - f32::EPSILON);
+        assert!(rect.h >= 0.02 - f32::EPSILON);
+    }
+
+    #[test]
+    fn selecting_a_placement_clears_selected_anchor_id() {
+        use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+        let mut state = state_with_template();
+        state.selected_anchor_id = Some(state.templates[0].anchors[0].anchor_id.clone());
+        let placement_id = AssetPlacementId::from_string("p-1");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: AssetId::from_string("asset-1"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.3,
+                h: 0.3,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+
+        state.select_placement(placement_id.clone());
+        assert_eq!(state.selected_placement_id.as_ref(), Some(&placement_id));
+        assert!(state.selected_anchor_id.is_none());
     }
 }
