@@ -40,11 +40,19 @@ pub(crate) enum ManualInputKind {
     Hat,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum SheetsLibraryTab {
+    #[default]
+    Templates,
+    Assets,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SheetsState {
     pub templates: Vec<DeviceTemplate>,
     pub assets: Vec<AssetEntry>,
     pub asset_health: Vec<inputforge_core::sheet::AssetHealth>,
+    pub library_tab: SheetsLibraryTab,
     pub selected_template_id: Option<TemplateId>,
     pub selected_asset_id: Option<AssetId>,
     pub selected_anchor_id: Option<AnchorId>,
@@ -60,6 +68,7 @@ impl Default for SheetsState {
             templates: Vec::new(),
             assets: Vec::new(),
             asset_health: Vec::new(),
+            library_tab: SheetsLibraryTab::Templates,
             selected_template_id: None,
             selected_asset_id: None,
             selected_anchor_id: None,
@@ -88,6 +97,7 @@ impl SheetsState {
             templates,
             assets: documents.assets.assets.clone(),
             asset_health: documents.asset_health.clone(),
+            library_tab: SheetsLibraryTab::Templates,
             selected_template_id,
             selected_asset_id,
             selected_anchor_id: None,
@@ -128,6 +138,44 @@ impl SheetsState {
         self.selected_anchor_id = None;
         self.mark_dirty();
         template_id
+    }
+
+    pub(crate) fn create_blank_template(&mut self) -> TemplateId {
+        let display_name = self.next_untitled_template_name();
+        let template_id = TemplateId::new();
+        self.templates.push(DeviceTemplate {
+            template_id: template_id.clone(),
+            display_name,
+            matching_hints: Vec::new(),
+            asset_ids: Vec::new(),
+            anchors: Vec::new(),
+            default_anchor_bindings: Vec::new(),
+            grouping_hints: Vec::new(),
+            default_token_preset: TokenPreset::Standard,
+            extensions: ExtensionPayload::default(),
+        });
+        self.selected_template_id = Some(template_id.clone());
+        self.selected_asset_id = None;
+        self.selected_anchor_id = None;
+        self.mark_dirty();
+        template_id
+    }
+
+    pub(crate) fn rename_selected_template(&mut self, display_name: impl AsRef<str>) {
+        let display_name = display_name.as_ref().trim();
+        if display_name.is_empty() {
+            return;
+        }
+
+        let Some(template) = self.selected_template_mut() else {
+            return;
+        };
+        if template.display_name == display_name {
+            return;
+        }
+
+        template.display_name = display_name.to_owned();
+        self.mark_dirty();
     }
 
     pub(crate) fn place_anchor(&mut self, position: AnchorPosition) -> AnchorId {
@@ -339,6 +387,21 @@ impl SheetsState {
             .iter_mut()
             .find(|anchor| anchor.anchor_id == selected_anchor_id)
     }
+
+    fn next_untitled_template_name(&self) -> String {
+        let mut next_index = 1;
+        loop {
+            let display_name = format!("Untitled template {next_index}");
+            if !self
+                .templates
+                .iter()
+                .any(|template| template.display_name == display_name)
+            {
+                return display_name;
+            }
+            next_index += 1;
+        }
+    }
 }
 
 pub(crate) fn normalized_image_point(
@@ -411,6 +474,7 @@ mod tests {
                 extensions: ExtensionPayload::default(),
             }],
             asset_health: Vec::new(),
+            library_tab: SheetsLibraryTab::Templates,
             selected_template_id: Some(template_id),
             selected_asset_id: Some(asset_id),
             selected_anchor_id: Some(anchor_id),

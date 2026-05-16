@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use dioxus::prelude::*;
-use inputforge_core::sheet::AnchorId;
+use inputforge_core::sheet::{AnchorId, AssetHealth};
 use serde::Deserialize;
 
 use crate::frame::sheets::state::{SheetTool, SheetsState, normalized_image_point};
@@ -28,12 +28,14 @@ pub(crate) fn SheetsCanvas(
     on_import_image: EventHandler<()>,
     on_arm_capture: EventHandler<AnchorId>,
 ) -> Element {
+    let _ = on_import_image;
     let stage_rect = use_signal(|| StageRectPayload {
         left: 0.0,
         top: 0.0,
         width: 1.0,
         height: 1.0,
     });
+    let mut image_load_failed = use_signal(|| false);
     let stage_id = "if-sheets-image-stage";
     let state = sheets.read();
     let selected_template = state.selected_template().cloned();
@@ -53,21 +55,37 @@ pub(crate) fn SheetsCanvas(
     } else {
         format!("{anchor_count} anchors")
     };
-    let handle_import_image = move |_| on_import_image.call(());
-    let label = if has_template {
-        "Template image"
-    } else {
-        "Import image"
-    };
     let asset_id = selected_asset
         .as_ref()
         .map(|asset| asset.asset_id.as_str().to_owned())
         .unwrap_or_default();
-    let asset_src = selected_asset_health
+    let stage_identity = selected_asset
+        .as_ref()
+        .map(|asset| asset.asset_id.as_str().to_owned())
+        .or_else(|| {
+            selected_template
+                .as_ref()
+                .map(|template| template.template_id.as_str().to_owned())
+        })
+        .unwrap_or_default();
+    let asset_source_path = selected_asset_health
         .as_ref()
         .filter(|health| !health.missing)
         .map(|health| file_url_from_path(&health.copied_absolute_path))
         .unwrap_or_default();
+    let (asset_src, asset_read_error) = selected_asset_health
+        .as_ref()
+        .filter(|health| !health.missing)
+        .map(asset_data_url)
+        .map_or_else(
+            || (String::new(), None),
+            |result| match result {
+                Ok(asset_src) => (asset_src, None),
+                Err(err) => (String::new(), Some(err.to_string())),
+            },
+        );
+    let image_load_key = format!("{asset_source_path}|{selected_asset_missing}");
+    let image_load_failed_now = *image_load_failed.read() || asset_read_error.is_some();
     let missing_asset_entry = selected_asset_health
         .as_ref()
         .map(|health| &health.entry)
@@ -80,7 +98,7 @@ pub(crate) fn SheetsCanvas(
         .and_then(|asset| asset.original_import_path.as_ref())
         .map(|path| path.display().to_string());
     let current_stage_listener_key =
-        stage_subscription_key(has_template, selected_asset_missing, &asset_id)
+        stage_subscription_key(has_template, selected_asset_missing, &stage_identity)
             .map(|stage_key| stage_resize_listener_key(&stage_key));
     let mut active_stage_listener_key = use_signal(|| Option::<String>::None);
     use_effect(use_reactive!(|current_stage_listener_key| {
@@ -113,6 +131,10 @@ pub(crate) fn SheetsCanvas(
                 stage_rect.set(rect);
             }
         });
+    }));
+    use_effect(use_reactive!(|image_load_key| {
+        let _ = image_load_key;
+        image_load_failed.set(false);
     }));
     use_drop(move || {
         let listener_key = active_stage_listener_key.peek().clone();
@@ -150,17 +172,15 @@ pub(crate) fn SheetsCanvas(
 
     rsx! {
         main { "data-testid": "sheets-canvas",
-            h2 { "{label}" }
             if !has_template {
-                button {
-                    "type": "button",
-                    onclick: handle_import_image,
-                    "Import image"
+                div { class: "if-sheets__canvas-empty",
+                    h2 { "No template selected" }
+                    p { "Create or select a template from the Templates tab." }
                 }
             } else if let Some(template) = selected_template {
                 section {
                     class: "if-sheets__canvas-panel",
-                    "aria-label": "Template image canvas",
+                    "aria-label": "Template canvas",
                     if selected_asset_missing {
                         div { class: "if-sheets__image-status",
                             p { "Missing image asset" }
@@ -185,10 +205,19 @@ pub(crate) fn SheetsCanvas(
                             "data-testid": "sheets-image-stage",
                             "data-asset-id": "{asset_id}",
                             onclick: handle_stage_click,
-                            img {
-                                class: "if-sheets__image",
-                                src: "{asset_src}",
-                                alt: "{template.display_name}",
+                            if !asset_src.is_empty() {
+                                img {
+                                    class: "if-sheets__image",
+                                    src: "{asset_src}",
+                                    "data-source-path": "{asset_source_path}",
+                                    alt: "{template.display_name}",
+                                    onload: move |_| {
+                                        image_load_failed.set(false);
+                                    },
+                                    onerror: move |_| {
+                                        image_load_failed.set(true);
+                                    },
+                                }
                             }
                             for anchor in template.anchors {
                                 {
@@ -213,8 +242,23 @@ pub(crate) fn SheetsCanvas(
                                 }
                             }
                         }
-                        div { class: "if-sheets__image-status",
-                            p { "{anchor_count_label}" }
+                        if image_load_failed_now {
+                            div { class: "if-sheets__image-status",
+                                p { "Image failed to load" }
+                                if let Some(error) = asset_read_error {
+                                    p {
+                                        span { "Load error" }
+                                        code { "{error}" }
+                                    }
+                                }
+                                if !asset_src.is_empty() {
+                                    p {
+                                        span { "Image source" }
+                                        code { "{asset_src}" }
+                                    }
+                                }
+                                p { "{anchor_count_label}" }
+                            }
                         }
                     }
                 }
@@ -235,12 +279,52 @@ pub(super) fn file_url_from_path(path: &Path) -> String {
     }
 }
 
+fn asset_data_url(health: &AssetHealth) -> std::io::Result<String> {
+    let bytes = std::fs::read(&health.copied_absolute_path)?;
+    Ok(format!(
+        "{}{}",
+        image_data_url_prefix(&health.entry.media_type),
+        base64_encode(&bytes)
+    ))
+}
+
+fn image_data_url_prefix(media_type: &str) -> String {
+    format!("data:{media_type};base64,")
+}
+
+pub(super) fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    let mut encoded = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let first = chunk[0];
+        let second = chunk.get(1).copied().unwrap_or(0);
+        let third = chunk.get(2).copied().unwrap_or(0);
+
+        encoded.push(TABLE[(first >> 2) as usize] as char);
+        encoded.push(TABLE[(((first & 0b0000_0011) << 4) | (second >> 4)) as usize] as char);
+        encoded.push(if chunk.len() > 1 {
+            TABLE[(((second & 0b0000_1111) << 2) | (third >> 6)) as usize] as char
+        } else {
+            '='
+        });
+        encoded.push(if chunk.len() > 2 {
+            TABLE[(third & 0b0011_1111) as usize] as char
+        } else {
+            '='
+        });
+    }
+
+    encoded
+}
+
 pub(super) fn stage_subscription_key(
     has_template: bool,
     selected_asset_missing: bool,
-    asset_id: &str,
+    stage_identity: &str,
 ) -> Option<String> {
-    (has_template && !selected_asset_missing && !asset_id.is_empty()).then(|| asset_id.to_owned())
+    (has_template && !selected_asset_missing && !stage_identity.is_empty())
+        .then(|| stage_identity.to_owned())
 }
 
 fn stage_resize_listener_key(stage_key: &str) -> String {

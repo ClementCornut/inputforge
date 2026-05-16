@@ -72,6 +72,7 @@ pub(crate) fn SheetsInspector(
             .then(|| "Select an anchor to capture input.".to_owned())
     });
     let selected_anchor_for_capture = selected_anchor_id.clone();
+    let mut sheets_for_template_name = sheets;
     let mut sheets_for_assign = sheets;
     let manual_address = format_manual_address(
         &manual_device_id.read(),
@@ -102,8 +103,10 @@ pub(crate) fn SheetsInspector(
                         "Template display name"
                         input {
                             r#type: "text",
-                            readonly: true,
                             value: "{template_name}",
+                            oninput: move |evt: FormEvent| {
+                                sheets_for_template_name.write().rename_selected_template(evt.value());
+                            },
                         }
                     }
                 }

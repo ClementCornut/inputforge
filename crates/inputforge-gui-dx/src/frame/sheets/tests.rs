@@ -8,12 +8,12 @@ use inputforge_core::sheet::{
 
 use super::SheetsWorkbench;
 use super::canvas::{
-    SheetsCanvas, cleanup_stage_resize_listener_script, file_url_from_path,
+    SheetsCanvas, base64_encode, cleanup_stage_resize_listener_script, file_url_from_path,
     install_stage_resize_listener_script, stage_subscription_key,
 };
 use super::inspector::SheetsInspector;
 use super::left_rail::SheetsLeftRail;
-use super::state::{AutosaveStatus, CaptureStatus, SheetsState};
+use super::state::{AutosaveStatus, CaptureStatus, SheetsLibraryTab, SheetsState};
 
 #[test]
 fn empty_sheets_workbench_exposes_import_create_path() {
@@ -22,7 +22,8 @@ fn empty_sheets_workbench_exposes_import_create_path() {
     });
 
     assert!(html.contains("data-testid=\"sheets-workbench\""));
-    assert!(html.contains("Import image"));
+    assert!(html.contains("New template"));
+    assert!(!html.contains("Import image"));
     assert!(html.contains("Templates"));
     assert!(html.contains("Assets"));
 }
@@ -136,7 +137,7 @@ fn inspector_disables_manual_form_controls_while_capture_is_armed() {
 }
 
 #[test]
-fn sheets_left_rail_keeps_import_create_path_with_existing_template() {
+fn sheets_left_rail_templates_tab_uses_template_create_path() {
     #[expect(
         non_snake_case,
         reason = "Dioxus components are PascalCase by convention"
@@ -150,6 +151,7 @@ fn sheets_left_rail_keeps_import_create_path_with_existing_template() {
             SheetsLeftRail {
                 sheets,
                 on_import_image: move |()| {},
+                on_create_template: move |()| {},
             }
         }
     }
@@ -159,10 +161,289 @@ fn sheets_left_rail_keeps_import_create_path_with_existing_template() {
     let html = dioxus_ssr::render(&vdom);
 
     assert!(html.contains("Arcade panel"));
-    assert!(
-        html.contains("Import image"),
-        "template rail should keep import available when templates exist: {html}"
-    );
+    assert!(html.contains("New template"));
+    assert!(!html.contains("Import image"));
+}
+
+#[test]
+fn sheets_left_rail_defaults_to_templates_tab_only() {
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness() -> Element {
+        let asset_id = AssetId::from_string("asset-1");
+        let mut initial_state = SheetsState {
+            assets: vec![AssetEntry {
+                asset_id: asset_id.clone(),
+                copied_path: PathBuf::from("assets/asset-1.png"),
+                content_hash: "hash".to_owned(),
+                media_type: "image/png".to_owned(),
+                pixel_dimensions: PixelDimensions {
+                    width: 320,
+                    height: 240,
+                },
+                original_import_path: None,
+                extensions: ExtensionPayload::default(),
+            }],
+            ..SheetsState::default()
+        };
+        initial_state.create_template_from_asset(asset_id, "Arcade panel");
+        let sheets = use_signal(|| initial_state);
+
+        rsx! {
+            SheetsLeftRail {
+                sheets,
+                on_import_image: move |()| {},
+                on_create_template: move |()| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(html.contains("aria-selected=\"true\"") || html.contains("aria-selected=true"));
+    assert!(html.contains("Arcade panel"));
+    assert!(html.contains("New template"));
+    assert!(!html.contains("assets/asset-1.png"));
+    assert!(!html.contains("1 assets"));
+    assert!(!html.contains("Import image"));
+}
+
+#[test]
+fn sheets_left_rail_assets_tab_renders_assets_only() {
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness() -> Element {
+        let asset_id = AssetId::from_string("asset-1");
+        let mut initial_state = SheetsState {
+            assets: vec![AssetEntry {
+                asset_id: asset_id.clone(),
+                copied_path: PathBuf::from("assets/asset-1.png"),
+                content_hash: "hash".to_owned(),
+                media_type: "image/png".to_owned(),
+                pixel_dimensions: PixelDimensions {
+                    width: 320,
+                    height: 240,
+                },
+                original_import_path: None,
+                extensions: ExtensionPayload::default(),
+            }],
+            library_tab: SheetsLibraryTab::Assets,
+            ..SheetsState::default()
+        };
+        initial_state.create_template_from_asset(asset_id, "Arcade panel");
+        initial_state.library_tab = SheetsLibraryTab::Assets;
+        let sheets = use_signal(|| initial_state);
+
+        rsx! {
+            SheetsLeftRail {
+                sheets,
+                on_import_image: move |()| {},
+                on_create_template: move |()| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(html.contains("assets/asset-1.png"));
+    assert!(html.contains("1 assets"));
+    assert!(html.contains("Import image"));
+    assert!(!html.contains("Arcade panel"));
+    assert!(!html.contains("1 templates"));
+    assert!(!html.contains("New template"));
+}
+
+#[test]
+fn empty_templates_tab_uses_template_focused_empty_state() {
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness() -> Element {
+        let sheets = use_signal(SheetsState::default);
+
+        rsx! {
+            SheetsLeftRail {
+                sheets,
+                on_import_image: move |()| {},
+                on_create_template: move |()| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(html.contains("if-sheets__rail-empty"));
+    assert!(html.contains("No templates"));
+    assert!(html.contains("New template"));
+    assert!(!html.contains("Import image"));
+}
+
+#[test]
+fn empty_assets_tab_uses_background_image_empty_state() {
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness() -> Element {
+        let sheets = use_signal(|| SheetsState {
+            library_tab: SheetsLibraryTab::Assets,
+            ..SheetsState::default()
+        });
+
+        rsx! {
+            SheetsLeftRail {
+                sheets,
+                on_import_image: move |()| {},
+                on_create_template: move |()| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(html.contains("if-sheets__rail-empty"));
+    assert!(html.contains("No background images"));
+    assert!(html.contains("Import image"));
+    assert!(!html.contains("New template"));
+}
+
+#[test]
+fn canvas_without_template_uses_centered_empty_state() {
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness() -> Element {
+        let sheets = use_signal(SheetsState::default);
+
+        rsx! {
+            SheetsCanvas {
+                sheets,
+                on_import_image: move |()| {},
+                on_arm_capture: move |_| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(html.contains("if-sheets__canvas-empty"));
+    assert!(html.contains("No template selected"));
+    assert!(!html.contains("Import image"));
+    assert!(!html.contains("New template"));
+}
+
+#[test]
+fn template_without_background_image_renders_blank_canvas_stage() {
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness() -> Element {
+        let mut initial_state = SheetsState::default();
+        initial_state.create_blank_template();
+        let sheets = use_signal(|| initial_state);
+
+        rsx! {
+            SheetsCanvas {
+                sheets,
+                on_import_image: move |()| {},
+                on_arm_capture: move |_| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(html.contains("data-testid=\"sheets-image-stage\""));
+    assert!(html.contains("data-asset-id=\"\""));
+    assert!(!html.contains("<img"));
+    assert!(!html.contains("Import image"));
+}
+
+#[test]
+fn creating_blank_template_selects_template_without_asset_and_marks_dirty() {
+    let mut state = SheetsState {
+        autosave: AutosaveStatus::Clean,
+        ..SheetsState::default()
+    };
+
+    let template_id = state.create_blank_template();
+
+    assert_eq!(state.templates.len(), 1);
+    assert_eq!(state.selected_template_id, Some(template_id.clone()));
+    assert_eq!(state.selected_asset_id, None);
+    assert_eq!(state.selected_anchor_id, None);
+    assert_eq!(state.autosave, AutosaveStatus::Dirty);
+
+    let template = &state.templates[0];
+    assert_eq!(template.template_id, template_id);
+    assert_eq!(template.display_name, "Untitled template 1");
+    assert!(template.asset_ids.is_empty());
+    assert!(template.anchors.is_empty());
+    assert!(template.default_anchor_bindings.is_empty());
+    assert_eq!(template.default_token_preset, TokenPreset::Standard);
+}
+
+#[test]
+fn creating_blank_template_uses_next_available_untitled_name() {
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+
+    let template_id = state.create_blank_template();
+
+    assert_eq!(state.selected_template_id, Some(template_id));
+    assert_eq!(state.templates[1].display_name, "Untitled template 2");
+}
+
+#[test]
+fn renaming_selected_template_marks_dirty_and_preserves_non_blank_names() {
+    let mut state = SheetsState {
+        autosave: AutosaveStatus::Clean,
+        ..SheetsState::default()
+    };
+    state.create_blank_template();
+    state.mark_saved();
+
+    state.rename_selected_template("Throttle quadrant");
+
+    assert_eq!(state.templates[0].display_name, "Throttle quadrant");
+    assert_eq!(state.autosave, AutosaveStatus::Dirty);
+
+    state.mark_saved();
+    state.rename_selected_template("   ");
+
+    assert_eq!(state.templates[0].display_name, "Throttle quadrant");
+    assert_eq!(state.autosave, AutosaveStatus::Clean);
+}
+
+#[test]
+fn inspector_template_display_name_is_editable() {
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+
+    let html = render_inspector_state(state);
+    let input_tag = control_tag_after_label(&html, "Template display name", "input");
+
+    assert!(!input_tag.contains("readonly"));
+    assert!(input_tag.contains("value=\"Untitled template 1\""));
 }
 
 #[test]
@@ -204,12 +485,17 @@ fn creating_template_from_asset_selects_template_and_marks_dirty() {
 }
 
 #[test]
-fn valid_asset_canvas_uses_file_url_for_image_source() {
+fn base64_encoder_pads_binary_image_sources() {
+    assert_eq!(base64_encode(b"hello"), "aGVsbG8=");
+}
+
+#[test]
+fn valid_asset_canvas_uses_data_url_for_image_source() {
     #[expect(
         non_snake_case,
         reason = "Dioxus components are PascalCase by convention"
     )]
-    fn Harness() -> Element {
+    fn Harness(copied_path: PathBuf) -> Element {
         let asset_id = AssetId::from_string("asset-1");
         let mut initial_state = SheetsState {
             assets: vec![AssetEntry {
@@ -231,7 +517,7 @@ fn valid_asset_canvas_uses_file_url_for_image_source() {
         let selected_asset = initial_state.assets[0].clone();
         initial_state.asset_health = vec![AssetHealth {
             entry: selected_asset,
-            copied_absolute_path: PathBuf::from(r"C:\InputForge\assets\asset-1.png"),
+            copied_absolute_path: copied_path,
             missing: false,
         }];
         initial_state.selected_template_id = Some(selected_template);
@@ -246,17 +532,21 @@ fn valid_asset_canvas_uses_file_url_for_image_source() {
         }
     }
 
-    let mut vdom = VirtualDom::new(Harness);
+    let copied_path =
+        std::env::temp_dir().join(format!("inputforge-sheets-{}.png", ulid::Ulid::new()));
+    std::fs::write(&copied_path, [0x89, b'P', b'N', b'G']).unwrap();
+    let mut vdom = VirtualDom::new_with_props(Harness, copied_path.clone());
     vdom.rebuild_in_place();
     let html = dioxus_ssr::render(&vdom);
+    let _ = std::fs::remove_file(copied_path);
 
     assert!(
-        html.contains("src=\"file:///C:/InputForge/assets/asset-1.png\""),
-        "valid copied asset should render as a WebView-safe file URL: {html}"
+        html.contains("src=\"data:image/png;base64,iVBORw==\""),
+        "valid copied asset should render as a WebView-safe data URL: {html}"
     );
     assert!(
-        !html.contains("src=\"assets/asset-1.png\""),
-        "valid copied asset must not render the manifest-relative copied_path: {html}"
+        html.contains("data-source-path=\"file://") || html.contains("data-source-path=file://"),
+        "valid copied asset should preserve its absolute source path for diagnostics: {html}"
     );
 }
 
@@ -266,7 +556,7 @@ fn selecting_non_first_asset_makes_it_canvas_asset() {
         non_snake_case,
         reason = "Dioxus components are PascalCase by convention"
     )]
-    fn Harness() -> Element {
+    fn Harness(copied_paths: (PathBuf, PathBuf)) -> Element {
         let first_asset_id = AssetId::from_string("asset-1");
         let second_asset_id = AssetId::from_string("asset-2");
         let first_asset = AssetEntry {
@@ -310,12 +600,12 @@ fn selecting_non_first_asset_makes_it_canvas_asset() {
             asset_health: vec![
                 AssetHealth {
                     entry: first_asset,
-                    copied_absolute_path: PathBuf::from(r"C:\InputForge\assets\asset-1.png"),
+                    copied_absolute_path: copied_paths.0,
                     missing: false,
                 },
                 AssetHealth {
                     entry: second_asset,
-                    copied_absolute_path: PathBuf::from(r"C:\InputForge\assets\asset-2.png"),
+                    copied_absolute_path: copied_paths.1,
                     missing: false,
                 },
             ],
@@ -334,13 +624,24 @@ fn selecting_non_first_asset_makes_it_canvas_asset() {
         }
     }
 
-    let mut vdom = VirtualDom::new(Harness);
+    let first_path =
+        std::env::temp_dir().join(format!("inputforge-sheets-{}.png", ulid::Ulid::new()));
+    let second_path =
+        std::env::temp_dir().join(format!("inputforge-sheets-{}.png", ulid::Ulid::new()));
+    std::fs::write(&first_path, [0x89, b'P', b'N', b'G']).unwrap();
+    std::fs::write(&second_path, [0x89, b'P', b'N', b'G']).unwrap();
+    let expected_second_path = file_url_from_path(&second_path);
+    let expected_first_path = file_url_from_path(&first_path);
+
+    let mut vdom = VirtualDom::new_with_props(Harness, (first_path.clone(), second_path.clone()));
     vdom.rebuild_in_place();
     let html = dioxus_ssr::render(&vdom);
+    let _ = std::fs::remove_file(first_path);
+    let _ = std::fs::remove_file(second_path);
 
     assert!(html.contains("data-asset-id=\"asset-2\""));
-    assert!(html.contains("src=\"file:///C:/InputForge/assets/asset-2.png\""));
-    assert!(!html.contains("src=\"file:///C:/InputForge/assets/asset-1.png\""));
+    assert!(html.contains(&format!("data-source-path=\"{expected_second_path}\"")));
+    assert!(!html.contains(&format!("data-source-path=\"{expected_first_path}\"")));
 }
 
 #[test]
@@ -618,6 +919,7 @@ fn canvas_treats_template_asset_without_health_as_missing() {
             ..SheetsState::default()
         };
         initial_state.create_template_from_asset(asset_id, "Arcade panel");
+        initial_state.library_tab = SheetsLibraryTab::Assets;
         let sheets = use_signal(|| initial_state);
 
         rsx! {
@@ -664,12 +966,14 @@ fn left_rail_renders_template_and_asset_rows_as_selectable_controls() {
             ..SheetsState::default()
         };
         initial_state.create_template_from_asset(asset_id, "Arcade panel");
+        initial_state.library_tab = SheetsLibraryTab::Assets;
         let sheets = use_signal(|| initial_state);
 
         rsx! {
             SheetsLeftRail {
                 sheets,
                 on_import_image: move |()| {},
+                on_create_template: move |()| {},
             }
         }
     }
@@ -678,8 +982,8 @@ fn left_rail_renders_template_and_asset_rows_as_selectable_controls() {
     vdom.rebuild_in_place();
     let html = dioxus_ssr::render(&vdom);
 
-    assert!(html.contains("aria-label=\"Select template Arcade panel\""));
     assert!(html.contains("aria-label=\"Select first template using assets/asset-1.png\""));
+    assert!(!html.contains("aria-label=\"Select template Arcade panel\""));
 }
 
 #[test]
@@ -732,12 +1036,14 @@ fn left_rail_marks_only_selected_non_first_asset_row() {
             ..SheetsState::default()
         };
         initial_state.select_first_template_for_asset(second_asset_id);
+        initial_state.library_tab = SheetsLibraryTab::Assets;
         let sheets = use_signal(|| initial_state);
 
         rsx! {
             SheetsLeftRail {
                 sheets,
                 on_import_image: move |()| {},
+                on_create_template: move |()| {},
             }
         }
     }

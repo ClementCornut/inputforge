@@ -115,18 +115,16 @@ pub(crate) fn SheetsWorkbench() -> Element {
                 .mark_failed("sheet documents are not loaded".to_owned());
             return;
         };
-        let display_name = template_display_name_from_path(&source_path);
 
         sheets.read().apply_to_documents(&mut next_documents);
 
         match authoring::import_template_asset_into(&source_path, &mut next_documents) {
-            Ok(imported) => {
+            Ok(_imported) => {
                 let mut next_state = sheets.read().clone();
                 next_state.assets.clone_from(&next_documents.assets.assets);
                 next_state
                     .asset_health
                     .clone_from(&next_documents.asset_health);
-                next_state.create_template_from_asset(imported.entry.asset_id, display_name);
                 next_state.apply_to_documents(&mut next_documents);
                 documents.set(Some(next_documents));
                 sheets.set(next_state);
@@ -144,6 +142,17 @@ pub(crate) fn SheetsWorkbench() -> Element {
         };
 
         import_asset.call(source_path);
+    });
+
+    let on_create_template = use_callback(move |()| {
+        if documents.read().is_none() {
+            sheets
+                .write()
+                .mark_failed("sheet documents are not loaded".to_owned());
+            return;
+        }
+
+        sheets.write().create_blank_template();
     });
 
     let capture_for_availability = capture;
@@ -248,7 +257,7 @@ pub(crate) fn SheetsWorkbench() -> Element {
             class: "if-sheets",
             "data-testid": "sheets-workbench",
             "data-documents-loaded": documents_loaded,
-            left_rail::SheetsLeftRail { sheets, on_import_image }
+            left_rail::SheetsLeftRail { sheets, on_import_image, on_create_template }
             canvas::SheetsCanvas { sheets, on_import_image, on_arm_capture }
             inspector::SheetsInspector {
                 sheets,
@@ -258,16 +267,6 @@ pub(crate) fn SheetsWorkbench() -> Element {
             }
         }
     }
-}
-
-fn template_display_name_from_path(source_path: &std::path::Path) -> String {
-    source_path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .map(str::trim)
-        .filter(|stem| !stem.is_empty())
-        .unwrap_or("Imported template")
-        .to_owned()
 }
 
 fn should_clear_armed_capture_session(
