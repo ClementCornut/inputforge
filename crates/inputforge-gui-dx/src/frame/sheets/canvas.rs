@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use dioxus::prelude::*;
-use inputforge_core::sheet::{AnchorId, AssetHealth};
+use inputforge_core::sheet::{AnchorAssignment, AnchorId, AssetHealth};
 use serde::Deserialize;
 
 use crate::components::Icon;
@@ -483,24 +483,53 @@ pub(crate) fn SheetsCanvas(
                                     }
                                 }
                             }
-                            for anchor in template.anchors {
+                            for anchor in template.anchors.iter().cloned() {
                                 {
-                                    let anchor_id = anchor.anchor_id.clone();
-                                    let selected = selected_anchor_id.as_ref() == Some(&anchor_id);
-                                    let left = anchor.position.x * 100.0;
-                                    let top = anchor.position.y * 100.0;
+                                    let binding = template
+                                        .default_anchor_bindings
+                                        .iter()
+                                        .find(|b| b.anchor_id == anchor.anchor_id);
+                                    let shape_class = match binding.map(|b| b.assignment) {
+                                        None => "if-sheets__anchor--unassigned",
+                                        Some(AnchorAssignment::Captured) => {
+                                            "if-sheets__anchor--captured"
+                                        }
+                                        Some(AnchorAssignment::Manual) => {
+                                            "if-sheets__anchor--manual"
+                                        }
+                                        Some(AnchorAssignment::Unavailable) => {
+                                            "if-sheets__anchor--unassigned"
+                                        }
+                                    };
+                                    let selected =
+                                        selected_anchor_id.as_ref() == Some(&anchor.anchor_id);
+                                    let selected_class = if selected {
+                                        " if-sheets__anchor--selected"
+                                    } else {
+                                        ""
+                                    };
+                                    let (wrapper_x, wrapper_y) =
+                                        anchor_canvas_coords(&anchor, &template.placements);
+                                    let left = wrapper_x * 100.0;
+                                    let top = wrapper_y * 100.0;
+                                    let anchor_id_for_click = anchor.anchor_id.clone();
                                     rsx! {
-                                        button {
-                                            "type": "button",
-                                            class: "if-sheets__anchor",
-                                            "data-anchor-id": "{anchor_id}",
-                                            "aria-pressed": if selected { "true" } else { "false" },
+                                        div {
+                                            class: "if-sheets__anchor-mount",
+                                            "data-anchor-id": "{anchor.anchor_id}",
                                             style: "left:{left}%;top:{top}%;",
-                                            onclick: move |evt| {
-                                                evt.stop_propagation();
-                                                sheets.write().selected_anchor_id = Some(anchor_id.clone());
-                                            },
-                                            "{anchor.label}"
+                                            button {
+                                                "type": "button",
+                                                class: "if-sheets__anchor {shape_class}{selected_class}",
+                                                "data-anchor-id": "{anchor.anchor_id}",
+                                                "aria-pressed": if selected { "true" } else { "false" },
+                                                onclick: move |evt| {
+                                                    evt.stop_propagation();
+                                                    sheets.write().selected_anchor_id = Some(anchor_id_for_click.clone());
+                                                },
+                                                "Anchor"
+                                            }
+                                            span { class: "if-sheets__anchor-label", "{anchor.label}" }
                                         }
                                     }
                                 }
@@ -541,6 +570,23 @@ pub(super) fn file_url_from_path(path: &Path) -> String {
     } else {
         format!("file:///{path}")
     }
+}
+
+pub(crate) fn anchor_canvas_coords(
+    anchor: &inputforge_core::sheet::TemplateAnchor,
+    placements: &[inputforge_core::sheet::AssetPlacement],
+) -> (f64, f64) {
+    let Some(parent_id) = anchor.attached_to.as_ref() else {
+        return (anchor.position.x, anchor.position.y);
+    };
+    let Some(parent) = placements.iter().find(|p| &p.placement_id == parent_id) else {
+        return (anchor.position.x, anchor.position.y);
+    };
+    let rect = parent.position;
+    (
+        f64::from(rect.x) + anchor.position.x * f64::from(rect.w),
+        f64::from(rect.y) + anchor.position.y * f64::from(rect.h),
+    )
 }
 
 pub(crate) fn placement_at_canvas_point(

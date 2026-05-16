@@ -1854,3 +1854,106 @@ fn selecting_a_frame_renders_eight_resize_handles_and_primary_border() {
     );
     assert!(html.contains("data-selected=\"true\""));
 }
+
+#[test]
+fn anchor_shape_classes_match_assignment_state_and_selection_is_additive() {
+    use inputforge_core::sheet::{AnchorAssignment, AnchorBinding, TemplateAnchor};
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness(props: SheetsState) -> Element {
+        let sheets = use_signal(|| props);
+        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+    }
+
+    let mut placed_unassigned = SheetsState::default();
+    placed_unassigned.create_blank_template();
+    placed_unassigned.templates[0].anchors.push(TemplateAnchor {
+        anchor_id: AnchorId::from_string("a-1"),
+        label: "L".to_owned(),
+        position: AnchorPosition { x: 0.5, y: 0.5 },
+        attached_to: None,
+        input_type_hint: None,
+        grouping_hint: None,
+        device_matching_hint: None,
+        extensions: ExtensionPayload::default(),
+    });
+    let mut vdom = VirtualDom::new_with_props(Harness, placed_unassigned);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+    assert!(html.contains("if-sheets__anchor--unassigned"));
+    assert!(!html.contains("if-sheets__anchor--captured"));
+
+    let mut captured = SheetsState::default();
+    captured.create_blank_template();
+    captured.templates[0].anchors.push(TemplateAnchor {
+        anchor_id: AnchorId::from_string("a-2"),
+        label: "L".to_owned(),
+        position: AnchorPosition { x: 0.5, y: 0.5 },
+        attached_to: None,
+        input_type_hint: None,
+        grouping_hint: None,
+        device_matching_hint: None,
+        extensions: ExtensionPayload::default(),
+    });
+    captured.templates[0]
+        .default_anchor_bindings
+        .push(AnchorBinding {
+            anchor_id: AnchorId::from_string("a-2"),
+            input: InputAddress::Bound {
+                device: DeviceId("d".to_owned()),
+                input: InputId::Button { index: 1 },
+            },
+            captured_device_fingerprint: None,
+            assignment: AnchorAssignment::Captured,
+        });
+    captured.selected_anchor_id = Some(AnchorId::from_string("a-2"));
+    let mut vdom = VirtualDom::new_with_props(Harness, captured);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+    assert!(html.contains("if-sheets__anchor--captured"));
+    assert!(html.contains("if-sheets__anchor--selected"));
+    assert!(html.contains("if-sheets__anchor-label"));
+}
+
+#[test]
+fn unavailable_assignment_renders_unassigned_shape() {
+    use inputforge_core::sheet::{AnchorAssignment, AnchorBinding, TemplateAnchor};
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+    state.templates[0].anchors.push(TemplateAnchor {
+        anchor_id: AnchorId::from_string("a-u"),
+        label: "U".to_owned(),
+        position: AnchorPosition { x: 0.5, y: 0.5 },
+        attached_to: None,
+        input_type_hint: None,
+        grouping_hint: None,
+        device_matching_hint: None,
+        extensions: ExtensionPayload::default(),
+    });
+    state.templates[0]
+        .default_anchor_bindings
+        .push(AnchorBinding {
+            anchor_id: AnchorId::from_string("a-u"),
+            input: InputAddress::Bound {
+                device: DeviceId("d".to_owned()),
+                input: InputId::Button { index: 1 },
+            },
+            captured_device_fingerprint: None,
+            assignment: AnchorAssignment::Unavailable,
+        });
+
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness(props: SheetsState) -> Element {
+        let sheets = use_signal(|| props);
+        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+    }
+    let mut vdom = VirtualDom::new_with_props(Harness, state);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+    assert!(html.contains("if-sheets__anchor--unassigned"));
+    assert!(!html.contains("if-sheets__anchor--captured"));
+    assert!(!html.contains("if-sheets__anchor--manual"));
+}
