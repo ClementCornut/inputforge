@@ -5,11 +5,14 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::sheet::{AnchorAssignment, AnchorId, AssetPlacement, TemplateAnchor};
+use inputforge_core::sheet::{
+    AnchorAssignment, AnchorId, AssetPlacement, TemplateAnchor, TemplateRect,
+};
 use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
 use crate::frame::sheets::state::{
     AutosaveStatus, CaptureAvailabilityReason, CaptureStatus, ManualInputKind, SheetsState,
+    filename_of,
 };
 
 #[component]
@@ -24,6 +27,17 @@ pub(crate) fn SheetsInspector(
     let mut manual_device_id = use_signal(String::new);
     let mut manual_input_kind = use_signal(ManualInputKind::default);
     let mut manual_input_index = use_signal(|| "0".to_owned());
+
+    // Local drafts for the four x/y/w/h frame inputs. They hold the in-progress
+    // typed value until the user blurs the field or presses Enter, at which
+    // point the value is parsed, clamped, and committed via the state helper.
+    // Drafts reset whenever the selected placement changes, so a freshly
+    // selected frame shows its persisted values rather than stale text from a
+    // previously focused field.
+    let mut frame_x_draft = use_signal::<Option<String>>(|| None);
+    let mut frame_y_draft = use_signal::<Option<String>>(|| None);
+    let mut frame_w_draft = use_signal::<Option<String>>(|| None);
+    let mut frame_h_draft = use_signal::<Option<String>>(|| None);
 
     // Pull every read-only snapshot we need in one borrow so we never hold a `read()` guard
     // across an `rsx!` expression that also has to `write()` to the same signal.
@@ -102,6 +116,18 @@ pub(crate) fn SheetsInspector(
             first_placement_id,
         )
     };
+
+    // Reset the per-axis drafts whenever the selected placement changes so the
+    // inputs always render the persisted rect for the active frame instead of
+    // stale text from a previous selection.
+    let placement_id_for_reset = selected_placement_id.clone();
+    use_effect(use_reactive!(|placement_id_for_reset| {
+        let _ = placement_id_for_reset;
+        frame_x_draft.set(None);
+        frame_y_draft.set(None);
+        frame_w_draft.set(None);
+        frame_h_draft.set(None);
+    }));
 
     let is_capture_armed = matches!(capture, CaptureStatus::Armed(_));
     let composer_button_disabled = selected_anchor_id.is_none() || is_capture_armed;
@@ -326,67 +352,303 @@ pub(crate) fn SheetsInspector(
                 }
             } else if let Some(placement) = selected_placement {
                 // Frame branch
-                section { "data-testid": "sheets-inspector-frame",
-                    span { class: "if-sheets__eyebrow", "FRAME" }
-                    label {
-                        "X"
-                        input {
-                            r#type: "number",
-                            "data-axis": "x",
-                            value: "{placement.position.x}",
-                            step: "0.01",
-                        }
-                    }
-                    label {
-                        "Y"
-                        input {
-                            r#type: "number",
-                            "data-axis": "y",
-                            value: "{placement.position.y}",
-                            step: "0.01",
-                        }
-                    }
-                    label {
-                        "Width"
-                        input {
-                            r#type: "number",
-                            "data-axis": "w",
-                            value: "{placement.position.w}",
-                            step: "0.01",
-                        }
-                    }
-                    label {
-                        "Height"
-                        input {
-                            r#type: "number",
-                            "data-axis": "h",
-                            value: "{placement.position.h}",
-                            step: "0.01",
-                        }
-                    }
-                    button {
-                        r#type: "button",
-                        onclick: move |_| {
-                            if let (Some(tid), Some(pid)) = (
-                                bring_to_front_template_id.clone(),
-                                bring_to_front_placement_id.clone(),
-                            ) {
-                                let _ = sheets_for_bring_to_front.write().bring_to_front(tid, pid);
+                {
+                    // Resolve the frame's source asset filename so the inspector
+                    // can disambiguate placements that share an asset.
+                    let asset_filename = sheets
+                        .read()
+                        .assets
+                        .iter()
+                        .find(|asset| asset.asset_id == placement.asset_id)
+                        .map(filename_of);
+                    // The Frame branch needs an owned `TemplateId` to feed the
+                    // commit_drag_end_* helpers. Each axis closure clones its
+                    // own copy below; this base value is the source of those
+                    // clones.
+                    let frame_template_id = selected_template_id.clone();
+                    let frame_placement_id = placement.placement_id.clone();
+                    let current_x = placement.position.x;
+                    let current_y = placement.position.y;
+                    let current_w = placement.position.w;
+                    let current_h = placement.position.h;
+                    let displayed_x = frame_x_draft
+                        .read()
+                        .clone()
+                        .unwrap_or_else(|| current_x.to_string());
+                    let displayed_y = frame_y_draft
+                        .read()
+                        .clone()
+                        .unwrap_or_else(|| current_y.to_string());
+                    let displayed_w = frame_w_draft
+                        .read()
+                        .clone()
+                        .unwrap_or_else(|| current_w.to_string());
+                    let displayed_h = frame_h_draft
+                        .read()
+                        .clone()
+                        .unwrap_or_else(|| current_h.to_string());
+
+                    // One clone per oninput/onblur/onkeydown closure per axis.
+                    let mut sheets_for_x_blur = sheets;
+                    let mut sheets_for_x_keydown = sheets;
+                    let mut sheets_for_y_blur = sheets;
+                    let mut sheets_for_y_keydown = sheets;
+                    let mut sheets_for_w_blur = sheets;
+                    let mut sheets_for_w_keydown = sheets;
+                    let mut sheets_for_h_blur = sheets;
+                    let mut sheets_for_h_keydown = sheets;
+                    let x_template_id_blur = frame_template_id.clone();
+                    let x_template_id_keydown = frame_template_id.clone();
+                    let y_template_id_blur = frame_template_id.clone();
+                    let y_template_id_keydown = frame_template_id.clone();
+                    let w_template_id_blur = frame_template_id.clone();
+                    let w_template_id_keydown = frame_template_id.clone();
+                    let h_template_id_blur = frame_template_id.clone();
+                    let h_template_id_keydown = frame_template_id.clone();
+                    let x_placement_id_blur = frame_placement_id.clone();
+                    let x_placement_id_keydown = frame_placement_id.clone();
+                    let y_placement_id_blur = frame_placement_id.clone();
+                    let y_placement_id_keydown = frame_placement_id.clone();
+                    let w_placement_id_blur = frame_placement_id.clone();
+                    let w_placement_id_keydown = frame_placement_id.clone();
+                    let h_placement_id_blur = frame_placement_id.clone();
+                    let h_placement_id_keydown = frame_placement_id.clone();
+
+                    rsx! {
+                        section { "data-testid": "sheets-inspector-frame",
+                            span { class: "if-sheets__eyebrow", "FRAME" }
+                            if let Some(name) = asset_filename {
+                                p { class: "if-sheets__inspector-asset-name", "{name}" }
                             }
-                        },
-                        "Bring to front"
-                    }
-                    button {
-                        r#type: "button",
-                        onclick: move |_| {
-                            if let (Some(tid), Some(pid)) = (
-                                send_to_back_template_id.clone(),
-                                send_to_back_placement_id.clone(),
-                            ) {
-                                let _ = sheets_for_send_to_back.write().send_to_back(tid, pid);
+                            label {
+                                "X"
+                                input {
+                                    r#type: "number",
+                                    "data-axis": "x",
+                                    step: "0.01",
+                                    min: "0",
+                                    max: "1",
+                                    value: "{displayed_x}",
+                                    oninput: move |evt: FormEvent| {
+                                        frame_x_draft.set(Some(evt.value()));
+                                    },
+                                    onblur: move |_| {
+                                        if let Some(draft) = frame_x_draft.write().take()
+                                            && let Ok(parsed) = draft.trim().parse::<f32>()
+                                            && let Some(tid) = x_template_id_blur.clone()
+                                        {
+                                            let clamped = parsed.clamp(0.0, 1.0);
+                                            let _ = sheets_for_x_blur
+                                                .write()
+                                                .commit_drag_end_move(
+                                                    tid,
+                                                    x_placement_id_blur.clone(),
+                                                    clamped,
+                                                    current_y,
+                                                );
+                                        }
+                                    },
+                                    onkeydown: move |evt: KeyboardEvent| {
+                                        if evt.key() == Key::Enter
+                                            && let Some(draft) = frame_x_draft.write().take()
+                                            && let Ok(parsed) = draft.trim().parse::<f32>()
+                                            && let Some(tid) = x_template_id_keydown.clone()
+                                        {
+                                            let clamped = parsed.clamp(0.0, 1.0);
+                                            let _ = sheets_for_x_keydown
+                                                .write()
+                                                .commit_drag_end_move(
+                                                    tid,
+                                                    x_placement_id_keydown.clone(),
+                                                    clamped,
+                                                    current_y,
+                                                );
+                                        }
+                                    },
+                                }
                             }
-                        },
-                        "Send to back"
+                            label {
+                                "Y"
+                                input {
+                                    r#type: "number",
+                                    "data-axis": "y",
+                                    step: "0.01",
+                                    min: "0",
+                                    max: "1",
+                                    value: "{displayed_y}",
+                                    oninput: move |evt: FormEvent| {
+                                        frame_y_draft.set(Some(evt.value()));
+                                    },
+                                    onblur: move |_| {
+                                        if let Some(draft) = frame_y_draft.write().take()
+                                            && let Ok(parsed) = draft.trim().parse::<f32>()
+                                            && let Some(tid) = y_template_id_blur.clone()
+                                        {
+                                            let clamped = parsed.clamp(0.0, 1.0);
+                                            let _ = sheets_for_y_blur
+                                                .write()
+                                                .commit_drag_end_move(
+                                                    tid,
+                                                    y_placement_id_blur.clone(),
+                                                    current_x,
+                                                    clamped,
+                                                );
+                                        }
+                                    },
+                                    onkeydown: move |evt: KeyboardEvent| {
+                                        if evt.key() == Key::Enter
+                                            && let Some(draft) = frame_y_draft.write().take()
+                                            && let Ok(parsed) = draft.trim().parse::<f32>()
+                                            && let Some(tid) = y_template_id_keydown.clone()
+                                        {
+                                            let clamped = parsed.clamp(0.0, 1.0);
+                                            let _ = sheets_for_y_keydown
+                                                .write()
+                                                .commit_drag_end_move(
+                                                    tid,
+                                                    y_placement_id_keydown.clone(),
+                                                    current_x,
+                                                    clamped,
+                                                );
+                                        }
+                                    },
+                                }
+                            }
+                            label {
+                                "Width"
+                                input {
+                                    r#type: "number",
+                                    "data-axis": "w",
+                                    step: "0.01",
+                                    min: "0",
+                                    max: "1",
+                                    value: "{displayed_w}",
+                                    oninput: move |evt: FormEvent| {
+                                        frame_w_draft.set(Some(evt.value()));
+                                    },
+                                    onblur: move |_| {
+                                        if let Some(draft) = frame_w_draft.write().take()
+                                            && let Ok(parsed) = draft.trim().parse::<f32>()
+                                            && let Some(tid) = w_template_id_blur.clone()
+                                        {
+                                            let clamped = parsed.clamp(0.0, 1.0);
+                                            let _ = sheets_for_w_blur
+                                                .write()
+                                                .commit_drag_end_resize(
+                                                    tid,
+                                                    w_placement_id_blur.clone(),
+                                                    TemplateRect {
+                                                        x: current_x,
+                                                        y: current_y,
+                                                        w: clamped,
+                                                        h: current_h,
+                                                    },
+                                                );
+                                        }
+                                    },
+                                    onkeydown: move |evt: KeyboardEvent| {
+                                        if evt.key() == Key::Enter
+                                            && let Some(draft) = frame_w_draft.write().take()
+                                            && let Ok(parsed) = draft.trim().parse::<f32>()
+                                            && let Some(tid) = w_template_id_keydown.clone()
+                                        {
+                                            let clamped = parsed.clamp(0.0, 1.0);
+                                            let _ = sheets_for_w_keydown
+                                                .write()
+                                                .commit_drag_end_resize(
+                                                    tid,
+                                                    w_placement_id_keydown.clone(),
+                                                    TemplateRect {
+                                                        x: current_x,
+                                                        y: current_y,
+                                                        w: clamped,
+                                                        h: current_h,
+                                                    },
+                                                );
+                                        }
+                                    },
+                                }
+                            }
+                            label {
+                                "Height"
+                                input {
+                                    r#type: "number",
+                                    "data-axis": "h",
+                                    step: "0.01",
+                                    min: "0",
+                                    max: "1",
+                                    value: "{displayed_h}",
+                                    oninput: move |evt: FormEvent| {
+                                        frame_h_draft.set(Some(evt.value()));
+                                    },
+                                    onblur: move |_| {
+                                        if let Some(draft) = frame_h_draft.write().take()
+                                            && let Ok(parsed) = draft.trim().parse::<f32>()
+                                            && let Some(tid) = h_template_id_blur.clone()
+                                        {
+                                            let clamped = parsed.clamp(0.0, 1.0);
+                                            let _ = sheets_for_h_blur
+                                                .write()
+                                                .commit_drag_end_resize(
+                                                    tid,
+                                                    h_placement_id_blur.clone(),
+                                                    TemplateRect {
+                                                        x: current_x,
+                                                        y: current_y,
+                                                        w: current_w,
+                                                        h: clamped,
+                                                    },
+                                                );
+                                        }
+                                    },
+                                    onkeydown: move |evt: KeyboardEvent| {
+                                        if evt.key() == Key::Enter
+                                            && let Some(draft) = frame_h_draft.write().take()
+                                            && let Ok(parsed) = draft.trim().parse::<f32>()
+                                            && let Some(tid) = h_template_id_keydown.clone()
+                                        {
+                                            let clamped = parsed.clamp(0.0, 1.0);
+                                            let _ = sheets_for_h_keydown
+                                                .write()
+                                                .commit_drag_end_resize(
+                                                    tid,
+                                                    h_placement_id_keydown.clone(),
+                                                    TemplateRect {
+                                                        x: current_x,
+                                                        y: current_y,
+                                                        w: current_w,
+                                                        h: clamped,
+                                                    },
+                                                );
+                                        }
+                                    },
+                                }
+                            }
+                            button {
+                                r#type: "button",
+                                onclick: move |_| {
+                                    if let (Some(tid), Some(pid)) = (
+                                        bring_to_front_template_id.clone(),
+                                        bring_to_front_placement_id.clone(),
+                                    ) {
+                                        let _ = sheets_for_bring_to_front.write().bring_to_front(tid, pid);
+                                    }
+                                },
+                                "Bring to front"
+                            }
+                            button {
+                                r#type: "button",
+                                onclick: move |_| {
+                                    if let (Some(tid), Some(pid)) = (
+                                        send_to_back_template_id.clone(),
+                                        send_to_back_placement_id.clone(),
+                                    ) {
+                                        let _ = sheets_for_send_to_back.write().send_to_back(tid, pid);
+                                    }
+                                },
+                                "Send to back"
+                            }
+                        }
                     }
                 }
             } else {

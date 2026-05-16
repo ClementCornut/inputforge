@@ -1217,6 +1217,18 @@ pub(crate) fn normalized_image_point(
     })
 }
 
+pub(crate) fn filename_of(asset: &AssetEntry) -> String {
+    asset
+        .original_import_path
+        .as_ref()
+        .and_then(|p| p.file_name())
+        .or_else(|| asset.copied_path.file_name())
+        .map_or_else(
+            || asset.copied_path.display().to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        )
+}
+
 pub(crate) fn default_rect_at(x: f32, y: f32, pixel_dimensions: &PixelDimensions) -> TemplateRect {
     let aspect = pixel_dimensions.width as f32 / pixel_dimensions.height.max(1) as f32;
 

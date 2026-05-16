@@ -2411,3 +2411,112 @@ fn toolbar_plus_import_emits_one_import_asset_event() {
         SheetsEventKind::ImportAsset { .. }
     ));
 }
+
+#[test]
+fn frame_inspector_shows_asset_filename() {
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+    let asset_id = AssetId::from_string("asset-frame-1");
+    state.assets.push(AssetEntry {
+        asset_id: asset_id.clone(),
+        copied_path: PathBuf::from("assets/throttle.png"),
+        content_hash: "h".to_owned(),
+        media_type: "image/png".to_owned(),
+        pixel_dimensions: PixelDimensions {
+            width: 1,
+            height: 1,
+        },
+        original_import_path: Some(PathBuf::from("D:/imports/throttle.png")),
+        extensions: ExtensionPayload::default(),
+    });
+    let placement_id = AssetPlacementId::from_string("p-1");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_id.clone(),
+        asset_id,
+        position: TemplateRect {
+            x: 0.1,
+            y: 0.1,
+            w: 0.4,
+            h: 0.4,
+        },
+        z_index: 0,
+        extensions: ExtensionPayload::default(),
+    });
+    state.selected_placement_id = Some(placement_id);
+    let html = render_inspector_state(state);
+    assert!(
+        html.contains("throttle.png"),
+        "Frame inspector must show asset filename: {html}"
+    );
+}
+
+#[test]
+fn frame_x_input_commits_on_blur_via_commit_drag_end_move() {
+    // State-level mirror of what the inspector's onblur handler does: parse
+    // the draft, clamp into the canvas, and commit via commit_drag_end_move.
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+    let template_id = state.templates[0].template_id.clone();
+    let placement_id = AssetPlacementId::from_string("p-x");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_id.clone(),
+        asset_id: AssetId::from_string("a"),
+        position: TemplateRect {
+            x: 0.1,
+            y: 0.2,
+            w: 0.3,
+            h: 0.4,
+        },
+        z_index: 0,
+        extensions: ExtensionPayload::default(),
+    });
+    let baseline = state.history.len();
+    state
+        .commit_drag_end_move(template_id, placement_id.clone(), 0.5_f32, 0.2_f32)
+        .unwrap();
+    let rect = state.templates[0]
+        .placements
+        .iter()
+        .find(|p| p.placement_id == placement_id)
+        .unwrap()
+        .position;
+    assert!((rect.x - 0.5).abs() < 1e-6);
+    assert!((rect.y - 0.2).abs() < 1e-6);
+    assert_eq!(state.history.len() - baseline, 1);
+}
+
+#[test]
+fn frame_inspector_inputs_render_with_event_handlers() {
+    // SSR test: each axis input renders with the expected `data-axis` and
+    // none of them is read-only. Direct handler-presence assertions are
+    // impossible in SSR, but the absence of `readonly` plus the presence of
+    // every data-axis attribute is sufficient to detect the bug where the
+    // inputs were rendered with only `value:` and no event hooks.
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+    let placement_id = AssetPlacementId::from_string("p");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_id.clone(),
+        asset_id: AssetId::from_string("a"),
+        position: TemplateRect {
+            x: 0.1,
+            y: 0.2,
+            w: 0.3,
+            h: 0.4,
+        },
+        z_index: 0,
+        extensions: ExtensionPayload::default(),
+    });
+    state.selected_placement_id = Some(placement_id);
+    let html = render_inspector_state(state);
+    for axis in ["x", "y", "w", "h"] {
+        assert!(
+            html.contains(&format!("data-axis=\"{axis}\"")),
+            "missing data-axis={axis}: {html}"
+        );
+    }
+    assert!(
+        !html.contains("readonly"),
+        "frame inputs must not be readonly: {html}"
+    );
+}

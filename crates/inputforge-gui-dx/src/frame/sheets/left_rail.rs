@@ -4,21 +4,11 @@
 )]
 
 use dioxus::prelude::*;
-use inputforge_core::sheet::{AssetEntry, AssetId, TemplateId};
+use inputforge_core::sheet::{AssetId, TemplateId};
 
-use crate::frame::sheets::state::{SheetLayoutPreset, SheetsLibraryTab, SheetsState, pluralize};
-
-fn filename_of(asset: &AssetEntry) -> String {
-    asset
-        .original_import_path
-        .as_ref()
-        .and_then(|p| p.file_name())
-        .or_else(|| asset.copied_path.file_name())
-        .map_or_else(
-            || asset.copied_path.display().to_string(),
-            |name| name.to_string_lossy().into_owned(),
-        )
-}
+use crate::frame::sheets::state::{
+    SheetLayoutPreset, SheetsLibraryTab, SheetsState, filename_of, pluralize,
+};
 
 const PRESET_OPTIONS: &[(&str, SheetLayoutPreset)] = &[
     ("Single", SheetLayoutPreset::Single),

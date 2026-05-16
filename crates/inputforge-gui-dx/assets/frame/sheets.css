@@ -385,6 +385,17 @@
     text-transform: uppercase;
 }
 
+.if-sheets__inspector-asset-name {
+    /* Frame inspector caption: monospaced filename of the selected placement's
+       source asset; helps disambiguate placements sharing the same image. */
+    margin: 0 12px 6px;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    line-height: 16px;
+    font-family: var(--font-mono);
+    word-break: break-all;
+}
+
 .if-sheets__autosave-chip {
     display: inline-flex; /* row alignment of dot + label */
     align-items: center;
