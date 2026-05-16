@@ -668,10 +668,13 @@ impl Engine {
     pub(crate) fn handle_command(&mut self, cmd: EngineCommand) -> Result<()> {
         match cmd {
             EngineCommand::LoadProfile(path) => {
+                let Some(profile) = self.load_profile_for_command(&path, "profile") else {
+                    return Ok(());
+                };
                 self.release_all_held_outputs()?;
                 self.gesture_dispatcher.clear_all();
                 self.purge_all_namespaces();
-                self.reload_profile_from_disk(&path)?;
+                self.apply_loaded_profile(&path, profile);
                 let origin = self.profile_origin_for_path(&path);
                 {
                     let mut state = self.state.write();
@@ -692,20 +695,24 @@ impl Engine {
                 self.persist_last_profile()?;
             }
             EngineCommand::CreateProfile { name } => {
+                let path = create_profile_in(&name, &self.profile_library_dir())?;
+                let profile = Profile::load(&path)?;
                 self.release_all_held_outputs()?;
                 self.gesture_dispatcher.clear_all();
-                let path = create_profile_in(&name, &self.profile_library_dir())?;
-                self.reload_profile_from_disk(&path)?;
+                self.apply_loaded_profile(&path, profile);
                 self.mark_profile_loaded(ProfileOrigin::Library);
                 self.refresh_profile_library_rows()?;
                 self.refresh_active_snapshot_rows()?;
                 self.persist_last_profile()?;
             }
             EngineCommand::LoadExternalProfileOnce(path) => {
+                let Some(profile) = self.load_profile_for_command(&path, "external profile") else {
+                    return Ok(());
+                };
                 self.release_all_held_outputs()?;
                 self.gesture_dispatcher.clear_all();
                 self.purge_all_namespaces();
-                self.reload_profile_from_disk(&path)?;
+                self.apply_loaded_profile(&path, profile);
                 self.mark_profile_loaded(ProfileOrigin::External);
                 if let Some((profile_path, namespace_dir)) = self.resolved_snapshot_target() {
                     let _ = crate::snapshot::create_in(
@@ -721,11 +728,26 @@ impl Engine {
                 self.refresh_active_snapshot_rows()?;
             }
             EngineCommand::AddExternalProfileToLibrary { path, name } => {
+                let imported = match add_external_profile_to_library(
+                    &path,
+                    &name,
+                    &self.profile_library_dir(),
+                ) {
+                    Ok(imported) => imported,
+                    Err(e) => {
+                        self.record_profile_load_warning(&path, "profile import", &e);
+                        return Ok(());
+                    }
+                };
+                let Some(profile) =
+                    self.load_profile_for_command(&imported.path, "imported profile")
+                else {
+                    self.refresh_profile_library_rows()?;
+                    return Ok(());
+                };
                 self.release_all_held_outputs()?;
                 self.gesture_dispatcher.clear_all();
-                let imported =
-                    add_external_profile_to_library(&path, &name, &self.profile_library_dir())?;
-                self.reload_profile_from_disk(&imported.path)?;
+                self.apply_loaded_profile(&imported.path, profile);
                 self.mark_profile_loaded(ProfileOrigin::Library);
                 self.refresh_profile_library_rows()?;
                 self.refresh_active_snapshot_rows()?;
@@ -1458,6 +1480,34 @@ impl Engine {
     /// Returns an error if the profile file cannot be read or parsed.
     fn reload_profile_from_disk(&mut self, path: &Path) -> Result<()> {
         let profile = Profile::load(path)?;
+        self.apply_loaded_profile(path, profile);
+        Ok(())
+    }
+
+    fn load_profile_for_command(&self, path: &Path, label: &str) -> Option<Profile> {
+        match Profile::load(path) {
+            Ok(profile) => Some(profile),
+            Err(e) => {
+                self.record_profile_load_warning(path, label, &e);
+                None
+            }
+        }
+    }
+
+    fn record_profile_load_warning(&self, path: &Path, label: &str, error: &dyn std::fmt::Display) {
+        tracing::warn!(
+            target: "engine",
+            profile_path = %path.display(),
+            error = %error,
+            "engine.profile.load_failed"
+        );
+        self.state.write().warnings.push(format!(
+            "Could not load {label} {}: {error}",
+            path.display()
+        ));
+    }
+
+    fn apply_loaded_profile(&mut self, path: &Path, profile: Profile) {
         let startup_mode = profile.settings().startup_mode().to_owned();
         self.mode_state = crate::mode::ModeState::new(startup_mode.clone());
         self.callbacks.clear();
@@ -1487,7 +1537,6 @@ impl Engine {
         state.active_profile = Some(profile);
         state.profile_path = Some(path.to_path_buf());
         state.current_mode = startup_mode;
-        Ok(())
     }
 
     fn profile_library_dir(&self) -> PathBuf {

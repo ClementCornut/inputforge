@@ -2705,6 +2705,27 @@ impl EngineHarness {
         path
     }
 
+    fn write_invalid_external_profile(&self, name: &str) -> PathBuf {
+        let path = self
+            ._settings_dir
+            .path()
+            .join(format!("{}.toml", sanitize_filename(name)));
+        std::fs::write(
+            &path,
+            format!(
+                r#"modes = ["Default"]
+
+[profile]
+id = "01J00000000000000000000000"
+name = "{name}"
+startup_mode = "Missing"
+"#
+            ),
+        )
+        .unwrap();
+        path
+    }
+
     fn create_and_load_profile(&mut self, name: &str) -> crate::error::Result<()> {
         let path = create_profile_in(name, &self.library_dir)?;
         self.dispatch(EngineCommand::LoadProfile(path))
@@ -2755,6 +2776,102 @@ fn load_external_profile_once_marks_origin_external_and_does_not_add_library_row
             .all(|row| row.path != external)
     );
     assert_eq!(state.engine_status, EngineStatus::Stopped);
+}
+
+#[test]
+fn failed_load_profile_preserves_current_active_profile_and_records_warning() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+    let active_path = harness.profile_path("Alpha");
+    let failed_path = harness.write_invalid_external_profile("Broken");
+
+    harness
+        .dispatch(EngineCommand::LoadProfile(failed_path.clone()))
+        .unwrap();
+
+    let state = harness.state();
+    assert_eq!(state.profile_path.as_ref(), Some(&active_path));
+    assert_eq!(
+        state.active_profile.as_ref().map(Profile::name),
+        Some("Alpha")
+    );
+    assert!(
+        state
+            .warnings
+            .iter()
+            .any(|warning| warning.contains(&failed_path.display().to_string()))
+    );
+}
+
+#[test]
+fn failed_first_load_profile_leaves_no_profile_and_records_warning() {
+    let mut harness = EngineHarness::new();
+    let failed_path = harness.write_invalid_external_profile("Broken");
+
+    harness
+        .dispatch(EngineCommand::LoadProfile(failed_path.clone()))
+        .unwrap();
+
+    let state = harness.state();
+    assert!(state.profile_path.is_none());
+    assert!(state.active_profile.is_none());
+    assert!(state.active_profile_origin.is_none());
+    assert!(
+        state
+            .warnings
+            .iter()
+            .any(|warning| warning.contains(&failed_path.display().to_string()))
+    );
+}
+
+#[test]
+fn failed_load_external_profile_once_preserves_current_active_profile_and_records_warning() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+    let active_path = harness.profile_path("Alpha");
+    let failed_path = harness.write_invalid_external_profile("Broken");
+
+    harness
+        .dispatch(EngineCommand::LoadExternalProfileOnce(failed_path.clone()))
+        .unwrap();
+
+    let state = harness.state();
+    assert_eq!(state.profile_path.as_ref(), Some(&active_path));
+    assert_eq!(state.active_profile_origin, Some(ProfileOrigin::Library));
+    assert!(
+        state
+            .warnings
+            .iter()
+            .any(|warning| warning.contains(&failed_path.display().to_string()))
+    );
+}
+
+#[test]
+fn failed_import_profile_preserves_current_active_profile_and_records_warning() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+    let active_path = harness.profile_path("Alpha");
+    let failed_path = harness.write_invalid_external_profile("Broken");
+
+    harness
+        .dispatch(EngineCommand::AddExternalProfileToLibrary {
+            path: failed_path.clone(),
+            name: "Imported".to_owned(),
+        })
+        .unwrap();
+
+    let state = harness.state();
+    assert_eq!(state.profile_path.as_ref(), Some(&active_path));
+    assert_eq!(
+        state.active_profile.as_ref().map(Profile::name),
+        Some("Alpha")
+    );
+    assert!(
+        state
+            .warnings
+            .iter()
+            .any(|warning| warning.contains(&failed_path.display().to_string()))
+    );
 }
 
 #[test]

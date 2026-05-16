@@ -17,6 +17,15 @@ pub struct ProfileSummary {
     pub path: PathBuf,
 }
 
+/// Result of selecting the safest loadable profile for application startup.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartupProfileResolution {
+    /// The first profile path that could be parsed and validated.
+    pub path: Option<PathBuf>,
+    /// User-visible warnings collected while skipping unloadable profiles.
+    pub warnings: Vec<String>,
+}
+
 /// Characters that are illegal in filenames on Windows/NTFS.
 const ILLEGAL_CHARS: &[char] = &[':', '\\', '/', '*', '?', '"', '<', '>', '|'];
 
@@ -180,6 +189,80 @@ pub fn ensure_default_profile() -> Result<PathBuf> {
     ensure_default_profile_in(&AppSettings::profiles_dir())
 }
 
+/// Resolve the startup profile without propagating profile parse failures.
+///
+/// Tries an explicit CLI path first, then `settings.last_profile`, then each
+/// library profile. Invalid, unsupported, legacy, or missing profile files are
+/// skipped with warnings so the app can still launch in a no-profile state.
+#[must_use]
+pub fn resolve_startup_profile(
+    explicit_profile: Option<&Path>,
+    settings: &AppSettings,
+) -> StartupProfileResolution {
+    resolve_startup_profile_in(
+        explicit_profile,
+        settings.last_profile.as_deref(),
+        &AppSettings::profiles_dir(),
+    )
+}
+
+pub(crate) fn resolve_startup_profile_in(
+    explicit_profile: Option<&Path>,
+    last_profile: Option<&Path>,
+    library_dir: &Path,
+) -> StartupProfileResolution {
+    let mut warnings = Vec::new();
+    if let Some(path) = explicit_profile
+        && profile_loadable(path, "requested profile", &mut warnings)
+    {
+        return StartupProfileResolution {
+            path: Some(path.to_path_buf()),
+            warnings,
+        };
+    }
+
+    if let Some(path) = last_profile
+        && profile_loadable(path, "last-used profile", &mut warnings)
+    {
+        return StartupProfileResolution {
+            path: Some(path.to_path_buf()),
+            warnings,
+        };
+    }
+
+    match list_profiles_in(library_dir) {
+        Ok(profiles) => {
+            for profile in profiles {
+                if profile_loadable(&profile.path, "library profile", &mut warnings) {
+                    return StartupProfileResolution {
+                        path: Some(profile.path),
+                        warnings,
+                    };
+                }
+            }
+        }
+        Err(err) => warnings.push(format!(
+            "Could not scan profile library at {}: {err}",
+            library_dir.display()
+        )),
+    }
+
+    StartupProfileResolution {
+        path: None,
+        warnings,
+    }
+}
+
+fn profile_loadable(path: &Path, label: &str, warnings: &mut Vec<String>) -> bool {
+    match Profile::load(path) {
+        Ok(_) => true,
+        Err(err) => {
+            warnings.push(format!("Could not load {label} {}: {err}", path.display()));
+            false
+        }
+    }
+}
+
 /// Ensure at least one profile exists in a specific directory.
 ///
 /// # Errors
@@ -253,6 +336,150 @@ pub fn delete_profile(path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn invalid_profile_toml(name: &str) -> String {
+        format!(
+            r#"modes = ["Default"]
+
+[profile]
+id = "01J00000000000000000000000"
+name = "{name}"
+startup_mode = "Missing"
+"#
+        )
+    }
+
+    fn legacy_unsupported_key_profile_toml() -> &'static str {
+        r#"modes = ["Default"]
+
+[profile]
+id = "01J00000000000000000000000"
+name = "Legacy Unsupported"
+startup_mode = "Default"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "dev-1"
+
+[mappings.input.input]
+type = "button"
+index = 0
+
+[[mappings.actions]]
+type = "map_to_keyboard"
+behavior = "hold"
+
+[mappings.actions.key]
+key = "F13"
+modifiers = []
+"#
+    }
+
+    #[test]
+    fn startup_resolution_skips_invalid_last_profile_and_uses_library_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        let invalid_path = tmp.path().join("aaa-invalid.toml");
+        std::fs::write(&invalid_path, invalid_profile_toml("Invalid")).unwrap();
+        let fallback = create_profile_in("Fallback", tmp.path()).unwrap();
+
+        let resolution = resolve_startup_profile_in(None, Some(&invalid_path), tmp.path());
+
+        assert_eq!(resolution.path.as_deref(), Some(fallback.as_path()));
+        assert!(
+            resolution
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("last-used profile"))
+        );
+    }
+
+    #[test]
+    fn startup_resolution_returns_no_profile_when_only_library_profile_is_invalid() {
+        let tmp = tempfile::tempdir().unwrap();
+        let invalid_path = tmp.path().join("invalid.toml");
+        std::fs::write(&invalid_path, invalid_profile_toml("Invalid")).unwrap();
+
+        let resolution = resolve_startup_profile_in(None, None, tmp.path());
+
+        assert_eq!(resolution.path, None);
+        assert!(
+            resolution
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("library profile"))
+        );
+    }
+
+    #[test]
+    fn startup_resolution_warns_for_invalid_explicit_profile_and_uses_library_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        let explicit_path = tmp.path().join("requested.toml");
+        std::fs::write(&explicit_path, invalid_profile_toml("Requested")).unwrap();
+        let fallback = create_profile_in("Fallback", tmp.path()).unwrap();
+
+        let resolution = resolve_startup_profile_in(Some(&explicit_path), None, tmp.path());
+
+        assert_eq!(resolution.path.as_deref(), Some(fallback.as_path()));
+        assert!(
+            resolution
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("requested profile"))
+        );
+    }
+
+    #[test]
+    fn startup_resolution_returns_no_profile_for_invalid_explicit_profile_without_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        let explicit_path = tmp.path().join("requested.toml");
+        std::fs::write(&explicit_path, invalid_profile_toml("Requested")).unwrap();
+
+        let resolution = resolve_startup_profile_in(Some(&explicit_path), None, tmp.path());
+
+        assert_eq!(resolution.path, None);
+        assert!(
+            resolution
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("requested profile"))
+        );
+    }
+
+    #[test]
+    fn startup_resolution_warns_for_missing_last_profile_and_uses_library_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing_path = tmp.path().join("missing.toml");
+        let fallback = create_profile_in("Fallback", tmp.path()).unwrap();
+
+        let resolution = resolve_startup_profile_in(None, Some(&missing_path), tmp.path());
+
+        assert_eq!(resolution.path.as_deref(), Some(fallback.as_path()));
+        assert!(
+            resolution
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("last-used profile"))
+        );
+    }
+
+    #[test]
+    fn startup_resolution_reports_legacy_unsupported_keyboard_key_without_panicking() {
+        let tmp = tempfile::tempdir().unwrap();
+        let legacy_path = tmp.path().join("legacy.toml");
+        std::fs::write(&legacy_path, legacy_unsupported_key_profile_toml()).unwrap();
+
+        let resolution = resolve_startup_profile_in(Some(&legacy_path), None, tmp.path());
+
+        assert_eq!(resolution.path, None);
+        assert!(
+            resolution
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("F13"))
+        );
+    }
 
     // --- sanitize_filename ---
 

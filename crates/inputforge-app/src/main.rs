@@ -32,8 +32,7 @@ use inputforge_core::device::{DeviceHider, NoOpDeviceHider, Sdl3Input};
 use inputforge_core::engine::{Engine, EngineCommand};
 use inputforge_core::output::mouse::MouseOutput;
 use inputforge_core::output::{KeyboardOutput, VJoyOutput};
-use inputforge_core::profile::Profile;
-use inputforge_core::profile::manager::ensure_default_profile;
+use inputforge_core::profile::manager::resolve_startup_profile;
 use inputforge_core::settings::AppSettings;
 use inputforge_core::state::AppState;
 
@@ -60,38 +59,19 @@ fn main() -> Result<()> {
     // resolution only.
     let settings = AppSettings::load();
 
-    // Resolve the target profile path. Validate via Profile::load and
-    // discard the result: the engine re-reads through
-    // EngineCommand::LoadProfile so cold-start and in-session profile
-    // switches share one canonical code path (snapshot + prune +
-    // last_profile persistence). Validation here preserves today's
-    // corrupt-last_profile fallback to default without expanding the
-    // EngineCommand surface.
-    let profile_path = if let Some(ref path) = cli.profile {
-        let _ = Profile::load(path)?;
-        path.clone()
-    } else {
-        match settings.last_profile {
-            Some(ref last) if last.exists() => match Profile::load(last) {
-                Ok(_) => last.clone(),
-                Err(e) => {
-                    tracing::warn!(
-                        path = %last.display(),
-                        %e,
-                        "failed to load last-used profile, falling back to default"
-                    );
-                    let default_path = ensure_default_profile()?;
-                    let _ = Profile::load(&default_path)?;
-                    default_path
-                }
-            },
-            _ => {
-                let default_path = ensure_default_profile()?;
-                let _ = Profile::load(&default_path)?;
-                default_path
-            }
+    // Resolve a loadable startup profile without letting a corrupt, legacy, or
+    // unsupported profile abort GUI startup. The engine still loads the final
+    // path through EngineCommand::LoadProfile so cold-start and in-session
+    // switches share one canonical code path.
+    let profile_resolution = resolve_startup_profile(cli.profile.as_deref(), &settings);
+    {
+        let mut state = state.write();
+        for warning in &profile_resolution.warnings {
+            tracing::warn!(warning = %warning, "startup profile resolution warning");
+            state.warnings.push(warning.clone());
         }
-    };
+    }
+    let profile_path = profile_resolution.path;
 
     // Spawn the engine on a dedicated thread. All !Send types (SDL3)
     // are created on this thread.
@@ -100,11 +80,16 @@ fn main() -> Result<()> {
         .name("engine".into())
         .spawn(move || run_engine(engine_state, cmd_rx))?;
 
-    // Cold-start profile load. Same code path as in-session profile
-    // switches: reloads from disk, takes AutoSessionStart snapshot
-    // (gated by settings.snapshot.skip_if_unchanged), prunes, refreshes
-    // projection rows, persists last_profile.
-    cmd_tx.send(EngineCommand::LoadProfile(profile_path))?;
+    // Cold-start profile load. Same code path as in-session profile switches:
+    // reloads from disk, takes AutoSessionStart snapshot (gated by
+    // settings.snapshot.skip_if_unchanged), prunes, refreshes projection rows,
+    // persists last_profile. If no profile is loadable, the GUI starts in a
+    // no-profile state and keeps the warning visible in AppState.
+    if let Some(profile_path) = profile_path {
+        cmd_tx.send(EngineCommand::LoadProfile(profile_path))?;
+    } else {
+        tracing::warn!("starting InputForge without an active profile");
+    }
 
     // Send activate command if requested.
     if cli.enable {
