@@ -15,7 +15,7 @@ use std::{path::PathBuf, time::Duration};
 
 use dioxus::prelude::*;
 use inputforge_core::sheet::AnchorAssignment;
-use state::{AutosaveStatus, CaptureStatus, SheetsState};
+use state::{AutosaveStatus, CaptureAvailabilityReason, CaptureStatus, SheetsState};
 
 use crate::patterns::live_capture::{CaptureFilter, LiveCapture, is_current_capture_session};
 
@@ -252,6 +252,11 @@ pub(crate) fn SheetsWorkbench() -> Element {
     });
 
     let documents_loaded = documents.read().is_some();
+    let capture_availability = if capture.is_some() {
+        CaptureAvailabilityReason::CaptureAvailable
+    } else {
+        CaptureAvailabilityReason::EngineStopped
+    };
 
     rsx! {
         div {
@@ -262,6 +267,7 @@ pub(crate) fn SheetsWorkbench() -> Element {
             canvas::SheetsCanvas { sheets, on_import_image, on_arm_capture }
             inspector::SheetsInspector {
                 sheets,
+                capture_availability,
                 on_arm_capture,
                 on_cancel_capture,
                 on_retry_save: retry_save,

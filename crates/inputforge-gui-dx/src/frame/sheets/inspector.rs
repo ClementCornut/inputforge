@@ -8,11 +8,14 @@ use dioxus::prelude::*;
 use inputforge_core::sheet::{AnchorAssignment, AnchorId, AssetPlacement, TemplateAnchor};
 use inputforge_core::types::{InputAddress, InputId};
 
-use crate::frame::sheets::state::{AutosaveStatus, CaptureStatus, ManualInputKind, SheetsState};
+use crate::frame::sheets::state::{
+    AutosaveStatus, CaptureAvailabilityReason, CaptureStatus, ManualInputKind, SheetsState,
+};
 
 #[component]
 pub(crate) fn SheetsInspector(
     sheets: Signal<SheetsState>,
+    #[props(default)] capture_availability: CaptureAvailabilityReason,
     on_arm_capture: EventHandler<AnchorId>,
     on_cancel_capture: EventHandler<()>,
     on_retry_save: EventHandler<()>,
@@ -97,19 +100,11 @@ pub(crate) fn SheetsInspector(
         )
     };
 
-    let capture_unavailable_reason = match &capture {
-        CaptureStatus::Unavailable(reason) => Some(reason.clone()),
-        _ => None,
-    };
     let is_capture_armed = matches!(capture, CaptureStatus::Armed(_));
-    let capture_disabled =
-        capture_unavailable_reason.is_some() || selected_anchor_id.is_none() || is_capture_armed;
-    let capture_help = capture_unavailable_reason.clone().or_else(|| {
-        selected_anchor_id
-            .is_none()
-            .then(|| "Select an anchor to capture input.".to_owned())
-    });
+    let composer_button_disabled = selected_anchor_id.is_none() || is_capture_armed;
+    let composer_help = composer_help_for(&capture, capture_availability);
     let selected_anchor_for_capture = selected_anchor_id.clone();
+    let selected_anchor_for_reassign = selected_anchor_id.clone();
     let mut sheets_for_template_name = sheets;
     let mut sheets_for_anchor_label = sheets;
     let mut sheets_for_attach = sheets;
@@ -185,32 +180,65 @@ pub(crate) fn SheetsInspector(
                     }
                     section {
                         span { class: "if-sheets__eyebrow", "ASSIGNMENT" }
-                        section {
-                            h3 { "Capture input" }
-                            if let Some((input, assignment)) = selected_binding {
-                                p { "Input address" }
-                                code { "{format_input_address(&input)}" }
-                                p { "{format_assignment(assignment)}" }
-                            }
-                            button {
-                                r#type: "button",
-                                disabled: capture_disabled,
-                                onclick: move |_| {
-                                    if let Some(anchor_id) = selected_anchor_for_capture.clone() {
-                                        on_arm_capture.call(anchor_id);
+                        section { class: "if-sheets__composer",
+                            match capture.clone() {
+                                CaptureStatus::Armed(_) => rsx! {
+                                    div { class: "if-rebind-composite if-rebind-composite--listening",
+                                        span {
+                                            class: "if-rebind-composite__listening",
+                                            role: "status",
+                                            "aria-live": "polite",
+                                            "Press an input..."
+                                        }
+                                        button {
+                                            class: "if-rebind-composite__action",
+                                            r#type: "button",
+                                            onclick: move |_| on_cancel_capture.call(()),
+                                            "Cancel"
+                                        }
                                     }
+                                    p { class: "if-sheets__composer-hint", "Hold Esc to cancel" }
                                 },
-                                "Capture input"
-                            }
-                            if is_capture_armed {
-                                button {
-                                    r#type: "button",
-                                    onclick: move |_| on_cancel_capture.call(()),
-                                    "Cancel capture"
+                                CaptureStatus::Assigned(_) => {
+                                    let selected_anchor_for_reassign = selected_anchor_for_reassign.clone();
+                                    rsx! {
+                                        if let Some((input, assignment)) = selected_binding.clone() {
+                                            p { "Input address" }
+                                            code { "{format_input_address(&input)}" }
+                                            p { "{format_assignment(assignment)}" }
+                                        }
+                                        button {
+                                            class: "if-sheets__composer-trigger",
+                                            r#type: "button",
+                                            disabled: composer_button_disabled,
+                                            onclick: move |_| {
+                                                if let Some(anchor_id) = selected_anchor_for_reassign.clone() {
+                                                    on_arm_capture.call(anchor_id);
+                                                }
+                                            },
+                                            "Re-assign"
+                                        }
+                                    }
                                 }
-                            }
-                            if let Some(help) = capture_help {
-                                p { "{help}" }
+                                _ => {
+                                    let selected_anchor_for_capture = selected_anchor_for_capture.clone();
+                                    rsx! {
+                                        button {
+                                            class: "if-sheets__composer-trigger",
+                                            r#type: "button",
+                                            disabled: composer_button_disabled,
+                                            onclick: move |_| {
+                                                if let Some(anchor_id) = selected_anchor_for_capture.clone() {
+                                                    on_arm_capture.call(anchor_id);
+                                                }
+                                            },
+                                            "Press input to assign"
+                                        }
+                                        if let Some(help) = composer_help.clone() {
+                                            p { class: "if-sheets__composer-hint", "{help}" }
+                                        }
+                                    }
+                                }
                             }
                         }
                         section {
@@ -414,6 +442,29 @@ fn format_manual_address(device_id: &str, input_kind: ManualInputKind, input_ind
         },
         input_index
     )
+}
+
+fn composer_help_for(
+    capture: &CaptureStatus,
+    availability: CaptureAvailabilityReason,
+) -> Option<String> {
+    match capture {
+        CaptureStatus::Armed(_) | CaptureStatus::Assigned(_) => None,
+        CaptureStatus::TimedOut(_) => Some("Capture timed out. Press to retry.".to_owned()),
+        CaptureStatus::Canceled(_) => Some("Capture canceled. Press to retry.".to_owned()),
+        CaptureStatus::Idle | CaptureStatus::Unavailable(_) => Some(match availability {
+            CaptureAvailabilityReason::CaptureAvailable => {
+                "Press a control on any connected device to assign.".to_owned()
+            }
+            CaptureAvailabilityReason::EngineStopped => {
+                "Start the engine to capture, or choose device manually.".to_owned()
+            }
+            CaptureAvailabilityReason::EngineRunningNoDevices => {
+                "Connect a device to capture, or use the manual disclosure when a device appears."
+                    .to_owned()
+            }
+        }),
+    }
 }
 
 fn format_assignment(assignment: AnchorAssignment) -> &'static str {

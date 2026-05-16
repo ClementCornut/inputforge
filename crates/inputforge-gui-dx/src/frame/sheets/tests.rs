@@ -15,8 +15,8 @@ use super::canvas::{
 use super::inspector::SheetsInspector;
 use super::left_rail::SheetsLeftRail;
 use super::state::{
-    AutosaveStatus, CaptureStatus, SheetLayoutPreset, SheetsEventKind, SheetsLibraryTab,
-    SheetsState,
+    AutosaveStatus, CaptureAvailabilityReason, CaptureStatus, SheetLayoutPreset, SheetsEventKind,
+    SheetsLibraryTab, SheetsState,
 };
 
 #[test]
@@ -50,6 +50,46 @@ fn render_inspector_state(initial_state: SheetsState) -> String {
     }
 
     let mut vdom = VirtualDom::new_with_props(Harness, initial_state);
+    vdom.rebuild_in_place();
+    dioxus_ssr::render(&vdom)
+}
+
+fn render_inspector_state_with_availability(
+    initial_state: SheetsState,
+    capture_availability: CaptureAvailabilityReason,
+) -> String {
+    #[derive(Clone, PartialEq, Props)]
+    struct HarnessProps {
+        initial_state: SheetsState,
+        capture_availability: CaptureAvailabilityReason,
+    }
+
+    #[expect(
+        non_snake_case,
+        reason = "Dioxus components are PascalCase by convention"
+    )]
+    fn Harness(props: HarnessProps) -> Element {
+        let sheets = use_signal(|| props.initial_state);
+        let capture_availability = props.capture_availability;
+
+        rsx! {
+            SheetsInspector {
+                sheets,
+                capture_availability,
+                on_arm_capture: move |_| {},
+                on_cancel_capture: move |()| {},
+                on_retry_save: move |()| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new_with_props(
+        Harness,
+        HarnessProps {
+            initial_state,
+            capture_availability,
+        },
+    );
     vdom.rebuild_in_place();
     dioxus_ssr::render(&vdom)
 }
@@ -157,14 +197,63 @@ fn inspector_with_anchor_selected_shows_label_attach_toggle_and_assignment_compo
 }
 
 #[test]
-fn inspector_disables_capture_when_unavailable_but_keeps_manual_assignment_visible() {
+fn inspector_keeps_manual_assignment_visible_when_capture_unavailable() {
     let html = render_inspector_state(state_with_selected_anchor());
 
-    assert!(html.contains("Capture input"));
-    assert!(html.contains("disabled"));
-    assert!(html.contains("live input is not available"));
+    assert!(html.contains("Press input to assign"));
     assert!(html.contains("Manual assignment"));
     assert!(html.contains("Input address"));
+}
+
+#[test]
+fn composer_idle_with_capture_available_renders_press_to_assign_button() {
+    let mut state = state_with_selected_anchor();
+    state.capture = CaptureStatus::Idle;
+    let html = render_inspector_state(state);
+    assert!(html.contains(">Press input to assign<"));
+    assert!(html.contains("Press a control on any connected device to assign."));
+}
+
+#[test]
+fn composer_armed_renders_if_rebind_composite_listening_visual() {
+    let mut state = state_with_selected_anchor();
+    let anchor_id = state.selected_anchor_id.clone().unwrap();
+    state.capture = CaptureStatus::Armed(anchor_id);
+    let html = render_inspector_state(state);
+    assert!(html.contains("if-rebind-composite__listening"));
+    assert!(html.contains("Hold Esc to cancel"));
+}
+
+#[test]
+fn composer_timed_out_and_canceled_render_retry_help_branch() {
+    let mut state = state_with_selected_anchor();
+    let anchor_id = state.selected_anchor_id.clone().unwrap();
+    state.capture = CaptureStatus::TimedOut(anchor_id.clone());
+    assert!(render_inspector_state(state.clone()).contains("Capture timed out. Press to retry."));
+    state.capture = CaptureStatus::Canceled(anchor_id);
+    assert!(render_inspector_state(state).contains("Capture canceled. Press to retry."));
+}
+
+#[test]
+fn composer_help_branches_when_engine_stopped() {
+    let mut state = state_with_selected_anchor();
+    state.capture = CaptureStatus::Unavailable("live input is not available".to_owned());
+    let html =
+        render_inspector_state_with_availability(state, CaptureAvailabilityReason::EngineStopped);
+    assert!(html.contains("Start the engine to capture, or choose device manually."));
+}
+
+#[test]
+fn composer_help_branches_when_engine_running_with_no_devices() {
+    let mut state = state_with_selected_anchor();
+    state.capture = CaptureStatus::Unavailable("no connected devices".to_owned());
+    let html = render_inspector_state_with_availability(
+        state,
+        CaptureAvailabilityReason::EngineRunningNoDevices,
+    );
+    assert!(html.contains(
+        "Connect a device to capture, or use the manual disclosure when a device appears."
+    ));
 }
 
 #[test]

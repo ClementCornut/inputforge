@@ -122,6 +122,14 @@ pub(crate) enum CaptureStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum CaptureAvailabilityReason {
+    #[default]
+    CaptureAvailable,
+    EngineStopped,
+    EngineRunningNoDevices,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum ManualInputKind {
     #[default]
     Button,
