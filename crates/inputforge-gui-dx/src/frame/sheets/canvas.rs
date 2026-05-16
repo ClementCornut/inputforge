@@ -161,7 +161,10 @@ pub(crate) fn SheetsCanvas(
 
         match tool {
             SheetTool::Anchor => {
-                sheets.write().place_anchor(position);
+                let target = sheets.read().selected_template().and_then(|template| {
+                    placement_at_canvas_point(template, position.x, position.y)
+                });
+                sheets.write().place_anchor_on(position, target);
             }
             SheetTool::Select => {}
         }
@@ -274,6 +277,24 @@ pub(super) fn file_url_from_path(path: &Path) -> String {
     } else {
         format!("file:///{path}")
     }
+}
+
+pub(crate) fn placement_at_canvas_point(
+    template: &inputforge_core::sheet::DeviceTemplate,
+    canvas_x: f64,
+    canvas_y: f64,
+) -> Option<inputforge_core::sheet::AssetPlacementId> {
+    template
+        .placements
+        .iter()
+        .filter(|p| {
+            let rect = p.position;
+            let x = canvas_x as f32;
+            let y = canvas_y as f32;
+            x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h
+        })
+        .max_by_key(|p| p.z_index)
+        .map(|p| p.placement_id.clone())
 }
 
 fn asset_data_url(health: &AssetHealth) -> std::io::Result<String> {

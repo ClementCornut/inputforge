@@ -437,6 +437,14 @@ impl SheetsState {
     }
 
     pub(crate) fn place_anchor(&mut self, position: AnchorPosition) -> AnchorId {
+        self.place_anchor_on(position, None)
+    }
+
+    pub(crate) fn place_anchor_on(
+        &mut self,
+        position: AnchorPosition,
+        attached_to: Option<AssetPlacementId>,
+    ) -> AnchorId {
         let anchor_id = AnchorId::new();
         let Some(template) = self.selected_template_mut() else {
             return anchor_id;
@@ -447,14 +455,14 @@ impl SheetsState {
             anchor_id: anchor_id.clone(),
             label,
             position,
-            attached_to: None,
+            attached_to,
             input_type_hint: None,
             grouping_hint: None,
             device_matching_hint: None,
             extensions: ExtensionPayload::default(),
         };
-        template.anchors.push(anchor.clone());
         let template_id = template.template_id.clone();
+        template.anchors.push(anchor.clone());
         self.selected_anchor_id = Some(anchor_id.clone());
         self.push_event(SheetsEventKind::PlaceAnchor {
             template_id,
@@ -2146,5 +2154,48 @@ mod tests {
                 SheetTool::Select | SheetTool::Anchor => {}
             }
         }
+    }
+
+    #[test]
+    fn placing_anchor_with_target_placement_records_attached_to() {
+        use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+        let mut state = state_with_template();
+        let placement_id = AssetPlacementId::from_string("p-target");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: AssetId::from_string("asset-1"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 1.0,
+                h: 1.0,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+
+        let anchor_id = state.place_anchor_on(
+            AnchorPosition { x: 0.5, y: 0.5 },
+            Some(placement_id.clone()),
+        );
+
+        let anchor = state.templates[0]
+            .anchors
+            .iter()
+            .find(|a| a.anchor_id == anchor_id)
+            .unwrap();
+        assert_eq!(anchor.attached_to, Some(placement_id));
+    }
+
+    #[test]
+    fn placing_anchor_without_target_records_floating_anchor() {
+        let mut state = state_with_template();
+        let anchor_id = state.place_anchor_on(AnchorPosition { x: 0.5, y: 0.5 }, None);
+        let anchor = state.templates[0]
+            .anchors
+            .iter()
+            .find(|a| a.anchor_id == anchor_id)
+            .unwrap();
+        assert_eq!(anchor.attached_to, None);
     }
 }
