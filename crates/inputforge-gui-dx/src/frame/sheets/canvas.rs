@@ -62,8 +62,7 @@ pub(crate) fn SheetsCanvas(
     let has_template = selected_template.is_some();
     let toolbar_name = selected_template
         .as_ref()
-        .map(|t| t.display_name.clone())
-        .unwrap_or_else(|| "No template".to_owned());
+        .map_or_else(|| "No template".to_owned(), |t| t.display_name.clone());
     let tool_is_select = matches!(tool, SheetTool::Select);
     let tool_is_anchor = matches!(tool, SheetTool::Anchor);
     let (autosave_status_token, autosave_tone, autosave_label) = match sheets.read().autosave {
@@ -236,7 +235,11 @@ pub(crate) fn SheetsCanvas(
         let Some(pixel_dimensions) = pixel_dimensions else {
             return;
         };
-        let drop_rect = default_rect_at(position.x as f32, position.y as f32, pixel_dimensions);
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "DOM event coordinates arrive as f64 but downstream layout uses f32"
+        )]
+        let drop_rect = default_rect_at(position.x as f32, position.y as f32, &pixel_dimensions);
         let _ = sheets
             .write()
             .add_placement(template_id, asset_id, drop_rect);
@@ -245,7 +248,7 @@ pub(crate) fn SheetsCanvas(
     let pending_slots = sheets.read().pending_preset_slots.clone();
     let placements_empty = selected_template
         .as_ref()
-        .map_or(true, |template| template.placements.is_empty());
+        .is_none_or(|template| template.placements.is_empty());
     let show_empty_dropzone = placements_empty && pending_slots.is_empty() && has_template;
     let empty_dropzone_template_id = selected_template
         .as_ref()
@@ -289,7 +292,11 @@ pub(crate) fn SheetsCanvas(
         let Some(pixel_dimensions) = pixel_dimensions else {
             return;
         };
-        let drop_rect = default_rect_at(position.x as f32, position.y as f32, pixel_dimensions);
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "DOM event coordinates arrive as f64 but downstream layout uses f32"
+        )]
+        let drop_rect = default_rect_at(position.x as f32, position.y as f32, &pixel_dimensions);
         let _ = sheets
             .write()
             .add_placement(template_id, asset_id, drop_rect);
@@ -489,6 +496,10 @@ pub(crate) fn SheetsCanvas(
                                         .default_anchor_bindings
                                         .iter()
                                         .find(|b| b.anchor_id == anchor.anchor_id);
+                                    #[allow(
+                                        clippy::match_same_arms,
+                                        reason = "explicit arms keep each AnchorAssignment variant visible"
+                                    )]
                                     let shape_class = match binding.map(|b| b.assignment) {
                                         None => "if-sheets__anchor--unassigned",
                                         Some(AnchorAssignment::Captured) => {
@@ -589,6 +600,10 @@ pub(crate) fn anchor_canvas_coords(
     )
 }
 
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "canvas coordinates arrive as f64 but template rects are stored as f32"
+)]
 pub(crate) fn placement_at_canvas_point(
     template: &inputforge_core::sheet::DeviceTemplate,
     canvas_x: f64,

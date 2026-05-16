@@ -368,7 +368,7 @@ fn composer_help_branches_when_engine_running_with_no_devices() {
 
 #[test]
 fn inspector_disables_manual_assignment_while_capture_is_armed() {
-    let anchor_id = inputforge_core::sheet::AnchorId::from_string("anchor-1");
+    let anchor_id = AnchorId::from_string("anchor-1");
     let html = render_inspector_state_with_devices(
         SheetsState {
             selected_anchor_id: Some(anchor_id.clone()),
@@ -832,6 +832,10 @@ fn valid_asset_canvas_uses_data_url_for_image_source() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "test scenario builds a multi-asset workbench inline for clarity"
+)]
 fn selecting_non_first_asset_makes_it_canvas_asset() {
     #[expect(
         non_snake_case,
@@ -954,6 +958,10 @@ fn selecting_non_first_asset_makes_it_canvas_asset() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "test scenario seeds multi-asset missing-state recovery surface inline"
+)]
 fn selecting_non_first_missing_asset_renders_its_recovery_paths() {
     #[expect(
         non_snake_case,
@@ -1131,7 +1139,7 @@ fn missing_asset_canvas_preserves_anchor_count_message() {
         let selected_template = initial_state.templates[0].template_id.clone();
         let selected_asset = initial_state.assets[0].clone();
         initial_state.templates[0].anchors.push(TemplateAnchor {
-            anchor_id: inputforge_core::sheet::AnchorId::from_string("anchor-1"),
+            anchor_id: AnchorId::from_string("anchor-1"),
             label: "Trigger".to_owned(),
             position: AnchorPosition { x: 0.25, y: 0.5 },
             attached_to: None,
@@ -1194,7 +1202,7 @@ fn missing_asset_canvas_renders_recovery_paths_with_anchor_count() {
         initial_state.create_template_from_asset(asset_id, "Arcade panel");
         let selected_asset = initial_state.assets[0].clone();
         initial_state.templates[0].anchors.push(TemplateAnchor {
-            anchor_id: inputforge_core::sheet::AnchorId::from_string("anchor-1"),
+            anchor_id: AnchorId::from_string("anchor-1"),
             label: "Trigger".to_owned(),
             position: AnchorPosition { x: 0.25, y: 0.5 },
             attached_to: None,
@@ -1517,7 +1525,7 @@ fn template_card_pluralizes_frame_and_anchor_counts() {
                         w: 0.1,
                         h: 0.1,
                     },
-                    z_index: i as i32,
+                    z_index: i32::try_from(i).expect("test placement count fits in i32"),
                     extensions: ExtensionPayload::default(),
                 });
             }
@@ -1921,6 +1929,12 @@ fn unavailable_assignment_renders_unassigned_shape() {
     use inputforge_core::sheet::{AnchorAssignment, AnchorBinding, TemplateAnchor};
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness(props: SheetsState) -> Element {
+        let sheets = use_signal(|| props);
+        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+    }
+
     let mut state = SheetsState::default();
     state.create_blank_template();
     state.templates[0].anchors.push(TemplateAnchor {
@@ -1945,11 +1959,6 @@ fn unavailable_assignment_renders_unassigned_shape() {
             assignment: AnchorAssignment::Unavailable,
         });
 
-    #[expect(non_snake_case, reason = "Dioxus component")]
-    fn Harness(props: SheetsState) -> Element {
-        let sheets = use_signal(|| props);
-        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
-    }
     let mut vdom = VirtualDom::new_with_props(Harness, state);
     vdom.rebuild_in_place();
     let html = dioxus_ssr::render(&vdom);

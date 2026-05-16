@@ -14,8 +14,10 @@ fn filename_of(asset: &AssetEntry) -> String {
         .as_ref()
         .and_then(|p| p.file_name())
         .or_else(|| asset.copied_path.file_name())
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| asset.copied_path.display().to_string())
+        .map_or_else(
+            || asset.copied_path.display().to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        )
 }
 
 const PRESET_OPTIONS: &[(&str, SheetLayoutPreset)] = &[

@@ -441,7 +441,7 @@ impl SheetsState {
     }
 
     /// Explicit "Skip" path: user wants a blank template without preset slots. Creates the
-    /// template, records the CreateTemplate event, closes the picker.
+    /// template, records the `CreateTemplate` event, closes the picker.
     pub(crate) fn skip_template_preset_picker(&mut self) {
         self.create_blank_template();
         self.preset_picker_open = false;
@@ -473,7 +473,7 @@ impl SheetsState {
         if trimmed.is_empty() {
             return;
         }
-        self.rename_selected_template(trimmed.to_owned());
+        self.rename_selected_template(trimmed);
     }
 
     pub(crate) fn update_anchor_label_draft(&mut self, value: String) {
@@ -589,7 +589,7 @@ impl SheetsState {
     pub(crate) fn remove_placement(
         &mut self,
         template_id: TemplateId,
-        placement_id: AssetPlacementId,
+        placement_id: &AssetPlacementId,
     ) -> Result<(), String> {
         let template = self
             .templates
@@ -599,12 +599,12 @@ impl SheetsState {
         let index = template
             .placements
             .iter()
-            .position(|p| p.placement_id == placement_id)
+            .position(|p| &p.placement_id == placement_id)
             .ok_or_else(|| format!("placement {} not found", placement_id.as_str()))?;
         let placement = template.placements.remove(index);
         let mut dropped_anchors = Vec::new();
         template.anchors.retain(|anchor| {
-            if anchor.attached_to.as_ref() == Some(&placement_id) {
+            if anchor.attached_to.as_ref() == Some(placement_id) {
                 dropped_anchors.push(anchor.clone());
                 false
             } else {
@@ -890,7 +890,7 @@ impl SheetsState {
         self.selected_asset().is_none()
             || self
                 .selected_asset_health()
-                .map_or(true, |health| health.missing)
+                .is_none_or(|health| health.missing)
     }
 
     pub(crate) fn arm_capture(&mut self, anchor_id: AnchorId) {
@@ -953,7 +953,7 @@ impl SheetsState {
             .selected_anchor_mut()
             .ok_or_else(|| "selected anchor missing".to_owned())?;
         let before = anchor.attached_to.clone();
-        anchor.attached_to = attached_to.clone();
+        anchor.attached_to.clone_from(&attached_to);
 
         self.push_event(SheetsEventKind::ToggleAnchorAttach {
             template_id,
@@ -1095,11 +1095,11 @@ impl SheetsState {
         self.push_event(SheetsEventKind::ImportAsset { asset });
     }
 
-    pub(crate) fn remove_asset(&mut self, asset_id: AssetId) -> Result<(), String> {
+    pub(crate) fn remove_asset(&mut self, asset_id: &AssetId) -> Result<(), String> {
         let asset_idx = self
             .assets
             .iter()
-            .position(|a| a.asset_id == asset_id)
+            .position(|a| &a.asset_id == asset_id)
             .ok_or_else(|| format!("asset {asset_id} not found"))?;
         let asset = self.assets.remove(asset_idx);
 
@@ -1112,7 +1112,7 @@ impl SheetsState {
             // anchor cascade and the event payload.
             let mut local_placement_ids = Vec::new();
             template.placements.retain(|p| {
-                if p.asset_id == asset_id {
+                if &p.asset_id == asset_id {
                     local_placement_ids.push(p.placement_id.clone());
                     dropped_placements.push((template_id.clone(), p.clone()));
                     false
@@ -1217,7 +1217,7 @@ pub(crate) fn normalized_image_point(
     })
 }
 
-pub(crate) fn default_rect_at(x: f32, y: f32, pixel_dimensions: PixelDimensions) -> TemplateRect {
+pub(crate) fn default_rect_at(x: f32, y: f32, pixel_dimensions: &PixelDimensions) -> TemplateRect {
     let aspect = pixel_dimensions.width as f32 / pixel_dimensions.height.max(1) as f32;
 
     // Target a quarter-canvas width first; if that would produce a height larger than half the
@@ -1363,7 +1363,7 @@ mod tests {
         let original = state.templates[0].anchors[0].label.clone();
         let baseline_history = state.history.len();
 
-        state.update_anchor_label_draft("".to_owned());
+        state.update_anchor_label_draft(String::new());
         state.commit_anchor_label_draft();
         state.update_anchor_label_draft("   ".to_owned());
         state.commit_anchor_label_draft();
@@ -1701,7 +1701,7 @@ mod tests {
             }
         }
 
-        assert!(classify_save_outcome(Ok(()), Ok(())).is_ok());
+        classify_save_outcome(Ok(()), Ok(())).unwrap();
 
         let err = classify_save_outcome(Err(asset_err()), Ok(())).unwrap_err();
         assert!(err.to_string().contains("asset failed"));
@@ -1795,7 +1795,7 @@ mod tests {
             .add_placement(
                 template_id.clone(),
                 asset_id.clone(),
-                inputforge_core::sheet::TemplateRect {
+                TemplateRect {
                     x: 0.1,
                     y: 0.1,
                     w: 0.3,
@@ -1854,9 +1854,7 @@ mod tests {
             extensions: ExtensionPayload::default(),
         });
 
-        state
-            .remove_placement(template_id, placement_id.clone())
-            .unwrap();
+        state.remove_placement(template_id, &placement_id).unwrap();
 
         let template = &state.templates[0];
         assert!(
@@ -2136,12 +2134,12 @@ mod tests {
             extensions: ExtensionPayload::default(),
         });
 
-        state.assets.push(inputforge_core::sheet::AssetEntry {
+        state.assets.push(AssetEntry {
             asset_id: asset_id.clone(),
-            copied_path: std::path::PathBuf::from("assets/cascade.png"),
+            copied_path: PathBuf::from("assets/cascade.png"),
             content_hash: "hash".to_owned(),
             media_type: "image/png".to_owned(),
-            pixel_dimensions: inputforge_core::sheet::PixelDimensions {
+            pixel_dimensions: PixelDimensions {
                 width: 1,
                 height: 1,
             },
@@ -2149,7 +2147,7 @@ mod tests {
             extensions: ExtensionPayload::default(),
         });
 
-        state.remove_asset(asset_id.clone()).unwrap();
+        state.remove_asset(&asset_id).unwrap();
         assert!(state.assets.iter().all(|a| a.asset_id != asset_id));
         assert!(
             state.templates[0]
@@ -2358,7 +2356,6 @@ mod tests {
 
     #[test]
     fn sheet_tool_default_is_select_and_only_anchor_variant_exists_besides_it() {
-        assert_eq!(SheetTool::default(), SheetTool::Select);
         // Compile-time exhaustiveness: this match must remain total. If a third variant lands
         // (or Anchor is renamed), the compiler refuses the build.
         fn _matches(tool: SheetTool) {
@@ -2366,6 +2363,7 @@ mod tests {
                 SheetTool::Select | SheetTool::Anchor => {}
             }
         }
+        assert_eq!(SheetTool::default(), SheetTool::Select);
     }
 
     #[test]
@@ -2418,7 +2416,7 @@ mod tests {
         let rect = default_rect_at(
             0.5,
             0.5,
-            PixelDimensions {
+            &PixelDimensions {
                 width: 100,
                 height: 100,
             },
@@ -2434,7 +2432,7 @@ mod tests {
         let rect = default_rect_at(
             0.5,
             0.5,
-            PixelDimensions {
+            &PixelDimensions {
                 width: 400,
                 height: 100,
             },
@@ -2450,7 +2448,7 @@ mod tests {
         let rect = default_rect_at(
             0.5,
             0.5,
-            PixelDimensions {
+            &PixelDimensions {
                 width: 100,
                 height: 400,
             },
@@ -2467,7 +2465,7 @@ mod tests {
         let rect = default_rect_at(
             1.0,
             1.0,
-            PixelDimensions {
+            &PixelDimensions {
                 width: 100,
                 height: 100,
             },

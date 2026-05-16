@@ -60,7 +60,7 @@ fn primary_nav_destinations(
             active: current_surface == MainSurface::Mappings,
             disabled: false,
             disabled_reason: "",
-            onclick: EventHandler::new(move |_| {
+            onclick: EventHandler::new(move |()| {
                 select_primary_surface(
                     MainSurface::Mappings,
                     &mut mappings_surface,
@@ -73,7 +73,7 @@ fn primary_nav_destinations(
             active: current_surface == MainSurface::BulkMap,
             disabled: !has_profile,
             disabled_reason: "Load a profile to batch map a device.",
-            onclick: EventHandler::new(move |_| {
+            onclick: EventHandler::new(move |()| {
                 select_primary_surface(
                     MainSurface::BulkMap,
                     &mut bulk_map_surface,
@@ -86,7 +86,7 @@ fn primary_nav_destinations(
             active: current_surface == MainSurface::Sheets,
             disabled: false,
             disabled_reason: "",
-            onclick: EventHandler::new(move |_| {
+            onclick: EventHandler::new(move |()| {
                 select_primary_surface(
                     MainSurface::Sheets,
                     &mut sheets_surface,

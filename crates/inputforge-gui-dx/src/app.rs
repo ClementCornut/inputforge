@@ -167,6 +167,10 @@ mod tests {
         }
     }
 
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Dioxus component props are passed by value; the document is moved into the context provider"
+    )]
     fn app_root_view_with_recording_document(document: RecordingDocument) -> Element {
         use_context_provider(|| Rc::new(document.clone()) as Rc<dyn document::Document>);
 

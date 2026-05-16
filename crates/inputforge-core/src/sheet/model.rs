@@ -706,6 +706,10 @@ default_token_preset = "standard"
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "scenario constructs three-template / three-sheet fixture inline for clarity"
+    )]
     fn template_default_binding_edits_do_not_mutate_sheet_instance_bindings_or_overrides() {
         let anchor_id = AnchorId::from_string("anchor-trigger");
         let template_id = TemplateId::from_string("template-stick-left");
@@ -1069,7 +1073,7 @@ index = 3
 
         assert_eq!(decoded, placement);
         assert_eq!(decoded.z_index, 3);
-        assert_eq!(decoded.position.w, 0.9);
+        assert!((decoded.position.w - 0.9).abs() < 1e-6);
     }
 
     #[test]
