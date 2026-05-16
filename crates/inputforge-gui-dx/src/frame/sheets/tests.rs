@@ -2585,3 +2585,54 @@ fn frame_inspector_inputs_render_with_event_handlers() {
         "frame inputs must not be readonly: {html}"
     );
 }
+
+#[test]
+fn anchor_inspector_renders_x_y_inputs_with_correct_values() {
+    let mut state = state_with_selected_anchor();
+    state.templates[0].anchors[0].position = AnchorPosition { x: 0.42, y: 0.73 };
+    let html = render_inspector_state(state);
+    for axis in ["x", "y"] {
+        assert!(
+            html.contains(&format!("data-axis=\"{axis}\"")),
+            "anchor branch missing data-axis={axis}: {html}"
+        );
+    }
+    assert!(
+        html.contains("0.42"),
+        "anchor x input value should reflect position: {html}"
+    );
+    assert!(
+        html.contains("0.73"),
+        "anchor y input value should reflect position: {html}"
+    );
+}
+
+#[test]
+fn anchor_inspector_renders_delete_button() {
+    let state = state_with_selected_anchor();
+    let html = render_inspector_state(state);
+    // Multiple ">Delete<" matches are possible if frame Delete is also rendered, but the anchor
+    // branch render path doesn't render the frame branch concurrently. Still, scope to the anchor
+    // branch by also asserting the ANCHOR eyebrow is present.
+    assert!(html.contains(">ANCHOR<"));
+    assert!(
+        html.contains(">Delete<"),
+        "anchor branch must render a Delete button: {html}"
+    );
+}
+
+#[test]
+fn anchor_delete_invokes_remove_selected_anchor() {
+    let mut state = state_with_selected_anchor();
+    let anchor_id = state.selected_anchor_id.clone().unwrap();
+    let baseline = state.history.len();
+    state.remove_selected_anchor().unwrap();
+    assert!(
+        state.templates[0]
+            .anchors
+            .iter()
+            .all(|a| a.anchor_id != anchor_id)
+    );
+    assert!(state.selected_anchor_id.is_none());
+    assert_eq!(state.history.len() - baseline, 1);
+}

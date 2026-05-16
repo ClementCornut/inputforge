@@ -6,7 +6,7 @@
 use dioxus::prelude::*;
 
 use inputforge_core::sheet::{
-    AnchorAssignment, AnchorId, AssetPlacement, TemplateAnchor, TemplateRect,
+    AnchorAssignment, AnchorId, AnchorPosition, AssetPlacement, TemplateAnchor, TemplateRect,
 };
 use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
@@ -38,6 +38,12 @@ pub(crate) fn SheetsInspector(
     let mut frame_y_draft = use_signal::<Option<String>>(|| None);
     let mut frame_w_draft = use_signal::<Option<String>>(|| None);
     let mut frame_h_draft = use_signal::<Option<String>>(|| None);
+
+    // Local drafts for the anchor x/y inputs. Same draft/commit-on-blur
+    // pattern as the frame rect drafts above. Reset whenever the selected
+    // anchor changes so a fresh anchor renders its persisted position.
+    let mut anchor_x_draft = use_signal::<Option<String>>(|| None);
+    let mut anchor_y_draft = use_signal::<Option<String>>(|| None);
 
     // Pull every read-only snapshot we need in one borrow so we never hold a `read()` guard
     // across an `rsx!` expression that also has to `write()` to the same signal.
@@ -127,6 +133,15 @@ pub(crate) fn SheetsInspector(
         frame_y_draft.set(None);
         frame_w_draft.set(None);
         frame_h_draft.set(None);
+    }));
+
+    // Reset anchor x/y drafts whenever the selected anchor changes so the
+    // inputs always render the persisted position for the active anchor.
+    let selected_anchor_id_for_reset = selected_anchor_id.clone();
+    use_effect(use_reactive!(|selected_anchor_id_for_reset| {
+        let _ = selected_anchor_id_for_reset;
+        anchor_x_draft.set(None);
+        anchor_y_draft.set(None);
     }));
 
     let is_capture_armed = matches!(capture, CaptureStatus::Armed(_));
@@ -221,7 +236,76 @@ pub(crate) fn SheetsInspector(
                                 }
                             }
                         }
-                        p { "Position: ({anchor.position.x:.3}, {anchor.position.y:.3})" }
+                        label {
+                            "X"
+                            input {
+                                r#type: "number",
+                                "data-axis": "x",
+                                step: "0.01",
+                                min: "0",
+                                max: "1",
+                                value: "{anchor_x_draft.read().clone().unwrap_or_else(|| anchor.position.x.to_string())}",
+                                oninput: move |evt: FormEvent| { anchor_x_draft.set(Some(evt.value())); },
+                                onblur: {
+                                    let mut sheets_for_x_blur = sheets;
+                                    let current_y = anchor.position.y;
+                                    move |_| {
+                                        if let Some(draft) = anchor_x_draft.write().take()
+                                            && let Ok(parsed) = draft.trim().parse::<f64>() {
+                                            let clamped_x = parsed.clamp(0.0, 1.0);
+                                            sheets_for_x_blur.write().update_selected_anchor_position(AnchorPosition { x: clamped_x, y: current_y });
+                                        }
+                                    }
+                                },
+                                onkeydown: {
+                                    let mut sheets_for_x_enter = sheets;
+                                    let current_y = anchor.position.y;
+                                    move |evt: KeyboardEvent| {
+                                        if evt.key() == Key::Enter
+                                            && let Some(draft) = anchor_x_draft.write().take()
+                                            && let Ok(parsed) = draft.trim().parse::<f64>() {
+                                            let clamped_x = parsed.clamp(0.0, 1.0);
+                                            sheets_for_x_enter.write().update_selected_anchor_position(AnchorPosition { x: clamped_x, y: current_y });
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                        label {
+                            "Y"
+                            input {
+                                r#type: "number",
+                                "data-axis": "y",
+                                step: "0.01",
+                                min: "0",
+                                max: "1",
+                                value: "{anchor_y_draft.read().clone().unwrap_or_else(|| anchor.position.y.to_string())}",
+                                oninput: move |evt: FormEvent| { anchor_y_draft.set(Some(evt.value())); },
+                                onblur: {
+                                    let mut sheets_for_y_blur = sheets;
+                                    let current_x = anchor.position.x;
+                                    move |_| {
+                                        if let Some(draft) = anchor_y_draft.write().take()
+                                            && let Ok(parsed) = draft.trim().parse::<f64>() {
+                                            let clamped_y = parsed.clamp(0.0, 1.0);
+                                            sheets_for_y_blur.write().update_selected_anchor_position(AnchorPosition { x: current_x, y: clamped_y });
+                                        }
+                                    }
+                                },
+                                onkeydown: {
+                                    let mut sheets_for_y_enter = sheets;
+                                    let current_x = anchor.position.x;
+                                    move |evt: KeyboardEvent| {
+                                        if evt.key() == Key::Enter
+                                            && let Some(draft) = anchor_y_draft.write().take()
+                                            && let Ok(parsed) = draft.trim().parse::<f64>() {
+                                            let clamped_y = parsed.clamp(0.0, 1.0);
+                                            sheets_for_y_enter.write().update_selected_anchor_position(AnchorPosition { x: current_x, y: clamped_y });
+                                        }
+                                    }
+                                },
+                            }
+                        }
                     }
                     section {
                         span { class: "if-sheets__eyebrow", "ASSIGNMENT" }
@@ -357,6 +441,17 @@ pub(crate) fn SheetsInspector(
                                 }
                             }
                         }
+                    }
+                    button {
+                        r#type: "button",
+                        class: "if-sheets__inspector-destructive",
+                        onclick: {
+                            let mut sheets_for_anchor_delete = sheets;
+                            move |_| {
+                                let _ = sheets_for_anchor_delete.write().remove_selected_anchor();
+                            }
+                        },
+                        "Delete"
                     }
                 }
             } else if let Some(placement) = selected_placement {
