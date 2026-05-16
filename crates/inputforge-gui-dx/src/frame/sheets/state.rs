@@ -1,8 +1,14 @@
+use std::collections::VecDeque;
+use std::time::Instant;
+
 use inputforge_core::sheet::{
     AnchorAssignment, AnchorBinding, AnchorId, AnchorPosition, AssetEntry, AssetId, AssetPlacement,
-    AssetPlacementId, DeviceTemplate, ExtensionPayload, TemplateId, TemplateRect, TokenPreset,
+    AssetPlacementId, DeviceTemplate, ExtensionPayload, TemplateAnchor, TemplateId, TemplateRect,
+    TokenPreset,
 };
 use inputforge_core::types::{DeviceId, InputAddress, InputId};
+
+const SHEETS_HISTORY_CAP: usize = 200;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum SheetTool {
@@ -48,6 +54,90 @@ pub(crate) enum SheetsLibraryTab {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) enum SheetsEventKind {
+    CreateTemplate(TemplateId),
+    RenameTemplate {
+        template_id: TemplateId,
+        before: String,
+        after: String,
+    },
+    AddPlacement {
+        template_id: TemplateId,
+        placement: AssetPlacement,
+    },
+    RemovePlacement {
+        template_id: TemplateId,
+        placement: AssetPlacement,
+        dropped_anchors: Vec<TemplateAnchor>,
+    },
+    MovePlacement {
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+        before: TemplateRect,
+        after: TemplateRect,
+    },
+    ResizePlacement {
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+        before: TemplateRect,
+        after: TemplateRect,
+    },
+    ReorderZ {
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+        before: i32,
+        after: i32,
+    },
+    PlaceAnchor {
+        template_id: TemplateId,
+        anchor: TemplateAnchor,
+    },
+    RemoveAnchor {
+        template_id: TemplateId,
+        anchor: TemplateAnchor,
+    },
+    RenameAnchor {
+        template_id: TemplateId,
+        anchor_id: AnchorId,
+        before: String,
+        after: String,
+    },
+    MoveAnchor {
+        template_id: TemplateId,
+        anchor_id: AnchorId,
+        before: AnchorPosition,
+        after: AnchorPosition,
+    },
+    ToggleAnchorAttach {
+        template_id: TemplateId,
+        anchor_id: AnchorId,
+        before: Option<AssetPlacementId>,
+        after: Option<AssetPlacementId>,
+    },
+    AssignAnchor {
+        template_id: TemplateId,
+        anchor_id: AnchorId,
+        before: Option<AnchorBinding>,
+        after: Option<AnchorBinding>,
+    },
+    ImportAsset {
+        asset: AssetEntry,
+    },
+    RemoveAsset {
+        asset: AssetEntry,
+        dropped_placements: Vec<(TemplateId, AssetPlacement)>,
+        dropped_anchors: Vec<(TemplateId, TemplateAnchor)>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SheetsEvent {
+    // session-scoped, never serialized; spec line 114
+    pub timestamp: Instant,
+    pub kind: SheetsEventKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SheetsState {
     pub templates: Vec<DeviceTemplate>,
     pub assets: Vec<AssetEntry>,
@@ -60,6 +150,7 @@ pub(crate) struct SheetsState {
     pub autosave: AutosaveStatus,
     pub capture: CaptureStatus,
     pub last_error: Option<String>,
+    pub history: VecDeque<SheetsEvent>,
 }
 
 impl Default for SheetsState {
@@ -76,6 +167,7 @@ impl Default for SheetsState {
             autosave: AutosaveStatus::Clean,
             capture: CaptureStatus::Unavailable("live input is not available".to_owned()),
             last_error: None,
+            history: VecDeque::new(),
         }
     }
 }
@@ -105,6 +197,7 @@ impl SheetsState {
             autosave: AutosaveStatus::Clean,
             capture: CaptureStatus::Unavailable("live input is not available".to_owned()),
             last_error: None,
+            history: VecDeque::new(),
         }
     }
 
@@ -196,18 +289,16 @@ impl SheetsState {
         };
 
         let label = format!("Anchor {}", template.anchors.len() + 1);
-        template
-            .anchors
-            .push(inputforge_core::sheet::TemplateAnchor {
-                anchor_id: anchor_id.clone(),
-                label,
-                position,
-                attached_to: None,
-                input_type_hint: None,
-                grouping_hint: None,
-                device_matching_hint: None,
-                extensions: ExtensionPayload::default(),
-            });
+        template.anchors.push(TemplateAnchor {
+            anchor_id: anchor_id.clone(),
+            label,
+            position,
+            attached_to: None,
+            input_type_hint: None,
+            grouping_hint: None,
+            device_matching_hint: None,
+            extensions: ExtensionPayload::default(),
+        });
         self.selected_anchor_id = Some(anchor_id.clone());
         self.mark_dirty();
         anchor_id
@@ -380,6 +471,20 @@ impl SheetsState {
         self.last_error = Some(error.into());
     }
 
+    pub(crate) fn push_event_for_tests(&mut self, kind: SheetsEventKind) {
+        self.push_event(kind);
+    }
+
+    fn push_event(&mut self, kind: SheetsEventKind) {
+        self.history.push_back(SheetsEvent {
+            timestamp: Instant::now(),
+            kind,
+        });
+        if self.history.len() > SHEETS_HISTORY_CAP {
+            self.history.pop_front();
+        }
+    }
+
     fn mark_dirty(&mut self) {
         self.autosave = AutosaveStatus::Dirty;
         self.last_error = None;
@@ -392,7 +497,7 @@ impl SheetsState {
             .find(|template| &template.template_id == selected_template_id)
     }
 
-    fn selected_anchor_mut(&mut self) -> Option<&mut inputforge_core::sheet::TemplateAnchor> {
+    fn selected_anchor_mut(&mut self) -> Option<&mut TemplateAnchor> {
         let selected_anchor_id = self.selected_anchor_id.clone()?;
         self.selected_template_mut()?
             .anchors
@@ -439,7 +544,7 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    use inputforge_core::sheet::{AssetHealth, InputTypeHint, PixelDimensions, TemplateAnchor};
+    use inputforge_core::sheet::{AssetHealth, InputTypeHint, PixelDimensions};
 
     fn button_input(index: u8) -> InputAddress {
         InputAddress::Bound {
@@ -506,6 +611,7 @@ mod tests {
             autosave: AutosaveStatus::Clean,
             capture: CaptureStatus::Unavailable("live input is not available".to_owned()),
             last_error: None,
+            history: VecDeque::new(),
         }
     }
 
@@ -851,6 +957,19 @@ mod tests {
             err.to_string().contains("asset failed"),
             "both-failed arm reports the asset error first because the manifest write runs first"
         );
+    }
+
+    #[test]
+    fn history_starts_empty_and_caps_at_200_entries() {
+        let mut state = SheetsState::default();
+        assert!(state.history.is_empty());
+
+        for _ in 0..205 {
+            state.push_event_for_tests(SheetsEventKind::CreateTemplate(TemplateId::from_string(
+                "t",
+            )));
+        }
+        assert_eq!(state.history.len(), 200);
     }
 
     #[test]
