@@ -316,7 +316,7 @@ mod tests {
                 template_id: TemplateId::from_string("template-stick-left"),
                 display_name: "Left Stick".to_owned(),
                 matching_hints: Vec::new(),
-                asset_ids: Vec::new(),
+                placements: Vec::new(),
                 anchors: Vec::new(),
                 default_anchor_bindings: Vec::new(),
                 grouping_hints: Vec::new(),

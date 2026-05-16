@@ -26,7 +26,16 @@ pub(crate) fn SheetsLeftRail(
     let asset_count = assets.len();
     let template_assets: Vec<(TemplateId, Vec<AssetId>)> = templates
         .iter()
-        .map(|template| (template.template_id.clone(), template.asset_ids.clone()))
+        .map(|template| {
+            (
+                template.template_id.clone(),
+                template
+                    .placements
+                    .iter()
+                    .map(|p| p.asset_id.clone())
+                    .collect::<Vec<_>>(),
+            )
+        })
         .collect();
     let handle_import_image = move |_| on_import_image.call(());
     let handle_create_template = move |_| on_create_template.call(());

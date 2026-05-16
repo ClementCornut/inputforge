@@ -2,8 +2,9 @@ use std::path::PathBuf;
 
 use dioxus::prelude::*;
 use inputforge_core::sheet::{
-    AnchorPosition, AssetEntry, AssetHealth, AssetId, DeviceTemplate, ExtensionPayload,
-    PixelDimensions, TemplateAnchor, TemplateId, TokenPreset,
+    AnchorPosition, AssetEntry, AssetHealth, AssetId, AssetPlacement, AssetPlacementId,
+    DeviceTemplate, ExtensionPayload, PixelDimensions, TemplateAnchor, TemplateId, TemplateRect,
+    TokenPreset,
 };
 
 use super::SheetsWorkbench;
@@ -396,7 +397,7 @@ fn creating_blank_template_selects_template_without_asset_and_marks_dirty() {
     let template = &state.templates[0];
     assert_eq!(template.template_id, template_id);
     assert_eq!(template.display_name, "Untitled template 1");
-    assert!(template.asset_ids.is_empty());
+    assert!(template.placements.is_empty());
     assert!(template.anchors.is_empty());
     assert!(template.default_anchor_bindings.is_empty());
     assert_eq!(template.default_token_preset, TokenPreset::Standard);
@@ -478,7 +479,14 @@ fn creating_template_from_asset_selects_template_and_marks_dirty() {
     let template = &state.templates[0];
     assert_eq!(template.template_id, template_id);
     assert_eq!(template.display_name, "Arcade panel");
-    assert_eq!(template.asset_ids, vec![asset_id]);
+    assert_eq!(
+        template
+            .placements
+            .iter()
+            .map(|p| p.asset_id.clone())
+            .collect::<Vec<_>>(),
+        vec![asset_id]
+    );
     assert!(template.anchors.is_empty());
     assert!(template.default_anchor_bindings.is_empty());
     assert_eq!(template.default_token_preset, TokenPreset::Standard);
@@ -589,7 +597,32 @@ fn selecting_non_first_asset_makes_it_canvas_asset() {
                 template_id: template_id.clone(),
                 display_name: "Arcade panel".to_owned(),
                 matching_hints: Vec::new(),
-                asset_ids: vec![first_asset_id, second_asset_id.clone()],
+                placements: vec![
+                    AssetPlacement {
+                        placement_id: AssetPlacementId::new(),
+                        asset_id: first_asset_id,
+                        position: TemplateRect {
+                            x: 0.05,
+                            y: 0.05,
+                            w: 0.9,
+                            h: 0.9,
+                        },
+                        z_index: 0,
+                        extensions: ExtensionPayload::default(),
+                    },
+                    AssetPlacement {
+                        placement_id: AssetPlacementId::new(),
+                        asset_id: second_asset_id.clone(),
+                        position: TemplateRect {
+                            x: 0.05,
+                            y: 0.05,
+                            w: 0.9,
+                            h: 0.9,
+                        },
+                        z_index: 1,
+                        extensions: ExtensionPayload::default(),
+                    },
+                ],
                 anchors: Vec::new(),
                 default_anchor_bindings: Vec::new(),
                 grouping_hints: Vec::new(),
@@ -682,7 +715,32 @@ fn selecting_non_first_missing_asset_renders_its_recovery_paths() {
                 template_id: TemplateId::from_string("template-1"),
                 display_name: "Arcade panel".to_owned(),
                 matching_hints: Vec::new(),
-                asset_ids: vec![first_asset_id, second_asset_id.clone()],
+                placements: vec![
+                    AssetPlacement {
+                        placement_id: AssetPlacementId::new(),
+                        asset_id: first_asset_id,
+                        position: TemplateRect {
+                            x: 0.05,
+                            y: 0.05,
+                            w: 0.9,
+                            h: 0.9,
+                        },
+                        z_index: 0,
+                        extensions: ExtensionPayload::default(),
+                    },
+                    AssetPlacement {
+                        placement_id: AssetPlacementId::new(),
+                        asset_id: second_asset_id.clone(),
+                        position: TemplateRect {
+                            x: 0.05,
+                            y: 0.05,
+                            w: 0.9,
+                            h: 0.9,
+                        },
+                        z_index: 1,
+                        extensions: ExtensionPayload::default(),
+                    },
+                ],
                 anchors: Vec::new(),
                 default_anchor_bindings: Vec::new(),
                 grouping_hints: Vec::new(),
@@ -1000,7 +1058,32 @@ fn left_rail_marks_only_selected_non_first_asset_row() {
                 template_id: TemplateId::from_string("template-1"),
                 display_name: "Arcade panel".to_owned(),
                 matching_hints: Vec::new(),
-                asset_ids: vec![first_asset_id.clone(), second_asset_id.clone()],
+                placements: vec![
+                    AssetPlacement {
+                        placement_id: AssetPlacementId::new(),
+                        asset_id: first_asset_id.clone(),
+                        position: TemplateRect {
+                            x: 0.05,
+                            y: 0.05,
+                            w: 0.9,
+                            h: 0.9,
+                        },
+                        z_index: 0,
+                        extensions: ExtensionPayload::default(),
+                    },
+                    AssetPlacement {
+                        placement_id: AssetPlacementId::new(),
+                        asset_id: second_asset_id.clone(),
+                        position: TemplateRect {
+                            x: 0.05,
+                            y: 0.05,
+                            w: 0.9,
+                            h: 0.9,
+                        },
+                        z_index: 1,
+                        extensions: ExtensionPayload::default(),
+                    },
+                ],
                 anchors: Vec::new(),
                 default_anchor_bindings: Vec::new(),
                 grouping_hints: Vec::new(),

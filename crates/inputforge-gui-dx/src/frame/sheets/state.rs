@@ -1,6 +1,6 @@
 use inputforge_core::sheet::{
-    AnchorAssignment, AnchorBinding, AnchorId, AnchorPosition, AssetEntry, AssetId, DeviceTemplate,
-    ExtensionPayload, TemplateId, TokenPreset,
+    AnchorAssignment, AnchorBinding, AnchorId, AnchorPosition, AssetEntry, AssetId, AssetPlacement,
+    AssetPlacementId, DeviceTemplate, ExtensionPayload, TemplateId, TemplateRect, TokenPreset,
 };
 use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
@@ -90,7 +90,7 @@ impl SheetsState {
             .map(|template| template.template_id.clone());
         let selected_asset_id = templates
             .first()
-            .and_then(|template| template.asset_ids.first())
+            .and_then(|template| template.placements.first().map(|p| &p.asset_id))
             .cloned();
 
         Self {
@@ -126,7 +126,18 @@ impl SheetsState {
             template_id: template_id.clone(),
             display_name: display_name.into(),
             matching_hints: Vec::new(),
-            asset_ids: vec![asset_id.clone()],
+            placements: vec![AssetPlacement {
+                placement_id: AssetPlacementId::new(),
+                asset_id: asset_id.clone(),
+                position: TemplateRect {
+                    x: 0.05,
+                    y: 0.05,
+                    w: 0.9,
+                    h: 0.9,
+                },
+                z_index: 0,
+                extensions: ExtensionPayload::default(),
+            }],
             anchors: Vec::new(),
             default_anchor_bindings: Vec::new(),
             grouping_hints: Vec::new(),
@@ -147,7 +158,7 @@ impl SheetsState {
             template_id: template_id.clone(),
             display_name,
             matching_hints: Vec::new(),
-            asset_ids: Vec::new(),
+            placements: Vec::new(),
             anchors: Vec::new(),
             default_anchor_bindings: Vec::new(),
             grouping_hints: Vec::new(),
@@ -215,7 +226,7 @@ impl SheetsState {
             .find(|template| template.template_id == template_id)
         {
             self.selected_template_id = Some(template_id);
-            self.selected_asset_id = template.asset_ids.first().cloned();
+            self.selected_asset_id = template.placements.first().map(|p| p.asset_id.clone());
             self.selected_anchor_id = None;
         }
     }
@@ -224,7 +235,7 @@ impl SheetsState {
         if let Some(template_id) = self
             .templates
             .iter()
-            .find(|template| template.asset_ids.iter().any(|id| id == &asset_id))
+            .find(|template| template.placements.iter().any(|p| p.asset_id == asset_id))
             .map(|template| template.template_id.clone())
         {
             self.selected_template_id = Some(template_id);
@@ -238,12 +249,12 @@ impl SheetsState {
         if let Some(asset_id) = self
             .selected_asset_id
             .as_ref()
-            .filter(|asset_id| template.asset_ids.iter().any(|id| id == *asset_id))
+            .filter(|asset_id| template.placements.iter().any(|p| &p.asset_id == *asset_id))
         {
             return Some(asset_id);
         }
 
-        template.asset_ids.first()
+        template.placements.first().map(|p| &p.asset_id)
     }
 
     pub(crate) fn selected_asset(&self) -> Option<&AssetEntry> {
@@ -446,7 +457,18 @@ mod tests {
                 template_id: template_id.clone(),
                 display_name: "Test template".to_owned(),
                 matching_hints: Vec::new(),
-                asset_ids: vec![asset_id.clone()],
+                placements: vec![AssetPlacement {
+                    placement_id: AssetPlacementId::new(),
+                    asset_id: asset_id.clone(),
+                    position: TemplateRect {
+                        x: 0.05,
+                        y: 0.05,
+                        w: 0.9,
+                        h: 0.9,
+                    },
+                    z_index: 0,
+                    extensions: ExtensionPayload::default(),
+                }],
                 anchors: vec![TemplateAnchor {
                     anchor_id: anchor_id.clone(),
                     label: "Trigger".to_owned(),
@@ -546,7 +568,7 @@ mod tests {
     fn selecting_template_clears_anchor_without_marking_dirty() {
         let mut state = state_with_template();
         let template_id = state.templates[0].template_id.clone();
-        let asset_id = state.templates[0].asset_ids[0].clone();
+        let asset_id = state.templates[0].placements[0].asset_id.clone();
 
         state.select_template(template_id.clone());
 
@@ -560,10 +582,19 @@ mod tests {
     fn selecting_multi_asset_template_selects_first_asset_without_marking_dirty() {
         let mut state = state_with_template();
         let template_id = state.templates[0].template_id.clone();
-        let first_asset_id = state.templates[0].asset_ids[0].clone();
-        state.templates[0]
-            .asset_ids
-            .push(AssetId::from_string("asset-2"));
+        let first_asset_id = state.templates[0].placements[0].asset_id.clone();
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: AssetPlacementId::new(),
+            asset_id: AssetId::from_string("asset-2"),
+            position: TemplateRect {
+                x: 0.05,
+                y: 0.05,
+                w: 0.9,
+                h: 0.9,
+            },
+            z_index: 1,
+            extensions: ExtensionPayload::default(),
+        });
         state.selected_asset_id = Some(AssetId::from_string("asset-2"));
 
         state.select_template(template_id.clone());
@@ -584,7 +615,18 @@ mod tests {
             template_id: second_template_id.clone(),
             display_name: "Second template".to_owned(),
             matching_hints: Vec::new(),
-            asset_ids: vec![asset_id.clone()],
+            placements: vec![AssetPlacement {
+                placement_id: AssetPlacementId::new(),
+                asset_id: asset_id.clone(),
+                position: TemplateRect {
+                    x: 0.05,
+                    y: 0.05,
+                    w: 0.9,
+                    h: 0.9,
+                },
+                z_index: 0,
+                extensions: ExtensionPayload::default(),
+            }],
             anchors: Vec::new(),
             default_anchor_bindings: Vec::new(),
             grouping_hints: Vec::new(),
@@ -618,7 +660,18 @@ mod tests {
             original_import_path: None,
             extensions: ExtensionPayload::default(),
         };
-        state.templates[0].asset_ids.push(second_asset_id.clone());
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: AssetPlacementId::new(),
+            asset_id: second_asset_id.clone(),
+            position: TemplateRect {
+                x: 0.05,
+                y: 0.05,
+                w: 0.9,
+                h: 0.9,
+            },
+            z_index: 1,
+            extensions: ExtensionPayload::default(),
+        });
         state.assets.push(second_asset.clone());
         state.asset_health = vec![
             AssetHealth {

@@ -139,7 +139,7 @@ pub struct DeviceTemplate {
     #[serde(default)]
     pub matching_hints: Vec<DeviceMatchingHint>,
     #[serde(default)]
-    pub asset_ids: Vec<AssetId>,
+    pub placements: Vec<AssetPlacement>,
     #[serde(default)]
     pub anchors: Vec<TemplateAnchor>,
     #[serde(default)]
@@ -620,7 +620,7 @@ default_token_preset = "standard"
                 template_id: TemplateId::from_string("template-stick-left"),
                 display_name: "Left Stick".to_owned(),
                 matching_hints: Vec::new(),
-                asset_ids: Vec::new(),
+                placements: Vec::new(),
                 anchors: vec![TemplateAnchor {
                     anchor_id: anchor_id.clone(),
                     label: "Trigger".to_owned(),
@@ -679,7 +679,7 @@ default_token_preset = "standard"
                 template_id: template_id.clone(),
                 display_name: "Left Stick".to_owned(),
                 matching_hints: Vec::new(),
-                asset_ids: Vec::new(),
+                placements: Vec::new(),
                 anchors: vec![TemplateAnchor {
                     anchor_id: anchor_id.clone(),
                     label: "Trigger".to_owned(),
@@ -1064,5 +1064,38 @@ index = 3
             }
             other => panic!("expected invalid config error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn device_template_carries_placements_with_default_empty_vec() {
+        let template = DeviceTemplate {
+            template_id: TemplateId::from_string("template-stick"),
+            display_name: "Stick".to_owned(),
+            matching_hints: Vec::new(),
+            placements: vec![AssetPlacement {
+                placement_id: AssetPlacementId::from_string("placement-a"),
+                asset_id: AssetId::from_string("asset-1"),
+                position: TemplateRect {
+                    x: 0.05,
+                    y: 0.05,
+                    w: 0.9,
+                    h: 0.9,
+                },
+                z_index: 0,
+                extensions: ExtensionPayload::default(),
+            }],
+            anchors: Vec::new(),
+            default_anchor_bindings: Vec::new(),
+            grouping_hints: Vec::new(),
+            default_token_preset: TokenPreset::Standard,
+            extensions: ExtensionPayload::default(),
+        };
+
+        let encoded = toml::to_string_pretty(&template).unwrap();
+        let decoded: DeviceTemplate = toml::from_str(&encoded).unwrap();
+
+        assert_eq!(decoded, template);
+        assert_eq!(decoded.placements.len(), 1);
+        assert!(!encoded.contains("asset_ids"));
     }
 }
