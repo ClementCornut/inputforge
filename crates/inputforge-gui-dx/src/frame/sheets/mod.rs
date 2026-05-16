@@ -260,7 +260,9 @@ pub(crate) fn SheetsWorkbench() -> Element {
         CaptureAvailabilityReason::EngineStopped
     };
 
-    let connected_devices: Vec<(DeviceId, String)> = try_use_context::<AppContext>()
+    let app_context = try_use_context::<AppContext>();
+    let connected_devices: Vec<(DeviceId, String)> = app_context
+        .as_ref()
         .map(|ctx| {
             let cfg = ctx.config.read();
             cfg.devices
@@ -274,6 +276,7 @@ pub(crate) fn SheetsWorkbench() -> Element {
                 .collect()
         })
         .unwrap_or_default();
+    let config_snapshot = app_context.as_ref().map(|ctx| ctx.config.read().clone());
 
     rsx! {
         div {
@@ -286,6 +289,7 @@ pub(crate) fn SheetsWorkbench() -> Element {
                 sheets,
                 capture_availability,
                 connected_devices,
+                config: config_snapshot,
                 on_arm_capture,
                 on_cancel_capture,
                 on_retry_save: retry_save,

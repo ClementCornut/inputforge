@@ -2636,3 +2636,72 @@ fn anchor_delete_invokes_remove_selected_anchor() {
     assert!(state.selected_anchor_id.is_none());
     assert_eq!(state.history.len() - baseline, 1);
 }
+
+#[test]
+fn assigned_binding_uses_source_label_split_form_with_device_display_name() {
+    use inputforge_core::sheet::{AnchorAssignment, AnchorBinding};
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+    let mut state = state_with_selected_anchor();
+    let anchor_id = state.selected_anchor_id.clone().unwrap();
+    // Inject a binding directly so the Assigned-state composer renders.
+    state.templates[0]
+        .default_anchor_bindings
+        .push(AnchorBinding {
+            anchor_id: anchor_id.clone(),
+            input: InputAddress::Bound {
+                device: DeviceId("stick-alpha".to_owned()),
+                input: InputId::Button { index: 2 },
+            },
+            captured_device_fingerprint: None,
+            assignment: AnchorAssignment::Captured,
+        });
+    state.capture = CaptureStatus::Assigned(anchor_id);
+    let html = render_inspector_state(state);
+    // split_label fallback (no AppContext): device shows the raw DeviceId, input is "Btn 3".
+    assert!(
+        html.contains("stick-alpha"),
+        "binding display must show the device id when no AppContext: {html}"
+    );
+    assert!(
+        html.contains("Btn 3"),
+        "binding display must use source_label one-indexed button format: {html}"
+    );
+    // Old format is gone: no "device-id / Button N" raw string.
+    assert!(
+        !html.contains("Button 2"),
+        "raw format_input_address output must not appear: {html}"
+    );
+}
+
+#[test]
+fn assigned_binding_wraps_in_if_rebind_composite_block() {
+    use inputforge_core::sheet::{AnchorAssignment, AnchorBinding};
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
+    let mut state = state_with_selected_anchor();
+    let anchor_id = state.selected_anchor_id.clone().unwrap();
+    state.templates[0]
+        .default_anchor_bindings
+        .push(AnchorBinding {
+            anchor_id: anchor_id.clone(),
+            input: InputAddress::Bound {
+                device: DeviceId("d".to_owned()),
+                input: InputId::Button { index: 0 },
+            },
+            captured_device_fingerprint: None,
+            assignment: AnchorAssignment::Captured,
+        });
+    state.capture = CaptureStatus::Assigned(anchor_id);
+    let html = render_inspector_state(state);
+    assert!(
+        html.contains("if-rebind-composite"),
+        "assigned state must wrap binding in if-rebind-composite shell: {html}"
+    );
+    assert!(html.contains("if-rebind-composite__label"));
+    assert!(html.contains("if-rebind-composite__action"));
+    // The Re-assign button uses the composite action class, not the old composer-trigger class.
+    assert!(
+        !html.contains("if-sheets__composer-trigger"),
+        "Re-assign button should not use the old composer-trigger class: {html}"
+    );
+    assert!(html.contains(">Re-assign<"));
+}

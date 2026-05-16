@@ -8,18 +8,22 @@ use dioxus::prelude::*;
 use inputforge_core::sheet::{
     AnchorAssignment, AnchorId, AnchorPosition, AssetPlacement, TemplateAnchor, TemplateRect,
 };
-use inputforge_core::types::{DeviceId, InputAddress, InputId};
+use inputforge_core::types::{DeviceId, InputAddress};
 
+use crate::context::ConfigSnapshot;
+use crate::frame::mapping_list::source_label;
 use crate::frame::sheets::state::{
     AutosaveStatus, CaptureAvailabilityReason, CaptureStatus, ManualInputKind, SheetsState,
     filename_of,
 };
+use crate::patterns::live_capture::rebind_composite_class;
 
 #[component]
 pub(crate) fn SheetsInspector(
     sheets: Signal<SheetsState>,
     #[props(default)] capture_availability: CaptureAvailabilityReason,
     #[props(default)] connected_devices: Vec<(DeviceId, String)>,
+    #[props(default)] config: Option<ConfigSnapshot>,
     on_arm_capture: EventHandler<AnchorId>,
     on_cancel_capture: EventHandler<()>,
     on_retry_save: EventHandler<()>,
@@ -311,41 +315,61 @@ pub(crate) fn SheetsInspector(
                         span { class: "if-sheets__eyebrow", "ASSIGNMENT" }
                         section { class: "if-sheets__composer",
                             match capture.clone() {
-                                CaptureStatus::Armed(_) => rsx! {
-                                    div { class: "if-rebind-composite if-rebind-composite--listening",
-                                        span {
-                                            class: "if-rebind-composite__listening",
-                                            role: "status",
-                                            "aria-live": "polite",
-                                            "Press an input..."
+                                CaptureStatus::Armed(_) => {
+                                    let armed_input = selected_binding
+                                        .as_ref()
+                                        .map_or(InputAddress::Unbound, |(input, _)| input.clone());
+                                    let listening_class = rebind_composite_class(&armed_input, true);
+                                    rsx! {
+                                        div { class: "{listening_class}",
+                                            span {
+                                                class: "if-rebind-composite__listening",
+                                                role: "status",
+                                                "aria-live": "polite",
+                                                "Press an input..."
+                                            }
+                                            button {
+                                                class: "if-rebind-composite__action",
+                                                r#type: "button",
+                                                onclick: move |_| on_cancel_capture.call(()),
+                                                "Cancel"
+                                            }
                                         }
-                                        button {
-                                            class: "if-rebind-composite__action",
-                                            r#type: "button",
-                                            onclick: move |_| on_cancel_capture.call(()),
-                                            "Cancel"
-                                        }
+                                        p { class: "if-sheets__composer-hint", "Hold Esc to cancel" }
                                     }
-                                    p { class: "if-sheets__composer-hint", "Hold Esc to cancel" }
-                                },
+                                }
                                 CaptureStatus::Assigned(_) => {
                                     let selected_anchor_for_reassign = selected_anchor_for_reassign.clone();
+                                    let cfg_default = ConfigSnapshot::default();
+                                    let cfg_ref = config.as_ref().unwrap_or(&cfg_default);
+                                    let binding_render = selected_binding.clone().map(|(input, assignment)| {
+                                        let (device_label, input_label) = source_label::split_label(&input, cfg_ref);
+                                        let composite_class = rebind_composite_class(&input, false);
+                                        (device_label, input_label, composite_class, assignment)
+                                    });
                                     rsx! {
-                                        if let Some((input, assignment)) = selected_binding.clone() {
-                                            p { "Input address" }
-                                            code { "{format_input_address(&input)}" }
-                                            p { "{format_assignment(assignment)}" }
-                                        }
-                                        button {
-                                            class: "if-sheets__composer-trigger",
-                                            r#type: "button",
-                                            disabled: composer_button_disabled,
-                                            onclick: move |_| {
-                                                if let Some(anchor_id) = selected_anchor_for_reassign.clone() {
-                                                    on_arm_capture.call(anchor_id);
+                                        if let Some((device_label, input_label, composite_class, assignment)) = binding_render {
+                                            div { class: "{composite_class}",
+                                                span { class: "if-rebind-composite__label",
+                                                    if !device_label.is_empty() {
+                                                        span { class: "if-sheets__binding-device", "{device_label}" }
+                                                        span { class: "if-sheets__binding-separator", " \u{00b7} " }
+                                                    }
+                                                    span { class: "if-sheets__binding-input", "{input_label}" }
                                                 }
-                                            },
-                                            "Re-assign"
+                                                button {
+                                                    class: "if-rebind-composite__action",
+                                                    r#type: "button",
+                                                    disabled: composer_button_disabled,
+                                                    onclick: move |_| {
+                                                        if let Some(anchor_id) = selected_anchor_for_reassign.clone() {
+                                                            on_arm_capture.call(anchor_id);
+                                                        }
+                                                    },
+                                                    "Re-assign"
+                                                }
+                                            }
+                                            p { class: "if-sheets__binding-assignment", "{format_assignment(assignment)}" }
                                         }
                                     }
                                 }
@@ -882,21 +906,6 @@ fn format_assignment(assignment: AnchorAssignment) -> &'static str {
         AnchorAssignment::Captured => "Captured assignment",
         AnchorAssignment::Manual => "Manual assignment",
         AnchorAssignment::Unavailable => "Unavailable assignment",
-    }
-}
-
-fn format_input_address(input: &InputAddress) -> String {
-    match input {
-        InputAddress::Unbound => "Unbound".to_owned(),
-        InputAddress::Bound { device, input } => format!(
-            "{} / {}",
-            device.0,
-            match input {
-                InputId::Axis { index } => format!("Axis {index}"),
-                InputId::Button { index } => format!("Button {index}"),
-                InputId::Hat { index } => format!("Hat {index}"),
-            }
-        ),
     }
 }
 
