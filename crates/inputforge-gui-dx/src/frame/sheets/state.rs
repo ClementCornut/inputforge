@@ -812,6 +812,64 @@ impl SheetsState {
         self.last_error = Some(error.into());
     }
 
+    pub(crate) fn record_imported_asset(&mut self, asset: AssetEntry) {
+        self.push_event(SheetsEventKind::ImportAsset { asset });
+    }
+
+    pub(crate) fn remove_asset(&mut self, asset_id: AssetId) -> Result<(), String> {
+        let asset_idx = self
+            .assets
+            .iter()
+            .position(|a| a.asset_id == asset_id)
+            .ok_or_else(|| format!("asset {asset_id} not found"))?;
+        let asset = self.assets.remove(asset_idx);
+
+        let mut dropped_placements = Vec::new();
+        let mut dropped_anchors = Vec::new();
+        for template in &mut self.templates {
+            let template_id = template.template_id.clone();
+
+            // First pass: drop placements that reference the asset, recording their ids for the
+            // anchor cascade and the event payload.
+            let mut local_placement_ids = Vec::new();
+            template.placements.retain(|p| {
+                if p.asset_id == asset_id {
+                    local_placement_ids.push(p.placement_id.clone());
+                    dropped_placements.push((template_id.clone(), p.clone()));
+                    false
+                } else {
+                    true
+                }
+            });
+
+            if local_placement_ids.is_empty() {
+                continue;
+            }
+
+            // Second pass on the same template: drop anchors attached to any local doomed
+            // placement. Compared against local_placement_ids (per-template scope), not the
+            // cross-template dropped_placements vec, so anchors on other templates are never
+            // affected by an accidental id collision.
+            template.anchors.retain(|anchor| {
+                let attached = anchor.attached_to.as_ref();
+                if attached.is_some_and(|att| local_placement_ids.iter().any(|id| id == att)) {
+                    dropped_anchors.push((template_id.clone(), anchor.clone()));
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+
+        self.push_event(SheetsEventKind::RemoveAsset {
+            asset,
+            dropped_placements,
+            dropped_anchors,
+        });
+        self.mark_dirty();
+        Ok(())
+    }
+
     pub(crate) fn push_event_for_tests(&mut self, kind: SheetsEventKind) {
         self.push_event(kind);
     }
@@ -1650,6 +1708,124 @@ mod tests {
             state.history.back().unwrap().kind,
             SheetsEventKind::RemoveAnchor { .. }
         ));
+    }
+
+    #[test]
+    fn record_imported_asset_pushes_import_asset_event() {
+        use inputforge_core::sheet::{AssetEntry, PixelDimensions};
+        use std::path::PathBuf;
+        let mut state = SheetsState::default();
+        let asset = AssetEntry {
+            asset_id: AssetId::from_string("asset-1"),
+            copied_path: PathBuf::from("assets/asset-1.png"),
+            content_hash: "hash".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 64,
+                height: 32,
+            },
+            original_import_path: None,
+            extensions: ExtensionPayload::default(),
+        };
+
+        state.record_imported_asset(asset.clone());
+        assert!(matches!(
+            state.history.back().unwrap().kind,
+            SheetsEventKind::ImportAsset { asset: ref a } if a.asset_id == asset.asset_id
+        ));
+    }
+
+    #[test]
+    fn remove_asset_cascades_placements_and_attached_anchors_into_event() {
+        use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+        let mut state = state_with_template();
+        let asset_id = AssetId::from_string("asset-cascade");
+        let placement_id = AssetPlacementId::from_string("p-a");
+        let placement_a = AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: asset_id.clone(),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 0.5,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        };
+        state.templates[0].placements.push(placement_a.clone());
+        let template_id = state.templates[0].template_id.clone();
+
+        // Two anchors on the same template: one attached to the doomed placement, one floating.
+        state.templates[0].anchors.push(TemplateAnchor {
+            anchor_id: AnchorId::from_string("anchor-attached"),
+            label: "Attached".to_owned(),
+            position: AnchorPosition { x: 0.5, y: 0.5 },
+            attached_to: Some(placement_id.clone()),
+            input_type_hint: None,
+            grouping_hint: None,
+            device_matching_hint: None,
+            extensions: ExtensionPayload::default(),
+        });
+        state.templates[0].anchors.push(TemplateAnchor {
+            anchor_id: AnchorId::from_string("anchor-floating"),
+            label: "Floating".to_owned(),
+            position: AnchorPosition { x: 0.5, y: 0.5 },
+            attached_to: None,
+            input_type_hint: None,
+            grouping_hint: None,
+            device_matching_hint: None,
+            extensions: ExtensionPayload::default(),
+        });
+
+        state.assets.push(inputforge_core::sheet::AssetEntry {
+            asset_id: asset_id.clone(),
+            copied_path: std::path::PathBuf::from("assets/cascade.png"),
+            content_hash: "hash".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: inputforge_core::sheet::PixelDimensions {
+                width: 1,
+                height: 1,
+            },
+            original_import_path: None,
+            extensions: ExtensionPayload::default(),
+        });
+
+        state.remove_asset(asset_id.clone()).unwrap();
+        assert!(state.assets.iter().all(|a| a.asset_id != asset_id));
+        assert!(
+            state.templates[0]
+                .anchors
+                .iter()
+                .all(|a| a.anchor_id.as_str() != "anchor-attached")
+        );
+        assert!(
+            state.templates[0]
+                .anchors
+                .iter()
+                .any(|a| a.anchor_id.as_str() == "anchor-floating")
+        );
+
+        let event = state.history.back().unwrap();
+        match &event.kind {
+            SheetsEventKind::RemoveAsset {
+                asset,
+                dropped_placements,
+                dropped_anchors,
+            } => {
+                assert_eq!(asset.asset_id, asset_id);
+                assert_eq!(dropped_placements.len(), 1);
+                assert_eq!(dropped_placements[0].0, template_id);
+                assert_eq!(
+                    dropped_placements[0].1.placement_id,
+                    placement_a.placement_id
+                );
+                assert_eq!(dropped_anchors.len(), 1);
+                assert_eq!(dropped_anchors[0].0, template_id);
+                assert_eq!(dropped_anchors[0].1.anchor_id.as_str(), "anchor-attached");
+            }
+            other => panic!("expected RemoveAsset, got {other:?}"),
+        }
     }
 
     #[test]

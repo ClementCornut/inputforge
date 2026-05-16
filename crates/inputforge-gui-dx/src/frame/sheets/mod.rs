@@ -119,12 +119,13 @@ pub(crate) fn SheetsWorkbench() -> Element {
         sheets.read().apply_to_documents(&mut next_documents);
 
         match authoring::import_template_asset_into(&source_path, &mut next_documents) {
-            Ok(_imported) => {
+            Ok(imported) => {
                 let mut next_state = sheets.read().clone();
                 next_state.assets.clone_from(&next_documents.assets.assets);
                 next_state
                     .asset_health
                     .clone_from(&next_documents.asset_health);
+                next_state.record_imported_asset(imported.entry.clone());
                 next_state.apply_to_documents(&mut next_documents);
                 documents.set(Some(next_documents));
                 sheets.set(next_state);
