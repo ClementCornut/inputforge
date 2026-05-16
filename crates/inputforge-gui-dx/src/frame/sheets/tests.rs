@@ -54,6 +54,24 @@ fn render_inspector_state(initial_state: SheetsState) -> String {
     dioxus_ssr::render(&vdom)
 }
 
+fn state_with_selected_anchor() -> SheetsState {
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+    let anchor_id = AnchorId::from_string("anchor-1");
+    state.templates[0].anchors.push(TemplateAnchor {
+        anchor_id: anchor_id.clone(),
+        label: "Trigger".to_owned(),
+        position: AnchorPosition { x: 0.25, y: 0.5 },
+        attached_to: None,
+        input_type_hint: None,
+        grouping_hint: None,
+        device_matching_hint: None,
+        extensions: ExtensionPayload::default(),
+    });
+    state.selected_anchor_id = Some(anchor_id);
+    state
+}
+
 #[test]
 fn autosave_failure_renders_retry_action() {
     let html = render_inspector_state(SheetsState {
@@ -68,8 +86,79 @@ fn autosave_failure_renders_retry_action() {
 }
 
 #[test]
+fn inspector_with_no_selection_shows_template_summary_eyebrow() {
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+    let html = render_inspector_state(state);
+    assert!(
+        html.contains(">TEMPLATE<"),
+        "expected TEMPLATE eyebrow in inspector: {html}"
+    );
+    assert!(html.contains("Frame count"), "expected frame count: {html}");
+    assert!(
+        html.contains("Anchor count"),
+        "expected anchor count: {html}"
+    );
+}
+
+#[test]
+fn inspector_with_frame_selected_shows_position_inputs_and_z_index_buttons() {
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+    let placement_id = AssetPlacementId::from_string("p-sel");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_id.clone(),
+        asset_id: AssetId::from_string("asset-1"),
+        position: TemplateRect {
+            x: 0.1,
+            y: 0.2,
+            w: 0.3,
+            h: 0.4,
+        },
+        z_index: 7,
+        extensions: ExtensionPayload::default(),
+    });
+    state.selected_placement_id = Some(placement_id);
+    let html = render_inspector_state(state);
+    assert!(
+        html.contains(">FRAME<"),
+        "expected FRAME eyebrow in inspector: {html}"
+    );
+    for axis in ["x", "y", "w", "h"] {
+        assert!(
+            html.contains(&format!("data-axis=\"{axis}\"")),
+            "missing axis input {axis}: {html}"
+        );
+    }
+    assert!(html.contains("Bring to front"), "missing z+ button: {html}");
+    assert!(html.contains("Send to back"), "missing z- button: {html}");
+}
+
+#[test]
+fn inspector_with_anchor_selected_shows_label_attach_toggle_and_assignment_composer() {
+    let state = state_with_selected_anchor();
+    assert!(
+        state.selected_anchor_id.is_some(),
+        "test helper must select an anchor",
+    );
+    let html = render_inspector_state(state);
+    assert!(
+        html.contains(">ANCHOR<"),
+        "expected ANCHOR eyebrow in inspector: {html}"
+    );
+    assert!(
+        html.contains("Attach to frame") || html.contains("Detach"),
+        "expected attach toggle: {html}"
+    );
+    assert!(
+        html.contains(">ASSIGNMENT<"),
+        "expected ASSIGNMENT eyebrow in inspector: {html}"
+    );
+}
+
+#[test]
 fn inspector_disables_capture_when_unavailable_but_keeps_manual_assignment_visible() {
-    let html = render_inspector_state(SheetsState::default());
+    let html = render_inspector_state(state_with_selected_anchor());
 
     assert!(html.contains("Capture input"));
     assert!(html.contains("disabled"));
