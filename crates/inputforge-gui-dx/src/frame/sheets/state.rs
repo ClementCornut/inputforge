@@ -19,6 +19,83 @@ pub(crate) enum SheetTool {
     ManualAssign,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SheetLayoutPreset {
+    Single,
+    HorizontalPair,
+    VerticalStack,
+    TwoByTwo,
+    Freeform,
+}
+
+impl SheetLayoutPreset {
+    pub(crate) fn slot_rects(self) -> Vec<TemplateRect> {
+        match self {
+            Self::Single => vec![TemplateRect {
+                x: 0.05,
+                y: 0.05,
+                w: 0.9,
+                h: 0.9,
+            }],
+            Self::HorizontalPair => vec![
+                TemplateRect {
+                    x: 0.02,
+                    y: 0.10,
+                    w: 0.46,
+                    h: 0.80,
+                },
+                TemplateRect {
+                    x: 0.52,
+                    y: 0.10,
+                    w: 0.46,
+                    h: 0.80,
+                },
+            ],
+            Self::VerticalStack => vec![
+                TemplateRect {
+                    x: 0.10,
+                    y: 0.02,
+                    w: 0.80,
+                    h: 0.46,
+                },
+                TemplateRect {
+                    x: 0.10,
+                    y: 0.52,
+                    w: 0.80,
+                    h: 0.46,
+                },
+            ],
+            Self::TwoByTwo => vec![
+                TemplateRect {
+                    x: 0.02,
+                    y: 0.02,
+                    w: 0.46,
+                    h: 0.46,
+                },
+                TemplateRect {
+                    x: 0.52,
+                    y: 0.02,
+                    w: 0.46,
+                    h: 0.46,
+                },
+                TemplateRect {
+                    x: 0.02,
+                    y: 0.52,
+                    w: 0.46,
+                    h: 0.46,
+                },
+                TemplateRect {
+                    x: 0.52,
+                    y: 0.52,
+                    w: 0.46,
+                    h: 0.46,
+                },
+            ],
+            Self::Freeform => Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum AutosaveStatus {
     #[default]
@@ -194,6 +271,8 @@ pub(crate) struct SheetsState {
     pub capture: CaptureStatus,
     pub last_error: Option<String>,
     pub history: VecDeque<SheetsEvent>,
+    pub preset_picker_open: bool,
+    pub pending_preset_slots: Vec<TemplateRect>,
 }
 
 impl Default for SheetsState {
@@ -211,6 +290,8 @@ impl Default for SheetsState {
             capture: CaptureStatus::Unavailable("live input is not available".to_owned()),
             last_error: None,
             history: VecDeque::new(),
+            preset_picker_open: false,
+            pending_preset_slots: Vec::new(),
         }
     }
 }
@@ -241,6 +322,8 @@ impl SheetsState {
             capture: CaptureStatus::Unavailable("live input is not available".to_owned()),
             last_error: None,
             history: VecDeque::new(),
+            preset_picker_open: false,
+            pending_preset_slots: Vec::new(),
         }
     }
 
@@ -308,6 +391,27 @@ impl SheetsState {
         self.push_event(SheetsEventKind::CreateTemplate(template_id.clone()));
         self.mark_dirty();
         template_id
+    }
+
+    pub(crate) fn open_template_preset_picker(&mut self) {
+        self.preset_picker_open = true;
+    }
+
+    pub(crate) fn dismiss_template_preset_picker(&mut self) {
+        self.preset_picker_open = false;
+    }
+
+    pub(crate) fn apply_preset_after_create(&mut self, preset: SheetLayoutPreset) {
+        self.pending_preset_slots = preset.slot_rects();
+        self.preset_picker_open = false;
+    }
+
+    pub(crate) fn consume_next_preset_slot(&mut self) -> Option<TemplateRect> {
+        if self.pending_preset_slots.is_empty() {
+            None
+        } else {
+            Some(self.pending_preset_slots.remove(0))
+        }
     }
 
     pub(crate) fn rename_selected_template(&mut self, display_name: impl AsRef<str>) {
@@ -1054,6 +1158,8 @@ mod tests {
             capture: CaptureStatus::Unavailable("live input is not available".to_owned()),
             last_error: None,
             history: VecDeque::new(),
+            preset_picker_open: false,
+            pending_preset_slots: Vec::new(),
         }
     }
 
@@ -1969,5 +2075,66 @@ mod tests {
             .find(|a| a.anchor_id.as_str() == "anchor-att")
             .unwrap();
         assert_eq!(anchor.position, AnchorPosition { x: 0.4, y: 0.6 });
+    }
+
+    #[test]
+    fn layout_preset_slot_rectangles_match_spec_table() {
+        use inputforge_core::sheet::TemplateRect;
+        assert_eq!(
+            SheetLayoutPreset::Single.slot_rects(),
+            vec![TemplateRect {
+                x: 0.05,
+                y: 0.05,
+                w: 0.9,
+                h: 0.9
+            }],
+        );
+        assert_eq!(
+            SheetLayoutPreset::HorizontalPair.slot_rects(),
+            vec![
+                TemplateRect {
+                    x: 0.02,
+                    y: 0.10,
+                    w: 0.46,
+                    h: 0.80
+                },
+                TemplateRect {
+                    x: 0.52,
+                    y: 0.10,
+                    w: 0.46,
+                    h: 0.80
+                },
+            ],
+        );
+        assert_eq!(
+            SheetLayoutPreset::VerticalStack.slot_rects(),
+            vec![
+                TemplateRect {
+                    x: 0.10,
+                    y: 0.02,
+                    w: 0.80,
+                    h: 0.46
+                },
+                TemplateRect {
+                    x: 0.10,
+                    y: 0.52,
+                    w: 0.80,
+                    h: 0.46
+                },
+            ],
+        );
+        assert_eq!(SheetLayoutPreset::TwoByTwo.slot_rects().len(), 4);
+        assert!(SheetLayoutPreset::Freeform.slot_rects().is_empty());
+    }
+
+    #[test]
+    fn open_and_dismiss_template_preset_picker_does_not_mutate_history() {
+        let mut state = SheetsState::default();
+        state.open_template_preset_picker();
+        assert!(state.preset_picker_open);
+        let history_before = state.history.len();
+        state.dismiss_template_preset_picker();
+        assert!(!state.preset_picker_open);
+        assert_eq!(state.history.len(), history_before);
     }
 }
