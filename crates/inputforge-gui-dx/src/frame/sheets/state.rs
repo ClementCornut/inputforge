@@ -658,6 +658,66 @@ impl SheetsState {
         self.mark_dirty();
     }
 
+    pub(crate) fn set_anchor_attached_to(
+        &mut self,
+        attached_to: Option<AssetPlacementId>,
+    ) -> Result<(), String> {
+        let template_id = self
+            .selected_template_id
+            .clone()
+            .ok_or_else(|| "no template selected".to_owned())?;
+        let anchor_id = self
+            .selected_anchor_id
+            .clone()
+            .ok_or_else(|| "no anchor selected".to_owned())?;
+        let anchor = self
+            .selected_anchor_mut()
+            .ok_or_else(|| "selected anchor missing".to_owned())?;
+        let before = anchor.attached_to.clone();
+        anchor.attached_to = attached_to.clone();
+
+        self.push_event(SheetsEventKind::ToggleAnchorAttach {
+            template_id,
+            anchor_id,
+            before,
+            after: attached_to,
+        });
+        self.mark_dirty();
+        Ok(())
+    }
+
+    pub(crate) fn remove_selected_anchor(&mut self) -> Result<(), String> {
+        let template_id = self
+            .selected_template_id
+            .clone()
+            .ok_or_else(|| "no template selected".to_owned())?;
+        let anchor_id = self
+            .selected_anchor_id
+            .clone()
+            .ok_or_else(|| "no anchor selected".to_owned())?;
+
+        let template = self
+            .selected_template_mut()
+            .ok_or_else(|| "selected template missing".to_owned())?;
+        let idx = template
+            .anchors
+            .iter()
+            .position(|a| a.anchor_id == anchor_id)
+            .ok_or_else(|| "anchor not found".to_owned())?;
+        let anchor = template.anchors.remove(idx);
+        template
+            .default_anchor_bindings
+            .retain(|b| b.anchor_id != anchor_id);
+        self.selected_anchor_id = None;
+
+        self.push_event(SheetsEventKind::RemoveAnchor {
+            template_id,
+            anchor,
+        });
+        self.mark_dirty();
+        Ok(())
+    }
+
     pub(crate) fn assign_selected_anchor(
         &mut self,
         input: InputAddress,
@@ -1537,6 +1597,59 @@ mod tests {
             .unwrap();
         state.send_to_back(template_id, only).unwrap();
         assert_eq!(state.history.len(), baseline);
+    }
+
+    #[test]
+    fn toggle_anchor_attach_changes_target_and_records_event() {
+        use inputforge_core::sheet::AssetPlacementId;
+        let mut state = state_with_template();
+        let anchor_id = state.selected_anchor_id.clone().unwrap();
+        let target = AssetPlacementId::from_string("placement-attach");
+
+        state.set_anchor_attached_to(Some(target.clone())).unwrap();
+        let anchor = &state.templates[0].anchors[0];
+        assert_eq!(anchor.attached_to, Some(target.clone()));
+        let last = state.history.back().unwrap();
+        match &last.kind {
+            SheetsEventKind::ToggleAnchorAttach {
+                anchor_id: id,
+                before: None,
+                after: Some(placement),
+                ..
+            } => {
+                assert_eq!(id, &anchor_id);
+                assert_eq!(placement, &target);
+            }
+            other => panic!("expected ToggleAnchorAttach, got {other:?}"),
+        }
+
+        state.set_anchor_attached_to(None).unwrap();
+        assert!(matches!(
+            state.history.back().unwrap().kind,
+            SheetsEventKind::ToggleAnchorAttach {
+                before: Some(_),
+                after: None,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn remove_selected_anchor_records_remove_anchor_event_and_clears_selection() {
+        let mut state = state_with_template();
+        let anchor_id = state.selected_anchor_id.clone().unwrap();
+        state.remove_selected_anchor().unwrap();
+        assert!(
+            state.templates[0]
+                .anchors
+                .iter()
+                .all(|a| a.anchor_id != anchor_id)
+        );
+        assert_eq!(state.selected_anchor_id, None);
+        assert!(matches!(
+            state.history.back().unwrap().kind,
+            SheetsEventKind::RemoveAnchor { .. }
+        ));
     }
 
     #[test]
