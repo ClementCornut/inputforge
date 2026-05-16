@@ -2486,6 +2486,71 @@ fn frame_x_input_commits_on_blur_via_commit_drag_end_move() {
 }
 
 #[test]
+fn frame_inspector_renders_move_up_move_down_and_delete_buttons() {
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+    let placement_id = AssetPlacementId::from_string("p");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_id.clone(),
+        asset_id: AssetId::from_string("a"),
+        position: TemplateRect {
+            x: 0.1,
+            y: 0.1,
+            w: 0.4,
+            h: 0.4,
+        },
+        z_index: 0,
+        extensions: ExtensionPayload::default(),
+    });
+    state.selected_placement_id = Some(placement_id);
+    let html = render_inspector_state(state);
+    assert!(
+        html.contains("Move up"),
+        "Frame branch must render Move up button: {html}"
+    );
+    assert!(
+        html.contains("Move down"),
+        "Frame branch must render Move down button: {html}"
+    );
+    assert!(
+        html.contains(">Delete<"),
+        "Frame branch must render a Delete button: {html}"
+    );
+}
+
+#[test]
+fn frame_delete_invokes_remove_placement() {
+    // State-level test: calling remove_placement removes the placement and
+    // pushes RemovePlacement. This mirrors what the inspector's Delete button
+    // onclick does.
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+    let template_id = state.templates[0].template_id.clone();
+    let placement_id = AssetPlacementId::from_string("p-delete");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_id.clone(),
+        asset_id: AssetId::from_string("a"),
+        position: TemplateRect {
+            x: 0.0,
+            y: 0.0,
+            w: 0.5,
+            h: 0.5,
+        },
+        z_index: 0,
+        extensions: ExtensionPayload::default(),
+    });
+    let baseline = state.history.len();
+    state.remove_placement(template_id, &placement_id).unwrap();
+    assert!(
+        state.templates[0]
+            .placements
+            .iter()
+            .all(|p| p.placement_id != placement_id)
+    );
+    assert_eq!(state.history.len() - baseline, 1);
+}
+
+#[test]
 fn frame_inspector_inputs_render_with_event_handlers() {
     // SSR test: each axis input renders with the expected `data-axis` and
     // none of them is read-only. Direct handler-presence assertions are

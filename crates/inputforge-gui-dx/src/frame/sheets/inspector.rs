@@ -139,6 +139,9 @@ pub(crate) fn SheetsInspector(
     let mut sheets_for_attach = sheets;
     let mut sheets_for_bring_to_front = sheets;
     let mut sheets_for_send_to_back = sheets;
+    let mut sheets_for_shift_z_up = sheets;
+    let mut sheets_for_shift_z_down = sheets;
+    let mut sheets_for_delete_placement = sheets;
     let mut sheets_for_assign = sheets;
     let assign_disabled =
         manual_device_id.read().is_empty() || is_capture_armed || selected_anchor_id.is_none();
@@ -148,6 +151,12 @@ pub(crate) fn SheetsInspector(
     let bring_to_front_placement_id = selected_placement_id.clone();
     let send_to_back_template_id = selected_template_id.clone();
     let send_to_back_placement_id = selected_placement_id.clone();
+    let shift_z_up_template_id = selected_template_id.clone();
+    let shift_z_up_placement_id = selected_placement_id.clone();
+    let shift_z_down_template_id = selected_template_id.clone();
+    let shift_z_down_placement_id = selected_placement_id.clone();
+    let delete_placement_template_id = selected_template_id.clone();
+    let delete_placement_placement_id = selected_placement_id.clone();
     let attach_first_placement_id = first_placement_id.clone();
     let anchor_for_attach = selected_anchor.clone();
 
@@ -628,6 +637,18 @@ pub(crate) fn SheetsInspector(
                                 r#type: "button",
                                 onclick: move |_| {
                                     if let (Some(tid), Some(pid)) = (
+                                        shift_z_up_template_id.clone(),
+                                        shift_z_up_placement_id.clone(),
+                                    ) {
+                                        let _ = sheets_for_shift_z_up.write().shift_z_up(tid, pid);
+                                    }
+                                },
+                                "Move up"
+                            }
+                            button {
+                                r#type: "button",
+                                onclick: move |_| {
+                                    if let (Some(tid), Some(pid)) = (
                                         bring_to_front_template_id.clone(),
                                         bring_to_front_placement_id.clone(),
                                     ) {
@@ -647,6 +668,31 @@ pub(crate) fn SheetsInspector(
                                     }
                                 },
                                 "Send to back"
+                            }
+                            button {
+                                r#type: "button",
+                                onclick: move |_| {
+                                    if let (Some(tid), Some(pid)) = (
+                                        shift_z_down_template_id.clone(),
+                                        shift_z_down_placement_id.clone(),
+                                    ) {
+                                        let _ = sheets_for_shift_z_down.write().shift_z_down(tid, pid);
+                                    }
+                                },
+                                "Move down"
+                            }
+                            button {
+                                r#type: "button",
+                                class: "if-sheets__inspector-destructive",
+                                onclick: move |_| {
+                                    if let (Some(tid), Some(pid)) = (
+                                        delete_placement_template_id.clone(),
+                                        delete_placement_placement_id.clone(),
+                                    ) {
+                                        let _ = sheets_for_delete_placement.write().remove_placement(tid, &pid);
+                                    }
+                                },
+                                "Delete"
                             }
                         }
                     }

@@ -778,6 +778,71 @@ impl SheetsState {
         self.set_z_index(template_id, placement_id, sibling_min.saturating_sub(1))
     }
 
+    pub(crate) fn shift_z_up(
+        &mut self,
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+    ) -> Result<(), String> {
+        // Find current z + the placement directly above by z; swap z values via
+        // two `set_z_index` calls. Capturing the neighbour id and z by value
+        // releases the immutable borrow before the mutating calls below.
+        let template = self
+            .templates
+            .iter()
+            .find(|t| t.template_id == template_id)
+            .ok_or_else(|| format!("template {} not found", template_id.as_str()))?;
+        let current_z = template
+            .placements
+            .iter()
+            .find(|p| p.placement_id == placement_id)
+            .map(|p| p.z_index)
+            .ok_or_else(|| format!("placement {} not found", placement_id.as_str()))?;
+        let next_higher = template
+            .placements
+            .iter()
+            .filter(|p| p.placement_id != placement_id && p.z_index > current_z)
+            .min_by_key(|p| p.z_index);
+        let Some(neighbour) = next_higher else {
+            // Already at the top: silent no-op, no event, no mark_dirty.
+            return Ok(());
+        };
+        let neighbour_id = neighbour.placement_id.clone();
+        let neighbour_z = neighbour.z_index;
+        // Swap z values: self gets neighbour's z, neighbour gets self's old z.
+        self.set_z_index(template_id.clone(), placement_id, neighbour_z)?;
+        self.set_z_index(template_id, neighbour_id, current_z)
+    }
+
+    pub(crate) fn shift_z_down(
+        &mut self,
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+    ) -> Result<(), String> {
+        let template = self
+            .templates
+            .iter()
+            .find(|t| t.template_id == template_id)
+            .ok_or_else(|| format!("template {} not found", template_id.as_str()))?;
+        let current_z = template
+            .placements
+            .iter()
+            .find(|p| p.placement_id == placement_id)
+            .map(|p| p.z_index)
+            .ok_or_else(|| format!("placement {} not found", placement_id.as_str()))?;
+        let next_lower = template
+            .placements
+            .iter()
+            .filter(|p| p.placement_id != placement_id && p.z_index < current_z)
+            .max_by_key(|p| p.z_index);
+        let Some(neighbour) = next_lower else {
+            return Ok(());
+        };
+        let neighbour_id = neighbour.placement_id.clone();
+        let neighbour_z = neighbour.z_index;
+        self.set_z_index(template_id.clone(), placement_id, neighbour_z)?;
+        self.set_z_index(template_id, neighbour_id, current_z)
+    }
+
     pub(crate) fn selected_template(&self) -> Option<&DeviceTemplate> {
         let selected_template_id = self.selected_template_id.as_ref()?;
         self.templates
@@ -2022,6 +2087,103 @@ mod tests {
             .bring_to_front(template_id.clone(), only.clone())
             .unwrap();
         state.send_to_back(template_id, only).unwrap();
+        assert_eq!(state.history.len(), baseline);
+    }
+
+    #[test]
+    fn shift_z_up_on_top_placement_is_silent_no_op() {
+        use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+        let mut state = state_with_template();
+        let template_id = state.selected_template_id.clone().unwrap();
+        let top = AssetPlacementId::from_string("top");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: top.clone(),
+            asset_id: AssetId::from_string("a"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 0.5,
+            },
+            z_index: 5,
+            extensions: ExtensionPayload::default(),
+        });
+        let baseline = state.history.len();
+        state.shift_z_up(template_id, top).unwrap();
+        assert_eq!(
+            state.history.len(),
+            baseline,
+            "shift_z_up on top placement must not push any event"
+        );
+    }
+
+    #[test]
+    fn shift_z_up_swaps_z_with_next_higher_sibling() {
+        use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+        let mut state = state_with_template();
+        let template_id = state.selected_template_id.clone().unwrap();
+        let lower = AssetPlacementId::from_string("lower");
+        let upper = AssetPlacementId::from_string("upper");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: lower.clone(),
+            asset_id: AssetId::from_string("a"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 0.5,
+            },
+            z_index: 1,
+            extensions: ExtensionPayload::default(),
+        });
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: upper.clone(),
+            asset_id: AssetId::from_string("a"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 0.5,
+            },
+            z_index: 3,
+            extensions: ExtensionPayload::default(),
+        });
+        state.shift_z_up(template_id, lower.clone()).unwrap();
+        let placements = &state.templates[0].placements;
+        let lower_z = placements
+            .iter()
+            .find(|p| p.placement_id == lower)
+            .unwrap()
+            .z_index;
+        let upper_z = placements
+            .iter()
+            .find(|p| p.placement_id == upper)
+            .unwrap()
+            .z_index;
+        assert_eq!(lower_z, 3);
+        assert_eq!(upper_z, 1);
+    }
+
+    #[test]
+    fn shift_z_down_on_bottom_placement_is_silent_no_op() {
+        use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+        let mut state = state_with_template();
+        let template_id = state.selected_template_id.clone().unwrap();
+        let bottom = AssetPlacementId::from_string("bottom");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: bottom.clone(),
+            asset_id: AssetId::from_string("a"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 0.5,
+            },
+            z_index: -5,
+            extensions: ExtensionPayload::default(),
+        });
+        let baseline = state.history.len();
+        state.shift_z_down(template_id, bottom).unwrap();
         assert_eq!(state.history.len(), baseline);
     }
 
