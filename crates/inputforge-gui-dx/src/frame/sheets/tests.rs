@@ -2271,7 +2271,7 @@ fn placement_wrapper_is_positioned_absolutely_and_blocks_user_select() {
     let css = include_str!("../../../assets/frame/sheets.css");
     let mut block = String::new();
     let mut in_block = false;
-    let mut depth = 0_i32;
+    let mut depth = 0_usize;
     for line in css.lines() {
         let trimmed = line.trim_start();
         if trimmed.starts_with(".if-sheets__placement {") {
@@ -2280,9 +2280,9 @@ fn placement_wrapper_is_positioned_absolutely_and_blocks_user_select() {
         if in_block {
             block.push_str(line);
             block.push('\n');
-            depth += line.matches('{').count() as i32;
-            depth -= line.matches('}').count() as i32;
-            if depth <= 0 {
+            depth = depth.saturating_add(line.matches('{').count());
+            depth = depth.saturating_sub(line.matches('}').count());
+            if depth == 0 {
                 in_block = false;
             }
         }
@@ -2302,7 +2302,7 @@ fn placement_image_uses_object_fit_contain_and_fills_wrapper() {
     let css = include_str!("../../../assets/frame/sheets.css");
     let mut block = String::new();
     let mut in_block = false;
-    let mut depth = 0_i32;
+    let mut depth = 0_usize;
     for line in css.lines() {
         let trimmed = line.trim_start();
         if trimmed.starts_with(".if-sheets__placement-image {") {
@@ -2311,9 +2311,9 @@ fn placement_image_uses_object_fit_contain_and_fills_wrapper() {
         if in_block {
             block.push_str(line);
             block.push('\n');
-            depth += line.matches('{').count() as i32;
-            depth -= line.matches('}').count() as i32;
-            if depth <= 0 {
+            depth = depth.saturating_add(line.matches('{').count());
+            depth = depth.saturating_sub(line.matches('}').count());
+            if depth == 0 {
                 in_block = false;
             }
         }
