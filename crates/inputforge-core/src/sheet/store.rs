@@ -128,7 +128,9 @@ pub fn save_template_store(path: &Path, document: &mut TemplateStoreDocument) ->
 ///
 /// Returns parse or I/O errors for existing files.
 pub fn load_template_store(path: &Path) -> Result<TemplateStoreDocument> {
-    load_toml_or_default(path)
+    let mut document: TemplateStoreDocument = load_toml_or_default(path)?;
+    crate::sheet::model::upgrade_template_store_in_place(&mut document);
+    Ok(document)
 }
 
 /// Saves the global imported asset manifest document.
@@ -565,5 +567,34 @@ mod tests {
             load_mapping_metadata(&dir.path().join("missing-metadata.toml")).unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn load_template_store_drains_legacy_asset_ids_and_persists_clean_form() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("templates.toml");
+        std::fs::write(
+            &path,
+            r#"
+schema_version = 1
+app_version_created = "0.2.0"
+app_version_last_saved = "0.2.0"
+
+[[templates]]
+template_id = "template-legacy"
+display_name = "Legacy"
+asset_ids = ["asset-a", "asset-b"]
+default_token_preset = "standard"
+"#,
+        )
+        .unwrap();
+
+        let mut loaded = load_template_store(&path).unwrap();
+        assert_eq!(loaded.templates[0].placements.len(), 2);
+        assert!(!loaded.templates[0].extensions.contains_key("asset_ids"));
+
+        save_template_store(&path, &mut loaded).unwrap();
+        let on_disk = std::fs::read_to_string(&path).unwrap();
+        assert!(!on_disk.contains("asset_ids"));
     }
 }
