@@ -7,7 +7,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use super::ids::{
-    AnchorId, AssetId, BlockId, LineId, MappingMetadataId, SheetId, TemplateId, TemplateInstanceId,
+    AnchorId, AssetId, AssetPlacementId, BlockId, LineId, MappingMetadataId, SheetId, TemplateId,
+    TemplateInstanceId,
 };
 use crate::error::{EngineError, Result};
 use crate::profile::ProfileId;
@@ -180,6 +181,26 @@ pub struct AssetEntry {
 pub struct PixelDimensions {
     pub width: u32,
     pub height: u32,
+}
+
+/// Axis-aligned rectangle in 0..1 template-canvas space.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct TemplateRect {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+/// Single asset placement on a device template canvas.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssetPlacement {
+    pub placement_id: AssetPlacementId,
+    pub asset_id: AssetId,
+    pub position: TemplateRect,
+    pub z_index: i32,
+    #[serde(default, flatten, skip_serializing_if = "extension_payload_is_empty")]
+    pub extensions: ExtensionPayload,
 }
 
 /// Template anchor that can be bound to a concrete input.
@@ -980,6 +1001,29 @@ index = 3
         assert_eq!(decoded.records[0].mapping_ref.input, mapping_ref(3).input);
         assert_eq!(decoded.records[0].mapping_ref.mode_id, "combat");
         assert_eq!(decoded.records[0].mapping_ref.fallback_label, "Trigger");
+    }
+
+    #[test]
+    fn asset_placement_roundtrips_with_z_index_and_extensions() {
+        let placement = AssetPlacement {
+            placement_id: AssetPlacementId::from_string("placement-1"),
+            asset_id: AssetId::from_string("asset-stick"),
+            position: TemplateRect {
+                x: 0.05,
+                y: 0.05,
+                w: 0.9,
+                h: 0.9,
+            },
+            z_index: 3,
+            extensions: ExtensionPayload::default(),
+        };
+
+        let encoded = toml::to_string(&placement).unwrap();
+        let decoded: AssetPlacement = toml::from_str(&encoded).unwrap();
+
+        assert_eq!(decoded, placement);
+        assert_eq!(decoded.z_index, 3);
+        assert_eq!(decoded.position.w, 0.9);
     }
 
     #[test]

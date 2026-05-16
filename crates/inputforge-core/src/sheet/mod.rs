@@ -16,13 +16,13 @@ pub use ids::{
 #[doc(inline)]
 pub use model::{
     AnchorAssignment, AnchorBinding, AnchorPosition, AssetEntry, AssetManifestDocument,
-    BlockContent, BlockPreset, BoardRect, BoardSize, DeviceMatchingHint, DeviceTemplate,
-    ExportSettings, ExtensionPayload, GroupingHint, GroupingKind, InputTypeHint, LayoutPreset,
-    LineEndpoint, LineStyle, MAPPING_SHEET_SCHEMA_VERSION, MappingDisplayMetadata,
+    AssetPlacement, BlockContent, BlockPreset, BoardRect, BoardSize, DeviceMatchingHint,
+    DeviceTemplate, ExportSettings, ExtensionPayload, GroupingHint, GroupingKind, InputTypeHint,
+    LayoutPreset, LineEndpoint, LineStyle, MAPPING_SHEET_SCHEMA_VERSION, MappingDisplayMetadata,
     MappingMetadataDocument, MappingRef, MappingSheet, ModeMappingSlot, PixelDimensions,
     ProfileSheetsDocument, SheetAnchorOverride, SheetBlock, SheetLine, SheetText, SheetTextKind,
-    SidecarDocument, SidecarHeader, TemplateAnchor, TemplateInstance, TemplateStoreDocument,
-    TokenPreset, validate_unique_mapping_metadata_refs,
+    SidecarDocument, SidecarHeader, TemplateAnchor, TemplateInstance, TemplateRect,
+    TemplateStoreDocument, TokenPreset, validate_unique_mapping_metadata_refs,
 };
 #[doc(inline)]
 pub use recovery::{
