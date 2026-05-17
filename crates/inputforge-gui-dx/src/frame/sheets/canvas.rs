@@ -12,12 +12,9 @@ use inputforge_core::sheet::{
 };
 use serde::Deserialize;
 
-use crate::components::Icon;
 use crate::frame::sheets::state::{
     AutosaveStatus, SheetTool, SheetsState, default_rect_at, normalized_image_point,
 };
-use crate::icons::{Icon as IconKind, IconSize};
-use inputforge_core::sheet::AssetId;
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 struct StageRectPayload {
@@ -53,7 +50,6 @@ const STAGE_ANCHOR_DRAG_LISTENER_PREFIX: &str = "__inputforgeSheetsStageAnchorDr
 #[component]
 pub(crate) fn SheetsCanvas(
     sheets: Signal<SheetsState>,
-    on_import_image: EventHandler<()>,
     on_arm_capture: EventHandler<AnchorId>,
 ) -> Element {
     let _ = on_arm_capture;
@@ -77,6 +73,18 @@ pub(crate) fn SheetsCanvas(
     let assets_all = state.assets.clone();
     drop(state);
 
+    // Capture the original placement order before the z-index sort so chip labels can
+    // recover a stable "Frame N" index (and so the rsx body can read it without holding
+    // a borrow on `selected_template`, which is partially moved into the `if let` arm).
+    let placements_original: Vec<inputforge_core::sheet::AssetPlacementId> = selected_template
+        .as_ref()
+        .map(|t| {
+            t.placements
+                .iter()
+                .map(|p| p.placement_id.clone())
+                .collect()
+        })
+        .unwrap_or_default();
     let mut placements_sorted = selected_template
         .as_ref()
         .map(|t| t.placements.clone())
@@ -361,13 +369,13 @@ pub(crate) fn SheetsCanvas(
         let Some(template_id) = drop_template_id.clone() else {
             return;
         };
-        let Some(raw_asset_id) = evt.data_transfer().get_data("text/plain") else {
+        // Asset id rides SheetsState.dragging_asset, not the native DataTransfer:
+        // dioxus-html 0.7.9 desktop's set_data is a no-op stub so the source side cannot
+        // populate the dataTransfer payload. The rail's ondragstart stashes the id and
+        // ondragend clears it; we read it here and clear after a successful drop.
+        let Some(asset_id) = sheets.read().dragging_asset.clone() else {
             return;
         };
-        if raw_asset_id.is_empty() {
-            return;
-        }
-        let asset_id = AssetId::from_string(raw_asset_id);
         let coordinates = evt.client_coordinates();
         let rect = *stage_rect.read();
         let Some(position) = normalized_image_point(
@@ -397,6 +405,7 @@ pub(crate) fn SheetsCanvas(
         let _ = sheets
             .write()
             .add_placement(template_id, asset_id, drop_rect);
+        sheets.write().end_asset_drag();
     };
 
     let pending_slots = sheets.read().pending_preset_slots.clone();
@@ -418,13 +427,10 @@ pub(crate) fn SheetsCanvas(
         let Some(template_id) = empty_dropzone_template_id_for_drop.clone() else {
             return;
         };
-        let Some(raw_asset_id) = evt.data_transfer().get_data("text/plain") else {
+        // Same side-channel as handle_stage_drop above. See that comment.
+        let Some(asset_id) = sheets.read().dragging_asset.clone() else {
             return;
         };
-        if raw_asset_id.is_empty() {
-            return;
-        }
-        let asset_id = AssetId::from_string(raw_asset_id);
         let coordinates = evt.client_coordinates();
         let rect = *stage_rect.read();
         let Some(position) = normalized_image_point(
@@ -454,6 +460,7 @@ pub(crate) fn SheetsCanvas(
         let _ = sheets
             .write()
             .add_placement(template_id, asset_id, drop_rect);
+        sheets.write().end_asset_drag();
     };
 
     rsx! {
@@ -478,17 +485,6 @@ pub(crate) fn SheetsCanvas(
                             },
                             "Anchor"
                         }
-                    }
-                    button {
-                        "type": "button",
-                        class: "if-sheets__toolbar-import",
-                        "aria-label": "Import image",
-                        disabled: !has_template,
-                        title: if has_template { "Import image" } else { "Select a template first" },
-                        onclick: move |_| {
-                            on_import_image.call(());
-                        },
-                        Icon { name: IconKind::Plus, size: IconSize::Sm }
                     }
                 }
                 div {
@@ -555,14 +551,21 @@ pub(crate) fn SheetsCanvas(
                                     let z = placement.z_index;
                                     let is_selected = selected_placement_id.as_ref()
                                         == Some(&placement.placement_id);
-                                    let placement_filename = is_selected
-                                        .then(|| {
-                                            assets_all
-                                                .iter()
-                                                .find(|a| a.asset_id == placement.asset_id)
-                                                .map(crate::frame::sheets::state::filename_of)
-                                        })
-                                        .flatten();
+                                    let placement_chip_label = is_selected.then(|| {
+                                        // Use the placement's position in the original (unsorted)
+                                        // template.placements so the "Frame N" fallback stays
+                                        // stable across z-order changes and matches the
+                                        // "Attached to" dropdown labels.
+                                        let stable_idx = placements_original
+                                            .iter()
+                                            .position(|id| id == &placement.placement_id)
+                                            .unwrap_or(0);
+                                        crate::frame::sheets::state::placement_label_for(
+                                            &placement,
+                                            &assets_all,
+                                            stable_idx,
+                                        )
+                                    });
                                     let placement_id_for_click = placement.placement_id.clone();
                                     rsx! {
                                         div {
@@ -592,7 +595,7 @@ pub(crate) fn SheetsCanvas(
                                                     },
                                                 }
                                             }
-                                            if let Some(name) = placement_filename {
+                                            if let Some(name) = placement_chip_label {
                                                 span { class: "if-sheets__placement-name", "{name}" }
                                             }
                                             if is_selected {
@@ -613,7 +616,7 @@ pub(crate) fn SheetsCanvas(
                                     "data-testid": "sheets-empty-dropzone",
                                     ondragover: handle_empty_dropzone_dragover,
                                     ondrop: handle_empty_dropzone_drop,
-                                    p { "No images yet. Drop an asset from the rail or click + to import." }
+                                    p { "No images yet. Drop an asset from the rail to add one." }
                                 }
                             }
                             for slot in pending_slots.iter().copied() {
@@ -636,13 +639,11 @@ pub(crate) fn SheetsCanvas(
                                                 let Some(template_id) = template_id_for_drop.clone() else {
                                                     return;
                                                 };
-                                                let Some(raw_asset_id) = evt.data_transfer().get_data("text/plain") else {
+                                                // Same side-channel as handle_stage_drop. dioxus-html 0.7.9 desktop's
+                                                // set_data is a no-op; the asset id rides SheetsState.dragging_asset.
+                                                let Some(asset_id) = sheets.read().dragging_asset.clone() else {
                                                     return;
                                                 };
-                                                if raw_asset_id.is_empty() {
-                                                    return;
-                                                }
-                                                let asset_id = AssetId::from_string(raw_asset_id);
                                                 let mut state = sheets.write();
                                                 if state
                                                     .add_placement(template_id, asset_id, slot_rect)
@@ -650,6 +651,7 @@ pub(crate) fn SheetsCanvas(
                                                 {
                                                     state.pending_preset_slots.retain(|rect| rect != &slot_rect);
                                                 }
+                                                state.end_asset_drag();
                                             },
                                             span { "+ Add image" }
                                         }
@@ -690,10 +692,25 @@ pub(crate) fn SheetsCanvas(
                                     let left = wrapper_x * 100.0;
                                     let top = wrapper_y * 100.0;
                                     let anchor_id_for_click = anchor.anchor_id.clone();
+                                    let attached_to_str = anchor
+                                        .attached_to
+                                        .as_ref()
+                                        .map(|id| id.as_str().to_owned());
+                                    let local_x_str = anchor
+                                        .attached_to
+                                        .as_ref()
+                                        .map(|_| format!("{}", anchor.position.x));
+                                    let local_y_str = anchor
+                                        .attached_to
+                                        .as_ref()
+                                        .map(|_| format!("{}", anchor.position.y));
                                     rsx! {
                                         div {
                                             class: "if-sheets__anchor-mount",
                                             "data-anchor-id": "{anchor.anchor_id}",
+                                            "data-attached-to": attached_to_str,
+                                            "data-local-x": local_x_str,
+                                            "data-local-y": local_y_str,
                                             style: "left:{left}%;top:{top}%;",
                                             button {
                                                 "type": "button",
@@ -788,7 +805,7 @@ pub(crate) fn placement_at_canvas_point(
         .map(|p| p.placement_id.clone())
 }
 
-fn asset_data_url(health: &AssetHealth) -> std::io::Result<String> {
+pub(super) fn asset_data_url(health: &AssetHealth) -> std::io::Result<String> {
     let bytes = std::fs::read(&health.copied_absolute_path)?;
     Ok(format!(
         "{}{}",
@@ -933,6 +950,23 @@ pub(super) fn install_placement_drag_bridge(
             }};
         }}
 
+        function captureAttachedAnchors() {{
+            // Snapshot anchor mounts whose data-attached-to matches this placement so the live
+            // preview can update them as the placement moves/resizes. Read once per gesture and
+            // cache: the localX/localY values are stable for the duration of the drag (the
+            // attached anchor's placement-local position does not change as the parent moves).
+            var list = stage.querySelectorAll('.if-sheets__anchor-mount[data-attached-to=' + JSON.stringify(placementId) + ']');
+            var arr = [];
+            list.forEach(function(el) {{
+                arr.push({{
+                    mount: el,
+                    localX: parseFloat(el.getAttribute('data-local-x') || '0'),
+                    localY: parseFloat(el.getAttribute('data-local-y') || '0')
+                }});
+            }});
+            return arr;
+        }}
+
         function onPointerDownBody(evt) {{
             if (evt.button !== 0) return;
             if (state) return;
@@ -948,7 +982,8 @@ pub(super) fn install_placement_drag_bridge(
                 startX: evt.clientX,
                 startY: evt.clientY,
                 origin: placementRectNormalized(),
-                moved: false
+                moved: false,
+                attachedAnchors: captureAttachedAnchors()
             }};
         }}
 
@@ -969,7 +1004,8 @@ pub(super) fn install_placement_drag_bridge(
                     startX: evt.clientX,
                     startY: evt.clientY,
                     origin: placementRectNormalized(),
-                    moved: false
+                    moved: false,
+                    attachedAnchors: captureAttachedAnchors()
                 }};
             }};
         }}
@@ -1018,15 +1054,33 @@ pub(super) fn install_placement_drag_bridge(
             // Mutate inline style during the drag so the user sees the frame track the cursor.
             // The pointerup commit re-renders through Dioxus, which writes the same style attribute
             // with the canonical values and naturally replaces these temporary strings.
+            var newRect;
             if (state.kind === 'move') {{
-                placement.style.left = ((state.origin.x + dxNorm) * 100) + '%';
-                placement.style.top = ((state.origin.y + dyNorm) * 100) + '%';
+                newRect = {{
+                    x: state.origin.x + dxNorm,
+                    y: state.origin.y + dyNorm,
+                    w: state.origin.w,
+                    h: state.origin.h
+                }};
+                placement.style.left = (newRect.x * 100) + '%';
+                placement.style.top = (newRect.y * 100) + '%';
             }} else {{
-                var r = clampedResizeRect(dxNorm, dyNorm);
-                placement.style.left = (r.x * 100) + '%';
-                placement.style.top = (r.y * 100) + '%';
-                placement.style.width = (r.w * 100) + '%';
-                placement.style.height = (r.h * 100) + '%';
+                newRect = clampedResizeRect(dxNorm, dyNorm);
+                placement.style.left = (newRect.x * 100) + '%';
+                placement.style.top = (newRect.y * 100) + '%';
+                placement.style.width = (newRect.w * 100) + '%';
+                placement.style.height = (newRect.h * 100) + '%';
+            }}
+            // Track attached anchors so they stay glued to their placement-local position as the
+            // parent moves/resizes. Formula mirrors anchor_canvas_coords on the Rust side, so the
+            // pointerup re-render produces the same canvas coords as the last frame here.
+            if (state.attachedAnchors) {{
+                state.attachedAnchors.forEach(function(a) {{
+                    var cx = newRect.x + a.localX * newRect.w;
+                    var cy = newRect.y + a.localY * newRect.h;
+                    a.mount.style.left = (cx * 100) + '%';
+                    a.mount.style.top = (cy * 100) + '%';
+                }});
             }}
         }}
 

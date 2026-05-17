@@ -411,6 +411,34 @@
     text-transform: uppercase;
 }
 
+/* Read-only summary of the current anchor binding (device . input + how it was
+   assigned). Driven by the persisted binding so it survives reload and shows
+   even with the engine stopped. */
+.if-sheets__binding-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.if-sheets__binding-line {
+    margin: 0;
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 18px;
+}
+
+.if-sheets__binding-sep {
+    color: var(--color-text-subtle);
+}
+
+.if-sheets__binding-assignment {
+    margin: 0;
+    color: var(--color-text-subtle);
+    font-size: 11px;
+    line-height: 16px;
+}
+
 .if-sheets__inspector-asset-name {
     /* Frame inspector caption: monospaced filename of the selected placement's
        source asset; helps disambiguate placements sharing the same image. */
@@ -420,6 +448,43 @@
     line-height: 16px;
     font-family: var(--font-mono);
     word-break: break-all;
+}
+
+.if-sheets__inspector-asset-thumb {
+    /* Asset inspector preview tile. Bigger than the rail thumbnail so the
+       user can actually recognise an asset before renaming or deleting. */
+    width: 96px;
+    height: 96px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--color-bg-sunken);
+    object-fit: contain;
+}
+
+.if-sheets__inspector-asset-thumb--missing {
+    /* Same dimensions as the loaded variant; visible neutral tile for
+       missing files so the inspector layout does not jump. */
+    display: flex;
+    background: var(--color-bg-sunken);
+}
+
+.if-sheets__inspector-asset-summary {
+    margin: 6px 0;
+    color: var(--color-text);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.if-sheets__inspector-asset-summary dt {
+    color: var(--color-text-subtle);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.if-sheets__inspector-asset-summary dd {
+    margin: 0 0 6px;
+    font-family: var(--font-mono);
 }
 
 .if-sheets__autosave-chip {
@@ -463,16 +528,19 @@
     color: var(--color-error-hover);
 }
 
+/* These rules style the inspector's raw <button> actions. The shared Button
+   (.if-button, e.g. the manual-assignment Assign) carries its own styling, so
+   exclude it or the cascade would re-border the primary action. */
 .if-sheets [role="alert"] button,
-.if-sheets [data-testid="sheets-inspector"] section button {
+.if-sheets [data-testid="sheets-inspector"] section button:not(.if-button) {
     align-self: flex-start;
 }
 
-.if-sheets [data-testid="sheets-inspector"] section button:not(:disabled) {
+.if-sheets [data-testid="sheets-inspector"] section button:not(.if-button):not(:disabled) {
     border-color: var(--color-border-strong);
 }
 
-.if-sheets [data-testid="sheets-inspector"] section button + button {
+.if-sheets [data-testid="sheets-inspector"] section button:not(.if-button) + button:not(.if-button) {
     background: transparent;
 }
 
@@ -518,13 +586,48 @@
     line-height: 16px;
 }
 
+/* Manual assignment editor: the Device + Input selects mirror the anchor binding
+   and re-assign on change (two-way synced with the live capture above). The two
+   selects sit a touch further apart than the section default for breathing room. */
+.if-sheets__manual-fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin-top: var(--space-1);
+}
+
+/* Both selects (Device and Input) fill the field column and keep room for the
+   chevron overlay (the generic `.if-sheets select` padding would otherwise clip it). */
+.if-sheets [data-testid="sheets-inspector"] .if-select-wrapper {
+    display: flex;
+}
+
+.if-sheets [data-testid="sheets-inspector"] .if-select {
+    padding-inline-end: 28px;
+}
+
+/* Non-selectable group headers ("Axes" / "Buttons" / "Hats") inside the Input
+   dropdown. <option> styling is limited in WebView2, so the disabled state does
+   most of the work; this is best-effort polish. */
+.if-sheets__manual-input-group {
+    color: var(--color-text-subtle);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
 .if-sheets__anchor-mount {
     /* 0x0 origin at the click coordinate. The disc handles its own centering via
        translate(-50%, -50%) (see canonical .if-sheets__anchor rule above) so the disc
-       always lands on the click point, no matter how wide the label chip below is. */
+       always lands on the click point, no matter how wide the label chip below is.
+
+       z-index lifts anchors above placements. add_placement assigns z_index = max + 1
+       (state.rs), so 1000 gives ~1000 placements of headroom before an anchor could
+       be eclipsed. Without this, the second placement (z=1) paints over every anchor. */
     position: absolute;
     width: 0;
     height: 0;
+    z-index: 1000;
 }
 
 .if-sheets__anchor-label {

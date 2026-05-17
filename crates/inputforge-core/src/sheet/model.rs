@@ -172,6 +172,13 @@ pub struct AssetEntry {
     pub pixel_dimensions: PixelDimensions,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub original_import_path: Option<PathBuf>,
+    /// Optional user-supplied label. Overrides the asset filename in the
+    /// rail row, in placement default labels (canvas chip and the inspector
+    /// "Attached to" picker) for placements that do not have their own
+    /// `display_name`. `None` means the label falls back to the filename
+    /// resolved from `original_import_path` / `copied_path`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     #[serde(default, flatten, skip_serializing_if = "extension_payload_is_empty")]
     pub extensions: ExtensionPayload,
 }
@@ -199,6 +206,11 @@ pub struct AssetPlacement {
     pub asset_id: AssetId,
     pub position: TemplateRect,
     pub z_index: i32,
+    /// Optional user-supplied label. Disambiguates placements that share the
+    /// same asset in inspector pickers and on-canvas chips. `None` means the
+    /// label falls back to the source asset filename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     #[serde(default, flatten, skip_serializing_if = "extension_payload_is_empty")]
     pub extensions: ExtensionPayload,
 }
@@ -237,6 +249,7 @@ pub fn upgrade_template_store_in_place(document: &mut TemplateStoreDocument) -> 
                 asset_id: AssetId::from_string(asset_id_str),
                 position: default_rect,
                 z_index,
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             });
         }
@@ -1065,6 +1078,7 @@ index = 3
                 h: 0.9,
             },
             z_index: 3,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         };
 
@@ -1074,6 +1088,123 @@ index = 3
         assert_eq!(decoded, placement);
         assert_eq!(decoded.z_index, 3);
         assert!((decoded.position.w - 0.9).abs() < 1e-6);
+        assert!(
+            !encoded.contains("display_name"),
+            "default display_name = None must not emit a key: {encoded}"
+        );
+    }
+
+    #[test]
+    fn asset_placement_roundtrips_with_user_supplied_display_name() {
+        let placement = AssetPlacement {
+            placement_id: AssetPlacementId::from_string("placement-named"),
+            asset_id: AssetId::from_string("asset-stick"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 1.0,
+                h: 1.0,
+            },
+            z_index: 0,
+            display_name: Some("Throttle".to_owned()),
+            extensions: ExtensionPayload::default(),
+        };
+
+        let encoded = toml::to_string(&placement).unwrap();
+        let decoded: AssetPlacement = toml::from_str(&encoded).unwrap();
+
+        assert_eq!(decoded, placement);
+        assert_eq!(decoded.display_name.as_deref(), Some("Throttle"));
+        assert!(
+            encoded.contains("display_name"),
+            "Some(display_name) must serialize the key: {encoded}"
+        );
+    }
+
+    #[test]
+    fn asset_placement_deserializes_without_display_name_to_none() {
+        let toml = r#"
+placement_id = "placement-legacy"
+asset_id = "asset-stick"
+z_index = 0
+
+[position]
+x = 0.0
+y = 0.0
+w = 1.0
+h = 1.0
+"#;
+        let decoded: AssetPlacement = toml::from_str(toml).unwrap();
+        assert!(decoded.display_name.is_none());
+    }
+
+    #[test]
+    fn asset_entry_with_no_display_name_omits_the_key_on_serialize() {
+        let entry = AssetEntry {
+            asset_id: AssetId::from_string("asset-stick"),
+            copied_path: PathBuf::from("assets/asset-stick.png"),
+            content_hash: "hash".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 64,
+                height: 64,
+            },
+            original_import_path: None,
+            display_name: None,
+            extensions: ExtensionPayload::default(),
+        };
+
+        let encoded = toml::to_string(&entry).unwrap();
+        let decoded: AssetEntry = toml::from_str(&encoded).unwrap();
+
+        assert_eq!(decoded, entry);
+        assert!(
+            !encoded.contains("display_name"),
+            "default display_name = None must not emit a key: {encoded}"
+        );
+    }
+
+    #[test]
+    fn asset_entry_roundtrips_with_user_supplied_display_name() {
+        let entry = AssetEntry {
+            asset_id: AssetId::from_string("asset-renamed"),
+            copied_path: PathBuf::from("assets/asset-renamed.png"),
+            content_hash: "hash".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 64,
+                height: 64,
+            },
+            original_import_path: None,
+            display_name: Some("Throttle Quadrant".to_owned()),
+            extensions: ExtensionPayload::default(),
+        };
+
+        let encoded = toml::to_string(&entry).unwrap();
+        let decoded: AssetEntry = toml::from_str(&encoded).unwrap();
+
+        assert_eq!(decoded, entry);
+        assert_eq!(decoded.display_name.as_deref(), Some("Throttle Quadrant"));
+        assert!(
+            encoded.contains("display_name"),
+            "Some(display_name) must serialize the key: {encoded}"
+        );
+    }
+
+    #[test]
+    fn asset_entry_deserializes_without_display_name_to_none() {
+        let toml = r#"
+asset_id = "asset-legacy"
+copied_path = "assets/asset-legacy.png"
+content_hash = "hash"
+media_type = "image/png"
+
+[pixel_dimensions]
+width = 64
+height = 64
+"#;
+        let decoded: AssetEntry = toml::from_str(toml).unwrap();
+        assert!(decoded.display_name.is_none());
     }
 
     #[test]
@@ -1132,6 +1263,7 @@ index = 3
                     h: 0.9,
                 },
                 z_index: 0,
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             }],
             anchors: Vec::new(),

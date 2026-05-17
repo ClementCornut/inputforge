@@ -284,7 +284,7 @@ pub(crate) fn SheetsWorkbench() -> Element {
             "data-testid": "sheets-workbench",
             "data-documents-loaded": documents_loaded,
             left_rail::SheetsLeftRail { sheets, on_import_image, on_create_template }
-            canvas::SheetsCanvas { sheets, on_import_image, on_arm_capture }
+            canvas::SheetsCanvas { sheets, on_arm_capture }
             inspector::SheetsInspector {
                 sheets,
                 capture_availability,

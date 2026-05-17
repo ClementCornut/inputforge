@@ -18,6 +18,14 @@ pub(crate) fn pluralize(count: usize, singular: &str, plural: &str) -> String {
     }
 }
 
+/// Blast-radius summary for an asset, used by the Asset inspector's delete
+/// confirmation modal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct AssetUsage {
+    pub placements: usize,
+    pub templates: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum SheetTool {
     #[default]
@@ -179,6 +187,12 @@ pub(crate) enum SheetsEventKind {
         before: i32,
         after: i32,
     },
+    RenamePlacement {
+        template_id: TemplateId,
+        placement_id: AssetPlacementId,
+        before: Option<String>,
+        after: Option<String>,
+    },
     PlaceAnchor {
         template_id: TemplateId,
         anchor: TemplateAnchor,
@@ -219,6 +233,11 @@ pub(crate) enum SheetsEventKind {
         dropped_placements: Vec<(TemplateId, AssetPlacement)>,
         dropped_anchors: Vec<(TemplateId, TemplateAnchor)>,
     },
+    RenameAsset {
+        asset_id: AssetId,
+        before: Option<String>,
+        after: Option<String>,
+    },
 }
 
 impl SheetsEventKind {
@@ -234,6 +253,7 @@ impl SheetsEventKind {
                 SheetsEventKind::MovePlacement { .. } => "MovePlacement",
                 SheetsEventKind::ResizePlacement { .. } => "ResizePlacement",
                 SheetsEventKind::ReorderZ { .. } => "ReorderZ",
+                SheetsEventKind::RenamePlacement { .. } => "RenamePlacement",
                 SheetsEventKind::PlaceAnchor { .. } => "PlaceAnchor",
                 SheetsEventKind::RemoveAnchor { .. } => "RemoveAnchor",
                 SheetsEventKind::RenameAnchor { .. } => "RenameAnchor",
@@ -242,6 +262,7 @@ impl SheetsEventKind {
                 SheetsEventKind::AssignAnchor { .. } => "AssignAnchor",
                 SheetsEventKind::ImportAsset { .. } => "ImportAsset",
                 SheetsEventKind::RemoveAsset { .. } => "RemoveAsset",
+                SheetsEventKind::RenameAsset { .. } => "RenameAsset",
             }
         }
         vec![
@@ -252,6 +273,7 @@ impl SheetsEventKind {
             "MovePlacement",
             "ResizePlacement",
             "ReorderZ",
+            "RenamePlacement",
             "PlaceAnchor",
             "RemoveAnchor",
             "RenameAnchor",
@@ -260,6 +282,7 @@ impl SheetsEventKind {
             "AssignAnchor",
             "ImportAsset",
             "RemoveAsset",
+            "RenameAsset",
         ]
     }
 }
@@ -278,7 +301,19 @@ pub(crate) struct SheetsState {
     pub asset_health: Vec<inputforge_core::sheet::AssetHealth>,
     pub library_tab: SheetsLibraryTab,
     pub selected_template_id: Option<TemplateId>,
+    /// Canvas-internal: which asset's image is rendered behind the placements on
+    /// the active template. Set by `select_template` to the first placement's
+    /// asset; the template-scoped `selected_asset_id()` method has its own
+    /// first-placement fallback when this is `None`. Do NOT use this as the
+    /// "user picked an asset in the rail to inspect" signal: that lives in
+    /// `inspector_asset_id` so a template click does not pull the inspector
+    /// into the Asset section.
     pub selected_asset_id: Option<AssetId>,
+    /// User-intent: which asset the rail-click handler marked for inspection.
+    /// Drives the Asset inspector branch dispatch and the Assets-tab row
+    /// highlight. Cleared by `select_template` so picking a template returns
+    /// the inspector to the TEMPLATE section.
+    pub inspector_asset_id: Option<AssetId>,
     pub selected_anchor_id: Option<AnchorId>,
     pub selected_placement_id: Option<AssetPlacementId>,
     pub tool: SheetTool,
@@ -290,6 +325,7 @@ pub(crate) struct SheetsState {
     pub pending_preset_slots: Vec<TemplateRect>,
     pub template_display_name_draft: Option<String>,
     pub anchor_label_draft: Option<String>,
+    pub dragging_asset: Option<AssetId>,
 }
 
 impl Default for SheetsState {
@@ -301,6 +337,7 @@ impl Default for SheetsState {
             library_tab: SheetsLibraryTab::Templates,
             selected_template_id: None,
             selected_asset_id: None,
+            inspector_asset_id: None,
             selected_anchor_id: None,
             selected_placement_id: None,
             tool: SheetTool::Select,
@@ -312,6 +349,7 @@ impl Default for SheetsState {
             pending_preset_slots: Vec::new(),
             template_display_name_draft: None,
             anchor_label_draft: None,
+            dragging_asset: None,
         }
     }
 }
@@ -377,6 +415,7 @@ impl SheetsState {
             library_tab: SheetsLibraryTab::Templates,
             selected_template_id,
             selected_asset_id,
+            inspector_asset_id: None,
             selected_anchor_id: None,
             selected_placement_id: None,
             tool: SheetTool::Select,
@@ -388,6 +427,7 @@ impl SheetsState {
             pending_preset_slots: Vec::new(),
             template_display_name_draft: None,
             anchor_label_draft: None,
+            dragging_asset: None,
         }
     }
 
@@ -419,6 +459,7 @@ impl SheetsState {
                     h: 0.9,
                 },
                 z_index: 0,
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             }],
             anchors: Vec::new(),
@@ -517,6 +558,36 @@ impl SheetsState {
         self.update_selected_anchor_label(trimmed.to_owned());
     }
 
+    pub(crate) fn rename_selected_placement(&mut self, next: Option<String>) {
+        let Some(template_id) = self.selected_template_id.clone() else {
+            return;
+        };
+        let Some(placement_id) = self.selected_placement_id.clone() else {
+            return;
+        };
+        let Some(template) = self.selected_template_mut() else {
+            return;
+        };
+        let Some(placement) = template
+            .placements
+            .iter_mut()
+            .find(|p| p.placement_id == placement_id)
+        else {
+            return;
+        };
+        if placement.display_name == next {
+            return;
+        }
+        let before = std::mem::replace(&mut placement.display_name, next.clone());
+        self.push_event(SheetsEventKind::RenamePlacement {
+            template_id,
+            placement_id,
+            before,
+            after: next,
+        });
+        self.mark_dirty();
+    }
+
     pub(crate) fn rename_selected_template(&mut self, display_name: impl AsRef<str>) {
         let display_name = display_name.as_ref().trim();
         if display_name.is_empty() {
@@ -606,6 +677,7 @@ impl SheetsState {
             asset_id,
             position,
             z_index: auto_z,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         };
         template.placements.push(placement.clone());
@@ -891,6 +963,10 @@ impl SheetsState {
             self.selected_asset_id = template.placements.first().map(|p| p.asset_id.clone());
             self.selected_anchor_id = None;
             self.selected_placement_id = None;
+            // Picking a template drops any prior rail asset focus so the
+            // inspector returns to the TEMPLATE section rather than getting
+            // trapped on the previously-inspected asset.
+            self.inspector_asset_id = None;
         }
     }
 
@@ -899,6 +975,9 @@ impl SheetsState {
     pub(crate) fn select_placement(&mut self, placement_id: AssetPlacementId) {
         self.selected_placement_id = Some(placement_id);
         self.selected_anchor_id = None;
+        // Selection across the rail / canvas surfaces is mutually exclusive,
+        // so picking a placement also drops any prior Asset inspector focus.
+        self.inspector_asset_id = None;
     }
 
     /// Mark an anchor as selected. Selecting an anchor clears the selected placement so the
@@ -907,6 +986,8 @@ impl SheetsState {
     pub(crate) fn select_anchor(&mut self, anchor_id: AnchorId) {
         self.selected_anchor_id = Some(anchor_id);
         self.selected_placement_id = None;
+        // Mutual exclusion: anchor focus replaces any Asset inspector focus.
+        self.inspector_asset_id = None;
     }
 
     /// Switch the active sheet tool. Entering Anchor mode also clears the selected placement so
@@ -918,6 +999,18 @@ impl SheetsState {
         if matches!(tool, SheetTool::Anchor) {
             self.selected_placement_id = None;
         }
+    }
+
+    // Side-channel for rail-to-canvas drag-and-drop. Dioxus 0.7.9 desktop's
+    // DataTransfer::set_data is a no-op stub, so the dragged asset id can't ride the native
+    // dataTransfer between dragstart on the rail and drop on the canvas. Stash it here on
+    // dragstart, read it from the drop handler, clear on dragend (or after a successful drop).
+    pub(crate) fn begin_asset_drag(&mut self, asset_id: AssetId) {
+        self.dragging_asset = Some(asset_id);
+    }
+
+    pub(crate) fn end_asset_drag(&mut self) {
+        self.dragging_asset = None;
     }
 
     /// Commit the final position of a drag-to-move gesture. Width and height are kept from the
@@ -969,6 +1062,60 @@ impl SheetsState {
             self.selected_template_id = Some(template_id);
             self.selected_asset_id = Some(asset_id);
             self.selected_anchor_id = None;
+            self.selected_placement_id = None;
+            self.inspector_asset_id = None;
+        }
+    }
+
+    /// Clicking an asset in the rail focuses the Asset inspector. Selection
+    /// across the four user-intent surfaces (template / asset / placement /
+    /// anchor) is mutually exclusive, so this also clears any prior placement
+    /// or anchor selection. The canvas-tracking `selected_template_id` is
+    /// preserved so the canvas keeps its loaded template (the canvas image
+    /// renderer reads through `selected_template()`); only `inspector_asset_id`
+    /// drives the Asset inspector branch and the Assets-tab row highlight.
+    pub(crate) fn select_asset_for_inspector(&mut self, asset_id: AssetId) {
+        self.inspector_asset_id = Some(asset_id);
+        self.selected_anchor_id = None;
+        self.selected_placement_id = None;
+    }
+
+    pub(crate) fn rename_selected_asset(&mut self, next: Option<String>) {
+        let Some(asset_id) = self.inspector_asset_id.clone() else {
+            return;
+        };
+        let Some(idx) = self.assets.iter().position(|a| a.asset_id == asset_id) else {
+            return;
+        };
+        if self.assets[idx].display_name == next {
+            return;
+        }
+        let before = std::mem::replace(&mut self.assets[idx].display_name, next.clone());
+        self.push_event(SheetsEventKind::RenameAsset {
+            asset_id,
+            before,
+            after: next,
+        });
+        self.mark_dirty();
+    }
+
+    pub(crate) fn asset_usage(&self, asset_id: &AssetId) -> AssetUsage {
+        let mut placements = 0usize;
+        let mut templates = 0usize;
+        for template in &self.templates {
+            let hits = template
+                .placements
+                .iter()
+                .filter(|p| &p.asset_id == asset_id)
+                .count();
+            if hits > 0 {
+                placements += hits;
+                templates += 1;
+            }
+        }
+        AssetUsage {
+            placements,
+            templates,
         }
     }
 
@@ -1068,6 +1215,10 @@ impl SheetsState {
         self.mark_dirty();
     }
 
+    /// Reassign the selected anchor to a different placement, or detach it. The on-screen
+    /// position is preserved across the swap: storage flips between canvas-relative
+    /// (detached) and placement-local (attached) so the disc stays under the same screen
+    /// pixel. Reuses the same canvas <-> storage helpers as `update_selected_anchor_position`.
     pub(crate) fn set_anchor_attached_to(
         &mut self,
         attached_to: Option<AssetPlacementId>,
@@ -1080,11 +1231,36 @@ impl SheetsState {
             .selected_anchor_id
             .clone()
             .ok_or_else(|| "no anchor selected".to_owned())?;
+        let (canvas_x, canvas_y) = {
+            let template = self
+                .selected_template()
+                .ok_or_else(|| "selected template missing".to_owned())?;
+            let anchor = template
+                .anchors
+                .iter()
+                .find(|a| a.anchor_id == anchor_id)
+                .ok_or_else(|| "selected anchor missing".to_owned())?;
+            crate::frame::sheets::canvas::anchor_canvas_coords(anchor, &template.placements)
+        };
+        let new_storage = {
+            let template = self
+                .selected_template()
+                .ok_or_else(|| "selected template missing".to_owned())?;
+            anchor_storage_position(
+                AnchorPosition {
+                    x: canvas_x,
+                    y: canvas_y,
+                },
+                attached_to.as_ref(),
+                &template.placements,
+            )
+        };
         let anchor = self
             .selected_anchor_mut()
             .ok_or_else(|| "selected anchor missing".to_owned())?;
         let before = anchor.attached_to.clone();
         anchor.attached_to.clone_from(&attached_to);
+        anchor.position = new_storage;
 
         self.push_event(SheetsEventKind::ToggleAnchorAttach {
             template_id,
@@ -1271,6 +1447,12 @@ impl SheetsState {
             });
         }
 
+        // Drop inspector focus on the removed asset so the Asset branch does
+        // not render with an orphan id after the Delete confirmation.
+        if self.inspector_asset_id.as_ref() == Some(asset_id) {
+            self.inspector_asset_id = None;
+        }
+
         self.push_event(SheetsEventKind::RemoveAsset {
             asset,
             dropped_placements,
@@ -1360,6 +1542,59 @@ pub(crate) fn filename_of(asset: &AssetEntry) -> String {
         )
 }
 
+/// User-facing label for an asset. Prefers a user-supplied `display_name`
+/// (trimmed, non-empty) and falls back to the on-disk filename. Drives the
+/// rail row label and, transitively, the placement default label for
+/// placements without their own `display_name`.
+pub(crate) fn asset_label_for(asset: &AssetEntry) -> String {
+    if let Some(name) = asset
+        .display_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return name.to_owned();
+    }
+    filename_of(asset)
+}
+
+/// Resolve the label a placement would show in the absence of a user-supplied
+/// `display_name`: source asset label (asset `display_name` or filename),
+/// falling back to "Frame N" using the supplied 0-based render index. Used
+/// as the placeholder text for the Name input so the user always sees what
+/// label the placement falls back to.
+pub(crate) fn placement_default_label_for(
+    placement: &AssetPlacement,
+    assets: &[AssetEntry],
+    idx: usize,
+) -> String {
+    assets
+        .iter()
+        .find(|asset| asset.asset_id == placement.asset_id)
+        .map_or_else(|| format!("Frame {}", idx + 1), asset_label_for)
+}
+
+/// Resolve the user-facing label for a placement. Prefers a user-supplied
+/// `display_name` when set (and non-empty after trim), otherwise delegates to
+/// `placement_default_label_for`. Used by the inspector "Attached to" picker,
+/// the canvas placement chip, and any other surface that needs a stable,
+/// disambiguating placement label.
+pub(crate) fn placement_label_for(
+    placement: &AssetPlacement,
+    assets: &[AssetEntry],
+    idx: usize,
+) -> String {
+    if let Some(name) = placement
+        .display_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return name.to_owned();
+    }
+    placement_default_label_for(placement, assets, idx)
+}
+
 pub(crate) fn default_rect_at(x: f32, y: f32, pixel_dimensions: &PixelDimensions) -> TemplateRect {
     let aspect = pixel_dimensions.width as f32 / pixel_dimensions.height.max(1) as f32;
 
@@ -1413,6 +1648,7 @@ mod tests {
                         h: 0.9,
                     },
                     z_index: 0,
+                    display_name: None,
                     extensions: ExtensionPayload::default(),
                 }],
                 anchors: vec![TemplateAnchor {
@@ -1440,12 +1676,14 @@ mod tests {
                     height: 32,
                 },
                 original_import_path: None,
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             }],
             asset_health: Vec::new(),
             library_tab: SheetsLibraryTab::Templates,
             selected_template_id: Some(template_id),
             selected_asset_id: Some(asset_id),
+            inspector_asset_id: None,
             selected_anchor_id: Some(anchor_id),
             selected_placement_id: None,
             tool: SheetTool::Select,
@@ -1457,6 +1695,7 @@ mod tests {
             pending_preset_slots: Vec::new(),
             template_display_name_draft: None,
             anchor_label_draft: None,
+            dragging_asset: None,
         }
     }
 
@@ -1513,6 +1752,510 @@ mod tests {
 
         assert_eq!(state.templates[0].anchors[0].label, original);
         assert_eq!(state.history.len(), baseline_history);
+    }
+
+    #[test]
+    fn rename_selected_placement_to_some_sets_display_name_and_pushes_one_event() {
+        use inputforge_core::sheet::AssetPlacementId;
+        let mut state = state_with_template();
+        let placement_id = AssetPlacementId::from_string("p-rename");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: AssetId::from_string("asset-1"),
+            position: TemplateRect {
+                x: 0.1,
+                y: 0.2,
+                w: 0.3,
+                h: 0.4,
+            },
+            z_index: 5,
+            display_name: None,
+            extensions: ExtensionPayload::default(),
+        });
+        state.selected_placement_id = Some(placement_id.clone());
+        let baseline_history = state.history.len();
+
+        state.rename_selected_placement(Some("Throttle".to_owned()));
+
+        let renamed = state.templates[0]
+            .placements
+            .iter()
+            .find(|p| p.placement_id == placement_id)
+            .unwrap();
+        assert_eq!(renamed.display_name.as_deref(), Some("Throttle"));
+        assert_eq!(state.history.len() - baseline_history, 1);
+        assert!(matches!(
+            state.history.back().unwrap().kind,
+            SheetsEventKind::RenamePlacement {
+                before: None,
+                after: Some(ref s),
+                ..
+            } if s == "Throttle"
+        ));
+    }
+
+    #[test]
+    fn rename_selected_placement_to_none_clears_display_name_and_pushes_one_event() {
+        use inputforge_core::sheet::AssetPlacementId;
+        let mut state = state_with_template();
+        let placement_id = AssetPlacementId::from_string("p-clear");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: AssetId::from_string("asset-1"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 0.5,
+            },
+            z_index: 3,
+            display_name: Some("Custom".to_owned()),
+            extensions: ExtensionPayload::default(),
+        });
+        state.selected_placement_id = Some(placement_id.clone());
+        let baseline_history = state.history.len();
+
+        state.rename_selected_placement(None);
+
+        let cleared = state.templates[0]
+            .placements
+            .iter()
+            .find(|p| p.placement_id == placement_id)
+            .unwrap();
+        assert!(cleared.display_name.is_none());
+        assert_eq!(state.history.len() - baseline_history, 1);
+        assert!(matches!(
+            state.history.back().unwrap().kind,
+            SheetsEventKind::RenamePlacement {
+                before: Some(ref s),
+                after: None,
+                ..
+            } if s == "Custom"
+        ));
+    }
+
+    #[test]
+    fn rename_selected_placement_with_unchanged_value_pushes_no_event() {
+        use inputforge_core::sheet::AssetPlacementId;
+        let mut state = state_with_template();
+        let placement_id = AssetPlacementId::from_string("p-noop");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: AssetId::from_string("asset-1"),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 0.5,
+            },
+            z_index: 1,
+            display_name: Some("Throttle".to_owned()),
+            extensions: ExtensionPayload::default(),
+        });
+        state.selected_placement_id = Some(placement_id);
+        let baseline_history = state.history.len();
+
+        // Same name as currently persisted: no event.
+        state.rename_selected_placement(Some("Throttle".to_owned()));
+        // Clearing an already-None field: no event.
+        state.templates[0]
+            .placements
+            .last_mut()
+            .unwrap()
+            .display_name = None;
+        state.rename_selected_placement(None);
+
+        assert_eq!(state.history.len(), baseline_history);
+    }
+
+    #[test]
+    fn renaming_unselected_placement_does_nothing() {
+        let mut state = state_with_template();
+        state.selected_placement_id = None;
+        let baseline_history = state.history.len();
+
+        state.rename_selected_placement(Some("ghost".to_owned()));
+
+        assert_eq!(state.history.len(), baseline_history);
+    }
+
+    #[test]
+    fn rename_selected_asset_to_some_sets_display_name_and_pushes_one_event() {
+        let mut state = state_with_template();
+        let asset_id = state.assets[0].asset_id.clone();
+        state.inspector_asset_id = Some(asset_id.clone());
+        let baseline_history = state.history.len();
+
+        state.rename_selected_asset(Some("Throttle Quadrant".to_owned()));
+
+        assert_eq!(
+            state.assets[0].display_name.as_deref(),
+            Some("Throttle Quadrant")
+        );
+        assert_eq!(state.history.len() - baseline_history, 1);
+        assert!(matches!(
+            state.history.back().unwrap().kind,
+            SheetsEventKind::RenameAsset {
+                before: None,
+                after: Some(ref s),
+                ..
+            } if s == "Throttle Quadrant"
+        ));
+        assert_eq!(state.autosave, AutosaveStatus::Dirty);
+    }
+
+    #[test]
+    fn rename_selected_asset_to_none_clears_display_name_and_pushes_one_event() {
+        let mut state = state_with_template();
+        let asset_id = state.assets[0].asset_id.clone();
+        state.assets[0].display_name = Some("Throttle".to_owned());
+        state.inspector_asset_id = Some(asset_id);
+        let baseline_history = state.history.len();
+
+        state.rename_selected_asset(None);
+
+        assert!(state.assets[0].display_name.is_none());
+        assert_eq!(state.history.len() - baseline_history, 1);
+        assert!(matches!(
+            state.history.back().unwrap().kind,
+            SheetsEventKind::RenameAsset {
+                before: Some(ref s),
+                after: None,
+                ..
+            } if s == "Throttle"
+        ));
+    }
+
+    #[test]
+    fn rename_selected_asset_with_unchanged_value_pushes_no_event() {
+        let mut state = state_with_template();
+        let asset_id = state.assets[0].asset_id.clone();
+        state.assets[0].display_name = Some("Same".to_owned());
+        state.inspector_asset_id = Some(asset_id);
+        let baseline_history = state.history.len();
+
+        state.rename_selected_asset(Some("Same".to_owned()));
+
+        assert_eq!(state.history.len(), baseline_history);
+    }
+
+    #[test]
+    fn renaming_unselected_asset_does_nothing() {
+        let mut state = state_with_template();
+        state.inspector_asset_id = None;
+        let baseline_history = state.history.len();
+
+        state.rename_selected_asset(Some("ghost".to_owned()));
+
+        assert_eq!(state.history.len(), baseline_history);
+    }
+
+    #[test]
+    fn select_asset_for_inspector_clears_placement_and_anchor_and_keeps_template_loaded() {
+        // Selection across the four user-intent surfaces (template / asset /
+        // placement / anchor) is mutually exclusive. Clicking an asset takes
+        // focus AWAY from any prior placement / anchor, while leaving the
+        // canvas-tracking template id in place so the canvas keeps its image.
+        let mut state = state_with_template();
+        let saved_template = state.selected_template_id.clone();
+        let saved_canvas_asset = state.selected_asset_id.clone();
+        let seeded_placement_id = AssetPlacementId::from_string("p-pre-seeded");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: seeded_placement_id.clone(),
+            asset_id: state.assets[0].asset_id.clone(),
+            position: TemplateRect {
+                x: 0.1,
+                y: 0.2,
+                w: 0.3,
+                h: 0.4,
+            },
+            z_index: 5,
+            display_name: None,
+            extensions: ExtensionPayload::default(),
+        });
+        state.selected_placement_id = Some(seeded_placement_id);
+        let seeded_anchor_id = state.templates[0].anchors[0].anchor_id.clone();
+        state.selected_anchor_id = Some(seeded_anchor_id);
+
+        let other_asset_id = AssetId::from_string("asset-from-rail");
+        state.assets.push(AssetEntry {
+            asset_id: other_asset_id.clone(),
+            copied_path: PathBuf::from("assets/asset-from-rail.png"),
+            content_hash: "h".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 16,
+                height: 16,
+            },
+            original_import_path: None,
+            display_name: None,
+            extensions: ExtensionPayload::default(),
+        });
+        let baseline_history = state.history.len();
+
+        state.select_asset_for_inspector(other_asset_id.clone());
+
+        assert_eq!(state.inspector_asset_id, Some(other_asset_id));
+        assert!(
+            state.selected_anchor_id.is_none(),
+            "rail asset click must clear any selected anchor"
+        );
+        assert!(
+            state.selected_placement_id.is_none(),
+            "rail asset click must clear any selected placement"
+        );
+        assert_eq!(
+            state.selected_template_id, saved_template,
+            "rail asset click must keep the canvas template loaded"
+        );
+        assert_eq!(
+            state.selected_asset_id, saved_canvas_asset,
+            "rail asset click must not touch the canvas-tracking selected_asset_id"
+        );
+        assert_eq!(state.history.len(), baseline_history);
+    }
+
+    #[test]
+    fn selecting_a_placement_clears_inspector_asset_focus() {
+        let mut state = state_with_template();
+        let asset_id = state.assets[0].asset_id.clone();
+        state.inspector_asset_id = Some(asset_id);
+        let placement_id = AssetPlacementId::from_string("p-pick");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: state.assets[0].asset_id.clone(),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 0.5,
+            },
+            z_index: 0,
+            display_name: None,
+            extensions: ExtensionPayload::default(),
+        });
+
+        state.select_placement(placement_id.clone());
+
+        assert_eq!(state.selected_placement_id, Some(placement_id));
+        assert!(
+            state.inspector_asset_id.is_none(),
+            "select_placement must drop inspector asset focus"
+        );
+    }
+
+    #[test]
+    fn selecting_an_anchor_clears_inspector_asset_focus() {
+        let mut state = state_with_template();
+        let asset_id = state.assets[0].asset_id.clone();
+        state.inspector_asset_id = Some(asset_id);
+        let anchor_id = state.templates[0].anchors[0].anchor_id.clone();
+
+        state.select_anchor(anchor_id.clone());
+
+        assert_eq!(state.selected_anchor_id, Some(anchor_id));
+        assert!(
+            state.inspector_asset_id.is_none(),
+            "select_anchor must drop inspector asset focus"
+        );
+    }
+
+    #[test]
+    fn selecting_a_template_clears_inspector_asset_focus() {
+        let mut state = state_with_template();
+        // Simulate a prior rail asset click that focused the Asset inspector.
+        let some_asset_id = state.assets[0].asset_id.clone();
+        state.inspector_asset_id = Some(some_asset_id);
+        let template_id = state.templates[0].template_id.clone();
+        let first_placement_asset = state.templates[0]
+            .placements
+            .first()
+            .map(|p| p.asset_id.clone());
+
+        state.select_template(template_id.clone());
+
+        assert!(
+            state.inspector_asset_id.is_none(),
+            "select_template must drop inspector_asset_id so the inspector returns to TEMPLATE"
+        );
+        assert_eq!(
+            state.selected_asset_id, first_placement_asset,
+            "select_template still sets the canvas-tracking selected_asset_id"
+        );
+        assert_eq!(state.selected_template_id, Some(template_id));
+    }
+
+    #[test]
+    fn asset_usage_counts_placements_across_templates() {
+        let mut state = state_with_template();
+        let asset_a = state.assets[0].asset_id.clone();
+        let asset_b = AssetId::from_string("asset-b");
+        state.assets.push(AssetEntry {
+            asset_id: asset_b.clone(),
+            copied_path: PathBuf::from("assets/b.png"),
+            content_hash: "h".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 16,
+                height: 16,
+            },
+            original_import_path: None,
+            display_name: None,
+            extensions: ExtensionPayload::default(),
+        });
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: AssetPlacementId::new(),
+            asset_id: asset_a.clone(),
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 0.5,
+            },
+            z_index: 1,
+            display_name: None,
+            extensions: ExtensionPayload::default(),
+        });
+        state.templates.push(DeviceTemplate {
+            template_id: TemplateId::from_string("template-second"),
+            display_name: "Second".to_owned(),
+            matching_hints: Vec::new(),
+            placements: vec![
+                AssetPlacement {
+                    placement_id: AssetPlacementId::new(),
+                    asset_id: asset_a.clone(),
+                    position: TemplateRect {
+                        x: 0.0,
+                        y: 0.0,
+                        w: 0.5,
+                        h: 0.5,
+                    },
+                    z_index: 0,
+                    display_name: None,
+                    extensions: ExtensionPayload::default(),
+                },
+                AssetPlacement {
+                    placement_id: AssetPlacementId::new(),
+                    asset_id: asset_b.clone(),
+                    position: TemplateRect {
+                        x: 0.0,
+                        y: 0.0,
+                        w: 0.5,
+                        h: 0.5,
+                    },
+                    z_index: 1,
+                    display_name: None,
+                    extensions: ExtensionPayload::default(),
+                },
+            ],
+            anchors: Vec::new(),
+            default_anchor_bindings: Vec::new(),
+            grouping_hints: Vec::new(),
+            default_token_preset: TokenPreset::Standard,
+            extensions: ExtensionPayload::default(),
+        });
+
+        let usage_a = state.asset_usage(&asset_a);
+        let usage_b = state.asset_usage(&asset_b);
+        let unused_id = AssetId::from_string("nowhere");
+        let usage_unused = state.asset_usage(&unused_id);
+
+        assert_eq!(
+            usage_a,
+            AssetUsage {
+                placements: 3,
+                templates: 2
+            }
+        );
+        assert_eq!(
+            usage_b,
+            AssetUsage {
+                placements: 1,
+                templates: 1
+            }
+        );
+        assert_eq!(usage_unused, AssetUsage::default());
+    }
+
+    #[test]
+    fn asset_label_for_falls_back_to_filename_when_display_name_unset() {
+        let asset = AssetEntry {
+            asset_id: AssetId::from_string("a"),
+            copied_path: PathBuf::from("assets/cockpit.png"),
+            content_hash: "h".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 16,
+                height: 16,
+            },
+            original_import_path: Some(PathBuf::from("/imports/cockpit.png")),
+            display_name: None,
+            extensions: ExtensionPayload::default(),
+        };
+
+        assert_eq!(asset_label_for(&asset), "cockpit.png");
+    }
+
+    #[test]
+    fn asset_label_for_uses_display_name_when_set_and_non_blank() {
+        let mut asset = AssetEntry {
+            asset_id: AssetId::from_string("a"),
+            copied_path: PathBuf::from("assets/cockpit.png"),
+            content_hash: "h".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 16,
+                height: 16,
+            },
+            original_import_path: None,
+            display_name: Some("  Stick  ".to_owned()),
+            extensions: ExtensionPayload::default(),
+        };
+
+        assert_eq!(asset_label_for(&asset), "Stick");
+
+        asset.display_name = Some("   ".to_owned());
+        assert_eq!(
+            asset_label_for(&asset),
+            "cockpit.png",
+            "blank display_name must fall back to filename"
+        );
+    }
+
+    #[test]
+    fn placement_default_label_for_picks_up_asset_display_name_when_set() {
+        let asset_id = AssetId::from_string("renamed");
+        let asset = AssetEntry {
+            asset_id: asset_id.clone(),
+            copied_path: PathBuf::from("assets/ugly-filename.png"),
+            content_hash: "h".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 16,
+                height: 16,
+            },
+            original_import_path: None,
+            display_name: Some("Throttle".to_owned()),
+            extensions: ExtensionPayload::default(),
+        };
+        let placement = AssetPlacement {
+            placement_id: AssetPlacementId::new(),
+            asset_id,
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 1.0,
+                h: 1.0,
+            },
+            z_index: 0,
+            display_name: None,
+            extensions: ExtensionPayload::default(),
+        };
+
+        assert_eq!(
+            placement_default_label_for(&placement, &[asset], 0),
+            "Throttle",
+        );
     }
 
     #[test]
@@ -1601,6 +2344,7 @@ mod tests {
                 h: 0.9,
             },
             z_index: 1,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.selected_asset_id = Some(AssetId::from_string("asset-2"));
@@ -1633,6 +2377,7 @@ mod tests {
                     h: 0.9,
                 },
                 z_index: 0,
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             }],
             anchors: Vec::new(),
@@ -1666,6 +2411,7 @@ mod tests {
                 height: 64,
             },
             original_import_path: None,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         };
         state.templates[0].placements.push(AssetPlacement {
@@ -1678,6 +2424,7 @@ mod tests {
                 h: 0.9,
             },
             z_index: 1,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.assets.push(second_asset.clone());
@@ -1974,6 +2721,7 @@ mod tests {
                 h: 1.0,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.templates[0].anchors.push(TemplateAnchor {
@@ -2053,6 +2801,7 @@ mod tests {
                 h: 0.5,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
 
@@ -2101,6 +2850,7 @@ mod tests {
                     h: 0.5,
                 },
                 z_index: z,
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             });
         }
@@ -2146,6 +2896,7 @@ mod tests {
                 h: 0.5,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         let baseline = state.history.len();
@@ -2172,6 +2923,7 @@ mod tests {
                 h: 0.5,
             },
             z_index: 5,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         let baseline = state.history.len();
@@ -2200,6 +2952,7 @@ mod tests {
                 h: 0.5,
             },
             z_index: 1,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.templates[0].placements.push(AssetPlacement {
@@ -2212,6 +2965,7 @@ mod tests {
                 h: 0.5,
             },
             z_index: 3,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.shift_z_up(template_id, lower.clone()).unwrap();
@@ -2246,6 +3000,7 @@ mod tests {
                 h: 0.5,
             },
             z_index: -5,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         let baseline = state.history.len();
@@ -2321,6 +3076,7 @@ mod tests {
                 height: 32,
             },
             original_import_path: None,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         };
 
@@ -2347,6 +3103,7 @@ mod tests {
                 h: 0.5,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         };
         state.templates[0].placements.push(placement_a.clone());
@@ -2384,6 +3141,7 @@ mod tests {
                 height: 1,
             },
             original_import_path: None,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
 
@@ -2434,6 +3192,7 @@ mod tests {
             ("MovePlacement", "MovePlacement"),
             ("ResizePlacement", "ResizePlacement"),
             ("ReorderZ", "ReorderZ"),
+            ("RenamePlacement", "RenamePlacement"),
             ("PlaceAnchor", "RemoveAnchor"),
             ("RemoveAnchor", "PlaceAnchor"),
             ("RenameAnchor", "RenameAnchor"),
@@ -2442,6 +3201,7 @@ mod tests {
             ("AssignAnchor", "AssignAnchor"),
             ("ImportAsset", "RemoveAsset"),
             ("RemoveAsset", "ImportAsset"),
+            ("RenameAsset", "RenameAsset"),
         ];
 
         let names = SheetsEventKind::all_kind_names();
@@ -2499,6 +3259,7 @@ mod tests {
                 h: 0.5,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.templates[0].anchors.push(TemplateAnchor {
@@ -2621,6 +3382,7 @@ mod tests {
                 h: 1.0,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
 
@@ -2730,6 +3492,7 @@ mod tests {
                 h: 0.3,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         let baseline = state.history.len();
@@ -2761,6 +3524,7 @@ mod tests {
                 h: 0.3,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
 
@@ -2799,6 +3563,7 @@ mod tests {
                 h: 0.3,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
 
@@ -2840,6 +3605,7 @@ mod tests {
                 h: 0.3,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
 
@@ -2855,6 +3621,7 @@ mod tests {
             asset_id: AssetId::from_string("asset-1"),
             position: rect,
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         placement_id

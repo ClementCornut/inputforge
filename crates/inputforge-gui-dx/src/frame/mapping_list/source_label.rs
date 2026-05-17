@@ -57,13 +57,19 @@ pub(crate) fn split_label(addr: &InputAddress, cfg: &ConfigSnapshot) -> (String,
         InputAddress::Bound { device, input } => (device, input),
         InputAddress::Unbound => return (String::new(), UNBOUND_PLACEHOLDER.to_owned()),
     };
-    let device_label = cfg.device_display_name(device);
-    let input_label = match input {
+    (cfg.device_display_name(device), input_label(input))
+}
+
+/// Render a single `InputId` to its real label: axes use the HID usage names
+/// (`X`, `Y`, `Rx`, ...), buttons are one-indexed (`Btn 1`), hats zero-indexed
+/// (`Hat 0`). Shared so the manual-assignment dropdown labels match the
+/// mapping-list rows exactly.
+pub(crate) fn input_label(input: &InputId) -> String {
+    match input {
         InputId::Axis { index } => axis_label(*index).into_owned(),
         InputId::Button { index } => format!("Btn {}", index + 1),
         InputId::Hat { index } => format!("Hat {index}"),
-    };
-    (device_label, input_label)
+    }
 }
 
 #[cfg(test)]

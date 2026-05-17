@@ -95,6 +95,7 @@ fn import_image_asset_with_persist(
         media_type: metadata.media_type.to_owned(),
         pixel_dimensions: metadata.pixel_dimensions,
         original_import_path: Some(source_path.to_path_buf()),
+        display_name: None,
         extensions: ExtensionPayload::default(),
     };
     manifest.assets.push(entry.clone());
@@ -275,6 +276,7 @@ mod tests {
                 height: 1,
             },
             original_import_path: Some(PathBuf::from("original.png")),
+            display_name: None,
             extensions: ExtensionPayload::default(),
         };
         let manifest = AssetManifestDocument {

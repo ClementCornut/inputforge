@@ -125,6 +125,7 @@ mod failure_injection_tests {
                         height: 1,
                     },
                     original_import_path: None,
+                    display_name: None,
                     extensions: ExtensionPayload::default(),
                 }],
                 ..AssetManifestDocument::default()

@@ -203,6 +203,7 @@ fn inspector_with_frame_selected_shows_position_inputs_and_z_index_buttons() {
             h: 0.4,
         },
         z_index: 7,
+        display_name: None,
         extensions: ExtensionPayload::default(),
     });
     state.selected_placement_id = Some(placement_id);
@@ -222,7 +223,7 @@ fn inspector_with_frame_selected_shows_position_inputs_and_z_index_buttons() {
 }
 
 #[test]
-fn inspector_with_anchor_selected_shows_label_attach_toggle_and_assignment_composer() {
+fn inspector_with_anchor_selected_shows_label_attach_picker_and_assignment_composer() {
     let state = state_with_selected_anchor();
     assert!(
         state.selected_anchor_id.is_some(),
@@ -234,8 +235,12 @@ fn inspector_with_anchor_selected_shows_label_attach_toggle_and_assignment_compo
         "expected ANCHOR eyebrow in inspector: {html}"
     );
     assert!(
-        html.contains("Attach to frame") || html.contains("Detach"),
-        "expected attach toggle: {html}"
+        html.contains("Attached to") && html.contains("<select"),
+        "expected attach picker (label + select): {html}"
+    );
+    assert!(
+        html.contains(">Detached<"),
+        "expected Detached option in attach picker: {html}"
     );
     assert!(
         html.contains(">ASSIGNMENT<"),
@@ -245,10 +250,22 @@ fn inspector_with_anchor_selected_shows_label_attach_toggle_and_assignment_compo
 
 #[test]
 fn inspector_keeps_manual_assignment_visible_when_capture_unavailable() {
-    let html = render_inspector_state(state_with_selected_anchor());
+    let mut state = state_with_selected_anchor();
+    state.capture = CaptureStatus::Unavailable("live input is not available".to_owned());
+    let html = render_inspector_state_with_devices(
+        state,
+        vec![(
+            DeviceId("stick-alpha".to_owned()),
+            "Throttle Quadrant".to_owned(),
+        )],
+        CaptureAvailabilityReason::CaptureAvailable,
+    );
 
+    // Capture trigger plus the always-visible Device/Input selects are reachable
+    // even when live capture is unavailable.
     assert!(html.contains("Press input to assign"));
-    assert!(html.contains(">Choose device manually<"));
+    assert!(html.contains(">Device<"));
+    assert!(html.contains(">Input<"));
 }
 
 #[test]
@@ -286,31 +303,11 @@ fn composer_help_branches_when_engine_stopped() {
     state.capture = CaptureStatus::Unavailable("live input is not available".to_owned());
     let html =
         render_inspector_state_with_availability(state, CaptureAvailabilityReason::EngineStopped);
-    assert!(html.contains("Start the engine to capture, or choose device manually."));
+    assert!(html.contains("Start the engine to capture, or pick a device below."));
 }
 
 #[test]
-fn manual_disclosure_is_closed_by_default() {
-    let mut state = state_with_selected_anchor();
-    state.capture = CaptureStatus::Idle;
-    let html = render_inspector_state_with_devices(
-        state,
-        vec![(
-            DeviceId("stick-alpha".to_owned()),
-            "Throttle Quadrant".to_owned(),
-        )],
-        CaptureAvailabilityReason::CaptureAvailable,
-    );
-    assert!(html.contains("<details"), "disclosure must render: {html}");
-    assert!(
-        !html.contains("<details open"),
-        "disclosure must NOT carry the `open` attribute by default: {html}"
-    );
-    assert!(html.contains(">Choose device manually<"));
-}
-
-#[test]
-fn manual_disclosure_lists_connected_devices_with_display_names() {
+fn manual_assignment_lists_connected_devices_with_display_names() {
     let mut state = state_with_selected_anchor();
     state.capture = CaptureStatus::Idle;
     let html = render_inspector_state_with_devices(
@@ -329,11 +326,15 @@ fn manual_disclosure_lists_connected_devices_with_display_names() {
     );
     assert!(html.contains("Throttle Quadrant"));
     assert!(html.contains("Rudder Pedals"));
-    assert!(html.contains(">Button<"));
-    assert!(html.contains(">Axis<"));
-    assert!(html.contains(">Hat<"));
-    assert!(html.contains("<fieldset"));
-    assert!(html.contains(">Type<"));
+    // No disclosure, no Button/Axis/Hat toggle, no Assign button: the Device/Input
+    // selects are the always-visible editor. (No device is selected in SSR, so the
+    // Input shows the placeholder; the grouped real-input options are covered by
+    // build_input_options unit tests.)
+    assert!(!html.contains("<details"));
+    assert!(!html.contains("if-sheets__manual-kind"));
+    assert!(!html.contains(">Assign<"));
+    assert!(html.contains(">Input<"));
+    assert!(html.contains("Select input"));
 }
 
 #[test]
@@ -351,7 +352,7 @@ fn manual_disclosure_empty_state_branches_on_engine_state() {
         Vec::new(),
         CaptureAvailabilityReason::EngineRunningNoDevices,
     );
-    assert!(html.contains("No devices seen. Connect a device to assign manually."));
+    assert!(html.contains("No devices seen. Connect a device to assign."));
 }
 
 #[test]
@@ -362,13 +363,11 @@ fn composer_help_branches_when_engine_running_with_no_devices() {
         state,
         CaptureAvailabilityReason::EngineRunningNoDevices,
     );
-    assert!(html.contains(
-        "Connect a device to capture, or use the manual disclosure when a device appears."
-    ));
+    assert!(html.contains("Connect a device to capture or assign."));
 }
 
 #[test]
-fn inspector_disables_manual_assignment_while_capture_is_armed() {
+fn inspector_disables_manual_selects_while_capture_is_armed() {
     let anchor_id = AnchorId::from_string("anchor-1");
     let html = render_inspector_state_with_devices(
         SheetsState {
@@ -382,18 +381,18 @@ fn inspector_disables_manual_assignment_while_capture_is_armed() {
         )],
         CaptureAvailabilityReason::CaptureAvailable,
     );
-    let assign_button_start = html
-        .find(">Assign<")
-        .expect("inspector should render manual assign button");
-    let assign_button_tag = &html[..assign_button_start];
-    let assign_button_tag = assign_button_tag
-        .rsplit_once("<button")
-        .map(|(_, tag)| tag)
-        .expect("assign label should be inside a button");
 
+    // While listening for a live input, the manual selects are disabled so the
+    // user finishes or cancels the capture first.
+    let device_select = control_tag_after_label(&html, "Device", "select");
     assert!(
-        assign_button_tag.contains("disabled"),
-        "manual assign button should be disabled while capture is armed: {html}"
+        device_select.contains("disabled"),
+        "Device select should be disabled while capture is armed: {device_select}"
+    );
+    let input_select = control_tag_after_label(&html, "Input", "select");
+    assert!(
+        input_select.contains("disabled"),
+        "Input select should be disabled while capture is armed: {input_select}"
     );
 }
 
@@ -461,6 +460,7 @@ fn sheets_left_rail_defaults_to_templates_tab_only() {
                     height: 240,
                 },
                 original_import_path: None,
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             }],
             ..SheetsState::default()
@@ -508,6 +508,7 @@ fn sheets_left_rail_assets_tab_renders_assets_only() {
                     height: 240,
                 },
                 original_import_path: None,
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             }],
             library_tab: SheetsLibraryTab::Assets,
@@ -530,7 +531,7 @@ fn sheets_left_rail_assets_tab_renders_assets_only() {
     vdom.rebuild_in_place();
     let html = dioxus_ssr::render(&vdom);
 
-    assert!(html.contains("assets/asset-1.png"));
+    assert!(html.contains("asset-1.png"));
     assert!(html.contains("1 assets"));
     assert!(html.contains("Import image"));
     assert!(!html.contains("Arcade panel"));
@@ -609,7 +610,6 @@ fn canvas_without_template_uses_centered_empty_state() {
         rsx! {
             SheetsCanvas {
                 sheets,
-                on_import_image: move |()| {},
                 on_arm_capture: move |_| {},
             }
         }
@@ -638,7 +638,6 @@ fn template_without_background_image_renders_blank_canvas_stage() {
         rsx! {
             SheetsCanvas {
                 sheets,
-                on_import_image: move |()| {},
                 on_arm_capture: move |_| {},
             }
         }
@@ -734,6 +733,7 @@ fn creating_template_from_asset_selects_template_and_marks_dirty() {
             height: 240,
         },
         original_import_path: None,
+        display_name: None,
         extensions: ExtensionPayload::default(),
     };
     let mut state = SheetsState {
@@ -790,6 +790,7 @@ fn valid_asset_canvas_uses_data_url_for_image_source() {
                     height: 240,
                 },
                 original_import_path: None,
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             }],
             ..SheetsState::default()
@@ -808,7 +809,6 @@ fn valid_asset_canvas_uses_data_url_for_image_source() {
         rsx! {
             SheetsCanvas {
                 sheets,
-                on_import_image: move |()| {},
                 on_arm_capture: move |_| {},
             }
         }
@@ -855,6 +855,7 @@ fn selecting_non_first_asset_makes_it_canvas_asset() {
                 height: 240,
             },
             original_import_path: None,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         };
         let second_asset = AssetEntry {
@@ -867,6 +868,7 @@ fn selecting_non_first_asset_makes_it_canvas_asset() {
                 height: 480,
             },
             original_import_path: Some(PathBuf::from("D:/imports/asset-2.png")),
+            display_name: None,
             extensions: ExtensionPayload::default(),
         };
         let template_id = TemplateId::from_string("template-1");
@@ -886,6 +888,7 @@ fn selecting_non_first_asset_makes_it_canvas_asset() {
                             h: 0.9,
                         },
                         z_index: 0,
+                        display_name: None,
                         extensions: ExtensionPayload::default(),
                     },
                     AssetPlacement {
@@ -898,6 +901,7 @@ fn selecting_non_first_asset_makes_it_canvas_asset() {
                             h: 0.9,
                         },
                         z_index: 1,
+                        display_name: None,
                         extensions: ExtensionPayload::default(),
                     },
                 ],
@@ -929,7 +933,6 @@ fn selecting_non_first_asset_makes_it_canvas_asset() {
         rsx! {
             SheetsCanvas {
                 sheets,
-                on_import_image: move |()| {},
                 on_arm_capture: move |_| {},
             }
         }
@@ -981,6 +984,7 @@ fn selecting_non_first_missing_asset_renders_its_recovery_paths() {
                 height: 240,
             },
             original_import_path: Some(PathBuf::from("D:/imports/asset-1.png")),
+            display_name: None,
             extensions: ExtensionPayload::default(),
         };
         let second_asset = AssetEntry {
@@ -993,6 +997,7 @@ fn selecting_non_first_missing_asset_renders_its_recovery_paths() {
                 height: 480,
             },
             original_import_path: Some(PathBuf::from("D:/imports/asset-2.png")),
+            display_name: None,
             extensions: ExtensionPayload::default(),
         };
         let mut initial_state = SheetsState {
@@ -1011,6 +1016,7 @@ fn selecting_non_first_missing_asset_renders_its_recovery_paths() {
                             h: 0.9,
                         },
                         z_index: 0,
+                        display_name: None,
                         extensions: ExtensionPayload::default(),
                     },
                     AssetPlacement {
@@ -1023,6 +1029,7 @@ fn selecting_non_first_missing_asset_renders_its_recovery_paths() {
                             h: 0.9,
                         },
                         z_index: 1,
+                        display_name: None,
                         extensions: ExtensionPayload::default(),
                     },
                 ],
@@ -1053,7 +1060,6 @@ fn selecting_non_first_missing_asset_renders_its_recovery_paths() {
         rsx! {
             SheetsCanvas {
                 sheets,
-                on_import_image: move |()| {},
                 on_arm_capture: move |_| {},
             }
         }
@@ -1132,6 +1138,7 @@ fn missing_asset_canvas_preserves_anchor_count_message() {
                     height: 240,
                 },
                 original_import_path: None,
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             }],
             ..SheetsState::default()
@@ -1160,7 +1167,6 @@ fn missing_asset_canvas_preserves_anchor_count_message() {
         rsx! {
             SheetsCanvas {
                 sheets,
-                on_import_image: move |()| {},
                 on_arm_capture: move |_| {},
             }
         }
@@ -1196,6 +1202,7 @@ fn missing_asset_canvas_renders_recovery_paths_with_anchor_count() {
                     height: 240,
                 },
                 original_import_path: Some(PathBuf::from("D:/imports/original-panel.png")),
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             }],
             ..SheetsState::default()
@@ -1222,7 +1229,6 @@ fn missing_asset_canvas_renders_recovery_paths_with_anchor_count() {
         rsx! {
             SheetsCanvas {
                 sheets,
-                on_import_image: move |()| {},
                 on_arm_capture: move |_| {},
             }
         }
@@ -1259,6 +1265,7 @@ fn canvas_treats_template_asset_without_health_as_missing() {
                     height: 240,
                 },
                 original_import_path: None,
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             }],
             ..SheetsState::default()
@@ -1270,7 +1277,6 @@ fn canvas_treats_template_asset_without_health_as_missing() {
         rsx! {
             SheetsCanvas {
                 sheets,
-                on_import_image: move |()| {},
                 on_arm_capture: move |_| {},
             }
         }
@@ -1306,6 +1312,7 @@ fn left_rail_renders_template_and_asset_rows_as_selectable_controls() {
                     height: 240,
                 },
                 original_import_path: None,
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             }],
             ..SheetsState::default()
@@ -1327,11 +1334,15 @@ fn left_rail_renders_template_and_asset_rows_as_selectable_controls() {
     vdom.rebuild_in_place();
     let html = dioxus_ssr::render(&vdom);
 
-    assert!(html.contains("aria-label=\"Select first template using assets/asset-1.png\""));
+    assert!(html.contains("aria-label=\"Inspect asset asset-1.png\""));
     assert!(!html.contains("aria-label=\"Select template Arcade panel\""));
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "inline SheetsState + two placements + two assets in the Harness body unavoidably exceeds the line cap; extracting helpers obscures the test setup"
+)]
 fn left_rail_marks_only_selected_non_first_asset_row() {
     #[expect(
         non_snake_case,
@@ -1356,6 +1367,7 @@ fn left_rail_marks_only_selected_non_first_asset_row() {
                             h: 0.9,
                         },
                         z_index: 0,
+                        display_name: None,
                         extensions: ExtensionPayload::default(),
                     },
                     AssetPlacement {
@@ -1368,6 +1380,7 @@ fn left_rail_marks_only_selected_non_first_asset_row() {
                             h: 0.9,
                         },
                         z_index: 1,
+                        display_name: None,
                         extensions: ExtensionPayload::default(),
                     },
                 ],
@@ -1388,6 +1401,7 @@ fn left_rail_marks_only_selected_non_first_asset_row() {
                         height: 240,
                     },
                     original_import_path: None,
+                    display_name: None,
                     extensions: ExtensionPayload::default(),
                 },
                 AssetEntry {
@@ -1400,12 +1414,13 @@ fn left_rail_marks_only_selected_non_first_asset_row() {
                         height: 480,
                     },
                     original_import_path: None,
+                    display_name: None,
                     extensions: ExtensionPayload::default(),
                 },
             ],
             ..SheetsState::default()
         };
-        initial_state.select_first_template_for_asset(second_asset_id);
+        initial_state.inspector_asset_id = Some(second_asset_id);
         initial_state.library_tab = SheetsLibraryTab::Assets;
         let sheets = use_signal(|| initial_state);
 
@@ -1421,8 +1436,8 @@ fn left_rail_marks_only_selected_non_first_asset_row() {
     let mut vdom = VirtualDom::new(Harness);
     vdom.rebuild_in_place();
     let html = dioxus_ssr::render(&vdom);
-    let asset_1_start = html.find("assets/asset-1.png").unwrap();
-    let asset_2_start = html.find("assets/asset-2.png").unwrap();
+    let asset_1_start = html.find("asset-1.png").unwrap();
+    let asset_2_start = html.find("asset-2.png").unwrap();
     let asset_1_row = &html[..asset_1_start]
         .rsplit_once("<li")
         .map(|(_, row)| row)
@@ -1527,6 +1542,7 @@ fn template_card_pluralizes_frame_and_anchor_counts() {
                         h: 0.1,
                     },
                     z_index: i32::try_from(i).expect("test placement count fits in i32"),
+                    display_name: None,
                     extensions: ExtensionPayload::default(),
                 });
             }
@@ -1588,6 +1604,7 @@ fn asset_row_when_a_template_is_selected_is_draggable_and_carries_asset_id() {
                     height: 240,
                 },
                 original_import_path: Some(PathBuf::from("D:/imports/cockpit.png")),
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             }],
             library_tab: SheetsLibraryTab::Assets,
@@ -1623,7 +1640,7 @@ fn asset_row_when_a_template_is_selected_is_draggable_and_carries_asset_id() {
 }
 
 #[test]
-fn canvas_renders_toolbar_with_segmented_select_anchor_plus_import_and_status_chip() {
+fn canvas_renders_toolbar_with_segmented_select_anchor_and_status_chip() {
     #[expect(non_snake_case, reason = "Dioxus component")]
     fn Harness() -> Element {
         let mut initial_state = SheetsState::default();
@@ -1631,7 +1648,7 @@ fn canvas_renders_toolbar_with_segmented_select_anchor_plus_import_and_status_ch
         initial_state.autosave = AutosaveStatus::Clean;
         let sheets = use_signal(|| initial_state);
         rsx! {
-            SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} }
+            SheetsCanvas { sheets, on_arm_capture: move |_| {} }
         }
     }
     let mut vdom = VirtualDom::new(Harness);
@@ -1641,15 +1658,7 @@ fn canvas_renders_toolbar_with_segmented_select_anchor_plus_import_and_status_ch
     assert!(html.contains("data-testid=\"sheets-toolbar\""));
     assert!(html.contains(">Select<"));
     assert!(html.contains(">Anchor<"));
-    assert!(html.contains("aria-label=\"Import image\""));
     assert!(html.contains("data-testid=\"sheets-autosave-chip\""));
-    // The + button is the Phosphor plus icon, not a literal `+` character.
-    // The Icon component injects the SVG via dangerous_inner_html; the rendered HTML will
-    // contain the SVG path data. The robust check is for the icon's containing class.
-    assert!(
-        html.contains("if-icon"),
-        "import button should render an icon (if-icon class): {html}"
-    );
     // Default (no mutation, no failure) lands in the Clean/neutral tone.
     assert!(html.contains("data-status=\"clean\""));
     assert!(html.contains("data-tone=\"neutral\""));
@@ -1664,7 +1673,7 @@ fn autosave_chip_status_and_tone_follow_the_state_machine() {
         initial.create_blank_template();
         initial.autosave = status;
         let sheets = use_signal(|| initial);
-        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+        rsx! { SheetsCanvas { sheets, on_arm_capture: move |_| {} } }
     }
 
     for (status, expected_status, expected_tone, expected_label) in [
@@ -1698,13 +1707,13 @@ fn canvas_with_template_and_no_placements_renders_full_canvas_drop_zone_copy() {
         let mut state = SheetsState::default();
         state.create_blank_template();
         let sheets = use_signal(|| state);
-        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+        rsx! { SheetsCanvas { sheets, on_arm_capture: move |_| {} } }
     }
     let mut vdom = VirtualDom::new(Harness);
     vdom.rebuild_in_place();
     let html = dioxus_ssr::render(&vdom);
 
-    assert!(html.contains("No images yet. Drop an asset from the rail or click + to import."));
+    assert!(html.contains("No images yet. Drop an asset from the rail to add one."));
     assert!(html.contains("data-testid=\"sheets-empty-dropzone\""));
 }
 
@@ -1715,7 +1724,7 @@ fn canvas_after_preset_pick_renders_preset_slot_drop_zones() {
         let mut state = SheetsState::default();
         state.apply_preset_after_create(SheetLayoutPreset::HorizontalPair);
         let sheets = use_signal(|| state);
-        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+        rsx! { SheetsCanvas { sheets, on_arm_capture: move |_| {} } }
     }
     let mut vdom = VirtualDom::new(Harness);
     vdom.rebuild_in_place();
@@ -1743,6 +1752,7 @@ fn canvas_renders_each_placement_clipped_to_its_rect_and_sorted_by_z_index() {
                 height: 32,
             },
             original_import_path: None,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         };
         let asset_b = AssetEntry {
@@ -1777,6 +1787,7 @@ fn canvas_renders_each_placement_clipped_to_its_rect_and_sorted_by_z_index() {
                 h: 0.4,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.templates[0].placements.push(AssetPlacement {
@@ -1789,11 +1800,12 @@ fn canvas_renders_each_placement_clipped_to_its_rect_and_sorted_by_z_index() {
                 h: 0.4,
             },
             z_index: 5,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.selected_template_id = Some(template_id);
         let sheets = use_signal(|| state);
-        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+        rsx! { SheetsCanvas { sheets, on_arm_capture: move |_| {} } }
     }
     let mut vdom = VirtualDom::new(Harness);
     vdom.rebuild_in_place();
@@ -1823,6 +1835,7 @@ fn selecting_a_frame_renders_eight_resize_handles_and_primary_border() {
                 height: 32,
             },
             original_import_path: None,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         };
         let mut state = SheetsState {
@@ -1846,11 +1859,12 @@ fn selecting_a_frame_renders_eight_resize_handles_and_primary_border() {
                 h: 0.4,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.selected_placement_id = Some(placement_id);
         let sheets = use_signal(|| state);
-        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+        rsx! { SheetsCanvas { sheets, on_arm_capture: move |_| {} } }
     }
     let mut vdom = VirtualDom::new(Harness);
     vdom.rebuild_in_place();
@@ -1872,7 +1886,7 @@ fn anchor_shape_classes_match_assignment_state_and_selection_is_additive() {
     #[expect(non_snake_case, reason = "Dioxus component")]
     fn Harness(props: SheetsState) -> Element {
         let sheets = use_signal(|| props);
-        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+        rsx! { SheetsCanvas { sheets, on_arm_capture: move |_| {} } }
     }
 
     let mut placed_unassigned = SheetsState::default();
@@ -1933,7 +1947,7 @@ fn unavailable_assignment_renders_unassigned_shape() {
     #[expect(non_snake_case, reason = "Dioxus component")]
     fn Harness(props: SheetsState) -> Element {
         let sheets = use_signal(|| props);
-        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+        rsx! { SheetsCanvas { sheets, on_arm_capture: move |_| {} } }
     }
 
     let mut state = SheetsState::default();
@@ -2087,6 +2101,7 @@ fn bring_to_front_updates_render_order_in_dom() {
                 height: 1,
             },
             original_import_path: None,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.asset_health.push(AssetHealth {
@@ -2108,12 +2123,13 @@ fn bring_to_front_updates_render_order_in_dom() {
                     h: 0.5,
                 },
                 z_index: z,
+                display_name: None,
                 extensions: ExtensionPayload::default(),
             });
         }
         state.bring_to_front(template_id, bottom).unwrap();
         let sheets = use_signal(|| state);
-        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+        rsx! { SheetsCanvas { sheets, on_arm_capture: move |_| {} } }
     }
     let mut vdom = VirtualDom::new(Harness);
     vdom.rebuild_in_place();
@@ -2142,6 +2158,7 @@ fn z_index_input_commits_one_reorder_z_event_on_blur() {
             h: 0.5,
         },
         z_index: 1,
+        display_name: None,
         extensions: ExtensionPayload::default(),
     });
     state.selected_placement_id = Some(placement_id.clone());
@@ -2178,6 +2195,7 @@ fn selection_state_cycle_template_to_frame_to_anchor_to_template() {
             h: 0.5,
         },
         z_index: 0,
+        display_name: None,
         extensions: ExtensionPayload::default(),
     });
     state.selected_placement_id = Some(placement_id);
@@ -2353,6 +2371,7 @@ fn placement_image_carries_draggable_false_attribute() {
                 height: 1,
             },
             original_import_path: None,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.asset_health.push(AssetHealth {
@@ -2370,10 +2389,11 @@ fn placement_image_carries_draggable_false_attribute() {
                 h: 0.4,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         let sheets = use_signal(|| state);
-        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+        rsx! { SheetsCanvas { sheets, on_arm_capture: move |_| {} } }
     }
     let copied_path =
         std::env::temp_dir().join(format!("inputforge-sheets-{}.png", ulid::Ulid::new()));
@@ -2389,7 +2409,7 @@ fn placement_image_carries_draggable_false_attribute() {
 }
 
 #[test]
-fn toolbar_plus_import_emits_one_import_asset_event() {
+fn importing_an_asset_emits_one_import_asset_event() {
     let mut state = SheetsState::default();
     let baseline = state.history.len();
 
@@ -2403,6 +2423,7 @@ fn toolbar_plus_import_emits_one_import_asset_event() {
             height: 1,
         },
         original_import_path: None,
+        display_name: None,
         extensions: ExtensionPayload::default(),
     });
 
@@ -2428,6 +2449,7 @@ fn frame_inspector_shows_asset_filename() {
             height: 1,
         },
         original_import_path: Some(PathBuf::from("D:/imports/throttle.png")),
+        display_name: None,
         extensions: ExtensionPayload::default(),
     });
     let placement_id = AssetPlacementId::from_string("p-1");
@@ -2441,6 +2463,7 @@ fn frame_inspector_shows_asset_filename() {
             h: 0.4,
         },
         z_index: 0,
+        display_name: None,
         extensions: ExtensionPayload::default(),
     });
     state.selected_placement_id = Some(placement_id);
@@ -2469,6 +2492,7 @@ fn frame_x_input_commits_on_blur_via_commit_drag_end_move() {
             h: 0.4,
         },
         z_index: 0,
+        display_name: None,
         extensions: ExtensionPayload::default(),
     });
     let baseline = state.history.len();
@@ -2501,6 +2525,7 @@ fn frame_inspector_renders_move_up_move_down_and_delete_buttons() {
             h: 0.4,
         },
         z_index: 0,
+        display_name: None,
         extensions: ExtensionPayload::default(),
     });
     state.selected_placement_id = Some(placement_id);
@@ -2538,6 +2563,7 @@ fn frame_delete_invokes_remove_placement() {
             h: 0.5,
         },
         z_index: 0,
+        display_name: None,
         extensions: ExtensionPayload::default(),
     });
     let baseline = state.history.len();
@@ -2571,6 +2597,7 @@ fn frame_inspector_inputs_render_with_event_handlers() {
             h: 0.4,
         },
         z_index: 0,
+        display_name: None,
         extensions: ExtensionPayload::default(),
     });
     state.selected_placement_id = Some(placement_id);
@@ -2639,12 +2666,13 @@ fn anchor_delete_invokes_remove_selected_anchor() {
 }
 
 #[test]
-fn assigned_binding_uses_source_label_split_form_with_device_display_name() {
+fn assigned_binding_seeds_the_device_and_input_selects() {
     use inputforge_core::sheet::{AnchorAssignment, AnchorBinding};
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
     let mut state = state_with_selected_anchor();
     let anchor_id = state.selected_anchor_id.clone().unwrap();
-    // Inject a binding directly so the Assigned-state composer renders.
+    // Inject a binding directly: the selects must mirror it (binding -> selects,
+    // the read side of the two-way sync).
     state.templates[0]
         .default_anchor_bindings
         .push(AnchorBinding {
@@ -2657,25 +2685,29 @@ fn assigned_binding_uses_source_label_split_form_with_device_display_name() {
             assignment: AnchorAssignment::Captured,
         });
     state.capture = CaptureStatus::Assigned(anchor_id);
-    let html = render_inspector_state(state);
-    // split_label fallback (no AppContext): device shows the raw DeviceId, input is "Btn 3".
-    assert!(
-        html.contains("stick-alpha"),
-        "binding display must show the device id when no AppContext: {html}"
+    let html = render_inspector_state_with_devices(
+        state,
+        vec![(
+            DeviceId("stick-alpha".to_owned()),
+            "Throttle Quadrant".to_owned(),
+        )],
+        CaptureAvailabilityReason::CaptureAvailable,
     );
+    let device_select = control_tag_after_label(&html, "Device", "select");
     assert!(
-        html.contains("Btn 3"),
-        "binding display must use source_label one-indexed button format: {html}"
+        device_select.contains(r#"value="stick-alpha""#),
+        "Device select should reflect the bound device: {device_select}"
     );
-    // Old format is gone: no "device-id / Button N" raw string.
+    // Input value is the encoded (kind, index): Button index 2.
+    let input_select = control_tag_after_label(&html, "Input", "select");
     assert!(
-        !html.contains("Button 2"),
-        "raw format_input_address output must not appear: {html}"
+        input_select.contains(r#"value="button:2""#),
+        "Input select should reflect the bound input: {input_select}"
     );
 }
 
 #[test]
-fn assigned_binding_wraps_in_if_rebind_composite_block() {
+fn assigned_anchor_shows_binding_summary_after_reload_without_devices() {
     use inputforge_core::sheet::{AnchorAssignment, AnchorBinding};
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
     let mut state = state_with_selected_anchor();
@@ -2685,26 +2717,30 @@ fn assigned_binding_wraps_in_if_rebind_composite_block() {
         .push(AnchorBinding {
             anchor_id: anchor_id.clone(),
             input: InputAddress::Bound {
-                device: DeviceId("d".to_owned()),
-                input: InputId::Button { index: 0 },
+                device: DeviceId("stick-alpha".to_owned()),
+                input: InputId::Button { index: 2 },
             },
             captured_device_fingerprint: None,
-            assignment: AnchorAssignment::Captured,
+            assignment: AnchorAssignment::Manual,
         });
-    state.capture = CaptureStatus::Assigned(anchor_id);
+    // Simulate a fresh reload: capture reset to Unavailable, no live devices.
+    state.capture = CaptureStatus::Unavailable("live input is not available".to_owned());
     let html = render_inspector_state(state);
+
+    // The persisted binding is surfaced from selected_binding regardless of capture
+    // state or whether any device is currently connected.
     assert!(
-        html.contains("if-rebind-composite"),
-        "assigned state must wrap binding in if-rebind-composite shell: {html}"
+        html.contains("stick-alpha"),
+        "binding summary should show the device (id fallback offline): {html}"
     );
-    assert!(html.contains("if-rebind-composite__label"));
-    assert!(html.contains("if-rebind-composite__action"));
-    // The Re-assign button uses the composite action class, not the old composer-trigger class.
     assert!(
-        !html.contains("if-sheets__composer-trigger"),
-        "Re-assign button should not use the old composer-trigger class: {html}"
+        html.contains("Btn 3"),
+        "binding summary should show the input label: {html}"
     );
-    assert!(html.contains(">Re-assign<"));
+    assert!(
+        html.contains("Manual assignment"),
+        "binding summary should show the assignment-type sub-text: {html}"
+    );
 }
 
 #[test]
@@ -2779,6 +2815,7 @@ fn selected_placement_renders_asset_name_chip() {
                 height: 1,
             },
             original_import_path: Some(PathBuf::from("D:/imports/cockpit.png")),
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         // Seed asset_health so the placement render path executes (not the missing-asset recovery panel).
@@ -2798,11 +2835,12 @@ fn selected_placement_renders_asset_name_chip() {
                 h: 0.4,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.selected_placement_id = Some(placement_id);
         let sheets = use_signal(|| state);
-        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+        rsx! { SheetsCanvas { sheets, on_arm_capture: move |_| {} } }
     }
     let mut vdom = VirtualDom::new(Harness);
     vdom.rebuild_in_place();
@@ -2835,6 +2873,7 @@ fn unselected_placement_does_not_render_asset_name_chip() {
                 height: 1,
             },
             original_import_path: None,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         // Seed asset_health so the placement render path executes (not the missing-asset recovery panel).
@@ -2854,11 +2893,12 @@ fn unselected_placement_does_not_render_asset_name_chip() {
                 h: 0.4,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         // selected_placement_id stays None.
         let sheets = use_signal(|| state);
-        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+        rsx! { SheetsCanvas { sheets, on_arm_capture: move |_| {} } }
     }
     let mut vdom = VirtualDom::new(Harness);
     vdom.rebuild_in_place();
@@ -3052,6 +3092,7 @@ fn anchor_button_uses_aria_label_not_child_text() {
                 height: 1,
             },
             original_import_path: None,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.asset_health.push(AssetHealth {
@@ -3070,6 +3111,7 @@ fn anchor_button_uses_aria_label_not_child_text() {
                 h: 1.0,
             },
             z_index: 0,
+            display_name: None,
             extensions: ExtensionPayload::default(),
         });
         state.templates[0].anchors.push(TemplateAnchor {
@@ -3083,7 +3125,7 @@ fn anchor_button_uses_aria_label_not_child_text() {
             extensions: ExtensionPayload::default(),
         });
         let sheets = use_signal(|| state);
-        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+        rsx! { SheetsCanvas { sheets, on_arm_capture: move |_| {} } }
     }
     let mut vdom = VirtualDom::new(Harness);
     vdom.rebuild_in_place();
@@ -3189,5 +3231,922 @@ fn anchor_disc_rules_outrank_parent_button_cascade() {
     assert!(
         disc_body.contains("min-height: 0"),
         "base anchor rule must declare min-height: 0 so the disc is not stretched by the parent button rule: {disc_body}"
+    );
+}
+
+#[test]
+fn attached_anchor_mount_carries_local_coord_data_attributes() {
+    use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness() -> Element {
+        let mut state = SheetsState::default();
+        state.create_blank_template();
+        let asset_id = AssetId::from_string("asset-attach");
+        state.assets.push(AssetEntry {
+            asset_id: asset_id.clone(),
+            copied_path: PathBuf::from("assets/attach.png"),
+            content_hash: "h".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 1,
+                height: 1,
+            },
+            original_import_path: None,
+            display_name: None,
+            extensions: ExtensionPayload::default(),
+        });
+        state.asset_health.push(AssetHealth {
+            entry: state.assets[0].clone(),
+            copied_absolute_path: PathBuf::from("/tmp/attach.png"),
+            missing: false,
+        });
+        let placement_id = AssetPlacementId::from_string("p-attach");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id,
+            position: TemplateRect {
+                x: 0.1,
+                y: 0.2,
+                w: 0.4,
+                h: 0.3,
+            },
+            z_index: 0,
+            display_name: None,
+            extensions: ExtensionPayload::default(),
+        });
+        // Attached anchor: should carry data-attached-to + data-local-x + data-local-y.
+        state.templates[0].anchors.push(TemplateAnchor {
+            anchor_id: AnchorId::from_string("a-attached"),
+            label: "A".to_owned(),
+            position: AnchorPosition { x: 0.25, y: 0.75 },
+            attached_to: Some(placement_id.clone()),
+            input_type_hint: None,
+            grouping_hint: None,
+            device_matching_hint: None,
+            extensions: ExtensionPayload::default(),
+        });
+        // Free anchor: should NOT carry any of the three data attributes.
+        state.templates[0].anchors.push(TemplateAnchor {
+            anchor_id: AnchorId::from_string("a-free"),
+            label: "F".to_owned(),
+            position: AnchorPosition { x: 0.5, y: 0.5 },
+            attached_to: None,
+            input_type_hint: None,
+            grouping_hint: None,
+            device_matching_hint: None,
+            extensions: ExtensionPayload::default(),
+        });
+        let sheets = use_signal(|| state);
+        rsx! { SheetsCanvas { sheets, on_arm_capture: move |_| {} } }
+    }
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+    // Attached anchor: data-attached-to points at the parent placement, plus the local coords.
+    assert!(
+        html.contains("data-attached-to=\"p-attach\""),
+        "attached anchor must expose its parent placement id: {html}"
+    );
+    assert!(
+        html.contains("data-local-x=\"0.25\""),
+        "attached anchor must expose its placement-local x: {html}"
+    );
+    assert!(
+        html.contains("data-local-y=\"0.75\""),
+        "attached anchor must expose its placement-local y: {html}"
+    );
+    // Free anchor: none of the three attributes. Locate the free anchor's mount via its anchor id,
+    // then check the slice from there to the next closing tag for the absence of attached-to.
+    let free_idx = html
+        .find("data-anchor-id=\"a-free\"")
+        .expect("free anchor mount must render");
+    let free_slice = &html[free_idx..free_idx + 200.min(html.len() - free_idx)];
+    assert!(
+        !free_slice.contains("data-attached-to"),
+        "free anchor must NOT carry data-attached-to: {free_slice}"
+    );
+    assert!(
+        !free_slice.contains("data-local-x"),
+        "free anchor must NOT carry data-local-x: {free_slice}"
+    );
+}
+
+#[test]
+fn placement_drag_bridge_tracks_attached_anchors_during_live_preview() {
+    // The bridge caches anchor mounts matching data-attached-to=<placementId> on pointerdown,
+    // then updates each mount's inline left/top during pointermove so the anchors stay glued
+    // to their placement-local positions while the parent moves/resizes. Math mirrors
+    // anchor_canvas_coords on the Rust side: cx = newRect.x + localX * newRect.w.
+    let js = install_placement_drag_bridge("stage-1", "placement-attach", "key-attach");
+    assert!(
+        js.contains("captureAttachedAnchors"),
+        "bridge must define captureAttachedAnchors to snapshot attached anchors at pointerdown: {js}"
+    );
+    assert!(
+        js.contains("data-attached-to"),
+        "bridge must query for data-attached-to to find attached anchors: {js}"
+    );
+    assert!(
+        js.contains("data-local-x"),
+        "bridge must read data-local-x off attached anchor mounts: {js}"
+    );
+    assert!(
+        js.contains("data-local-y"),
+        "bridge must read data-local-y off attached anchor mounts: {js}"
+    );
+    assert!(
+        js.contains("state.attachedAnchors"),
+        "bridge state must carry the cached attachedAnchors list: {js}"
+    );
+    assert!(
+        js.contains("a.mount.style.left"),
+        "live preview must update each attached anchor mount's style.left: {js}"
+    );
+    assert!(
+        js.contains("a.mount.style.top"),
+        "live preview must update each attached anchor mount's style.top: {js}"
+    );
+    assert!(
+        js.contains("a.localX"),
+        "live preview must use the cached placement-local x: {js}"
+    );
+    assert!(
+        js.contains("a.localY"),
+        "live preview must use the cached placement-local y: {js}"
+    );
+}
+
+#[test]
+fn dragging_asset_is_none_by_default() {
+    let state = SheetsState::default();
+    assert!(state.dragging_asset.is_none());
+}
+
+#[test]
+fn begin_asset_drag_sets_dragging_asset_to_the_given_id() {
+    let mut state = SheetsState::default();
+    let asset_id = AssetId::from_string("rail-drag-asset");
+    state.begin_asset_drag(asset_id.clone());
+    assert_eq!(state.dragging_asset.as_ref(), Some(&asset_id));
+}
+
+#[test]
+fn end_asset_drag_clears_dragging_asset() {
+    let mut state = SheetsState::default();
+    state.begin_asset_drag(AssetId::from_string("rail-drag-asset"));
+    state.end_asset_drag();
+    assert!(state.dragging_asset.is_none());
+}
+
+#[test]
+fn asset_row_dragstart_writes_dragging_asset_into_sheets_state_via_signal_channel() {
+    // The rail-to-canvas drop relies on SheetsState.dragging_asset as the cross-component
+    // channel because dioxus-html 0.7.9 desktop's DataTransfer::set_data is a no-op stub.
+    // This test pins the contract: simulating a dragstart by calling the same mutator the
+    // rail wires up must make the asset id readable from any other component that holds
+    // the same SheetsState signal (i.e. the canvas drop handlers).
+    let mut state = SheetsState::default();
+    state.create_blank_template();
+    let asset_id = AssetId::from_string("rail-drag-asset");
+    state.assets.push(AssetEntry {
+        asset_id: asset_id.clone(),
+        copied_path: PathBuf::from("imports/cockpit.png"),
+        content_hash: "hash".to_owned(),
+        media_type: "image/png".to_owned(),
+        pixel_dimensions: PixelDimensions {
+            width: 320,
+            height: 240,
+        },
+        original_import_path: None,
+        display_name: None,
+        extensions: ExtensionPayload::default(),
+    });
+    state.begin_asset_drag(asset_id.clone());
+    // The canvas drop handler reads through this exact path; the test mimics it.
+    let observed = state.dragging_asset.clone();
+    assert_eq!(observed.as_ref(), Some(&asset_id));
+    state.end_asset_drag();
+    assert!(state.dragging_asset.is_none());
+}
+
+// Tolerance for canvas <-> placement-local roundtrip equality. The conversion is two
+// f64 multiplies plus an add, so a few ULPs of slack covers the lossy compositions.
+const ANCHOR_COORD_TOL: f64 = 1e-9;
+
+fn assert_canvas_close(actual: (f64, f64), expected: (f64, f64), label: &str) {
+    assert!(
+        (actual.0 - expected.0).abs() < ANCHOR_COORD_TOL
+            && (actual.1 - expected.1).abs() < ANCHOR_COORD_TOL,
+        "{label}: expected {expected:?}, got {actual:?}"
+    );
+}
+
+#[test]
+fn set_anchor_attached_to_to_detach_preserves_canvas_position() {
+    use crate::frame::sheets::canvas::anchor_canvas_coords;
+
+    let mut state = state_with_selected_anchor();
+    let placement_id = AssetPlacementId::from_string("placement-only");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_id.clone(),
+        asset_id: AssetId::from_string("asset-only"),
+        position: TemplateRect {
+            x: 0.1,
+            y: 0.2,
+            w: 0.4,
+            h: 0.4,
+        },
+        z_index: 0,
+        display_name: None,
+        extensions: ExtensionPayload::default(),
+    });
+    state.templates[0].anchors[0].position = AnchorPosition { x: 0.5, y: 0.5 };
+    state.templates[0].anchors[0].attached_to = Some(placement_id);
+
+    let canvas_before = anchor_canvas_coords(
+        &state.templates[0].anchors[0],
+        &state.templates[0].placements,
+    );
+    state.set_anchor_attached_to(None).unwrap();
+    let anchor_after = &state.templates[0].anchors[0];
+    assert!(
+        anchor_after.attached_to.is_none(),
+        "anchor must end up detached"
+    );
+    assert_canvas_close(
+        (anchor_after.position.x, anchor_after.position.y),
+        canvas_before,
+        "detached storage must equal pre-detach canvas coords",
+    );
+}
+
+#[test]
+fn set_anchor_attached_to_from_detached_to_placement_preserves_canvas_position() {
+    use crate::frame::sheets::canvas::anchor_canvas_coords;
+
+    let mut state = state_with_selected_anchor();
+    let placement_id = AssetPlacementId::from_string("placement-only");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_id.clone(),
+        asset_id: AssetId::from_string("asset-only"),
+        position: TemplateRect {
+            x: 0.1,
+            y: 0.2,
+            w: 0.4,
+            h: 0.4,
+        },
+        z_index: 0,
+        display_name: None,
+        extensions: ExtensionPayload::default(),
+    });
+    state.templates[0].anchors[0].position = AnchorPosition { x: 0.3, y: 0.4 };
+    state.templates[0].anchors[0].attached_to = None;
+    let canvas_before = (0.3, 0.4);
+
+    state
+        .set_anchor_attached_to(Some(placement_id.clone()))
+        .unwrap();
+    let anchor_after = &state.templates[0].anchors[0];
+    assert_eq!(anchor_after.attached_to, Some(placement_id));
+    let canvas_after = anchor_canvas_coords(anchor_after, &state.templates[0].placements);
+    assert_canvas_close(
+        canvas_after,
+        canvas_before,
+        "attached storage must roundtrip back to the same canvas coords",
+    );
+}
+
+#[test]
+fn set_anchor_attached_to_between_placements_preserves_canvas_position() {
+    use crate::frame::sheets::canvas::anchor_canvas_coords;
+
+    let mut state = state_with_selected_anchor();
+    let placement_a = AssetPlacementId::from_string("placement-a");
+    let placement_b = AssetPlacementId::from_string("placement-b");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_a.clone(),
+        asset_id: AssetId::from_string("asset-a"),
+        position: TemplateRect {
+            x: 0.0,
+            y: 0.0,
+            w: 0.5,
+            h: 0.5,
+        },
+        z_index: 0,
+        display_name: None,
+        extensions: ExtensionPayload::default(),
+    });
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_b.clone(),
+        asset_id: AssetId::from_string("asset-b"),
+        position: TemplateRect {
+            x: 0.4,
+            y: 0.4,
+            w: 0.4,
+            h: 0.4,
+        },
+        z_index: 1,
+        display_name: None,
+        extensions: ExtensionPayload::default(),
+    });
+    // Local (0.4, 0.4) inside placement A -> canvas (0.2, 0.2). Inside placement B's
+    // rect too, so the reassignment lands in a sensible local coordinate space.
+    state.templates[0].anchors[0].position = AnchorPosition { x: 0.4, y: 0.4 };
+    state.templates[0].anchors[0].attached_to = Some(placement_a);
+
+    let canvas_before = anchor_canvas_coords(
+        &state.templates[0].anchors[0],
+        &state.templates[0].placements,
+    );
+    state
+        .set_anchor_attached_to(Some(placement_b.clone()))
+        .unwrap();
+    let anchor_after = &state.templates[0].anchors[0];
+    assert_eq!(anchor_after.attached_to, Some(placement_b));
+    let canvas_after = anchor_canvas_coords(anchor_after, &state.templates[0].placements);
+    assert_canvas_close(
+        canvas_after,
+        canvas_before,
+        "swapping parent placements must hold canvas coords steady",
+    );
+}
+
+#[test]
+fn set_anchor_attached_to_with_zero_size_placement_falls_back_to_canvas_coords() {
+    let mut state = state_with_selected_anchor();
+    let degenerate = AssetPlacementId::from_string("placement-zero");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: degenerate.clone(),
+        asset_id: AssetId::from_string("asset-zero"),
+        position: TemplateRect {
+            x: 0.5,
+            y: 0.5,
+            w: 0.0,
+            h: 0.0,
+        },
+        z_index: 0,
+        display_name: None,
+        extensions: ExtensionPayload::default(),
+    });
+    state.templates[0].anchors[0].position = AnchorPosition { x: 0.25, y: 0.5 };
+    state.templates[0].anchors[0].attached_to = None;
+
+    state.set_anchor_attached_to(Some(degenerate)).unwrap();
+    let anchor_after = &state.templates[0].anchors[0];
+    assert!(anchor_after.attached_to.is_some());
+    assert_canvas_close(
+        (anchor_after.position.x, anchor_after.position.y),
+        (0.25, 0.5),
+        "degenerate parent must leave canvas coords stored as-is",
+    );
+}
+
+#[test]
+fn anchor_inspector_renders_a_select_with_one_option_per_placement_plus_detached() {
+    let mut state = state_with_selected_anchor();
+    let placement_a = AssetPlacementId::from_string("placement-a");
+    let placement_b = AssetPlacementId::from_string("placement-b");
+    let asset_a = AssetId::from_string("asset-a");
+    let asset_b = AssetId::from_string("asset-b");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_a.clone(),
+        asset_id: asset_a.clone(),
+        position: TemplateRect {
+            x: 0.0,
+            y: 0.0,
+            w: 0.5,
+            h: 0.5,
+        },
+        z_index: 0,
+        display_name: None,
+        extensions: ExtensionPayload::default(),
+    });
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_b.clone(),
+        asset_id: asset_b.clone(),
+        position: TemplateRect {
+            x: 0.5,
+            y: 0.5,
+            w: 0.5,
+            h: 0.5,
+        },
+        z_index: 1,
+        display_name: None,
+        extensions: ExtensionPayload::default(),
+    });
+    state.assets.push(AssetEntry {
+        asset_id: asset_a,
+        copied_path: PathBuf::from("assets/foo.png"),
+        content_hash: "h-a".to_owned(),
+        media_type: "image/png".to_owned(),
+        pixel_dimensions: PixelDimensions {
+            width: 64,
+            height: 32,
+        },
+        original_import_path: None,
+        display_name: None,
+        extensions: ExtensionPayload::default(),
+    });
+    state.assets.push(AssetEntry {
+        asset_id: asset_b,
+        copied_path: PathBuf::from("assets/bar.png"),
+        content_hash: "h-b".to_owned(),
+        media_type: "image/png".to_owned(),
+        pixel_dimensions: PixelDimensions {
+            width: 64,
+            height: 32,
+        },
+        original_import_path: None,
+        display_name: None,
+        extensions: ExtensionPayload::default(),
+    });
+    state.templates[0].anchors[0].attached_to = Some(placement_a.clone());
+
+    let html = render_inspector_state(state);
+    assert!(
+        html.contains("Attached to"),
+        "expected label for the attach picker: {html}"
+    );
+    assert!(html.contains("<select"), "expected a <select> tag: {html}");
+    assert!(
+        html.contains(">Detached<"),
+        "expected the Detached option: {html}"
+    );
+    assert!(
+        html.contains(">foo.png<"),
+        "expected option for asset foo.png: {html}"
+    );
+    assert!(
+        html.contains(">bar.png<"),
+        "expected option for asset bar.png: {html}"
+    );
+    assert!(
+        html.contains(&format!("value=\"{placement_a}\"")),
+        "expected option value carrying placement-a id: {html}"
+    );
+    assert!(
+        html.contains(&format!("value=\"{placement_b}\"")),
+        "expected option value carrying placement-b id: {html}"
+    );
+}
+
+fn state_with_two_placements_sharing_one_asset() -> SheetsState {
+    let mut state = state_with_selected_anchor();
+    let asset_id = AssetId::from_string("shared-asset");
+    let placement_a = AssetPlacementId::from_string("placement-a");
+    let placement_b = AssetPlacementId::from_string("placement-b");
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_a,
+        asset_id: asset_id.clone(),
+        position: TemplateRect {
+            x: 0.0,
+            y: 0.0,
+            w: 0.5,
+            h: 0.5,
+        },
+        z_index: 0,
+        display_name: None,
+        extensions: ExtensionPayload::default(),
+    });
+    state.templates[0].placements.push(AssetPlacement {
+        placement_id: placement_b,
+        asset_id: asset_id.clone(),
+        position: TemplateRect {
+            x: 0.5,
+            y: 0.5,
+            w: 0.5,
+            h: 0.5,
+        },
+        z_index: 1,
+        display_name: None,
+        extensions: ExtensionPayload::default(),
+    });
+    state.assets.push(AssetEntry {
+        asset_id,
+        copied_path: PathBuf::from("assets/cockpit.png"),
+        content_hash: "h-cockpit".to_owned(),
+        media_type: "image/png".to_owned(),
+        pixel_dimensions: PixelDimensions {
+            width: 64,
+            height: 32,
+        },
+        original_import_path: None,
+        display_name: None,
+        extensions: ExtensionPayload::default(),
+    });
+    // Seed asset_health with missing=false so the canvas renders the image-stage with
+    // the placement chips rather than the missing-asset recovery panel.
+    state.asset_health.push(AssetHealth {
+        entry: state.assets[0].clone(),
+        copied_absolute_path: PathBuf::from("/tmp/cockpit.png"),
+        missing: false,
+    });
+    state
+}
+
+#[test]
+fn attached_to_dropdown_uses_display_name_when_set_so_duplicate_assets_disambiguate() {
+    let mut state = state_with_two_placements_sharing_one_asset();
+    state.templates[0].placements[0].display_name = Some("Throttle".to_owned());
+    // Placement B keeps display_name = None so it falls back to the asset filename.
+
+    let html = render_inspector_state(state);
+    assert!(
+        html.contains(">Throttle<"),
+        "expected custom Throttle option in dropdown: {html}"
+    );
+    assert!(
+        html.contains(">cockpit.png<"),
+        "expected filename fallback option in dropdown: {html}"
+    );
+}
+
+#[test]
+fn frame_inspector_renders_a_name_input_prefilled_with_display_name() {
+    let mut state = state_with_two_placements_sharing_one_asset();
+    state.templates[0].placements[0].display_name = Some("Stick".to_owned());
+    let selected = state.templates[0].placements[0].placement_id.clone();
+    state.selected_placement_id = Some(selected);
+    state.selected_anchor_id = None;
+
+    let html = render_inspector_state(state);
+    assert!(
+        html.contains("if-sheets__inspector-frame-name-input"),
+        "expected the Name input: {html}"
+    );
+    assert!(
+        html.contains("value=\"Stick\""),
+        "expected the input prefilled with the custom name: {html}"
+    );
+    assert!(
+        html.contains("placeholder=\"cockpit.png\""),
+        "expected the placeholder to show the default fallback label: {html}"
+    );
+}
+
+#[test]
+fn frame_inspector_name_input_shows_empty_value_with_filename_placeholder_when_unset() {
+    let mut state = state_with_two_placements_sharing_one_asset();
+    let selected = state.templates[0].placements[0].placement_id.clone();
+    state.selected_placement_id = Some(selected);
+    state.selected_anchor_id = None;
+
+    let html = render_inspector_state(state);
+    assert!(
+        html.contains("if-sheets__inspector-frame-name-input"),
+        "expected the Name input: {html}"
+    );
+    assert!(
+        html.contains("value=\"\""),
+        "expected the Name input to render an empty value when display_name is None: {html}"
+    );
+    assert!(
+        html.contains("placeholder=\"cockpit.png\""),
+        "expected the placeholder to show the asset filename: {html}"
+    );
+}
+
+#[test]
+fn asset_inspector_renders_when_only_asset_selected() {
+    let mut state = state_with_two_placements_sharing_one_asset();
+    state.selected_anchor_id = None;
+    state.selected_placement_id = None;
+    state.inspector_asset_id = Some(state.assets[0].asset_id.clone());
+
+    let html = render_inspector_state(state);
+
+    assert!(
+        html.contains("data-testid=\"sheets-inspector-asset\""),
+        "expected the asset section: {html}"
+    );
+    assert!(
+        html.contains(">ASSET<"),
+        "expected the ASSET eyebrow: {html}"
+    );
+    assert!(
+        html.contains("if-sheets__inspector-asset-name-input"),
+        "expected the Asset Name input class anchor: {html}"
+    );
+    assert!(
+        html.contains("cockpit.png"),
+        "expected the filename to be surfaced (summary / placeholder): {html}"
+    );
+}
+
+#[test]
+fn asset_inspector_name_input_seeds_with_display_name_when_set() {
+    let mut state = state_with_two_placements_sharing_one_asset();
+    state.assets[0].display_name = Some("Throttle Quadrant".to_owned());
+    state.selected_anchor_id = None;
+    state.selected_placement_id = None;
+    state.inspector_asset_id = Some(state.assets[0].asset_id.clone());
+
+    let html = render_inspector_state(state);
+
+    assert!(
+        html.contains(" value=\"Throttle Quadrant\""),
+        "expected the Name input prefilled with the asset display_name: {html}"
+    );
+}
+
+#[test]
+fn asset_inspector_name_input_uses_filename_as_placeholder_when_display_name_unset() {
+    let mut state = state_with_two_placements_sharing_one_asset();
+    state.selected_anchor_id = None;
+    state.selected_placement_id = None;
+    state.inspector_asset_id = Some(state.assets[0].asset_id.clone());
+
+    let html = render_inspector_state(state);
+
+    assert!(
+        html.contains(" value=\"\""),
+        "expected an empty value when display_name is None: {html}"
+    );
+    assert!(
+        html.contains("placeholder=\"cockpit.png\""),
+        "expected the filename to drive the placeholder: {html}"
+    );
+}
+
+#[test]
+fn asset_inspector_shows_delete_button_with_danger_variant() {
+    let mut state = state_with_two_placements_sharing_one_asset();
+    state.selected_anchor_id = None;
+    state.selected_placement_id = None;
+    state.inspector_asset_id = Some(state.assets[0].asset_id.clone());
+
+    let html = render_inspector_state(state);
+
+    assert!(
+        html.contains("if-sheets__inspector-asset-delete"),
+        "expected the asset Delete button class: {html}"
+    );
+    assert!(
+        html.contains("if-button--danger"),
+        "expected the Delete button to use the Danger variant: {html}"
+    );
+}
+
+#[test]
+fn asset_inspector_preview_renders_thumbnail_img_with_data_url() {
+    // The inspector preview reads the asset bytes and renders a WebView-safe data URL
+    // (file:// URLs 404 inside the desktop WebView), so seed the health with a real file.
+    let copied_path = std::env::temp_dir().join(format!(
+        "inputforge-inspector-thumb-{}.png",
+        ulid::Ulid::new()
+    ));
+    std::fs::write(&copied_path, [0x89, b'P', b'N', b'G']).unwrap();
+
+    let mut state = state_with_two_placements_sharing_one_asset();
+    state.selected_anchor_id = None;
+    state.selected_placement_id = None;
+    state.inspector_asset_id = Some(state.assets[0].asset_id.clone());
+    for health in &mut state.asset_health {
+        health.copied_absolute_path = copied_path.clone();
+        health.missing = false;
+    }
+
+    let html = render_inspector_state(state);
+    let _ = std::fs::remove_file(copied_path);
+
+    assert!(
+        html.contains("class=\"if-sheets__inspector-asset-thumb\""),
+        "expected the inspector asset preview img class: {html}"
+    );
+    assert!(
+        html.contains("src=\"data:image/png;base64,"),
+        "expected a WebView-safe data URL for the inspector preview: {html}"
+    );
+}
+
+#[test]
+fn rail_asset_row_renames_show_through_when_asset_has_display_name() {
+    #[derive(Clone, PartialEq, Props)]
+    struct HarnessProps {
+        initial_state: SheetsState,
+    }
+
+    #[expect(non_snake_case, reason = "Dioxus components are PascalCase")]
+    fn Harness(props: HarnessProps) -> Element {
+        let sheets = use_signal(|| props.initial_state);
+        rsx! {
+            SheetsLeftRail {
+                sheets,
+                on_import_image: move |()| {},
+                on_create_template: move |()| {},
+            }
+        }
+    }
+
+    let mut state = state_with_two_placements_sharing_one_asset();
+    state.library_tab = SheetsLibraryTab::Assets;
+    state.assets[0].display_name = Some("Throttle".to_owned());
+
+    let mut vdom = VirtualDom::new_with_props(
+        Harness,
+        HarnessProps {
+            initial_state: state,
+        },
+    );
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+
+    assert!(
+        html.contains(">Throttle<"),
+        "expected the rail row to render the renamed asset label: {html}"
+    );
+}
+
+#[test]
+fn canvas_placement_chip_uses_display_name_when_set() {
+    #[derive(Clone, PartialEq, Props)]
+    struct HarnessProps {
+        initial_state: SheetsState,
+    }
+
+    #[expect(non_snake_case, reason = "Dioxus components are PascalCase")]
+    fn Harness(props: HarnessProps) -> Element {
+        let sheets = use_signal(|| props.initial_state);
+        rsx! {
+            SheetsCanvas { sheets, on_arm_capture: move |_| {} }
+        }
+    }
+
+    let mut state = state_with_two_placements_sharing_one_asset();
+    state.templates[0].placements[0].display_name = Some("Throttle".to_owned());
+    let selected = state.templates[0].placements[0].placement_id.clone();
+    state.selected_placement_id = Some(selected);
+    state.selected_anchor_id = None;
+
+    let mut vdom = VirtualDom::new_with_props(
+        Harness,
+        HarnessProps {
+            initial_state: state,
+        },
+    );
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+    assert!(
+        html.contains("class=\"if-sheets__placement-name\">Throttle<"),
+        "expected the selected placement chip to render the custom name: {html}"
+    );
+}
+
+#[test]
+fn clicking_a_template_in_the_rail_shows_template_inspector_not_asset_inspector() {
+    // Regression: after the Asset inspector landed, `select_template` was
+    // writing the canvas-tracking `selected_asset_id` and the Asset branch
+    // (which read the same field) was trapping every template click. The
+    // fix routed the Asset branch through `inspector_asset_id`, which
+    // `select_template` clears explicitly.
+    let mut state = state_with_two_placements_sharing_one_asset();
+    let template_id = state.templates[0].template_id.clone();
+    // Simulate the user having previously clicked an asset in the rail.
+    state.inspector_asset_id = Some(state.assets[0].asset_id.clone());
+    state.selected_anchor_id = None;
+    state.selected_placement_id = None;
+
+    state.select_template(template_id);
+
+    let html = render_inspector_state(state);
+
+    assert!(
+        html.contains(">TEMPLATE<"),
+        "after clicking a template, the inspector must show TEMPLATE: {html}"
+    );
+    assert!(
+        !html.contains(">ASSET<"),
+        "after clicking a template, the inspector must NOT show ASSET: {html}"
+    );
+}
+
+#[test]
+fn clicking_an_asset_after_a_template_shows_asset_inspector_without_unselecting_the_template() {
+    // Co-existence: the Asset inspector branch is reachable from any
+    // template state, and the canvas-tracking selected_asset_id /
+    // selected_template_id are not disturbed by the rail asset click.
+    let mut state = state_with_two_placements_sharing_one_asset();
+    let template_id = state.templates[0].template_id.clone();
+    state.select_template(template_id.clone());
+    let canvas_asset_after_template_pick = state.selected_asset_id.clone();
+    let asset_to_inspect = state.assets[0].asset_id.clone();
+
+    state.select_asset_for_inspector(asset_to_inspect.clone());
+
+    assert_eq!(
+        state.selected_template_id,
+        Some(template_id),
+        "rail asset click must not change the open template"
+    );
+    assert_eq!(
+        state.selected_asset_id, canvas_asset_after_template_pick,
+        "rail asset click must not change the canvas-tracking asset id"
+    );
+    assert_eq!(state.inspector_asset_id, Some(asset_to_inspect));
+
+    let html = render_inspector_state(state);
+    assert!(
+        html.contains(">ASSET<"),
+        "the Asset inspector branch must show after the rail click: {html}"
+    );
+    assert!(
+        !html.contains(">TEMPLATE<"),
+        "the Template branch must not co-render alongside the Asset branch: {html}"
+    );
+}
+
+fn render_rail_state(initial_state: SheetsState) -> String {
+    #[derive(Clone, PartialEq, Props)]
+    struct HarnessProps {
+        initial_state: SheetsState,
+    }
+
+    #[expect(non_snake_case, reason = "Dioxus components are PascalCase")]
+    fn Harness(props: HarnessProps) -> Element {
+        let sheets = use_signal(|| props.initial_state);
+        rsx! {
+            SheetsLeftRail {
+                sheets,
+                on_import_image: move |()| {},
+                on_create_template: move |()| {},
+            }
+        }
+    }
+
+    let mut vdom = VirtualDom::new_with_props(Harness, HarnessProps { initial_state });
+    vdom.rebuild_in_place();
+    dioxus_ssr::render(&vdom)
+}
+
+#[test]
+fn rail_template_row_unhighlights_when_asset_is_selected_for_inspector() {
+    let mut state = state_with_two_placements_sharing_one_asset();
+    state.library_tab = SheetsLibraryTab::Templates;
+    state.selected_anchor_id = None;
+    state.selected_placement_id = None;
+    state.inspector_asset_id = Some(state.assets[0].asset_id.clone());
+
+    let html = render_rail_state(state);
+
+    assert!(
+        !html.contains("data-selected=\"true\"") && !html.contains("data-selected=true"),
+        "no rail row should appear selected while the Asset inspector branch is active: {html}"
+    );
+}
+
+#[test]
+fn rail_template_row_unhighlights_when_anchor_is_selected() {
+    let mut state = state_with_two_placements_sharing_one_asset();
+    state.library_tab = SheetsLibraryTab::Templates;
+    // state_with_template (inherited via state_with_two_placements_sharing_one_asset)
+    // already sets selected_anchor_id; just clear the other surfaces.
+    state.selected_placement_id = None;
+    state.inspector_asset_id = None;
+    assert!(
+        state.selected_anchor_id.is_some(),
+        "fixture must select an anchor"
+    );
+
+    let html = render_rail_state(state);
+
+    assert!(
+        !html.contains("data-selected=\"true\"") && !html.contains("data-selected=true"),
+        "no rail row should appear selected while the Anchor inspector branch is active: {html}"
+    );
+}
+
+#[test]
+fn rail_template_row_unhighlights_when_placement_is_selected() {
+    let mut state = state_with_two_placements_sharing_one_asset();
+    state.library_tab = SheetsLibraryTab::Templates;
+    state.selected_anchor_id = None;
+    state.inspector_asset_id = None;
+    let placement_id = state.templates[0].placements[0].placement_id.clone();
+    state.selected_placement_id = Some(placement_id);
+
+    let html = render_rail_state(state);
+
+    assert!(
+        !html.contains("data-selected=\"true\"") && !html.contains("data-selected=true"),
+        "no rail row should appear selected while the Frame inspector branch is active: {html}"
+    );
+}
+
+#[test]
+fn rail_template_row_highlights_when_template_branch_is_active() {
+    // Positive case: with no anchor / placement / asset focus, the template
+    // row IS highlighted. Pins the gate so a future regression that drops the
+    // template highlight entirely is caught.
+    let mut state = state_with_two_placements_sharing_one_asset();
+    state.library_tab = SheetsLibraryTab::Templates;
+    state.selected_anchor_id = None;
+    state.selected_placement_id = None;
+    state.inspector_asset_id = None;
+
+    let html = render_rail_state(state);
+
+    assert!(
+        html.contains("data-selected=\"true\"") || html.contains("data-selected=true"),
+        "with no more-specific focus, the matching template row must light up: {html}"
     );
 }
