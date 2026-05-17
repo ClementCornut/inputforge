@@ -60,6 +60,7 @@ pub(crate) fn SheetsInspector(
         selected_anchor_id,
         selected_placement_id,
         selected_anchor,
+        selected_anchor_canvas,
         selected_placement,
         selected_binding,
         capture,
@@ -87,6 +88,13 @@ pub(crate) fn SheetsInspector(
                 .find(|anchor| &anchor.anchor_id == anchor_id)
                 .cloned()
         });
+        // Canvas-relative position of the selected anchor: the inspector shows what the user
+        // sees on the canvas, not the placement-local storage value used for attached anchors.
+        let selected_anchor_canvas: Option<(f64, f64)> = selected_template
+            .zip(selected_anchor.as_ref())
+            .map(|(template, anchor)| {
+                crate::frame::sheets::canvas::anchor_canvas_coords(anchor, &template.placements)
+            });
         let selected_placement: Option<AssetPlacement> = selected_template.and_then(|template| {
             let placement_id = selected_placement_id.as_ref()?;
             template
@@ -117,6 +125,7 @@ pub(crate) fn SheetsInspector(
             selected_anchor_id,
             selected_placement_id,
             selected_anchor,
+            selected_anchor_canvas,
             selected_placement,
             selected_binding,
             state.capture.clone(),
@@ -240,74 +249,80 @@ pub(crate) fn SheetsInspector(
                                 }
                             }
                         }
-                        label {
-                            "X"
-                            input {
-                                r#type: "number",
-                                "data-axis": "x",
-                                step: "0.01",
-                                min: "0",
-                                max: "1",
-                                value: "{anchor_x_draft.read().clone().unwrap_or_else(|| anchor.position.x.to_string())}",
-                                oninput: move |evt: FormEvent| { anchor_x_draft.set(Some(evt.value())); },
-                                onblur: {
-                                    let mut sheets_for_x_blur = sheets;
-                                    let current_y = anchor.position.y;
-                                    move |_| {
-                                        if let Some(draft) = anchor_x_draft.write().take()
-                                            && let Ok(parsed) = draft.trim().parse::<f64>() {
-                                            let clamped_x = parsed.clamp(0.0, 1.0);
-                                            sheets_for_x_blur.write().update_selected_anchor_position(AnchorPosition { x: clamped_x, y: current_y });
-                                        }
+                        {
+                            // The inspector x/y inputs show the canvas-relative position the user
+                            // sees on the stage. For attached anchors the storage value differs
+                            // (placement-local), so we expose anchor_canvas_coords here and rely on
+                            // update_selected_anchor_position to convert canvas -> storage internally.
+                            let (canvas_x, canvas_y) = selected_anchor_canvas
+                                .unwrap_or((anchor.position.x, anchor.position.y));
+                            rsx! {
+                                label {
+                                    "X"
+                                    input {
+                                        r#type: "number",
+                                        "data-axis": "x",
+                                        step: "0.01",
+                                        min: "0",
+                                        max: "1",
+                                        value: "{anchor_x_draft.read().clone().unwrap_or_else(|| canvas_x.to_string())}",
+                                        oninput: move |evt: FormEvent| { anchor_x_draft.set(Some(evt.value())); },
+                                        onblur: {
+                                            let mut sheets_for_x_blur = sheets;
+                                            move |_| {
+                                                if let Some(draft) = anchor_x_draft.write().take()
+                                                    && let Ok(parsed) = draft.trim().parse::<f64>() {
+                                                    let clamped_x = parsed.clamp(0.0, 1.0);
+                                                    sheets_for_x_blur.write().update_selected_anchor_position(AnchorPosition { x: clamped_x, y: canvas_y });
+                                                }
+                                            }
+                                        },
+                                        onkeydown: {
+                                            let mut sheets_for_x_enter = sheets;
+                                            move |evt: KeyboardEvent| {
+                                                if evt.key() == Key::Enter
+                                                    && let Some(draft) = anchor_x_draft.write().take()
+                                                    && let Ok(parsed) = draft.trim().parse::<f64>() {
+                                                    let clamped_x = parsed.clamp(0.0, 1.0);
+                                                    sheets_for_x_enter.write().update_selected_anchor_position(AnchorPosition { x: clamped_x, y: canvas_y });
+                                                }
+                                            }
+                                        },
                                     }
-                                },
-                                onkeydown: {
-                                    let mut sheets_for_x_enter = sheets;
-                                    let current_y = anchor.position.y;
-                                    move |evt: KeyboardEvent| {
-                                        if evt.key() == Key::Enter
-                                            && let Some(draft) = anchor_x_draft.write().take()
-                                            && let Ok(parsed) = draft.trim().parse::<f64>() {
-                                            let clamped_x = parsed.clamp(0.0, 1.0);
-                                            sheets_for_x_enter.write().update_selected_anchor_position(AnchorPosition { x: clamped_x, y: current_y });
-                                        }
+                                }
+                                label {
+                                    "Y"
+                                    input {
+                                        r#type: "number",
+                                        "data-axis": "y",
+                                        step: "0.01",
+                                        min: "0",
+                                        max: "1",
+                                        value: "{anchor_y_draft.read().clone().unwrap_or_else(|| canvas_y.to_string())}",
+                                        oninput: move |evt: FormEvent| { anchor_y_draft.set(Some(evt.value())); },
+                                        onblur: {
+                                            let mut sheets_for_y_blur = sheets;
+                                            move |_| {
+                                                if let Some(draft) = anchor_y_draft.write().take()
+                                                    && let Ok(parsed) = draft.trim().parse::<f64>() {
+                                                    let clamped_y = parsed.clamp(0.0, 1.0);
+                                                    sheets_for_y_blur.write().update_selected_anchor_position(AnchorPosition { x: canvas_x, y: clamped_y });
+                                                }
+                                            }
+                                        },
+                                        onkeydown: {
+                                            let mut sheets_for_y_enter = sheets;
+                                            move |evt: KeyboardEvent| {
+                                                if evt.key() == Key::Enter
+                                                    && let Some(draft) = anchor_y_draft.write().take()
+                                                    && let Ok(parsed) = draft.trim().parse::<f64>() {
+                                                    let clamped_y = parsed.clamp(0.0, 1.0);
+                                                    sheets_for_y_enter.write().update_selected_anchor_position(AnchorPosition { x: canvas_x, y: clamped_y });
+                                                }
+                                            }
+                                        },
                                     }
-                                },
-                            }
-                        }
-                        label {
-                            "Y"
-                            input {
-                                r#type: "number",
-                                "data-axis": "y",
-                                step: "0.01",
-                                min: "0",
-                                max: "1",
-                                value: "{anchor_y_draft.read().clone().unwrap_or_else(|| anchor.position.y.to_string())}",
-                                oninput: move |evt: FormEvent| { anchor_y_draft.set(Some(evt.value())); },
-                                onblur: {
-                                    let mut sheets_for_y_blur = sheets;
-                                    let current_x = anchor.position.x;
-                                    move |_| {
-                                        if let Some(draft) = anchor_y_draft.write().take()
-                                            && let Ok(parsed) = draft.trim().parse::<f64>() {
-                                            let clamped_y = parsed.clamp(0.0, 1.0);
-                                            sheets_for_y_blur.write().update_selected_anchor_position(AnchorPosition { x: current_x, y: clamped_y });
-                                        }
-                                    }
-                                },
-                                onkeydown: {
-                                    let mut sheets_for_y_enter = sheets;
-                                    let current_x = anchor.position.x;
-                                    move |evt: KeyboardEvent| {
-                                        if evt.key() == Key::Enter
-                                            && let Some(draft) = anchor_y_draft.write().take()
-                                            && let Ok(parsed) = draft.trim().parse::<f64>() {
-                                            let clamped_y = parsed.clamp(0.0, 1.0);
-                                            sheets_for_y_enter.write().update_selected_anchor_position(AnchorPosition { x: current_x, y: clamped_y });
-                                        }
-                                    }
-                                },
+                                }
                             }
                         }
                     }

@@ -316,6 +316,32 @@ impl Default for SheetsState {
     }
 }
 
+/// Inverse of `crate::frame::sheets::canvas::anchor_canvas_coords`. Converts a canvas-relative
+/// anchor position into the storage form expected by the rendered template: placement-local for
+/// attached anchors so they keep tracking their parent through move/resize, canvas-relative for
+/// floating anchors. The fallback for an orphan parent id mirrors `anchor_canvas_coords` so
+/// rendered position stays consistent after the parent is removed without a touchup.
+fn anchor_storage_position(
+    canvas: AnchorPosition,
+    attached_to: Option<&AssetPlacementId>,
+    placements: &[AssetPlacement],
+) -> AnchorPosition {
+    let Some(parent_id) = attached_to else {
+        return canvas;
+    };
+    let Some(parent) = placements.iter().find(|p| &p.placement_id == parent_id) else {
+        return canvas;
+    };
+    let rect = parent.position;
+    if rect.w <= 0.0 || rect.h <= 0.0 {
+        return canvas;
+    }
+    AnchorPosition {
+        x: (canvas.x - f64::from(rect.x)) / f64::from(rect.w),
+        y: (canvas.y - f64::from(rect.y)) / f64::from(rect.h),
+    }
+}
+
 /// Minimum normalized width / height a placement frame is allowed to have after a resize commit.
 /// This keeps the frame visible and grabbable by the eight resize handles.
 const MIN_PLACEMENT_DIMENSION: f32 = 0.02;
@@ -519,6 +545,10 @@ impl SheetsState {
         self.place_anchor_on(position, None)
     }
 
+    /// Place a new anchor at a canvas-relative position. When `attached_to` is `Some` and the
+    /// parent placement exists, the stored position is converted to placement-local space so the
+    /// anchor follows its parent through subsequent move/resize. Floating anchors store the
+    /// position verbatim.
     pub(crate) fn place_anchor_on(
         &mut self,
         position: AnchorPosition,
@@ -529,11 +559,12 @@ impl SheetsState {
             return anchor_id;
         };
 
+        let storage = anchor_storage_position(position, attached_to.as_ref(), &template.placements);
         let label = format!("Anchor {}", template.anchors.len() + 1);
         let anchor = TemplateAnchor {
             anchor_id: anchor_id.clone(),
             label,
-            position,
+            position: storage,
             attached_to,
             input_type_hint: None,
             grouping_hint: None,
@@ -870,6 +901,25 @@ impl SheetsState {
         self.selected_anchor_id = None;
     }
 
+    /// Mark an anchor as selected. Selecting an anchor clears the selected placement so the
+    /// canvas tears down the placement drag bridge + hides its resize handles, and the inspector
+    /// pivots cleanly to the Anchor branch. Mirrors `select_placement` for symmetry.
+    pub(crate) fn select_anchor(&mut self, anchor_id: AnchorId) {
+        self.selected_anchor_id = Some(anchor_id);
+        self.selected_placement_id = None;
+    }
+
+    /// Switch the active sheet tool. Entering Anchor mode also clears the selected placement so
+    /// its resize handles / drag bridge are released, since the placement is no longer the
+    /// primary interaction target. Anchor selection survives the switch because anchors are
+    /// still interactable in both Select and Anchor modes.
+    pub(crate) fn set_tool(&mut self, tool: SheetTool) {
+        self.tool = tool;
+        if matches!(tool, SheetTool::Anchor) {
+            self.selected_placement_id = None;
+        }
+    }
+
     /// Commit the final position of a drag-to-move gesture. Width and height are kept from the
     /// current placement and the new `(x, y)` is clamped so the frame stays inside the canvas.
     /// One `MovePlacement` event is recorded.
@@ -982,13 +1032,29 @@ impl SheetsState {
         self.mark_dirty();
     }
 
+    /// Update the selected anchor to a new canvas-relative position. For attached anchors the
+    /// position is converted to placement-local space so the anchor keeps tracking its parent.
+    /// The `MoveAnchor` event records storage-form values so undo/redo stays consistent with the
+    /// stored representation.
     pub(crate) fn update_selected_anchor_position(&mut self, position: AnchorPosition) {
+        let storage = {
+            let Some(template) = self.selected_template() else {
+                return;
+            };
+            let Some(anchor_id) = self.selected_anchor_id.as_ref() else {
+                return;
+            };
+            let Some(anchor) = template.anchors.iter().find(|a| &a.anchor_id == anchor_id) else {
+                return;
+            };
+            anchor_storage_position(position, anchor.attached_to.as_ref(), &template.placements)
+        };
         let Some(anchor) = self.selected_anchor_mut() else {
             return;
         };
         let anchor_id = anchor.anchor_id.clone();
         let before = anchor.position;
-        anchor.position = position;
+        anchor.position = storage;
         let template_id = self
             .selected_template_id
             .clone()
@@ -997,7 +1063,7 @@ impl SheetsState {
             template_id,
             anchor_id,
             before,
-            after: position,
+            after: storage,
         });
         self.mark_dirty();
     }
@@ -2780,5 +2846,200 @@ mod tests {
         state.select_placement(placement_id.clone());
         assert_eq!(state.selected_placement_id.as_ref(), Some(&placement_id));
         assert!(state.selected_anchor_id.is_none());
+    }
+
+    fn push_placement(state: &mut SheetsState, id: &str, rect: TemplateRect) -> AssetPlacementId {
+        let placement_id = AssetPlacementId::from_string(id);
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id: AssetId::from_string("asset-1"),
+            position: rect,
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+        placement_id
+    }
+
+    fn anchor_position_approx_eq(actual: AnchorPosition, expected: AnchorPosition) {
+        assert!(
+            (actual.x - expected.x).abs() < 1e-6,
+            "x mismatch: actual={}, expected={}",
+            actual.x,
+            expected.x,
+        );
+        assert!(
+            (actual.y - expected.y).abs() < 1e-6,
+            "y mismatch: actual={}, expected={}",
+            actual.y,
+            expected.y,
+        );
+    }
+
+    #[test]
+    fn place_anchor_on_attached_converts_canvas_to_local() {
+        let mut state = state_with_template();
+        let placement_id = push_placement(
+            &mut state,
+            "p-attach",
+            TemplateRect {
+                x: 0.2,
+                y: 0.3,
+                w: 0.4,
+                h: 0.5,
+            },
+        );
+
+        let anchor_id = state.place_anchor_on(
+            AnchorPosition { x: 0.4, y: 0.55 },
+            Some(placement_id.clone()),
+        );
+
+        let anchor = state.templates[0]
+            .anchors
+            .iter()
+            .find(|a| a.anchor_id == anchor_id)
+            .unwrap();
+        assert_eq!(anchor.attached_to, Some(placement_id));
+        anchor_position_approx_eq(anchor.position, AnchorPosition { x: 0.5, y: 0.5 });
+    }
+
+    #[test]
+    fn place_anchor_on_with_orphan_parent_stores_canvas() {
+        let mut state = state_with_template();
+        let bogus = AssetPlacementId::from_string("p-does-not-exist");
+
+        let anchor_id =
+            state.place_anchor_on(AnchorPosition { x: 0.42, y: 0.61 }, Some(bogus.clone()));
+
+        let anchor = state.templates[0]
+            .anchors
+            .iter()
+            .find(|a| a.anchor_id == anchor_id)
+            .unwrap();
+        anchor_position_approx_eq(anchor.position, AnchorPosition { x: 0.42, y: 0.61 });
+    }
+
+    #[test]
+    fn update_selected_anchor_position_attached_converts_canvas_to_local() {
+        let mut state = state_with_template();
+        let placement_id = push_placement(
+            &mut state,
+            "p-attach",
+            TemplateRect {
+                x: 0.2,
+                y: 0.3,
+                w: 0.4,
+                h: 0.5,
+            },
+        );
+        let anchor_id = state.place_anchor_on(
+            AnchorPosition { x: 0.2, y: 0.3 },
+            Some(placement_id.clone()),
+        );
+        state.selected_anchor_id = Some(anchor_id.clone());
+
+        state.update_selected_anchor_position(AnchorPosition { x: 0.6, y: 0.8 });
+
+        let anchor = state.templates[0]
+            .anchors
+            .iter()
+            .find(|a| a.anchor_id == anchor_id)
+            .unwrap();
+        anchor_position_approx_eq(anchor.position, AnchorPosition { x: 1.0, y: 1.0 });
+    }
+
+    #[test]
+    fn update_selected_anchor_position_floating_preserves_canvas() {
+        let mut state = state_with_template();
+
+        state.update_selected_anchor_position(AnchorPosition { x: 0.7, y: 0.4 });
+
+        let anchor = &state.templates[0].anchors[0];
+        anchor_position_approx_eq(anchor.position, AnchorPosition { x: 0.7, y: 0.4 });
+    }
+
+    #[test]
+    fn anchor_canvas_coords_roundtrip_after_place_anchor_on() {
+        use crate::frame::sheets::canvas::anchor_canvas_coords;
+        let mut state = state_with_template();
+        let placement_id = push_placement(
+            &mut state,
+            "p-attach",
+            TemplateRect {
+                x: 0.1,
+                y: 0.2,
+                w: 0.6,
+                h: 0.4,
+            },
+        );
+
+        let anchor_id =
+            state.place_anchor_on(AnchorPosition { x: 0.42, y: 0.61 }, Some(placement_id));
+
+        let template = &state.templates[0];
+        let anchor = template
+            .anchors
+            .iter()
+            .find(|a| a.anchor_id == anchor_id)
+            .unwrap();
+        let (rendered_x, rendered_y) = anchor_canvas_coords(anchor, &template.placements);
+        assert!((rendered_x - 0.42).abs() < 1e-6, "rendered_x={rendered_x}");
+        assert!((rendered_y - 0.61).abs() < 1e-6, "rendered_y={rendered_y}");
+    }
+
+    #[test]
+    fn selecting_anchor_clears_placement_selection() {
+        let mut state = state_with_template();
+        let placement_id = push_placement(
+            &mut state,
+            "p-1",
+            TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 0.5,
+            },
+        );
+        state.selected_placement_id = Some(placement_id);
+        let anchor_id = state.templates[0].anchors[0].anchor_id.clone();
+
+        state.select_anchor(anchor_id.clone());
+
+        assert_eq!(state.selected_anchor_id, Some(anchor_id));
+        assert!(state.selected_placement_id.is_none());
+    }
+
+    #[test]
+    fn entering_anchor_tool_clears_placement_selection() {
+        let mut state = state_with_template();
+        let placement_id = push_placement(
+            &mut state,
+            "p-1",
+            TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 0.5,
+            },
+        );
+        state.selected_placement_id = Some(placement_id);
+
+        state.set_tool(SheetTool::Anchor);
+
+        assert_eq!(state.tool, SheetTool::Anchor);
+        assert!(state.selected_placement_id.is_none());
+    }
+
+    #[test]
+    fn entering_select_tool_preserves_anchor_selection() {
+        let mut state = state_with_template();
+        let anchor_id = state.templates[0].anchors[0].anchor_id.clone();
+        state.selected_anchor_id = Some(anchor_id.clone());
+        state.tool = SheetTool::Anchor;
+
+        state.set_tool(SheetTool::Select);
+
+        assert_eq!(state.tool, SheetTool::Select);
+        assert_eq!(state.selected_anchor_id, Some(anchor_id));
     }
 }

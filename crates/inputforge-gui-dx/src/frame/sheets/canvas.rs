@@ -448,7 +448,7 @@ pub(crate) fn SheetsCanvas(
                             "type": "button",
                             "data-active": tool_is_select,
                             onclick: move |_| {
-                                sheets.write().tool = SheetTool::Select;
+                                sheets.write().set_tool(SheetTool::Select);
                             },
                             "Select"
                         }
@@ -456,7 +456,7 @@ pub(crate) fn SheetsCanvas(
                             "type": "button",
                             "data-active": tool_is_anchor,
                             onclick: move |_| {
-                                sheets.write().tool = SheetTool::Anchor;
+                                sheets.write().set_tool(SheetTool::Anchor);
                             },
                             "Anchor"
                         }
@@ -684,7 +684,7 @@ pub(crate) fn SheetsCanvas(
                                                 "aria-pressed": if selected { "true" } else { "false" },
                                                 onclick: move |evt| {
                                                     evt.stop_propagation();
-                                                    sheets.write().selected_anchor_id = Some(anchor_id_for_click.clone());
+                                                    sheets.write().select_anchor(anchor_id_for_click.clone());
                                                 },
                                                 "Anchor"
                                             }
