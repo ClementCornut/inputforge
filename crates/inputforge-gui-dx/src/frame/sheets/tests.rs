@@ -3097,3 +3097,34 @@ fn anchor_mount_does_not_translate_so_disc_centers_on_click_coord() {
         "disc must translate -50%,-50% so it centers on the mount origin: {disc_body}"
     );
 }
+
+#[test]
+fn anchor_disc_rules_outrank_parent_button_cascade() {
+    // `.if-sheets button` at sheets.css:72 is specificity (0, 1, 1) and declares
+    // min-height: 28px, padding: 5px 10px, border, border-radius: var(--radius-md),
+    // and background: var(--color-bg-elevated). A bare .if-sheets__anchor selector
+    // is (0, 1, 0) and loses the cascade, producing a small rounded rectangle in
+    // bg-elevated instead of a 14px primary-blue circle. Scoping the anchor disc
+    // selectors under .if-sheets__image-stage bumps them to (0, 2, 0), which beats
+    // (0, 1, 1).
+    let css = include_str!("../../../assets/frame/sheets.css");
+    for required in [
+        ".if-sheets__image-stage .if-sheets__anchor {",
+        ".if-sheets__image-stage .if-sheets__anchor--unassigned",
+        ".if-sheets__image-stage .if-sheets__anchor--captured",
+        ".if-sheets__image-stage .if-sheets__anchor--manual",
+        ".if-sheets__image-stage .if-sheets__anchor--selected",
+    ] {
+        assert!(
+            css.contains(required),
+            "anchor disc rule must be scoped under .if-sheets__image-stage to outrank .if-sheets button: missing `{required}`"
+        );
+    }
+    // Belt-and-suspenders on the inherited 28px floor.
+    let disc_body =
+        css_rule_body(css, ".if-sheets__anchor").expect(".if-sheets__anchor rule must exist");
+    assert!(
+        disc_body.contains("min-height: 0"),
+        "base anchor rule must declare min-height: 0 so the disc is not stretched by the parent button rule: {disc_body}"
+    );
+}
