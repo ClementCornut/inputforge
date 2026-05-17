@@ -956,6 +956,30 @@ pub(super) fn install_placement_drag_bridge(
             }};
         }}
 
+        function applyLive(rect, dxNorm, dyNorm) {{
+            // Mutate inline style during the drag so the user sees the frame track the cursor.
+            // The pointerup commit re-renders through Dioxus, which writes the same style attribute
+            // with the canonical values and naturally replaces these temporary strings.
+            if (state.kind === 'move') {{
+                placement.style.left = ((state.origin.x + dxNorm) * 100) + '%';
+                placement.style.top = ((state.origin.y + dyNorm) * 100) + '%';
+            }} else {{
+                var nx = state.origin.x;
+                var ny = state.origin.y;
+                var nw = state.origin.w;
+                var nh = state.origin.h;
+                var h = state.handle;
+                if (h.indexOf('e') !== -1) {{ nw = state.origin.w + dxNorm; }}
+                if (h.indexOf('w') !== -1) {{ nx = state.origin.x + dxNorm; nw = state.origin.w - dxNorm; }}
+                if (h.indexOf('s') !== -1) {{ nh = state.origin.h + dyNorm; }}
+                if (h.indexOf('n') !== -1) {{ ny = state.origin.y + dyNorm; nh = state.origin.h - dyNorm; }}
+                placement.style.left = (nx * 100) + '%';
+                placement.style.top = (ny * 100) + '%';
+                placement.style.width = (nw * 100) + '%';
+                placement.style.height = (nh * 100) + '%';
+            }}
+        }}
+
         function onPointerMove(evt) {{
             if (!state || evt.pointerId !== state.pointerId) return;
             var dx = evt.clientX - state.startX;
@@ -963,6 +987,10 @@ pub(super) fn install_placement_drag_bridge(
             if (Math.abs(dx) >= DRAG_THRESHOLD_PX || Math.abs(dy) >= DRAG_THRESHOLD_PX) {{
                 state.moved = true;
             }}
+            if (!state.moved) return;
+            var rect = stageRect();
+            if (rect.width === 0 || rect.height === 0) return;
+            applyLive(rect, dx / rect.width, dy / rect.height);
         }}
 
         function commit(evt) {{
@@ -1049,6 +1077,8 @@ pub(super) fn install_anchor_drag_bridge(
         var anchorId = {anchor_id:?};
         var anchor = stage.querySelector('button[data-anchor-id=' + JSON.stringify(anchorId) + ']');
         if (!anchor) return;
+        var mount = stage.querySelector('.if-sheets__anchor-mount[data-anchor-id=' + JSON.stringify(anchorId) + ']');
+        if (!mount) return;
         var listenerKey = {listener_key:?};
         var existing = window[listenerKey];
         if (existing && typeof existing.detach === 'function') {{
@@ -1081,6 +1111,15 @@ pub(super) fn install_anchor_drag_bridge(
             if (Math.abs(dx) >= DRAG_THRESHOLD_PX || Math.abs(dy) >= DRAG_THRESHOLD_PX) {{
                 state.moved = true;
             }}
+            if (!state.moved) return;
+            var rect = stageRect();
+            if (rect.width === 0 || rect.height === 0) return;
+            // Live-update the anchor mount so the dot tracks the cursor during the drag.
+            // The pointerup commit re-renders through Dioxus, which writes the canonical style.
+            var nx = (evt.clientX - rect.left) / rect.width;
+            var ny = (evt.clientY - rect.top) / rect.height;
+            mount.style.left = (nx * 100) + '%';
+            mount.style.top = (ny * 100) + '%';
         }}
 
         function commit(evt) {{

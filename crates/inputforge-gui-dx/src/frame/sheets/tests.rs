@@ -2868,3 +2868,63 @@ fn unselected_placement_does_not_render_asset_name_chip() {
         "unselected placement must NOT render the name chip: {html}"
     );
 }
+
+#[test]
+fn placement_drag_bridge_updates_inline_style_during_pointermove() {
+    // Live drag feedback: while the pointer moves, the bridge mutates the placement's inline
+    // left/top/width/height so the user sees the frame track the cursor. The commit on pointerup
+    // (asserted in placement_drag_bridge_still_sends_commit_on_pointerup) re-renders through
+    // Dioxus and overwrites these temporary inline styles with the canonical values.
+    let js = install_placement_drag_bridge("stage-1", "placement-live", "key-live");
+    assert!(
+        js.contains("placement.style.left"),
+        "bridge must update placement.style.left during pointermove: {js}"
+    );
+    assert!(
+        js.contains("placement.style.top"),
+        "bridge must update placement.style.top during pointermove: {js}"
+    );
+    assert!(
+        js.contains("placement.style.width"),
+        "bridge must update placement.style.width when resizing: {js}"
+    );
+    assert!(
+        js.contains("placement.style.height"),
+        "bridge must update placement.style.height when resizing: {js}"
+    );
+}
+
+#[test]
+fn placement_drag_bridge_still_sends_commit_on_pointerup() {
+    // Guard against accidentally removing the pointerup commit path while editing the live-feedback
+    // body. The Dioxus side reads PlacementDragPayload variants on these messages.
+    let js = install_placement_drag_bridge("stage-1", "placement-commit", "key-commit");
+    assert!(
+        js.contains("mode: 'move'"),
+        "bridge must still send the move-commit payload on pointerup: {js}"
+    );
+    assert!(
+        js.contains("mode: 'resize'"),
+        "bridge must still send the resize-commit payload on pointerup: {js}"
+    );
+}
+
+#[test]
+fn anchor_drag_bridge_targets_anchor_mount_for_live_position() {
+    // The wrapping .if-sheets__anchor-mount carries the left:X%;top:Y% style + the
+    // translate(-50%,-50%) centering. Live feedback writes to its inline style so the dot tracks
+    // the cursor; the pointerup commit re-renders the mount via Dioxus.
+    let js = install_anchor_drag_bridge("stage-1", "anchor-live", "key-anchor-live");
+    assert!(
+        js.contains(".if-sheets__anchor-mount"),
+        "bridge must resolve the anchor mount wrapper: {js}"
+    );
+    assert!(
+        js.contains("mount.style.left"),
+        "bridge must update mount.style.left during pointermove: {js}"
+    );
+    assert!(
+        js.contains("mount.style.top"),
+        "bridge must update mount.style.top during pointermove: {js}"
+    );
+}
