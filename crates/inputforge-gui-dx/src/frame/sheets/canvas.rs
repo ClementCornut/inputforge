@@ -974,6 +974,46 @@ pub(super) fn install_placement_drag_bridge(
             }};
         }}
 
+        // Mirrors MIN_PLACEMENT_DIMENSION (0.02) from state.rs:347. Floors each axis so
+        // the rect cannot invert or collapse below 2% during a drag. The Rust commit
+        // re-clamps via clamp_rect_to_canvas; this constant exists so the live preview and
+        // the pointerup payload match what the Rust side will accept.
+        var MIN_DIM = 0.02;
+
+        function clampedResizeRect(dxNorm, dyNorm) {{
+            // Compute the new rect for a resize drag, clamping each moving edge to [0, 1]
+            // and to the opposite edge minus MIN_DIM. Corner handles activate both axes,
+            // each clamped independently.
+            var nx = state.origin.x;
+            var ny = state.origin.y;
+            var nw = state.origin.w;
+            var nh = state.origin.h;
+            var h = state.handle;
+            if (h.indexOf('e') !== -1) {{
+                var right = state.origin.x + state.origin.w + dxNorm;
+                right = Math.max(state.origin.x + MIN_DIM, Math.min(1, right));
+                nw = right - state.origin.x;
+            }}
+            if (h.indexOf('w') !== -1) {{
+                var left = state.origin.x + dxNorm;
+                left = Math.max(0, Math.min(state.origin.x + state.origin.w - MIN_DIM, left));
+                nx = left;
+                nw = state.origin.x + state.origin.w - left;
+            }}
+            if (h.indexOf('s') !== -1) {{
+                var bottom = state.origin.y + state.origin.h + dyNorm;
+                bottom = Math.max(state.origin.y + MIN_DIM, Math.min(1, bottom));
+                nh = bottom - state.origin.y;
+            }}
+            if (h.indexOf('n') !== -1) {{
+                var top = state.origin.y + dyNorm;
+                top = Math.max(0, Math.min(state.origin.y + state.origin.h - MIN_DIM, top));
+                ny = top;
+                nh = state.origin.y + state.origin.h - top;
+            }}
+            return {{ x: nx, y: ny, w: nw, h: nh }};
+        }}
+
         function applyLive(rect, dxNorm, dyNorm) {{
             // Mutate inline style during the drag so the user sees the frame track the cursor.
             // The pointerup commit re-renders through Dioxus, which writes the same style attribute
@@ -982,19 +1022,11 @@ pub(super) fn install_placement_drag_bridge(
                 placement.style.left = ((state.origin.x + dxNorm) * 100) + '%';
                 placement.style.top = ((state.origin.y + dyNorm) * 100) + '%';
             }} else {{
-                var nx = state.origin.x;
-                var ny = state.origin.y;
-                var nw = state.origin.w;
-                var nh = state.origin.h;
-                var h = state.handle;
-                if (h.indexOf('e') !== -1) {{ nw = state.origin.w + dxNorm; }}
-                if (h.indexOf('w') !== -1) {{ nx = state.origin.x + dxNorm; nw = state.origin.w - dxNorm; }}
-                if (h.indexOf('s') !== -1) {{ nh = state.origin.h + dyNorm; }}
-                if (h.indexOf('n') !== -1) {{ ny = state.origin.y + dyNorm; nh = state.origin.h - dyNorm; }}
-                placement.style.left = (nx * 100) + '%';
-                placement.style.top = (ny * 100) + '%';
-                placement.style.width = (nw * 100) + '%';
-                placement.style.height = (nh * 100) + '%';
+                var r = clampedResizeRect(dxNorm, dyNorm);
+                placement.style.left = (r.x * 100) + '%';
+                placement.style.top = (r.y * 100) + '%';
+                placement.style.width = (r.w * 100) + '%';
+                placement.style.height = (r.h * 100) + '%';
             }}
         }}
 
@@ -1030,16 +1062,10 @@ pub(super) fn install_placement_drag_bridge(
                     var ny = state.origin.y + dyNorm;
                     dioxus.send({{ mode: 'move', x: nx, y: ny }});
                 }} else {{
-                    var newX = state.origin.x;
-                    var newY = state.origin.y;
-                    var newW = state.origin.w;
-                    var newH = state.origin.h;
-                    var h = state.handle;
-                    if (h.indexOf('e') !== -1) {{ newW = state.origin.w + dxNorm; }}
-                    if (h.indexOf('w') !== -1) {{ newX = state.origin.x + dxNorm; newW = state.origin.w - dxNorm; }}
-                    if (h.indexOf('s') !== -1) {{ newH = state.origin.h + dyNorm; }}
-                    if (h.indexOf('n') !== -1) {{ newY = state.origin.y + dyNorm; newH = state.origin.h - dyNorm; }}
-                    dioxus.send({{ mode: 'resize', x: newX, y: newY, w: newW, h: newH }});
+                    // Reuse the same clamping the live preview applied, so the rect that
+                    // gets committed matches what the user saw at the moment of release.
+                    var r = clampedResizeRect(dxNorm, dyNorm);
+                    dioxus.send({{ mode: 'resize', x: r.x, y: r.y, w: r.w, h: r.h }});
                 }}
             }} catch (e) {{
                 // Bridge channel closed or unavailable; abort silently.

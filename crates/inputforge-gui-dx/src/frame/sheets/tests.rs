@@ -2910,6 +2910,48 @@ fn placement_drag_bridge_still_sends_commit_on_pointerup() {
 }
 
 #[test]
+fn placement_drag_bridge_clamps_resize_to_canvas_bounds() {
+    // Both the live preview (applyLive) and the pointerup commit must clamp the rect so the
+    // dragged handle cannot leave the canvas or invert past the opposite edge. The clamping
+    // is in a single shared helper (clampedResizeRect) so we assert the JS literal contains
+    // the clamping primitives plus all four origin-edge expressions, which covers every
+    // handle direction (corner handles activate two directions independently).
+    let js = install_placement_drag_bridge("stage-1", "placement-clamp", "key-clamp");
+    assert!(
+        js.contains("MIN_DIM"),
+        "bridge must declare the MIN_DIM floor constant: {js}"
+    );
+    assert!(
+        js.contains("0.02"),
+        "MIN_DIM must mirror MIN_PLACEMENT_DIMENSION (0.02) from state.rs: {js}"
+    );
+    assert!(
+        js.contains("Math.max(0,"),
+        "bridge must clamp the moving edge against 0 (canvas top/left): {js}"
+    );
+    assert!(
+        js.contains("Math.min(1,"),
+        "bridge must clamp the moving edge against 1 (canvas bottom/right): {js}"
+    );
+    assert!(
+        js.contains("state.origin.x + state.origin.w"),
+        "east/west handle math must reference the opposite x edge for clamping: {js}"
+    );
+    assert!(
+        js.contains("state.origin.y + state.origin.h"),
+        "north/south handle math must reference the opposite y edge for clamping: {js}"
+    );
+    assert!(
+        js.contains("state.origin.x + MIN_DIM"),
+        "east handle must floor the right edge at origin.x + MIN_DIM so width >= MIN_DIM: {js}"
+    );
+    assert!(
+        js.contains("state.origin.y + MIN_DIM"),
+        "south handle must floor the bottom edge at origin.y + MIN_DIM so height >= MIN_DIM: {js}"
+    );
+}
+
+#[test]
 fn stage_anchor_drag_bridge_targets_anchor_mount_for_live_position() {
     // The wrapping .if-sheets__anchor-mount carries the left:X%;top:Y% style. Live feedback
     // writes to its inline style so the dot tracks the cursor during the drag; the pointerup
