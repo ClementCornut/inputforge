@@ -2928,3 +2928,172 @@ fn anchor_drag_bridge_targets_anchor_mount_for_live_position() {
         "bridge must update mount.style.top during pointermove: {js}"
     );
 }
+
+/// Extract the body of the first CSS rule whose selector list contains `selector`.
+/// Returns the content between the opening `{` and the matching `}`, or None if no
+/// such rule exists. Brace counting handles nested rules (e.g. `@media`), though no
+/// anchor rules are nested in practice.
+fn css_rule_body<'a>(css: &'a str, selector: &str) -> Option<&'a str> {
+    let mut search_from = 0_usize;
+    while let Some(idx) = css[search_from..].find(selector) {
+        let absolute = search_from + idx;
+        // Confirm the match is a selector boundary, not a substring of a longer class name.
+        // The match is considered a selector if the next non-whitespace character is `{` or `,`,
+        // i.e. the selector is followed by a rule body or a continuation in a selector list.
+        let after = &css[absolute + selector.len()..];
+        let mut ok = false;
+        for c in after.chars() {
+            if c.is_whitespace() {
+                continue;
+            }
+            ok = c == '{' || c == ',';
+            break;
+        }
+        if !ok {
+            search_from = absolute + selector.len();
+            continue;
+        }
+        // Walk forward to the `{`, then collect until the matching `}`.
+        let after_brace = css[absolute..].find('{')? + absolute + 1;
+        let mut depth = 1_usize;
+        for (offset, ch) in css[after_brace..].char_indices() {
+            if ch == '{' {
+                depth = depth.saturating_add(1);
+            } else if ch == '}' {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(&css[after_brace..after_brace + offset]);
+                }
+            }
+        }
+        return None;
+    }
+    None
+}
+
+#[test]
+fn anchor_button_uses_aria_label_not_child_text() {
+    use inputforge_core::sheet::{AssetPlacement, AssetPlacementId, TemplateRect};
+    #[expect(non_snake_case, reason = "Dioxus component")]
+    fn Harness() -> Element {
+        let mut state = SheetsState::default();
+        state.create_blank_template();
+        let asset_id = AssetId::from_string("asset-aria");
+        state.assets.push(AssetEntry {
+            asset_id: asset_id.clone(),
+            copied_path: PathBuf::from("assets/aria.png"),
+            content_hash: "h".to_owned(),
+            media_type: "image/png".to_owned(),
+            pixel_dimensions: PixelDimensions {
+                width: 1,
+                height: 1,
+            },
+            original_import_path: None,
+            extensions: ExtensionPayload::default(),
+        });
+        state.asset_health.push(AssetHealth {
+            entry: state.assets[0].clone(),
+            copied_absolute_path: PathBuf::from("/tmp/aria.png"),
+            missing: false,
+        });
+        let placement_id = AssetPlacementId::from_string("p-aria");
+        state.templates[0].placements.push(AssetPlacement {
+            placement_id: placement_id.clone(),
+            asset_id,
+            position: TemplateRect {
+                x: 0.0,
+                y: 0.0,
+                w: 1.0,
+                h: 1.0,
+            },
+            z_index: 0,
+            extensions: ExtensionPayload::default(),
+        });
+        state.templates[0].anchors.push(TemplateAnchor {
+            anchor_id: AnchorId::from_string("a-aria"),
+            label: "Trigger".to_owned(),
+            position: AnchorPosition { x: 0.5, y: 0.5 },
+            attached_to: None,
+            input_type_hint: None,
+            grouping_hint: None,
+            device_matching_hint: None,
+            extensions: ExtensionPayload::default(),
+        });
+        let sheets = use_signal(|| state);
+        rsx! { SheetsCanvas { sheets, on_import_image: move |()| {}, on_arm_capture: move |_| {} } }
+    }
+    let mut vdom = VirtualDom::new(Harness);
+    vdom.rebuild_in_place();
+    let html = dioxus_ssr::render(&vdom);
+    assert!(
+        html.contains("aria-label=\"Anchor Trigger\""),
+        "button must carry aria-label='Anchor {{label}}': {html}"
+    );
+    // The button must be self-closing (no child text). The toolbar's Anchor tool tab is a
+    // separate button on the page, so the bare `>Anchor<` substring is too loose to assert
+    // against. Look for the anchor disc's signature class + aria-label followed immediately
+    // by `></button>` to confirm the literal child text was removed.
+    assert!(
+        html.contains("aria-label=\"Anchor Trigger\" aria-pressed=\"false\"></button>"),
+        "anchor disc button must have no child text after aria attributes: {html}"
+    );
+}
+
+#[test]
+fn anchor_label_chip_is_positioned_absolutely_below_the_disc() {
+    let css = include_str!("../../../assets/frame/sheets.css");
+    let body = css_rule_body(css, ".if-sheets__anchor-label")
+        .expect(".if-sheets__anchor-label rule must exist");
+    assert!(
+        body.contains("position: absolute"),
+        "label must be position:absolute so it does not steer the mount centering: {body}"
+    );
+    assert!(
+        body.contains("top: 13px"),
+        "label must sit below the disc at top:13px (7px radius + 6px gap): {body}"
+    );
+    assert!(
+        body.contains("transform: translateX(-50%)"),
+        "label must be horizontally centered on the click coord: {body}"
+    );
+    assert!(
+        body.contains("pointer-events: none"),
+        "label must let clicks pass through to the disc beneath: {body}"
+    );
+}
+
+#[test]
+fn selected_anchor_uses_outline_only_no_crosshair_pseudo_elements() {
+    let css = include_str!("../../../assets/frame/sheets.css");
+    assert!(
+        !css.contains(".if-sheets__anchor--selected::before"),
+        "selected state must not render a ::before crosshair extension"
+    );
+    assert!(
+        !css.contains(".if-sheets__anchor--selected::after"),
+        "selected state must not render an ::after crosshair extension"
+    );
+    let body = css_rule_body(css, ".if-sheets__anchor[aria-pressed=\"true\"]")
+        .expect("pressed-state outline rule must exist");
+    assert!(
+        body.contains("outline: 2px solid var(--color-primary)"),
+        "selected anchor must use a 2px primary outline: {body}"
+    );
+}
+
+#[test]
+fn anchor_mount_does_not_translate_so_disc_centers_on_click_coord() {
+    let css = include_str!("../../../assets/frame/sheets.css");
+    let mount_body = css_rule_body(css, ".if-sheets__anchor-mount")
+        .expect(".if-sheets__anchor-mount rule must exist");
+    assert!(
+        !mount_body.contains("transform: translate"),
+        "mount must be a 0x0 origin (no translate); the disc carries the centering: {mount_body}"
+    );
+    let disc_body =
+        css_rule_body(css, ".if-sheets__anchor").expect(".if-sheets__anchor rule must exist");
+    assert!(
+        disc_body.contains("transform: translate(-50%, -50%)"),
+        "disc must translate -50%,-50% so it centers on the mount origin: {disc_body}"
+    );
+}

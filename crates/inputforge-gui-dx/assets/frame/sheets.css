@@ -287,37 +287,56 @@
     object-fit: contain;
 }
 
+/* Canonical anchor disc. The mount carries the click-point coordinates as left/top
+   percentages, this rule places the disc absolutely at the mount's 0x0 origin and
+   then translates it -50%,-50% so the disc center sits exactly on the click point
+   regardless of any sibling label width. The four shape variants below (unassigned,
+   captured, manual, selected) layer the visual identity over this base. */
 .if-sheets__anchor {
     position: absolute;
-    width: 28px;
-    height: 28px;
-    min-width: 28px;
-    min-height: 28px;
+    left: 0;
+    top: 0;
+    width: 14px;
+    height: 14px;
     padding: 0;
-    overflow: hidden;
     transform: translate(-50%, -50%);
-    border: 2px solid var(--color-bg-sunken);
     border-radius: 999px;
-    background: var(--color-primary);
+    border: 0;
+    background: transparent;
     color: var(--color-primary-fg);
-    font-size: 0;
-    line-height: 1;
     cursor: pointer;
 }
 
+.if-sheets__anchor--unassigned {
+    border: 2px solid var(--color-primary);
+    background: transparent;
+}
+
+.if-sheets__anchor--captured {
+    border: 1px solid var(--color-primary);
+    background: var(--color-primary);
+}
+
+.if-sheets__anchor--manual {
+    /* Donut: solid primary disc with a 4px inset cutout filled by bg-elevated so the
+       core reads as a ring at a glance. Mirrors the placement-color elevation used
+       under the canvas. */
+    border: 1px solid var(--color-primary);
+    background: var(--color-primary);
+    box-shadow: inset 0 0 0 4px var(--color-bg-elevated);
+}
+
 .if-sheets__anchor:hover:not(:disabled) {
+    border-color: var(--color-primary-hover);
+}
+
+.if-sheets__anchor--captured:hover:not(:disabled),
+.if-sheets__anchor--manual:hover:not(:disabled) {
     background: var(--color-primary-hover);
 }
 
-.if-sheets__anchor::after {
-    content: "";
-    position: absolute;
-    inset: 8px;
-    border-radius: inherit;
-    background: currentColor;
-}
-
-.if-sheets__anchor[aria-pressed="true"] {
+.if-sheets__anchor[aria-pressed="true"],
+.if-sheets__anchor--selected {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
 }
@@ -492,60 +511,34 @@
     line-height: 16px;
 }
 
-.if-sheets__anchor {
-    /* Position is set inline (translate from rect); class chains layer the visual identity. */
-    position: absolute;
-    width: 14px;
-    height: 14px;
-    margin: -7px;
-    border-radius: 999px;
-    box-shadow: 0 0 0 1px var(--color-bg-elevated), 0 0 0 2px var(--color-border-strong);
-    background: transparent;
-}
-.if-sheets__anchor--unassigned { border: 1px solid var(--color-primary); background: transparent; }
-.if-sheets__anchor--captured { background: var(--color-primary); border: 1px solid var(--color-primary); }
-.if-sheets__anchor--manual {
-    background: var(--color-primary);
-    border: 1px solid var(--color-primary);
-    /* Donut: outer halo rings + 4px inset of bg-elevated clears the central core so the manual
-       shape reads as a ring at glance. The disc is 14px with a 1px border on each side; the inset
-       stacks INSIDE the border on the bg-elevated layer, so the effective transparent core is
-       14 - 2*(1 + 4) = 4px wide, matching the spec's "6px-ish inner cutout" target within tolerance.
-       Adjust this single inset value if visual tests show drift. */
-    box-shadow: 0 0 0 1px var(--color-bg-elevated), 0 0 0 2px var(--color-border-strong),
-                inset 0 0 0 4px var(--color-bg-elevated);
-}
-.if-sheets__anchor--selected::before,
-.if-sheets__anchor--selected::after {
-    content: "";
-    position: absolute;
-    background: var(--color-primary);
-}
-.if-sheets__anchor--selected::before {
-    /* N-S crosshair extension */
-    left: 50%; top: -8px; width: 1px; height: 4px;
-}
-.if-sheets__anchor--selected::after {
-    /* E-W crosshair extension */
-    left: -8px; top: 50%; width: 4px; height: 1px;
-}
-
 .if-sheets__anchor-mount {
-    position: absolute; /* anchor position lives on the mount; children use static layout */
-    transform: translate(-50%, -50%); /* center the disc on the recorded coords */
+    /* 0x0 origin at the click coordinate. The disc handles its own centering via
+       translate(-50%, -50%) (see canonical .if-sheets__anchor rule above) so the disc
+       always lands on the click point, no matter how wide the label chip below is. */
+    position: absolute;
+    width: 0;
+    height: 0;
 }
 
 .if-sheets__anchor-label {
-    display: inline-block; /* sit beside the disc; not absolute, so it always tracks the mount */
-    margin-left: 14px;
+    /* Centered horizontally on the mount's origin, parked below the disc.
+       top:13px = 7px disc radius + 6px gap. pointer-events:none keeps the chip from
+       intercepting clicks on the disc beneath it (anchors near the bottom of the canvas
+       could otherwise have the chip overlap the disc on display rounding). */
+    position: absolute;
+    left: 0;
+    top: 13px;
+    transform: translateX(-50%);
     padding: 2px 6px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     background: var(--color-bg-elevated);
     color: var(--color-text);
     font-size: 11px;
+    font-weight: 500;
     line-height: 14px;
     white-space: nowrap;
+    pointer-events: none;
 }
 
 .if-sheets__empty-dropzone {

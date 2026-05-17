@@ -681,12 +681,12 @@ pub(crate) fn SheetsCanvas(
                                                 "type": "button",
                                                 class: "if-sheets__anchor {shape_class}{selected_class}",
                                                 "data-anchor-id": "{anchor.anchor_id}",
+                                                "aria-label": "Anchor {anchor.label}",
                                                 "aria-pressed": if selected { "true" } else { "false" },
                                                 onclick: move |evt| {
                                                     evt.stop_propagation();
                                                     sheets.write().select_anchor(anchor_id_for_click.clone());
                                                 },
-                                                "Anchor"
                                             }
                                             span { class: "if-sheets__anchor-label", "{anchor.label}" }
                                         }
