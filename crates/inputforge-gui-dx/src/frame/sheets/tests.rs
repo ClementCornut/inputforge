@@ -11,7 +11,7 @@ use inputforge_core::types::DeviceId;
 use super::SheetsWorkbench;
 use super::canvas::{
     SheetsCanvas, base64_encode, cleanup_stage_resize_listener_script, file_url_from_path,
-    install_anchor_drag_bridge, install_placement_drag_bridge,
+    install_placement_drag_bridge, install_stage_anchor_drag_bridge,
     install_stage_resize_listener_script, stage_subscription_key,
 };
 use super::inspector::SheetsInspector;
@@ -2737,27 +2737,27 @@ fn install_placement_drag_bridge_emits_script_referencing_target_data_attribute(
 }
 
 #[test]
-fn install_anchor_drag_bridge_emits_script_referencing_target_data_attribute() {
-    let js = install_anchor_drag_bridge("stage-1", "anchor-xyz", "key-y");
+fn install_stage_anchor_drag_bridge_emits_event_delegated_script() {
+    let js = install_stage_anchor_drag_bridge("stage-1", "key-stage-anchor");
     assert!(
-        js.contains("data-anchor-id"),
-        "script must scope to data-anchor-id selector: {js}"
+        js.contains("closest('.if-sheets__anchor')"),
+        "bridge must use event delegation via closest('.if-sheets__anchor'): {js}"
     );
     assert!(
-        js.contains("anchor-xyz"),
-        "script must include the target anchor id: {js}"
+        js.contains("data-anchor-id"),
+        "bridge must read data-anchor-id off the target: {js}"
     );
     assert!(
         js.contains("'pointerup'"),
-        "script must listen for pointerup commit: {js}"
+        "bridge must listen for pointerup commit: {js}"
     );
     assert!(
         js.contains("setPointerCapture"),
-        "script must use pointer capture: {js}"
+        "bridge must capture the pointer on the anchor: {js}"
     );
     assert!(
-        js.contains("key-y"),
-        "script must reference the listener key: {js}"
+        js.contains("key-stage-anchor"),
+        "bridge must reference the listener key for idempotent install: {js}"
     );
 }
 
@@ -2910,22 +2910,43 @@ fn placement_drag_bridge_still_sends_commit_on_pointerup() {
 }
 
 #[test]
-fn anchor_drag_bridge_targets_anchor_mount_for_live_position() {
-    // The wrapping .if-sheets__anchor-mount carries the left:X%;top:Y% style + the
-    // translate(-50%,-50%) centering. Live feedback writes to its inline style so the dot tracks
-    // the cursor; the pointerup commit re-renders the mount via Dioxus.
-    let js = install_anchor_drag_bridge("stage-1", "anchor-live", "key-anchor-live");
+fn stage_anchor_drag_bridge_targets_anchor_mount_for_live_position() {
+    // The wrapping .if-sheets__anchor-mount carries the left:X%;top:Y% style. Live feedback
+    // writes to its inline style so the dot tracks the cursor during the drag; the pointerup
+    // commit re-renders the mount via Dioxus.
+    let js = install_stage_anchor_drag_bridge("stage-1", "key-stage-live");
     assert!(
         js.contains(".if-sheets__anchor-mount"),
         "bridge must resolve the anchor mount wrapper: {js}"
     );
     assert!(
-        js.contains("mount.style.left"),
+        js.contains("state.mount.style.left"),
         "bridge must update mount.style.left during pointermove: {js}"
     );
     assert!(
-        js.contains("mount.style.top"),
+        js.contains("state.mount.style.top"),
         "bridge must update mount.style.top during pointermove: {js}"
+    );
+}
+
+#[test]
+fn stage_anchor_drag_bridge_sends_select_on_pointerdown_and_move_on_pointerup() {
+    // The press-to-drag UX hinges on the bridge dispatching a `select` message immediately on
+    // pointerdown (so the anchor is selected without waiting for a second click) and a `move`
+    // message on pointerup if the gesture exceeded the drag threshold. Both messages echo the
+    // anchor id so the Dioxus side can defend against state drift across the gesture.
+    let js = install_stage_anchor_drag_bridge("stage-1", "key-stage-select");
+    assert!(
+        js.contains("kind: 'select'"),
+        "bridge must send a select message on pointerdown: {js}"
+    );
+    assert!(
+        js.contains("kind: 'move'"),
+        "bridge must send a move message on pointerup commit: {js}"
+    );
+    assert!(
+        js.contains("anchor_id:"),
+        "bridge messages must include anchor_id so the Dioxus side knows which anchor moved: {js}"
     );
 }
 

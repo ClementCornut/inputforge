@@ -34,15 +34,21 @@ enum PlacementDragPayload {
     Resize { x: f32, y: f32, w: f32, h: f32 },
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
-struct AnchorDragPayload {
-    x: f64,
-    y: f64,
+/// Stage-delegated anchor bridge payload. The bridge sends `Select` on pointerdown over any
+/// `.if-sheets__anchor` button (no Dioxus round-trip required to attach pointermove handlers),
+/// then `Move` on pointerup if the gesture exceeded the drag threshold. The `anchor_id` is
+/// echoed in `Move` so the Dioxus side can defend against state drift between pointerdown and
+/// pointerup (e.g., another action selecting a different anchor mid-gesture).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum StageAnchorBridgeMsg {
+    Select { anchor_id: String },
+    Move { anchor_id: String, x: f64, y: f64 },
 }
 
 const STAGE_RESIZE_LISTENER_PREFIX: &str = "__inputforgeSheetsStageResize_";
 const PLACEMENT_DRAG_LISTENER_PREFIX: &str = "__inputforgeSheetsPlacementDrag_";
-const ANCHOR_DRAG_LISTENER_PREFIX: &str = "__inputforgeSheetsAnchorDrag_";
+const STAGE_ANCHOR_DRAG_LISTENER_PREFIX: &str = "__inputforgeSheetsStageAnchorDrag_";
 
 #[component]
 pub(crate) fn SheetsCanvas(
@@ -139,9 +145,14 @@ pub(crate) fn SheetsCanvas(
     let missing_original_path = missing_asset_entry
         .and_then(|asset| asset.original_import_path.as_ref())
         .map(|path| path.display().to_string());
-    let current_stage_listener_key =
-        stage_subscription_key(has_template, selected_asset_missing, &stage_identity)
-            .map(|stage_key| stage_resize_listener_key(&stage_key));
+    let current_stage_key =
+        stage_subscription_key(has_template, selected_asset_missing, &stage_identity);
+    let current_stage_listener_key = current_stage_key
+        .as_ref()
+        .map(|stage_key| stage_resize_listener_key(stage_key));
+    let current_stage_anchor_key = current_stage_key
+        .as_ref()
+        .map(|stage_key| format!("{STAGE_ANCHOR_DRAG_LISTENER_PREFIX}{stage_key}"));
     let mut active_stage_listener_key = use_signal(|| Option::<String>::None);
     use_effect(use_reactive!(|current_stage_listener_key| {
         let previous_key = active_stage_listener_key.peek().clone();
@@ -242,16 +253,15 @@ pub(crate) fn SheetsCanvas(
             }
         });
     }));
-    // Anchor pointer-drag bridge: install when an anchor is selected.
+    // Stage-delegated anchor bridge: installs once per stage instance and handles pointer
+    // events for every anchor inside the stage via event delegation. Selection happens at
+    // pointerdown (no second click required), and the same gesture continues into a drag
+    // without waiting for a Dioxus re-render to attach per-anchor listeners.
     let mut sheets_for_anchor_drag = sheets;
-    let anchor_drag_selection = selected_anchor_id.clone();
     let mut active_anchor_drag_key = use_signal(|| Option::<String>::None);
-    use_effect(use_reactive!(|anchor_drag_selection| {
+    use_effect(use_reactive!(|current_stage_anchor_key| {
         let previous_key = active_anchor_drag_key.peek().clone();
-        let new_key = anchor_drag_selection
-            .as_ref()
-            .map(|id| format!("{ANCHOR_DRAG_LISTENER_PREFIX}{}", id.as_str()));
-        if previous_key == new_key {
+        if previous_key == current_stage_anchor_key {
             return;
         }
 
@@ -261,30 +271,38 @@ pub(crate) fn SheetsCanvas(
             });
         }
 
-        active_anchor_drag_key.set(new_key.clone());
+        active_anchor_drag_key.set(current_stage_anchor_key.clone());
 
-        let Some(anchor_id) = anchor_drag_selection.clone() else {
-            return;
-        };
-        let Some(listener_key) = new_key else {
+        let Some(listener_key) = current_stage_anchor_key.clone() else {
             return;
         };
         let stage_id = stage_id.to_owned();
-        let anchor_id_str = anchor_id.as_str().to_owned();
 
         spawn(async move {
-            let js = install_anchor_drag_bridge(&stage_id, &anchor_id_str, &listener_key);
+            let js = install_stage_anchor_drag_bridge(&stage_id, &listener_key);
             let mut handle = document::eval(&js);
             loop {
-                let Ok(payload) = handle.recv::<AnchorDragPayload>().await else {
+                let Ok(payload) = handle.recv::<StageAnchorBridgeMsg>().await else {
                     break;
                 };
-                sheets_for_anchor_drag
-                    .write()
-                    .update_selected_anchor_position(AnchorPosition {
-                        x: payload.x.clamp(0.0, 1.0),
-                        y: payload.y.clamp(0.0, 1.0),
-                    });
+                match payload {
+                    StageAnchorBridgeMsg::Select { anchor_id } => {
+                        sheets_for_anchor_drag
+                            .write()
+                            .select_anchor(AnchorId::from_string(anchor_id));
+                    }
+                    StageAnchorBridgeMsg::Move { anchor_id, x, y } => {
+                        // Re-assert selection in case state drifted between pointerdown and
+                        // pointerup (another widget changed the selection, etc.). select_anchor
+                        // is idempotent when the same id is already selected.
+                        let mut state = sheets_for_anchor_drag.write();
+                        state.select_anchor(AnchorId::from_string(anchor_id));
+                        state.update_selected_anchor_position(AnchorPosition {
+                            x: x.clamp(0.0, 1.0),
+                            y: y.clamp(0.0, 1.0),
+                        });
+                    }
+                }
             }
         });
     }));
@@ -1065,20 +1083,18 @@ pub(super) fn install_placement_drag_bridge(
     )
 }
 
-pub(super) fn install_anchor_drag_bridge(
-    stage_id: &str,
-    anchor_id: &str,
-    listener_key: &str,
-) -> String {
+/// Install the stage-delegated anchor bridge. One listener per stage, attached at the stage
+/// boundary, that watches pointerdown bubbling from any `.if-sheets__anchor` button inside the
+/// stage. On pointerdown the bridge selects the targeted anchor and seeds drag state; on
+/// pointermove past the threshold it live-updates the anchor mount's inline left/top; on
+/// pointerup it commits the final normalized position via `Move`. This is what makes the
+/// press-and-drag gesture work on an as-yet unselected anchor: no Dioxus round-trip is needed
+/// to attach listeners to the target.
+pub(super) fn install_stage_anchor_drag_bridge(stage_id: &str, listener_key: &str) -> String {
     format!(
         r"
         var stage = document.getElementById({stage_id:?});
         if (!stage) return;
-        var anchorId = {anchor_id:?};
-        var anchor = stage.querySelector('button[data-anchor-id=' + JSON.stringify(anchorId) + ']');
-        if (!anchor) return;
-        var mount = stage.querySelector('.if-sheets__anchor-mount[data-anchor-id=' + JSON.stringify(anchorId) + ']');
-        if (!mount) return;
         var listenerKey = {listener_key:?};
         var existing = window[listenerKey];
         if (existing && typeof existing.detach === 'function') {{
@@ -1096,12 +1112,30 @@ pub(super) fn install_anchor_drag_bridge(
         function onPointerDown(evt) {{
             if (evt.button !== 0) return;
             if (state) return;
+            var anchor = evt.target && evt.target.closest && evt.target.closest('.if-sheets__anchor');
+            if (!anchor) return;
+            if (!stage.contains(anchor)) return;
+            var anchorId = anchor.getAttribute('data-anchor-id');
+            if (!anchorId) return;
+            var mount = stage.querySelector('.if-sheets__anchor-mount[data-anchor-id=' + JSON.stringify(anchorId) + ']');
             evt.preventDefault();
             evt.stopPropagation();
             if (anchor.setPointerCapture) {{
                 try {{ anchor.setPointerCapture(evt.pointerId); }} catch (e) {{}}
             }}
-            state = {{ pointerId: evt.pointerId, startX: evt.clientX, startY: evt.clientY, moved: false }};
+            state = {{
+                anchorId: anchorId,
+                pointerId: evt.pointerId,
+                startX: evt.clientX,
+                startY: evt.clientY,
+                moved: false,
+                mount: mount
+            }};
+            try {{
+                dioxus.send({{ kind: 'select', anchor_id: anchorId }});
+            }} catch (e) {{
+                // Bridge channel closed or unavailable; abort silently.
+            }}
         }}
 
         function onPointerMove(evt) {{
@@ -1118,8 +1152,10 @@ pub(super) fn install_anchor_drag_bridge(
             // The pointerup commit re-renders through Dioxus, which writes the canonical style.
             var nx = (evt.clientX - rect.left) / rect.width;
             var ny = (evt.clientY - rect.top) / rect.height;
-            mount.style.left = (nx * 100) + '%';
-            mount.style.top = (ny * 100) + '%';
+            if (state.mount) {{
+                state.mount.style.left = (nx * 100) + '%';
+                state.mount.style.top = (ny * 100) + '%';
+            }}
         }}
 
         function commit(evt) {{
@@ -1136,7 +1172,7 @@ pub(super) fn install_anchor_drag_bridge(
             var nx = (evt.clientX - rect.left) / rect.width;
             var ny = (evt.clientY - rect.top) / rect.height;
             try {{
-                dioxus.send({{ x: nx, y: ny }});
+                dioxus.send({{ kind: 'move', anchor_id: state.anchorId, x: nx, y: ny }});
             }} catch (e) {{
                 // Bridge channel closed or unavailable; abort silently.
             }}
@@ -1149,7 +1185,7 @@ pub(super) fn install_anchor_drag_bridge(
             state = null;
         }}
 
-        anchor.addEventListener('pointerdown', onPointerDown);
+        stage.addEventListener('pointerdown', onPointerDown);
         window.addEventListener('pointermove', onPointerMove);
         window.addEventListener('pointerup', commit);
         window.addEventListener('pointercancel', cancel);
@@ -1157,7 +1193,7 @@ pub(super) fn install_anchor_drag_bridge(
 
         window[listenerKey] = {{
             detach: function() {{
-                anchor.removeEventListener('pointerdown', onPointerDown);
+                stage.removeEventListener('pointerdown', onPointerDown);
                 window.removeEventListener('pointermove', onPointerMove);
                 window.removeEventListener('pointerup', commit);
                 window.removeEventListener('pointercancel', cancel);
