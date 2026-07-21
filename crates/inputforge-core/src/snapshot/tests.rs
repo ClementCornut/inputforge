@@ -172,15 +172,15 @@ fn expired_pending_delete_purges_on_startup_cleanup() {
 
 #[test]
 fn external_load_once_uses_canonical_path_hash_namespace() {
-    use crate::settings::AppSettings;
     use crate::snapshot::fs::external_snapshots_dir_for;
 
+    let config_dir = tempfile::tempdir().unwrap();
     let canonical = Path::new("E:/Profiles/external.toml");
-    let dir1 = external_snapshots_dir_for(canonical);
-    let dir2 = external_snapshots_dir_for(canonical);
+    let dir1 = external_snapshots_dir_for(config_dir.path(), canonical);
+    let dir2 = external_snapshots_dir_for(config_dir.path(), canonical);
     assert!(
-        dir1.starts_with(AppSettings::config_dir().join("external_snapshots")),
-        "namespace must live under <config_dir>/external_snapshots/, got {}",
+        dir1.starts_with(config_dir.path().join("external_snapshots")),
+        "namespace must live under the injected config root, got {}",
         dir1.display(),
     );
     assert_eq!(
@@ -190,7 +190,7 @@ fn external_load_once_uses_canonical_path_hash_namespace() {
 
     // A different canonical path produces a different namespace.
     let other = Path::new("E:/Profiles/other.toml");
-    let dir_other = external_snapshots_dir_for(other);
+    let dir_other = external_snapshots_dir_for(config_dir.path(), other);
     assert_ne!(
         dir1, dir_other,
         "namespaces must differ across distinct canonical paths",

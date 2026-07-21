@@ -5,6 +5,7 @@
 //! This module is feature-gated behind `test-util` so it can access
 //! the mock I/O implementations.
 
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -50,6 +51,53 @@ use super::output_state::OutputRuntimeState;
 // ---------------------------------------------------------------------------
 
 const DEV: &str = "dev-1";
+
+#[derive(Debug)]
+struct TestEngine {
+    engine: Engine,
+    config_dir: Arc<tempfile::TempDir>,
+}
+
+impl TestEngine {
+    fn new(build: impl FnOnce(PathBuf) -> Engine) -> Self {
+        let config_dir = tempfile::tempdir().unwrap();
+        let settings_path = config_dir.path().join("settings.toml");
+        let engine = build(settings_path);
+        Self {
+            engine,
+            config_dir: Arc::new(config_dir),
+        }
+    }
+
+    fn from_parts(engine: Engine, config_dir: tempfile::TempDir) -> Self {
+        Self {
+            engine,
+            config_dir: Arc::new(config_dir),
+        }
+    }
+
+    fn from_shared(engine: Engine, config_dir: Arc<tempfile::TempDir>) -> Self {
+        Self { engine, config_dir }
+    }
+
+    fn config_dir(&self) -> &std::path::Path {
+        self.config_dir.path()
+    }
+}
+
+impl Deref for TestEngine {
+    type Target = Engine;
+
+    fn deref(&self) -> &Self::Target {
+        &self.engine
+    }
+}
+
+impl DerefMut for TestEngine {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.engine
+    }
+}
 
 fn dev_id() -> DeviceId {
     DeviceId(DEV.to_owned())
@@ -205,23 +253,29 @@ fn make_profile(modes: Modes, mappings: Vec<Mapping>) -> Profile {
 fn make_engine(
     input: MockInputSource,
     profile: Profile,
-) -> (Engine, Arc<RwLock<AppState>>, mpsc::Sender<EngineCommand>) {
+) -> (
+    TestEngine,
+    Arc<RwLock<AppState>>,
+    mpsc::Sender<EngineCommand>,
+) {
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
     state.write().engine_status = EngineStatus::Running;
 
     let (tx, rx) = mpsc::channel();
 
-    let engine = Engine::new(
-        Box::new(input),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-        Box::new(MockAutostart::new()),
-    );
+    let engine = TestEngine::new(|settings_path| {
+        Engine::new(
+            Box::new(input),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            AppSettings::default(),
+            settings_path,
+            Box::new(MockAutostart::new()),
+        )
+    });
 
     (engine, state, tx)
 }
@@ -475,7 +529,7 @@ fn output_button_id(output: &OutputAddress) -> u8 {
 }
 
 type RecordingEngineHarness = (
-    Engine,
+    TestEngine,
     Arc<RwLock<AppState>>,
     mpsc::Sender<EngineCommand>,
     Arc<RecordingKeyboardState>,
@@ -487,13 +541,21 @@ fn make_recording_engine(
     profile: Profile,
     profile_path: Option<PathBuf>,
 ) -> RecordingEngineHarness {
-    make_recording_engine_with_settings_path(input, profile, profile_path, PathBuf::new())
+    let (config_dir, settings_path) = temp_settings();
+    make_recording_engine_with_settings_path(
+        input,
+        profile,
+        profile_path,
+        config_dir,
+        settings_path,
+    )
 }
 
 fn make_recording_engine_with_settings_path(
     input: MockInputSource,
     profile: Profile,
     profile_path: Option<PathBuf>,
+    config_dir: tempfile::TempDir,
     settings_path: PathBuf,
 ) -> RecordingEngineHarness {
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
@@ -518,11 +580,17 @@ fn make_recording_engine_with_settings_path(
         Box::new(MockAutostart::new()),
     );
 
-    (engine, state, tx, keyboard_state, mouse_state)
+    (
+        TestEngine::from_parts(engine, config_dir),
+        state,
+        tx,
+        keyboard_state,
+        mouse_state,
+    )
 }
 
 struct GestureEngineHarness {
-    engine: Engine,
+    engine: TestEngine,
     tx: mpsc::Sender<EngineCommand>,
     output: Arc<RecordingOutputState>,
     now: Arc<Mutex<Instant>>,
@@ -643,7 +711,7 @@ fn input_source_with_button(input: InputAddress, pressed: bool) -> MockInputSour
 }
 
 fn make_gesture_recording_engine(profile: Profile) -> GestureEngineHarness {
-    let settings_path = temp_settings_path("gesture-runtime");
+    let (config_dir, settings_path) = temp_settings();
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
     state.write().engine_status = EngineStatus::Running;
     let (tx, rx) = mpsc::channel();
@@ -666,7 +734,7 @@ fn make_gesture_recording_engine(profile: Profile) -> GestureEngineHarness {
     engine.now = Box::new(move || *now_for_engine.lock());
 
     GestureEngineHarness {
-        engine,
+        engine: TestEngine::from_parts(engine, config_dir),
         tx,
         output: output_state,
         now,
@@ -1129,10 +1197,10 @@ fn temp_profile_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("inputforge-{name}-{}.toml", ulid::Ulid::new()))
 }
 
-fn temp_settings_path(name: &str) -> PathBuf {
-    std::env::temp_dir()
-        .join(format!("inputforge-{name}-{}", ulid::Ulid::new()))
-        .join("settings.toml")
+fn temp_settings() -> (tempfile::TempDir, PathBuf) {
+    let config_dir = tempfile::tempdir().unwrap();
+    let settings_path = config_dir.path().join("settings.toml");
+    (config_dir, settings_path)
 }
 
 #[test]
@@ -1160,7 +1228,7 @@ fn held_outputs_release_on_deactivate() {
 #[test]
 fn held_outputs_release_before_active_profile_deletion() {
     let profile_name = "Cleanup Delete";
-    let settings_path = temp_settings_path("delete-before-release");
+    let (config_dir, settings_path) = temp_settings();
     let profile_dir = settings_path.parent().unwrap().join("profiles");
     std::fs::create_dir_all(&profile_dir).unwrap();
     let profile_path = profile_dir.join(format!("{}.toml", sanitize_filename(profile_name)));
@@ -1173,6 +1241,7 @@ fn held_outputs_release_before_active_profile_deletion() {
         input,
         profile,
         Some(profile_path.clone()),
+        config_dir,
         settings_path,
     );
 
@@ -1574,26 +1643,26 @@ fn partial_pulse_failure_releases_on_cleanup() {
     );
 }
 
-fn test_engine_with_settings_path(settings: AppSettings) -> (Engine, PathBuf) {
-    let settings_path =
-        std::env::temp_dir().join(format!("inputforge-settings-{}.toml", ulid::Ulid::new()));
-    settings.save_to(&settings_path).unwrap();
-
+fn test_engine_with_settings_path(settings: AppSettings) -> (TestEngine, PathBuf) {
     let profile = make_profile(simple_modes(), vec![]);
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
     state.write().engine_status = EngineStatus::Running;
     let (_tx, rx) = mpsc::channel();
-    let engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        settings,
-        settings_path.clone(),
-        Box::new(MockAutostart::new()),
-    );
+    let engine = TestEngine::new(|settings_path| {
+        settings.save_to(&settings_path).unwrap();
+        Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            settings,
+            settings_path,
+            Box::new(MockAutostart::new()),
+        )
+    });
+    let settings_path = engine.settings_path.clone();
 
     (engine, settings_path)
 }
@@ -2608,36 +2677,36 @@ fn hat_event(index: u8, direction: HatDirection) -> InputEvent {
 /// Build an engine without a loaded profile.
 fn make_engine_no_profile(
     input: MockInputSource,
-) -> (Engine, Arc<RwLock<AppState>>, mpsc::Sender<EngineCommand>) {
+) -> (
+    TestEngine,
+    Arc<RwLock<AppState>>,
+    mpsc::Sender<EngineCommand>,
+) {
     let state = Arc::new(RwLock::new(AppState::new()));
     state.write().engine_status = EngineStatus::Running;
 
     let (tx, rx) = mpsc::channel();
 
-    let engine = Engine::new(
-        Box::new(input),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-        Box::new(MockAutostart::new()),
-    );
+    let engine = TestEngine::new(|settings_path| {
+        Engine::new(
+            Box::new(input),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            AppSettings::default(),
+            settings_path,
+            Box::new(MockAutostart::new()),
+        )
+    });
 
     (engine, state, tx)
 }
 
 struct EngineHarness {
-    engine: Engine,
+    engine: TestEngine,
     state: Arc<RwLock<AppState>>,
-    #[expect(
-        clippy::used_underscore_binding,
-        reason = "field is held only to keep the tempdir alive for the harness lifetime; \
-                  the underscore prefix signals the binding is intentionally not read"
-    )]
-    _settings_dir: tempfile::TempDir,
     library_dir: PathBuf,
     /// Cloned handle to the autostart mock the engine was constructed with.
     /// Tests inspect calls and seed `is_enabled` results through this clone;
@@ -2674,9 +2743,8 @@ impl EngineHarness {
         );
 
         Self {
-            engine,
+            engine: TestEngine::from_parts(engine, settings_dir),
             state,
-            _settings_dir: settings_dir,
             library_dir,
             autostart_mock,
         }
@@ -2692,8 +2760,8 @@ impl EngineHarness {
 
     fn write_external_profile(&self, name: &str) -> PathBuf {
         let path = self
-            ._settings_dir
-            .path()
+            .engine
+            .config_dir()
             .join(format!("{}.toml", sanitize_filename(name)));
         make_profile(simple_modes(), vec![]).save(&path).unwrap();
         path
@@ -2714,7 +2782,7 @@ impl EngineHarness {
     /// `ErrorKind::InvalidInput` deterministically on every OS. Used for
     /// save-failure tests.
     fn force_settings_path_to_unwritable(&mut self) {
-        let mut path = self._settings_dir.path().to_path_buf();
+        let mut path = self.engine.config_dir().to_path_buf();
         path.push("settings\0.toml");
         self.engine.settings_path = path;
     }
@@ -2749,6 +2817,22 @@ fn load_external_profile_once_marks_origin_external_and_does_not_add_library_row
             .all(|row| row.path != external)
     );
     assert_eq!(state.engine_status, EngineStatus::Stopped);
+    drop(state);
+
+    let canonical = std::fs::canonicalize(&external).unwrap();
+    let namespace =
+        crate::snapshot::fs::external_snapshots_dir_for(harness.engine.config_dir(), &canonical);
+    assert!(
+        namespace.starts_with(harness.engine.config_dir().join("external_snapshots")),
+        "external snapshot namespace must stay inside the fixture config root"
+    );
+    assert_eq!(
+        crate::snapshot::pending_delete::list_visible(&namespace)
+            .unwrap()
+            .len(),
+        1,
+        "loading an external profile should create its startup snapshot in the fixture root"
+    );
 }
 
 #[test]
@@ -3487,21 +3571,23 @@ fn activate_refreshes_outputs_from_cached_axis_values() {
     // Default engine status is Stopped, no need to set it explicitly.
 
     let (tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new({
-            let mut src = MockInputSource::default();
-            src.events.push(axis_event(0, 0.5));
-            src
-        }),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-        Box::new(MockAutostart::new()),
-    );
+    let mut engine = TestEngine::new(|settings_path| {
+        Engine::new(
+            Box::new({
+                let mut src = MockInputSource::default();
+                src.events.push(axis_event(0, 0.5));
+                src
+            }),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            AppSettings::default(),
+            settings_path,
+            Box::new(MockAutostart::new()),
+        )
+    });
 
     // Tick 1 (Stopped): input cache is updated, mappings are not evaluated.
     engine.tick().unwrap();
@@ -3878,10 +3964,10 @@ fn conditional_branch_release_clears_inner_mouse_from_output_activity() {
 ///   directory alive, callers must bind it to a local variable.
 /// - `path` is the absolute path to the profile TOML.
 fn make_engine_with_simple_disk_profile() -> (
-    Engine,
+    TestEngine,
     Arc<RwLock<AppState>>,
     mpsc::Sender<EngineCommand>,
-    tempfile::TempDir,
+    Arc<tempfile::TempDir>,
     PathBuf,
 ) {
     // Lay out a real library-style directory under tempdir so the engine's
@@ -3891,7 +3977,7 @@ fn make_engine_with_simple_disk_profile() -> (
     // caller of this fixture asserts the dir-next-to-profile layout.
     // Wiring `settings_path` to a sibling makes `profile_library_dir()`
     // resolve to `<tempdir>/profiles`, which the saved profile sits inside.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = Arc::new(tempfile::tempdir().unwrap());
     let settings_path = dir.path().join("settings.toml");
     let library_dir = dir.path().join("profiles");
     std::fs::create_dir_all(&library_dir).unwrap();
@@ -3919,7 +4005,13 @@ fn make_engine_with_simple_disk_profile() -> (
         settings_path,
         Box::new(MockAutostart::new()),
     );
-    (engine, state, tx, dir, path)
+    (
+        TestEngine::from_shared(engine, Arc::clone(&dir)),
+        state,
+        tx,
+        dir,
+        path,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -4018,16 +4110,19 @@ fn reload_settings_picks_up_disk_edits() {
     let state = Arc::new(RwLock::new(AppState::with_profile(profile)));
     state.write().engine_status = EngineStatus::Running;
     let (tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        settings_path.clone(),
-        Box::new(MockAutostart::new()),
+    let mut engine = TestEngine::from_parts(
+        Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            AppSettings::default(),
+            settings_path.clone(),
+            Box::new(MockAutostart::new()),
+        ),
+        dir,
     );
 
     // Sentinel mutation; after ReloadSettings, the field must reflect the
@@ -4198,16 +4293,19 @@ fn load_profile_creates_auto_session_start_snapshot() {
     let state = Arc::new(RwLock::new(AppState::new()));
     state.write().engine_status = EngineStatus::Running;
     let (tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        settings_path,
-        Box::new(MockAutostart::new()),
+    let mut engine = TestEngine::from_parts(
+        Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            AppSettings::default(),
+            settings_path,
+            Box::new(MockAutostart::new()),
+        ),
+        dir,
     );
 
     tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
@@ -4239,16 +4337,19 @@ fn load_profile_dedupes_auto_session_start_on_identical_content() {
     let state = Arc::new(RwLock::new(AppState::new()));
     state.write().engine_status = EngineStatus::Running;
     let (tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        settings_path,
-        Box::new(MockAutostart::new()),
+    let mut engine = TestEngine::from_parts(
+        Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            AppSettings::default(),
+            settings_path,
+            Box::new(MockAutostart::new()),
+        ),
+        dir,
     );
 
     tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
@@ -4287,16 +4388,19 @@ fn engine_loadprofile_dedup_respects_skip_if_unchanged_false() {
     let state = Arc::new(RwLock::new(AppState::new()));
     state.write().engine_status = EngineStatus::Running;
     let (tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        settings,
-        settings_path,
-        Box::new(MockAutostart::new()),
+    let mut engine = TestEngine::from_parts(
+        Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            settings,
+            settings_path,
+            Box::new(MockAutostart::new()),
+        ),
+        dir,
     );
 
     tx.send(EngineCommand::LoadProfile(path.clone())).unwrap();
@@ -4548,16 +4652,19 @@ fn sequential_eight_then_ninth_evicts_oldest() {
         ..Default::default()
     };
     settings.save_to(&settings_path).unwrap();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        settings,
-        settings_path,
-        Box::new(MockAutostart::new()),
+    let mut engine = TestEngine::from_parts(
+        Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            settings,
+            settings_path,
+            Box::new(MockAutostart::new()),
+        ),
+        dir,
     );
 
     let mut ids = Vec::new();
@@ -4656,7 +4763,7 @@ fn restore_corrupt_target_fires_auto_before_restore_then_errors() {
 
 /// Build an engine with a 3-mode profile loaded on disk so handlers can persist.
 fn make_engine_with_disk_profile() -> (
-    Engine,
+    TestEngine,
     Arc<RwLock<AppState>>,
     mpsc::Sender<EngineCommand>,
     tempfile::TempDir,
@@ -4673,17 +4780,19 @@ fn make_engine_with_disk_profile() -> (
     s.engine_status = EngineStatus::Running;
     drop(s);
     let (tx, rx) = mpsc::channel();
-    let engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-        Box::new(MockAutostart::new()),
-    );
+    let engine = TestEngine::new(|settings_path| {
+        Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            AppSettings::default(),
+            settings_path,
+            Box::new(MockAutostart::new()),
+        )
+    });
     (engine, state, tx, dir, path)
 }
 
@@ -4831,17 +4940,19 @@ fn rename_mode_cascades_into_mappings() {
     s.engine_status = EngineStatus::Running;
     drop(s);
     let (tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-        Box::new(MockAutostart::new()),
-    );
+    let mut engine = TestEngine::new(|settings_path| {
+        Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            AppSettings::default(),
+            settings_path,
+            Box::new(MockAutostart::new()),
+        )
+    });
     tx.send(EngineCommand::RenameMode {
         from: "Combat".to_owned(),
         to: "Fighter".to_owned(),
@@ -5033,17 +5144,19 @@ fn rename_mode_rewrites_switch_to_action() {
     s.engine_status = EngineStatus::Running;
     drop(s);
     let (tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-        Box::new(MockAutostart::new()),
-    );
+    let mut engine = TestEngine::new(|settings_path| {
+        Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            AppSettings::default(),
+            settings_path,
+            Box::new(MockAutostart::new()),
+        )
+    });
 
     tx.send(EngineCommand::RenameMode {
         from: "Combat".to_owned(),
@@ -5086,17 +5199,19 @@ fn rename_mode_rewrites_temporary_action() {
     s.engine_status = EngineStatus::Running;
     drop(s);
     let (tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-        Box::new(MockAutostart::new()),
-    );
+    let mut engine = TestEngine::new(|settings_path| {
+        Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            AppSettings::default(),
+            settings_path,
+            Box::new(MockAutostart::new()),
+        )
+    });
 
     tx.send(EngineCommand::RenameMode {
         from: "Combat".to_owned(),
@@ -5246,17 +5361,19 @@ fn delete_mode_drops_mappings_for_deleted_mode() {
     s.engine_status = EngineStatus::Running;
     drop(s);
     let (tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-        Box::new(MockAutostart::new()),
-    );
+    let mut engine = TestEngine::new(|settings_path| {
+        Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            AppSettings::default(),
+            settings_path,
+            Box::new(MockAutostart::new()),
+        )
+    });
 
     tx.send(EngineCommand::DeleteMode {
         name: "Combat".to_owned(),
@@ -5318,17 +5435,19 @@ fn delete_mode_rejects_startup_mode() {
     s.engine_status = EngineStatus::Running;
     drop(s);
     let (_tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-        Box::new(MockAutostart::new()),
-    );
+    let mut engine = TestEngine::new(|settings_path| {
+        Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            AppSettings::default(),
+            settings_path,
+            Box::new(MockAutostart::new()),
+        )
+    });
 
     let err = engine.handle_command(EngineCommand::DeleteMode {
         name: "Combat".to_owned(),
@@ -5536,17 +5655,19 @@ fn engine_set_mappings_bulk_with_no_profile_loaded_is_noop_and_warns() {
     let state = Arc::new(RwLock::new(AppState::new()));
     state.write().engine_status = EngineStatus::Running;
     let (tx, rx) = mpsc::channel();
-    let mut engine = Engine::new(
-        Box::new(MockInputSource::default()),
-        Box::new(MockOutputSink::new()),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
-        Arc::clone(&state),
-        rx,
-        AppSettings::default(),
-        PathBuf::new(),
-        Box::new(MockAutostart::new()),
-    );
+    let mut engine = TestEngine::new(|settings_path| {
+        Engine::new(
+            Box::new(MockInputSource::default()),
+            Box::new(MockOutputSink::new()),
+            Box::new(MockKeyboardSink::new()),
+            Box::new(MockMouseSink::new()),
+            Arc::clone(&state),
+            rx,
+            AppSettings::default(),
+            settings_path,
+            Box::new(MockAutostart::new()),
+        )
+    });
 
     tx.send(EngineCommand::SetMappingsBulk {
         entries: vec![make_bulk_entry(0, VJoyAxis::X)],
@@ -6087,7 +6208,11 @@ fn set_snapshot_config_prune_failure_does_not_corrupt_settings() {
     // lock for writes.
     let namespace_dir = {
         let state = harness.state();
-        crate::snapshot::pending_delete::resolve_snapshot_namespace(&state).unwrap()
+        crate::snapshot::pending_delete::resolve_snapshot_namespace(
+            &state,
+            harness.engine.config_dir(),
+        )
+        .unwrap()
     };
     let original_perms = fs::metadata(&namespace_dir).unwrap().permissions();
     fs::set_permissions(&namespace_dir, fs::Permissions::from_mode(0o000)).unwrap();
@@ -6477,12 +6602,12 @@ fn build_engine_with_seeded_mock(
     settings: AppSettings,
     seed_mock: impl FnOnce(&MockAutostart),
 ) -> (
-    Engine,
+    TestEngine,
     Arc<RwLock<AppState>>,
     MockAutostart,
-    tempfile::TempDir,
+    Arc<tempfile::TempDir>,
 ) {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = Arc::new(tempfile::tempdir().unwrap());
     let settings_path = dir.path().join("settings.toml");
     settings.save_to(&settings_path).unwrap();
 
@@ -6503,7 +6628,12 @@ fn build_engine_with_seeded_mock(
         Box::new(mock.clone()),
     );
 
-    (engine, state, mock, dir)
+    (
+        TestEngine::from_shared(engine, Arc::clone(&dir)),
+        state,
+        mock,
+        dir,
+    )
 }
 
 #[test]

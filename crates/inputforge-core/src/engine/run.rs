@@ -1501,6 +1501,15 @@ impl Engine {
             })
     }
 
+    pub(super) fn config_dir(&self) -> PathBuf {
+        if self.settings_path.as_os_str().is_empty() {
+            return crate::settings::AppSettings::config_dir();
+        }
+        self.settings_path
+            .parent()
+            .map_or_else(crate::settings::AppSettings::config_dir, Path::to_path_buf)
+    }
+
     fn mark_profile_loaded(&self, origin: ProfileOrigin) {
         let mut state = self.state.write();
         state.active_profile_origin = Some(origin);
@@ -1608,7 +1617,7 @@ impl Engine {
                 }
             }
         }
-        let external_root = crate::settings::AppSettings::config_dir().join("external_snapshots");
+        let external_root = self.config_dir().join("external_snapshots");
         if let Ok(entries) = std::fs::read_dir(&external_root) {
             for entry in entries.flatten() {
                 let snap_dir = entry.path();
@@ -1637,7 +1646,7 @@ impl Engine {
     fn resolved_snapshot_target(&self) -> Option<(PathBuf, PathBuf)> {
         let state = self.state.read();
         let path = state.profile_path.as_ref()?.clone();
-        let namespace_dir = match resolve_snapshot_namespace(&state) {
+        let namespace_dir = match resolve_snapshot_namespace(&state, &self.config_dir()) {
             Ok(dir) => dir,
             Err(e) => {
                 tracing::warn!(
@@ -1658,7 +1667,7 @@ impl Engine {
             if state.profile_path.is_none() {
                 None
             } else {
-                Some(resolve_snapshot_namespace(&state)?)
+                Some(resolve_snapshot_namespace(&state, &self.config_dir())?)
             }
         };
         let rows = if let Some(namespace_dir) = namespace_dir {

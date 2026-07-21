@@ -44,14 +44,12 @@ pub(crate) fn snapshots_dir_for(profile_path: &Path) -> Result<PathBuf> {
 /// keeps the snapshot store inside `InputForge`'s config directory rather
 /// than next to user-owned files, and reloading the same external path
 /// always resolves to the same namespace.
-pub(crate) fn external_snapshots_dir_for(canonical_path: &Path) -> PathBuf {
+pub(crate) fn external_snapshots_dir_for(config_dir: &Path, canonical_path: &Path) -> PathBuf {
     let path_str = canonical_path.as_os_str().to_string_lossy();
     let mut hasher = Sha256::new();
     hasher.update(path_str.as_bytes());
     let hash = hex::encode(hasher.finalize());
-    crate::settings::AppSettings::config_dir()
-        .join("external_snapshots")
-        .join(hash)
+    config_dir.join("external_snapshots").join(hash)
 }
 
 #[cfg(test)]
