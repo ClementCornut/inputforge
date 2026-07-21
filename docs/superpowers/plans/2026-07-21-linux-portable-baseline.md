@@ -19,6 +19,8 @@
 - Do not change `InputSource`.
 - Keep `DeviceHider`, `HidHideManager`, `NoOpDeviceHider`, and `MockDeviceHider`; only remove hider ownership from `Engine`.
 - Keep `VJoyAxis`, `Action::MapToVJoy`, and `map_to_vjoy`. Never introduce `map_to_virtual_device`.
+- Treat `TapGesture` and `PressGesture` data, runtime semantics, validation, and UI behavior as synchronized baseline functionality; this Linux slice must not change them.
+- This plan reconciliation commit is the new `PLAN_BASE`; keep the already-reviewed test-only baseline repair below it, and keep exactly six scoped implementation commits above it.
 - Do not print, commit, or otherwise expose original profile or device identifiers.
 - Use `cargo fmt --all` before each implementation commit and preserve warning-free `-D warnings` verification.
 
@@ -108,7 +110,7 @@ cargo check -p inputforge-core --no-default-features --locked
 cargo test -p inputforge-core --no-default-features --locked
 ```
 
-Expected: both succeed; the check currently reports only the unused `AxisValue::raw` warning.
+Expected: both succeed; the test run reports 826 unit tests plus 1 doctest, and the check reports only the existing unused `AxisValue::raw` warning.
 
 ### Task 2: Freeze the v0.2.0 Profile Contract
 
@@ -302,6 +304,16 @@ fn count_map_to_vjoy(actions: &[Action]) -> usize {
             Action::Conditional {
                 if_true, if_false, ..
             } => count_map_to_vjoy(if_true) + count_map_to_vjoy(if_false),
+            Action::TapGesture {
+                single_tap,
+                double_tap,
+                ..
+            } => count_map_to_vjoy(single_tap) + count_map_to_vjoy(double_tap),
+            Action::PressGesture {
+                short_press,
+                long_press,
+                ..
+            } => count_map_to_vjoy(short_press) + count_map_to_vjoy(long_press),
             _ => 0,
         })
         .sum()
@@ -354,9 +366,8 @@ fn v0_2_0_profiles_round_trip_without_data_loss() {
     for fixture in FIXTURES {
         let path = fixture_path(fixture.file_name);
         let fixture_text = fs::read_to_string(&path).expect("fixture must be readable");
-        let fixture_value = fixture_text
-            .parse::<Value>()
-            .expect("fixture must be valid TOML");
+        let fixture_value =
+            toml::from_str::<Value>(&fixture_text).expect("fixture must be valid TOML");
         let profile = Profile::load(&path).expect("fixture must load through Profile");
 
         assert_eq!(profile.name(), fixture.profile_name);
@@ -375,9 +386,8 @@ fn v0_2_0_profiles_round_trip_without_data_loss() {
         assert!(emitted.contains("type = \"map_to_vjoy\""));
         assert!(!emitted.contains("map_to_virtual_device"));
 
-        let emitted_value = emitted
-            .parse::<Value>()
-            .expect("serialized profile must be valid TOML");
+        let emitted_value =
+            toml::from_str::<Value>(&emitted).expect("serialized profile must be valid TOML");
 
         assert_eq!(
             serialized_action_lists(&fixture_value),
@@ -435,6 +445,8 @@ git diff --check
 ```
 
 Expected: two tests pass.
+
+The pinned default fixture already contains a tap gesture. Synchronized `main` now supports that data, so this characterization suite must preserve and traverse its nested action branches without adding or changing any production gesture implementation.
 
 - [ ] **Step 4: Commit the fixtures and test**
 
@@ -856,7 +868,7 @@ Update the thread-safety documentation to attribute `!Send` only to `InputSource
 
 - [ ] **Step 3: Update every construction site**
 
-Remove the `MockDeviceHider` import and hider argument from all 20 `Engine::new` calls in `engine/tests.rs`. Remove `DeviceHider`, `NoOpDeviceHider`, the local `hider`, and its constructor argument from `inputforge-app/src/main.rs`.
+Remove the `MockDeviceHider` import and hider argument from every construction site: all 21 current `Engine::new` calls in `engine/tests.rs`, plus the app call site in `inputforge-app/src/main.rs`. Remove `DeviceHider`, `NoOpDeviceHider`, the local `hider`, and its constructor argument from the app call site.
 
 - [ ] **Step 4: Verify removal and retained API surface**
 
@@ -1139,6 +1151,8 @@ assert!(!stdout.contains("virtual vJoy devices"));
 
 Extract a private `format_virtual_device_option(&VirtualDeviceConfig) -> String` helper in `bulk_map/mod.rs`. Test device 1 with the normal capability counts, device 16 with 8 axes/128 buttons/4 hats, `1 axis` versus `N axes`, and `1 hat` versus `N hats`. Keep `btn` invariant so the dense label does not branch between `btn` and `btns`.
 
+Update every existing `Map to vJoy` render expectation in the expanded gesture-aware `pipeline/tests.rs` suite to `Map to virtual device`, including expectations for output stages nested under tap and press gesture branches. Retain the exact `Tap gesture` and `Press gesture` terminology and preserve all gesture palette, timing, branch, validation, undo, and rendering behavior.
+
 - [ ] **Step 2: Run the copy tests to prove they are red**
 
 ```bash
@@ -1356,4 +1370,5 @@ Do not accept container widening, root horizontal scrolling, clipped controls, o
 - `Engine` no longer owns a hider, while the hider API remains intact.
 - Both complete sanitized profiles retain 77 mappings, 77 `map_to_vjoy` actions, exact values, ordering, identifiers, and axis spellings.
 - Standalone generic copy says “virtual device”; dense output addresses use compact `Device N` labels, never widen their fixed containers, and keep `vJoy` only for concrete product/remediation references and legacy compatibility identifiers.
+- Synchronized `TapGesture` and `PressGesture` data, runtime semantics, validation, and UI behavior remain unchanged; profile traversal and render expectations cover their nested branches.
 - No out-of-scope Linux backend, lifecycle, UI, packaging, or CI work is introduced.
