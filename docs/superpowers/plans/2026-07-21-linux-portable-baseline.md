@@ -1064,11 +1064,14 @@ git commit -m "feat(app): fail unsupported linux startup before ui"
 - Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/{add_palette.rs,stage.rs,tests.rs}`
 - Modify: `crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/map_to_vjoy.rs`
 - Modify: `crates/inputforge-gui-dx/src/frame/mapping_list/{row.rs,tests.rs}`
+- Modify: `crates/inputforge-gui-dx/assets/frame/{bulk_map.css,mapping_editor.css,mapping_list.css}`
 
 **Interfaces:**
 
 - Consumes: existing render helpers and the startup process test.
-- Produces: consistent “virtual device” user-facing copy without renaming compatibility identifiers, modules, CSS classes, or telemetry keys.
+- Produces: full “virtual device” terminology in standalone copy, compact `Device N` output addresses in dense UI, and layout containment without renaming compatibility identifiers, modules, CSS classes, or telemetry keys.
+
+Standalone labels must keep the full noun phrase where the surrounding UI does not already establish virtual-output context. Dense address labels may use `Device N` because their output chip, output stage, target field, or OUT readout already supplies that context. Do not abbreviate the address to `VD`, widen fixed containers, or replace compatibility identifiers.
 
 - [ ] **Step 1: Update the existing assertions first**
 
@@ -1077,21 +1080,23 @@ Use these exact expectations:
 | Test surface | Required expectation |
 |---|---|
 | Package/CLI help | `virtual devices`; reject `virtual vJoy devices` |
-| Bulk-map snapshot | `FlightStick · Virtual device 1` |
+| Bulk-map snapshot | `FlightStick · Device 1` |
 | Bulk-map empty title | `No virtual devices configured` |
 | Empty-state remediation | `Configure virtual devices in vJoyConf, then reopen.` |
-| Bulk-map selector | `Virtual device 1: 8 axes, 32 buttons, 1 hat` |
+| Bulk-map selector | `Device 1 · 8 axes · 32 btn · 1 hat` |
+| Bulk-map selector maximum | `Device 16 · 8 axes · 128 btn · 4 hats` |
 | Pipeline title | `Map to virtual device` |
 | Pipeline device option | `Virtual device 1` |
-| Pipeline summary | `Virtual device 1 · X axis` |
-| Mapping-list chip | `Virtual device 2 · X` |
-| Header/live readout | `Virtual device N · …` |
+| Pipeline invalid-device hint | `Device 1 not configured` |
+| Pipeline summary | `Device 1 · X axis` |
+| Mapping-list chip | `Device 2 · X` |
+| Header/live readout | `Device N · …` |
 
 Add to `pipeline/tests.rs`:
 
 ```rust
 #[test]
-fn map_to_vjoy_summary_uses_generic_virtual_device_label() {
+fn map_to_vjoy_summary_uses_compact_device_address() {
     let action = Action::MapToVJoy {
         output: OutputAddress {
             device: 1,
@@ -1101,7 +1106,7 @@ fn map_to_vjoy_summary_uses_generic_virtual_device_label() {
 
     assert_eq!(
         stage_summary_for(&action, &synth_cfg()),
-        "Virtual device 1 · X axis"
+        "Device 1 · X axis"
     );
 }
 ```
@@ -1114,13 +1119,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn output_label_uses_generic_virtual_device_terminology() {
+    fn output_label_uses_compact_device_address() {
         let output = OutputAddress {
             device: 2,
             output: OutputId::Axis { id: VJoyAxis::X },
         };
 
-        assert_eq!(format_output_label(&output), "Virtual device 2 · X axis");
+        assert_eq!(format_output_label(&output), "Device 2 · X axis");
     }
 }
 ```
@@ -1131,6 +1136,8 @@ Extend `help_succeeds_before_preflight` with:
 assert!(stdout.contains("virtual devices"));
 assert!(!stdout.contains("virtual vJoy devices"));
 ```
+
+Extract a private `format_virtual_device_option(&VirtualDeviceConfig) -> String` helper in `bulk_map/mod.rs`. Test device 1 with the normal capability counts, device 16 with 8 axes/128 buttons/4 hats, `1 axis` versus `N axes`, and `1 hat` versus `N hats`. Keep `btn` invariant so the dense label does not branch between `btn` and `btns`.
 
 - [ ] **Step 2: Run the copy tests to prove they are red**
 
@@ -1146,22 +1153,69 @@ Expected: assertions that still encounter the old vJoy copy fail.
 | File/surface | Old | New |
 |---|---|---|
 | `Cargo.toml`, `Dioxus.toml`, `cli.rs` | `virtual vJoy devices` | `virtual devices` |
-| `bulk_map/apply.rs` | `{source} · vJoy {id}` | `{source} · Virtual device {id}` |
+| `bulk_map/apply.rs` | `{source} · vJoy {id}` | `{source} · Device {id}` |
 | `bulk_map/empty_state.rs` | `No vJoy devices configured` | `No virtual devices configured` |
 | `bulk_map/empty_state.rs` | `Configure outputs in vJoyConf, then reopen.` | `Configure virtual devices in vJoyConf, then reopen.` |
-| `bulk_map/mod.rs` | `vJoy {id}: …` | `Virtual device {id}: …` |
-| `mapping_editor/header.rs` | `vJoy {id} · …` | `Virtual device {id} · …` |
-| `live_readout/value_helpers.rs` | `vJoy {id} · …` | `Virtual device {id} · …` |
+| `bulk_map/mod.rs` | `vJoy {id}: …` | `Device {id} · {axes} axis/axes · {buttons} btn · {hats} hat/hats` |
+| `mapping_editor/header.rs` | `vJoy {id} · …` | `Device {id} · …` |
+| `live_readout/value_helpers.rs` | `vJoy {id} · …` | `Device {id} · …` |
 | `pipeline/add_palette.rs` | `Map to vJoy` | `Map to virtual device` |
 | `pipeline/stage.rs` | `Map to vJoy` | `Map to virtual device` |
-| `pipeline/stage.rs` summary | `vJoy {id} · …` | `Virtual device {id} · …` |
+| `pipeline/stage.rs` summary | `vJoy {id} · …` | `Device {id} · …` |
 | `stage_body/map_to_vjoy.rs` option | `vJoy device {id}` | `Virtual device {id}` |
-| Same file, invalid device | `vJoy device {id} not configured` | `Virtual device {id} not configured` |
-| Same file, undo before/after | `vJoy device {id}` | `Virtual device {id}` |
+| Same file, invalid device | `vJoy device {id} not configured` | `Device {id} not configured` |
+| Same file, undo before/after | `vJoy device {id}` | `Device {id}` |
 | Same file, undo stage name | `Map to vJoy` | `Map to virtual device` |
-| `mapping_list/row.rs` | `vJoy {id} · …` | `Virtual device {id} · …` |
+| `mapping_list/row.rs` | `vJoy {id} · …` | `Device {id} · …` |
 
-- [ ] **Step 4: Run the green tests and compatibility guard**
+- [ ] **Step 4: Add layout containment before running green**
+
+In `bulk_map.css`, retain the existing `width: min(100%, 56rem)`, `max-width: 56rem`, gaps, and two-column `max-width: 1200px` breakpoint. Rebalance only the default tracks so the maximum compact target label fits without widening the metadata strip:
+
+```css
+grid-template-columns:
+    minmax(16.5rem, 1.2fr)
+    minmax(17.5rem, 1.3fr)
+    minmax(9rem, 0.7fr)
+    minmax(9rem, 0.7fr);
+```
+
+In `mapping_editor.css`, make the stage summary track genuinely shrinkable and let long titles wrap inside their own track rather than widening the stage:
+
+```css
+.if-stage__header {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) 32px;
+}
+
+.if-stage__title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+```
+
+Retain the summary's existing `overflow: hidden`, `text-overflow: ellipsis`, `white-space: nowrap`, and `min-width: 0` declarations.
+
+In `mapping_list/row.rs`, put the compact output text in an `if-row__output-chip-text` span while keeping the complete compact address on the chip's `title`. In `mapping_list.css`, replace the stale “vJoy identifiers are short” assumption with a bounded secondary-output contract:
+
+```css
+.if-row__output-chip {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 50%;
+}
+
+.if-row__output-chip-text {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+```
+
+Add focused CSS contract assertions to the existing bulk-map, pipeline, and mapping-list test modules. They must pin the 56 rem metadata cap and target track, the two shrinkable stage-header tracks, and the mapping-chip cap/ellipsis rules.
+
+- [ ] **Step 5: Run the green tests and compatibility guard**
 
 ```bash
 cargo fmt --all
@@ -1170,7 +1224,7 @@ cargo test -p inputforge-app --test linux_startup --locked
 cargo test -p inputforge-core --test profile_v0_2_0_compat --locked
 ```
 
-- [ ] **Step 5: Check for missed user-facing literals**
+- [ ] **Step 6: Check for missed user-facing literals and accidental width changes**
 
 ```bash
 rg -n '"[^"]*(Map to vJoy|vJoy device|No vJoy devices configured|virtual vJoy devices|· vJoy|vJoy [0-9])' Cargo.toml Dioxus.toml crates/inputforge-app/src crates/inputforge-app/tests crates/inputforge-gui-dx/src
@@ -1180,9 +1234,9 @@ rg -n "map_to_virtual_device" crates/inputforge-core/src crates/inputforge-core/
 git diff --check
 ```
 
-Expected: the first search has no old user-facing literals; concrete `vJoyConf` remediation and legacy Rust/wire identifiers remain; `map_to_virtual_device` appears only in the negative compatibility assertion.
+Expected: the first search has no old user-facing literals; concrete `vJoyConf` remediation and legacy Rust/wire identifiers remain; `map_to_virtual_device` appears only in the negative compatibility assertion; the fixed 320 px mapping rail and 56 rem metadata maximum are unchanged.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add Cargo.toml
@@ -1201,7 +1255,10 @@ git add crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/ma
 git add crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/tests.rs
 git add crates/inputforge-gui-dx/src/frame/mapping_list/row.rs
 git add crates/inputforge-gui-dx/src/frame/mapping_list/tests.rs
-git commit -m "fix(gui): use virtual device terminology"
+git add crates/inputforge-gui-dx/assets/frame/bulk_map.css
+git add crates/inputforge-gui-dx/assets/frame/mapping_editor.css
+git add crates/inputforge-gui-dx/assets/frame/mapping_list.css
+git commit -m "fix(gui): use layout-safe virtual device copy"
 ```
 
 ### Task 8: Full Acceptance Verification
@@ -1274,6 +1331,21 @@ dx build -p inputforge-app --locked
 
 Do not claim the slice fully accepted until this native Windows matrix passes. If Windows is unavailable, report implementation and Linux verification as complete with Windows acceptance explicitly outstanding.
 
+- [ ] **Step 4: Verify dense virtual-device copy at both supported window sizes**
+
+On the same Windows acceptance host, configure a long physical-device display name, virtual device 16 with 8 axes/128 buttons/4 hats, a mapping to `Slider1`, and a bulk-map snapshot. Launch the debug GUI with `dx run -p inputforge-app`, attach through the repository's Chrome DevTools connection, and inspect the mapping rail, collapsed and expanded output stage, live OUT readout, bulk-map target selector, and snapshot drawer at both 1280×800 and the enforced minimum 800×500.
+
+At each size:
+
+- Confirm `document.documentElement.scrollWidth == document.documentElement.clientWidth` and the same equality for the application layout root.
+- Confirm the mapping rail remains 320 px wide and the bulk-map metadata strip remains at or below 56 rem.
+- Confirm the stage title, summary, and right slot do not overlap; the compact summary either fits or ellipsizes inside its own track.
+- Confirm the bulk target displays the complete maximum label `Device 16 · 8 axes · 128 btn · 4 hats`.
+- Confirm the physical-device label yields before the output chip, the output chip never exceeds half the source row, and its title exposes the complete compact address when the visible text ellipsizes.
+- Capture one screenshot per surface and window size for the acceptance record; keep these artifacts out of Git.
+
+Do not accept container widening, root horizontal scrolling, clipped controls, or text painting over adjacent columns. If any check fails, return to Task 7 rather than weakening the compact-copy assertions.
+
 ## Acceptance Criteria
 
 - Linux default builds never activate vJoy or Win32 dependencies.
@@ -1283,5 +1355,5 @@ Do not claim the slice fully accepted until this native Windows matrix passes. I
 - Windows still constructs SDL3, vJoy, and Win32 outputs inside the engine thread.
 - `Engine` no longer owns a hider, while the hider API remains intact.
 - Both complete sanitized profiles retain 77 mappings, 77 `map_to_vjoy` actions, exact values, ordering, identifiers, and axis spellings.
-- Generic copy says “virtual device”; `vJoy` remains only for concrete product/remediation references and legacy compatibility identifiers.
+- Standalone generic copy says “virtual device”; dense output addresses use compact `Device N` labels, never widen their fixed containers, and keep `vJoy` only for concrete product/remediation references and legacy compatibility identifiers.
 - No out-of-scope Linux backend, lifecycle, UI, packaging, or CI work is introduced.
