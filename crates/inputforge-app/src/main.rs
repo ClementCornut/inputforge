@@ -29,7 +29,6 @@ use clap::Parser;
 use mimalloc::MiMalloc;
 use parking_lot::RwLock;
 
-use inputforge_core::device::{DeviceHider, NoOpDeviceHider};
 use inputforge_core::engine::{Engine, EngineCommand};
 use inputforge_core::profile::Profile;
 use inputforge_core::profile::manager::ensure_default_profile;
@@ -178,14 +177,11 @@ fn run_engine_inner(
         keyboard,
         mouse,
     } = platform::create()?;
-    let hider: Box<dyn DeviceHider> = Box::new(NoOpDeviceHider);
-
     let mut engine = Engine::new(
         input,
         controller,
         keyboard,
         mouse,
-        hider,
         state,
         commands,
         AppSettings::load(),

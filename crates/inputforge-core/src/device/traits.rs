@@ -37,10 +37,9 @@ pub trait InputSource {
 ///
 /// # Thread Safety
 ///
-/// This trait does not require `Send`. The
-/// [`Engine`](crate::engine::Engine) owns the implementation and
-/// calls it exclusively from the engine thread, so cross-thread
-/// access is never needed.
+/// This trait does not require `Send` and makes no cross-thread access
+/// guarantees. Callers must keep an implementation on its required thread when
+/// the underlying platform API is thread-affine.
 pub trait DeviceHider {
     /// Add a device to the hidden-device list.
     ///

@@ -30,7 +30,7 @@ use parking_lot::RwLock;
 use inputforge_autostart::AutostartManager;
 
 use crate::callbacks::CallbackRegistry;
-use crate::device::traits::{DeviceHider, InputSource};
+use crate::device::traits::InputSource;
 use crate::mode::ModeState;
 use crate::output::traits::{KeyboardSink, MouseSink, OutputSink};
 use crate::pipeline::PipelineOutput;
@@ -49,11 +49,6 @@ pub struct Engine {
     keyboard: Box<dyn KeyboardSink>,
     mouse: Box<dyn MouseSink>,
     output_state: output_state::OutputRuntimeState,
-    #[expect(
-        dead_code,
-        reason = "will be used for device hiding in activation flow"
-    )]
-    hider: Box<dyn DeviceHider>,
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Receiver<EngineCommand>,
     callbacks: CallbackRegistry,
@@ -99,10 +94,9 @@ impl Engine {
     ///
     /// # Thread Safety
     ///
-    /// The `Engine` is `!Send` because [`InputSource`] and
-    /// [`DeviceHider`] are `!Send` (SDL3 requires same-thread usage).
-    /// Construct and call [`run`](Self::run) on the same thread where
-    /// the `InputSource` was created.
+    /// The `Engine` is `!Send` because [`InputSource`] is `!Send` (SDL3
+    /// requires same-thread usage). Construct and call [`run`](Self::run)
+    /// on the same thread where the `InputSource` was created.
     #[must_use]
     #[allow(
         clippy::too_many_arguments,
@@ -119,7 +113,6 @@ impl Engine {
         output: Box<dyn OutputSink>,
         keyboard: Box<dyn KeyboardSink>,
         mouse: Box<dyn MouseSink>,
-        hider: Box<dyn DeviceHider>,
         state: Arc<RwLock<AppState>>,
         commands: mpsc::Receiver<EngineCommand>,
         mut settings: AppSettings,
@@ -212,7 +205,6 @@ impl Engine {
             keyboard,
             mouse,
             output_state: output_state::OutputRuntimeState::default(),
-            hider,
             state,
             commands,
             callbacks: CallbackRegistry::new(),
