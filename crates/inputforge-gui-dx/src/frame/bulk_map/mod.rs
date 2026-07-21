@@ -55,6 +55,17 @@ pub(crate) fn build_source_options(
         .collect()
 }
 
+fn format_virtual_device_option(device: &VirtualDeviceConfig) -> String {
+    let axis_count = device.axes.len();
+    let axis_suffix = if axis_count == 1 { "axis" } else { "axes" };
+    let hat_suffix = if device.hat_count == 1 { "hat" } else { "hats" };
+
+    format!(
+        "Device {} · {axis_count} {axis_suffix} · {} btn · {} {hat_suffix}",
+        device.device_id, device.button_count, device.hat_count
+    )
+}
+
 #[component]
 pub(crate) fn BulkMapPanel() -> Element {
     tracing::trace!(target: "frame::render", region = "bulk_map");
@@ -214,14 +225,7 @@ fn BulkMapReadyPanel() -> Element {
         .iter()
         .map(|device| SelectOption {
             value: device.device_id.to_string(),
-            label: format!(
-                "vJoy {}: {} axes, {} buttons, {} hat{}",
-                device.device_id,
-                device.axes.len(),
-                device.button_count,
-                device.hat_count,
-                if device.hat_count == 1 { "" } else { "s" },
-            ),
+            label: format_virtual_device_option(device),
             disabled: false,
             class: None,
         })

@@ -459,5 +459,20 @@ fn format_output_label(output: &OutputAddress) -> String {
         OutputId::Button { id } => format!("Button {id}"),
         OutputId::Hat { id } => format!("Hat {id}"),
     };
-    format!("vJoy {} \u{00b7} {}", output.device, suffix)
+    format!("Device {} \u{00b7} {}", output.device, suffix)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn output_label_uses_compact_device_address() {
+        let output = OutputAddress {
+            device: 2,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        };
+
+        assert_eq!(format_output_label(&output), "Device 2 · X axis");
+    }
 }

@@ -79,7 +79,7 @@ fn compact_output_label(output: &OutputAddress) -> String {
         OutputId::Button { id } => format!("Btn {id}"),
         OutputId::Hat { id } => format!("Hat {id}"),
     };
-    format!("vJoy {} · {}", output.device, suffix)
+    format!("Device {} · {}", output.device, suffix)
 }
 
 #[component]
@@ -241,7 +241,10 @@ pub(crate) fn Row(
                             variant: ChipVariant::Output,
                             class: "if-row__output-chip".to_owned(),
                             title: compact_output_label(output),
-                            "{compact_output_label(output)}"
+                            span {
+                                class: "if-row__output-chip-text",
+                                "{compact_output_label(output)}"
+                            }
                         }
                     }
                 }

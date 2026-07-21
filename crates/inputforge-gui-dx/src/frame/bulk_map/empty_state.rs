@@ -12,8 +12,9 @@ use crate::icons::Icon as IconKind;
 
 #[component]
 pub(super) fn NoVjoyEmptyState(
-    #[props(default = "Configure outputs in vJoyConf, then reopen.".to_owned())] caption: String,
-    #[props(default = "No vJoy devices configured".to_owned())] title: String,
+    #[props(default = "Configure virtual devices in vJoyConf, then reopen.".to_owned())]
+    caption: String,
+    #[props(default = "No virtual devices configured".to_owned())] title: String,
 ) -> Element {
     rsx! {
         div { class: "if-bulk-map__empty",

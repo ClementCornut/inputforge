@@ -8,7 +8,7 @@
 //! Two stacked `Select` rows are rendered:
 //!
 //! 1. **Device picker** -- one option per `VirtualDeviceConfig` entry in the
-//!    snapshot, labeled "vJoy device N".
+//!    snapshot, labeled "Virtual device N".
 //! 2. **Output picker** -- axes, buttons, and hats available on the selected
 //!    device; filtered to only the outputs the device actually has.
 //!
@@ -135,7 +135,7 @@ pub(crate) fn MapToVJoyBody(
         malformed.write().remove(&stage_id);
     } else {
         let msg = if device_cfg.is_none() {
-            format!("vJoy device {} not configured", output.device)
+            format!("Device {} not configured", output.device)
         } else {
             "Output not available on this device".to_owned()
         };
@@ -143,14 +143,14 @@ pub(crate) fn MapToVJoyBody(
     }
 
     // --- Build device picker options ---
-    // Each option is ("N", "vJoy device N") so the value is the device_id
+    // Each option is ("N", "Virtual device N") so the value is the device_id
     // as a decimal string, which is compact and unambiguous.
     let device_options: Vec<SelectOption> = cfg
         .virtual_devices
         .iter()
         .map(|v| SelectOption {
             value: v.device_id.to_string(),
-            label: format!("vJoy device {}", v.device_id),
+            label: format!("Virtual device {}", v.device_id),
             disabled: false,
             class: None,
         })
@@ -284,12 +284,12 @@ pub(crate) fn MapToVJoyBody(
             );
             return;
         }
-        let before_str = format!("vJoy device {}", output_cloned_dev.device);
-        let after_str = format!("vJoy device {new_device}");
+        let before_str = format!("Device {}", output_cloned_dev.device);
+        let after_str = format!("Device {new_device}");
         let label = format_undo_label(
             UndoKind::StageEdit,
             LabelArgs {
-                stage_name: Some("Map to vJoy"),
+                stage_name: Some("Map to virtual device"),
                 field: Some("device"),
                 before_after: Some((&before_str, &after_str)),
                 ..LabelArgs::default()
@@ -354,7 +354,7 @@ pub(crate) fn MapToVJoyBody(
         let label = format_undo_label(
             UndoKind::StageEdit,
             LabelArgs {
-                stage_name: Some("Map to vJoy"),
+                stage_name: Some("Map to virtual device"),
                 field: Some("output"),
                 before_after: Some((&before_key, &after_key)),
                 ..LabelArgs::default()

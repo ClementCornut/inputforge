@@ -8,8 +8,8 @@
 //! `format_snapshot_label` produces the user-visible recovery
 //! snapshot label. The label is the row's secondary text (the kind
 //! badge already says "Before batch map"), so it carries only the
-//! WHAT: the source device's display name and the destination vJoy
-//! slot. Format: `{source-display-name} \u{00b7} vJoy {target_id}`.
+//! WHAT: the source device's display name and the destination virtual
+//! device. Format: `{source-display-name} \u{00b7} Device {target_id}`.
 //! No verb prefix, no HID hash leak.
 
 use super::state::RowState;
@@ -42,7 +42,7 @@ pub(super) fn build_entries(
 }
 
 pub(super) fn format_snapshot_label(source_display_name: &str, target_id: u8) -> String {
-    format!("{source_display_name} \u{00b7} vJoy {target_id}")
+    format!("{source_display_name} \u{00b7} Device {target_id}")
 }
 
 #[cfg(test)]
@@ -173,11 +173,11 @@ mod tests {
     fn label_format_matches_spec() {
         // The kind badge in the snapshot row already says "Before batch
         // map"; the label carries only the source device's display
-        // name and the destination vJoy slot. No verb prefix, no HID
+        // name and the destination virtual device. No verb prefix, no HID
         // hash leak.
         assert_eq!(
             format_snapshot_label("FlightStick", 1),
-            "FlightStick \u{00b7} vJoy 1"
+            "FlightStick \u{00b7} Device 1"
         );
     }
 
@@ -190,7 +190,7 @@ mod tests {
         // verbatim and never reaches for any other source of truth.
         let label = format_snapshot_label("Throttle Quadrant", 2);
         assert!(label.contains("Throttle Quadrant"));
-        assert!(label.contains("vJoy 2"));
+        assert!(label.contains("Device 2"));
         assert!(!label.contains("030037c344330000f483000000000000"));
     }
 }

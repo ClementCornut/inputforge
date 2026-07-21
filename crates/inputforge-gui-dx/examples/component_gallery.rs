@@ -520,7 +520,7 @@ fn gallery_root() -> Element {
                         h2 { "Chip" }
                         Cluster { gap: "--space-2".to_owned(),
                             Chip { variant: ChipVariant::Outline, "Outline" }
-                            Chip { variant: ChipVariant::Output, "vJoy 2 . X" }
+                            Chip { variant: ChipVariant::Output, "Device 2 · X" }
                             // Hover this chip to confirm the `title` prop
                             // forwards to the underlying button (parity with
                             // Badge `title`, used in the rail's qualifier

@@ -190,7 +190,14 @@ fn panel_renders_no_profile_empty_state_when_no_profile_loaded() {
 fn panel_renders_no_signal_when_virtual_devices_empty() {
     let html = render_panel(Scenario::NoVjoy);
 
-    assert!(html.contains("No vJoy devices configured"), "got: {html}");
+    assert!(
+        html.contains("No virtual devices configured"),
+        "got: {html}"
+    );
+    assert!(
+        html.contains("Configure virtual devices in vJoyConf, then reopen."),
+        "got: {html}"
+    );
 }
 
 #[test]
@@ -229,8 +236,44 @@ fn panel_target_picker_renders_capability_summary() {
     let html = render_panel(Scenario::Full);
 
     assert!(
-        html.contains("vJoy 1: 8 axes, 32 buttons, 1 hat"),
+        html.contains("Device 1 · 8 axes · 32 btn · 1 hat"),
         "got: {html}"
+    );
+}
+
+#[test]
+fn virtual_device_option_formats_normal_capabilities() {
+    assert_eq!(
+        super::format_virtual_device_option(&one_vjoy()),
+        "Device 1 · 8 axes · 32 btn · 1 hat"
+    );
+}
+
+#[test]
+fn virtual_device_option_formats_maximum_capabilities() {
+    let mut device = one_vjoy();
+    device.device_id = 16;
+    device.button_count = 128;
+    device.hat_count = 4;
+
+    assert_eq!(
+        super::format_virtual_device_option(&device),
+        "Device 16 · 8 axes · 128 btn · 4 hats"
+    );
+}
+
+#[test]
+fn virtual_device_option_pluralizes_axes_and_hats_but_not_btn() {
+    let device = VirtualDeviceConfig {
+        device_id: 3,
+        axes: vec![VJoyAxis::X],
+        button_count: 1,
+        hat_count: 2,
+    };
+
+    assert_eq!(
+        super::format_virtual_device_option(&device),
+        "Device 3 · 1 axis · 1 btn · 2 hats"
     );
 }
 
@@ -838,10 +881,29 @@ fn panel_apply_for_test_dispatches_set_mappings_bulk_with_snapshot_label() {
             // vJoy slot. With no alias / hardware name registered for
             // "dev-1", the resolver falls through to the raw id string
             // (last-resort behaviour of `display_name_for`).
-            assert_eq!(snapshot_label, "dev-1 \u{00b7} vJoy 1");
+            assert_eq!(snapshot_label, "dev-1 \u{00b7} Device 1");
         }
         _ => panic!("expected SetMappingsBulk"),
     }
+}
+
+#[test]
+fn bulk_map_css_keeps_metadata_cap_and_fits_maximum_target_label() {
+    let css = include_str!("../../../assets/frame/bulk_map.css");
+    let block = css
+        .split(".if-bulk-map__metadata {")
+        .nth(1)
+        .expect("metadata rule present")
+        .split('}')
+        .next()
+        .expect("metadata rule closed");
+
+    assert!(block.contains("width: min(100%, 56rem);"), "{block}");
+    assert!(block.contains("max-width: 56rem;"), "{block}");
+    assert!(
+        block.contains("minmax(17.5rem, 1.3fr)"),
+        "target track must fit `Device 16 · 8 axes · 128 btn · 4 hats`: {block}"
+    );
 }
 
 #[test]

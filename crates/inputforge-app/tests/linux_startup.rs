@@ -123,6 +123,8 @@ fn help_succeeds_before_preflight() {
     let stderr = String::from_utf8(output.stderr).expect("stderr must be UTF-8");
 
     assert!(stdout.contains("Usage: inputforge [OPTIONS]"));
+    assert!(stdout.contains("virtual devices"));
+    assert!(!stdout.contains("virtual vJoy devices"));
     assert!(!stdout.contains(UNAVAILABLE_MESSAGE));
     assert_eq!(stderr, "");
 }

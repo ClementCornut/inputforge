@@ -1668,7 +1668,7 @@ fn title_for_each_variant() {
                 output: OutputId::Axis { id: VJoyAxis::X }
             }
         }),
-        "Map to vJoy"
+        "Map to virtual device"
     );
     assert_eq!(
         stage_title_for(&Action::MergeAxis {
@@ -1683,6 +1683,69 @@ fn title_for_each_variant() {
 fn summary_invert_is_empty() {
     let s = stage_summary_for(&Action::Invert, &synth_cfg());
     assert_eq!(s, "");
+}
+
+#[test]
+fn map_to_vjoy_summary_uses_compact_device_address() {
+    let action = Action::MapToVJoy {
+        output: OutputAddress {
+            device: 1,
+            output: OutputId::Axis { id: VJoyAxis::X },
+        },
+    };
+
+    assert_eq!(
+        stage_summary_for(&action, &synth_cfg()),
+        "Device 1 · X axis"
+    );
+}
+
+#[test]
+fn tap_gesture_nested_map_to_vjoy_uses_generic_title() {
+    let html = render_stage_body_with_addr(
+        Action::TapGesture {
+            threshold_ms: 250,
+            fire_single_immediately: false,
+            single_tap: vec![Action::MapToVJoy {
+                output: OutputAddress {
+                    device: 1,
+                    output: OutputId::Axis { id: VJoyAxis::X },
+                },
+            }],
+            double_tap: Vec::new(),
+        },
+        InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        },
+    );
+
+    assert!(html.contains("Map to virtual device"), "{html}");
+    assert!(!html.contains("Map to vJoy"), "{html}");
+}
+
+#[test]
+fn press_gesture_nested_map_to_vjoy_uses_generic_title() {
+    let html = render_stage_body_with_addr(
+        Action::PressGesture {
+            threshold_ms: 500,
+            fire_long_when_threshold_crossed: false,
+            short_press: vec![Action::MapToVJoy {
+                output: OutputAddress {
+                    device: 1,
+                    output: OutputId::Axis { id: VJoyAxis::X },
+                },
+            }],
+            long_press: Vec::new(),
+        },
+        InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        },
+    );
+
+    assert!(html.contains("Map to virtual device"), "{html}");
+    assert!(!html.contains("Map to vJoy"), "{html}");
 }
 
 #[test]
@@ -1871,16 +1934,33 @@ fn map_to_vjoy_body() {
     let html = render_with_full(state, addr, pre_expanded, vec![vd], &["Default"]);
 
     // The body must render a device picker with a label containing "Device"
-    // and a select option for "vJoy device 1".
+    // and a select option for "Virtual device 1".
     assert!(
-        html.contains("vJoy device 1"),
-        "expected 'vJoy device 1' option in device picker: {html}"
+        html.contains("Virtual device 1"),
+        "expected 'Virtual device 1' option in device picker: {html}"
     );
     // The body must render an output picker with an option for X axis.
     assert!(
         html.contains("X axis") || html.contains('X'),
         "expected axis option in output picker: {html}"
     );
+}
+
+#[test]
+fn map_to_vjoy_missing_device_uses_compact_invalid_hint() {
+    let output = OutputAddress {
+        device: 1,
+        output: OutputId::Axis { id: VJoyAxis::X },
+    };
+    let (state, addr) = build_state(vec![Action::MapToVJoy { output }]);
+    let html = render_with_expanded_settled(
+        state,
+        addr,
+        vec![StageId(vec![StageIdSegment::Index(0)])],
+        &["Default"],
+    );
+
+    assert!(html.contains("Device 1 not configured"), "{html}");
 }
 
 // ---------------------------------------------------------------------------
@@ -2023,6 +2103,32 @@ fn gesture_branch_css_aligns_body_and_branch_grid() {
         !branch_label.contains("margin-bottom"),
         "branch labels should not add extra vertical margin: {branch_label}"
     );
+}
+
+#[test]
+fn stage_header_css_keeps_title_and_summary_tracks_shrinkable() {
+    let css = include_str!("../../../../assets/frame/mapping_editor.css");
+    let header = css_rule(css, ".if-stage__header").expect("stage header CSS rule exists");
+    let title = css_rule(css, ".if-stage__title").expect("stage title CSS rule exists");
+    let summary = css_rule(css, ".if-stage__summary").expect("stage summary CSS rule exists");
+
+    assert!(
+        header.contains("grid-template-columns: minmax(0, 1fr) minmax(0, auto) 32px;"),
+        "{header}"
+    );
+    assert!(title.contains("min-width: 0;"), "{title}");
+    assert!(title.contains("overflow-wrap: anywhere;"), "{title}");
+    for declaration in [
+        "overflow: hidden;",
+        "text-overflow: ellipsis;",
+        "white-space: nowrap;",
+        "min-width: 0;",
+    ] {
+        assert!(
+            summary.contains(declaration),
+            "missing {declaration}: {summary}"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2851,8 +2957,8 @@ fn four_stage_pipeline_renders_all_categories_and_summaries() {
         "stage 3 (MapToVJoy) must carry is-output class; class='{s3_class}'"
     );
     assert!(
-        stages[3].html().contains("Map to vJoy"),
-        "stage 3 must display 'Map to vJoy' title"
+        stages[3].html().contains("Map to virtual device"),
+        "stage 3 must display 'Map to virtual device' title"
     );
 }
 

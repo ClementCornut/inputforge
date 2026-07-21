@@ -268,10 +268,17 @@
 }
 
 .if-row__output-chip {
-    /* Output chips never wrap or truncate; vJoy identifiers are short.
-       Rail row at 320px width fits the chip without ellipsis. */
-    max-width: none;
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 50%;
+}
+
+.if-row__output-chip-text {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .if-row__name {

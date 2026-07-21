@@ -22,9 +22,9 @@
     color: var(--color-text-muted);
 }
 
-/* No max-width: Output chips have no intrinsic length cap. The rail row
-   consumer (`.if-row__output-chip`) sets `max-width: none` explicitly,
-   and any future consumer that wants truncation pins it locally. */
+/* Base chips have no intrinsic width cap; they provide the overflow contract.
+   Constrained row consumers may cap their chip child and rely on this
+   overflow/ellipsis behavior for long labels. */
 .if-chip.if-chip--output {
     background: var(--color-bg-sunken);
     border-color: var(--color-border);

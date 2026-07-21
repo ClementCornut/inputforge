@@ -242,7 +242,7 @@ pub(crate) fn stage_title_for(action: &Action) -> &'static str {
         Action::Invert => "Invert",
         Action::Deadzone { .. } => "Deadzone",
         Action::ResponseCurve { .. } => "Response curve",
-        Action::MapToVJoy { .. } => "Map to vJoy",
+        Action::MapToVJoy { .. } => "Map to virtual device",
         Action::MapToKeyboard { .. } => "Map to keyboard",
         Action::MapToMouse { .. } => "Map to mouse",
         Action::MergeAxis { .. } => "Merge axis",
@@ -348,14 +348,14 @@ pub(crate) fn stage_summary_for(action: &Action, cfg: &ConfigSnapshot) -> String
 // Private formatting helpers
 // ---------------------------------------------------------------------------
 
-/// Format an [`OutputAddress`] as "vJoy {device} \u{00b7} {output-label}".
+/// Format an [`OutputAddress`] as "Device {device} \u{00b7} {output-label}".
 fn format_output_summary(output: &OutputAddress) -> String {
     let output_label = match &output.output {
-        OutputId::Axis { id } => format_vjoy_axis(*id).to_owned(),
+        OutputId::Axis { id } => format!("{} axis", format_vjoy_axis(*id)),
         OutputId::Button { id } => format!("Button {id}"),
         OutputId::Hat { id } => format!("Hat {id}"),
     };
-    format!("vJoy {} \u{00b7} {output_label}", output.device)
+    format!("Device {} \u{00b7} {output_label}", output.device)
 }
 
 fn format_behavior(behavior: OutputBehavior) -> &'static str {

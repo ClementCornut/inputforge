@@ -5,8 +5,8 @@ name = "inputforge"
 identifier = "io.inputforge.app"
 publisher = "InputForge"
 copyright = "Copyright (c) 2026 InputForge"
-short_description = "Remap physical joystick, pedal, and throttle inputs to virtual vJoy devices"
-long_description = "Remap physical joystick, pedal, and throttle inputs to virtual vJoy devices"
+short_description = "Remap physical joystick, pedal, and throttle inputs to virtual devices"
+long_description = "Remap physical joystick, pedal, and throttle inputs to virtual devices"
 icon = [
   "crates/inputforge-app/assets/icon-16.png",
   "crates/inputforge-app/assets/icon-24.png",

@@ -6,7 +6,7 @@
 //! opens a small menu divided into three sections:
 //!
 //! - **Processing** -- Invert, Deadzone, Response curve
-//! - **Output** -- Map to vJoy, Map to keyboard, Merge axis
+//! - **Output** -- Map to virtual device, Map to keyboard, Merge axis
 //! - **Control** -- Conditional, Change mode
 //!
 //! Clicking an item appends a default-configured action at `target_len`
@@ -191,7 +191,7 @@ const PROCESSING_ITEMS: &[PaletteItem] = &[
 
 const OUTPUT_ITEMS: &[PaletteItem] = &[
     PaletteItem {
-        label: "Map to vJoy",
+        label: "Map to virtual device",
         make: default_map_to_vjoy,
     },
     PaletteItem {
@@ -416,7 +416,7 @@ fn action_palette_label(action: &Action) -> &'static str {
         Action::Invert => "Invert",
         Action::Deadzone { .. } => "Deadzone",
         Action::ResponseCurve { .. } => "Response curve",
-        Action::MapToVJoy { .. } => "Map to vJoy",
+        Action::MapToVJoy { .. } => "Map to virtual device",
         Action::MapToKeyboard { .. } => "Map to keyboard",
         Action::MapToMouse { .. } => "Map to mouse",
         Action::MergeAxis { .. } => "Merge axis",

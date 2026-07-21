@@ -397,8 +397,10 @@ fn row_renders_compact_vjoy_output_badge() {
     let mut vdom = VirtualDom::new(TestComponent);
     vdom.rebuild_in_place();
     let html = render(&vdom);
-    assert!(html.contains("vJoy 2"), "vJoy device missing: {html}");
-    assert!(html.contains('X'), "vJoy output missing: {html}");
+    assert!(
+        html.contains("Device 2 · X"),
+        "virtual device output missing: {html}"
+    );
     assert!(
         html.contains("if-chip--output"),
         "output chip class missing: {html}"
@@ -2333,6 +2335,46 @@ fn row_output_chip_replaces_legacy_output_badge() {
         html.contains("aria-hidden=\"true\""),
         "arrow glyph must be aria-hidden so screen readers rely on label sequence: {html}",
     );
+    assert!(
+        html.contains("if-row__output-chip-text"),
+        "output chip text wrapper missing: {html}"
+    );
+    assert!(
+        html.contains("title=\"Device 2 · X\""),
+        "full compact address must remain available as the chip title: {html}"
+    );
+}
+
+#[test]
+fn mapping_list_css_bounds_and_ellipsizes_output_chip() {
+    let css = include_str!("../../../assets/frame/mapping_list.css");
+    let chip = css
+        .split(".if-row__output-chip {")
+        .nth(1)
+        .expect("output chip rule present")
+        .split('}')
+        .next()
+        .expect("output chip rule closed");
+    let text = css
+        .split(".if-row__output-chip-text {")
+        .nth(1)
+        .expect("output chip text rule present")
+        .split('}')
+        .next()
+        .expect("output chip text rule closed");
+
+    for declaration in ["flex: 0 1 auto;", "min-width: 0;", "max-width: 50%;"] {
+        assert!(chip.contains(declaration), "missing {declaration}: {chip}");
+    }
+    for declaration in [
+        "display: block;",
+        "min-width: 0;",
+        "overflow: hidden;",
+        "text-overflow: ellipsis;",
+        "white-space: nowrap;",
+    ] {
+        assert!(text.contains(declaration), "missing {declaration}: {text}");
+    }
 }
 
 /// Negative half of `row_output_chip_replaces_legacy_output_badge`:

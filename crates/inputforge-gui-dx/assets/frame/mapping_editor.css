@@ -335,8 +335,8 @@
    container declares the grid; individual fields use `display: contents`
    so their label + control unwrap directly into the parent grid. The
    first column auto-sizes to the widest label in *that* body
-   (`max-content`), so Merge axis and Map to vJoy each get their own
-   column width without any magic numbers. `justify-items: start` keeps
+   (`max-content`), so Merge axis and Map to virtual device each get their
+   own column width without any magic numbers. `justify-items: start` keeps
    controls at their natural width instead of stretching to fill the
    1fr column. Sentence-case sans label keeps the mono-uppercase channel
    reserved for section dividers (AXES, IN/OUT, BRANCH) so form labels
@@ -1136,7 +1136,7 @@
 .if-stage__header {
   width: 100%;
   display: grid;
-  grid-template-columns: 1fr auto 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) 32px;
   align-items: center;
   gap: 12px;
   padding: 8px 12px 8px 22px;
@@ -1146,6 +1146,8 @@
 }
 
 .if-stage__title {
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 500;

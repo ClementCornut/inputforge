@@ -299,7 +299,7 @@ pub(super) fn format_key_combo(combo: &inputforge_core::types::KeyCombo) -> Stri
     parts.join(" + ")
 }
 
-/// Format a vJoy output address as `vJoy <device> \u{00b7} <axis|button|hat>`.
+/// Format a virtual output address as `Device <device> \u{00b7} <axis|button|hat>`.
 pub(super) fn format_output_label(output: &OutputAddress) -> String {
     let suffix = match output.output {
         OutputId::Axis { id } => match id {
@@ -316,7 +316,7 @@ pub(super) fn format_output_label(output: &OutputAddress) -> String {
         OutputId::Button { id } => format!("Button {id}"),
         OutputId::Hat { id } => format!("Hat {id}"),
     };
-    format!("vJoy {} \u{00b7} {}", output.device, suffix)
+    format!("Device {} \u{00b7} {}", output.device, suffix)
 }
 
 /// Format a percentage string for the readout label.
@@ -569,6 +569,6 @@ mod tests {
             device: 1,
             output: OutputId::Axis { id: VJoyAxis::Y },
         };
-        assert_eq!(format_output_label(&out), "vJoy 1 \u{00b7} Y axis");
+        assert_eq!(format_output_label(&out), "Device 1 \u{00b7} Y axis");
     }
 }
