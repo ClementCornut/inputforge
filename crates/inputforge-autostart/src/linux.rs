@@ -22,7 +22,7 @@ impl LinuxAutostart {
     /// # Errors
     ///
     /// Returns [`AutostartError::NotSupported`] when `std::env::current_exe`
-    /// fails (e.g., AppImage mount weirdness).
+    /// fails (e.g., `AppImage` mount weirdness).
     pub(crate) fn new() -> Result<Self, AutostartError> {
         let exe = std::env::current_exe().map_err(|_e| AutostartError::NotSupported)?;
         let app_path = exe.to_str().ok_or(AutostartError::NotSupported)?.to_owned();
@@ -79,9 +79,14 @@ impl AutostartManager for LinuxAutostart {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::{
+        process::Command,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use super::*;
+
+    const XDG_ROUND_TRIP_CHILD: &str = "INPUTFORGE_AUTOSTART_XDG_ROUND_TRIP_CHILD";
 
     /// Random-ish app-name suffix so the integration test cannot clobber a
     /// real `APP_NAME.desktop` file or collide with parallel `--ignored`
@@ -99,24 +104,41 @@ mod tests {
         assert!(!l.app_path.is_empty());
     }
 
-    /// Round-trip against a tempdir-rooted XDG_CONFIG_HOME to avoid touching
-    /// the developer's real autostart dir. Gated `#[ignore]` because it
-    /// mutates an env var; not parallelizable with other env-var tests.
+    /// Round-trip against a tempdir-rooted `XDG_CONFIG_HOME` to avoid touching
+    /// the developer's real autostart dir. The parent launches an isolated
+    /// child process because the auto-launch dependency may cache XDG paths.
     #[test]
-    #[ignore = "mutates XDG_CONFIG_HOME; run explicitly with --ignored"]
+    #[ignore = "writes a temporary XDG autostart entry; run with --ignored"]
     fn xdg_round_trip() {
-        let tmp = tempfile::tempdir().unwrap();
-        // SAFETY: Test is single-threaded by --ignored in practice; for
-        //         strict isolation, set XDG_CONFIG_HOME via a fixture.
-        // The Rust 2024 edition requires `unsafe { ... }` around env::set_var.
-        #[allow(
-            unsafe_code,
-            reason = "test mutates XDG_CONFIG_HOME against a tempdir; ignored test runs single-threaded"
-        )]
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", tmp.path());
+        if std::env::var_os(XDG_ROUND_TRIP_CHILD).is_some() {
+            run_xdg_round_trip_child();
+            return;
         }
 
+        let tmp = tempfile::tempdir().expect("temporary XDG config root must be created");
+        let test_binary =
+            std::env::current_exe().expect("current test binary path must be available");
+        let output = Command::new(test_binary)
+            .arg("linux::tests::xdg_round_trip")
+            .args(["--exact", "--ignored", "--nocapture", "--test-threads=1"])
+            .env("XDG_CONFIG_HOME", tmp.path())
+            .env(XDG_ROUND_TRIP_CHILD, "1")
+            .output()
+            .expect("isolated XDG round-trip child must start");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success()
+                && stdout.contains("running 1 test")
+                && stdout.contains("test linux::tests::xdg_round_trip ... ok")
+                && stdout.contains("test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured;"),
+            "isolated XDG round-trip child did not run exactly the intended test\nstatus: {}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+            output.status
+        );
+    }
+
+    fn run_xdg_round_trip_child() {
         let mut l = LinuxAutostart::with_app_name(unique_test_app_name()).unwrap();
         let _ = l.set_enabled(false, &[]);
         assert!(!l.is_enabled().unwrap());

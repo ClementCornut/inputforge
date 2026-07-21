@@ -47,6 +47,7 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let cli = Cli::parse();
+    platform::preflight()?;
     tracing::info!(?cli, "starting InputForge");
 
     // Shared state and command channel.
