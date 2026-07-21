@@ -11,8 +11,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-# Default features are Windows-only. Use `--no-default-features` on non-Windows platforms.
-default = ["sdl3-input", "vjoy-output", "win32-io"]
+default = []
 sdl3-input = ["dep:sdl3"]
 vjoy-output = ["dep:vjoy"]
 win32-io = ["dep:windows"]
@@ -40,6 +39,8 @@ inputforge-autostart = { workspace = true }
 
 # Hardware I/O (optional, behind feature gates)
 sdl3 = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
 vjoy = { workspace = true, optional = true }
 windows = { workspace = true, optional = true }
 

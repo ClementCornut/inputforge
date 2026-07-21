@@ -2,7 +2,9 @@
 
 use crate::action::MouseTarget;
 use crate::error::Result;
-use crate::types::{HatDirection, KeyCombo, PhysicalKey, VJoyAxis, VirtualDeviceConfig};
+#[cfg(test)]
+use crate::types::PhysicalKey;
+use crate::types::{HatDirection, KeyCombo, VJoyAxis, VirtualDeviceConfig};
 
 use super::traits::{KeyboardSink, MouseSink, OutputSink};
 

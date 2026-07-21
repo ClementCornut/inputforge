@@ -6,6 +6,7 @@
 //! window. The engine runs on a dedicated thread (`SDL3` is `!Send`).
 
 mod cli;
+mod platform;
 mod tray;
 
 /// OR the CLI `--start-minimized` flag with the persisted setting.
@@ -28,10 +29,8 @@ use clap::Parser;
 use mimalloc::MiMalloc;
 use parking_lot::RwLock;
 
-use inputforge_core::device::{DeviceHider, NoOpDeviceHider, Sdl3Input};
+use inputforge_core::device::{DeviceHider, NoOpDeviceHider};
 use inputforge_core::engine::{Engine, EngineCommand};
-use inputforge_core::output::mouse::MouseOutput;
-use inputforge_core::output::{KeyboardOutput, VJoyOutput};
 use inputforge_core::profile::Profile;
 use inputforge_core::profile::manager::ensure_default_profile;
 use inputforge_core::settings::AppSettings;
@@ -172,16 +171,18 @@ fn run_engine(state: Arc<RwLock<AppState>>, commands: mpsc::Receiver<EngineComma
 fn run_engine_inner(
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Receiver<EngineCommand>,
-) -> Result<(), inputforge_core::error::EngineError> {
-    let input = Box::new(Sdl3Input::new()?);
-    let output = Box::new(VJoyOutput::new()?);
-    let keyboard = Box::new(KeyboardOutput::new());
-    let mouse = Box::new(MouseOutput::new());
+) -> Result<()> {
+    let platform::PlatformBackends {
+        input,
+        controller,
+        keyboard,
+        mouse,
+    } = platform::create()?;
     let hider: Box<dyn DeviceHider> = Box::new(NoOpDeviceHider);
 
     let mut engine = Engine::new(
         input,
-        output,
+        controller,
         keyboard,
         mouse,
         hider,

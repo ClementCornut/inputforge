@@ -94,7 +94,7 @@ arboard = { version = "3.6.1", default-features = false }
 auto-launch = "0.6"
 
 # Internal crates
-inputforge-core = { path = "crates/inputforge-core" }
+inputforge-core = { path = "crates/inputforge-core", default-features = false }
 inputforge-gui-dx = { path = "crates/inputforge-gui-dx" }
 inputforge-autostart = { path = "crates/inputforge-autostart" }
 

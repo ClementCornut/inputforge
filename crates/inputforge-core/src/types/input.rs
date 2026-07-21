@@ -19,6 +19,7 @@ impl AxisValue {
     }
 
     /// Create a raw `AxisValue` without clamping (for calibration input).
+    #[cfg(any(test, feature = "sdl3-input"))]
     #[must_use]
     pub(crate) fn raw(value: f64) -> Self {
         Self(value)

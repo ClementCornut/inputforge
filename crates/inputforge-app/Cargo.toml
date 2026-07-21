@@ -26,7 +26,13 @@ tracing-subscriber = { workspace = true }
 mimalloc          = { workspace = true }
 clap              = { workspace = true }
 tray-icon         = { workspace = true }
-windows           = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+inputforge-core = {
+    workspace = true,
+    features = ["sdl3-input", "vjoy-output", "win32-io"],
+}
+windows = { workspace = true }
 
 [lints]
 workspace = true

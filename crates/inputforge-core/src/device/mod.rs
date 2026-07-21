@@ -6,7 +6,7 @@ pub mod traits;
 #[cfg(feature = "sdl3-input")]
 pub mod sdl3;
 
-#[cfg(feature = "win32-io")]
+#[cfg(all(target_os = "windows", feature = "win32-io"))]
 pub mod hidhide;
 
 #[cfg(any(test, feature = "test-util"))]
@@ -18,7 +18,7 @@ pub use traits::{DeviceHider, HotplugEvent, InputSource};
 #[cfg(feature = "sdl3-input")]
 pub use sdl3::Sdl3Input;
 
-#[cfg(feature = "win32-io")]
+#[cfg(all(target_os = "windows", feature = "win32-io"))]
 pub use hidhide::HidHideManager;
 
 #[cfg(any(test, feature = "test-util"))]
