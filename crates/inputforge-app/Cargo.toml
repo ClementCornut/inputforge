@@ -16,23 +16,23 @@ name = "inputforge"
 path = "src/main.rs"
 
 [dependencies]
-inputforge-core      = { workspace = true }
-inputforge-gui-dx    = { workspace = true }
-inputforge-autostart = { workspace = true }
-anyhow            = { workspace = true }
-parking_lot       = { workspace = true }
-tracing           = { workspace = true }
+inputforge-core   = { workspace = true }
+anyhow             = { workspace = true }
 tracing-subscriber = { workspace = true }
-mimalloc          = { workspace = true }
-clap              = { workspace = true }
-tray-icon         = { workspace = true }
+mimalloc           = { workspace = true }
+clap               = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 inputforge-core = {
     workspace = true,
     features = ["sdl3-input", "vjoy-output", "win32-io"],
 }
-windows = { workspace = true }
+inputforge-gui-dx    = { workspace = true }
+inputforge-autostart = { workspace = true }
+parking_lot          = { workspace = true }
+tracing              = { workspace = true }
+tray-icon             = { workspace = true }
+windows               = { workspace = true }
 
 [lints]
 workspace = true

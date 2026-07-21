@@ -20,7 +20,7 @@
 - Keep `DeviceHider`, `HidHideManager`, `NoOpDeviceHider`, and `MockDeviceHider`; only remove hider ownership from `Engine`.
 - Keep `VJoyAxis`, `Action::MapToVJoy`, and `map_to_vjoy`. Never introduce `map_to_virtual_device`.
 - Treat `TapGesture` and `PressGesture` data, runtime semantics, validation, and UI behavior as synchronized baseline functionality; this Linux slice must not change them.
-- This plan reconciliation commit is the new `PLAN_BASE`; keep the already-reviewed test-only baseline repair below it, and keep exactly six scoped implementation commits above it.
+- This plan reconciliation commit is the new `PLAN_BASE`; keep the already-reviewed test-only baseline repair below it, the original six scoped implementation commits above it, and the two review-fix commits described below without rewriting history.
 - Do not print, commit, or otherwise expose original profile or device identifiers.
 - Use `cargo fmt --all` before each implementation commit and preserve warning-free `-D warnings` verification.
 
@@ -37,6 +37,7 @@ crates/inputforge-core/tests/profile_v0_2_0_compat.rs
 crates/inputforge-app/src/platform/mod.rs
 crates/inputforge-app/src/platform/linux.rs
 crates/inputforge-app/src/platform/windows.rs
+crates/inputforge-app/src/windows_app.rs
 crates/inputforge-app/tests/linux_startup.rs
 ```
 
@@ -51,10 +52,17 @@ crates/inputforge-core/src/output/mod.rs
 crates/inputforge-core/src/types/address.rs
 crates/inputforge-core/src/types/input.rs
 crates/inputforge-core/src/engine/mod.rs
+crates/inputforge-core/src/engine/run.rs
 crates/inputforge-core/src/engine/tests.rs
+crates/inputforge-core/src/snapshot/fs.rs
+crates/inputforge-core/src/snapshot/pending_delete.rs
+crates/inputforge-core/src/snapshot/tests.rs
 crates/inputforge-app/Cargo.toml
 crates/inputforge-app/src/main.rs
 crates/inputforge-app/src/cli.rs
+crates/inputforge-app/src/platform/mod.rs
+crates/inputforge-app/src/platform/linux.rs
+crates/inputforge-app/tests/linux_startup.rs
 focused GUI copy and test files listed in Task 7
 ```
 
@@ -64,6 +72,38 @@ Public compatibility contract:
 - `VJoyAxis` gains explicit serde names without changing its variants or wire values.
 - Core default features become empty; existing feature names remain available and additive.
 - `PlatformBackends`, `preflight`, and `create` remain crate-private to `inputforge-app`.
+
+## Review Fixes After the Original Six Commits
+
+Keep the original implementation commits intact and append these two scoped
+fixes:
+
+1. `fix(core): isolate engine config roots`
+   - Derive the external-snapshot root from the parent of the injected
+     `Engine.settings_path`.
+   - Preserve `AppSettings::config_dir()` only as the defensive fallback for
+     an empty or parentless settings path.
+   - Pass the injected root through snapshot namespace resolution and pending
+     delete cleanup.
+   - Replace empty-path engine fixtures with a test-only owner that keeps both
+     `Engine` and its `TempDir` alive, and assert that external startup
+     snapshots are written below that fixture root.
+2. `fix(app): isolate Windows desktop runtime`
+   - Move engine-thread, tray, and Dioxus lifecycle wiring into a
+     Windows-gated `windows_app` module.
+   - Keep `main.rs` portable: allocator, logging, Clap parsing, target dispatch,
+     and preflight only.
+   - Move GUI, tray, autostart, parking-lot, and direct tracing dependencies to
+     the Windows target table while retaining the common `PlatformBackends`
+     facade and defensive Linux `create()` error.
+   - Remove `LD_LIBRARY_PATH`, `LD_PRELOAD`, and `LD_AUDIT` from Linux startup
+     subprocesses so tests cannot hide accidental native desktop linkage.
+
+The review fixes must leave `Cargo.lock`, the approved spec, and the original
+14 commit hashes unchanged. Linux acceptance additionally requires an ELF
+dependency check showing no GUI, tray, WebKit/GTK, or `libxdo` imports. Native
+Windows acceptance in Task 8 remains mandatory before the slice is fully
+accepted.
 
 ### Task 1: Lock the Starting State
 
@@ -1368,7 +1408,7 @@ git status --short --branch
 git log --oneline "$PLAN_BASE"..HEAD
 ```
 
-Expected: `Cargo.lock` has no diff from `PLAN_BASE`; the local config remains ignored, untracked, and unchanged; the committed spec blob still matches; the worktree is clean; and six scoped implementation commits appear above `PLAN_BASE`.
+Expected: `Cargo.lock` has no diff from `PLAN_BASE`; the local config remains ignored, untracked, and unchanged; the committed spec blob still matches; the worktree is clean; and the original six scoped implementation commits plus the two review-fix commits appear above `PLAN_BASE`.
 
 - [ ] **Step 3: Run mandatory native Windows acceptance**
 

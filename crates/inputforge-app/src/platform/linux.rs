@@ -8,6 +8,13 @@ pub(super) fn preflight() -> Result<()> {
     Err(anyhow!(UNAVAILABLE_MESSAGE))
 }
 
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Slice 1 preflight exits before backend construction"
+    )
+)]
 pub(super) fn create() -> Result<PlatformBackends> {
     Err(anyhow!(UNAVAILABLE_MESSAGE))
 }
