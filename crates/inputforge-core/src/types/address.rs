@@ -168,13 +168,21 @@ pub enum OutputId {
 /// vJoy axis identifiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum VJoyAxis {
+    #[serde(rename = "X")]
     X,
+    #[serde(rename = "Y")]
     Y,
+    #[serde(rename = "Z")]
     Z,
+    #[serde(rename = "Rx")]
     Rx,
+    #[serde(rename = "Ry")]
     Ry,
+    #[serde(rename = "Rz")]
     Rz,
+    #[serde(rename = "Slider0")]
     Slider0,
+    #[serde(rename = "Slider1")]
     Slider1,
 }
 
