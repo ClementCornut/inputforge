@@ -1121,6 +1121,54 @@ fn map_to_vjoy_summary_uses_compact_device_address() {
         "Device 1 · X axis"
     );
 }
+
+#[test]
+fn tap_gesture_nested_map_to_vjoy_uses_generic_title() {
+    let html = render_stage_body_with_addr(
+        Action::TapGesture {
+            threshold_ms: 250,
+            fire_single_immediately: false,
+            single_tap: vec![Action::MapToVJoy {
+                output: OutputAddress {
+                    device: 1,
+                    output: OutputId::Axis { id: VJoyAxis::X },
+                },
+            }],
+            double_tap: Vec::new(),
+        },
+        InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        },
+    );
+
+    assert!(html.contains("Map to virtual device"), "{html}");
+    assert!(!html.contains("Map to vJoy"), "{html}");
+}
+
+#[test]
+fn press_gesture_nested_map_to_vjoy_uses_generic_title() {
+    let html = render_stage_body_with_addr(
+        Action::PressGesture {
+            threshold_ms: 500,
+            fire_long_when_threshold_crossed: false,
+            short_press: vec![Action::MapToVJoy {
+                output: OutputAddress {
+                    device: 1,
+                    output: OutputId::Axis { id: VJoyAxis::X },
+                },
+            }],
+            long_press: Vec::new(),
+        },
+        InputAddress::Bound {
+            device: DeviceId("dev-1".to_owned()),
+            input: InputId::Button { index: 0 },
+        },
+    );
+
+    assert!(html.contains("Map to virtual device"), "{html}");
+    assert!(!html.contains("Map to vJoy"), "{html}");
+}
 ```
 
 Add to `mapping_editor/header.rs`:
@@ -1151,7 +1199,7 @@ assert!(!stdout.contains("virtual vJoy devices"));
 
 Extract a private `format_virtual_device_option(&VirtualDeviceConfig) -> String` helper in `bulk_map/mod.rs`. Test device 1 with the normal capability counts, device 16 with 8 axes/128 buttons/4 hats, `1 axis` versus `N axes`, and `1 hat` versus `N hats`. Keep `btn` invariant so the dense label does not branch between `btn` and `btns`.
 
-Update every existing `Map to vJoy` render expectation in the expanded gesture-aware `pipeline/tests.rs` suite to `Map to virtual device`, including expectations for output stages nested under tap and press gesture branches. Retain the exact `Tap gesture` and `Press gesture` terminology and preserve all gesture palette, timing, branch, validation, undo, and rendering behavior.
+Update every existing `Map to vJoy` render expectation in `pipeline/tests.rs` to `Map to virtual device`. The two new nested-action tests above are the explicit red/green coverage for output stages under both tap and press gesture branches; do not substitute a claim that existing expectations cover those paths. Retain the exact `Tap gesture` and `Press gesture` terminology and preserve all gesture palette, timing, branch, validation, undo, and rendering behavior.
 
 - [ ] **Step 2: Run the copy tests to prove they are red**
 
