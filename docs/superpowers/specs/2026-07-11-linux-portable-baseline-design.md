@@ -55,6 +55,9 @@ ownership fields are:
 - `keyboard`: boxed `KeyboardSink`;
 - `mouse`: boxed `MouseSink`.
 
+“Factory” is an architectural description of this composition boundary, not a
+public Rust type name. Slice 1 does not introduce a public `*Factory` API.
+
 The bundle exposes two crate-private operations:
 
 - `preflight`, returning an application-level `anyhow::Result<()>` without
@@ -154,12 +157,21 @@ not need mechanical renaming.
 
 ## v0.2.0 Compatibility Fixtures
 
-Create full tracked fixtures from the supplied Windows profiles:
+Create full tracked fixtures from the two externally supplied Windows profiles.
+Their source provenance is:
 
-- `/home/dyecode/Git/Perso/inputforge-windows-profile/profiles/Default.toml`
-  becomes `tests/fixtures/v0_2_0/default.toml`;
-- `/home/dyecode/Git/Perso/inputforge-windows-profile/profiles/Star Citizen.toml`
-  becomes `tests/fixtures/v0_2_0/star-citizen.toml`.
+- `Default.toml`: SHA-256
+  `fbfbc4bf8e9a3c3c9d121090275baac6295a2155221a7ebc07eed3e0cd4bd368`;
+- `Star Citizen.toml`: SHA-256
+  `d51ac212d93c6bed514243309ff27ebeabd82cbb0b0a42e41dc3048128e0bce8`.
+
+Store the sanitized fixtures at:
+
+- `crates/inputforge-core/tests/fixtures/v0_2_0/default.toml`;
+- `crates/inputforge-core/tests/fixtures/v0_2_0/star-citizen.toml`.
+
+The integration test lives at
+`crates/inputforge-core/tests/profile_v0_2_0_compat.rs`.
 
 Preserve all 77 mappings in each profile, action ordering, profile names, modes,
 curve data, output addresses, and TOML structure. Sanitize identifiers only:
@@ -168,8 +180,12 @@ curve data, output addresses, and TOML structure. Sanitize identifiers only:
   `00000000-0000-0000-0000-000000000001` and
   `00000000-0000-0000-0000-000000000002` respectively;
 - sort the four distinct source device GUID strings lexicographically and
-  replace them consistently across both fixtures with the 32-character test
-  identifiers ending in `01`, `02`, `03`, and `04`.
+  replace them consistently across both fixtures with these exact 32-character
+  test identifiers, in order:
+  - `00000000000000000000000000000001`;
+  - `00000000000000000000000000000002`;
+  - `00000000000000000000000000000003`;
+  - `00000000000000000000000000000004`.
 
 Do not commit the original identifiers or modify the source profile folder.
 
@@ -178,7 +194,15 @@ The hardware-free integration suite must:
 - load both files through `Profile::load`;
 - assert the expected profile names, mode counts, and 77 mappings per file;
 - find 77 deserialized `Action::MapToVJoy` actions per file;
-- serialize and parse each profile again with semantic equality;
+- assert the action ordering and exact curve data and output addresses from the
+  source profiles;
+- parse each sanitized fixture as `toml::Value`, serialize the loaded `Profile`,
+  parse the emitted TOML as `toml::Value`, and assert equality; this preserves
+  every represented value while allowing formatting and table-order changes;
+- assert each fixture's exact approved profile UUID;
+- recursively collect every string-valued TOML field named `device`, assert
+  that no value falls outside the four approved test identifiers, and assert
+  that the combined observed set equals all four identifiers;
 - assert that serialization emits `map_to_vjoy` and never
   `map_to_virtual_device`;
 - assert the exact serde spelling of every `VJoyAxis` variant.
@@ -194,12 +218,20 @@ Linux verification on the CachyOS/Arch host:
 ```text
 cargo fmt --all -- --check
 cargo check -p inputforge-core --locked
+cargo check -p inputforge-core --no-default-features --locked
 cargo check -p inputforge-core --no-default-features --features sdl3-input --locked
+cargo check -p inputforge-core --no-default-features --features vjoy-output --locked
+cargo check -p inputforge-core --no-default-features --features win32-io --locked
+cargo check -p inputforge-core --no-default-features --features test-util --locked
+cargo check -p inputforge-core --all-features --all-targets --locked
 cargo check --workspace --all-targets --locked
+cargo check --workspace --all-targets --all-features --locked
 cargo test -p inputforge-core --test profile_v0_2_0_compat --locked
 cargo test -p inputforge-app --test linux_startup --locked
 cargo test --workspace --locked
+cargo test --workspace --all-features --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 ```
 
 Windows verification on a Windows environment with the repository's existing
@@ -207,15 +239,31 @@ SDL and vJoy prerequisites:
 
 ```text
 cargo check -p inputforge-core --locked
+cargo check -p inputforge-core --no-default-features --locked
+cargo check -p inputforge-core --no-default-features --features sdl3-input --locked
+cargo check -p inputforge-core --no-default-features --features vjoy-output --locked
+cargo check -p inputforge-core --no-default-features --features win32-io --locked
+cargo check -p inputforge-core --no-default-features --features test-util --locked
+cargo check -p inputforge-core --all-features --all-targets --locked
 cargo check --workspace --all-targets --locked
+cargo check --workspace --all-targets --all-features --locked
 cargo test --workspace --locked
+cargo test --workspace --all-features --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 dx build -p inputforge-app --locked
 ```
 
-The Linux startup integration test launches the application without arguments,
-expects a non-zero exit, and matches the stable preflight error. It must not
-require a display, tray, SDL3, evdev, or uinput device.
+The Linux startup integration test launches the application along three process
+paths:
+
+- no arguments exits non-zero and matches the stable preflight error exactly;
+- `--help` exits successfully with Clap help and no preflight error;
+- `--version` exits successfully with the package version and no preflight
+  error.
+
+None of these paths may require a display, tray, SDL3 initialization, evdev,
+uinput, or other hardware.
 
 Existing engine tests protect the `DeviceHider` removal as a green-to-green
 refactor. UI terminology changes use red-green order: update render expectations
@@ -241,7 +289,9 @@ Slice 1 is complete when all of the following are true:
   wire formats.
 - Generic UI terminology uses “virtual device,” with vJoy names limited to
   concrete Windows product references.
+- The Linux and Windows feature matrices prove the hardware-free default,
+  individual target-gated features, and the combined all-features build.
+- Linux no-argument startup fails with the stable preflight error, while
+  `--help` and `--version` retain their normal successful Clap behavior.
 - No evdev, uinput, grabs, Linux overlay/configuration UI, placeholder sinks,
   backend-health state, packaging, or CI expansion is present.
-- The user-owned `.codex/config.toml` modification remains unstaged and
-  uncommitted.
