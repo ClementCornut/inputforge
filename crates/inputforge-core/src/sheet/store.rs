@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn external_profile_sidecars_live_under_config_hash_namespace() {
         let config_dir = Path::new("app-config");
-        let external_profile = PathBuf::from(r"C:\external\profile.toml");
+        let external_profile = Path::new("external").join("profile.toml");
         let expected_dir = global_sheet_store_dir(config_dir)
             .join("external_profiles")
             .join(hex::encode(Sha256::digest(
