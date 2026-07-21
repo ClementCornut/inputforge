@@ -1,0 +1,1612 @@
+modes = ["Default", "Combat"]
+devices = []
+calibrations = []
+
+[profile]
+id = "00000000-0000-0000-0000-000000000001"
+name = "Default"
+startup_mode = "Default"
+
+[[mappings]]
+mode = "Default"
+name = "Thruster"
+
+[mappings.input]
+device = "00000000000000000000000000000003"
+
+[mappings.input.input]
+type = "axis"
+index = 0
+
+[[mappings.actions]]
+type = "merge_axis"
+operation = "Bidirectional"
+
+[mappings.actions.second_input]
+device = "00000000000000000000000000000003"
+
+[mappings.actions.second_input.input]
+type = "axis"
+index = 1
+
+[[mappings.actions]]
+type = "response_curve"
+
+[mappings.actions.curve]
+kind = "cubic_bezier"
+symmetric = true
+
+[[mappings.actions.curve.segments]]
+start = [-1.0, -1.0]
+control1 = [-0.8458332443237304, -0.38928387641906737]
+control2 = [-0.7014582443237305, -0.13115887641906743]
+end = [-0.0, -0.0]
+
+[[mappings.actions.curve.segments]]
+start = [0.0, 0.0]
+control1 = [0.7014582443237305, 0.13115887641906743]
+control2 = [0.8458332443237304, 0.38928387641906737]
+end = [1.0, 1.0]
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 3
+
+[mappings.actions.output.output]
+type = "axis"
+id = "Y"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "axis"
+index = 0
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "axis"
+id = "X"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "axis"
+index = 1
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "axis"
+id = "Y"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "axis"
+index = 2
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "axis"
+id = "Z"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "axis"
+index = 3
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "axis"
+id = "Rx"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "axis"
+index = 4
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "axis"
+id = "Ry"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "axis"
+index = 5
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "axis"
+id = "Rz"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 0
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 1
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 1
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 2
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 2
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 3
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 3
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 4
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 4
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 5
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 5
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 6
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 6
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 7
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 7
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 8
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 8
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 9
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 9
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 10
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 10
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 11
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 11
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 12
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 12
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 13
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 13
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 14
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 14
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 15
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 15
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 16
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 16
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 17
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 17
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 18
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 18
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 19
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 19
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 20
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 20
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 21
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 21
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 22
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 22
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 23
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 23
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 24
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 24
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 25
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 25
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 26
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 26
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 27
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 27
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 28
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 28
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 29
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 29
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 30
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 30
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 31
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000001"
+
+[mappings.input.input]
+type = "button"
+index = 31
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 1
+
+[mappings.actions.output.output]
+type = "button"
+id = 32
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "axis"
+index = 0
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "axis"
+id = "X"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "axis"
+index = 1
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "axis"
+id = "Y"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "axis"
+index = 2
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "axis"
+id = "Z"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "axis"
+index = 3
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "axis"
+id = "Rx"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "axis"
+index = 4
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "axis"
+id = "Ry"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "axis"
+index = 5
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "axis"
+id = "Rz"
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 0
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 1
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 1
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 2
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 2
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 3
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 3
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 4
+
+[[mappings.actions]]
+type = "tap_gesture"
+threshold_ms = 500
+fire_single_immediately = false
+
+[[mappings.actions.single_tap]]
+type = "map_to_mouse"
+target = "LeftButton"
+behavior = "hold"
+
+[[mappings.actions.double_tap]]
+type = "map_to_keyboard"
+behavior = "hold"
+
+[mappings.actions.double_tap.key]
+key = "KeyA"
+modifiers = []
+
+[[mappings.actions]]
+type = "conditional"
+if_true = []
+if_false = []
+
+[mappings.actions.condition]
+type = "button_pressed"
+
+[mappings.actions.condition.input]
+device = "00000000000000000000000000000002"
+
+[mappings.actions.condition.input.input]
+type = "button"
+index = 3
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 4
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 5
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 5
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 6
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 6
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 7
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 7
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 8
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 8
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 9
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 9
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 10
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 10
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 11
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 11
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 12
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 12
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 13
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 13
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 14
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 14
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 15
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 15
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 16
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 16
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 17
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 17
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 18
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 18
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 19
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 19
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 20
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 20
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 21
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 21
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 22
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 22
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 23
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 23
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 24
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 24
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 25
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 25
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 26
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 26
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 27
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 27
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 28
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 28
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 29
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 29
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 30
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 30
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 31
+
+[[mappings]]
+mode = "Default"
+
+[mappings.input]
+device = "00000000000000000000000000000002"
+
+[mappings.input.input]
+type = "button"
+index = 31
+
+[[mappings.actions]]
+type = "map_to_vjoy"
+
+[mappings.actions.output]
+device = 2
+
+[mappings.actions.output.output]
+type = "button"
+id = 32
