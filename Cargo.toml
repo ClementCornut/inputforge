@@ -4,6 +4,7 @@ members = [
     "crates/inputforge-gui-dx",
     "crates/inputforge-app",
     "crates/inputforge-autostart",
+    "tools/inputforge-diagnostics",
 ]
 resolver = "2"
 
@@ -63,6 +64,8 @@ mimalloc = "0.1"
 
 # Input
 sdl3 = "0.20"
+evdev = { version = "0.13.2", default-features = false }
+udev = { version = "0.9.3", default-features = false }
 
 # Filesystem
 dirs = "7"

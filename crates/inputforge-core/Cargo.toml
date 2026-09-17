@@ -12,6 +12,7 @@ categories.workspace = true
 
 [features]
 default = []
+evdev-input = ["dep:evdev", "dep:udev"]
 sdl3-input = ["dep:sdl3"]
 vjoy-output = ["dep:vjoy"]
 win32-io = ["dep:windows"]
@@ -43,6 +44,10 @@ sdl3 = { workspace = true, optional = true }
 [target.'cfg(target_os = "windows")'.dependencies]
 vjoy = { workspace = true, optional = true }
 windows = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+evdev = { workspace = true, optional = true }
+udev = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

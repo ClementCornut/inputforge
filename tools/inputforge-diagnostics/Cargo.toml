@@ -1,0 +1,22 @@
+[package]
+name = "inputforge-diagnostics"
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Read-only Linux input discovery diagnostics for InputForge"
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+inputforge-core = { workspace = true, features = ["evdev-input"] }
+
+[lints]
+workspace = true

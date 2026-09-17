@@ -127,6 +127,7 @@ fn help_succeeds_before_preflight() {
 
     assert!(stdout.contains("Usage: inputforge [OPTIONS]"));
     assert!(stdout.contains("virtual devices"));
+    assert!(!stdout.contains("--diagnose-linux"));
     assert!(!stdout.contains("virtual vJoy devices"));
     assert!(!stdout.contains(UNAVAILABLE_MESSAGE));
     assert_eq!(stderr, "");
@@ -144,4 +145,12 @@ fn version_succeeds_before_preflight() {
         String::from_utf8(output.stderr).expect("stderr must be UTF-8"),
         ""
     );
+}
+
+#[test]
+fn diagnostics_flag_belongs_to_the_standalone_tool() {
+    let output = run_inputforge(&["--diagnose-linux"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("unexpected argument"));
 }

@@ -1,5 +1,8 @@
 // Rust guideline compliant 2026-03-06
 
+#[cfg(all(target_os = "linux", feature = "evdev-input"))]
+pub mod evdev;
+
 pub mod noop_hider;
 pub mod traits;
 
