@@ -22,7 +22,7 @@ categories = ["hardware-support"]
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-toml = "1.0"
+toml = "1.1"
 
 # Error handling
 thiserror = "2.0"
@@ -37,19 +37,19 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # CLI
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }
 
 # Identifiers
-uuid = { version = "1.21", features = ["v4"] }
-ulid = { version = "1.2.1", features = ["serde"] }
+uuid = { version = "1.26", features = ["v4"] }
+ulid = { version = "3.0.0", features = ["serde"] }
 
 # Unicode text processing
 unicode-segmentation = "1.13"
 
 # Snapshot subsystem
-blake3 = "1.8.5"
-chrono = { version = "0.4.44", features = ["serde"] }
-sha2 = "0.10"
+blake3 = "1.8.7"
+chrono = { version = "0.4.45", features = ["serde"] }
+sha2 = "0.11"
 hex = "0.4"
 
 # Collections
@@ -62,10 +62,10 @@ opener = { version = "0.8", features = ["reveal"] }
 mimalloc = "0.1"
 
 # Input
-sdl3 = "0.17"
+sdl3 = "0.20"
 
 # Filesystem
-dirs = "6"
+dirs = "7"
 tempfile = "3"
 rfd = "0.17"
 
@@ -80,14 +80,14 @@ windows = { version = "0.62", features = [
     "Win32_Security",
 ] }
 
-# System tray
+# System tray: keep these aligned with dioxus-desktop's types and event handlers.
 tray-icon = "0.21"
 muda = "0.17"
 
 # GUI
-dioxus = "0.7.9"
-dioxus-ssr = "0.7.9"
-scraper = "0.26.0"
+dioxus = "0.7.10"
+dioxus-ssr = "0.7.10"
+scraper = "0.27.0"
 arboard = { version = "3.6.1", default-features = false }
 
 # Autostart (Windows registry, Linux XDG)

@@ -91,7 +91,7 @@ pub fn create_in(
     }
     // 5. Build snapshot record.
     let snap = Snapshot {
-        id: SnapshotId(Ulid::new()),
+        id: SnapshotId(Ulid::generate()),
         kind,
         label,
         taken_at: Utc::now(),

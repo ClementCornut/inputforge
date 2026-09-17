@@ -33,9 +33,9 @@ pub struct Sdl3Input {
     _sdl: Sdl,
     joystick_subsystem: JoystickSubsystem,
     event_pump: EventPump,
-    /// Maps the `u32` returned by [`Joystick::id`] to an opened handle
+    /// Maps the [`JoystickId`] returned by [`Joystick::id`] to an opened handle
     /// and our stable [`DeviceId`].
-    open_devices: HashMap<u32, OpenDevice>,
+    open_devices: HashMap<JoystickId, OpenDevice>,
     /// Buffered hotplug events to be drained by the caller.
     hotplug_buffer: Vec<HotplugEvent>,
     /// Axes whose polarity has been classified.  Key is
@@ -46,13 +46,13 @@ pub struct Sdl3Input {
     /// short-circuits its polarity-update branch so re-probe's
     /// resting-state classification is never overridden by a
     /// mid-press first event.
-    classified_axes: HashSet<(u32, u8)>,
+    classified_axes: HashSet<(JoystickId, u8)>,
     /// Axes for which a real `JoyAxisMotion` event has been observed.
     /// Used to gate the deferred re-probe's synthetic-event emission:
     /// once a real event has populated the input cache, re-probe
     /// stops emitting synthetic events for that axis to avoid
     /// overwriting actual user input with a stale re-read.
-    real_event_seen: HashSet<(u32, u8)>,
+    real_event_seen: HashSet<(JoystickId, u8)>,
     /// Number of poll cycles elapsed.  Used to trigger a deferred
     /// polarity re-probe after SDL3 has had time to populate hardware
     /// axis values via `DirectInput`.
@@ -178,10 +178,9 @@ impl Sdl3Input {
     )]
     fn deferred_reprobe_polarities(&mut self, now: Instant, out: &mut Vec<InputEvent>) {
         for device in self.open_devices.values_mut() {
-            let instance_id_raw = device.joystick.id();
-            let instance_id = sdl3::sys::joystick::SDL_JoystickID(instance_id_raw);
+            let instance_id = device.joystick.id();
             // SAFETY: the joystick is open so the pointer is valid.
-            let raw = unsafe { sdl3::sys::joystick::SDL_GetJoystickFromID(instance_id) };
+            let raw = unsafe { sdl3::sys::joystick::SDL_GetJoystickFromID(instance_id.into()) };
             if raw.is_null() {
                 continue;
             }
@@ -226,7 +225,7 @@ impl Sdl3Input {
                 // overriding the resting-state classification with a
                 // mid-press first-event value.
                 let axis_idx_u8 = u8::try_from(axis_idx).unwrap_or(u8::MAX);
-                let key = (instance_id_raw, axis_idx_u8);
+                let key = (instance_id, axis_idx_u8);
                 if !self.real_event_seen.contains(&key) {
                     // Lock classification only if SDL gave us a definitive
                     // resting value. `current=0` is ambiguous: on Windows
@@ -262,7 +261,7 @@ impl Sdl3Input {
     }
 
     /// Handle a joystick removal event.
-    fn handle_device_removed(&mut self, instance_id: u32) {
+    fn handle_device_removed(&mut self, instance_id: JoystickId) {
         if let Some(removed) = self.open_devices.remove(&instance_id) {
             self.classified_axes.retain(|&(id, _)| id != instance_id);
             self.real_event_seen.retain(|&(id, _)| id != instance_id);
@@ -410,9 +409,7 @@ impl Sdl3Input {
                 }
             }
             Event::JoyDeviceAdded { which, .. } => {
-                // `which` in JoyDeviceAdded is the joystick ID to pass
-                // to `open()` (wrapped as `SDL_JoystickID`).
-                self.try_open_joystick(sdl3::sys::joystick::SDL_JoystickID(which));
+                self.try_open_joystick(which);
             }
             Event::JoyDeviceRemoved { which, .. } => {
                 self.handle_device_removed(which);
@@ -458,7 +455,7 @@ impl InputSource for Sdl3Input {
     }
 
     fn hotplug_events(&mut self) -> Vec<HotplugEvent> {
-        self.hotplug_buffer.drain(..).collect()
+        std::mem::take(&mut self.hotplug_buffer)
     }
 }
 
@@ -491,7 +488,7 @@ const REPROBE_INTERVAL: u32 = 100;
 /// detection.
 #[expect(unsafe_code, reason = "SDL3 FFI calls for path and axis initial state")]
 fn device_info_from_joystick(joystick: &Joystick, device_id: &DeviceId) -> DeviceInfo {
-    let instance_id = sdl3::sys::joystick::SDL_JoystickID(joystick.id());
+    let instance_id = joystick.id().into();
 
     // SAFETY: `instance_id` was obtained from an open joystick via `id()`.
     // `SDL_GetJoystickPathForID` returns a pointer to an SDL-managed
@@ -542,7 +539,7 @@ fn device_info_from_joystick(joystick: &Joystick, device_id: &DeviceId) -> Devic
     reason = "SDL3 FFI exposes diagnostics not wrapped by sdl3 0.17"
 )]
 fn diagnostics_from_joystick(joystick: &Joystick) -> DeviceDiagnostics {
-    let instance_id = sdl3::sys::joystick::SDL_JoystickID(joystick.id());
+    let instance_id = joystick.id().into();
     // SAFETY: `instance_id` was obtained from an open joystick via `id()`.
     let raw_joystick = unsafe { sdl3::sys::joystick::SDL_GetJoystickFromID(instance_id) };
 

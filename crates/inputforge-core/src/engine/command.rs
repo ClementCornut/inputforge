@@ -230,7 +230,7 @@ mod tests {
         };
         assert!(format!("{c:?}").contains("CreateSnapshot"));
 
-        let id = SnapshotId(ulid::Ulid::new());
+        let id = SnapshotId(ulid::Ulid::generate());
         assert!(format!("{:?}", EngineCommand::DeleteSnapshot { id }).contains("DeleteSnapshot"));
         assert!(
             format!("{:?}", EngineCommand::PinSnapshot { id, pinned: true })

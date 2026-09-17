@@ -298,7 +298,7 @@ fn delete_removes_file_and_index_entry() {
 #[test]
 fn delete_unknown_id_returns_not_found() {
     let (_dir, path) = fresh_profile_dir();
-    let bogus = SnapshotId(Ulid::new());
+    let bogus = SnapshotId(Ulid::generate());
     let err = delete(&path, &bogus).unwrap_err();
     assert!(matches!(err, EngineError::SnapshotNotFound { .. }));
 }
@@ -336,7 +336,7 @@ fn pin_toggles_persisted_state() {
 #[test]
 fn pin_unknown_id_returns_not_found() {
     let (_dir, path) = fresh_profile_dir();
-    let err = pin(&path, &SnapshotId(Ulid::new()), true).unwrap_err();
+    let err = pin(&path, &SnapshotId(Ulid::generate()), true).unwrap_err();
     assert!(matches!(err, EngineError::SnapshotNotFound { .. }));
 }
 
@@ -390,7 +390,7 @@ fn restore_strips_meta_and_writes_profile() {
 #[test]
 fn restore_unknown_id_returns_not_found() {
     let (_dir, path) = fresh_profile_dir();
-    let err = restore(&path, &SnapshotId(Ulid::new())).unwrap_err();
+    let err = restore(&path, &SnapshotId(Ulid::generate())).unwrap_err();
     assert!(matches!(err, EngineError::SnapshotNotFound { .. }));
 }
 
@@ -399,7 +399,7 @@ fn restore_errors_when_meta_table_missing() {
     let (_dir, path) = fresh_profile_dir();
     let snap_dir = snapshots_dir_for(&path).unwrap();
     std::fs::create_dir_all(&snap_dir).unwrap();
-    let id = SnapshotId(Ulid::new());
+    let id = SnapshotId(Ulid::generate());
     let snap_path = snap_dir.join(format!("{id}.toml"));
     // Valid TOML but no [snapshot_meta] table.
     std::fs::write(

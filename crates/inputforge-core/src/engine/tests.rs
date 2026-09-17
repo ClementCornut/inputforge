@@ -1194,7 +1194,7 @@ fn held_mouse_mapping_for_input(target: MouseTarget, mode: &str, input_index: u8
 }
 
 fn temp_profile_path(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("inputforge-{name}-{}.toml", ulid::Ulid::new()))
+    std::env::temp_dir().join(format!("inputforge-{name}-{}.toml", ulid::Ulid::generate()))
 }
 
 fn temp_settings() -> (tempfile::TempDir, PathBuf) {

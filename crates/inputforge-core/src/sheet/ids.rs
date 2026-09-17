@@ -15,7 +15,7 @@ macro_rules! stable_id_type {
             /// Generates a new ULID-backed ID.
             #[must_use]
             pub fn new() -> Self {
-                Self(Ulid::new().to_string())
+                Self(Ulid::generate().to_string())
             }
 
             /// Imports an existing persisted ID string.

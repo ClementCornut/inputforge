@@ -161,7 +161,7 @@ mod tests {
 
     fn sample_snapshot(kind: SnapshotKind) -> Snapshot {
         Snapshot {
-            id: SnapshotId(Ulid::new()),
+            id: SnapshotId(Ulid::generate()),
             kind,
             label: None,
             taken_at: Utc::now(),

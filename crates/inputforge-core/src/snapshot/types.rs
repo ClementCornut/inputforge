@@ -115,7 +115,7 @@ mod tests {
         struct Wrapper {
             id: SnapshotId,
         }
-        let id = SnapshotId(Ulid::new());
+        let id = SnapshotId(Ulid::generate());
         let wrapper = Wrapper { id };
         let s = toml::to_string(&wrapper).unwrap();
         let back: Wrapper = toml::from_str(&s).unwrap();
@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn snapshot_record_serde_round_trip() {
         let snap = Snapshot {
-            id: SnapshotId(Ulid::new()),
+            id: SnapshotId(Ulid::generate()),
             kind: SnapshotKind::Manual,
             label: Some("my label".to_owned()),
             taken_at: Utc::now(),
