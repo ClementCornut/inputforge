@@ -74,6 +74,20 @@ pub struct AxisInfo {
     pub resolution: i32,
 }
 
+impl AxisInfo {
+    /// Encode the advertised range without clamping, calibration, deadzone or polarity inference.
+    ///
+    /// Returns `None` for a degenerate or reversed range. Raw values remain authoritative.
+    #[must_use]
+    pub fn normalize(&self, raw: i32) -> Option<f64> {
+        (self.minimum < self.maximum).then(|| {
+            2.0 * (f64::from(raw) - f64::from(self.minimum))
+                / (f64::from(self.maximum) - f64::from(self.minimum))
+                - 1.0
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Access {
     NotAttempted,

@@ -1,6 +1,6 @@
 use crate::{
     args::{Command, parse},
-    render_state, write_state,
+    report::{render_state, write_state},
 };
 use inputforge_core::{
     device::evdev::{
@@ -27,6 +27,28 @@ fn no_arguments_and_help_request_usage() {
 fn watch_accepts_no_options() {
     assert_eq!(parse(&strings(&["watch"])).expect("watch"), Command::Watch);
     assert!(parse(&strings(&["watch", "--device", "evdev:v1:a"])).is_err());
+}
+
+#[test]
+fn stream_requires_explicit_devices_and_bounded_duration() {
+    for arguments in [
+        vec!["stream"],
+        vec!["stream", "--seconds", "5"],
+        vec!["stream", "--seconds", "61", "--device", "evdev:v1:a"],
+        vec!["stream", "--seconds", "5", "--device", "SDL-ID"],
+    ] {
+        assert!(parse(&strings(&arguments)).is_err());
+    }
+    assert!(
+        parse(&strings(&[
+            "stream",
+            "--seconds",
+            "5",
+            "--device",
+            "evdev:v1:a",
+        ]))
+        .is_ok()
+    );
 }
 
 #[test]

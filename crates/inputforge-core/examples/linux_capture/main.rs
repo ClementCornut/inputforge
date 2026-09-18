@@ -1,4 +1,11 @@
 mod args;
+#[cfg(target_os = "linux")]
+mod report;
+#[cfg(target_os = "linux")]
+mod stream;
+
+#[cfg(target_os = "linux")]
+use report::write_changes;
 
 use args::{Command, USAGE, parse};
 use std::{env, io::Write, process::ExitCode};
@@ -54,6 +61,12 @@ fn run(command: Command, mut writer: impl Write) -> Result<(), Box<dyn std::erro
             write_changes(&capture, &mut writer, &mut previous)?;
             Ok(())
         }
+        Command::Stream { seconds, devices } => {
+            let devices: Vec<_> = devices.into_iter().map(DeviceId).collect();
+            write_request(&devices, &mut writer)?;
+            capture.acquire(devices)?;
+            stream::run(&mut capture, Duration::from_secs(seconds), &mut writer)
+        }
         Command::Help => Ok(()),
     }
 }
@@ -102,74 +115,6 @@ fn write_request(
         devices.iter().map(|id| id.0.as_str()).collect::<Vec<_>>()
     )?;
     writer.flush()
-}
-
-#[cfg(target_os = "linux")]
-fn write_changes(
-    capture: &inputforge_core::device::evdev::Capture,
-    writer: &mut impl Write,
-    previous: &mut String,
-) -> std::io::Result<()> {
-    write_state(capture.devices(), capture.captured(), writer, previous)
-}
-
-#[cfg(target_os = "linux")]
-fn write_state(
-    devices: &[inputforge_core::device::evdev::Device],
-    captured: &[inputforge_core::types::DeviceId],
-    writer: &mut impl Write,
-    previous: &mut String,
-) -> std::io::Result<()> {
-    let current = render_state(devices, captured);
-    if *previous != current {
-        writer.write_all(current.as_bytes())?;
-        writer.flush()?;
-        *previous = current;
-    }
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-#[expect(
-    clippy::unnecessary_debug_formatting,
-    reason = "Escape device-controlled names and paths in terminal output"
-)]
-fn render_state(
-    devices: &[inputforge_core::device::evdev::Device],
-    captured: &[inputforge_core::types::DeviceId],
-) -> String {
-    let mut lines = vec![format!("inventory: {}", devices.len())];
-    for device in devices {
-        lines.push(format!(
-            "  id={:?} identity={:?} class={:?} access={:?} name={:?} node={:?}",
-            device.identity.id.as_ref().map(|id| &id.0),
-            device.identity.quality,
-            device.classification.kind,
-            device.access,
-            device.metadata.name,
-            device.metadata.node
-        ));
-        lines.extend(
-            device
-                .classification
-                .reasons
-                .iter()
-                .map(|reason| format!("    reason={reason:?}")),
-        );
-        lines.extend(device.issues.iter().map(|issue| {
-            format!(
-                "    issue operation={:?} path={:?} kind={:?} errno={:?} message={:?}",
-                issue.operation, issue.path, issue.kind, issue.raw_os_error, issue.message
-            )
-        }));
-    }
-    lines.push(format!(
-        "captured: {:?}",
-        captured.iter().map(|id| id.0.as_str()).collect::<Vec<_>>()
-    ));
-    let mut output = lines.join("\n");
-    output.push('\n');
-    output
 }
 
 #[cfg(not(target_os = "linux"))]

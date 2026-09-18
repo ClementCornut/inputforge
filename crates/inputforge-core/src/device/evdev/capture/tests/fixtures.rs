@@ -15,6 +15,7 @@ use crate::types::DeviceId;
 #[derive(Debug)]
 pub(in super::super) struct World {
     pub devices: Vec<Device>,
+    pub streams: BTreeMap<String, super::stream::fixtures::StreamIo>,
     pub scans: usize,
     pub replace_on_scan: Option<(usize, Vec<Device>)>,
     pub pending_on_scan: Option<(usize, usize)>,
@@ -60,6 +61,7 @@ pub(in super::super) fn device(name: &str) -> Device {
 pub(in super::super) fn world() -> Fake {
     Rc::new(RefCell::new(World {
         devices: vec![device("a"), device("b"), device("c")],
+        streams: BTreeMap::new(),
         scans: 0,
         replace_on_scan: None,
         pending_on_scan: None,

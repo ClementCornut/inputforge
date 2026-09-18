@@ -2,9 +2,11 @@
 
 This bounded example exercises Linux controller inventory changes and exclusive
 `EVIOCGRAB` ownership. It is an acceptance tool, not an InputForge input backend.
-It does not read or print input events or state, create output devices, load
-profiles or settings, change permissions, retry acquisition, or select every
-device implicitly.
+The `watch` and `capture` commands do not read input events or state. The separate
+[`stream` command](linux-streaming.md) explicitly opts into native events and state
+recovery. None of these commands creates output devices, loads profiles or
+settings, changes permissions, retries acquisition, or selects every device
+implicitly.
 
 Build or run it as the regular desktop user:
 
@@ -100,3 +102,31 @@ application startup still rejects the unavailable backend, and
 `inputforge-app --diagnose-linux` remains rejected. This example does not change
 either behavior. Native-game/Proton output, binding translation, calibration,
 packaging and permission setup remain outside this slice.
+
+## Recorded Slice 2b acceptance
+
+The following results were supplied by the user in the September 18, 2026 session.
+They are session evidence, not results from the automated fixture suite or a new
+acceptance run performed during Slice 2c implementation:
+
+- Both VIRPIL sticks and Thrustmaster pedals were readable and exclusively captured.
+- The left stick's serial identity and pedals' port identity survived reconnects.
+- Competing captures failed as busy; failed multi-device acquisition released
+  earlier grabs.
+- Disconnecting a selected controller released surviving selected controllers;
+  disconnecting an unselected controller did not interrupt capture.
+- KDE's controller tester stopped updating during a confirmed left-stick grab and
+  resumed after timed release. Keyboard and mouse remained usable.
+- Timeout, SIGINT, SIGKILL, and closed-output checks released ownership.
+- Brief permission delays after reconnect were reported and recovered automatically
+  during inventory refresh; this did not automatically reacquire devices.
+- Standalone diagnostics and normal Linux startup rejection were rechecked, and
+  all acceptance processes were stopped.
+
+Native Windows validation, independent pedal-movement testing, and optional syscall
+tracing remain outstanding. These results do not establish Slice 2c streaming or
+recovery acceptance.
+
+Subsequent [Slice 2c live acceptance](linux-streaming.md#recorded-slice-2c-live-acceptance)
+includes independent pedal movement and event-stream recovery; the results above
+retain their original Slice 2b scope.

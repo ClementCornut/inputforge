@@ -1,10 +1,11 @@
-pub(super) const USAGE: &str = "Usage:\n  linux-capture watch\n  linux-capture capture --seconds <1..60> --device <evdev:v1:ID> [--device <evdev:v1:ID> ...]";
+pub(super) const USAGE: &str = "Usage:\n  linux-capture watch\n  linux-capture capture --seconds <1..60> --device <evdev:v1:ID> [--device <evdev:v1:ID> ...]\n  linux-capture stream --seconds <1..60> --device <evdev:v1:ID> [--device <evdev:v1:ID> ...]";
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Command {
     Help,
     Watch,
     Capture { seconds: u64, devices: Vec<String> },
+    Stream { seconds: u64, devices: Vec<String> },
 }
 
 pub(super) fn parse(arguments: &[String]) -> Result<Command, String> {
@@ -14,12 +15,12 @@ pub(super) fn parse(arguments: &[String]) -> Result<Command, String> {
     match command {
         "-h" | "--help" if arguments.len() == 1 => Ok(Command::Help),
         "watch" if arguments.len() == 1 => Ok(Command::Watch),
-        "capture" => parse_capture(&arguments[1..]),
+        "capture" | "stream" => parse_capture(&arguments[1..], command == "stream"),
         _ => Err(format!("invalid arguments\n{USAGE}")),
     }
 }
 
-fn parse_capture(arguments: &[String]) -> Result<Command, String> {
+fn parse_capture(arguments: &[String], streaming: bool) -> Result<Command, String> {
     let mut seconds = None;
     let mut devices = Vec::new();
     let mut index = 0;
@@ -52,7 +53,11 @@ fn parse_capture(arguments: &[String]) -> Result<Command, String> {
     if devices.is_empty() {
         return Err(format!("at least one --device is required\n{USAGE}"));
     }
-    Ok(Command::Capture { seconds, devices })
+    if streaming {
+        Ok(Command::Stream { seconds, devices })
+    } else {
+        Ok(Command::Capture { seconds, devices })
+    }
 }
 
 fn valid_device_id(value: &str) -> bool {

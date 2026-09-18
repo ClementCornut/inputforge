@@ -1,9 +1,13 @@
 mod error;
 mod handle;
 mod hotplug;
+mod stream;
 #[cfg(test)]
 mod tests;
 mod transaction;
+pub use stream::{
+    NativeChange, NativeControl, NativeHat, NativeState, SnapshotKind, StreamStatus, StreamUpdate,
+};
 
 use crate::{device::evdev::Device, types::DeviceId};
 pub use error::CaptureError;
@@ -14,7 +18,7 @@ use transaction::Held;
 /// Monitors Linux controllers and owns an explicitly selected set of exclusive grabs.
 ///
 /// Call [`poll`](Self::poll) regularly to detect disconnects and reconcile inventory.
-/// This owner does not read input events, normalize controls, or create outputs.
+/// Only [`poll_stream`](Self::poll_stream) opts into event reads; no API creates outputs.
 /// It is thread-affine through its udev monitor and never automatically reacquires.
 /// A polling error releases capture and invalidates the owner; construct a new one.
 #[derive(Debug)]
@@ -26,6 +30,7 @@ pub struct Capture {
     last_scan: Instant,
     pending: bool,
     valid: bool,
+    stream_cursor: usize,
 }
 
 impl Capture {
@@ -49,6 +54,7 @@ impl Capture {
             last_scan: now,
             pending: false,
             valid: true,
+            stream_cursor: 0,
         };
         capture.refresh(true)?;
         Ok(capture)
@@ -112,6 +118,7 @@ impl Capture {
     /// Reports ungrab failures after still closing every capture descriptor.
     pub fn release(&mut self) -> Result<(), CaptureError> {
         self.ids.clear();
+        self.stream_cursor = 0;
         transaction::release(&mut self.held)
     }
 

@@ -1,9 +1,9 @@
 use evdev::raw_stream::RawDevice;
 use nix::poll::PollFlags;
 use std::{
-    fs::{self, File},
+    fs::{self, OpenOptions},
     io,
-    os::unix::fs::MetadataExt,
+    os::unix::fs::{MetadataExt, OpenOptionsExt},
 };
 
 use super::{
@@ -31,7 +31,10 @@ impl Handle {
         match monitor {
             Monitor::Native(_) => {
                 // Never use RawDevice::open: it attempts O_RDWR before O_RDONLY.
-                let file = File::open(&info.metadata.node)
+                let file = OpenOptions::new()
+                    .read(true)
+                    .custom_flags(nix::libc::O_NONBLOCK)
+                    .open(&info.metadata.node)
                     .map_err(|e| CaptureError::device("open read-only", info, e))?;
                 let stamp = stamp(
                     &file

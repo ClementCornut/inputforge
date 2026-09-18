@@ -1,4 +1,4 @@
-//! Linux controller discovery and opt-in exclusive capture without event streaming.
+//! Linux controller discovery, opt-in exclusive capture and native event streaming.
 //!
 //! [`discover`] remains read-only and retains no descriptors. [`Capture`] requires
 //! explicit selection to grab devices and regular polling to detect their loss.
@@ -30,4 +30,7 @@ pub use discovery::discover;
 
 mod capture;
 #[doc(inline)]
-pub use capture::{Capture, CaptureError};
+pub use capture::{
+    Capture, CaptureError, NativeChange, NativeControl, NativeHat, NativeState, SnapshotKind,
+    StreamStatus, StreamUpdate,
+};

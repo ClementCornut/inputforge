@@ -10,6 +10,7 @@ pub(super) struct Held {
     pub info: Device,
     pub handle: Handle,
     grabbed: bool,
+    pub stream: Option<super::stream::Stream>,
 }
 
 impl Held {
@@ -25,10 +26,9 @@ impl Held {
 
 impl Drop for Held {
     fn drop(&mut self) {
-        // Closing the owned descriptor releases the kernel grab even if this ioctl fails.
-        if let Err(error) = self.ungrab() {
-            tracing::warn!(%error, "capture.ungrab_on_drop_failed");
-        }
+        // Closing releases the grab even if the ioctl fails. Never log here: other
+        // selected descriptors may still be held. Explicit release collects errors.
+        let _ = self.ungrab();
     }
 }
 
@@ -151,6 +151,7 @@ impl Capture {
                     info,
                     handle,
                     grabbed: false,
+                    stream: None,
                 });
             }
             for held in &mut pending {
