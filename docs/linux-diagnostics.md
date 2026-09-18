@@ -1,5 +1,9 @@
 # Linux discovery diagnostics (Slice 2a)
 
+Exclusive-grab behavior is covered separately by the bounded
+[Linux capture acceptance example](linux-capture.md); this diagnostic remains
+read-only and does not test capture readiness or busy state.
+
 From the repository checkout, run in your normal, unprivileged desktop session:
 
 ```sh

@@ -2761,6 +2761,7 @@ dependencies = [
  "hex",
  "indexmap",
  "inputforge-autostart",
+ "nix 0.29.0",
  "opener",
  "parking_lot",
  "sdl3",

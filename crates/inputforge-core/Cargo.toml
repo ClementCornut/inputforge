@@ -12,7 +12,7 @@ categories.workspace = true
 
 [features]
 default = []
-evdev-input = ["dep:evdev", "dep:udev"]
+evdev-input = ["dep:evdev", "dep:udev", "dep:nix"]
 sdl3-input = ["dep:sdl3"]
 vjoy-output = ["dep:vjoy"]
 win32-io = ["dep:windows"]
@@ -48,6 +48,7 @@ windows = { workspace = true, optional = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 evdev = { workspace = true, optional = true }
 udev = { workspace = true, optional = true }
+nix = { workspace = true, optional = true, features = ["poll"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }
@@ -55,3 +56,8 @@ inputforge-autostart = { workspace = true, features = ["mock"] }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "linux-capture"
+path = "examples/linux_capture/main.rs"
+required-features = ["evdev-input"]

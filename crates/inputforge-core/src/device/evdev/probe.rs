@@ -12,6 +12,24 @@ pub(super) fn read(metadata: &Metadata) -> Result<Vec<AxisInfo>, Issue> {
 fn read_file(metadata: &Metadata, file: File) -> Result<Vec<AxisInfo>, Issue> {
     let device = RawDevice::from_fd(file.into())
         .map_err(|error| Issue::new("query evdev metadata", &metadata.node, &error))?;
+    verify(metadata, &device)?;
+    device
+        .get_absinfo()
+        .map(|axes| {
+            axes.map(|(code, axis)| AxisInfo {
+                code: code.0,
+                minimum: axis.minimum(),
+                maximum: axis.maximum(),
+                fuzz: axis.fuzz(),
+                flat: axis.flat(),
+                resolution: axis.resolution(),
+            })
+            .collect()
+        })
+        .map_err(|error| Issue::new("query ABS metadata", &metadata.node, &error))
+}
+
+pub(super) fn verify(metadata: &Metadata, device: &RawDevice) -> Result<(), Issue> {
     let id = device.input_id();
     let same = metadata.bus == Some(id.bus_type().0)
         && metadata.diagnostics.vendor_id == Some(id.vendor())
@@ -58,20 +76,7 @@ fn read_file(metadata: &Metadata, file: File) -> Result<Vec<AxisInfo>, Issue> {
             ),
         ));
     }
-    device
-        .get_absinfo()
-        .map(|axes| {
-            axes.map(|(code, axis)| AxisInfo {
-                code: code.0,
-                minimum: axis.minimum(),
-                maximum: axis.maximum(),
-                fuzz: axis.fuzz(),
-                flat: axis.flat(),
-                resolution: axis.resolution(),
-            })
-            .collect()
-        })
-        .map_err(|error| Issue::new("query ABS metadata", &metadata.node, &error))
+    Ok(())
 }
 
 #[cfg(test)]

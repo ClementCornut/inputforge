@@ -66,6 +66,7 @@ mimalloc = "0.1"
 sdl3 = "0.20"
 evdev = { version = "0.13.2", default-features = false }
 udev = { version = "0.9.3", default-features = false }
+nix = { version = "0.29", default-features = false }
 
 # Filesystem
 dirs = "7"

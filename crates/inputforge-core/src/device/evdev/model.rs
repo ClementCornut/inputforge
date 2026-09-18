@@ -7,7 +7,7 @@ use std::{
 };
 
 /// Information available before opening an event node.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Metadata {
     pub node: PathBuf,
     pub name: String,
@@ -28,7 +28,7 @@ pub struct Metadata {
 }
 
 /// File ownership is context, not proof of effective ACL access.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Ownership {
     pub uid: u32,
     pub gid: u32,

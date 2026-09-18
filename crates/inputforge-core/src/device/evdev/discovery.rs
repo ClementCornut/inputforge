@@ -11,6 +11,13 @@ use std::io;
 /// # Errors
 /// Returns an error if libudev cannot initialize or enumerate the input subsystem.
 pub fn discover() -> io::Result<Report> {
+    Ok(Report {
+        devices: scan()?,
+        uinput: super::metadata::uinput_status(),
+    })
+}
+
+pub(super) fn scan() -> io::Result<Vec<Device>> {
     let mut enumerator = udev::Enumerator::new()?;
     enumerator.match_subsystem("input")?;
     enumerator.match_sysname("event*")?;
@@ -18,9 +25,7 @@ pub fn discover() -> io::Result<Report> {
         .scan_devices()?
         .map(|device| super::metadata::read(&device))
         .collect();
-    let mut report = assemble(entries, super::probe::read);
-    report.uinput = super::metadata::uinput_status();
-    Ok(report)
+    Ok(assemble(entries, super::probe::read).devices)
 }
 
 pub(super) fn assemble(
