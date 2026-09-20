@@ -3,8 +3,10 @@
 use std::collections::HashSet;
 
 use crate::error::Result;
-use crate::types::{DeviceId, DeviceInfo, InputEvent};
+use crate::profile::controllers::{AxisBinding, DeviceBinding};
+use crate::types::{AxisPolarity, DeviceId, DeviceInfo, InputEvent};
 
+use super::InputUpdate;
 use super::traits::{DeviceHider, HotplugEvent, InputSource};
 
 /// Mock implementation of [`InputSource`] for testing.
@@ -25,8 +27,33 @@ impl InputSource for MockInputSource {
         self.devices.clone()
     }
 
-    fn poll(&mut self, out: &mut Vec<InputEvent>) {
-        out.append(&mut self.events);
+    fn binding_table(&self, id: &DeviceId) -> Result<Option<DeviceBinding>> {
+        Ok(self
+            .devices
+            .iter()
+            .find(|d| &d.id == id)
+            .map(|info| DeviceBinding {
+                observed_layout: None,
+                device: info.id.clone(),
+                axes: (0..info.axes)
+                    .map(|index| AxisBinding {
+                        code: u16::from(index),
+                        minimum: i32::from(i16::MIN),
+                        maximum: i32::from(i16::MAX),
+                        polarity: AxisPolarity::default(),
+                    })
+                    .collect(),
+                buttons: (0..info.buttons).map(u16::from).collect(),
+                hats: (0..info.hats).collect(),
+                unavailable: Vec::new(),
+            }))
+    }
+
+    fn poll(&mut self, out: &mut Vec<InputUpdate>) -> Result<()> {
+        if !self.events.is_empty() {
+            out.push(InputUpdate::Frame(std::mem::take(&mut self.events)));
+        }
+        Ok(())
     }
 
     fn is_device_connected(&self, id: &DeviceId) -> bool {
@@ -119,10 +146,10 @@ mod tests {
             ..Default::default()
         };
         let mut polled = Vec::new();
-        source.poll(&mut polled);
+        source.poll(&mut polled).unwrap();
         assert_eq!(polled.len(), 1);
         let mut empty = Vec::new();
-        source.poll(&mut empty);
+        source.poll(&mut empty).unwrap();
         assert!(empty.is_empty(), "poll should drain events");
     }
 

@@ -48,6 +48,23 @@ pub(crate) struct CoreState {
 pub(crate) struct LiveCaptureCore;
 
 impl LiveCaptureCore {
+    pub(crate) fn step_session(
+        mut prev: CoreState,
+        snapshot: &[InputCacheEntry],
+        now: Instant,
+        previous_generation: Option<u64>,
+        epoch: crate::context::session::CaptureEpoch,
+    ) -> (CoreState, Option<InputAddress>) {
+        if previous_generation != Some(epoch.generation) || !epoch.ready || !epoch.allowed {
+            prev.baseline = None;
+            prev.pending = None;
+        }
+        if !epoch.ready || !epoch.allowed {
+            return (prev, None);
+        }
+        Self::step(prev, snapshot, now)
+    }
+
     #[allow(
         clippy::too_many_lines,
         reason = "single state-transition fn, splitting it would obscure the branch structure"

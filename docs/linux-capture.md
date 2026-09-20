@@ -94,13 +94,12 @@ during acceptance. Use three controller IDs and perform one check at a time:
    release calls. There must be no event-stream `read` on those descriptors, no
    `/dev/uinput` open or write, and a failed multi-device attempt must issue release
    for every earlier successful grab.
-9. Recheck the standalone read-only diagnostics and normal Linux application
-   startup rejection after completing capture acceptance.
+9. Recheck the standalone read-only diagnostics after capture acceptance.
+   Integrated app acceptance is described separately in [routing](linux-routing.md).
 
-The existing diagnostics remain read-only and never test busy state. Normal Linux
-application startup still rejects the unavailable backend, and
-`inputforge-app --diagnose-linux` remains rejected. This example does not change
-either behavior. Native-game/Proton output, binding translation, calibration,
+The existing diagnostics remain read-only and never test busy state.
+`inputforge-app --diagnose-linux` remains rejected; use the standalone diagnostics.
+Normal Linux startup now opens the integrated editor; see [routing](linux-routing.md). Native-game/Proton output, binding translation, calibration,
 packaging and permission setup remain outside this slice.
 
 ## Recorded Slice 2b acceptance

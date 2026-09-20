@@ -1,7 +1,9 @@
 // Rust guideline compliant 2026-03-06
 
+pub mod controllers;
 pub mod library;
 pub mod manager;
+mod reconcile;
 mod types;
 
 #[doc(inline)]
@@ -282,6 +284,7 @@ pub struct Profile {
     mappings: Vec<Mapping>,
     calibrations: Vec<CalibrationEntry>,
     settings: ProfileSettings,
+    controllers: Option<controllers::ControllerConfig>,
 }
 
 /// Internal TOML-level representation of the `[profile]` table.
@@ -303,6 +306,10 @@ struct ProfileRaw {
     mappings: Vec<Mapping>,
     #[serde(default)]
     calibrations: Vec<CalibrationEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    controllers: Option<controllers::ControllerConfig>,
+    #[serde(default, skip_serializing)]
+    linux: Option<controllers::ControllerConfig>,
 }
 
 impl Profile {
@@ -324,6 +331,7 @@ impl Profile {
             mappings,
             calibrations,
             settings: ProfileSettings { startup_mode },
+            controllers: None,
         }
     }
 
@@ -383,6 +391,20 @@ impl Profile {
     pub fn save(&self, path: &Path) -> Result<()> {
         let toml_str = self.to_toml()?;
         std::fs::write(path, toml_str)?;
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn controllers(&self) -> Option<&controllers::ControllerConfig> {
+        self.controllers.as_ref()
+    }
+
+    /// Replace Linux configuration after validation. Does not acquire hardware.
+    /// # Errors
+    /// Returns an error for an invalid native control table.
+    pub fn set_controllers(&mut self, linux: controllers::ControllerConfig) -> Result<()> {
+        linux.validate()?;
+        self.controllers = Some(linux);
         Ok(())
     }
 
@@ -658,7 +680,16 @@ impl Profile {
     }
 
     /// Validate and convert from the raw TOML representation.
-    fn from_raw(raw: ProfileRaw) -> Result<Self> {
+    fn from_raw(mut raw: ProfileRaw) -> Result<Self> {
+        if raw.controllers.is_none() {
+            raw.controllers = raw.linux.take().map(|mut config| {
+                config.legacy_axis_settings = true;
+                config
+            });
+        }
+        if let Some(linux) = &raw.controllers {
+            linux.validate()?;
+        }
         // Validate startup_mode exists in the modes.
         if !raw.modes.contains(&raw.profile.startup_mode) {
             return Err(EngineError::InvalidConfig {
@@ -695,6 +726,7 @@ impl Profile {
         }
 
         Ok(Self {
+            controllers: raw.controllers,
             id: raw.profile.id,
             name: raw.profile.name,
             devices: raw.devices,
@@ -710,6 +742,8 @@ impl Profile {
     /// Convert to the raw TOML representation for serialization.
     fn to_raw(&self) -> ProfileRaw {
         ProfileRaw {
+            linux: None,
+            controllers: self.controllers.clone(),
             modes: self.modes.clone(),
             profile: ProfileMeta {
                 id: self.id.clone(),
@@ -1165,6 +1199,8 @@ long_press = []
         }
 
         let raw = ProfileRaw {
+            linux: None,
+            controllers: None,
             modes: Modes::new(vec!["Default".to_owned()]).unwrap(),
             profile: ProfileMeta {
                 id: ProfileId::new(),

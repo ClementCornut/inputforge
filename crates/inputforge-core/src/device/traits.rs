@@ -1,12 +1,14 @@
 // Rust guideline compliant 2026-03-03
 
+use super::InputUpdate;
 use crate::error::Result;
-use crate::types::{DeviceDiagnostics, DeviceId, DeviceInfo, InputEvent};
+use crate::profile::controllers::DeviceBinding;
+use crate::types::{DeviceDiagnostics, DeviceId, DeviceInfo, InputId};
 
 /// Reads physical input devices (joysticks, pedals, throttles).
 ///
 /// Implementations wrap a platform-specific input library (e.g., SDL3)
-/// and normalize events into [`InputEvent`] values.
+/// and normalize events into [`crate::types::InputEvent`] values.
 ///
 /// # Thread Safety
 ///
@@ -23,7 +25,72 @@ pub trait InputSource {
     ///
     /// Using an output parameter lets callers reuse the allocation buffer
     /// across frames instead of allocating a new `Vec` each time.
-    fn poll(&mut self, out: &mut Vec<InputEvent>);
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when input ownership or streaming fails.
+    fn poll(&mut self, out: &mut Vec<InputUpdate>) -> Result<()>;
+
+    /// Whether the backend can acquire exclusive physical access.
+    fn supports_exclusive(&self) -> bool {
+        false
+    }
+    /// Install metadata only.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for invalid configuration.
+    fn configure(&mut self, _bindings: &[DeviceBinding]) -> Result<()> {
+        Ok(())
+    }
+    /// Acquire a complete selection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for unavailable input.
+    fn acquire(&mut self, _ids: &[DeviceId]) -> Result<()> {
+        Ok(())
+    }
+    /// Release exclusive ownership while preserving passive monitoring.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if exclusive ownership could not be released cleanly.
+    fn release(&mut self) -> Result<()> {
+        Ok(())
+    }
+    /// Refresh failed discovery explicitly.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for unavailable inventory.
+    fn refresh(&mut self) -> Result<()> {
+        Ok(())
+    }
+    /// Discover a frozen native table without grabbing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for invalid capabilities.
+    fn binding_table(&self, _id: &DeviceId) -> Result<Option<DeviceBinding>> {
+        Ok(None)
+    }
+
+    /// Request a fresh native resting sample for explicit axis redetection.
+    /// # Errors
+    /// Returns an error when the device is unavailable.
+    fn request_axis_sample(&mut self, _device: &DeviceId, _axis: u8) -> Result<()> {
+        Ok(())
+    }
+
+    /// Confirm a user-selected native control after a positional layout changed.
+    /// # Errors
+    /// Rejects controls that the adapter cannot currently identify.
+    fn confirm_binding(&mut self, _device: &DeviceId, _input: &InputId) -> Result<DeviceBinding> {
+        Err(crate::error::EngineError::InvalidConfig {
+            reason: "This controller cannot confirm a native input binding".into(),
+        })
+    }
 
     /// Check whether a specific device is still connected.
     fn is_device_connected(&self, id: &DeviceId) -> bool;

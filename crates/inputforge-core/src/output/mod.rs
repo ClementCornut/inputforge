@@ -2,6 +2,9 @@
 
 pub mod traits;
 
+#[cfg(all(target_os = "linux", feature = "uinput-output"))]
+pub mod uinput;
+
 #[cfg(all(target_os = "windows", feature = "vjoy-output"))]
 pub mod vjoy_output;
 
@@ -26,3 +29,7 @@ pub use keyboard::KeyboardOutput;
 pub use mock::{
     KeyboardCall, MockKeyboardSink, MockMouseSink, MockOutputSink, MouseCall, OutputCall,
 };
+
+pub mod unsupported;
+#[cfg(all(target_os = "windows", feature = "vjoy-output"))]
+mod vjoy_session;

@@ -6,7 +6,9 @@
 //! new capture cancels any in-flight one, there is exactly one
 //! capture at a time across the entire GUI.
 
+mod confirmation;
 mod machine;
+pub(crate) use confirmation::confirm_binding;
 #[cfg(test)]
 mod tests;
 
@@ -123,25 +125,42 @@ pub(crate) fn use_live_capture_provider() -> LiveCapture {
 
     let ctx = use_context::<AppContext>();
 
+    let mut previous_generation = use_signal(|| None::<u64>);
+
     // Polling effect, subscribes to ctx.live as wake gate.
     use_effect(move || {
-        let _live = ctx.live.read();
-
+        let _wake = ctx.live.read().capture_epoch;
+        let (snapshot, epoch) = {
+            let Some(guard) = ctx.state.try_read() else {
+                return;
+            };
+            (
+                guard.input_cache.clone_compact(),
+                crate::context::session::CaptureEpoch::from_state(&guard),
+            )
+        };
+        let previous = *previous_generation.peek();
+        if previous != Some(epoch.generation) && captured.peek().is_some() {
+            let mut cap = captured;
+            cap.set(None);
+        }
+        if !epoch.allowed {
+            if *active.peek() || captured.peek().is_some() {
+                cancel.call(());
+            }
+            if previous != Some(epoch.generation) {
+                previous_generation.set(Some(epoch.generation));
+            }
+            return;
+        }
         if !*active.read() {
             return;
         }
 
-        let snapshot = {
-            let Some(guard) = ctx.state.try_read() else {
-                return;
-            };
-            let snap = guard.input_cache.clone_compact();
-            drop(guard);
-            snap
-        };
-
         let prev = core_state.peek().clone();
-        let (next, fired) = LiveCaptureCore::step(prev, &snapshot, Instant::now());
+        let (next, fired) =
+            LiveCaptureCore::step_session(prev, &snapshot, Instant::now(), previous, epoch);
+        previous_generation.set(Some(epoch.generation));
         let mut s = core_state;
         if *s.peek() != next {
             s.set(next);

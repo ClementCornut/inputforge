@@ -1,3 +1,7 @@
+#![allow(
+    clippy::self_named_module_files,
+    reason = "retain existing context.rs while extracting session projections"
+)]
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
@@ -100,6 +104,7 @@ pub(crate) struct AppContext {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct MetaSnapshot {
+    pub session: inputforge_core::state::SessionState,
     pub engine_status: EngineStatus,
     pub current_mode: String,
     pub profile_name: Option<String>,
@@ -161,6 +166,8 @@ pub(crate) struct SnapshotRowView {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct ConfigSnapshot {
+    pub controllers: Option<inputforge_core::profile::controllers::ControllerConfig>,
+    pub axis_settings: HashMap<DeviceId, Vec<inputforge_core::settings::AxisSetting>>,
     pub devices: Vec<DeviceState>,
     pub virtual_devices: Vec<VirtualDeviceConfig>,
     pub mapped_inputs: HashSet<InputAddress>,
@@ -266,6 +273,7 @@ pub(crate) struct GlyphFlags {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct LiveSnapshot {
+    pub capture_epoch: session::CaptureEpoch,
     pub device_inputs: Vec<DeviceInputValues>,
     pub output_values: Vec<VjoyOutputValues>,
     pub output_activity: Vec<OutputActivitySnapshot>,
@@ -359,6 +367,7 @@ impl MetaSnapshot {
             })
             .collect();
         Self {
+            session: s.session.clone(),
             engine_status: s.engine_status,
             current_mode: s.current_mode.clone(),
             profile_name: s.active_profile.as_ref().map(|p| p.name().to_owned()),
@@ -548,7 +557,7 @@ impl LiveSnapshot {
                 buttons: (1..=v.button_count)
                     .map(|i| s.output_cache.get_button(v.device_id, i))
                     .collect(),
-                hats: (0..v.hat_count)
+                hats: (1..=v.hat_count)
                     .map(|i| s.output_cache.get_hat(v.device_id, i))
                     .collect(),
             })
@@ -565,6 +574,7 @@ impl LiveSnapshot {
         output_activity.sort_by_cached_key(|entry| format!("{:?}", entry.owner));
 
         Self {
+            capture_epoch: session::CaptureEpoch::from_state(s),
             device_inputs,
             output_values,
             output_activity,
@@ -951,6 +961,16 @@ impl ConfigSnapshot {
             }
         }
         Self {
+            controllers: s
+                .active_profile
+                .as_ref()
+                .and_then(|p| p.controllers())
+                .cloned(),
+            axis_settings: s
+                .device_registry
+                .iter()
+                .map(|(id, record)| (id.clone(), record.axis_settings.clone()))
+                .collect(),
             devices: s.devices.clone(),
             virtual_devices: s.virtual_devices.clone(),
             mapped_inputs,
@@ -1260,6 +1280,7 @@ mod tests {
         state.device_registry.insert(
             DeviceId("dev-old".to_owned()),
             inputforge_core::settings::DeviceRecord {
+                axis_settings: Vec::new(),
                 info: remembered,
                 diagnostics: DeviceDiagnostics::default(),
                 last_seen_unix_ms: Some(1),
@@ -1419,7 +1440,7 @@ mod tests {
 
         state.output_cache.set_axis(1, VJoyAxis::X, -0.25);
         state.output_cache.set_button(1, 1, true);
-        state.output_cache.set_hat(1, 0, HatDirection::SE);
+        state.output_cache.set_hat(1, 1, HatDirection::SE);
 
         let cfg = ConfigSnapshot::from_state(&state, None);
         let live = LiveSnapshot::from_state(&state, &cfg);
@@ -2212,6 +2233,7 @@ mod tests {
         state.device_registry.insert(
             DeviceId("dev-old".to_owned()),
             inputforge_core::settings::DeviceRecord {
+                axis_settings: Vec::new(),
                 info: test_device("dev-old", "Old Pedals", 0, 0, 0),
                 diagnostics: DeviceDiagnostics::default(),
                 last_seen_unix_ms: Some(1),
@@ -2254,6 +2276,7 @@ mod tests {
         state.device_registry.insert(
             DeviceId("dev-1".to_owned()),
             inputforge_core::settings::DeviceRecord {
+                axis_settings: Vec::new(),
                 info: test_device("dev-1", "Stale Stick", 0, 0, 0),
                 diagnostics: DeviceDiagnostics::default(),
                 last_seen_unix_ms: Some(1),
@@ -2356,3 +2379,5 @@ mod tests {
         assert_eq!(snapshot.default_long_press_threshold_ms, 725);
     }
 }
+
+pub(crate) mod session;

@@ -6,7 +6,7 @@ use crate::error::Result;
 use crate::types::PhysicalKey;
 use crate::types::{HatDirection, KeyCombo, VJoyAxis, VirtualDeviceConfig};
 
-use super::traits::{KeyboardSink, MouseSink, OutputSink};
+use super::traits::{ControllerCapabilities, KeyboardSink, MouseSink, OutputSink};
 
 /// A recorded output call for test assertions.
 #[derive(Debug, Clone, PartialEq)]
@@ -27,7 +27,8 @@ pub enum OutputCall {
         hat: u8,
         direction: HatDirection,
     },
-    ReleaseDevice(u8),
+    Stop,
+    Neutralize,
     Flush,
 }
 
@@ -57,8 +58,24 @@ impl MockOutputSink {
 }
 
 impl OutputSink for MockOutputSink {
-    fn create_device(&mut self, config: &VirtualDeviceConfig) -> Result<()> {
-        self.calls.push(OutputCall::CreateDevice(config.clone()));
+    fn capabilities(&self) -> ControllerCapabilities {
+        ControllerCapabilities {
+            configurable: true,
+            ..ControllerCapabilities::default()
+        }
+    }
+
+    fn start(&mut self, configs: &[VirtualDeviceConfig]) -> Result<()> {
+        self.calls
+            .extend(configs.iter().cloned().map(OutputCall::CreateDevice));
+        Ok(())
+    }
+    fn neutralize(&mut self) -> Result<()> {
+        self.calls.push(OutputCall::Neutralize);
+        Ok(())
+    }
+    fn stop(&mut self) -> Result<()> {
+        self.calls.push(OutputCall::Stop);
         Ok(())
     }
 
@@ -86,11 +103,6 @@ impl OutputSink for MockOutputSink {
             hat,
             direction,
         });
-        Ok(())
-    }
-
-    fn release_device(&mut self, device: u8) -> Result<()> {
-        self.calls.push(OutputCall::ReleaseDevice(device));
         Ok(())
     }
 
@@ -219,8 +231,13 @@ mod tests {
             button_count: 8,
             hat_count: 1,
         };
-        mock.create_device(&config).unwrap();
+        mock.start(std::slice::from_ref(&config)).unwrap();
         assert_eq!(mock.calls(), &[OutputCall::CreateDevice(config)]);
+    }
+
+    #[test]
+    fn mock_output_layout_is_configurable() {
+        assert!(MockOutputSink::new().capabilities().configurable);
     }
 
     #[test]
@@ -268,8 +285,8 @@ mod tests {
     #[test]
     fn mock_records_release_device() {
         let mut mock = MockOutputSink::new();
-        mock.release_device(2).unwrap();
-        assert_eq!(mock.calls(), &[OutputCall::ReleaseDevice(2)]);
+        mock.stop().unwrap();
+        assert_eq!(mock.calls(), &[OutputCall::Stop]);
     }
 
     #[test]

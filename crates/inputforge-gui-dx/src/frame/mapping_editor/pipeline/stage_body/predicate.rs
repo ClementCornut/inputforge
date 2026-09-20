@@ -60,7 +60,8 @@ use crate::frame::mapping_editor::pipeline::replace_at_path;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 use crate::frame::mapping_list::source_label;
 use crate::patterns::live_capture::{
-    CAPTURE_PROMPT, CaptureFilter, LiveCapture, is_current_capture_session, rebind_composite_class,
+    CAPTURE_PROMPT, CaptureFilter, LiveCapture, confirm_binding, is_current_capture_session,
+    rebind_composite_class,
 };
 
 // ---------------------------------------------------------------------------
@@ -291,6 +292,8 @@ fn PredicateInputRow(
 
     // Watch `capture.captured`: when we armed it, forward the new address.
     let input_for_effect = input.clone();
+    let confirm_commands = ctx.commands.clone();
+    let confirm_meta = ctx.meta;
     use_effect(move || {
         let captured_addr = capture.captured.read().clone();
         if !is_current_capture_session(*armed_session.peek(), *capture.session.peek()) {
@@ -305,8 +308,10 @@ fn PredicateInputRow(
         let mut cap = capture.captured;
         cap.set(None);
 
-        // Skip no-op captures (same address re-confirmed).
-        if new_addr == input_for_effect {
+        // Confirm ambiguity even when the logical address stays unchanged.
+        if confirm_binding(&confirm_commands, &confirm_meta.peek().session, &new_addr).is_err()
+            || new_addr == input_for_effect
+        {
             return;
         }
 

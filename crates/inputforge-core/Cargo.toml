@@ -13,6 +13,7 @@ categories.workspace = true
 [features]
 default = []
 evdev-input = ["dep:evdev", "dep:udev", "dep:nix"]
+uinput-output = ["dep:evdev", "dep:udev", "dep:nix", "nix/ioctl"]
 sdl3-input = ["dep:sdl3"]
 vjoy-output = ["dep:vjoy"]
 win32-io = ["dep:windows"]
@@ -61,3 +62,8 @@ workspace = true
 name = "linux-capture"
 path = "examples/linux_capture/main.rs"
 required-features = ["evdev-input"]
+
+[[example]]
+name = "linux-uinput"
+path = "examples/linux_uinput/main.rs"
+required-features = ["uinput-output"]

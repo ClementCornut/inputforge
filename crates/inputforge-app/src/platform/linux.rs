@@ -1,39 +1,30 @@
-use anyhow::{Result, anyhow};
-
 use super::PlatformBackends;
-
-const UNAVAILABLE_MESSAGE: &str = "Linux input and output backends are unavailable in Slice 1; evdev and uinput arrive in later slices.";
-
-pub(super) fn preflight() -> Result<()> {
-    Err(anyhow!(UNAVAILABLE_MESSAGE))
-}
-
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Slice 1 preflight exits before backend construction"
-    )
+use anyhow::Result;
+use inputforge_core::{
+    device::evdev::EvdevInput,
+    output::{uinput::UinputSink, unsupported::Unsupported},
+};
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "matches the fallible platform contract on Windows"
 )]
 pub(super) fn create() -> Result<PlatformBackends> {
-    Err(anyhow!(UNAVAILABLE_MESSAGE))
+    Ok(PlatformBackends {
+        input: Box::new(EvdevInput::new()),
+        controller: Box::new(UinputSink::new()),
+        keyboard: Box::new(Unsupported),
+        mouse: Box::new(Unsupported),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
-    fn preflight_returns_stable_unavailable_error() {
-        let error = preflight().expect_err("Linux preflight must reject startup");
-        assert_eq!(error.to_string(), UNAVAILABLE_MESSAGE);
-    }
-
-    #[test]
-    fn create_returns_the_same_unavailable_error() {
-        let Err(error) = create() else {
-            panic!("Linux must not construct placeholder backends");
-        };
-        assert_eq!(error.to_string(), UNAVAILABLE_MESSAGE);
+    fn startup_backends_are_real_and_inert_until_polled() {
+        let backends = create().unwrap();
+        assert!(backends.input.supports_exclusive());
+        assert!(backends.input.enumerate_devices().is_empty());
+        assert!(backends.controller.list_devices().is_empty());
     }
 }

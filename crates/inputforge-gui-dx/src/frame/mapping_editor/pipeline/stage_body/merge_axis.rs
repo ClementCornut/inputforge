@@ -58,7 +58,8 @@ use crate::frame::mapping_editor::pipeline::replace_at_path;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 use crate::frame::mapping_list::source_label;
 use crate::patterns::live_capture::{
-    CAPTURE_PROMPT, CaptureFilter, LiveCapture, is_current_capture_session, rebind_composite_class,
+    CAPTURE_PROMPT, CaptureFilter, LiveCapture, confirm_binding, is_current_capture_session,
+    rebind_composite_class,
 };
 
 /// Malformed-hint message shown when the [`MergeAxisBody`] secondary input
@@ -164,6 +165,7 @@ pub(crate) fn MergeAxisBody(
     let cmd_tx_cap = ctx.commands.clone();
     let mut undo_log_cap = editor.undo_log;
     let cfg_for_cap = ctx.config;
+    let meta_for_cap = ctx.meta;
     let mut captured_mut = capture.captured;
 
     use_effect(move || {
@@ -206,6 +208,14 @@ pub(crate) fn MergeAxisBody(
             name: current_name.clone(),
             actions: root_for_cap.clone(),
         };
+
+        if confirm_binding(&cmd_tx_cap, &meta_for_cap.peek().session, &new_addr).is_err()
+            || new_addr == second_input_for_cap
+        {
+            armed_session.set(None);
+            captured_mut.set(None);
+            return;
+        }
 
         // Amendment 3: dispatch first; push undo only on success.
         if cmd_tx_cap

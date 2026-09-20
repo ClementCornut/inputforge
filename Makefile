@@ -34,7 +34,7 @@ Usage: make <command>
     help       Show this help
 
 Overrides: CARGO=cargo DX=dx ARGS="extra arguments"
-Full app startup and installer packaging currently require Windows.
+Linux and Windows support app startup. NSIS installer packaging requires Windows.
 
 endef
 

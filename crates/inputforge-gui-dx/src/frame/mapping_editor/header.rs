@@ -34,7 +34,8 @@ use crate::frame::mapping_editor::undo_log::{LabelArgs, UndoKind, format_undo_la
 use crate::frame::mapping_list::source_label;
 use crate::frame::view_state::ViewState;
 use crate::patterns::live_capture::{
-    CAPTURE_PROMPT, CaptureFilter, LiveCapture, is_current_capture_session, rebind_composite_class,
+    CAPTURE_PROMPT, CaptureFilter, LiveCapture, confirm_binding, is_current_capture_session,
+    rebind_composite_class,
 };
 
 #[component]
@@ -95,6 +96,7 @@ pub(crate) fn Header(
     let cmd_tx_for_capture = ctx.commands.clone();
     let mut undo_log_for_capture = editor.undo_log;
     let cfg_for_capture = ctx.config;
+    let meta_for_capture = ctx.meta;
 
     use_effect(move || {
         let captured_addr = capture.captured.read().clone();
@@ -106,6 +108,17 @@ pub(crate) fn Header(
         };
 
         let (mode, old_addr) = mapping_key_for_capture.clone();
+        if confirm_binding(
+            &cmd_tx_for_capture,
+            &meta_for_capture.peek().session,
+            &new_addr,
+        )
+        .is_err()
+        {
+            armed_session.set(None);
+            capture.cancel.call(());
+            return;
+        }
 
         // No-op rebind: the user pressed the input that is already mapped
         // here. Skip dispatch + undo, mirroring the rename path's

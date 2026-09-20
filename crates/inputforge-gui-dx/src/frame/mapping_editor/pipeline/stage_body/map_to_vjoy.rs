@@ -98,6 +98,23 @@ const ALL_AXES: [VJoyAxis; 8] = [
     VJoyAxis::Slider1,
 ];
 
+fn valid_output(config: &inputforge_core::types::VirtualDeviceConfig, output: &OutputId) -> bool {
+    match output {
+        OutputId::Axis { id } => config.axes.contains(id),
+        OutputId::Button { id } => *id > 0 && *id <= config.button_count,
+        OutputId::Hat { id } => *id > 0 && *id <= config.hat_count,
+    }
+}
+fn available_outputs(config: &inputforge_core::types::VirtualDeviceConfig) -> Vec<OutputId> {
+    config
+        .axes
+        .iter()
+        .map(|id| OutputId::Axis { id: *id })
+        .chain((1..=config.button_count).map(|id| OutputId::Button { id }))
+        .chain((1..=config.hat_count).map(|id| OutputId::Hat { id }))
+        .collect()
+}
+
 /// `MapToVJoy` body: device picker + axis/button/hat picker.
 #[component]
 pub(crate) fn MapToVJoyBody(
@@ -125,11 +142,7 @@ pub(crate) fn MapToVJoyBody(
         .virtual_devices
         .iter()
         .find(|v| v.device_id == output.device);
-    let output_valid = device_cfg.is_some_and(|v| match &output.output {
-        OutputId::Axis { id } => v.axes.contains(id),
-        OutputId::Button { id } => (*id as usize) < v.button_count as usize,
-        OutputId::Hat { id } => (*id as usize) < v.hat_count as usize,
-    });
+    let output_valid = device_cfg.is_some_and(|v| valid_output(v, &output.output));
     let mut malformed = editor.malformed_hints;
     if output_valid {
         malformed.write().remove(&stage_id);
@@ -171,35 +184,19 @@ pub(crate) fn MapToVJoyBody(
     // back to showing only the current (possibly stale) output so the UI
     // does not collapse entirely while the snapshot catches up.
     let output_options: Vec<SelectOption> = if let Some(vd) = device_cfg {
-        let mut opts: Vec<SelectOption> = vd
-            .axes
-            .iter()
-            .map(|&a| SelectOption {
-                value: output_id_key(&OutputId::Axis { id: a }),
-                label: axis_label(a).to_owned(),
+        available_outputs(vd)
+            .into_iter()
+            .map(|id| SelectOption {
+                value: output_id_key(&id),
+                label: match id {
+                    OutputId::Axis { id } => axis_label(id).to_owned(),
+                    OutputId::Button { id } => format!("Button {id}"),
+                    OutputId::Hat { id } => format!("Hat {id}"),
+                },
                 disabled: false,
                 class: None,
             })
-            .collect();
-        for i in 0..vd.button_count {
-            let id = OutputId::Button { id: i };
-            opts.push(SelectOption {
-                value: output_id_key(&id),
-                label: format!("Button {i}"),
-                disabled: false,
-                class: None,
-            });
-        }
-        for i in 0..vd.hat_count {
-            let id = OutputId::Hat { id: i };
-            opts.push(SelectOption {
-                value: output_id_key(&id),
-                label: format!("Hat {i}"),
-                disabled: false,
-                class: None,
-            });
-        }
-        opts
+            .collect()
     } else {
         // Fallback: show the current output so the picker is not empty.
         let key = output_id_key(&output.output);
@@ -387,5 +384,31 @@ pub(crate) fn MapToVJoyBody(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod linux_numbering_tests {
+    use super::*;
+    #[test]
+    fn picker_offers_first_and_last_one_based_controls_and_rejects_zero() {
+        let config = inputforge_core::types::VirtualDeviceConfig {
+            device_id: 1,
+            axes: vec![],
+            button_count: 2,
+            hat_count: 1,
+        };
+        assert_eq!(
+            available_outputs(&config),
+            vec![
+                OutputId::Button { id: 1 },
+                OutputId::Button { id: 2 },
+                OutputId::Hat { id: 1 }
+            ]
+        );
+        assert!(!valid_output(&config, &OutputId::Button { id: 0 }));
+        assert!(valid_output(&config, &OutputId::Button { id: 2 }));
+        assert!(!valid_output(&config, &OutputId::Hat { id: 0 }));
+        assert!(valid_output(&config, &OutputId::Hat { id: 1 }));
     }
 }

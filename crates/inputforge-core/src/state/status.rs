@@ -2,49 +2,16 @@
 
 /// Engine lifecycle status.
 ///
-/// Represents the three possible states of the engine event loop.
-/// `Running` actively processes input; `Paused` keeps the engine
-/// alive but skips processing; `Stopped` means fully deactivated.
+/// Passive input monitoring continues while routing is stopped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum EngineStatus {
     /// Actively polling input and executing pipelines.
     Running,
-    /// Alive but dormant; input processing is skipped.
-    Paused,
-    /// Fully deactivated; virtual devices released.
+    /// Acquiring and initializing a complete snapshot.
+    Starting,
+    /// Ownership released after a failure; explicit retry required.
+    Faulted,
+    /// Routing stopped; virtual devices stay connected and neutral.
     #[default]
     Stopped,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn status_debug_format() {
-        assert_eq!(format!("{:?}", EngineStatus::Running), "Running");
-        assert_eq!(format!("{:?}", EngineStatus::Paused), "Paused");
-        assert_eq!(format!("{:?}", EngineStatus::Stopped), "Stopped");
-    }
-
-    #[test]
-    fn status_clone_and_copy() {
-        let status = EngineStatus::Running;
-        let cloned = status;
-        let copied = status;
-        assert_eq!(status, cloned);
-        assert_eq!(status, copied);
-    }
-
-    #[test]
-    fn status_equality() {
-        assert_eq!(EngineStatus::Running, EngineStatus::Running);
-        assert_ne!(EngineStatus::Running, EngineStatus::Paused);
-        assert_ne!(EngineStatus::Paused, EngineStatus::Stopped);
-    }
-
-    #[test]
-    fn default_is_stopped() {
-        assert_eq!(EngineStatus::default(), EngineStatus::Stopped);
-    }
 }

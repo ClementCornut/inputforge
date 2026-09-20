@@ -85,6 +85,13 @@ pub struct VirtualDeviceConfig {
 }
 
 impl VirtualDeviceConfig {
+    pub(crate) fn supports(&self, requested: &Self) -> bool {
+        self.device_id == requested.device_id
+            && self.button_count >= requested.button_count
+            && self.hat_count >= requested.hat_count
+            && requested.axes.iter().all(|axis| self.axes.contains(axis))
+    }
+
     /// Validates that the device configuration is within valid bounds.
     ///
     /// # Errors
@@ -167,6 +174,44 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let back: VirtualDeviceConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(config, back);
+    }
+
+    #[test]
+    fn native_layout_supports_reordered_subsets_only_when_every_capability_fits() {
+        let native = VirtualDeviceConfig {
+            device_id: 1,
+            axes: vec![VJoyAxis::Y, VJoyAxis::X, VJoyAxis::Z],
+            button_count: 8,
+            hat_count: 2,
+        };
+        let requested = VirtualDeviceConfig {
+            device_id: 1,
+            axes: vec![VJoyAxis::X, VJoyAxis::Y],
+            button_count: 4,
+            hat_count: 1,
+        };
+        assert!(native.supports(&requested));
+
+        for unsupported in [
+            VirtualDeviceConfig {
+                device_id: 2,
+                ..requested.clone()
+            },
+            VirtualDeviceConfig {
+                axes: vec![VJoyAxis::Rx],
+                ..requested.clone()
+            },
+            VirtualDeviceConfig {
+                button_count: 9,
+                ..requested.clone()
+            },
+            VirtualDeviceConfig {
+                hat_count: 3,
+                ..requested
+            },
+        ] {
+            assert!(!native.supports(&unsupported));
+        }
     }
 
     #[test]

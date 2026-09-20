@@ -387,6 +387,7 @@ mod tests {
             ..ConfigSnapshot::default()
         };
         let live = LiveSnapshot {
+            capture_epoch: crate::context::session::CaptureEpoch::default(),
             device_inputs: vec![],
             output_values: vec![VjoyOutputValues {
                 axes: vec![],

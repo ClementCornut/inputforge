@@ -12,7 +12,7 @@ use crate::error::Result;
 use crate::mode::{ModeState, Modes};
 use crate::output::traits::{KeyboardSink, MouseSink, OutputSink};
 use crate::pipeline::{self, PipelineContext, PipelineOutput};
-use crate::state::{InputCacheStore, OutputActivityStore, OutputActivityValue, OutputCacheStore};
+use crate::state::{OutputActivityStore, OutputActivityValue, OutputCacheStore};
 use crate::types::{AxisValue, InputAddress, InputValue, OutputId};
 
 use super::output_state::{OutputAction, OutputEvent, OutputRuntimeState};
@@ -60,6 +60,21 @@ pub(super) fn process_pipeline_outputs(
                     continue;
                 };
                 output_sink.set_axis(output.device, *id, *value)?;
+            }
+            PipelineOutput::SetHat {
+                owner,
+                output,
+                direction,
+            } => {
+                let OutputId::Hat { id } = output.output else {
+                    continue;
+                };
+                output_sink.set_hat(output.device, id, *direction)?;
+                output_state.commit_set_button(
+                    owner.clone(),
+                    output.clone(),
+                    *direction != crate::types::HatDirection::Center,
+                );
             }
             PipelineOutput::SetButton {
                 owner,
@@ -223,6 +238,15 @@ pub(super) fn record_outputs_to_cache(outputs: &[PipelineOutput], cache: &mut Ou
                     cache.set_axis(addr.device, *id, *value);
                 }
             }
+            PipelineOutput::SetHat {
+                output: addr,
+                direction,
+                ..
+            } => {
+                if let OutputId::Hat { id } = addr.output {
+                    cache.set_hat(addr.device, id, *direction);
+                }
+            }
             PipelineOutput::SetButton {
                 output: addr,
                 pressed,
@@ -252,6 +276,16 @@ pub(super) fn record_outputs_to_activity(
                 activity.record(
                     owner.clone(),
                     OutputActivityValue::Axis(*value),
+                    now,
+                    latch_inactive,
+                );
+            }
+            PipelineOutput::SetHat {
+                owner, direction, ..
+            } => {
+                activity.record(
+                    owner.clone(),
+                    OutputActivityValue::Hat(*direction),
                     now,
                     latch_inactive,
                 );
@@ -296,18 +330,19 @@ pub(super) fn record_outputs_to_activity(
 /// Called after a mode change, on engine activation, and after saving a
 /// mapping so that axis outputs reflect current mappings immediately,
 /// without waiting for a physical input event.
-pub(super) fn refresh_axes_for_mode_change(
-    cache: &InputCacheStore,
+pub(super) fn refresh_axes_for_state(
+    state: &mut crate::state::AppState,
     mappings: &[crate::action::Mapping],
     mode: &str,
     output_sink: &mut dyn OutputSink,
-    output_cache: &mut OutputCacheStore,
 ) -> Result<()> {
-    for (address, value, polarity) in cache.get_all_axis_entries() {
+    let values = crate::state::InputValues::from_parts(&state.input_cache, &state.calibrations);
+    for (address, _, _) in state.input_cache.get_all_axis_entries() {
         if let Some(mapping) = mappings
             .iter()
             .find(|mapping| mapping.input == address && mapping.mode == *mode)
         {
+            let (value, polarity) = pipeline::InputCache::get_axis(&values, &address);
             let input_value = InputValue::Axis {
                 value: AxisValue::new(value),
                 polarity,
@@ -316,49 +351,29 @@ pub(super) fn refresh_axes_for_mode_change(
                 current_value: value,
                 input_value,
                 outputs: Vec::new(),
-                input_cache: cache,
+                input_cache: &values,
             };
             pipeline::execute_pipeline(&mapping.actions, &mut ctx);
 
-            // Apply only axis and button outputs during refresh.
+            // Refresh continuous outputs without inventing button/key edges or mode changes.
             for output in &ctx.outputs {
-                match output {
-                    PipelineOutput::SetAxis {
-                        output: addr,
-                        value: v,
-                        ..
-                    } => {
-                        let OutputId::Axis { id } = &addr.output else {
-                            tracing::warn!(
-                                output_id = ?addr.output,
-                                "SetAxis refresh has non-axis OutputId, skipping"
-                            );
-                            continue;
-                        };
-                        output_sink.set_axis(addr.device, *id, *v)?;
-                        output_cache.set_axis(addr.device, *id, *v);
-                    }
-                    PipelineOutput::SetButton {
-                        output: addr,
-                        pressed,
-                        ..
-                    } => {
-                        let OutputId::Button { id } = &addr.output else {
-                            tracing::warn!(
-                                output_id = ?addr.output,
-                                "SetButton refresh has non-button OutputId, skipping"
-                            );
-                            continue;
-                        };
-                        output_sink.set_button(addr.device, *id, *pressed)?;
-                        output_cache.set_button(addr.device, *id, *pressed);
-                    }
-                    // Skip key presses (spurious from axis-to-keyboard
-                    // mappings) and mode changes (avoid recursion).
-                    PipelineOutput::Keyboard { .. }
-                    | PipelineOutput::Mouse { .. }
-                    | PipelineOutput::ChangeMode { .. } => {}
-                }
+                let PipelineOutput::SetAxis {
+                    output: addr,
+                    value,
+                    ..
+                } = output
+                else {
+                    continue;
+                };
+                let OutputId::Axis { id } = &addr.output else {
+                    tracing::warn!(
+                        output_id = ?addr.output,
+                        "SetAxis refresh has non-axis OutputId, skipping"
+                    );
+                    continue;
+                };
+                output_sink.set_axis(addr.device, *id, *value)?;
+                state.output_cache.set_axis(addr.device, *id, *value);
             }
         }
     }

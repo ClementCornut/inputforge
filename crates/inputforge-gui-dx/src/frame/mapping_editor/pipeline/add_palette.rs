@@ -348,6 +348,7 @@ pub(crate) fn AddPalette(
         Some("Add stage".to_owned())
     };
     let settings_snapshot = ctx.settings.read().clone();
+    let session = ctx.meta.read().session.clone();
 
     rsx! {
         MenuRoot { class: "if-add-palette if-menu--block".to_owned(),
@@ -377,6 +378,11 @@ pub(crate) fn AddPalette(
                     div { class: "if-add-palette__section-title", "Output" }
                     for item in OUTPUT_ITEMS {
                         MenuItem {
+                            disabled: match (item.make)() {
+                                Action::MapToKeyboard {..} => !session.keyboard_supported,
+                                Action::MapToMouse {..} => !session.mouse_supported,
+                                _ => false,
+                            },
                             class: "if-add-palette__item".to_owned(),
                             onclick: make_insert_handler((item.make)()),
                             "{item.label}"

@@ -12,8 +12,8 @@ use recovery::Phase;
 use std::io;
 
 // These work budgets leave lifecycle/deadline control with the caller under event floods.
-const READ_BUDGET: usize = 8;
-const EVENT_BUDGET: usize = 256;
+pub(super) const READ_BUDGET: usize = 8;
+pub(super) const EVENT_BUDGET: usize = 256;
 
 impl Capture {
     /// Poll bounded native frames, initializing state on the first call after acquisition.
@@ -114,7 +114,7 @@ impl Capture {
     }
 }
 
-fn advance(
+pub(super) fn advance(
     held: &mut transaction::Held,
     now: std::time::Instant,
     reads: &mut usize,

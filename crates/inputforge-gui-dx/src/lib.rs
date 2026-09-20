@@ -43,11 +43,12 @@ use crate::tray::action::TrayMenuIds;
 /// inside `app_root`'s `use_hook` body.
 #[derive(Clone)]
 pub(crate) struct LaunchParams {
-    pub tray_menu_ids: TrayMenuIds,
+    pub tray_menu_ids: Option<TrayMenuIds>,
 }
 
 /// Launch the Dioxus Desktop GUI. Blocks the calling thread on the OS event
-/// loop (wry/tao underneath) until the user quits.
+/// loop (wry/tao underneath). `on_exit` must stop and join the engine before
+/// returning: normal event-loop exit terminates the process without unwinding.
 ///
 /// `tray_menu_ids` flow through `LaunchParams::tray_menu_ids` into
 /// `app_root`, which calls `tray::install_event_handler(...)` from inside a
@@ -73,24 +74,59 @@ pub fn launch_gui(
     tray_menu_ids: (MenuId, MenuId, MenuId),
     toggle_menu_item: MenuItem,
     start_minimized: bool,
+    on_exit: Box<dyn FnMut()>,
 ) -> anyhow::Result<()> {
     let (show, toggle, quit) = tray_menu_ids;
     let menu_ids = TrayMenuIds { show, toggle, quit };
 
-    let handles = RawHandles { state, commands };
-    let params = LaunchParams {
-        tray_menu_ids: menu_ids,
-    };
-
-    // Install the tray's toggle `MenuItem` into a thread-local for
-    // `app_root` to pick up via `tray::take_toggle_menu_item`. We cannot
-    // pass it through `LaunchBuilder::with_context` because that bounds
-    // its argument by `Send + Sync`, and `muda::MenuItem` is `Rc`-based
-    // (neither). Both `launch_gui` and the Dioxus desktop runtime run on
-    // the same main thread, so the thread-local handoff is safe and the
-    // value is taken exactly once, on `app_root`'s first mount.
     tray::install_toggle_menu_item(toggle_menu_item);
+    launch(
+        state,
+        commands,
+        LaunchParams {
+            tray_menu_ids: Some(menu_ids),
+        },
+        start_minimized,
+        on_exit,
+    )
+}
 
+/// Launch a visible editor that quits on close, without a system tray.
+/// # Errors
+/// Returns a desktop initialization error when supported by the runtime.
+pub fn launch_gui_without_tray(
+    state: Arc<RwLock<AppState>>,
+    commands: mpsc::Sender<EngineCommand>,
+    on_exit: Box<dyn FnMut()>,
+) -> anyhow::Result<()> {
+    launch(
+        state,
+        commands,
+        LaunchParams {
+            tray_menu_ids: None,
+        },
+        false,
+        on_exit,
+    )
+}
+
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "shared fallible public launch contract"
+)]
+fn launch(
+    state: Arc<RwLock<AppState>>,
+    commands: mpsc::Sender<EngineCommand>,
+    params: LaunchParams,
+    start_minimized: bool,
+    mut on_exit: Box<dyn FnMut()>,
+) -> anyhow::Result<()> {
+    let close = if params.tray_menu_ids.is_some() {
+        WindowCloseBehaviour::WindowHides
+    } else {
+        WindowCloseBehaviour::WindowCloses
+    };
+    let handles = RawHandles { state, commands };
     // Configure visibility at construction so the window is born hidden
     // when start-minimized is on. Hiding post-mount via `set_visible(false)`
     // races the WebView2 first paint and leaves the window visible under
@@ -103,8 +139,13 @@ pub fn launch_gui(
         .with_visible(!start_minimized);
 
     let cfg = Config::new()
+        .with_custom_event_handler(move |event, _| {
+            if matches!(event, dioxus::desktop::tao::event::Event::LoopDestroyed) {
+                on_exit();
+            }
+        })
         .with_window(window)
-        .with_close_behaviour(WindowCloseBehaviour::WindowHides)
+        .with_close_behaviour(close)
         // Required for HTML5 drag-and-drop on Windows. WebView2 ships
         // with a native file-drop handler that swallows dragover events
         // before the page can respond, leaving the cursor stuck on
@@ -119,10 +160,8 @@ pub fn launch_gui(
         // smoke; see Phase A of the sortable primitive plan.)
         .with_disable_drag_drop_handler(true);
     // exit_on_last_window_close left at its default (true).
-    // Custom event handler NOT installed here, Task 10/11 deviation: the
-    // handler is installed via `tray::install_event_handler` (a hook
-    // wrapping `use_muda_event_handler`) from inside `app_root`'s `use_hook`,
-    // because `dioxus_desktop::ipc::UserWindowEvent` is private in 0.7.6.
+    // LoopDestroyed runs before Tao exits the process. The callback must join
+    // the engine here: desktop launch does not return on normal window close.
 
     // CDP for chrome-devtools-mcp: debug+Windows only. WRY_DEFAULTS must be
     // re-included verbatim, Wry replaces (not appends) browser args, and

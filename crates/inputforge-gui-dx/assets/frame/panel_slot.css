@@ -284,3 +284,18 @@
     gap: var(--space-1);
     padding: var(--space-3);
 }
+
+.if-controller-session { display: grid; gap: var(--space-3, 12px); padding: var(--space-4, 16px); border-bottom: 1px solid var(--color-border); }
+.if-controller-session h3, .if-controller-session h4, .if-controller-session p { margin: 0; }
+.if-controller-session p { color: var(--color-text-muted); font-size: 12px; }
+.if-controller-session fieldset { display: grid; gap: 8px; min-width: 0; border: 1px solid var(--color-border); }
+.if-controller-session label { display: flex; align-items: center; gap: 8px; }
+.if-controller-session input[type="number"] { width: 5em; }
+.if-controller-session__actions, .if-controller-session__axes { display: flex; gap: 8px; flex-wrap: wrap; }
+.if-controller-session__slot { display: grid; gap: 8px; }
+.if-controller-session input[type="number"] { font: inherit; color: inherit; background: var(--color-bg); border: 1px solid var(--color-border); padding: 4px 8px; }
+.if-controller-session fieldset:disabled { opacity: .6; }
+.if-controller-session input[type="number"]:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+
+.if-controller-devices { min-height: 0; overflow-y: auto; }
+.if-controller-devices > .if-device-panel { height: auto; flex: none; min-height: 240px; }

@@ -26,3 +26,6 @@ pub use hidhide::HidHideManager;
 
 #[cfg(any(test, feature = "test-util"))]
 pub use mock::{MockDeviceHider, MockInputSource};
+
+mod update;
+pub use update::InputUpdate;

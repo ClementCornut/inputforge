@@ -34,8 +34,8 @@ pub(crate) fn show_window() {
 /// Tray Quit, switch this window's close behavior to `WindowCloses`,
 /// then trigger close. Dioxus destroys the window, observes zero remaining
 /// webviews, and the event loop exits because `exit_on_last_window_close`
-/// is true (the default, F3 does not override). `launch_gui` returns;
-/// `main.rs::shutdown()` then runs.
+/// is true. The configured `LoopDestroyed` handler shuts down and joins the
+/// engine before Tao exits the process.
 pub(crate) fn request_quit() {
     let w = window();
     w.set_close_behavior(WindowCloseBehaviour::WindowCloses);

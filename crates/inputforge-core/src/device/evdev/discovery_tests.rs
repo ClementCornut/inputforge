@@ -1,6 +1,27 @@
 use super::{Access, Class, Issue, Metadata, discovery::assemble};
 use std::{io, path::PathBuf};
 
+#[cfg(feature = "uinput-output")]
+#[test]
+fn generated_uinput_devices_are_excluded_before_event_node_probes() {
+    let entries = (1..=16)
+        .map(|slot| {
+            (
+                crate::output::uinput::tests::discovery_metadata(slot),
+                vec![],
+            )
+        })
+        .collect();
+    let report = assemble(entries, |_| {
+        panic!("must not open InputForge virtual output")
+    });
+    assert_eq!(report.devices.len(), 16);
+    for device in report.devices {
+        assert_eq!(device.classification.kind, Class::Excluded);
+        assert_eq!(device.access, Access::NotAttempted);
+    }
+}
+
 fn candidate(node: &str) -> Metadata {
     let mut metadata = Metadata {
         node: node.into(),

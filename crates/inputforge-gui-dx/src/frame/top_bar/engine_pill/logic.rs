@@ -30,8 +30,9 @@ impl Variant {
 /// `status` only, no advisory profile flag needed.
 pub(crate) fn engine_pill_state(status: EngineStatus) -> (Variant, &'static str, EngineCommand) {
     match status {
+        EngineStatus::Starting => (Variant::Warning, "Starting", EngineCommand::Deactivate),
+        EngineStatus::Faulted => (Variant::Error, "Faulted", EngineCommand::Activate),
         EngineStatus::Running => (Variant::Live, "Running", EngineCommand::Deactivate),
-        EngineStatus::Paused => (Variant::Warning, "Paused", EngineCommand::Activate),
         EngineStatus::Stopped => (Variant::Error, "Stopped", EngineCommand::Activate),
     }
 }
@@ -41,19 +42,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn running_yields_live_running_deactivate() {
+    fn running_yields_live_running_stop() {
         let (v, l, cmd) = engine_pill_state(EngineStatus::Running);
         assert_eq!(v, Variant::Live);
         assert_eq!(l, "Running");
         assert!(matches!(cmd, EngineCommand::Deactivate));
-    }
-
-    #[test]
-    fn paused_yields_warning_paused_activate() {
-        let (v, l, cmd) = engine_pill_state(EngineStatus::Paused);
-        assert_eq!(v, Variant::Warning);
-        assert_eq!(l, "Paused");
-        assert!(matches!(cmd, EngineCommand::Activate));
     }
 
     #[test]

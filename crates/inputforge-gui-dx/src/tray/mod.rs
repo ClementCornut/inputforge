@@ -32,8 +32,11 @@ use tokio::sync::mpsc;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::state::EngineStatus;
 
-use crate::context::AppContext;
 use crate::lifecycle;
+use crate::{
+    context::AppContext,
+    frame::{PanelSlot, ViewState},
+};
 
 use self::action::{TrayAction, TrayMenuIds};
 
@@ -99,12 +102,16 @@ pub(crate) fn install_event_handler(ids: TrayMenuIds, tx: mpsc::Sender<TrayActio
 
 /// Spawn the listener task. Called from `app_root`'s `use_hook` so the task
 /// is tied to the Dioxus runtime lifetime and auto-cancelled on teardown.
-pub(crate) fn spawn_listener_task(mut rx: mpsc::Receiver<TrayAction>, ctx: AppContext) {
+pub(crate) fn spawn_listener_task(
+    mut rx: mpsc::Receiver<TrayAction>,
+    ctx: AppContext,
+    view: ViewState,
+) {
     spawn(async move {
         while let Some(action) = rx.recv().await {
             match action {
                 TrayAction::Show => lifecycle::show_window(),
-                TrayAction::Toggle => dispatch_toggle(&ctx),
+                TrayAction::Toggle => dispatch_toggle(&ctx, view),
                 TrayAction::Quit => lifecycle::request_quit(),
             }
         }
@@ -119,25 +126,31 @@ pub(crate) fn spawn_listener_task(mut rx: mpsc::Receiver<TrayAction>, ctx: AppCo
 /// channels, returning `Err` only if the receiver has been dropped. We
 /// discard the error: at that point the engine is already gone and the user
 /// is about to learn so via the normal shutdown path.
-fn dispatch_toggle(ctx: &AppContext) {
+fn dispatch_toggle(ctx: &AppContext, mut view: ViewState) {
+    if ctx.controller_changes_pending() {
+        lifecycle::show_window();
+        view.via_calibration.set(false);
+        view.panel_slot.set(PanelSlot::Devices);
+        return;
+    }
     let status = ctx.state.read().engine_status;
     let cmd = match status {
-        EngineStatus::Running => EngineCommand::Deactivate,
-        EngineStatus::Paused | EngineStatus::Stopped => EngineCommand::Activate,
+        EngineStatus::Running | EngineStatus::Starting => EngineCommand::Deactivate,
+        EngineStatus::Stopped | EngineStatus::Faulted => EngineCommand::Activate,
     };
     let _ = ctx.commands.send(cmd);
 }
 
 /// Label for the tray's toggle menu item, derived from current engine status.
 ///
-/// Mirrors the verb mapping in [`dispatch_toggle`]: when clicking would send
-/// `Deactivate`, the label reads "Deactivate"; when it would send `Activate`,
-/// the label reads "Activate". The two functions must agree, otherwise the
-/// label says one thing and the click does another.
-pub(crate) fn toggle_label(status: EngineStatus) -> &'static str {
+/// Mirrors the routing action dispatched by [`dispatch_toggle`].
+pub(crate) fn toggle_label(status: EngineStatus, pending: bool) -> &'static str {
+    if pending {
+        return "Review controller changes";
+    }
     match status {
-        EngineStatus::Running => "Deactivate",
-        EngineStatus::Paused | EngineStatus::Stopped => "Activate",
+        EngineStatus::Running | EngineStatus::Starting => "Stop",
+        EngineStatus::Stopped | EngineStatus::Faulted => "Start",
     }
 }
 
@@ -147,8 +160,7 @@ mod tests {
 
     #[test]
     fn toggle_label_matches_dispatch_mapping() {
-        assert_eq!(toggle_label(EngineStatus::Running), "Deactivate");
-        assert_eq!(toggle_label(EngineStatus::Paused), "Activate");
-        assert_eq!(toggle_label(EngineStatus::Stopped), "Activate");
+        assert_eq!(toggle_label(EngineStatus::Running, false), "Stop");
+        assert_eq!(toggle_label(EngineStatus::Stopped, false), "Start");
     }
 }

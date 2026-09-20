@@ -28,6 +28,9 @@ pub enum EngineError {
     #[error("HidHide error: {0}")]
     HidHide(String),
 
+    #[error("input failed: {reason}")]
+    InputFailed { reason: String },
+
     #[error("output failed: {reason}")]
     OutputFailed { reason: String },
 

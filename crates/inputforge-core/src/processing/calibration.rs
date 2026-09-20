@@ -70,6 +70,19 @@ impl Calibration {
         physical_max: f64,
         enabled: bool,
     ) -> Result<Self> {
+        if ![
+            physical_min,
+            physical_center_low,
+            physical_center_high,
+            physical_max,
+        ]
+        .iter()
+        .all(|v| v.is_finite())
+        {
+            return Err(EngineError::InvalidConfig {
+                reason: "calibration values must be finite".into(),
+            });
+        }
         if physical_min >= physical_center_low {
             return Err(EngineError::InvalidConfig {
                 reason: format!(

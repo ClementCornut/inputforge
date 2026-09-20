@@ -4,6 +4,7 @@ use crate::frame::profiles::ProfilesPanel;
 use crate::frame::settings_panel::SettingsPanel;
 use crate::frame::view_state::{PanelSlot as PanelSlotEnum, ViewState};
 
+mod axis_settings;
 mod device_panel;
 
 const PANEL_SLOT_CSS: Asset = asset!("/assets/frame/panel_slot.css");
@@ -46,7 +47,9 @@ pub(crate) fn PanelSlot() -> Element {
         PanelSlotEnum::None => unreachable!("None branch returned above"),
     };
     let body = match s {
-        PanelSlotEnum::Devices if !calib => rsx! { device_panel::DevicePanel {} },
+        PanelSlotEnum::Devices if !calib => {
+            rsx! { div {class: "if-controller-devices", controller_session::ControllerSession {} device_panel::DevicePanel {} } }
+        }
         PanelSlotEnum::Profiles => rsx! { ProfilesPanel {} },
         PanelSlotEnum::Settings => rsx! { SettingsPanel {} },
         _ => rsx! { div { class: "if-panel-slot__placeholder", "{spec.body}" } },
@@ -187,3 +190,7 @@ mod tests {
         }
     }
 }
+mod controller_session;
+#[cfg(test)]
+mod controller_session_tests;
+mod virtual_config;

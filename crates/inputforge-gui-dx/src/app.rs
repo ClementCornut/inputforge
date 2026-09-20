@@ -84,30 +84,33 @@ pub(crate) fn app_root() -> Element {
     // `install_event_handler` MUST be top-level because it wraps
     // `use_muda_event_handler` (a hook), calling it from inside another
     // hook's initializer would only register on first render.
-    let tx = use_hook(|| {
-        let (tx, rx) = tokio::sync::mpsc::channel::<TrayAction>(tray::CHANNEL_CAPACITY);
-        tray::spawn_listener_task(rx, ctx.clone());
-        tx
-    });
-    tray::install_event_handler(params.tray_menu_ids.clone(), tx);
-
-    // Keep the tray's "Activate / Deactivate" label in sync with the engine
-    // status. The handle to the toggle `MenuItem` is taken once on first
-    // mount via the `tray::take_toggle_menu_item` thread-local handoff
-    // (the test harness does not install one and is skipped). The effect
-    // re-runs whenever `ctx.meta` changes, including on first render, so
-    // the initial label is reconciled with the actual status, robust
-    // against `--enable` racing GUI startup. `MenuItem` is `!Send`/
-    // `!Sync`, but the effect closure runs on the Dioxus desktop thread,
-    // the same thread that owns the underlying menu, so mutation through
-    // the cheap `Rc` clone is safe.
-    let toggle_item = use_hook(tray::take_toggle_menu_item);
-    if let Some(toggle_item) = toggle_item {
-        let meta = ctx.meta;
-        use_effect(move || {
-            let status = meta.read().engine_status;
-            toggle_item.set_text(tray::toggle_label(status));
+    // Launch parameters are immutable for the lifetime of this root.
+    if let Some(ids) = params.tray_menu_ids {
+        let tx = use_hook(|| {
+            let (tx, rx) = tokio::sync::mpsc::channel::<TrayAction>(tray::CHANNEL_CAPACITY);
+            tray::spawn_listener_task(rx, ctx.clone(), view);
+            tx
         });
+        tray::install_event_handler(ids, tx);
+
+        // Keep the tray's "Start / Stop" label in sync with the engine
+        // status. The handle to the toggle `MenuItem` is taken once on first
+        // mount via the `tray::take_toggle_menu_item` thread-local handoff
+        // (the test harness does not install one and is skipped). The effect
+        // re-runs whenever `ctx.meta` changes, including on first render, so
+        // the initial label is reconciled with the actual status, robust
+        // against `--enable` racing GUI startup. `MenuItem` is `!Send`/
+        // `!Sync`, but the effect closure runs on the Dioxus desktop thread,
+        // the same thread that owns the underlying menu, so mutation through
+        // the cheap `Rc` clone is safe.
+        let toggle_item = use_hook(tray::take_toggle_menu_item);
+        if let Some(toggle_item) = toggle_item {
+            let ctx = ctx.clone();
+            use_effect(move || {
+                let status = ctx.meta.read().engine_status;
+                toggle_item.set_text(tray::toggle_label(status, ctx.controller_changes_pending()));
+            });
+        }
     }
 
     app_root_view()
@@ -169,11 +172,11 @@ mod tests {
         };
         use_context_provider(|| raw.clone());
         use_context_provider(|| LaunchParams {
-            tray_menu_ids: TrayMenuIds {
+            tray_menu_ids: Some(TrayMenuIds {
                 show: muda::MenuId::new("show"),
                 toggle: muda::MenuId::new("toggle"),
                 quit: muda::MenuId::new("quit"),
-            },
+            }),
         });
 
         let meta = use_signal(MetaSnapshot::default);

@@ -33,7 +33,7 @@ use crate::state::{
     ActiveSnapshotRow, AppState, DeviceCalibrationStore, DeviceState, EngineStatus,
     InputCacheEntry, ProfileLibraryRow, ProfileOrigin,
 };
-use crate::types::{DeviceDiagnostics, DeviceInfo, InputAddress, InputEvent, InputId, InputValue};
+use crate::types::{DeviceDiagnostics, DeviceInfo, InputAddress, InputEvent, InputValue};
 
 use super::Engine;
 use super::command::EngineCommand;
@@ -41,9 +41,9 @@ use super::dependencies::active_mappings_for_event;
 use super::gestures::{GestureDispatcher, GestureKey, GestureRun, GestureRunPhase};
 use super::output_handler::{
     dispatch_output_action, process_pipeline_outputs, record_outputs_to_activity,
-    record_outputs_to_cache, refresh_axes_for_mode_change,
+    record_outputs_to_cache, refresh_axes_for_state,
 };
-use super::output_state::{OutputAction, OwnerScopeKey};
+use super::output_state::OwnerScopeKey;
 
 /// Target poll interval for the engine loop.
 ///
@@ -145,7 +145,9 @@ impl Engine {
     /// Returns an error if a critical I/O operation fails mid-loop.
     pub fn run(&mut self) -> Result<()> {
         while !self.shutdown {
-            self.tick()?;
+            if let Err(error) = self.tick() {
+                tracing::error!(%error, "session failed; awaiting explicit retry");
+            }
             std::thread::sleep(POLL_INTERVAL);
         }
         Ok(())
@@ -161,33 +163,30 @@ impl Engine {
     /// # Errors
     ///
     /// Returns an error if output writing fails.
+    pub fn tick(&mut self) -> Result<()> {
+        let result = self.tick_inner();
+        if let Err(error) = &result
+            && self.read_status() != EngineStatus::Faulted
+        {
+            self.fault(error);
+        }
+        result
+    }
+
+    fn tick_inner(&mut self) -> Result<()> {
+        self.process_commands();
+        if self.shutdown {
+            return Ok(());
+        }
+        self.poll_input()
+    }
+
     #[expect(
         clippy::too_many_lines,
         reason = "single-frame logic is intentionally co-located for readability; \
                   splitting into sub-functions would obscure the event-processing flow"
     )]
-    pub fn tick(&mut self) -> Result<()> {
-        self.process_commands()?;
-
-        // Always poll input and handle hotplug events so devices and
-        // live input values are visible in the GUI even when stopped.
-        self.event_buffer.clear();
-        self.input.poll(&mut self.event_buffer);
-
-        let hotplug_events = self.input.hotplug_events();
-        if !hotplug_events.is_empty() {
-            self.handle_hotplug(&hotplug_events);
-        }
-
-        // Update input cache from all events regardless of engine status.
-        // The GUI reads the cache to display live axis/button values.
-        if !self.event_buffer.is_empty() {
-            let mut state = self.state.write();
-            for event in &self.event_buffer {
-                state.input_cache.update(&event.source, &event.value);
-            }
-        }
-
+    pub(super) fn route_events(&mut self) -> Result<()> {
         if self.read_status() != EngineStatus::Running {
             return Ok(());
         }
@@ -202,7 +201,16 @@ impl Engine {
                         || "memory-profile".to_owned(),
                         |path| path.display().to_string(),
                     ),
-                    profile.mappings().to_vec(),
+                    profile
+                        .mappings()
+                        .iter()
+                        .filter(|mapping| {
+                            !state.session.mapping_issues.iter().any(|issue| {
+                                issue.input == mapping.input && issue.mode == mapping.mode
+                            })
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>(),
                     profile.modes().clone(),
                 ),
                 None => return Ok(()),
@@ -268,12 +276,11 @@ impl Engine {
                 self.gesture_dispatcher.clear_all();
                 let mut guard = self.state.write();
                 let state: &mut AppState = &mut guard;
-                refresh_axes_for_mode_change(
-                    &state.input_cache,
+                refresh_axes_for_state(
+                    state,
                     &mappings,
                     self.mode_state.current(),
                     self.output.as_mut(),
-                    &mut state.output_cache,
                 )?;
                 self.output_buffer.clear();
             }
@@ -285,6 +292,9 @@ impl Engine {
             }
 
             for mapping in active_mappings {
+                if self.blocked_inputs.contains(&mapping.input) {
+                    continue;
+                }
                 // Single lock acquisition for calibration lookup and pipeline context.
                 let guard = self.state.read();
                 let Some((current_value, input_value)) =
@@ -293,11 +303,12 @@ impl Engine {
                     continue;
                 };
 
+                let values = crate::state::InputValues::new(&guard);
                 let mut ctx = PipelineContext {
                     current_value,
                     input_value,
                     outputs: Vec::new(),
-                    input_cache: &guard.input_cache,
+                    input_cache: &values,
                 };
                 pipeline::execute_pipeline_with_scope(
                     &mapping.actions,
@@ -318,13 +329,15 @@ impl Engine {
                         | PipelineOutput::Mouse { owner, .. } => Some(owner.clone()),
                         PipelineOutput::SetAxis { .. }
                         | PipelineOutput::SetButton { .. }
+                        | PipelineOutput::SetHat { .. }
                         | PipelineOutput::ChangeMode { .. } => None,
                     })
                     .collect::<Vec<_>>();
                 let current_set_button_owners = outputs
                     .iter()
                     .filter_map(|output| match output {
-                        PipelineOutput::SetButton { owner, .. } => Some(owner.clone()),
+                        PipelineOutput::SetButton { owner, .. }
+                        | PipelineOutput::SetHat { owner, .. } => Some(owner.clone()),
                         _ => None,
                     })
                     .collect::<Vec<_>>();
@@ -356,23 +369,16 @@ impl Engine {
                     .absent_owners_for_scope(&owner_scope, &current_owners);
                 let absent_set_button = self
                     .output_state
-                    .release_absent_set_button_for_scope(&owner_scope, &current_set_button_owners);
+                    .absent_set_buttons_for_scope(&owner_scope, &current_set_button_owners);
                 let mut state = self.state.write();
                 record_outputs_to_activity(&outputs, &mut state.output_activity, now, false);
                 for owner in &absent_owners {
                     state.output_activity.clear_owner(owner);
                 }
-                for (owner, addr) in &absent_set_button {
-                    state.output_activity.clear_owner(owner);
-                    if let crate::types::OutputId::Button { id } = addr.output {
-                        state.output_cache.set_button(addr.device, id, false);
-                    }
-                }
+
                 drop(state);
-                for (_, addr) in &absent_set_button {
-                    if let crate::types::OutputId::Button { id } = addr.output {
-                        self.output.as_mut().set_button(addr.device, id, false)?;
-                    }
+                for (owner, addr) in absent_set_button {
+                    self.release_virtual_owner(owner, addr)?;
                 }
                 for action in self
                     .output_state
@@ -395,12 +401,11 @@ impl Engine {
                     let mut guard = self.state.write();
                     let state: &mut AppState = &mut guard;
                     self.gesture_dispatcher.clear_all();
-                    refresh_axes_for_mode_change(
-                        &state.input_cache,
+                    refresh_axes_for_state(
+                        state,
                         &mappings,
                         self.mode_state.current(),
                         self.output.as_mut(),
-                        &mut state.output_cache,
                     )?;
                     self.output_buffer.clear();
                     break;
@@ -457,7 +462,7 @@ impl Engine {
     /// Refresh all cached axis outputs if an activation refresh is pending.
     ///
     /// Consumes the `pending_output_refresh` flag and runs
-    /// [`refresh_axes_for_mode_change`] so vJoy reflects current physical
+    /// [`refresh_axes_for_state`] so vJoy reflects current physical
     /// device positions on the first tick after activation.
     fn apply_activation_refresh(&mut self, mappings: &[Mapping]) -> Result<()> {
         if !self.pending_output_refresh {
@@ -466,55 +471,15 @@ impl Engine {
         self.pending_output_refresh = false;
         let mut guard = self.state.write();
         let state: &mut AppState = &mut guard;
-        refresh_axes_for_mode_change(
-            &state.input_cache,
+        refresh_axes_for_state(
+            state,
             mappings,
             self.mode_state.current(),
             self.output.as_mut(),
-            &mut state.output_cache,
         )
     }
 
-    fn release_all_held_outputs(&mut self) -> Result<()> {
-        let actions = self.output_state.release_all();
-        self.dispatch_cleanup_actions(actions)?;
-
-        // Drain any tracked SetButton owners and release their vJoy buttons.
-        // SetButton has no Hold/Pulse semantics, so it is not handled by
-        // `release_all` above; it needs its own drain to keep vJoy state from
-        // persisting across mode changes, profile loads, or shutdown.
-        let pending = self.output_state.drain_set_button_owners();
-        if !pending.is_empty() {
-            let mut state = self.state.write();
-            for (owner, addr) in &pending {
-                state.output_activity.clear_owner(owner);
-                if let crate::types::OutputId::Button { id } = addr.output {
-                    state.output_cache.set_button(addr.device, id, false);
-                }
-            }
-            drop(state);
-            for (_, addr) in &pending {
-                if let crate::types::OutputId::Button { id } = addr.output {
-                    self.output.as_mut().set_button(addr.device, id, false)?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn dispatch_cleanup_actions(&mut self, actions: Vec<OutputAction>) -> Result<()> {
-        for action in actions {
-            dispatch_output_action(
-                action,
-                &mut self.output_state,
-                self.keyboard.as_mut(),
-                self.mouse.as_mut(),
-            )?;
-        }
-        Ok(())
-    }
-
-    fn clear_gesture_mapping(&mut self, input: &InputAddress, mode: &str) {
+    pub(super) fn clear_gesture_mapping(&mut self, input: &InputAddress, mode: &str) {
         let profile_id = {
             let state = self.state.read();
             active_profile_id(&state)
@@ -544,13 +509,16 @@ impl Engine {
                 }
                 PipelineOutput::SetAxis { .. }
                 | PipelineOutput::SetButton { .. }
+                | PipelineOutput::SetHat { .. }
                 | PipelineOutput::ChangeMode { .. } => None,
             })
             .collect::<Vec<_>>();
         let current_set_button_owners = outputs
             .iter()
             .filter_map(|output| match output {
-                PipelineOutput::SetButton { owner, .. } => Some(owner.clone()),
+                PipelineOutput::SetButton { owner, .. } | PipelineOutput::SetHat { owner, .. } => {
+                    Some(owner.clone())
+                }
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -581,7 +549,7 @@ impl Engine {
             .absent_owners_for_scope(&owner_scope, &current_owners);
         let absent_set_button = self
             .output_state
-            .release_absent_set_button_for_scope(&owner_scope, &current_set_button_owners);
+            .absent_set_buttons_for_scope(&owner_scope, &current_set_button_owners);
         let mut state = self.state.write();
         record_outputs_to_activity(
             &outputs,
@@ -592,17 +560,10 @@ impl Engine {
         for owner in &absent_owners {
             state.output_activity.clear_owner(owner);
         }
-        for (owner, addr) in &absent_set_button {
-            state.output_activity.clear_owner(owner);
-            if let crate::types::OutputId::Button { id } = addr.output {
-                state.output_cache.set_button(addr.device, id, false);
-            }
-        }
+
         drop(state);
-        for (_, addr) in &absent_set_button {
-            if let crate::types::OutputId::Button { id } = addr.output {
-                self.output.as_mut().set_button(addr.device, id, false)?;
-            }
+        for (owner, addr) in absent_set_button {
+            self.release_virtual_owner(owner, addr)?;
         }
         for action in self
             .output_state
@@ -623,12 +584,11 @@ impl Engine {
             let mut guard = self.state.write();
             let state: &mut AppState = &mut guard;
             self.gesture_dispatcher.clear_all();
-            refresh_axes_for_mode_change(
-                &state.input_cache,
+            refresh_axes_for_state(
+                state,
                 mappings,
                 self.mode_state.current(),
                 self.output.as_mut(),
-                &mut state.output_cache,
             )?;
             self.output_buffer.clear();
         }
@@ -637,26 +597,36 @@ impl Engine {
     }
 
     /// Process all pending commands from the GUI.
-    fn process_commands(&mut self) -> Result<()> {
-        loop {
+    fn process_commands(&mut self) {
+        while !self.shutdown {
             match self.commands.try_recv() {
-                Ok(cmd) => self.handle_command(cmd)?,
+                Ok(cmd) => {
+                    if let Err(error) = self.handle_command(cmd) {
+                        if matches!(
+                            error,
+                            crate::error::EngineError::InputFailed { .. }
+                                | crate::error::EngineError::OutputFailed { .. }
+                                | crate::error::EngineError::VJoyDriverMissing
+                                | crate::error::EngineError::VJoyDeviceUnavailable { .. }
+                        ) && self.read_status() != EngineStatus::Faulted
+                        {
+                            self.fault(&error);
+                        }
+                        let mut state = self.state.write();
+                        state.session.error = Some(error.to_string());
+                        state.warnings.push(error.to_string());
+                    }
+                }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
-                    if let Err(e) = self.release_all_held_outputs() {
-                        tracing::warn!(
-                            target: "engine",
-                            error = %e,
-                            "engine.output.release_on_disconnect_failed"
-                        );
-                    }
-                    self.gesture_dispatcher.clear_all();
                     self.shutdown = true;
-                    break;
+                    if let Err(error) = self.cleanup_session(false) {
+                        self.state.write().session.error = Some(error.to_string());
+                        tracing::warn!(%error, "cleanup on command disconnect failed");
+                    }
                 }
             }
         }
-        Ok(())
     }
 
     /// Handle a single engine command.
@@ -666,17 +636,26 @@ impl Engine {
                   splitting into sub-functions would obscure the command flow"
     )]
     pub(crate) fn handle_command(&mut self, cmd: EngineCommand) -> Result<()> {
+        if self.handle_session_command(&cmd)? {
+            return Ok(());
+        }
         match cmd {
+            EngineCommand::Retry
+            | EngineCommand::RefreshInput
+            | EngineCommand::ApplyControllerChanges
+            | EngineCommand::SetControllerConfig(_)
+            | EngineCommand::SelectControllers(_)
+            | EngineCommand::SetAxisPolarity { .. }
+            | EngineCommand::DetectAxis { .. }
+            | EngineCommand::ConfirmInputBinding { .. } => {
+                unreachable!("session command already dispatched")
+            }
             EngineCommand::LoadProfile(path) => {
                 self.release_all_held_outputs()?;
                 self.gesture_dispatcher.clear_all();
                 self.purge_all_namespaces();
-                self.reload_profile_from_disk(&path)?;
                 let origin = self.profile_origin_for_path(&path);
-                {
-                    let mut state = self.state.write();
-                    state.active_profile_origin = Some(origin);
-                };
+                self.reload_profile_from_disk(&path, origin)?;
                 if let Some((profile_path, namespace_dir)) = self.resolved_snapshot_target() {
                     let _ = crate::snapshot::create_in(
                         &profile_path,
@@ -695,8 +674,7 @@ impl Engine {
                 self.release_all_held_outputs()?;
                 self.gesture_dispatcher.clear_all();
                 let path = create_profile_in(&name, &self.profile_library_dir())?;
-                self.reload_profile_from_disk(&path)?;
-                self.mark_profile_loaded(ProfileOrigin::Library);
+                self.reload_profile_from_disk(&path, ProfileOrigin::Library)?;
                 self.refresh_profile_library_rows()?;
                 self.refresh_active_snapshot_rows()?;
                 self.persist_last_profile()?;
@@ -705,8 +683,7 @@ impl Engine {
                 self.release_all_held_outputs()?;
                 self.gesture_dispatcher.clear_all();
                 self.purge_all_namespaces();
-                self.reload_profile_from_disk(&path)?;
-                self.mark_profile_loaded(ProfileOrigin::External);
+                self.reload_profile_from_disk(&path, ProfileOrigin::External)?;
                 if let Some((profile_path, namespace_dir)) = self.resolved_snapshot_target() {
                     let _ = crate::snapshot::create_in(
                         &profile_path,
@@ -725,8 +702,7 @@ impl Engine {
                 self.gesture_dispatcher.clear_all();
                 let imported =
                     add_external_profile_to_library(&path, &name, &self.profile_library_dir())?;
-                self.reload_profile_from_disk(&imported.path)?;
-                self.mark_profile_loaded(ProfileOrigin::Library);
+                self.reload_profile_from_disk(&imported.path, ProfileOrigin::Library)?;
                 self.refresh_profile_library_rows()?;
                 self.refresh_active_snapshot_rows()?;
                 self.persist_last_profile()?;
@@ -745,8 +721,7 @@ impl Engine {
                 }
                 let renamed = rename_library_profile(&old_path, &new_name)?;
                 if was_active {
-                    self.reload_profile_from_disk(&renamed.path)?;
-                    self.state.write().active_profile_origin = Some(ProfileOrigin::Library);
+                    self.reload_profile_from_disk(&renamed.path, ProfileOrigin::Library)?;
                     self.refresh_active_snapshot_rows()?;
                     self.persist_last_profile()?;
                 }
@@ -794,24 +769,8 @@ impl Engine {
                     );
                 }
             }
-            EngineCommand::Activate | EngineCommand::Resume => {
-                let mut state = self.state.write();
-                state.engine_status = EngineStatus::Running;
-                drop(state);
-                self.pending_output_refresh = true;
-            }
-            EngineCommand::Deactivate => {
-                self.release_all_held_outputs()?;
-                self.gesture_dispatcher.clear_all();
-                self.output.flush()?;
-                let mut state = self.state.write();
-                state.engine_status = EngineStatus::Stopped;
-            }
-            EngineCommand::Pause => {
-                self.release_all_held_outputs()?;
-                self.gesture_dispatcher.clear_all();
-                let mut state = self.state.write();
-                state.engine_status = EngineStatus::Paused;
+            EngineCommand::Activate | EngineCommand::Deactivate | EngineCommand::Shutdown => {
+                unreachable!("handled by shared session")
             }
             EngineCommand::SetCalibration {
                 device,
@@ -840,9 +799,9 @@ impl Engine {
                     );
                     return Ok(());
                 }
-                self.release_all_held_outputs()?;
-                self.clear_gesture_mapping(&input, &mode);
+                self.release_mapping(&input, &mode)?;
                 self.set_mapping(&input, &mode, name, actions);
+                self.block_held_input(&input);
                 self.pending_output_refresh = true;
             }
             EngineCommand::ReorderMapping {
@@ -850,14 +809,8 @@ impl Engine {
                 mode,
                 target_index_in_group,
             } => {
-                self.release_all_held_outputs()?;
-                self.clear_gesture_mapping(&input, &mode);
+                self.release_mapping(&input, &mode)?;
                 self.reorder_mapping_in_group(&input, &mode, target_index_in_group);
-            }
-            EngineCommand::Shutdown => {
-                self.release_all_held_outputs()?;
-                self.gesture_dispatcher.clear_all();
-                self.shutdown = true;
             }
             EngineCommand::SwitchMode { mode } => {
                 if self.mode_state.current() == mode {
@@ -1284,6 +1237,11 @@ impl Engine {
                     tracing::warn!(target: "snapshot", "RestoreSnapshot dispatched with no profile loaded");
                     return Ok(());
                 };
+                let origin = self
+                    .state
+                    .read()
+                    .active_profile_origin
+                    .unwrap_or_else(|| self.profile_origin_for_path(&path));
 
                 // Step 1, capture AutoBeforeRestore (always fires; never deduped).
                 let auto = crate::snapshot::create_in(
@@ -1299,7 +1257,7 @@ impl Engine {
                 crate::snapshot::restore_in(&path, &namespace_dir, &id)?;
 
                 // Step 3, reload from disk; auto-rollback on failure.
-                if let Err(reload_err) = self.reload_profile_from_disk(&path) {
+                if let Err(reload_err) = self.reload_profile_from_disk(&path, origin) {
                     tracing::error!(
                         target: "snapshot",
                         ?reload_err,
@@ -1307,7 +1265,7 @@ impl Engine {
                     );
                     if let Some(auto_snap) = auto {
                         crate::snapshot::restore_in(&path, &namespace_dir, &auto_snap.id)?;
-                        self.reload_profile_from_disk(&path)?;
+                        self.reload_profile_from_disk(&path, origin)?;
                     }
                     return Err(reload_err);
                 }
@@ -1335,8 +1293,7 @@ impl Engine {
             }
 
             EngineCommand::RemoveMapping { input, mode } => {
-                self.release_all_held_outputs()?;
-                self.clear_gesture_mapping(&input, &mode);
+                self.release_mapping(&input, &mode)?;
                 self.remove_mapping(&input, &mode);
                 self.pending_output_refresh = true;
             }
@@ -1344,8 +1301,10 @@ impl Engine {
                 entries,
                 snapshot_label,
             } => {
-                self.release_all_held_outputs()?;
-                self.gesture_dispatcher.clear_all();
+                for entry in &entries {
+                    self.release_mapping(&entry.input, &entry.mode)?;
+                    self.block_held_input(&entry.input);
+                }
                 self.set_mappings_bulk(&entries, snapshot_label);
                 self.pending_output_refresh = true;
             }
@@ -1456,8 +1415,17 @@ impl Engine {
     /// # Errors
     ///
     /// Returns an error if the profile file cannot be read or parsed.
-    fn reload_profile_from_disk(&mut self, path: &Path) -> Result<()> {
+    fn reload_profile_from_disk(&mut self, path: &Path, origin: ProfileOrigin) -> Result<()> {
         let profile = Profile::load(path)?;
+        self.input.configure(
+            &profile
+                .controllers()
+                .map_or_else(Vec::new, |c| c.bindings.clone()),
+        )?;
+        self.state.write().virtual_devices = profile.controllers().map_or_else(
+            || self.output.list_devices(),
+            |config| self.published_output_layout(&config.virtual_devices),
+        );
         let startup_mode = profile.settings().startup_mode().to_owned();
         self.mode_state = crate::mode::ModeState::new(startup_mode.clone());
         self.callbacks.clear();
@@ -1486,8 +1454,11 @@ impl Engine {
 
         state.active_profile = Some(profile);
         state.profile_path = Some(path.to_path_buf());
+        state.active_profile_origin = Some(origin);
+        state.engine_status = EngineStatus::Stopped;
         state.current_mode = startup_mode;
-        Ok(())
+        drop(state);
+        self.sync_controller_bindings()
     }
 
     fn profile_library_dir(&self) -> PathBuf {
@@ -1508,12 +1479,6 @@ impl Engine {
         self.settings_path
             .parent()
             .map_or_else(crate::settings::AppSettings::config_dir, Path::to_path_buf)
-    }
-
-    fn mark_profile_loaded(&self, origin: ProfileOrigin) {
-        let mut state = self.state.write();
-        state.active_profile_origin = Some(origin);
-        state.engine_status = EngineStatus::Stopped;
     }
 
     /// Mirror `state.profile_path` into `settings.last_profile` and
@@ -1922,21 +1887,15 @@ impl Engine {
     }
 
     /// Read the current engine status from shared state.
-    fn read_status(&self) -> EngineStatus {
+    pub(super) fn read_status(&self) -> EngineStatus {
         self.state.read().engine_status
     }
 
     /// Update device list in shared state from hotplug events.
-    fn handle_hotplug(&mut self, events: &[HotplugEvent]) {
+    pub(super) fn handle_hotplug(&mut self, events: &[HotplugEvent]) {
         for event in events {
             match event {
                 HotplugEvent::Connected { info, diagnostics } => {
-                    // Skip vJoy virtual HID devices, InputForge controls
-                    // them through the output system, not as input devices.
-                    if info.name.to_ascii_lowercase().contains("vjoy") {
-                        continue;
-                    }
-
                     let record = self.upsert_device_record(info, diagnostics);
                     let mut state = self.state.write();
                     state.device_registry.insert(info.id.clone(), record);
@@ -1959,6 +1918,8 @@ impl Engine {
                         dev.connected = false;
                     }
                     state.input_cache.evict_device(id);
+                    state.session.monitored.retain(|d| d != id);
+                    state.session.ready = !state.session.monitored.is_empty();
                 }
             }
         }
@@ -1970,6 +1931,11 @@ impl Engine {
         diagnostics: &DeviceDiagnostics,
     ) -> crate::settings::DeviceRecord {
         let record = crate::settings::DeviceRecord {
+            axis_settings: self
+                .settings
+                .device_registry
+                .get(&info.id)
+                .map_or_else(Vec::new, |r| r.axis_settings.clone()),
             info: info.clone(),
             diagnostics: diagnostics.clone(),
             last_seen_unix_ms: Some(current_unix_ms()),
@@ -2105,12 +2071,14 @@ fn collect_gesture_runs_in_actions(
             if_false,
         } = action
         {
-            let (branch, branch_actions) =
-                if pipeline::evaluate_condition(condition, &ctx.state.input_cache) {
-                    (ActionBranch::ConditionalTrue, if_true.as_slice())
-                } else {
-                    (ActionBranch::ConditionalFalse, if_false.as_slice())
-                };
+            let (branch, branch_actions) = if pipeline::evaluate_condition(
+                condition,
+                &crate::state::InputValues::new(ctx.state),
+            ) {
+                (ActionBranch::ConditionalTrue, if_true.as_slice())
+            } else {
+                (ActionBranch::ConditionalFalse, if_false.as_slice())
+            };
             path.push(ActionPathSegment::Branch(branch));
             collect_gesture_runs_in_actions(ctx, branch_actions, path);
             path.pop();
@@ -2146,11 +2114,12 @@ fn execute_gesture_run_pass(
     pressed: bool,
 ) {
     let input_value = InputValue::Button { pressed };
+    let values = crate::state::InputValues::new(state);
     let mut ctx = PipelineContext {
         current_value: if pressed { 1.0 } else { 0.0 },
         input_value,
         outputs: Vec::new(),
-        input_cache: &state.input_cache,
+        input_cache: &values,
     };
     let mut action_path = run.key.action_path().to_vec();
     action_path.push(ActionPathSegment::Branch(run.branch));
@@ -2172,32 +2141,24 @@ fn pipeline_input_for_mapping(
     event: &InputEvent,
     state: &AppState,
 ) -> Option<(f64, InputValue)> {
-    if mapping.input == event.source {
-        let current_value = resolve_input_value(event, &state.calibrations);
-        return Some((current_value, event.value.clone()));
-    }
-
-    let cached_inputs = state.input_cache.clone_compact();
-    let input_value = cached_input_value(&cached_inputs, &mapping.input)?;
-    let current_value = match &input_value {
-        InputValue::Axis { .. } => {
-            let cached_event = InputEvent {
-                source: mapping.input.clone(),
-                value: input_value.clone(),
-                timestamp: event.timestamp,
-            };
-            resolve_input_value(&cached_event, &state.calibrations)
+    let mut input_value = if mapping.input == event.source {
+        event.value.clone()
+    } else {
+        cached_input_value(&state.input_cache.clone_compact(), &mapping.input)?
+    };
+    let current_value = match &mut input_value {
+        InputValue::Axis { value, polarity } => {
+            let processed = pipeline::InputCache::get_axis(
+                &crate::state::InputValues::new(state),
+                &mapping.input,
+            );
+            *value = crate::types::AxisValue::new(processed.0);
+            *polarity = processed.1;
+            processed.0
         }
-        InputValue::Button { pressed } => {
-            if *pressed {
-                1.0
-            } else {
-                0.0
-            }
-        }
+        InputValue::Button { pressed } => f64::from(*pressed),
         InputValue::Hat { .. } => 0.0,
     };
-
     Some((current_value, input_value))
 }
 
@@ -2206,37 +2167,4 @@ fn cached_input_value(entries: &[InputCacheEntry], address: &InputAddress) -> Op
         .iter()
         .find(|entry| entry.address == *address)
         .map(|entry| entry.value.clone())
-}
-
-/// Resolve the pipeline input value from an event, applying calibration if available.
-fn resolve_input_value(event: &InputEvent, calibrations: &DeviceCalibrationStore) -> f64 {
-    match &event.value {
-        InputValue::Axis { value, .. } => {
-            let raw = value.value();
-            // Invariant: events come from real device sources (Backend::poll
-            // emits `Bound` addresses from device-tracked sources); `Unbound`
-            // only originates from palette-seeded mapping primaries that
-            // never produce events.
-            let InputAddress::Bound { device, input } = &event.source else {
-                unreachable!(
-                    "invariant: input event source always Bound (Backend::poll emits Bound from device-tracked sources)"
-                );
-            };
-            if let InputId::Axis { index } = input {
-                calibrations
-                    .get(device, *index)
-                    .map_or(raw, |cal| cal.apply(raw))
-            } else {
-                raw
-            }
-        }
-        InputValue::Button { pressed } => {
-            if *pressed {
-                1.0
-            } else {
-                0.0
-            }
-        }
-        InputValue::Hat { .. } => 0.0,
-    }
 }

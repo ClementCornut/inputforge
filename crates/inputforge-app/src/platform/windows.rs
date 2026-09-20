@@ -6,14 +6,10 @@ use inputforge_core::output::{KeyboardOutput, VJoyOutput};
 
 use super::PlatformBackends;
 
-pub(super) fn preflight() -> Result<()> {
-    Ok(())
-}
-
 pub(super) fn create() -> Result<PlatformBackends> {
     Ok(PlatformBackends {
         input: Box::new(Sdl3Input::new()?),
-        controller: Box::new(VJoyOutput::new()?),
+        controller: Box::new(VJoyOutput::new()),
         keyboard: Box::new(KeyboardOutput::new()),
         mouse: Box::new(MouseOutput::new()),
     })

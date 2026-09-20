@@ -50,6 +50,13 @@ fn direct_mapping_for<'a>(
 
 /// Return all bound inputs that can affect `mapping`.
 pub(super) fn mapping_dependencies(mapping: &Mapping) -> Vec<InputAddress> {
+    all_mapping_dependencies(mapping)
+        .into_iter()
+        .filter(|a| !a.is_unbound())
+        .collect()
+}
+
+pub(super) fn all_mapping_dependencies(mapping: &Mapping) -> Vec<InputAddress> {
     let mut out = Vec::new();
     push_dependency(&mut out, &mapping.input);
     collect_action_dependencies(&mapping.actions, &mut out);
@@ -114,7 +121,7 @@ fn collect_condition_dependencies(condition: &Condition, out: &mut Vec<InputAddr
 }
 
 fn push_dependency(out: &mut Vec<InputAddress>, input: &InputAddress) {
-    if input.is_unbound() || out.iter().any(|seen| seen == input) {
+    if out.iter().any(|seen| seen == input) {
         return;
     }
     out.push(input.clone());

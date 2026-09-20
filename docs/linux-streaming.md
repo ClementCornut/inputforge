@@ -1,11 +1,11 @@
 # Linux native event streaming (Slice 2c)
 
 Streaming extends the concrete evdev `Capture` API and the `linux-capture` acceptance
-example. It does not implement `InputSource` or engine integration. Standalone
-[discovery diagnostics](linux-diagnostics.md) remain read-only; `watch` and `capture`
-remain event-free. Normal Linux application startup still rejects unavailable
-backends. No uinput outputs, placeholder outputs, binding UI, packaging, or host
-permission changes are included.
+example. The engine now consumes it through the evdev `InputSource` adapter;
+see [Linux engine routing](linux-routing.md) for the integrated workflow.
+Standalone [discovery diagnostics](linux-diagnostics.md) remain read-only;
+`watch` and `capture` remain event-free. The acceptance results below describe
+the standalone Slice 2c checks, not integrated application acceptance.
 
 ## Explicit acquisition and readiness
 
@@ -89,16 +89,11 @@ out-of-range conversion results are retained without clamping. No resting-positi
 polarity inference, deadzone, smoothing, calibration, or `flat`/`fuzz` policy is
 applied automatically. Hats use discrete interpretation.
 
-Native codes are not positional profile indices. Existing profiles, Windows SDL
-bindings, calibration serialization, and the engine are unchanged. Future
-integration must explicitly resolve full profile addresses to native controls,
-reuse recursive mapping dependency discovery (secondary axes, conditions, and gesture
-branches), and establish calibration ownership. It must add fallible input polling,
-explicit acquisition/release, and reset/snapshot handling that cancels stale gestures
-and callbacks. Pause, stop, shutdown, channel closure, and runtime errors must release
-input unconditionally before fallible output cleanup. Output cleanup must attempt
-remaining releases despite individual failures. Preserve Windows SDL behavior and
-validate that integration natively on Windows.
+Native codes are not positional profile indices. The engine adapter now persists
+frozen native tables, owns calibration at the input-value boundary, and handles
+fallible polling and reset/snapshot generations. See [routing](linux-routing.md)
+for cleanup and recovery semantics. Native Windows validation remains a separate
+gate. Historical Slice 2c results below predate that integration.
 
 ## Bounded acceptance command
 

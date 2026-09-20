@@ -4,6 +4,8 @@ use inputforge_core::types::DeviceId;
 
 use crate::components::{Badge, BadgeVariant};
 use crate::context::{AppContext, DevicePanelRow};
+mod inspector;
+use inspector::DeviceInspector;
 
 #[component]
 pub(super) fn DevicePanel() -> Element {
@@ -112,113 +114,6 @@ fn DeviceLedgerRow(
     }
 }
 
-#[component]
-#[expect(
-    unused_qualifications,
-    reason = "Dioxus event property syntax needs named handlers for separate buttons"
-)]
-fn DeviceInspector(
-    row: DevicePanelRow,
-    mut draft_alias: Signal<String>,
-    mut save_error: Signal<Option<String>>,
-) -> Element {
-    let ctx = use_context::<AppContext>();
-    let persisted_alias = row.alias.clone();
-    let draft_value = draft_alias.read().clone();
-    let dirty = draft_value.trim() != persisted_alias;
-    let report = build_device_report(&row);
-    let error = save_error.read().clone();
-    let save_device = row.device_id.clone();
-    let mut draft_alias_for_input = draft_alias;
-    let draft_alias_for_save = draft_alias;
-    let mut draft_alias_for_keydown = draft_alias;
-    let mut save_error_for_save = save_error;
-    let mut save_error_for_keydown = save_error;
-    let mut save_error_for_copy = save_error;
-    let commands = ctx.commands.clone();
-    let commands_for_keydown = commands.clone();
-    let save_device_for_keydown = save_device.clone();
-    let persisted_alias_for_keydown = persisted_alias.clone();
-    let report_for_copy = report.clone();
-    let oninput = move |event: FormEvent| draft_alias_for_input.set(event.value());
-    let save_click = move |_| {
-        let command =
-            build_set_device_alias_command(save_device.clone(), &draft_alias_for_save.read());
-        if let Err(error) = commands.send(command) {
-            save_error_for_save.set(Some(error.to_string()));
-        } else {
-            save_error_for_save.set(None);
-        }
-    };
-    let onkeydown = move |event: KeyboardEvent| match event.key() {
-        Key::Enter => {
-            event.prevent_default();
-            let draft_value = draft_alias_for_keydown.read().clone();
-            if draft_value.trim() == persisted_alias_for_keydown {
-                return;
-            }
-            let command =
-                build_set_device_alias_command(save_device_for_keydown.clone(), &draft_value);
-            if let Err(error) = commands_for_keydown.send(command) {
-                save_error_for_keydown.set(Some(error.to_string()));
-            } else {
-                save_error_for_keydown.set(None);
-            }
-        }
-        Key::Escape => {
-            event.prevent_default();
-            draft_alias_for_keydown.set(alias_draft_after_escape(&persisted_alias_for_keydown));
-            save_error_for_keydown.set(None);
-        }
-        _ => {}
-    };
-    let copy_click = move |_| {
-        if let Err(error) = copy_device_report_to_clipboard(&report_for_copy) {
-            save_error_for_copy.set(Some(format!("Copy failed: {error}")));
-        } else {
-            save_error_for_copy.set(None);
-        }
-    };
-
-    rsx! {
-        section { class: "if-device-panel__inspector", "aria-label": "Selected device details",
-            div { class: "if-device-inspector__field",
-                span { "Display name" }
-                div { class: "if-device-inspector__edit-row",
-                    input {
-                        "aria-label": "Display name",
-                        class: "if-device-inspector__input if-text-input if-text-input--inset",
-                        value: "{draft_value}",
-                        oninput,
-                        onkeydown,
-                    }
-                    button {
-                        r#type: "button",
-                        class: "if-device-inspector__save if-button if-button--primary if-button--sm",
-                        disabled: !dirty,
-                        onclick: save_click,
-                        "Save"
-                    }
-                }
-            }
-            if let Some(error) = error {
-                div { class: "if-device-inspector__error", "{error}" }
-            }
-            div { class: "if-device-inspector__meta",
-                span { class: "if-device-inspector__meta-label", "Hardware" }
-                span { class: "if-device-inspector__hardware", title: "{row.hardware_name}", "{row.hardware_name}" }
-            }
-            UsageBlock { row: row.clone() }
-            button {
-                r#type: "button",
-                class: "if-device-inspector__copy if-button if-button--secondary if-button--sm",
-                onclick: copy_click,
-                "Copy report"
-            }
-        }
-    }
-}
-
 pub(super) fn select_initial_device(rows: &[DevicePanelRow]) -> Option<DeviceId> {
     rows.iter()
         .find(|row| row.connected)
@@ -302,7 +197,7 @@ pub(super) fn build_device_report(row: &DevicePanelRow) -> String {
     ];
     lines.extend(usage_report_lines(&row.usage));
     lines.extend([
-        format!("SDL GUID: {}", row.device_id.0),
+        format!("Device ID: {}", row.device_id.0),
         format!(
             "Product version: {}",
             format_optional_u16(diagnostics.product_version)
@@ -593,16 +488,23 @@ mod tests {
         assert!(html.contains("if-device-inspector__edit-row"));
         assert!(html.contains(">Save<"));
         assert!(!html.contains("Save name"));
-        assert!(
-            html.contains("if-device-inspector__save if-button if-button--primary if-button--sm")
-        );
+        let document = scraper::Html::parse_fragment(&html);
+        for selector in [
+            "button.if-device-inspector__save.if-button.if-button--primary.if-button--sm",
+            "button.if-device-inspector__copy.if-button.if-button--secondary.if-button--sm",
+        ] {
+            assert!(
+                document
+                    .select(&scraper::Selector::parse(selector).unwrap())
+                    .next()
+                    .is_some()
+            );
+        }
         assert!(html.contains("Hardware"));
         assert!(html.contains("Merge/conditional refs"));
         assert!(html.contains("Copy report"));
         assert!(!html.contains("Copy device report"));
-        assert!(
-            html.contains("if-device-inspector__copy if-button if-button--secondary if-button--sm")
-        );
+
         assert!(!html.contains(">Path<"));
         assert!(!html.contains(">Connection<"));
         assert!(!html.contains(">Type<"));
@@ -676,7 +578,7 @@ mod tests {
 
     #[test]
     fn panel_slot_css_defines_device_row_interaction_states() {
-        let css = include_str!("../../../assets/frame/panel_slot.css");
+        let css = include_str!("../../../../assets/frame/panel_slot.css");
 
         for selector in [
             ".if-device-row:hover:not(:disabled)",
@@ -693,7 +595,7 @@ mod tests {
 
     #[test]
     fn panel_slot_css_keeps_device_row_status_on_name_line() {
-        let css = include_str!("../../../assets/frame/panel_slot.css");
+        let css = include_str!("../../../../assets/frame/panel_slot.css");
 
         // The headline flex container is what places the state badge to
         // the right of the display name without a custom selector for
@@ -710,7 +612,7 @@ mod tests {
 
     #[test]
     fn panel_slot_css_drops_count_chip_styling_in_favor_of_badge() {
-        let css = include_str!("../../../assets/frame/panel_slot.css");
+        let css = include_str!("../../../../assets/frame/panel_slot.css");
 
         // Counts wrapper still defines the flex+gap rhythm for the row of
         // badges, but the chip-specific surface styling moved to Badge.
@@ -720,7 +622,7 @@ mod tests {
 
     #[test]
     fn panel_slot_css_keeps_hardware_clamp() {
-        let css = include_str!("../../../assets/frame/panel_slot.css");
+        let css = include_str!("../../../../assets/frame/panel_slot.css");
 
         assert!(css.contains(".if-device-row__hardware {\n"));
         assert!(css.contains("-webkit-line-clamp: 2;"));
@@ -728,7 +630,7 @@ mod tests {
 
     #[test]
     fn panel_slot_css_uses_documented_tokens_for_selected_row() {
-        let css = include_str!("../../../assets/frame/panel_slot.css");
+        let css = include_str!("../../../../assets/frame/panel_slot.css");
 
         // The previous --color-accent name had no token definition; the
         // selected-state surface is now anchored to the documented
@@ -746,7 +648,7 @@ mod tests {
         // panel surface, separated by a 1px strong-border-top and
         // space-3 padding-top. No background declaration on the
         // inspector, so it inherits the panel's bg-elevated.
-        let css = include_str!("../../../assets/frame/panel_slot.css");
+        let css = include_str!("../../../../assets/frame/panel_slot.css");
         let block_start = css
             .find(".if-device-panel__inspector {\n")
             .expect("inspector rule");
@@ -764,7 +666,7 @@ mod tests {
 
     #[test]
     fn panel_slot_css_aligns_device_row_shape_with_profile_row() {
-        let css = include_str!("../../../assets/frame/panel_slot.css");
+        let css = include_str!("../../../../assets/frame/panel_slot.css");
 
         // DESIGN.md §1: 4px is the default radius; 2px is reserved for
         // checkbox-class controls. The Devices and Profiles rows share
@@ -778,7 +680,7 @@ mod tests {
 
     #[test]
     fn panel_slot_css_leaves_inspector_button_visuals_to_shared_button() {
-        let css = include_str!("../../../assets/frame/panel_slot.css");
+        let css = include_str!("../../../../assets/frame/panel_slot.css");
         let button_layout = ".if-device-inspector__save,\n.if-device-inspector__copy {\n    align-self: flex-start;\n}";
 
         assert!(css.contains(button_layout));
@@ -789,7 +691,7 @@ mod tests {
 
     #[test]
     fn panel_slot_css_keeps_device_inspector_anchored_below_scrollable_ledger() {
-        let css = include_str!("../../../assets/frame/panel_slot.css");
+        let css = include_str!("../../../../assets/frame/panel_slot.css");
 
         assert!(css.contains(".if-panel-slot__body {\n"));
         assert!(css.contains("display: flex;"));
@@ -803,7 +705,7 @@ mod tests {
 
     #[test]
     fn panel_slot_css_defines_inline_device_inspector_edit_row() {
-        let css = include_str!("../../../assets/frame/panel_slot.css");
+        let css = include_str!("../../../../assets/frame/panel_slot.css");
 
         assert!(css.contains(".if-device-inspector__edit-row {\n"));
         assert!(css.contains("grid-template-columns: minmax(0, 1fr) auto;"));

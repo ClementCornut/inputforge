@@ -34,3 +34,15 @@ pub use capture::{
     Capture, CaptureError, NativeChange, NativeControl, NativeHat, NativeState, SnapshotKind,
     StreamStatus, StreamUpdate,
 };
+
+mod bindings;
+#[cfg(test)]
+mod bindings_tests;
+#[cfg(test)]
+mod source_tests;
+mod translate;
+
+mod source;
+pub use source::EvdevInput;
+
+mod inventory;

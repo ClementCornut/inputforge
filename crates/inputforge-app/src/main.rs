@@ -3,15 +3,14 @@
 //! `InputForge` application entry point.
 //!
 //! Parses portable command-line arguments before dispatching to the current
-//! platform. Windows owns the desktop runtime; Linux exits during Slice 1
-//! preflight before constructing unavailable input or output backends.
+//! platform. Hardware sessions begin only after an explicit engine command.
 
 mod cli;
+mod desktop;
+mod engine_thread;
 mod platform;
 #[cfg(target_os = "windows")]
 mod tray;
-#[cfg(target_os = "windows")]
-mod windows_app;
 
 use anyhow::Result;
 use clap::Parser;
@@ -26,16 +25,5 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let cli = Cli::parse();
-    run(cli)
-}
-
-#[cfg(target_os = "linux")]
-fn run(_cli: Cli) -> Result<()> {
-    platform::preflight()
-}
-
-#[cfg(target_os = "windows")]
-fn run(cli: Cli) -> Result<()> {
-    platform::preflight()?;
-    windows_app::run(cli)
+    desktop::run(&cli)
 }

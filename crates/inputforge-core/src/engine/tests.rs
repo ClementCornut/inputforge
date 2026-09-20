@@ -19,7 +19,7 @@ use crate::action::{
 };
 use crate::callbacks::{CallbackRegistry, ReleaseCallback};
 use crate::device::mock::MockInputSource;
-use crate::device::traits::HotplugEvent;
+use crate::device::traits::{HotplugEvent, InputSource};
 use crate::mode::{ModeState, Modes};
 use crate::output::mock::{
     KeyboardCall, MockKeyboardSink, MockMouseSink, MockOutputSink, MouseCall, OutputCall,
@@ -29,10 +29,7 @@ use crate::pipeline::{ActionPathSegment, OutputDestination, OutputOwner, Pipelin
 use crate::profile::Profile;
 use crate::profile::manager::{create_profile_in, sanitize_filename};
 use crate::settings::AppSettings;
-use crate::state::{
-    AppState, DeviceState, EngineStatus, InputCacheStore, OutputActivityValue, OutputCacheStore,
-    ProfileOrigin,
-};
+use crate::state::{AppState, DeviceState, EngineStatus, OutputActivityValue, ProfileOrigin};
 use crate::types::{
     AxisPolarity, AxisValue, DeviceConnectionState, DeviceDiagnostics, DeviceId, DeviceInfo,
     HatDirection, InputAddress, InputEvent, InputId, InputValue, KeyCombo, MergeOp, OutputAddress,
@@ -43,7 +40,7 @@ use inputforge_autostart::mock::MockAutostart;
 
 use super::Engine;
 use super::command::EngineCommand;
-use super::output_handler::{process_pipeline_outputs, refresh_axes_for_mode_change};
+use super::output_handler::{process_pipeline_outputs, refresh_axes_for_state};
 use super::output_state::OutputRuntimeState;
 
 // ---------------------------------------------------------------------------
@@ -237,14 +234,53 @@ fn three_modes() -> Modes {
 
 /// Build a profile with the given modes and mappings.
 fn make_profile(modes: Modes, mappings: Vec<Mapping>) -> Profile {
-    Profile::new(
+    configured_profile(Profile::new(
         "Test".to_owned(),
         vec![],
         modes,
         mappings,
         vec![],
         "Default".to_owned(),
-    )
+    ))
+}
+
+/// The shared routing fixture has one selected joystick and one native output slot.
+fn configured_profile(mut profile: Profile) -> Profile {
+    let input = MockInputSource {
+        devices: vec![DeviceInfo {
+            id: dev_id(),
+            name: "Test joystick".into(),
+            axes: 8,
+            buttons: 32,
+            hats: 4,
+            instance_path: None,
+            axis_polarities: vec![],
+        }],
+        ..Default::default()
+    };
+    profile
+        .set_controllers(crate::profile::controllers::ControllerConfig {
+            selected: vec![dev_id()],
+            bindings: vec![input.binding_table(&dev_id()).unwrap().unwrap()],
+            virtual_devices: vec![crate::types::VirtualDeviceConfig {
+                device_id: 1,
+                axes: vec![
+                    VJoyAxis::X,
+                    VJoyAxis::Y,
+                    VJoyAxis::Z,
+                    VJoyAxis::Rx,
+                    VJoyAxis::Ry,
+                    VJoyAxis::Rz,
+                    VJoyAxis::Slider0,
+                    VJoyAxis::Slider1,
+                ],
+                button_count: 128,
+                hat_count: 4,
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+    profile
 }
 
 /// Build an engine wired to mocks, returning handles for inspection.
@@ -464,14 +500,19 @@ impl RecordingOutputSink {
 }
 
 impl OutputSink for RecordingOutputSink {
-    fn create_device(
-        &mut self,
-        config: &crate::types::VirtualDeviceConfig,
-    ) -> crate::error::Result<()> {
+    fn start(&mut self, configs: &[crate::types::VirtualDeviceConfig]) -> crate::error::Result<()> {
         self.state
             .calls
             .lock()
-            .push(OutputCall::CreateDevice(config.clone()));
+            .extend(configs.iter().cloned().map(OutputCall::CreateDevice));
+        Ok(())
+    }
+    fn neutralize(&mut self) -> crate::error::Result<()> {
+        self.state.calls.lock().push(OutputCall::Neutralize);
+        Ok(())
+    }
+    fn stop(&mut self) -> crate::error::Result<()> {
+        self.state.calls.lock().push(OutputCall::Stop);
         Ok(())
     }
 
@@ -504,14 +545,6 @@ impl OutputSink for RecordingOutputSink {
             hat,
             direction,
         });
-        Ok(())
-    }
-
-    fn release_device(&mut self, device: u8) -> crate::error::Result<()> {
-        self.state
-            .calls
-            .lock()
-            .push(OutputCall::ReleaseDevice(device));
         Ok(())
     }
 
@@ -675,7 +708,7 @@ impl GestureEngineHarness {
 
     fn resume(&mut self) {
         self.tx
-            .send(EngineCommand::Resume)
+            .send(EngineCommand::Activate)
             .expect("command should be sent");
         self.tick();
     }
@@ -747,7 +780,7 @@ fn gesture_profile_with_mapping(input: InputAddress, actions: Vec<Action>) -> Pr
 }
 
 fn gesture_profile_named(name: &str, input: InputAddress, actions: Vec<Action>) -> Profile {
-    Profile::new(
+    configured_profile(Profile::new(
         name.to_owned(),
         vec![],
         Modes::new(vec!["Default".to_owned(), "Alternate".to_owned()]).unwrap(),
@@ -759,7 +792,7 @@ fn gesture_profile_named(name: &str, input: InputAddress, actions: Vec<Action>) 
         }],
         vec![],
         "Default".to_owned(),
-    )
+    ))
 }
 
 #[test]
@@ -1233,11 +1266,18 @@ fn held_outputs_release_before_active_profile_deletion() {
     std::fs::create_dir_all(&profile_dir).unwrap();
     let profile_path = profile_dir.join(format!("{}.toml", sanitize_filename(profile_name)));
     let mapping = held_mouse_mapping(MouseTarget::LeftButton, "Default");
-    let profile = make_profile(simple_modes(), vec![mapping]);
+    let profile = configured_profile(Profile::new(
+        profile_name.into(),
+        vec![],
+        simple_modes(),
+        vec![mapping],
+        vec![],
+        "Default".into(),
+    ));
     profile.save(&profile_path).unwrap();
     let mut input = MockInputSource::default();
     input.events.push(button_event(0, true));
-    let (mut engine, _state, tx, _keyboard, mouse) = make_recording_engine_with_settings_path(
+    let (mut engine, state, tx, _keyboard, mouse) = make_recording_engine_with_settings_path(
         input,
         profile,
         Some(profile_path.clone()),
@@ -1252,7 +1292,16 @@ fn held_outputs_release_before_active_profile_deletion() {
     })
     .unwrap();
 
-    assert!(engine.tick().is_err());
+    engine.tick().unwrap();
+    assert_eq!(state.read().engine_status, EngineStatus::Faulted);
+    assert!(
+        state
+            .read()
+            .session
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("injected mouse button-up failure"))
+    );
     assert!(profile_path.exists());
     assert_eq!(
         mouse.calls(),
@@ -1301,8 +1350,12 @@ fn held_outputs_release_on_bulk_mapping_replacement() {
 
     engine.tick().unwrap();
     tx.send(EngineCommand::SetMappingsBulk {
-        entries: vec![],
-        snapshot_label: "Before empty bulk replacement".to_owned(),
+        entries: vec![crate::action::BulkMapEntry {
+            input: button_addr(0),
+            mode: "Default".into(),
+            output: vjoy_button_output(1, 1),
+        }],
+        snapshot_label: "Before held mapping replacement".to_owned(),
     })
     .unwrap();
     engine.tick().unwrap();
@@ -1455,7 +1508,7 @@ fn held_outputs_stay_active_when_rename_mode_validation_fails() {
     let profile = make_profile(shift_modes(), vec![held_mapping]);
     let mut input = MockInputSource::default();
     input.events.push(button_event(0, true));
-    let (mut engine, _state, tx, _keyboard, mouse) = make_recording_engine(input, profile, None);
+    let (mut engine, state, tx, _keyboard, mouse) = make_recording_engine(input, profile, None);
 
     engine.tick().unwrap();
     tx.send(EngineCommand::RenameMode {
@@ -1464,10 +1517,16 @@ fn held_outputs_stay_active_when_rename_mode_validation_fails() {
     })
     .unwrap();
 
-    assert!(matches!(
-        engine.tick(),
-        Err(crate::error::EngineError::ModeNotFound { .. })
-    ));
+    engine.tick().unwrap();
+    assert!(
+        state
+            .read()
+            .session
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("Missing"))
+    );
+    assert_eq!(state.read().engine_status, EngineStatus::Running);
     assert_eq!(
         mouse.calls(),
         vec![MouseCall::ButtonDown(MouseTarget::LeftButton)]
@@ -1480,7 +1539,7 @@ fn held_outputs_stay_active_when_delete_mode_validation_fails() {
     let profile = make_profile(shift_modes(), vec![held_mapping]);
     let mut input = MockInputSource::default();
     input.events.push(button_event(0, true));
-    let (mut engine, _state, tx, _keyboard, mouse) = make_recording_engine(input, profile, None);
+    let (mut engine, state, tx, _keyboard, mouse) = make_recording_engine(input, profile, None);
 
     engine.tick().unwrap();
     tx.send(EngineCommand::DeleteMode {
@@ -1488,10 +1547,16 @@ fn held_outputs_stay_active_when_delete_mode_validation_fails() {
     })
     .unwrap();
 
-    assert!(matches!(
-        engine.tick(),
-        Err(crate::error::EngineError::ModeNotFound { .. })
-    ));
+    engine.tick().unwrap();
+    assert!(
+        state
+            .read()
+            .session
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("Missing"))
+    );
+    assert_eq!(state.read().engine_status, EngineStatus::Running);
     assert_eq!(
         mouse.calls(),
         vec![MouseCall::ButtonDown(MouseTarget::LeftButton)]
@@ -1561,7 +1626,7 @@ fn held_outputs_release_on_command_disconnect() {
         ]
     );
     assert!(engine.shutdown);
-    assert_eq!(state.read().engine_status, EngineStatus::Running);
+    assert_eq!(state.read().engine_status, EngineStatus::Stopped);
 }
 
 #[test]
@@ -1570,12 +1635,21 @@ fn failed_release_is_retryable() {
     let profile = make_profile(simple_modes(), vec![mapping]);
     let mut input = MockInputSource::default();
     input.events.push(button_event(0, true));
-    let (mut engine, _state, tx, _keyboard, mouse) = make_recording_engine(input, profile, None);
+    let (mut engine, state, tx, _keyboard, mouse) = make_recording_engine(input, profile, None);
 
     engine.tick().unwrap();
     mouse.fail_next_button_up();
     tx.send(EngineCommand::Deactivate).unwrap();
-    assert!(engine.tick().is_err());
+    engine.tick().unwrap();
+    assert_eq!(state.read().engine_status, EngineStatus::Faulted);
+    assert!(
+        state
+            .read()
+            .session
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("injected mouse button-up failure"))
+    );
 
     tx.send(EngineCommand::Deactivate).unwrap();
     engine.tick().unwrap();
@@ -1595,11 +1669,19 @@ fn failed_hold_acquisition_is_retryable() {
     let profile = make_profile(simple_modes(), vec![mapping]);
     let mut input = MockInputSource::default();
     input.events.push(button_event(0, true));
-    let (mut engine, _state, _tx, _keyboard, mouse) = make_recording_engine(input, profile, None);
+    let (mut engine, state, tx, _keyboard, mouse) = make_recording_engine(input, profile, None);
 
     mouse.fail_next_button_down();
     assert!(engine.tick().is_err());
     assert!(mouse.calls().is_empty());
+    assert_eq!(state.read().engine_status, EngineStatus::Faulted);
+    let mut neutral_input = MockInputSource::default();
+    neutral_input.events.push(button_event(0, false));
+    engine.input = Box::new(neutral_input);
+    engine.tick().unwrap();
+    tx.send(EngineCommand::Retry).unwrap();
+    engine.tick().unwrap();
+    assert_eq!(state.read().engine_status, EngineStatus::Running);
 
     let mut retry_input = MockInputSource::default();
     retry_input.events.push(button_event(0, true));
@@ -1990,8 +2072,8 @@ fn refresh_axes_reprocesses_cached_values() {
         }],
     };
 
-    let mut cache = InputCacheStore::new();
-    cache.update(
+    let mut state = AppState::new();
+    state.input_cache.update(
         &axis_addr(0),
         &InputValue::Axis {
             value: AxisValue::new(0.5),
@@ -2000,14 +2082,7 @@ fn refresh_axes_reprocesses_cached_values() {
     );
 
     let mut sink = MockOutputSink::new();
-    refresh_axes_for_mode_change(
-        &cache,
-        &[mapping],
-        "Default",
-        &mut sink,
-        &mut OutputCacheStore::new(),
-    )
-    .unwrap();
+    refresh_axes_for_state(&mut state, &[mapping], "Default", &mut sink).unwrap();
 
     assert_eq!(
         sink.calls(),
@@ -2041,8 +2116,8 @@ fn refresh_axes_skips_mode_changes_and_keys() {
         ],
     };
 
-    let mut cache = InputCacheStore::new();
-    cache.update(
+    let mut state = AppState::new();
+    state.input_cache.update(
         &axis_addr(0),
         &InputValue::Axis {
             value: AxisValue::new(0.3),
@@ -2051,14 +2126,7 @@ fn refresh_axes_skips_mode_changes_and_keys() {
     );
 
     let mut sink = MockOutputSink::new();
-    refresh_axes_for_mode_change(
-        &cache,
-        &[mapping],
-        "Default",
-        &mut sink,
-        &mut OutputCacheStore::new(),
-    )
-    .unwrap();
+    refresh_axes_for_state(&mut state, &[mapping], "Default", &mut sink).unwrap();
 
     // No axis/button outputs were produced, mode changes and keys skipped.
     assert!(sink.calls().is_empty());
@@ -2448,7 +2516,7 @@ fn tick_skips_processing_when_paused() {
     let (mut engine, state, _tx) = make_engine(input, profile);
 
     // Set paused before tick.
-    state.write().engine_status = EngineStatus::Paused;
+    state.write().engine_status = EngineStatus::Stopped;
 
     engine.tick().unwrap();
 
@@ -2796,6 +2864,66 @@ impl EngineHarness {
         self.engine.settings.startup = startup.clone();
         self.engine.state.write().startup = startup;
     }
+}
+
+fn write_unconfigured_profile(path: &std::path::Path, name: &str) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    Profile::new(
+        name.to_owned(),
+        vec![],
+        simple_modes(),
+        vec![],
+        vec![],
+        "Default".to_owned(),
+    )
+    .save(path)
+    .unwrap();
+}
+
+#[test]
+fn first_library_load_persists_reconciled_controller_config() {
+    let mut harness = EngineHarness::new();
+    let path = harness.profile_path("Alpha");
+    write_unconfigured_profile(&path, "Alpha");
+
+    harness
+        .dispatch(EngineCommand::LoadProfile(path.clone()))
+        .unwrap();
+
+    assert!(Profile::load(&path).unwrap().controllers().is_some());
+}
+
+#[test]
+fn library_to_external_reconciliation_does_not_write_external_profile() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+    let external = harness.engine.config_dir().join("External.toml");
+    write_unconfigured_profile(&external, "External");
+    let before = std::fs::read(&external).unwrap();
+
+    harness
+        .dispatch(EngineCommand::LoadExternalProfileOnce(external.clone()))
+        .unwrap();
+
+    assert_eq!(std::fs::read(external).unwrap(), before);
+}
+
+#[test]
+fn external_to_library_reconciliation_persists_library_profile() {
+    let mut harness = EngineHarness::new();
+    let external = harness.engine.config_dir().join("External.toml");
+    write_unconfigured_profile(&external, "External");
+    harness
+        .dispatch(EngineCommand::LoadExternalProfileOnce(external))
+        .unwrap();
+
+    let library = harness.profile_path("Alpha");
+    write_unconfigured_profile(&library, "Alpha");
+    harness
+        .dispatch(EngineCommand::LoadProfile(library.clone()))
+        .unwrap();
+
+    assert!(Profile::load(&library).unwrap().controllers().is_some());
 }
 
 #[test]
@@ -3158,16 +3286,7 @@ fn process_outputs_mode_change_no_op() {
 }
 
 #[test]
-fn refresh_axes_set_button_path() {
-    // Mapping an axis to a button output goes through the SetButton branch
-    // in refresh_axes_for_mode_change. We craft a PipelineOutput::SetButton
-    // by using MapToVJoy with a button OutputAddress and a Button input value
-    // cached as an axis (the pipeline sees input_value as Axis, so it
-    // produces SetAxis). Instead, test the branch directly.
-    //
-    // Since the pipeline always produces SetAxis for axis inputs, we test
-    // the refresh SetButton path via direct process_pipeline_outputs.
-    // This is the closest we can get without mocking the pipeline.
+fn refresh_axes_ignores_button_mappings() {
     let mapping = Mapping {
         input: button_addr(0),
         mode: "Default".to_owned(),
@@ -3177,15 +3296,8 @@ fn refresh_axes_set_button_path() {
         }],
     };
 
-    // Cache a button value (the refresh only iterates axis entries, so we
-    // must cache an axis entry that maps to an action producing SetButton).
-    // Since MapToVJoy with axis input always produces SetAxis, the SetButton
-    // branch in refresh is defensive. We verify it via the unit-level
-    // process_pipeline_outputs tests (T2, T18) instead.
-    //
-    // Here we verify that refresh works end-to-end for axis → SetAxis.
-    let mut cache = InputCacheStore::new();
-    cache.update(
+    let mut state = AppState::new();
+    state.input_cache.update(
         &axis_addr(0),
         &InputValue::Axis {
             value: AxisValue::new(0.8),
@@ -3203,14 +3315,7 @@ fn refresh_axes_set_button_path() {
     };
 
     let mut sink = MockOutputSink::new();
-    refresh_axes_for_mode_change(
-        &cache,
-        &[mapping, mapping_axis],
-        "Default",
-        &mut sink,
-        &mut OutputCacheStore::new(),
-    )
-    .unwrap();
+    refresh_axes_for_state(&mut state, &[mapping, mapping_axis], "Default", &mut sink).unwrap();
 
     assert_eq!(
         sink.calls(),
@@ -3336,10 +3441,10 @@ fn tick_handles_pause_command() {
     let input = MockInputSource::default();
     let (mut engine, state, tx) = make_engine(input, profile);
 
-    tx.send(EngineCommand::Pause).unwrap();
+    tx.send(EngineCommand::Deactivate).unwrap();
     engine.tick().unwrap();
 
-    assert_eq!(state.read().engine_status, EngineStatus::Paused);
+    assert_eq!(state.read().engine_status, EngineStatus::Stopped);
 }
 
 #[test]
@@ -3438,8 +3543,8 @@ fn tick_handles_load_profile_command() {
     let profile = make_profile(two_modes(), vec![]);
     let toml_str = profile.to_toml().unwrap();
 
-    let dir = std::env::temp_dir().join("inputforge_engine_test");
-    std::fs::create_dir_all(&dir).unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().to_path_buf();
     let path = dir.join("load_test_profile.toml");
     std::fs::write(&path, &toml_str).unwrap();
 
@@ -3625,8 +3730,8 @@ fn set_mapping_refreshes_outputs_from_cached_axis_values() {
     let profile = make_profile(simple_modes(), vec![mapping]);
 
     // Write the profile to a temp file so set_mapping can persist it.
-    let dir = std::env::temp_dir().join("inputforge_engine_test");
-    std::fs::create_dir_all(&dir).unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().to_path_buf();
     let path = dir.join("set_mapping_refresh_test.toml");
     std::fs::write(&path, profile.to_toml().unwrap()).unwrap();
 
@@ -3691,8 +3796,8 @@ fn set_mapping_with_out_of_range_threshold_leaves_existing_mapping_unchanged() {
     };
     let profile = make_profile(simple_modes(), vec![mapping]);
 
-    let dir = std::env::temp_dir().join("inputforge_engine_test");
-    std::fs::create_dir_all(&dir).unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().to_path_buf();
     let path = dir.join("set_mapping_invalid_threshold.toml");
     std::fs::write(&path, profile.to_toml().unwrap()).unwrap();
 
@@ -3744,8 +3849,8 @@ fn set_mapping_with_nested_gesture_leaves_existing_mapping_unchanged() {
     };
     let profile = make_profile(simple_modes(), vec![mapping]);
 
-    let dir = std::env::temp_dir().join("inputforge_engine_test");
-    std::fs::create_dir_all(&dir).unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().to_path_buf();
     let path = dir.join("set_mapping_nested_gesture.toml");
     std::fs::write(&path, profile.to_toml().unwrap()).unwrap();
 

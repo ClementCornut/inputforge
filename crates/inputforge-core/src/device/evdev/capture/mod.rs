@@ -1,6 +1,8 @@
 mod error;
 mod handle;
 mod hotplug;
+mod passive;
+mod passive_transaction;
 mod stream;
 #[cfg(test)]
 mod tests;
@@ -31,6 +33,8 @@ pub struct Capture {
     pending: bool,
     valid: bool,
     stream_cursor: usize,
+    monitoring: bool,
+    scan_generation: u64,
 }
 
 impl Capture {
@@ -55,6 +59,8 @@ impl Capture {
             pending: false,
             valid: true,
             stream_cursor: 0,
+            monitoring: false,
+            scan_generation: 0,
         };
         capture.refresh(true)?;
         Ok(capture)
@@ -107,7 +113,11 @@ impl Capture {
     /// Acquisition errors leave no new grabs; fatal monitor/scan errors also
     /// invalidate the owner. An already active selection remains unchanged.
     pub fn acquire(&mut self, ids: impl AsRef<[DeviceId]>) -> Result<(), CaptureError> {
-        self.acquire_set(ids.as_ref())
+        if self.monitoring {
+            self.acquire_monitored(ids.as_ref())
+        } else {
+            self.acquire_set(ids.as_ref())
+        }
     }
 
     /// Release all grabs and close all capture descriptors, including after errors.
@@ -119,7 +129,11 @@ impl Capture {
     pub fn release(&mut self) -> Result<(), CaptureError> {
         self.ids.clear();
         self.stream_cursor = 0;
-        transaction::release(&mut self.held)
+        if self.monitoring && self.valid {
+            self.release_grabs()
+        } else {
+            transaction::release(&mut self.held)
+        }
     }
 
     fn ensure_valid(&self) -> Result<(), CaptureError> {
@@ -163,6 +177,7 @@ impl Capture {
                     .scan()
                     .map_err(|e| CaptureError::io("enumerate input", Path::new(""), None, e))?;
                 self.last_scan = now;
+                self.scan_generation = self.scan_generation.wrapping_add(1);
                 // A notification can arrive during enumeration. Do not commit a
                 // grab transaction until a later scan reconciles that notification.
                 self.pending |= self

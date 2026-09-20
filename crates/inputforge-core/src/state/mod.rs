@@ -87,6 +87,7 @@ pub struct ActiveSnapshotRow {
 /// between the engine and GUI threads.
 #[derive(Debug)]
 pub struct AppState {
+    pub session: SessionState,
     /// Connected devices and their live input values.
     pub devices: Vec<DeviceState>,
     /// App-wide custom device aliases mirrored from `AppSettings`.
@@ -137,6 +138,7 @@ impl AppState {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            session: SessionState::default(),
             devices: Vec::new(),
             device_aliases: HashMap::new(),
             device_registry: HashMap::new(),
@@ -184,6 +186,7 @@ impl AppState {
             }
         }
         Self {
+            session: SessionState::default(),
             devices: Vec::new(),
             device_aliases: HashMap::new(),
             device_registry: HashMap::new(),
@@ -255,3 +258,12 @@ mod tests {
         assert_eq!(s.startup, StartupSettings::default());
     }
 }
+
+mod mapping_issue;
+mod session;
+pub use mapping_issue::{
+    InputIssueKind, InputRole, MappingIssue, MappingIssueReason, OutputIssueKind,
+};
+pub use session::SessionState;
+mod input_values;
+pub use input_values::InputValues;

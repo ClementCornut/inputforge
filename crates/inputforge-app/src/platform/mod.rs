@@ -14,15 +14,8 @@ use self::linux as implementation;
 use self::windows as implementation;
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-compile_error!("inputforge-app supports only Windows and Linux in Slice 1");
+compile_error!("inputforge-app supports only Windows and Linux");
 
-#[cfg_attr(
-    target_os = "linux",
-    expect(
-        dead_code,
-        reason = "Slice 1 Linux preflight exits before backend construction"
-    )
-)]
 pub(crate) struct PlatformBackends {
     pub(crate) input: Box<dyn InputSource>,
     pub(crate) controller: Box<dyn OutputSink>,
@@ -31,18 +24,6 @@ pub(crate) struct PlatformBackends {
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-pub(crate) fn preflight() -> Result<()> {
-    implementation::preflight()
-}
-
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-#[cfg_attr(
-    target_os = "linux",
-    expect(
-        dead_code,
-        reason = "Slice 1 Linux preflight exits before backend construction"
-    )
-)]
 pub(crate) fn create() -> Result<PlatformBackends> {
     implementation::create()
 }

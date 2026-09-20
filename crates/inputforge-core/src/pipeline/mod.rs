@@ -39,6 +39,11 @@ pub enum PipelineOutput {
         output: OutputAddress,
         value: f64,
     },
+    SetHat {
+        owner: OutputOwner,
+        output: OutputAddress,
+        direction: HatDirection,
+    },
     SetButton {
         owner: OutputOwner,
         output: OutputAddress,
@@ -256,8 +261,16 @@ fn execute_pipeline_inner(
                         pressed: button_pressed_from_value(ctx.current_value),
                     });
                 }
-                InputValue::Hat { .. } => {
-                    tracing::debug!("hat-to-vJoy mapping not yet implemented");
+                InputValue::Hat { direction } => {
+                    ctx.outputs.push(PipelineOutput::SetHat {
+                        owner: scope.owner(
+                            path,
+                            OutputDestination::VJoy(output.clone()),
+                            OutputBehavior::Hold,
+                        ),
+                        output: output.clone(),
+                        direction: *direction,
+                    });
                 }
             },
             Action::MapToKeyboard { key, behavior } => {
@@ -405,7 +418,8 @@ pub fn evaluate_actions_through(
     primary: &InputAddress,
     stop_at: usize,
 ) -> InputValue {
-    let (input_value, mut ctx) = evaluation_context(state, primary);
+    let values = crate::state::InputValues::new(state);
+    let (input_value, mut ctx) = evaluation_context(&values, primary);
     let stop = stop_at.min(actions.len());
 
     execute_pipeline(&actions[..stop], &mut ctx);
@@ -414,7 +428,7 @@ pub fn evaluate_actions_through(
 }
 
 fn evaluation_context<'a>(
-    state: &'a crate::state::AppState,
+    values: &'a dyn InputCache,
     primary: &InputAddress,
 ) -> (InputValue, PipelineContext<'a>) {
     // Discriminate variant from the address; read via the InputCache trait.
@@ -426,17 +440,17 @@ fn evaluation_context<'a>(
         .expect("invariant: mapping primaries are always Bound (set_mapping / add_inline / F8 capture); an Unbound primary indicates a malformed loaded profile or a new construction path bypassing the invariant")
     {
         InputId::Axis { .. } => {
-            let (raw, polarity) = state.input_cache.get_axis(primary);
+            let (raw, polarity) = values.get_axis(primary);
             InputValue::Axis {
                 value: crate::types::AxisValue::new(raw),
                 polarity,
             }
         }
         InputId::Button { .. } => InputValue::Button {
-            pressed: state.input_cache.get_button(primary),
+            pressed: values.get_button(primary),
         },
         InputId::Hat { .. } => InputValue::Hat {
-            direction: state.input_cache.get_hat(primary),
+            direction: values.get_hat(primary),
         },
     };
 
@@ -456,7 +470,7 @@ fn evaluation_context<'a>(
         current_value,
         input_value: input_value.clone(),
         outputs: Vec::new(),
-        input_cache: &state.input_cache,
+        input_cache: values,
     };
 
     (input_value, ctx)
@@ -498,7 +512,8 @@ pub fn evaluate_actions_through_path(
     path: &[BranchStep],
     stop_at: usize,
 ) -> InputValue {
-    let (input_value, mut ctx) = evaluation_context(state, primary);
+    let values = crate::state::InputValues::new(state);
+    let (input_value, mut ctx) = evaluation_context(&values, primary);
     let mut current = actions;
 
     for step in path {
@@ -568,7 +583,8 @@ mod tests {
 
     fn output_owner_path(output: &PipelineOutput) -> Vec<ActionPathSegment> {
         match output {
-            PipelineOutput::SetAxis { owner, .. }
+            PipelineOutput::SetHat { owner, .. }
+            | PipelineOutput::SetAxis { owner, .. }
             | PipelineOutput::SetButton { owner, .. }
             | PipelineOutput::Keyboard { owner, .. }
             | PipelineOutput::Mouse { owner, .. } => owner.action_path.clone(),
@@ -669,7 +685,7 @@ mod tests {
     // -- Hat input passthrough ------------------------------------------------
 
     #[test]
-    fn hat_input_map_to_vjoy_no_output() {
+    fn hat_input_map_to_vjoy_delivers_direction() {
         let cache = MockCache::new();
         let mut ctx = PipelineContext {
             current_value: 0.0,
@@ -683,7 +699,13 @@ mod tests {
             output: test_output(),
         }];
         execute_pipeline(&actions, &mut ctx);
-        assert!(ctx.outputs.is_empty());
+        assert!(matches!(
+            &*ctx.outputs,
+            [PipelineOutput::SetHat {
+                direction: HatDirection::N,
+                ..
+            }]
+        ));
     }
 
     // -- Debug impl -----------------------------------------------------------

@@ -104,20 +104,6 @@ fn run_inputforge(arguments: &[&str]) -> Output {
 }
 
 #[test]
-fn no_arguments_fail_before_ui_with_stable_message() {
-    let output = run_inputforge(&[]);
-    assert_eq!(output.status.code(), Some(1));
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout must be UTF-8"),
-        ""
-    );
-    assert_eq!(
-        String::from_utf8(output.stderr).expect("stderr must be UTF-8"),
-        format!("Error: {UNAVAILABLE_MESSAGE}\n")
-    );
-}
-
-#[test]
 fn help_succeeds_before_preflight() {
     let output = run_inputforge(&["--help"]);
     assert!(output.status.success());

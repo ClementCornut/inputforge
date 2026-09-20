@@ -206,11 +206,10 @@ impl OutputRuntimeState {
 
     /// `SetButton` siblings of [`Self::absent_owners_for_scope`]: returns the
     /// (owner, address) pairs in `scope` whose owner is not in `current` and
-    /// removes them from the tracking map. The caller is responsible for
-    /// driving the vJoy button to `false` and clearing the matching
-    /// `OutputActivityStore` entry.
-    pub(crate) fn release_absent_set_button_for_scope(
-        &mut self,
+    /// leaves ownership intact until the caller successfully releases the output
+    /// and commits the release with `commit_set_button`.
+    pub(crate) fn absent_set_buttons_for_scope(
+        &self,
         scope: &OwnerScopeKey,
         current: &[OutputOwner],
     ) -> Vec<(OutputOwner, OutputAddress)> {
@@ -223,17 +222,15 @@ impl OutputRuntimeState {
             })
             .map(|(owner, output)| (owner.clone(), output.clone()))
             .collect();
-        for (owner, _) in &absent {
-            self.set_button_owners.remove(owner);
-        }
         absent
     }
 
-    /// Drain the entire `set_button_owners` map. Used by `release_all` paths
-    /// (mode change, profile load, shutdown) so vJoy buttons do not persist
-    /// across context switches.
-    pub(crate) fn drain_set_button_owners(&mut self) -> Vec<(OutputOwner, OutputAddress)> {
-        self.set_button_owners.drain().collect()
+    /// Snapshot controller owners; successful native releases commit separately.
+    pub(crate) fn set_button_owners(&self) -> Vec<(OutputOwner, OutputAddress)> {
+        self.set_button_owners
+            .iter()
+            .map(|(owner, output)| (owner.clone(), output.clone()))
+            .collect()
     }
 
     pub(crate) fn commit_release(&mut self, owner: &OutputOwner) {
@@ -629,5 +626,26 @@ mod tests {
         let release = state.reconcile_absent_owners_for_scope(&scope, &[]);
         assert_eq!(events(release), vec![OutputEvent::KeyUp(key)]);
         state.commit_release(&owner);
+    }
+    #[test]
+    fn controller_ownership_survives_until_native_release_is_committed() {
+        let address = OutputAddress {
+            device: 1,
+            output: crate::types::OutputId::Button { id: 1 },
+        };
+        let owner = owner(
+            OutputDestination::VJoy(address.clone()),
+            0,
+            OutputBehavior::Hold,
+        );
+        let scope = OwnerScopeKey::from_owner(&owner);
+        let mut state = OutputRuntimeState::default();
+        state.commit_set_button(owner.clone(), address.clone(), true);
+        // Selecting releases must leave a failed native write retryable.
+        assert_eq!(state.absent_set_buttons_for_scope(&scope, &[]).len(), 1);
+        assert_eq!(state.set_button_owners().len(), 1);
+        assert_eq!(state.absent_set_buttons_for_scope(&scope, &[]).len(), 1);
+        state.commit_set_button(owner, address, false);
+        assert!(state.set_button_owners().is_empty());
     }
 }

@@ -11,12 +11,29 @@ use crate::types::{HatDirection, KeyCombo, VJoyAxis};
 /// Implementations write axis, button, and hat values to virtual
 /// joystick devices (e.g., vJoy).
 pub trait OutputSink: Send {
-    /// Create and acquire a virtual device from the given configuration.
+    /// Native configuration limits and availability; no output is acquired.
+    fn capabilities(&self) -> ControllerCapabilities {
+        ControllerCapabilities::default()
+    }
+
+    /// Create the complete configured set.
     ///
     /// # Errors
     ///
-    /// Returns an error if the device is unavailable or already in use.
-    fn create_device(&mut self, config: &VirtualDeviceConfig) -> Result<()>;
+    /// Returns an error for creation rolls back on failure.
+    fn start(&mut self, configs: &[VirtualDeviceConfig]) -> Result<()>;
+    /// Neutralize the complete set, retaining identities.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for write failure.
+    fn neutralize(&mut self) -> Result<()>;
+    /// Close the complete set after attempting cleanup.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for cleanup failures.
+    fn stop(&mut self) -> Result<()>;
 
     /// Set an axis value on a virtual device.
     ///
@@ -40,13 +57,6 @@ pub trait OutputSink: Send {
     ///
     /// Returns an error if the device or hat is not available.
     fn set_hat(&mut self, device: u8, hat: u8, direction: HatDirection) -> Result<()>;
-
-    /// Release a virtual device, resetting its state.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the device is not currently acquired.
-    fn release_device(&mut self, device: u8) -> Result<()>;
 
     /// Write all pending state changes to the hardware.
     ///
@@ -76,6 +86,11 @@ pub trait OutputSink: Send {
 /// Separated from [`OutputSink`] because keyboard output operates on
 /// key combinations rather than virtual device axes/buttons.
 pub trait KeyboardSink: Send {
+    /// Whether this backend implements keyboard output.
+    fn supported(&self) -> bool {
+        true
+    }
+
     /// Press the given key combination.
     ///
     /// # Errors
@@ -106,6 +121,11 @@ pub trait KeyboardSink: Send {
 /// Separated from [`OutputSink`] because mouse output operates on
 /// mouse targets rather than virtual device axes/buttons.
 pub trait MouseSink: Send {
+    /// Whether this backend implements mouse output.
+    fn supported(&self) -> bool {
+        true
+    }
+
     /// Press the given mouse button target.
     ///
     /// # Errors
@@ -136,4 +156,23 @@ pub trait MouseSink: Send {
     ///
     /// Returns an error if the mouse injection fails.
     fn wheel(&mut self, target: MouseTarget) -> Result<()>;
+}
+
+/// Virtual controller capabilities reported by the native output adapter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ControllerCapabilities {
+    pub configurable: bool,
+    pub min_buttons: u8,
+    pub max_buttons: u8,
+    pub max_hats: u8,
+}
+impl Default for ControllerCapabilities {
+    fn default() -> Self {
+        Self {
+            configurable: false,
+            min_buttons: 0,
+            max_buttons: 128,
+            max_hats: 4,
+        }
+    }
 }

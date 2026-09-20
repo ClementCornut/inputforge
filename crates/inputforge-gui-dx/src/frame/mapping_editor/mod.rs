@@ -14,6 +14,8 @@ mod header;
 mod inactive_hint;
 pub(crate) mod keyboard;
 pub(crate) mod live_readout;
+mod mapping_issue_copy;
+mod mapping_issues;
 pub(crate) mod pipeline;
 pub(crate) mod undo_log;
 mod undo_recap;
@@ -177,6 +179,7 @@ pub(crate) fn MappingEditor() -> Element {
                             mapping_key: (mode.clone(), input.clone()),
                             actions: actions_clone.clone(),
                         }
+                        mapping_issues::MappingIssues { mapping_key: (mode.clone(), input.clone()) }
                         LiveReadout {
                             primary: input.clone(),
                             actions: actions_clone.clone(),

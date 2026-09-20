@@ -26,6 +26,10 @@ fn main() -> anyhow::Result<()> {
 
     let mut state = AppState::new();
     state.engine_status = EngineStatus::Running;
+    state.session.ready = true;
+    state.session.monitored = vec![DeviceId("demo-stick".to_owned())];
+    state.session.keyboard_supported = true;
+    state.session.mouse_supported = true;
     "Demo".clone_into(&mut state.current_mode);
     state
         .warnings
@@ -71,5 +75,12 @@ fn main() -> anyhow::Result<()> {
     // sync effect just mutates a detached `MenuItem` that nothing renders.
     let toggle_item = muda::MenuItem::new("Activate", true, None);
 
-    inputforge_gui_dx::launch_gui(state, commands, menu_ids, toggle_item, false)
+    inputforge_gui_dx::launch_gui(
+        state,
+        commands,
+        menu_ids,
+        toggle_item,
+        false,
+        Box::new(|| {}),
+    )
 }

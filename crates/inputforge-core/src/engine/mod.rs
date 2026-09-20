@@ -8,12 +8,18 @@
 //! shared [`AppState`](crate::state::AppState) and an mpsc command
 //! channel.
 
+mod axis_settings;
+mod cleanup;
 mod command;
+mod controller_bindings;
 mod dependencies;
 pub(crate) mod gestures;
+mod input_updates;
+mod mapping_availability;
 mod output_handler;
 mod output_state;
 mod run;
+mod session;
 #[cfg(test)]
 mod tests;
 
@@ -60,9 +66,11 @@ pub struct Engine {
     /// Reused across frames to batch output cache writes.
     output_buffer: Vec<PipelineOutput>,
     shutdown: bool,
+    awaiting_snapshots: std::collections::HashSet<crate::types::DeviceId>,
+    blocked_inputs: std::collections::HashSet<crate::types::InputAddress>,
     /// When `true`, the next tick will refresh all cached axis outputs.
     ///
-    /// Set on `Activate`/`Resume` so vJoy reflects current physical
+    /// Set on `Activate` so vJoy reflects current physical
     /// device positions immediately, without waiting for a new input event.
     pending_output_refresh: bool,
     /// Application-wide settings; refreshed by `EngineCommand::ReloadSettings`.
@@ -109,7 +117,7 @@ impl Engine {
                   extracting it would obscure the call order guarantee"
     )]
     pub fn new(
-        input: Box<dyn InputSource>,
+        mut input: Box<dyn InputSource>,
         output: Box<dyn OutputSink>,
         keyboard: Box<dyn KeyboardSink>,
         mouse: Box<dyn MouseSink>,
@@ -119,6 +127,21 @@ impl Engine {
         settings_path: PathBuf,
         mut autostart: Box<dyn AutostartManager>,
     ) -> Self {
+        {
+            let mut shared = state.write();
+            shared.session.keyboard_supported = keyboard.supported();
+            shared.session.mouse_supported = mouse.supported();
+            shared.session.controller_capabilities = output.capabilities();
+        };
+        let bindings = state
+            .read()
+            .active_profile
+            .as_ref()
+            .and_then(|p| p.controllers())
+            .map_or_else(Vec::new, |c| c.bindings.clone());
+        if let Err(error) = input.configure(&bindings) {
+            state.write().session.notice = Some(error.to_string());
+        }
         let startup_mode = {
             let s = state.read();
             s.active_profile.as_ref().map_or_else(
@@ -214,6 +237,8 @@ impl Engine {
             event_buffer: Vec::with_capacity(64),
             output_buffer: Vec::new(),
             shutdown: false,
+            awaiting_snapshots: std::collections::HashSet::new(),
+            blocked_inputs: std::collections::HashSet::new(),
             pending_output_refresh: false,
             settings,
             settings_path,
@@ -269,8 +294,22 @@ impl Engine {
 
 impl Drop for Engine {
     fn drop(&mut self) {
-        if let Err(e) = self.output.flush() {
-            tracing::error!("Failed to flush output during Engine drop: {e}");
+        if let Err(e) = self.cleanup_session(false) {
+            tracing::error!("Engine cleanup failed: {e}");
         }
     }
 }
+
+#[cfg(test)]
+mod value_tests;
+
+#[cfg(test)]
+mod session_tests;
+mod validation;
+mod validation_inputs;
+
+mod output_config;
+mod session_config;
+
+#[cfg(test)]
+mod axis_settings_tests;

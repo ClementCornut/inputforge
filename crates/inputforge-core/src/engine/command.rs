@@ -10,30 +10,61 @@ use crate::types::{DeviceId, InputAddress};
 /// Commands sent from the GUI to the engine via an mpsc channel.
 #[derive(Debug, PartialEq)]
 pub enum EngineCommand {
+    Retry,
+    RefreshInput,
+    SetControllerConfig(crate::profile::controllers::ControllerConfig),
+    /// Recreate virtual controllers using the desired layout while routing is stopped.
+    ApplyControllerChanges,
+    SelectControllers(Vec<DeviceId>),
+    /// Confirm a physically observed control after an ambiguous layout change.
+    ConfirmInputBinding {
+        device: DeviceId,
+        input: crate::types::InputId,
+    },
+    SetAxisPolarity {
+        device: DeviceId,
+        axis: u8,
+        polarity: Option<crate::types::AxisPolarity>,
+    },
+    DetectAxis {
+        device: DeviceId,
+        axis: u8,
+    },
     /// Load a profile from the given path.
     LoadProfile(PathBuf),
     /// Create a new library profile and load it.
-    CreateProfile { name: String },
+    CreateProfile {
+        name: String,
+    },
     /// Load an external profile without adding it to the library.
     LoadExternalProfileOnce(PathBuf),
     /// Copy an external profile into the library and load it.
-    AddExternalProfileToLibrary { path: PathBuf, name: String },
+    AddExternalProfileToLibrary {
+        path: PathBuf,
+        name: String,
+    },
     /// Rename a library profile.
-    RenameProfile { old_name: String, new_name: String },
+    RenameProfile {
+        old_name: String,
+        new_name: String,
+    },
     /// Duplicate a profile into the library without changing the active profile.
-    DuplicateProfile { source_path: PathBuf, name: String },
+    DuplicateProfile {
+        source_path: PathBuf,
+        name: String,
+    },
     /// Delete a profile from the library.
-    DeleteProfile { name: String },
+    DeleteProfile {
+        name: String,
+    },
     /// Reveal a profile path in the OS shell.
-    RevealProfile { path: PathBuf },
+    RevealProfile {
+        path: PathBuf,
+    },
     /// Start processing input events.
     Activate,
-    /// Stop processing and flush pending output.
+    /// Stop routing, retaining neutral virtual controllers and passive monitoring.
     Deactivate,
-    /// Temporarily stop processing without releasing devices.
-    Pause,
-    /// Resume processing after a pause.
-    Resume,
     /// Shut down the engine loop.
     Shutdown,
     /// Set or update a calibration for a specific device axis.
@@ -76,7 +107,10 @@ pub enum EngineCommand {
 
     /// Remove the mapping for `(input, mode)`. No-op if no such mapping
     /// exists; the engine handler skips persistence on that fast path.
-    RemoveMapping { input: InputAddress, mode: String },
+    RemoveMapping {
+        input: InputAddress,
+        mode: String,
+    },
 
     /// Move the mapping `(input, mode)` to position `target_index_in_group`
     /// within its visual group (Axes / Buttons / Hats). Out-of-bounds
@@ -96,7 +130,9 @@ pub enum EngineCommand {
     /// Idempotent when the engine is already running `mode`. Subsequent
     /// rule-driven mode changes (`Action::ChangeMode` outputs, temporary-mode
     /// pop callbacks) are unaffected: rules win after a manual switch.
-    SwitchMode { mode: String },
+    SwitchMode {
+        mode: String,
+    },
 
     /// Re-read `settings.toml` and update in-memory `AppSettings`.
     ///
@@ -106,10 +142,14 @@ pub enum EngineCommand {
     ReloadSettings,
 
     /// Set the default threshold for newly created double-tap gesture stages.
-    SetDefaultDoubleTapThreshold { threshold_ms: u64 },
+    SetDefaultDoubleTapThreshold {
+        threshold_ms: u64,
+    },
 
     /// Set the default threshold for newly created long-press gesture stages.
-    SetDefaultLongPressThreshold { threshold_ms: u64 },
+    SetDefaultLongPressThreshold {
+        threshold_ms: u64,
+    },
 
     /// Replace `AppSettings.snapshot` with the supplied config.
     ///
@@ -138,7 +178,9 @@ pub enum EngineCommand {
     ///      back in-memory + mirror, push warning.
     ///   4. On `Err`: push `"Could not change launch-at-startup setting."`,
     ///      leave settings + state untouched.
-    SetAutostart { enabled: bool },
+    SetAutostart {
+        enabled: bool,
+    },
 
     /// Set the persisted "start minimized to tray" preference (F16).
     ///
@@ -153,7 +195,9 @@ pub enum EngineCommand {
     ///      Restart of InputForge may use the previous setting."`. Do NOT
     ///      revert; the engine-startup unconditional argv resync heals it
     ///      on the next launch.
-    SetStartMinimizedToTray { enabled: bool },
+    SetStartMinimizedToTray {
+        enabled: bool,
+    },
 
     /// Set or clear the global display alias for a device.
     SetDeviceAlias {
@@ -168,13 +212,20 @@ pub enum EngineCommand {
     },
 
     /// Delete a snapshot by id.
-    DeleteSnapshot { id: SnapshotId },
+    DeleteSnapshot {
+        id: SnapshotId,
+    },
 
     /// Undo a staged snapshot delete by id.
-    UndoSnapshotDelete { id: SnapshotId },
+    UndoSnapshotDelete {
+        id: SnapshotId,
+    },
 
     /// Pin or unpin a snapshot.
-    PinSnapshot { id: SnapshotId, pinned: bool },
+    PinSnapshot {
+        id: SnapshotId,
+        pinned: bool,
+    },
 
     /// Rename (or clear the label of) a snapshot.
     RenameSnapshot {
@@ -186,22 +237,33 @@ pub enum EngineCommand {
     ///
     /// Engine handler takes an `AutoBeforeRestore` snapshot first;
     /// auto-rolls back to it if the post-restore reload fails (D16).
-    RestoreSnapshot { id: SnapshotId },
+    RestoreSnapshot {
+        id: SnapshotId,
+    },
 
     /// Add a new mode by appending it to the profile's mode list.
-    AddMode { name: String },
+    AddMode {
+        name: String,
+    },
 
     /// Rename a mode in the active profile's mode list, cascading the rename
     /// across all mappings, action graphs, and `startup_mode`.
-    RenameMode { from: String, to: String },
+    RenameMode {
+        from: String,
+        to: String,
+    },
 
     /// Delete a mode. Drops mappings scoped to that mode. Errors if the mode
     /// is first in the list or is the profile's startup mode.
-    DeleteMode { name: String },
+    DeleteMode {
+        name: String,
+    },
 
     /// Set the profile's startup mode. Errors if the named mode is not in
     /// the active profile's mode list.
-    SetDefaultMode { name: String },
+    SetDefaultMode {
+        name: String,
+    },
 }
 
 #[cfg(test)]

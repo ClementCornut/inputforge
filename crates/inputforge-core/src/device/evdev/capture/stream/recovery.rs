@@ -57,15 +57,15 @@ impl Stream {
         })
     }
 
-    pub(super) fn ready(&self) -> bool {
+    pub(in super::super) fn ready(&self) -> bool {
         matches!(self.phase, Phase::Ready)
     }
 
-    pub(super) fn pending(&self) -> bool {
+    pub(in super::super) fn pending(&self) -> bool {
         !self.ready() || !self.queue.is_empty() || self.frame_since.is_some()
     }
 
-    pub(super) fn check_deadline(&self, now: Instant) -> io::Result<()> {
+    pub(in super::super) fn check_deadline(&self, now: Instant) -> io::Result<()> {
         let since = match self.phase {
             Phase::Drain { since, .. } => Some(since),
             Phase::Ready => self.frame_since,

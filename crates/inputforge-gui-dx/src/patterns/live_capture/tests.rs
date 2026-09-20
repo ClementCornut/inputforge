@@ -413,3 +413,50 @@ mod hook_tests {
         );
     }
 }
+
+#[test]
+fn replacement_snapshot_clears_pending_capture_even_if_values_are_unchanged() {
+    use super::machine::{CoreState, LiveCaptureCore};
+    use crate::context::session::CaptureEpoch;
+    let now = Instant::now();
+    let address = InputAddress::Bound {
+        device: DeviceId("evdev:v1:test".into()),
+        input: InputId::Button { index: 0 },
+    };
+    let entries = vec![InputCacheEntry {
+        address: address.clone(),
+        value: InputValue::Button { pressed: true },
+    }];
+    let pending = CoreState {
+        baseline: Some(entries.clone()),
+        pending: Some((address, now)),
+        filter: CaptureFilter::Any,
+    };
+    let epoch = CaptureEpoch {
+        generation: 2,
+        ready: true,
+        allowed: true,
+    };
+    let (fresh, fired) = LiveCaptureCore::step_session(
+        pending,
+        &entries,
+        now + Duration::from_millis(100),
+        Some(1),
+        epoch,
+    );
+    assert!(fired.is_none());
+    assert!(fresh.pending.is_none());
+    assert_eq!(fresh.baseline, Some(entries.clone()));
+    let (blocked, fired) = LiveCaptureCore::step_session(
+        fresh,
+        &entries,
+        now,
+        Some(2),
+        CaptureEpoch {
+            ready: false,
+            ..epoch
+        },
+    );
+    assert!(blocked.baseline.is_none());
+    assert!(fired.is_none());
+}

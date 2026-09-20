@@ -69,6 +69,9 @@ pub fn Button(
     #[props(default)] disabled: bool,
     #[props(default)] class: Option<String>,
     onclick: Option<EventHandler<MouseEvent>>,
+    /// Accessible action name when surrounding context is needed.
+    #[props(default)]
+    aria_label: Option<String>,
     /// Forwarded to the inner <button>'s `onmounted` so callers can move
     /// focus to it on mount. Used by the F4 confirm dialog to put initial
     /// focus on Cancel (the safer default).
@@ -90,6 +93,7 @@ pub fn Button(
     };
     rsx! {
         button {
+            "aria-label": aria_label,
             class: "{combined}",
             disabled,
             onclick: click_handler,

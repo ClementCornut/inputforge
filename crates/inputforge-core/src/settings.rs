@@ -6,12 +6,18 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+#[path = "settings_axis.rs"]
+mod axis;
+pub use axis::AxisSetting;
+
 use crate::error::Result;
 use crate::snapshot::SnapshotConfig;
 use crate::types::{DeviceDiagnostics, DeviceId, DeviceInfo};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceRecord {
+    #[serde(default)]
+    pub axis_settings: Vec<AxisSetting>,
     pub info: DeviceInfo,
     #[serde(default)]
     pub diagnostics: DeviceDiagnostics,
@@ -372,6 +378,7 @@ mod tests {
         settings.device_registry.insert(
             device.clone(),
             DeviceRecord {
+                axis_settings: vec![],
                 info: DeviceInfo {
                     id: device.clone(),
                     name: "SDL Wheel".to_owned(),

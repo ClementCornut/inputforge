@@ -9,12 +9,12 @@ use std::io;
 pub(super) struct Held {
     pub info: Device,
     pub handle: Handle,
-    grabbed: bool,
+    pub(super) grabbed: bool,
     pub stream: Option<super::stream::Stream>,
 }
 
 impl Held {
-    fn ungrab(&mut self) -> Result<(), CaptureError> {
+    pub(super) fn ungrab(&mut self) -> Result<(), CaptureError> {
         if std::mem::take(&mut self.grabbed) {
             self.handle
                 .ungrab()

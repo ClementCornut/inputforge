@@ -84,6 +84,14 @@ impl ModeState {
         }
     }
 
+    /// Restore the permanent mode and discard all temporary modes.
+    pub fn clear_temporary(&mut self) {
+        if let Some(first) = self.stack.first() {
+            self.current.clone_from(first);
+        }
+        self.stack.clear();
+    }
+
     /// Drop every stack entry whose name is in `removed`. Used by
     /// [`EngineCommand::DeleteMode`] cascade.
     pub fn clear_stack_entries(&mut self, removed: &[String]) {

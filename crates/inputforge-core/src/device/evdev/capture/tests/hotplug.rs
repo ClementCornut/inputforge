@@ -157,3 +157,40 @@ fn poll_preserves_primary_failure_and_reports_all_cleanup_failures() {
     assert!(capture.captured().is_empty());
     capture.release().unwrap();
 }
+
+#[test]
+fn engine_adapter_keeps_discovery_after_selected_disconnect_without_regrabbing() {
+    use crate::device::evdev::EvdevInput;
+    use crate::device::{HotplugEvent, InputSource};
+    let fake = world();
+    let mut capture = capture(&fake);
+    capture.acquire([id("a"), id("b")]).unwrap();
+    let mut source = EvdevInput::from_capture(capture);
+    source.hotplug_events();
+    fake.borrow_mut()
+        .devices
+        .retain(|d| d.identity.id != Some(id("a")));
+    fake.borrow_mut().pending = 1;
+    source.poll(&mut vec![]).unwrap_err();
+    assert!(fake.borrow().grabbed.is_empty());
+    source.poll(&mut vec![]).unwrap();
+    assert!(
+        source
+            .hotplug_events()
+            .iter()
+            .any(|e| matches!(e, HotplugEvent::Disconnected(device) if *device == id("a")))
+    );
+    fake.borrow_mut().devices.push(device("a"));
+    fake.borrow_mut().pending = 1;
+    source.poll(&mut vec![]).unwrap();
+    assert!(
+        source
+            .hotplug_events()
+            .iter()
+            .any(|e| matches!(e, HotplugEvent::Connected { info, .. } if info.id == id("a")))
+    );
+    assert!(source.is_device_connected(&id("a")));
+    assert!(fake.borrow().opened.contains("a"));
+    assert!(fake.borrow().opened.contains("b"));
+    assert!(fake.borrow().grabbed.is_empty());
+}
