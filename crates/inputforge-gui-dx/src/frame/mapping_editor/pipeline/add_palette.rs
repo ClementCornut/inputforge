@@ -30,9 +30,7 @@ use inputforge_core::action::{
 };
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::processing::{DeadzoneConfig, ResponseCurve};
-use inputforge_core::types::{
-    InputAddress, KeyCombo, MergeOp, OutputAddress, OutputId, PhysicalKey, VJoyAxis,
-};
+use inputforge_core::types::{InputAddress, KeyCombo, MergeOp, OutputAddress, OutputId, VJoyAxis};
 
 use crate::components::{Anchor, Icon, MenuItem, MenuItems, MenuRoot, MenuTrigger};
 use crate::context::{AppContext, SettingsSnapshot};
@@ -42,6 +40,7 @@ use crate::frame::mapping_editor::pipeline::{insert_at_path, path_invalidated_by
 use crate::frame::mapping_editor::undo_log::{
     LabelArgs, StageId, StageIdSegment, UndoKind, format_undo_label,
 };
+use crate::patterns::keyboard_capture::use_keyboard_capture;
 
 /// Gestures are terminal control flow on a button mapping. Profile validation
 /// (`inputforge_core::profile::validate_mapping_action_tree`) rejects nested
@@ -98,14 +97,23 @@ fn default_map_to_vjoy() -> Action {
     }
 }
 
-fn default_map_to_keyboard() -> Action {
-    Action::MapToKeyboard {
-        key: KeyCombo {
-            key: PhysicalKey::KeyA,
-            modifiers: vec![],
-        },
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CaptureTarget {
+    profile_name: Option<String>,
+    mapping_key: MappingKey,
+    path_prefix: Vec<StageIdSegment>,
+    target_len: usize,
+}
+
+fn captured_keyboard_action(
+    armed: Option<&CaptureTarget>,
+    current: &CaptureTarget,
+    combo: KeyCombo,
+) -> Option<Action> {
+    (armed == Some(current)).then_some(Action::MapToKeyboard {
+        key: combo,
         behavior: OutputBehavior::Hold,
-    }
+    })
 }
 
 fn default_map_to_mouse() -> Action {
@@ -191,14 +199,6 @@ const PROCESSING_ITEMS: &[PaletteItem] = &[
 
 const OUTPUT_ITEMS: &[PaletteItem] = &[
     PaletteItem {
-        label: "Map to virtual device",
-        make: default_map_to_vjoy,
-    },
-    PaletteItem {
-        label: "Map to keyboard",
-        make: default_map_to_keyboard,
-    },
-    PaletteItem {
         label: "Map to mouse",
         make: default_map_to_mouse,
     },
@@ -222,6 +222,24 @@ const CONTROL_ITEMS: &[PaletteItem] = &[
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
+
+#[component]
+fn KeyboardCapturePrompt(onclick: EventHandler<MouseEvent>) -> Element {
+    rsx! {
+        div { class: "if-key-capture", "aria-live": "polite",
+            button {
+                r#type: "button",
+                class: "if-key-capture__surface is-listening",
+                autofocus: true,
+                "aria-label": "Press the physical key or shortcut to map. Escape cancels.",
+                onclick,
+                span { class: "if-key-capture__value",
+                    "Press the physical key or shortcut to map. Esc cancels."
+                }
+            }
+        }
+    }
+}
 
 /// Categorized action add palette.
 ///
@@ -249,90 +267,108 @@ pub(crate) fn AddPalette(
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
 
-    let path_prefix_clone = path_prefix.clone();
-    let mapping_key_clone = mapping_key.clone();
-    let root_actions_clone = root_actions.clone();
+    let capture_target = CaptureTarget {
+        profile_name: ctx.meta.read().profile_name.clone(),
+        mapping_key: mapping_key.clone(),
+        path_prefix: path_prefix.clone(),
+        target_len,
+    };
+    let mut armed_target: Signal<Option<CaptureTarget>> = use_signal(|| None);
+
     let show_gestures =
         mapping_key.1.is_button_shaped() && !path_is_inside_gesture_branch(&path_prefix);
 
-    // Shared do_insert closure factory. Returns a MouseEvent handler that
-    // inserts `action` at the target position. Menu auto-closes via
-    // MenuItem; this closure no longer touches an open signal.
-    let make_insert_handler = move |action: Action| {
-        let key = mapping_key_clone.clone();
-        let prefix = path_prefix_clone.clone();
-        let root = root_actions_clone.clone();
-        let cmd_tx = ctx.commands.clone();
-        let cfg_sig = ctx.config;
-        let mut undo_log = editor.undo_log;
-        let mut expanded = editor.expanded_stages;
-        let mut malformed = editor.malformed_hints;
-        let mut tags = editor.malformed_summary_tags;
-        let insert_len = target_len;
+    let key = mapping_key.clone();
+    let prefix = path_prefix.clone();
+    let root = root_actions.clone();
+    let cmd_tx = ctx.commands.clone();
+    let cfg_sig = ctx.config;
+    let mut undo_log = editor.undo_log;
+    let mut expanded = editor.expanded_stages;
+    let mut malformed = editor.malformed_hints;
+    let mut tags = editor.malformed_summary_tags;
+    let insert_len = target_len;
+    let insert_action = use_callback(move |action: Action| {
+        let mut path_segs = prefix.clone();
+        path_segs.push(StageIdSegment::Index(insert_len));
+        let insert_path = StageId(path_segs);
 
-        move |_: MouseEvent| {
-            let mut path_segs = prefix.clone();
-            path_segs.push(StageIdSegment::Index(insert_len));
-            let insert_path = StageId(path_segs);
+        let Some(new_actions) = insert_at_path(&root, &insert_path, action.clone()) else {
+            return;
+        };
 
-            let Some(new_actions) = insert_at_path(&root, &insert_path, action.clone()) else {
-                return;
-            };
+        let cfg = cfg_sig.read();
+        let current_name = cfg.mapping_names.get(&key.1).cloned();
+        drop(cfg);
 
-            let cfg = cfg_sig.read();
-            let current_name = cfg.mapping_names.get(&key.1).cloned();
-            drop(cfg);
+        let before = Mapping {
+            input: key.1.clone(),
+            mode: key.0.clone(),
+            name: current_name.clone(),
+            actions: root.clone(),
+        };
+        let stage_title = action_palette_label(&action);
 
-            let before = Mapping {
+        if cmd_tx
+            .send(EngineCommand::SetMapping {
                 input: key.1.clone(),
                 mode: key.0.clone(),
-                name: current_name.clone(),
-                actions: root.clone(),
-            };
-
-            let stage_title = action_palette_label(&action);
-
-            if cmd_tx
-                .send(EngineCommand::SetMapping {
-                    input: key.1.clone(),
-                    mode: key.0.clone(),
-                    name: current_name,
-                    actions: new_actions,
-                })
-                .is_err()
-            {
-                tracing::warn!(
-                    target: "f9::mapping_editor",
-                    action = "add_palette_drop_offline",
-                    "stage add dropped: engine channel disconnected"
-                );
-                return;
-            }
-
-            let label = format_undo_label(
-                UndoKind::StageAdd,
-                LabelArgs {
-                    stage_name: Some(stage_title),
-                    index: Some(insert_len),
-                    ..LabelArgs::default()
-                },
+                name: current_name,
+                actions: new_actions,
+            })
+            .is_err()
+        {
+            tracing::warn!(
+                target: "f9::mapping_editor",
+                action = "add_palette_drop_offline",
+                "stage add dropped: engine channel disconnected"
             );
-            undo_log
-                .write()
-                .push_edit(key.clone(), before, UndoKind::StageAdd, label);
-
-            let parent_path = insert_path.0[..insert_path.0.len() - 1].to_vec();
-            let insert_idx = insert_len;
-            expanded
-                .write()
-                .retain(|p| !path_invalidated_by_mutation(p, &parent_path, insert_idx));
-            malformed
-                .write()
-                .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, insert_idx));
-            tags.write()
-                .retain(|p, _| !path_invalidated_by_mutation(p, &parent_path, insert_idx));
-            expanded.write().insert(insert_path);
+            return;
         }
+
+        let label = format_undo_label(
+            UndoKind::StageAdd,
+            LabelArgs {
+                stage_name: Some(stage_title),
+                index: Some(insert_len),
+                ..LabelArgs::default()
+            },
+        );
+        undo_log
+            .write()
+            .push_edit(key.clone(), before, UndoKind::StageAdd, label);
+
+        let parent_path = insert_path.0[..insert_path.0.len() - 1].to_vec();
+        expanded
+            .write()
+            .retain(|path| !path_invalidated_by_mutation(path, &parent_path, insert_len));
+        malformed
+            .write()
+            .retain(|path, _| !path_invalidated_by_mutation(path, &parent_path, insert_len));
+        tags.write()
+            .retain(|path, _| !path_invalidated_by_mutation(path, &parent_path, insert_len));
+        expanded.write().insert(insert_path);
+    });
+
+    let insert_captured_keyboard = insert_action;
+    let current_capture_target = capture_target.clone();
+    let keyboard_capture = use_keyboard_capture(use_callback(move |combo: KeyCombo| {
+        let action =
+            captured_keyboard_action(armed_target.peek().as_ref(), &current_capture_target, combo);
+        armed_target.set(None);
+        if let Some(action) = action {
+            insert_captured_keyboard.call(action);
+        }
+    }));
+    let start_capture_target = capture_target;
+    let start_keyboard_capture = move |_| {
+        armed_target.set(Some(start_capture_target.clone()));
+        keyboard_capture.start.call(());
+    };
+
+    let make_insert_handler = move |action: Action| {
+        let insert = insert_action;
+        move |_: MouseEvent| insert.call(action.clone())
     };
 
     let trigger_class = if louder {
@@ -349,6 +385,17 @@ pub(crate) fn AddPalette(
     };
     let settings_snapshot = ctx.settings.read().clone();
     let session = ctx.meta.read().session.clone();
+
+    let capture_hint = *keyboard_capture.hint.read();
+    if *keyboard_capture.active.read() {
+        let onclick = move |_| {
+            armed_target.set(None);
+            keyboard_capture.cancel.call(());
+        };
+        return rsx! {
+            KeyboardCapturePrompt { onclick }
+        };
+    }
 
     rsx! {
         MenuRoot { class: "if-add-palette if-menu--block".to_owned(),
@@ -376,13 +423,21 @@ pub(crate) fn AddPalette(
                 }
                 div { class: "if-add-palette__section is-output",
                     div { class: "if-add-palette__section-title", "Output" }
+                    MenuItem {
+                        class: "if-add-palette__item".to_owned(),
+                        onclick: make_insert_handler(default_map_to_vjoy()),
+                        "Map to virtual device"
+                    }
+                    MenuItem {
+                        disabled: !session.keyboard_supported,
+                        class: "if-add-palette__item".to_owned(),
+                        onclick: start_keyboard_capture,
+                        "Map to keyboard"
+                    }
                     for item in OUTPUT_ITEMS {
                         MenuItem {
-                            disabled: match (item.make)() {
-                                Action::MapToKeyboard {..} => !session.keyboard_supported,
-                                Action::MapToMouse {..} => !session.mouse_supported,
-                                _ => false,
-                            },
+                            disabled: matches!((item.make)(), Action::MapToMouse { .. })
+                                && !session.mouse_supported,
                             class: "if-add-palette__item".to_owned(),
                             onclick: make_insert_handler((item.make)()),
                             "{item.label}"
@@ -413,6 +468,9 @@ pub(crate) fn AddPalette(
                 }
             }
         }
+        if let Some(message) = capture_hint {
+            span { class: "if-key-capture__hint", role: "status", "{message}" }
+        }
     }
 }
 
@@ -436,6 +494,11 @@ fn action_palette_label(action: &Action) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use inputforge_core::types::PhysicalKey;
+
+    fn capture_prompt_harness() -> Element {
+        rsx! { KeyboardCapturePrompt { onclick: |_| {} } }
+    }
 
     #[test]
     fn outer_pipeline_path_is_not_inside_gesture_branch() {
@@ -472,5 +535,43 @@ mod tests {
             StageIdSegment::Index(2),
         ];
         assert!(path_is_inside_gesture_branch(&path));
+    }
+
+    #[test]
+    fn captured_keyboard_combo_is_rejected_after_mapping_changes() {
+        let armed = CaptureTarget {
+            profile_name: Some("Profile".to_owned()),
+            mapping_key: ("Default".to_owned(), InputAddress::Unbound),
+            path_prefix: Vec::new(),
+            target_len: 0,
+        };
+        let current = CaptureTarget {
+            mapping_key: ("Alternate".to_owned(), InputAddress::Unbound),
+            ..armed.clone()
+        };
+
+        assert_eq!(
+            captured_keyboard_action(
+                Some(&armed),
+                &current,
+                KeyCombo {
+                    key: PhysicalKey::KeyQ,
+                    modifiers: Vec::new(),
+                },
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn capture_prompt_explains_physical_input_and_cancellation() {
+        let mut vdom = VirtualDom::new(capture_prompt_harness);
+        vdom.rebuild_in_place();
+        let html = dioxus_ssr::render(&vdom);
+
+        assert!(html.contains("Press the physical key or shortcut to map."));
+        assert!(html.contains("Escape cancels."));
+        assert!(html.contains(r#"aria-live="polite""#));
+        assert!(html.contains("autofocus"));
     }
 }

@@ -3,6 +3,12 @@
 #[cfg(all(target_os = "linux", feature = "evdev-input"))]
 pub mod evdev;
 
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "evdev-input", feature = "uinput-output")
+))]
+pub(crate) mod linux_bitmap;
+
 pub mod noop_hider;
 pub mod traits;
 

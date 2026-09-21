@@ -1,5 +1,6 @@
 use super::{
     Error, Output,
+    device::DeviceSpec,
     native::{Handle, System, write},
     state::State,
 };
@@ -9,9 +10,9 @@ use std::{
 };
 
 // Userspace deadlines, checked between synchronous syscalls; never hard realtime.
-const CREATE_LIMIT: Duration = Duration::from_secs(2);
-const WRITE_LIMIT: Duration = Duration::from_millis(50);
-const READY_INTERVAL: Duration = Duration::from_millis(10);
+pub(super) const CREATE_LIMIT: Duration = Duration::from_secs(2);
+pub(super) const WRITE_LIMIT: Duration = Duration::from_millis(50);
+pub(super) const READY_INTERVAL: Duration = Duration::from_millis(10);
 
 #[derive(Debug)]
 pub(super) struct Held {
@@ -57,7 +58,7 @@ impl Output {
         let deadline = self.system.now() + CREATE_LIMIT;
         for cfg in &self.configs {
             check_deadline(&self.system, deadline, "create", Some(cfg.device_id))?;
-            let handle = self.system.create(cfg)?;
+            let handle = self.system.create(&DeviceSpec::controller(cfg))?;
             self.held.push(Held {
                 slot: cfg.device_id,
                 handle,
@@ -65,9 +66,10 @@ impl Output {
             });
         }
         for (held, cfg) in self.held.iter_mut().zip(&self.configs) {
+            let spec = DeviceSpec::controller(cfg);
             loop {
                 check_deadline(&self.system, deadline, "await event node", Some(held.slot))?;
-                match held.handle.ready(cfg) {
+                match held.handle.ready(&spec) {
                     Ok(()) => break,
                     Err(error)
                         if matches!(
@@ -165,7 +167,7 @@ impl Output {
     }
 }
 
-fn check_deadline(
+pub(super) fn check_deadline(
     system: &System,
     deadline: Instant,
     operation: &'static str,

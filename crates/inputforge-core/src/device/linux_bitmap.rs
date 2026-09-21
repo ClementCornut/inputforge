@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, io};
 
-pub(super) fn parse(value: &str, word_bits: u32) -> io::Result<BTreeSet<u16>> {
+pub(crate) fn parse(value: &str, word_bits: u32) -> io::Result<BTreeSet<u16>> {
     let invalid = || {
         io::Error::new(
             io::ErrorKind::InvalidData,

@@ -104,6 +104,33 @@ fn browser_payload_maps_to_capture_key_event() {
 }
 
 #[test]
+fn azerty_character_keeps_its_physical_key_code() {
+    let mut core = KeyboardCaptureCore::default();
+    let owner = KeyboardCaptureOwner(8);
+    let _ = core.start(owner);
+
+    assert_eq!(
+        core.handle_payload(&BrowserKeyboardPayload {
+            kind: "keydown".to_owned(),
+            key: "a".to_owned(),
+            code: "KeyQ".to_owned(),
+            location: 0,
+            ctrl: false,
+            alt: false,
+            shift: false,
+            meta: false,
+        }),
+        Some(KeyboardCaptureUpdate {
+            owner,
+            outcome: CaptureOutcome::Commit(KeyCombo {
+                key: PhysicalKey::KeyQ,
+                modifiers: Vec::new(),
+            }),
+        })
+    );
+}
+
+#[test]
 fn browser_payload_maps_escape_to_cancel_event() {
     let payload = BrowserKeyboardPayload {
         kind: "keydown".to_owned(),

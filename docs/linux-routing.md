@@ -15,20 +15,26 @@ are shown read-only. Linux uinput supports 2–53 buttons and 0–4 hats per slo
 Virtual slots are numbered 1–16; virtual buttons and hats start at 1.
 
 Use Add mapping or rebind and move the physical control. Assign an output and
-choose **Start** to route. Editing a mapping while running updates routing
-without a separate editing session. Unsupported keyboard or mouse outputs are
-disabled in the action palette according to backend capabilities. Existing
+choose **Start** to route. Linux keyboard and mouse output is implemented, but
+their uinput devices are created only when routing starts. Keyboard mappings
+cover every physical key offered by the editor. Mouse mappings support left,
+right, middle, back, and forward buttons plus vertical wheel pulses; pointer
+movement is not emitted. Editing a mapping while running updates routing
+without a separate editing session. Unsupported outputs are disabled in the
+action palette according to backend capabilities. Existing
 incompatible mappings remain editable and display their specific reason in the
 editor; valid mappings continue working.
 
 ## Ownership and recovery
 
-Start creates the neutral virtual output set before acquiring any supported
-exclusive input ownership. Sampled held controls are disarmed until release or
-a genuine hat change. **Stop** releases exclusive capture and neutralizes output
-while retaining virtual controller identity and passive monitoring. Starting
-again reuses those controllers and refreshes continuous axes without replaying
-held button presses. Quitting releases the virtual output resources.
+Start creates and verifies the keyboard device, then the mouse device, then the
+neutral virtual-controller set before acquiring any supported exclusive input
+ownership. Sampled held controls are disarmed until release or a genuine hat
+change. **Stop** releases exclusive controller capture, releases and closes both
+injection devices, and neutralizes output while retaining virtual-controller
+identity and passive monitoring. Starting again creates fresh keyboard/mouse
+devices, reuses matching controllers, and refreshes continuous axes without
+replaying held button presses. Quitting releases every virtual output resource.
 
 Stop routing before changing the physical selection or virtual controller
 layout. Reconnect and changed capabilities reconcile existing native binding
@@ -39,7 +45,10 @@ secondary, or condition input by moving the intended physical control to confirm
 its identity. This also works when its displayed logical address is unchanged;
 other ambiguous controls remain disabled.
 
-A fault is shown with its reason and an explicit recovery action. Resets clear
+A fault is shown with output-specific guidance, expandable technical and cleanup
+details, and an explicit **Retry** action. Retry first finishes cleanup and then
+recreates the injection devices in normal Start order. It does not change host
+permissions or install access rules. Resets clear
 pending GUI input candidates and establish a new baseline, even when a
 replacement snapshot contains identical values. A held control in a recovery
 snapshot is not interpreted as a new rebind gesture. Errors never trigger host
@@ -70,16 +79,22 @@ platform.
 
 On Linux the app opens visibly without a tray; closing its window quits and
 joins the engine thread. `--start-minimized` opens visibly with an explanation.
-`--enable` requests activation after loading the profile. Keyboard and mouse
-injection are currently unavailable through the Linux adapters.
+`--enable` requests activation after loading the profile. Linux keyboard/mouse
+injection uses separate uinput event devices. Readiness verifies their exact sysfs
+identity and capability bitmaps plus initialized udev classification without opening
+their event nodes; `/dev/uinput` is the only keyboard/mouse output permission
+prerequisite. InputForge does not capture or suppress physical keyboard/mouse input,
+and it does not provide pointer movement.
 
 On Windows, the desktop/tray lifecycle and fixed vJoy layouts use the same engine
 commands. Actual hiding and game visibility depend on host configuration;
 exclusive capture is not a controller-hiding guarantee.
 
-Automated tests cover projection, mapping issue isolation, capability-driven
-controls, monitoring readiness, and snapshot rebaselining without launching a
-GUI. Live Linux hardware acceptance, native Windows runtime behavior, and
+Automated tests cover exact keyboard/mouse capability descriptions and encoding,
+bounded scripted writes and cleanup, engine lifecycle ordering, projection,
+mapping issue isolation, monitoring readiness, and snapshot rebaselining without
+launching a GUI or creating a real uinput device. Live Linux keyboard/mouse and
+controller desktop acceptance, native Windows runtime behavior, and
 native/Proton game recognition require separate host acceptance. Prior standalone
 results in [linux-streaming.md](linux-streaming.md) and
 [linux-uinput.md](linux-uinput.md) apply only to those tested components.

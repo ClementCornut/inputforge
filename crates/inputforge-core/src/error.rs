@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::types::DeviceId;
+use crate::{output::OutputFailure, types::DeviceId};
 
 /// All errors that can occur in the `InputForge` engine.
 #[derive(Debug, thiserror::Error)]
@@ -33,6 +33,9 @@ pub enum EngineError {
 
     #[error("output failed: {reason}")]
     OutputFailed { reason: String },
+
+    #[error("injection failed: {failure}")]
+    InjectionFailed { failure: OutputFailure },
 
     #[error("device not found: {device_id:?}")]
     DeviceNotFound { device_id: DeviceId },
@@ -85,6 +88,7 @@ pub type Result<T> = std::result::Result<T, EngineError>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::output::{OutputKind, OutputPhase};
 
     #[test]
     fn engine_error_display_profile_not_found() {
@@ -108,6 +112,25 @@ mod tests {
             reason: "low >= center_low".to_owned(),
         };
         assert!(err.to_string().contains("low >= center_low"));
+    }
+
+    #[test]
+    fn injection_error_displays_typed_failure() {
+        let err = EngineError::InjectionFailed {
+            failure: OutputFailure {
+                output: OutputKind::Mouse,
+                phase: OutputPhase::Readiness,
+                category: std::io::ErrorKind::NotFound,
+                details: "device did not appear".to_owned(),
+                cleanup: vec!["close failed".to_owned()],
+            },
+        };
+
+        let message = err.to_string();
+        assert!(message.contains("mouse"));
+        assert!(message.contains("readiness"));
+        assert!(message.contains("device did not appear"));
+        assert!(!message.contains("close failed"));
     }
 
     #[test]

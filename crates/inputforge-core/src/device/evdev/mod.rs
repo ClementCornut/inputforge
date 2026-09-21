@@ -19,7 +19,6 @@ mod classification_tests;
 #[cfg(test)]
 mod identity_tests;
 
-mod bitmap;
 mod discovery;
 #[cfg(test)]
 mod discovery_tests;

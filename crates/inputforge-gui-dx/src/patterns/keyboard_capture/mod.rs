@@ -279,10 +279,6 @@ pub(crate) struct KeyboardCaptureBinding {
     pub active: dioxus::prelude::Memo<bool>,
     pub hint: dioxus::prelude::Memo<Option<&'static str>>,
     pub start: Callback<()>,
-    #[expect(
-        dead_code,
-        reason = "Reusable capture consumers may expose an explicit cancel control; current caller relies on Escape."
-    )]
     pub cancel: Callback<()>,
 }
 

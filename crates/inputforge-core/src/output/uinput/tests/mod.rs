@@ -1,7 +1,11 @@
+mod device;
 mod encoding;
+mod event_device;
 mod failures;
 pub(super) mod fixtures;
+mod keyboard;
 mod lifecycle;
+mod mouse;
 mod writes;
 
 #[cfg(feature = "evdev-input")]

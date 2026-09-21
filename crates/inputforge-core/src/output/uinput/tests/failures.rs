@@ -1,4 +1,7 @@
-use super::{super::default_config, fixtures};
+use super::{
+    super::{default_config, device::DeviceKey},
+    fixtures,
+};
 use std::{io, time::Duration};
 
 #[test]
@@ -45,7 +48,7 @@ fn initial_write_failure_rolls_back_all_slots_and_allows_retry() {
 fn fatal_readiness_failure_rolls_back_without_wait_or_writes() {
     let (mut output, world) = fixtures::output(vec![default_config(1), default_config(2)]);
     let start = world.lock().unwrap().now;
-    world.lock().unwrap().fail_ready = Some((2, io::ErrorKind::InvalidData));
+    world.lock().unwrap().fail_ready = Some((DeviceKey::Controller(2), io::ErrorKind::InvalidData));
     assert_eq!(
         output.create().unwrap_err().kind(),
         io::ErrorKind::InvalidData

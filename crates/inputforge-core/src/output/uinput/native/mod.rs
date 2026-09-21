@@ -1,9 +1,9 @@
-mod readiness;
+pub(in crate::output::uinput) mod readiness;
 mod setup;
+pub(in crate::output::uinput) mod sysfs;
 pub(super) mod write;
 
-use super::Error;
-use crate::types::VirtualDeviceConfig;
+use super::{Error, device::DeviceSpec};
 use evdev::InputEvent;
 use std::{
     io,
@@ -34,11 +34,11 @@ impl System {
             Self::Fake(world) => world.lock().unwrap().now += duration,
         }
     }
-    pub(super) fn create(&self, config: &VirtualDeviceConfig) -> Result<Handle, Error> {
+    pub(super) fn create(&self, spec: &DeviceSpec) -> Result<Handle, Error> {
         match self {
-            Self::Native => setup::create(config),
+            Self::Native => setup::create(spec),
             #[cfg(test)]
-            Self::Fake(world) => super::tests::fixtures::create(world, config).map(Handle::Fake),
+            Self::Fake(world) => super::tests::fixtures::create(world, spec).map(Handle::Fake),
         }
     }
 }
@@ -51,9 +51,9 @@ pub(super) enum Handle {
 }
 
 impl Handle {
-    pub(super) fn ready(&mut self, config: &VirtualDeviceConfig) -> io::Result<()> {
+    pub(super) fn ready(&mut self, spec: &DeviceSpec) -> io::Result<()> {
         match self {
-            Self::Native(Some(device)) => readiness::check(device, config),
+            Self::Native(Some(device)) => readiness::check(device, spec),
             Self::Native(None) => Err(io::ErrorKind::NotConnected.into()),
             #[cfg(test)]
             Self::Fake(handle) => handle.ready(),

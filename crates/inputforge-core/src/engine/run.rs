@@ -613,8 +613,12 @@ impl Engine {
                             self.fault(&error);
                         }
                         let mut state = self.state.write();
-                        state.session.error = Some(error.to_string());
-                        state.warnings.push(error.to_string());
+                        if state.engine_status != EngineStatus::Faulted
+                            || state.session.error.is_none()
+                        {
+                            state.session.error = Some(error.to_string());
+                            state.warnings.push(error.to_string());
+                        }
                     }
                 }
                 Err(mpsc::TryRecvError::Empty) => break,

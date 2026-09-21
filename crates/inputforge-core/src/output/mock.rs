@@ -375,4 +375,18 @@ mod tests {
         mock.clear();
         assert!(mock.calls().is_empty());
     }
+
+    #[test]
+    fn sink_lifecycle_defaults_are_noop() {
+        let mut keyboard = MockKeyboardSink::new();
+        let mut mouse = MockMouseSink::new();
+
+        KeyboardSink::start(&mut keyboard).unwrap();
+        KeyboardSink::stop(&mut keyboard).unwrap();
+        MouseSink::start(&mut mouse).unwrap();
+        MouseSink::stop(&mut mouse).unwrap();
+
+        assert!(keyboard.calls().is_empty());
+        assert!(mouse.calls().is_empty());
+    }
 }

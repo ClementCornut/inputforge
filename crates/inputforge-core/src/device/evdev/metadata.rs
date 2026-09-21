@@ -1,4 +1,5 @@
-use super::{Issue, Metadata, Ownership, UinputStatus, bitmap};
+use super::{Issue, Metadata, Ownership, UinputStatus};
+use crate::device::linux_bitmap;
 use std::{collections::BTreeSet, fs, io, os::unix::fs::MetadataExt, path::Path};
 
 pub(super) fn read(device: &udev::Device) -> (Metadata, Vec<Issue>) {
@@ -136,7 +137,7 @@ fn capabilities(parent: &Path, name: &str, issues: &mut Vec<Issue>) -> BTreeSet<
     let Some(value) = required_text(parent, name, issues) else {
         return BTreeSet::new();
     };
-    match bitmap::parse(&value, usize::BITS) {
+    match linux_bitmap::parse(&value, usize::BITS) {
         Ok(codes) => codes,
         Err(error) => {
             issues.push(Issue::new("parse capabilities", parent.join(name), &error));

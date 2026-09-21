@@ -942,6 +942,7 @@ fn PredicateHookOrderHarness() -> Element {
     };
     use_context_provider(|| ctx);
     use_live_capture_provider();
+    use_keyboard_capture_provider();
     use_editor_state_provider();
     let sortable = use_sortable_state::<StageId>();
     use_context_provider(|| sortable);
@@ -1156,6 +1157,20 @@ fn add_palette_includes_map_to_mouse() {
     let html = render_add_palette();
 
     assert!(html.contains("Map to mouse"));
+}
+
+#[test]
+fn map_to_keyboard_explains_physical_layout_semantics() {
+    let html = render_stage_body(Action::MapToKeyboard {
+        key: key_combo(PhysicalKey::KeyQ),
+        behavior: OutputBehavior::Hold,
+    });
+
+    assert!(html.contains("Physical key"), "missing field label: {html}");
+    assert!(
+        html.contains("desktop layout determines the character"),
+        "missing layout guidance: {html}"
+    );
 }
 
 #[test]

@@ -1,6 +1,8 @@
-use super::super::config;
-use crate::types::VirtualDeviceConfig;
-use evdev::{AbsInfo, BusType, InputId, raw_stream::RawDevice};
+use super::{
+    super::device::{DeviceKey, DeviceSpec},
+    sysfs,
+};
+use evdev::{AbsInfo, InputId, raw_stream::RawDevice};
 use std::{
     ffi::CStr,
     fs::OpenOptions,
@@ -13,7 +15,7 @@ use std::{
     path::PathBuf,
 };
 
-pub(super) fn check(device: &OwnedFd, cfg: &VirtualDeviceConfig) -> io::Result<()> {
+pub(super) fn check(device: &OwnedFd, spec: &DeviceSpec) -> io::Result<()> {
     let syspath = syspath(device)?;
     for entry in std::fs::read_dir(&syspath)? {
         let entry = entry?;
@@ -27,36 +29,18 @@ pub(super) fn check(device: &OwnedFd, cfg: &VirtualDeviceConfig) -> io::Result<(
         let node = record
             .devnode()
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "udev event node pending"))?;
-        let file = OpenOptions::new()
-            .read(true)
-            .custom_flags(nix::libc::O_NONBLOCK)
-            .open(node)?;
-        if !file.metadata()?.file_type().is_char_device() {
+        if !std::fs::metadata(node)?.file_type().is_char_device() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "event node is not a character device",
             ));
         }
-        let raw = RawDevice::from_fd(file.into())?;
-        verify(
-            &Metadata {
-                name: raw.name().map(str::to_owned),
-                phys: raw.physical_path().map(str::to_owned),
-                id: raw.input_id(),
-                keys: raw
-                    .supported_keys()
-                    .into_iter()
-                    .flat_map(|set| set.iter())
-                    .map(|key| key.0)
-                    .collect(),
-                axes: raw
-                    .get_absinfo()?
-                    .map(|(code, info)| (code.0, info))
-                    .collect(),
-                events: raw.supported_events().iter().map(|event| event.0).collect(),
-            },
-            cfg,
-        )?;
+        let metadata = if matches!(spec.key, DeviceKey::Controller(_)) {
+            event_metadata(node, &record, spec)?
+        } else {
+            sysfs::read(&syspath, &record, spec)?
+        };
+        verify(&metadata, spec)?;
         return Ok(());
     }
     Err(io::Error::new(
@@ -65,43 +49,80 @@ pub(super) fn check(device: &OwnedFd, cfg: &VirtualDeviceConfig) -> io::Result<(
     ))
 }
 
-struct Metadata {
-    name: Option<String>,
-    phys: Option<String>,
-    id: InputId,
-    keys: Vec<u16>,
-    axes: Vec<(u16, AbsInfo)>,
-    events: Vec<u16>,
+fn event_metadata(
+    node: &std::path::Path,
+    record: &udev::Device,
+    spec: &DeviceSpec,
+) -> io::Result<Metadata> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(nix::libc::O_NONBLOCK)
+        .open(node)?;
+    let raw = RawDevice::from_fd(file.into())?;
+    Ok(Metadata {
+        name: raw.name().map(str::to_owned),
+        phys: raw.physical_path().map(str::to_owned),
+        id: raw.input_id(),
+        keys: raw
+            .supported_keys()
+            .into_iter()
+            .flat_map(|set| set.iter())
+            .map(|key| key.0)
+            .collect(),
+        relatives: raw
+            .supported_relative_axes()
+            .into_iter()
+            .flat_map(|set| set.iter())
+            .map(|axis| axis.0)
+            .collect(),
+        axes: raw
+            .get_absinfo()?
+            .map(|(code, info)| (code.0, info))
+            .collect(),
+        events: raw.supported_events().iter().map(|event| event.0).collect(),
+        class: record.property_value(spec.required_class).map(|value| {
+            (
+                spec.required_class.to_owned(),
+                value.to_string_lossy().into_owned(),
+            )
+        }),
+    })
 }
 
-fn verify(device: &Metadata, cfg: &VirtualDeviceConfig) -> io::Result<()> {
+pub(in crate::output::uinput) struct Metadata {
+    pub(in crate::output::uinput) name: Option<String>,
+    pub(in crate::output::uinput) phys: Option<String>,
+    pub(in crate::output::uinput) id: InputId,
+    pub(in crate::output::uinput) keys: Vec<u16>,
+    pub(in crate::output::uinput) relatives: Vec<u16>,
+    pub(in crate::output::uinput) axes: Vec<(u16, AbsInfo)>,
+    pub(in crate::output::uinput) events: Vec<u16>,
+    pub(in crate::output::uinput) class: Option<(String, String)>,
+}
+
+pub(in crate::output::uinput) fn verify(device: &Metadata, spec: &DeviceSpec) -> io::Result<()> {
     let invalid = || {
         io::Error::new(
             io::ErrorKind::InvalidData,
-            "created event node identity/capabilities differ from configuration",
+            "created output identity/capabilities differ from configuration",
         )
     };
     let id = &device.id;
-    if device.name.as_deref() != Some(config::name(cfg.device_id).as_str())
-        || device.phys.as_deref() != Some(config::phys(cfg.device_id).as_str())
-        || id.bus_type() != BusType::BUS_VIRTUAL
-        || id.vendor() != 0
-        || id.product() != u16::from(cfg.device_id)
-        || id.version() != 1
+    if device.name.as_deref() != Some(spec.name.as_str())
+        || device.phys.as_deref() != Some(spec.phys.as_str())
+        || id != &spec.id
     {
         return Err(invalid());
     }
-    let actual = device.keys.iter().copied();
-    let expected =
-        (1..=cfg.button_count).map(|id| config::button_code(id).expect("validated button"));
-    if !actual.eq(expected) {
+    if device.keys != spec.keys || device.relatives != spec.relatives {
         return Err(invalid());
     }
-    let mut axes = config::axes(cfg);
-    axes.sort_by_key(|axis| axis.0);
-    let mut expected = axes.into_iter();
+    let mut expected = spec.absolutes.iter();
     for (code, info) in &device.axes {
-        if expected.next() != Some((*code, info.minimum(), info.maximum()))
+        let Some(axis) = expected.next() else {
+            return Err(invalid());
+        };
+        if (axis.code, axis.minimum, axis.maximum) != (*code, info.minimum(), info.maximum())
             || info.fuzz() != 0
             || info.flat() != 0
             || info.resolution() != 0
@@ -112,12 +133,12 @@ fn verify(device: &Metadata, cfg: &VirtualDeviceConfig) -> io::Result<()> {
     if expected.next().is_some() {
         return Err(invalid());
     }
-    let expected = if cfg.axes.is_empty() && cfg.hat_count == 0 {
-        vec![0, 1]
-    } else {
-        vec![0, 1, 3]
-    };
-    if device.events != expected {
+    if device.events != spec.events()
+        || !device
+            .class
+            .as_ref()
+            .is_some_and(|(key, value)| key == spec.required_class && value == "1")
+    {
         return Err(invalid());
     }
     Ok(())

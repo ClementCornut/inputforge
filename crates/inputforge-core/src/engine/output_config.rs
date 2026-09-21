@@ -82,7 +82,9 @@ impl Engine {
             return Err(error);
         }
         let mut state = self.state.write();
-        state.session.error = None;
+        if state.session.output_failures.is_empty() {
+            state.session.error = None;
+        }
         state.session.generation = state.session.generation.wrapping_add(1);
         Ok(())
     }

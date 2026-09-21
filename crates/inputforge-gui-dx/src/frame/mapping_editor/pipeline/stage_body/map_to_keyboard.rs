@@ -181,7 +181,7 @@ pub(crate) fn MapToKeyboardBody(
     rsx! {
         div { class: "if-stage__body-keyboard",
             div { class: "if-stage__body-field",
-                label { class: "if-stage__body-label", "Key" }
+                label { class: "if-stage__body-label", "Physical key" }
                 div { class: "if-key-capture",
                     button {
                         r#type: "button",
@@ -193,6 +193,9 @@ pub(crate) fn MapToKeyboardBody(
                     }
                     if let Some(message) = capture_message {
                         span { class: "if-key-capture__hint", "{message}" }
+                    }
+                    span { class: "if-key-capture__hint",
+                        "The desktop layout determines the character produced."
                     }
                 }
             }

@@ -1,5 +1,5 @@
 use super::{
-    super::{default_config, sink::UinputSink},
+    super::{default_config, device::DeviceKey, sink::UinputSink},
     fixtures,
 };
 use crate::output::OutputSink;
@@ -22,13 +22,20 @@ fn engine_write_failure_defers_all_cleanup_and_never_retries_failed_slot() {
         .push_back(Err(io::ErrorKind::WouldBlock.into()));
     assert!(sink.flush().is_err());
     assert_eq!(world.lock().unwrap().alive.len(), 2);
-    assert_eq!(world.lock().unwrap().calls, [(1, "write")]);
+    assert_eq!(
+        world.lock().unwrap().calls,
+        [(DeviceKey::Controller(1), "write")]
+    );
     assert!(sink.set_button(2, 1, true).is_err());
     sink.stop().unwrap();
     let script = world.lock().unwrap();
     assert!(script.alive.is_empty());
     assert_eq!(
-        script.calls.iter().filter(|c| **c == (1, "write")).count(),
+        script
+            .calls
+            .iter()
+            .filter(|c| **c == (DeviceKey::Controller(1), "write"))
+            .count(),
         1
     );
     drop(script);

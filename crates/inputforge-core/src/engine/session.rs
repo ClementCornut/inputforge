@@ -20,7 +20,10 @@ impl Engine {
             }
             EngineCommand::RefreshInput => {
                 self.input.refresh()?;
-                self.state.write().session.error = None;
+                let mut state = self.state.write();
+                if state.session.output_failures.is_empty() {
+                    state.session.error = None;
+                }
             }
             EngineCommand::ApplyControllerChanges => {
                 self.apply_controller_changes()?;
@@ -97,6 +100,8 @@ impl Engine {
             ));
         }
         let result = (|| {
+            self.keyboard.start()?;
+            self.mouse.start()?;
             if !self.state.read().session.output_active && !config.virtual_devices.is_empty() {
                 self.start_outputs(&config.virtual_devices)?;
             }
@@ -120,6 +125,7 @@ impl Engine {
         self.pending_output_refresh = true;
         let mut state = self.state.write();
         state.engine_status = EngineStatus::Running;
+        state.session.output_failures.clear();
         state.session.error = None;
         state.session.generation = state.session.generation.wrapping_add(1);
         Ok(())

@@ -18,6 +18,11 @@ pub(super) fn MappingIssues(mapping_key: MappingKey) -> Element {
             div { class: "if-editor__offline-banner", role: "alert",
                 div { class: "if-editor__offline-text",
                     p { "{super::mapping_issue_copy::message(&issue.reason, &config)}" }
+                    if let MappingIssueReason::InjectionFailed { failure } = &issue.reason {
+                        if let Some(notice) = super::mapping_issue_copy::cleanup_notice(failure) {
+                            p { "{notice}" }
+                        }
+                    }
                     if show_devices(&issue.reason) {
                         if let Some(mut view) = view {
                             Button { size: ButtonSize::Sm, variant: ButtonVariant::Secondary,
@@ -25,7 +30,15 @@ pub(super) fn MappingIssues(mapping_key: MappingKey) -> Element {
                             }
                         }
                     }
-                    details { summary { "Technical details" } code { "{issue.reason:?}" } }
+                    details { summary { "Technical details" }
+                        code {
+                            if let MappingIssueReason::InjectionFailed { failure } = &issue.reason {
+                                "{super::mapping_issue_copy::technical_details(failure)}"
+                            } else {
+                                "{issue.reason:?}"
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -52,6 +65,7 @@ mod tests {
     use super::*;
     use crate::context::{ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
     use inputforge_core::{
+        output::{OutputFailure, OutputKind, OutputPhase},
         state::{AppState, MappingIssue},
         types::{DeviceId, InputAddress, InputId},
     };
@@ -101,6 +115,44 @@ mod tests {
         rsx! { MappingIssues { mapping_key: ("Default".to_owned(), input) } }
     }
 
+    fn injection_harness() -> Element {
+        let input = InputAddress::Bound {
+            device: DeviceId("stick".to_owned()),
+            input: InputId::Button { index: 0 },
+        };
+        let mut state = AppState::new();
+        state.session.mapping_issues = vec![MappingIssue {
+            input: input.clone(),
+            mode: "Default".to_owned(),
+            reason: MappingIssueReason::InjectionFailed {
+                failure: OutputFailure {
+                    output: OutputKind::Keyboard,
+                    phase: OutputPhase::Release,
+                    category: std::io::ErrorKind::BrokenPipe,
+                    details: "native release detail".into(),
+                    cleanup: vec!["native cleanup detail".into()],
+                },
+            },
+        }];
+        let meta = use_signal(|| MetaSnapshot::from_state(&state));
+        let config = use_signal(ConfigSnapshot::default);
+        let live = use_signal(LiveSnapshot::default);
+        let settings = use_signal(SettingsSnapshot::default);
+        let (commands, _) = mpsc::channel();
+        use_context_provider(|| AppContext {
+            state: Arc::new(RwLock::new(state)),
+            commands,
+            meta,
+            config,
+            live,
+            settings,
+        });
+        rsx! {
+            MappingIssues { mapping_key: ("Default".to_owned(), input) }
+            button { "Save mapping" }
+        }
+    }
+
     #[test]
     fn editor_reports_only_the_selected_mapping_issue() {
         let mut dom = VirtualDom::new(harness);
@@ -110,5 +162,19 @@ mod tests {
         assert!(!html.contains("Mapping disabled:"));
         assert!(!html.contains("Other mode issue"));
         assert!(!html.contains("Other input issue"));
+    }
+
+    #[test]
+    fn injection_issue_keeps_mapping_controls_and_hides_native_details_by_default() {
+        let mut dom = VirtualDom::new(injection_harness);
+        dom.rebuild_in_place();
+        let html = dioxus_ssr::render(&dom);
+        assert!(html.contains("Keyboard output could not be fully released"));
+        assert!(html.contains("Cleanup also failed"));
+        assert!(html.contains("Technical details"));
+        assert!(html.contains("native release detail"));
+        assert!(html.contains("native cleanup detail"));
+        assert!(html.contains("Save mapping"));
+        assert!(!html.contains("disabled=true"));
     }
 }

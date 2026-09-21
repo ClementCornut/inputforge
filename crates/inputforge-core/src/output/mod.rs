@@ -1,5 +1,6 @@
 // Rust guideline compliant 2026-03-03
 
+mod failure;
 pub mod traits;
 
 #[cfg(all(target_os = "linux", feature = "uinput-output"))]
@@ -17,6 +18,7 @@ pub mod mouse;
 #[cfg(any(test, feature = "test-util"))]
 pub mod mock;
 
+pub use failure::{OutputFailure, OutputKind, OutputPhase};
 pub use traits::{KeyboardSink, MouseSink, OutputSink, VirtualDeviceConfig};
 
 #[cfg(all(target_os = "windows", feature = "vjoy-output"))]

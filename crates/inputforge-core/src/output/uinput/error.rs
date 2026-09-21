@@ -82,6 +82,20 @@ impl Error {
     pub fn cleanup_failures(&self) -> &[Self] {
         &self.context.cleanup
     }
+
+    pub(super) fn primary_details(&self) -> String {
+        let c = &self.context;
+        let slot = c
+            .slot
+            .map(|slot| format!(" (slot {slot})"))
+            .unwrap_or_default();
+        let path = if c.path.as_os_str().is_empty() {
+            String::new()
+        } else {
+            format!(" at {}", c.path.display())
+        };
+        format!("{}{}{}: {}", c.operation, slot, path, c.source)
+    }
 }
 
 impl fmt::Display for Error {

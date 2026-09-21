@@ -91,6 +91,24 @@ pub trait KeyboardSink: Send {
         true
     }
 
+    /// Acquire native keyboard injection ownership.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the native output cannot be initialized.
+    fn start(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    /// Release native keyboard injection ownership.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if held keys or native resources cannot be released cleanly.
+    fn stop(&mut self) -> Result<()> {
+        Ok(())
+    }
+
     /// Press the given key combination.
     ///
     /// # Errors
@@ -124,6 +142,24 @@ pub trait MouseSink: Send {
     /// Whether this backend implements mouse output.
     fn supported(&self) -> bool {
         true
+    }
+
+    /// Acquire native mouse injection ownership.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the native output cannot be initialized.
+    fn start(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    /// Release native mouse injection ownership.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if held buttons or native resources cannot be released cleanly.
+    fn stop(&mut self) -> Result<()> {
+        Ok(())
     }
 
     /// Press the given mouse button target.

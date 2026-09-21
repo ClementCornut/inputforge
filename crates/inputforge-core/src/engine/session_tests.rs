@@ -4,7 +4,10 @@ use crate::{
     device::{HotplugEvent, InputUpdate},
     error::{EngineError, Result},
     mode::Modes,
-    output::{MockKeyboardSink, MockMouseSink, traits::ControllerCapabilities},
+    output::{
+        MockKeyboardSink, MockMouseSink, OutputFailure, OutputKind, OutputPhase,
+        traits::ControllerCapabilities,
+    },
     profile::{
         Profile,
         controllers::{ControllerConfig, DeviceBinding},
@@ -13,7 +16,19 @@ use crate::{
     types::*,
 };
 use parking_lot::Mutex;
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Failure {
+    Acquire,
+    Flush,
+    Release,
+    KeyboardStart,
+    MouseStart,
+    KeyboardStop,
+    MouseStop,
+    OutputStop,
+}
 
 #[derive(Default)]
 struct Script {
@@ -23,10 +38,11 @@ struct Script {
     start_failures_remaining: usize,
     acquired: Vec<Vec<DeviceId>>,
     polls: VecDeque<Vec<InputUpdate>>,
-    fail_acquire: bool,
-    fail_flush: bool,
     rejected_axis_device: Option<u8>,
-    fail_release: bool,
+    failures: BTreeSet<Failure>,
+    keyboard_start_output_failure: Option<OutputFailure>,
+    keyboard_stop_output_failure: Option<OutputFailure>,
+    mouse_stop_output_failure: Option<OutputFailure>,
 }
 struct Input(Arc<Mutex<Script>>);
 impl InputSource for Input {
@@ -46,12 +62,20 @@ impl InputSource for Input {
         let mut s = self.0.lock();
         s.acquired.push(ids.to_vec());
         s.calls.push("acquire".into());
-        if s.fail_acquire { Err(error()) } else { Ok(()) }
+        if s.failures.contains(&Failure::Acquire) {
+            Err(error())
+        } else {
+            Ok(())
+        }
     }
     fn release(&mut self) -> Result<()> {
         let mut s = self.0.lock();
         s.calls.push("release".into());
-        if s.fail_release { Err(error()) } else { Ok(()) }
+        if s.failures.contains(&Failure::Release) {
+            Err(error())
+        } else {
+            Ok(())
+        }
     }
     fn poll(&mut self, out: &mut Vec<InputUpdate>) -> Result<()> {
         let mut s = self.0.lock();
@@ -89,8 +113,13 @@ impl OutputSink for Output {
         Ok(())
     }
     fn stop(&mut self) -> Result<()> {
-        self.script.lock().calls.push("stop".into());
-        Ok(())
+        let mut script = self.script.lock();
+        script.calls.push("stop".into());
+        if script.failures.contains(&Failure::OutputStop) {
+            Err(error())
+        } else {
+            Ok(())
+        }
     }
     fn set_axis(&mut self, device: u8, axis: VJoyAxis, value: f64) -> Result<()> {
         let mut script = self.script.lock();
@@ -114,7 +143,90 @@ impl OutputSink for Output {
     fn flush(&mut self) -> Result<()> {
         let mut s = self.script.lock();
         s.calls.push("flush".into());
-        if s.fail_flush { Err(error()) } else { Ok(()) }
+        if s.failures.contains(&Failure::Flush) {
+            Err(error())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+struct Keyboard(Arc<Mutex<Script>>);
+impl KeyboardSink for Keyboard {
+    fn start(&mut self) -> Result<()> {
+        let mut script = self.0.lock();
+        script.calls.push("keyboard:start".into());
+        if let Some(failure) = &script.keyboard_start_output_failure {
+            return Err(EngineError::InjectionFailed {
+                failure: failure.clone(),
+            });
+        }
+        if script.failures.contains(&Failure::KeyboardStart) {
+            Err(error())
+        } else {
+            Ok(())
+        }
+    }
+    fn stop(&mut self) -> Result<()> {
+        let mut script = self.0.lock();
+        script.calls.push("keyboard:stop".into());
+        if let Some(failure) = &script.keyboard_stop_output_failure {
+            return Err(EngineError::InjectionFailed {
+                failure: failure.clone(),
+            });
+        }
+        if script.failures.contains(&Failure::KeyboardStop) {
+            Err(error())
+        } else {
+            Ok(())
+        }
+    }
+    fn key_down(&mut self, _: &KeyCombo) -> Result<()> {
+        self.0.lock().calls.push("keyboard:down".into());
+        Ok(())
+    }
+    fn key_up(&mut self, _: &KeyCombo) -> Result<()> {
+        self.0.lock().calls.push("keyboard:up".into());
+        Ok(())
+    }
+}
+
+struct Mouse(Arc<Mutex<Script>>);
+impl MouseSink for Mouse {
+    fn start(&mut self) -> Result<()> {
+        let mut script = self.0.lock();
+        script.calls.push("mouse:start".into());
+        if script.failures.contains(&Failure::MouseStart) {
+            Err(error())
+        } else {
+            Ok(())
+        }
+    }
+    fn stop(&mut self) -> Result<()> {
+        let mut script = self.0.lock();
+        script.calls.push("mouse:stop".into());
+        if let Some(failure) = &script.mouse_stop_output_failure {
+            return Err(EngineError::InjectionFailed {
+                failure: failure.clone(),
+            });
+        }
+        if script.failures.contains(&Failure::MouseStop) {
+            Err(error())
+        } else {
+            Ok(())
+        }
+    }
+    fn button_down(&mut self, _: crate::action::MouseTarget) -> Result<()> {
+        self.0.lock().calls.push("mouse:down".into());
+        Ok(())
+    }
+    fn button_up(&mut self, _: crate::action::MouseTarget) -> Result<()> {
+        self.0.lock().calls.push("mouse:up".into());
+        Ok(())
+    }
+    fn wheel(&mut self, _: crate::action::MouseTarget) -> Result<()> {
+        self.0.lock().calls.push("mouse:wheel".into());
+        Ok(())
     }
 }
 fn error() -> EngineError {
@@ -168,6 +280,40 @@ fn harness_with_output(
     tempfile::TempDir,
 ) {
     let script = Arc::new(Mutex::new(Script::default()));
+    harness_with_sinks(
+        fixed_layout,
+        Arc::clone(&script),
+        Box::new(MockKeyboardSink::new()),
+        Box::new(MockMouseSink::new()),
+    )
+}
+
+fn lifecycle_harness() -> (
+    Engine,
+    mpsc::Sender<EngineCommand>,
+    Arc<Mutex<Script>>,
+    tempfile::TempDir,
+) {
+    let script = Arc::new(Mutex::new(Script::default()));
+    harness_with_sinks(
+        None,
+        Arc::clone(&script),
+        Box::new(Keyboard(Arc::clone(&script))),
+        Box::new(Mouse(Arc::clone(&script))),
+    )
+}
+
+fn harness_with_sinks(
+    fixed_layout: Option<Vec<VirtualDeviceConfig>>,
+    script: Arc<Mutex<Script>>,
+    keyboard: Box<dyn KeyboardSink>,
+    mouse: Box<dyn MouseSink>,
+) -> (
+    Engine,
+    mpsc::Sender<EngineCommand>,
+    Arc<Mutex<Script>>,
+    tempfile::TempDir,
+) {
     let mut profile = Profile::new(
         "test".into(),
         vec![],
@@ -217,8 +363,8 @@ fn harness_with_output(
             script: Arc::clone(&script),
             fixed_layout,
         }),
-        Box::new(MockKeyboardSink::new()),
-        Box::new(MockMouseSink::new()),
+        keyboard,
+        mouse,
         state,
         rx,
         AppSettings::default(),
@@ -226,6 +372,362 @@ fn harness_with_output(
         Box::new(inputforge_autostart::mock::MockAutostart::default()),
     );
     (engine, tx, script, temp)
+}
+
+fn set_session_devices(
+    engine: &Engine,
+    selected: Vec<DeviceId>,
+    virtual_devices: Vec<VirtualDeviceConfig>,
+) {
+    let mut state = engine.state.write();
+    let profile = state.active_profile.as_mut().unwrap();
+    let mut controllers = profile.controllers().unwrap().clone();
+    controllers.selected = selected;
+    controllers.virtual_devices = virtual_devices;
+    profile.set_controllers(controllers).unwrap();
+}
+
+fn injection_failure(
+    output: OutputKind,
+    phase: OutputPhase,
+    details: &str,
+    cleanup: &[&str],
+) -> OutputFailure {
+    OutputFailure {
+        output,
+        phase,
+        category: std::io::ErrorKind::BrokenPipe,
+        details: details.into(),
+        cleanup: cleanup.iter().map(|detail| (*detail).into()).collect(),
+    }
+}
+
+#[test]
+fn output_failure_primary_and_secondary_cleanup_are_retained() {
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    script.lock().keyboard_start_output_failure = Some(injection_failure(
+        OutputKind::Keyboard,
+        OutputPhase::Initialization,
+        "primary keyboard failure",
+        &[],
+    ));
+    script.lock().keyboard_stop_output_failure = Some(injection_failure(
+        OutputKind::Keyboard,
+        OutputPhase::Release,
+        "secondary keyboard cleanup",
+        &["native close cleanup"],
+    ));
+
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    let state = engine.state.read();
+    assert_eq!(state.session.output_failures.len(), 1);
+    let failure = &state.session.output_failures[0];
+    assert_eq!(failure.details, "primary keyboard failure");
+    assert!(
+        failure
+            .cleanup
+            .iter()
+            .any(|detail| detail.contains("secondary keyboard cleanup"))
+    );
+    assert!(
+        failure
+            .cleanup
+            .iter()
+            .any(|detail| detail.contains("native close cleanup"))
+    );
+}
+
+#[test]
+fn output_failure_command_publication_does_not_overwrite_fault_details() {
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    script.lock().keyboard_start_output_failure = Some(injection_failure(
+        OutputKind::Keyboard,
+        OutputPhase::Initialization,
+        "primary keyboard failure",
+        &[],
+    ));
+    script.lock().mouse_stop_output_failure = Some(injection_failure(
+        OutputKind::Mouse,
+        OutputPhase::Release,
+        "mouse cleanup failure",
+        &[],
+    ));
+
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    let message = engine.state.read().session.error.clone().unwrap();
+    assert!(message.contains("primary keyboard failure"));
+    assert!(message.contains("mouse cleanup failure"));
+}
+
+#[test]
+fn output_failure_persists_across_stop_refresh_and_profile_edits() {
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    script.lock().keyboard_start_output_failure = Some(injection_failure(
+        OutputKind::Keyboard,
+        OutputPhase::Initialization,
+        "persistent failure",
+        &[],
+    ));
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    script.lock().keyboard_start_output_failure = None;
+    script.lock().calls.clear();
+
+    tx.send(EngineCommand::Deactivate).unwrap();
+    tx.send(EngineCommand::RefreshInput).unwrap();
+    engine.tick().unwrap();
+    assert_eq!(engine.state.read().session.output_failures.len(), 1);
+    assert!(engine.state.read().session.error.is_some());
+
+    engine
+        .handle_session_command(&EngineCommand::LoadProfile("replacement.toml".into()))
+        .unwrap();
+    assert_eq!(engine.state.read().session.output_failures.len(), 1);
+    assert!(engine.state.read().session.error.is_some());
+}
+
+#[test]
+fn output_failure_successful_retry_is_the_only_clearing_path() {
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    script.lock().keyboard_start_output_failure = Some(injection_failure(
+        OutputKind::Keyboard,
+        OutputPhase::Initialization,
+        "retryable failure",
+        &[],
+    ));
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    assert_eq!(engine.state.read().session.output_failures.len(), 1);
+
+    tx.send(EngineCommand::Retry).unwrap();
+    engine.tick().unwrap();
+    assert_eq!(engine.state.read().session.output_failures.len(), 1);
+
+    script.lock().keyboard_start_output_failure = None;
+    tx.send(EngineCommand::Retry).unwrap();
+    engine.tick().unwrap();
+    let state = engine.state.read();
+    assert!(state.session.output_failures.is_empty());
+    assert!(state.session.error.is_none());
+    assert_eq!(state.engine_status, EngineStatus::Running);
+}
+
+#[test]
+fn injection_start_order_with_and_without_virtual_controllers() {
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    assert_eq!(
+        &script.lock().calls[..5],
+        [
+            "keyboard:start",
+            "mouse:start",
+            "start",
+            "neutral",
+            "acquire"
+        ]
+    );
+
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    set_session_devices(&engine, vec![DeviceId("evdev:v1:test".into())], vec![]);
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    assert_eq!(
+        &script.lock().calls[..3],
+        ["keyboard:start", "mouse:start", "acquire"]
+    );
+    assert!(!script.lock().calls.iter().any(|call| call == "start"));
+}
+
+#[test]
+fn mouse_start_failure_rolls_back_keyboard_before_any_controller_or_capture() {
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    script.lock().failures.insert(Failure::MouseStart);
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+
+    let calls = script.lock().calls.clone();
+    assert_eq!(
+        &calls[..6],
+        [
+            "keyboard:start",
+            "mouse:start",
+            "release",
+            "keyboard:stop",
+            "mouse:stop",
+            "stop",
+        ]
+    );
+    assert!(
+        !calls
+            .iter()
+            .any(|call| call == "start" || call == "acquire")
+    );
+    assert_eq!(engine.read_status(), EngineStatus::Faulted);
+}
+
+#[test]
+fn controller_start_and_input_capture_failures_roll_back_both_injection_sinks() {
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    script.lock().start_failures_remaining = 1;
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    let calls = script.lock().calls.clone();
+    assert!(
+        calls
+            .windows(3)
+            .any(|window| { window == ["keyboard:stop", "mouse:stop", "stop"] })
+    );
+    assert!(!calls.iter().any(|call| call == "acquire"));
+
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    script.lock().failures.insert(Failure::Acquire);
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    let calls = script.lock().calls.clone();
+    assert!(
+        calls
+            .windows(4)
+            .any(|window| { window == ["release", "keyboard:stop", "mouse:stop", "stop"] })
+    );
+}
+
+#[test]
+fn stop_closes_injection_sinks_and_retains_only_clean_neutral_controllers() {
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    script.lock().calls.clear();
+
+    tx.send(EngineCommand::Deactivate).unwrap();
+    engine.tick().unwrap();
+    assert_eq!(
+        &script.lock().calls[..4],
+        ["release", "keyboard:stop", "mouse:stop", "neutral"]
+    );
+    assert!(!script.lock().calls.iter().any(|call| call == "stop"));
+    assert!(engine.state.read().session.output_active);
+}
+
+#[test]
+fn cleanup_failure_calls_both_sink_stops_and_destroys_controllers() {
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    script.lock().calls.clear();
+    script.lock().failures.insert(Failure::KeyboardStop);
+    script.lock().failures.insert(Failure::MouseStop);
+
+    tx.send(EngineCommand::Deactivate).unwrap();
+    engine.tick().unwrap();
+    let calls = script.lock().calls.clone();
+    assert!(calls.iter().any(|call| call == "keyboard:stop"));
+    assert!(calls.iter().any(|call| call == "mouse:stop"));
+    assert!(calls.iter().any(|call| call == "stop"));
+    assert!(!calls.iter().any(|call| call == "neutral"));
+    assert!(!engine.state.read().session.output_active);
+}
+
+#[test]
+fn repeated_start_stop_retry_restarts_injection_but_reuses_controllers() {
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    script.lock().calls.clear();
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    assert!(
+        !script
+            .lock()
+            .calls
+            .iter()
+            .any(|call| call.ends_with(":start"))
+    );
+
+    tx.send(EngineCommand::Deactivate).unwrap();
+    engine.tick().unwrap();
+    script.lock().calls.clear();
+    tx.send(EngineCommand::Retry).unwrap();
+    engine.tick().unwrap();
+    let calls = script.lock().calls.clone();
+    assert_eq!(&calls[..3], ["keyboard:start", "mouse:start", "acquire"]);
+    assert!(!calls.iter().any(|call| call == "start"));
+}
+
+#[test]
+fn mapping_and_mode_edits_do_not_stop_healthy_injection_sinks() {
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    script.lock().calls.clear();
+
+    engine.release_all_held_outputs().unwrap();
+    engine
+        .handle_command(EngineCommand::SwitchMode {
+            mode: "Default".into(),
+        })
+        .unwrap();
+    assert!(
+        !script
+            .lock()
+            .calls
+            .iter()
+            .any(|call| call.ends_with(":stop"))
+    );
+}
+
+#[test]
+fn profile_replacement_and_active_deletion_close_injection_sinks() {
+    for command in [
+        EngineCommand::LoadProfile("replacement.toml".into()),
+        EngineCommand::DeleteProfile {
+            name: "test".into(),
+        },
+    ] {
+        let (mut engine, tx, script, _temp) = lifecycle_harness();
+        tx.send(EngineCommand::Activate).unwrap();
+        engine.tick().unwrap();
+        script.lock().calls.clear();
+
+        assert!(!engine.handle_session_command(&command).unwrap());
+        let calls = script.lock().calls.clone();
+        assert!(calls.iter().any(|call| call == "keyboard:stop"));
+        assert!(calls.iter().any(|call| call == "mouse:stop"));
+    }
+}
+
+#[test]
+fn shutdown_disconnect_and_drop_close_injection_sinks() {
+    let verify = |calls: &[String]| {
+        assert!(calls.iter().any(|call| call == "keyboard:stop"));
+        assert!(calls.iter().any(|call| call == "mouse:stop"));
+        assert!(calls.iter().any(|call| call == "stop"));
+    };
+
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    script.lock().calls.clear();
+    tx.send(EngineCommand::Shutdown).unwrap();
+    engine.tick().unwrap();
+    verify(&script.lock().calls);
+
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    script.lock().calls.clear();
+    drop(tx);
+    engine.tick().unwrap();
+    verify(&script.lock().calls);
+
+    let (mut engine, tx, script, _temp) = lifecycle_harness();
+    tx.send(EngineCommand::Activate).unwrap();
+    engine.tick().unwrap();
+    script.lock().calls.clear();
+    drop(engine);
+    verify(&script.lock().calls);
 }
 
 #[test]
@@ -272,7 +774,7 @@ fn passive_snapshot_blocks_held_controls_when_routing_starts_and_stop_keeps_moni
 #[test]
 fn failure_and_shutdown_release_before_output_cleanup_and_do_not_poll_again() {
     let (mut e, tx, s, _temp) = harness();
-    s.lock().fail_acquire = true;
+    s.lock().failures.insert(Failure::Acquire);
     tx.send(EngineCommand::Activate).unwrap();
     e.tick().unwrap();
     assert_eq!(e.state.read().engine_status, EngineStatus::Faulted);
@@ -312,7 +814,7 @@ fn release_failure_still_stops_outputs_and_drop_releases_first() {
     s.lock().polls.push_back(vec![snapshot(false)]);
     e.tick().unwrap();
     s.lock().calls.clear();
-    s.lock().fail_release = true;
+    s.lock().failures.insert(Failure::Release);
     tx.send(EngineCommand::Deactivate).unwrap();
     e.tick().unwrap();
     assert_eq!(e.state.read().engine_status, EngineStatus::Faulted);
@@ -430,13 +932,13 @@ fn restart_retains_outputs_and_direct_flush_failure_releases_the_whole_session()
     );
     assert_eq!(s.lock().calls[0], "acquire");
     s.lock().calls.clear();
-    s.lock().fail_flush = true;
+    s.lock().failures.insert(Failure::Flush);
     s.lock().polls.push_back(vec![]);
     e.tick().unwrap_err();
     assert!(s.lock().calls.ends_with(&["release".into(), "stop".into()]));
     assert_eq!(e.state.read().engine_status, EngineStatus::Faulted);
     assert!(e.state.read().session.captured.is_empty());
-    s.lock().fail_flush = false;
+    s.lock().failures.remove(&Failure::Flush);
     s.lock().calls.clear();
     tx.send(EngineCommand::Retry).unwrap();
     s.lock().polls.push_back(vec![snapshot(false)]);
@@ -659,7 +1161,7 @@ fn output_failure_keeps_passive_values_updating_without_reacquiring() {
     tx.send(EngineCommand::Activate).unwrap();
     s.lock().polls.push_back(vec![snapshot(false)]);
     e.tick().unwrap();
-    s.lock().fail_flush = true;
+    s.lock().failures.insert(Failure::Flush);
     s.lock()
         .polls
         .push_back(vec![InputUpdate::Frame(vec![button(true)])]);
@@ -993,7 +1495,7 @@ fn output_failure_still_consumes_other_controllers_updates_already_drained_in_po
         } else {
             InputUpdate::Frame(vec![event.clone()])
         };
-        s.lock().fail_flush = true;
+        s.lock().failures.insert(Failure::Flush);
         s.lock()
             .polls
             .push_back(vec![InputUpdate::Frame(vec![button(true)]), update]);

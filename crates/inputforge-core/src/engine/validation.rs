@@ -2,6 +2,7 @@
 use super::validation_inputs::{input_issue, validate_condition, validate_input};
 use crate::{
     action::{Action, Mapping},
+    output::OutputKind,
     profile::Profile,
     state::{
         AppState, InputIssueKind, InputRole, MappingIssue, MappingIssueReason, OutputIssueKind,
@@ -14,19 +15,52 @@ pub(super) fn issues(state: &AppState) -> Vec<MappingIssue> {
     let Some(profile) = &state.active_profile else {
         return vec![];
     };
-    profile
-        .mappings()
-        .iter()
-        .filter_map(|mapping| {
-            validate_mapping(profile, mapping, state)
-                .err()
-                .map(|reason| MappingIssue {
-                    input: mapping.input.clone(),
-                    mode: mapping.mode.clone(),
-                    reason,
-                })
-        })
-        .collect()
+    let mut issues = Vec::new();
+    for mapping in profile.mappings() {
+        if let Err(reason) = validate_mapping(profile, mapping, state) {
+            issues.push(issue(mapping, reason));
+        }
+        for failure in &state.session.output_failures {
+            if uses_output(&mapping.actions, failure.output) {
+                issues.push(issue(
+                    mapping,
+                    MappingIssueReason::InjectionFailed {
+                        failure: failure.clone(),
+                    },
+                ));
+            }
+        }
+    }
+    issues
+}
+
+fn issue(mapping: &Mapping, reason: MappingIssueReason) -> MappingIssue {
+    MappingIssue {
+        input: mapping.input.clone(),
+        mode: mapping.mode.clone(),
+        reason,
+    }
+}
+
+fn uses_output(actions: &[Action], output: OutputKind) -> bool {
+    actions.iter().any(|action| match action {
+        Action::MapToKeyboard { .. } => output == OutputKind::Keyboard,
+        Action::MapToMouse { .. } => output == OutputKind::Mouse,
+        Action::Conditional {
+            if_true, if_false, ..
+        } => uses_output(if_true, output) || uses_output(if_false, output),
+        Action::TapGesture {
+            single_tap,
+            double_tap,
+            ..
+        } => uses_output(single_tap, output) || uses_output(double_tap, output),
+        Action::PressGesture {
+            short_press,
+            long_press,
+            ..
+        } => uses_output(short_press, output) || uses_output(long_press, output),
+        _ => false,
+    })
 }
 
 fn validate_mapping(profile: &Profile, mapping: &Mapping, state: &AppState) -> Result<()> {

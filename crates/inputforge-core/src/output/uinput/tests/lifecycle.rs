@@ -1,4 +1,7 @@
-use super::{super::default_config, fixtures};
+use super::{
+    super::{default_config, device::DeviceKey},
+    fixtures,
+};
 use std::{io, time::Duration};
 
 #[test]
@@ -16,7 +19,7 @@ fn multi_device_creation_initializes_neutral_and_rejects_active_reconfiguration(
             .iter()
             .copied()
             .collect::<Vec<_>>(),
-        vec![1, 2]
+        vec![DeviceKey::Controller(1), DeviceKey::Controller(2)]
     );
     assert!(
         world
@@ -32,7 +35,10 @@ fn multi_device_creation_initializes_neutral_and_rejects_active_reconfiguration(
     assert_eq!(world.lock().unwrap().emitted.len(), count);
     output.set_button(2, 1, true).unwrap();
     output.flush().unwrap();
-    assert_eq!(world.lock().unwrap().emitted.last().unwrap().0, 2);
+    assert_eq!(
+        world.lock().unwrap().emitted.last().unwrap().0,
+        DeviceKey::Controller(2)
+    );
     output.release().unwrap();
     output.release().unwrap();
     assert!(!output.is_active());
@@ -46,8 +52,12 @@ fn multi_device_creation_initializes_neutral_and_rejects_active_reconfiguration(
 #[test]
 fn failed_creation_rolls_back_and_retains_primary_and_destroy_errors() {
     let (mut output, world) = fixtures::output((1..=3).map(default_config).collect());
-    world.lock().unwrap().fail_create = Some(3);
-    world.lock().unwrap().fail_destroy.extend([1, 2]);
+    world.lock().unwrap().fail_create = Some(DeviceKey::Controller(3));
+    world
+        .lock()
+        .unwrap()
+        .fail_destroy
+        .extend([DeviceKey::Controller(1), DeviceKey::Controller(2)]);
     let error = output.create().unwrap_err();
     assert_eq!(error.slot(), Some(3));
     assert_eq!(error.raw_os_error(), Some(13));
@@ -66,7 +76,8 @@ fn failed_creation_rolls_back_and_retains_primary_and_destroy_errors() {
 fn readiness_timeout_closes_every_created_device_with_a_shared_deadline() {
     let (mut output, world) = fixtures::output(vec![default_config(1), default_config(2)]);
     let start = world.lock().unwrap().now;
-    world.lock().unwrap().fail_ready = Some((2, io::ErrorKind::PermissionDenied));
+    world.lock().unwrap().fail_ready =
+        Some((DeviceKey::Controller(2), io::ErrorKind::PermissionDenied));
     let error = output.create().unwrap_err();
     assert_eq!(error.slot(), Some(2));
     assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
@@ -97,7 +108,7 @@ fn partially_emitted_packet_failure_invalidates_owner_without_replaying_it() {
             .unwrap()
             .emitted
             .iter()
-            .filter(|(slot, _)| *slot == 1)
+            .filter(|(key, _)| *key == DeviceKey::Controller(1))
             .count(),
         1
     );
@@ -115,7 +126,11 @@ fn release_discards_pending_press_and_closes_all_despite_multiple_errors() {
         .unwrap()
         .writes
         .push_back(Err(io::ErrorKind::WouldBlock.into()));
-    world.lock().unwrap().fail_destroy.extend([1, 2]);
+    world
+        .lock()
+        .unwrap()
+        .fail_destroy
+        .extend([DeviceKey::Controller(1), DeviceKey::Controller(2)]);
     let error = output.release().unwrap_err();
     assert_eq!(error.kind(), io::ErrorKind::WouldBlock);
     assert!(error.to_string().contains("slot 1"));

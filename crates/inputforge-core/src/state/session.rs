@@ -1,6 +1,6 @@
 //! Engine-confirmed ownership and capture readiness, independent of cached values.
 use super::MappingIssue;
-use crate::output::traits::ControllerCapabilities;
+use crate::output::{OutputFailure, traits::ControllerCapabilities};
 use crate::types::{DeviceId, VirtualDeviceConfig};
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[expect(
@@ -14,6 +14,7 @@ pub struct SessionState {
     pub bindings: Vec<crate::profile::controllers::DeviceBinding>,
     pub monitored: Vec<DeviceId>,
     pub mapping_issues: Vec<MappingIssue>,
+    pub output_failures: Vec<OutputFailure>,
     pub ready: bool,
     pub generation: u64,
     pub captured: Vec<DeviceId>,

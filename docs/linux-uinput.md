@@ -83,23 +83,33 @@ A creation failure rolls back the partial set and leaves the owner available for
 later creation attempt. A runtime write failure closes every device and invalidates
 the owner; construct a new one to retry. Explicit release attempts neutral output.
 `Drop` only destroys/closes devices and cannot guarantee a final neutral revision.
-The created identity is `InputForge Virtual Controller <slot>` with physical path
-`inputforge/controller/v1/slot/<slot>`; readiness validates the matching event node
-before the create call succeeds. It requires an initialized udev event node under
-the exact sysfs identity returned by uinput and verifies identity and capabilities
-using read-only metadata ioctls. This does not mean SDL or a game has opened it.
-Slot uniqueness applies within one owner, not across independent processes.
+The created controller identity is `InputForge Virtual Controller <slot>` with
+physical path `inputforge/controller/v1/slot/<slot>`; controller readiness validates
+the matching event node before the create call succeeds. It requires an initialized
+udev event node under the exact sysfs identity returned by uinput and verifies
+identity, capabilities, and absolute-axis ranges using read-only metadata ioctls.
+This does not mean SDL or a game has opened it. Slot uniqueness applies within one
+owner, not across independent processes.
 
-The concrete API also has an engine `UinputSink` adapter. It defers runtime-error
-teardown until the engine releases physical capture; standalone API cleanup remains
-unchanged. See [Linux engine routing](linux-routing.md) for session configuration,
-recovery, and the integrated editor workflow.
+The same native descriptor, readiness, bounded-write, fake-clock, and explicit
+cleanup boundary now also backs the engine's separate keyboard and mouse uinput
+sinks. Their descriptors are inert until Start. Keyboard and mouse runtime
+failures retain typed initialization/readiness/emission/release evidence for Retry;
+they do not change this controller-only example's command line or acceptance scope.
+Keyboard/mouse readiness confirms the initialized udev event child and character
+device with metadata only, then verifies exact identity and capability bitmaps from
+its sysfs `inputN` parent. It never opens the keyboard or mouse event node.
+The controller `UinputSink` still defers runtime-error teardown until the engine
+releases physical capture. See [Linux engine routing](linux-routing.md) for session
+configuration, recovery, and the integrated editor workflow.
 
 ## Access and cleanup limits
 
-Run as the normal desktop user. Missing or denied `/dev/uinput` access is a
-prerequisite failure; the example does not run as root, install packages, change
-permissions, or create udev rules. Use the existing read-only diagnostics first:
+Run as the normal desktop user. `/dev/uinput` access is the output permission
+prerequisite. Keyboard/mouse output does not require raw `/dev/input/event*` access,
+input-group membership, or a rule granting those nodes. The example does not run as
+root, install packages, change permissions, or create udev rules. Use the existing
+read-only diagnostics first:
 
 ```sh
 cargo run --locked -p inputforge-diagnostics
@@ -142,8 +152,10 @@ Perform live checks later, one explicit check at a time:
 Automated parser and fake-owner tests cover bounds, explicit slots, capability
 selection, cleanup ordering, and preservation of run/reset/release/report failures.
 Proton, Windows, signal, or blocked-output acceptance has not been
-performed. The profile, engine, GUI startup, Windows behavior,
-force feedback, and keyboard/mouse output remain outside this harness.
+performed. The profile, engine, GUI startup, Windows behavior, force feedback,
+and keyboard/mouse delivery remain outside this controller harness. Keyboard and
+mouse automated coverage uses the shared scripted syscall boundary; it is not live
+desktop or game-compatibility evidence.
 
 ## Automated verification
 

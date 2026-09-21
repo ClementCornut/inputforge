@@ -323,6 +323,7 @@ pub(crate) fn Pipeline(
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
     let sortable = use_context::<SortableState<StageId>>();
+    let profile_name = ctx.meta.read().profile_name.clone();
 
     // The parent pipeline path for the sortable group is the
     // `path_prefix` interpreted as a `StageId`. Every gap in this
@@ -481,6 +482,7 @@ pub(crate) fn Pipeline(
     });
 
     if actions.is_empty() {
+        let add_palette_key = format!("{profile_name:?}:{mapping_key:?}:{path_prefix:?}:0");
         // Empty pipeline (e.g. an empty `if_false` branch). One gap
         // (gap_index 0) sits as a sibling of `AddPalette` so the user
         // can drop a stage from another pipeline into the empty branch.
@@ -498,6 +500,7 @@ pub(crate) fn Pipeline(
                 }
                 li { class: "if-pipeline__add-end",
                     AddPalette {
+                        key: "{add_palette_key}",
                         mapping_key: mapping_key.clone(),
                         path_prefix: path_prefix.clone(),
                         target_len: 0,
@@ -513,6 +516,7 @@ pub(crate) fn Pipeline(
     let key_for_iter = mapping_key.clone();
     let root_for_iter = root_actions.clone();
     let actions_len = actions.len();
+    let add_palette_key = format!("{profile_name:?}:{mapping_key:?}:{path_prefix:?}:{actions_len}");
     let parent_path_for_gaps = parent_pipeline_path.clone();
 
     rsx! {
@@ -552,6 +556,7 @@ pub(crate) fn Pipeline(
             }
             li { class: "if-pipeline__add-end",
                 AddPalette {
+                    key: "{add_palette_key}",
                     mapping_key: mapping_key.clone(),
                     path_prefix: path_prefix.clone(),
                     target_len: actions_len,

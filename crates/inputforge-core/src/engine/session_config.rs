@@ -48,7 +48,9 @@ impl Engine {
         let mut state = self.state.write();
         state.virtual_devices = virtual_devices;
         state.active_profile = Some(profile);
-        state.session.error = None;
+        if state.session.output_failures.is_empty() {
+            state.session.error = None;
+        }
         state.session.generation = state.session.generation.wrapping_add(1);
         Ok(())
     }

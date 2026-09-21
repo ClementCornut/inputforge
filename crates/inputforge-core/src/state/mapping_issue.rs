@@ -1,5 +1,8 @@
 //! Structured mapping diagnostics; presentation belongs to the GUI.
-use crate::types::{InputAddress, OutputAddress};
+use crate::{
+    output::OutputFailure,
+    types::{InputAddress, OutputAddress},
+};
 
 /// An editable mapping which cannot currently route safely.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +54,9 @@ pub enum MappingIssueReason {
     },
     KeyboardUnavailable,
     MouseUnavailable,
+    InjectionFailed {
+        failure: OutputFailure,
+    },
     InvalidCondition {
         input: InputAddress,
     },

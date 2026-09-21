@@ -8,8 +8,14 @@
 //! No method captures physical input or changes host permissions.
 
 mod config;
+mod device;
 mod error;
+mod event_device;
+mod event_device_lifecycle;
+mod key_codes;
+mod keyboard;
 mod lifecycle;
+mod mouse;
 mod native;
 mod state;
 #[cfg(test)]
@@ -19,6 +25,8 @@ pub(crate) mod tests;
 pub use config::default_config;
 #[doc(inline)]
 pub use error::Error;
+pub use keyboard::Keyboard;
+pub use mouse::Mouse;
 
 use crate::types::{HatDirection, VJoyAxis, VirtualDeviceConfig};
 use lifecycle::Held;
