@@ -83,13 +83,11 @@ pub fn Portal(children: Element) -> Element {
     });
 
     use_drop(move || {
-        let id = id_for_drop.clone();
-        spawn(async move {
-            let _ = document::eval(&format!(
-                "const el = document.getElementById('{id}');\n\
-                 if (el) el.remove();"
-            ));
-        });
+        // Component-owned tasks are cancelled on drop; dispatch cleanup now.
+        let _ = document::eval(&format!(
+            "const el = document.getElementById('{id_for_drop}');\n\
+             if (el) el.remove();"
+        ));
     });
 
     rsx! {

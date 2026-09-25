@@ -60,7 +60,7 @@ pub(crate) fn MapToKeyboardBody(
     let ctx = use_context::<AppContext>();
     let mut editor = use_context::<EditorState>();
 
-    let mut local_combo: Signal<KeyCombo> = use_signal(|| combo.clone());
+    let local_combo: Signal<KeyCombo> = use_signal(|| combo.clone());
 
     editor.malformed_hints.write().remove(&stage_id);
 
@@ -99,9 +99,7 @@ pub(crate) fn MapToKeyboardBody(
     });
 
     let keyboard_capture = use_keyboard_capture(on_capture_commit);
-    if !*keyboard_capture.active.read() && *local_combo.peek() != combo {
-        local_combo.set(combo.clone());
-    }
+    use_combo_sync(&combo, *keyboard_capture.active.read(), local_combo);
     let on_capture_start = move |_| {
         keyboard_capture.start.call(());
     };
@@ -224,6 +222,14 @@ pub(crate) fn MapToKeyboardBody(
 // Private helpers
 // ---------------------------------------------------------------------------
 
+fn use_combo_sync(combo: &KeyCombo, capturing: bool, mut local_combo: Signal<KeyCombo>) {
+    let mut previous = use_signal(|| combo.clone());
+    if !capturing && *previous.peek() != *combo {
+        previous.set(combo.clone());
+        local_combo.set(combo.clone());
+    }
+}
+
 fn format_key_combo(combo: &KeyCombo) -> String {
     let mut parts: Vec<String> = combo
         .modifiers
@@ -255,10 +261,8 @@ fn commit_capture_combo(
     if new_combo == old_combo {
         return;
     }
-    local_combo.set(new_combo.clone());
-
-    dispatch_keyboard(
-        new_combo,
+    if dispatch_keyboard(
+        new_combo.clone(),
         behavior,
         "key",
         mapping_key,
@@ -268,7 +272,9 @@ fn commit_capture_combo(
         current_name,
         cmd_tx,
         undo_log,
-    );
+    ) {
+        local_combo.set(new_combo);
+    }
 }
 
 fn is_output_behavior_click_noop(
@@ -300,13 +306,13 @@ fn dispatch_keyboard(
     current_name: Option<String>,
     cmd_tx: &std::sync::mpsc::Sender<EngineCommand>,
     undo_log: &mut Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
-) {
+) -> bool {
     let new_action = Action::MapToKeyboard {
         key: new_combo,
         behavior: new_behavior,
     };
     let Some(new_actions) = replace_at_path(root_actions, stage_id, new_action) else {
-        return;
+        return false;
     };
     // Amendment 7: dispatch first; skip push_edit if the channel is closed.
     if cmd_tx
@@ -324,7 +330,7 @@ fn dispatch_keyboard(
             field = field_label,
             "keyboard change dropped: engine channel disconnected"
         );
-        return;
+        return false;
     }
     let label = format_undo_label(
         UndoKind::StageEdit,
@@ -340,11 +346,108 @@ fn dispatch_keyboard(
         UndoKind::StageEdit,
         label,
     );
+    true
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn captured_combo_survives_stale_props_and_accepts_later_updates() {
+        use inputforge_core::types::PhysicalKey;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        type Controls = Rc<RefCell<Option<(Signal<KeyCombo>, Signal<KeyCombo>)>>>;
+        fn harness() -> Element {
+            let incoming = use_signal(|| KeyCombo {
+                key: PhysicalKey::F11,
+                modifiers: Vec::new(),
+            });
+            let local = use_signal(|| incoming.peek().clone());
+            use_combo_sync(&incoming.read(), false, local);
+            *use_context::<Controls>().borrow_mut() = Some((incoming, local));
+            rsx! { span { "{format_key_combo(&local.read())}" } }
+        }
+        let controls = Controls::default();
+        let mut dom = VirtualDom::new(harness);
+        dom.provide_root_context(Rc::clone(&controls));
+        dom.rebuild_in_place();
+        let (mut incoming, mut local) = controls.borrow().expect("harness must expose signals");
+        let captured = KeyCombo {
+            key: PhysicalKey::F12,
+            modifiers: Vec::new(),
+        };
+        dom.in_runtime(|| local.set(captured.clone()));
+        dom.render_immediate(&mut dioxus::core::NoOpMutations);
+        assert!(
+            dioxus_ssr::render(&dom).contains("F12"),
+            "stale engine snapshot must not overwrite a captured key"
+        );
+        dom.in_runtime(|| incoming.set(captured));
+        dom.render_immediate(&mut dioxus::core::NoOpMutations);
+        assert!(dioxus_ssr::render(&dom).contains("F12"));
+        dom.in_runtime(|| {
+            incoming.set(KeyCombo {
+                key: PhysicalKey::F11,
+                modifiers: Vec::new(),
+            });
+        });
+        dom.render_immediate(&mut dioxus::core::NoOpMutations);
+        assert!(
+            dioxus_ssr::render(&dom).contains("F11"),
+            "undo must restore the previous key"
+        );
+    }
+
+    #[test]
+    fn failed_capture_dispatch_keeps_previous_key() {
+        fn harness() -> Element {
+            use inputforge_core::types::{InputAddress, PhysicalKey};
+            let old = KeyCombo {
+                key: PhysicalKey::F11,
+                modifiers: Vec::new(),
+            };
+            let local = use_signal(|| old.clone());
+            let mut undo = use_signal(crate::frame::mapping_editor::undo_log::UndoLog::default);
+            let (sender, receiver) = std::sync::mpsc::channel();
+            drop(receiver);
+            let before = Mapping {
+                input: InputAddress::Unbound,
+                mode: "Default".to_owned(),
+                name: None,
+                actions: vec![Action::MapToKeyboard {
+                    key: old.clone(),
+                    behavior: OutputBehavior::Hold,
+                }],
+            };
+            commit_capture_combo(
+                KeyCombo {
+                    key: PhysicalKey::F12,
+                    modifiers: Vec::new(),
+                },
+                OutputBehavior::Hold,
+                local,
+                &(before.mode.clone(), before.input.clone()),
+                &StageId(vec![
+                    crate::frame::mapping_editor::undo_log::StageIdSegment::Index(0),
+                ]),
+                &before.actions,
+                &before,
+                None,
+                &sender,
+                &mut undo,
+            );
+            rsx! { span { "{format_key_combo(&local.read())}" } }
+        }
+        let mut dom = VirtualDom::new(harness);
+        dom.rebuild_in_place();
+        assert!(
+            dioxus_ssr::render(&dom).contains("F11"),
+            "failed dispatch must retain the saved key"
+        );
+    }
 
     #[test]
     fn map_to_keyboard_behavior_click_noop_only_when_behavior_is_unchanged() {

@@ -1,6 +1,8 @@
 // Rust guideline compliant 2026-05-13
 
 #[cfg(test)]
+mod display_tests;
+#[cfg(test)]
 mod tests;
 
 use std::str::FromStr;
@@ -410,7 +412,14 @@ pub(crate) fn use_keyboard_capture(on_commit: Callback<KeyCombo>) -> KeyboardCap
     let owner =
         use_hook(|| KeyboardCaptureOwner(NEXT_CAPTURE_OWNER.fetch_add(1, Ordering::Relaxed)));
     let mut processed_sequence: Signal<u64> = use_signal(|| 0);
-    let active = use_memo(move || *context.active_owner.read() == Some(owner));
+    let active = use_memo(move || {
+        *context.active_owner.read() == Some(owner)
+            || context.delivery.read().as_ref().is_some_and(|delivery| {
+                delivery.update.owner == owner
+                    && delivery.sequence > *processed_sequence.read()
+                    && matches!(delivery.update.outcome, CaptureOutcome::Commit(_))
+            })
+    });
     let hint = use_memo(move || {
         if *context.hint_owner.read() == Some(owner) {
             *context.hint.read()
@@ -432,10 +441,10 @@ pub(crate) fn use_keyboard_capture(on_commit: Callback<KeyCombo>) -> KeyboardCap
         if delivery.sequence <= *processed_sequence.peek() || delivery.update.owner != owner {
             return;
         }
-        processed_sequence.set(delivery.sequence);
         if let CaptureOutcome::Commit(combo) = delivery.update.outcome {
             on_commit.call(combo);
         }
+        processed_sequence.set(delivery.sequence);
     });
 
     use_drop(move || {
