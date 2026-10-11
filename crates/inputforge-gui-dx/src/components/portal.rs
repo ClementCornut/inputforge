@@ -3,7 +3,8 @@
 //! Renders `children` inline at the call site so Dioxus owns the
 //! diffing and event listeners by node reference, then JS-moves the
 //! wrapper to the Dioxus root container (`#main`) on mount and removes
-//! it on unmount. The moved wrapper escapes any ancestor's containing
+//! it on unmount. A separate anchor stays at the call site for renderer
+//! replacements. The moved wrapper escapes any ancestor's containing
 //! block, overflow clip, or stacking context, which is necessary for
 //! menus, dialogs, tooltips, and toasts to land at viewport coordinates
 //! regardless of where their trigger lives in the DOM tree.
@@ -45,18 +46,21 @@ static PORTAL_ID: AtomicU64 = AtomicU64::new(0);
 ///
 /// # How it works
 ///
-/// 1. Renders `<div id="if-portal-N" class="if-portal">{children}</div>`
-///    inline at the call site. Dioxus attaches event listeners to
-///    descendants by node reference, not by DOM position.
+/// 1. Renders an anchor containing
+///    `<div id="if-portal-N" class="if-portal">{children}</div>` inline
+///    at the call site. Dioxus attaches event listeners to descendants
+///    by node reference, not by DOM position.
 /// 2. `use_effect` fires after the wrapper is in the DOM. JS evaluates
 ///    inside `WebView2` and moves the wrapper to the Dioxus mount root
 ///    (`#main`, with a `document.body` fallback for any future renderer
 ///    layout that doesn't use that id). Children come along.
 /// 3. Subsequent re-renders update the wrapper by reference; the new
 ///    root-level position does not matter to Dioxus's diff.
-/// 4. On unmount, Dioxus naturally removes the wrapper from its render
-///    tree, but the wrapper has been moved. `use_drop` runs JS cleanup
-///    so no orphans accumulate at the root level.
+/// 4. On unmount, `use_drop` removes the moved wrapper. Dioxus then
+///    removes or replaces the anchor, which is still attached at the
+///    call site. Removing the moved node without this anchor would leave
+///    `replaceWith` operating on a detached node, losing the replacement
+///    placeholder and breaking subsequent menu opens.
 ///
 /// Event bubbling continues to work because events fired inside the
 /// moved wrapper bubble up THROUGH `#main`, where Dioxus's event
@@ -92,7 +96,9 @@ pub fn Portal(children: Element) -> Element {
 
     rsx! {
         Stylesheet { href: PORTAL_CSS }
-        div { id: "{id}", class: "if-portal", {children} }
+        div { class: "if-portal-anchor",
+            div { id: "{id}", class: "if-portal", {children} }
+        }
     }
 }
 
