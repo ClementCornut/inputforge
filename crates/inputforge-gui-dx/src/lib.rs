@@ -35,12 +35,8 @@ use crate::tray::action::TrayMenuIds;
 ///
 /// `tray_menu_ids` flows through here (rather than through a separate context
 /// type) because it's only consumed by `app_root` once, during initial mount,
-/// to install the muda event handler. The tokio mpsc channel that the handler
-/// pushes onto is created INSIDE `app_root` (not here), the original spec
-/// design carried `Arc<Mutex<Option<Receiver<TrayAction>>>>` through here, but
-/// the deviation in Tasks 10/11 (using `use_muda_event_handler` instead of
-/// `Config::with_custom_event_handler`) means both channel halves can live
-/// inside `app_root`'s `use_hook` body.
+/// to install the tray's muda event handler. Both halves of the tokio mpsc
+/// channel live inside `app_root`'s `use_hook` body.
 #[derive(Clone)]
 pub(crate) struct LaunchParams {
     pub tray_menu_ids: Option<TrayMenuIds>,
@@ -52,7 +48,7 @@ pub(crate) struct LaunchParams {
 ///
 /// `tray_menu_ids` flow through `LaunchParams::tray_menu_ids` into
 /// `app_root`, which calls `tray::install_event_handler(...)` from inside a
-/// `use_hook`. The handler observes muda menu events forwarded by Dioxus,
+/// hook. The handler receives menu events directly from the tray's muda version,
 /// routes them via `TrayAction::from_event`, and pushes onto a bounded
 /// `tokio::sync::mpsc` channel created inside `app_root`. A Dioxus task
 /// (also spawned from `app_root`) drains the channel and dispatches.

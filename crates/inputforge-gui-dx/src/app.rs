@@ -81,9 +81,9 @@ pub(crate) fn app_root() -> Element {
     //
     // The channel construction lives inside `use_hook` so it runs exactly
     // once per scope mount. `spawn_listener_task` consumes `rx` there.
-    // `install_event_handler` MUST be top-level because it wraps
-    // `use_muda_event_handler` (a hook), calling it from inside another
-    // hook's initializer would only register on first render.
+    // `install_event_handler` stays top-level because it wraps `use_hook`;
+    // nesting it in another hook's initializer would change hook order
+    // after the first render.
     // Launch parameters are immutable for the lifetime of this root.
     if let Some(ids) = params.tray_menu_ids {
         let tx = use_hook(|| {

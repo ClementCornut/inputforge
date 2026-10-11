@@ -15,7 +15,7 @@ default = []
 evdev-input = ["dep:evdev", "dep:udev", "dep:nix"]
 uinput-output = ["dep:evdev", "dep:udev", "dep:nix", "nix/ioctl"]
 sdl3-input = ["dep:sdl3"]
-vjoy-output = ["dep:vjoy"]
+vjoy-output = ["dep:vjoy", "dep:windows", "windows/Win32_System_LibraryLoader"]
 win32-io = ["dep:windows"]
 test-util = []
 

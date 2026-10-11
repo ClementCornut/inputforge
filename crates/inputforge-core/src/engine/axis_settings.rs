@@ -131,9 +131,15 @@ impl Engine {
             .devices
             .iter_mut()
             .find(|d| &d.info.id == device)
-            && let Some(polarity) = info.info.axis_polarities.get_mut(usize::from(*index))
         {
-            *polarity = setting.effective();
+            // SDL publishes an empty polarity table; populate it before
+            // updating the metadata consumed by the live UI bars.
+            info.info
+                .axis_polarities
+                .resize(usize::from(info.info.axes), AxisPolarity::default());
+            if let Some(polarity) = info.info.axis_polarities.get_mut(usize::from(*index)) {
+                *polarity = setting.effective();
+            }
         }
     }
 }

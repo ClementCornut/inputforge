@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::action::{Action, Mapping, validate_gesture_threshold_ms};
 use crate::error::{EngineError, Result};
 use crate::mode::Modes;
-use crate::types::{InputAddress, InputId};
+use crate::types::{DeviceId, InputAddress, InputId};
 
 // Keeps authored action trees bounded enough for validation and UI traversal.
 const MAX_ACTION_BRANCH_DEPTH: usize = 8;
@@ -285,6 +285,7 @@ pub struct Profile {
     calibrations: Vec<CalibrationEntry>,
     settings: ProfileSettings,
     controllers: Option<controllers::ControllerConfig>,
+    removed_devices: Vec<DeviceId>,
 }
 
 /// Internal TOML-level representation of the `[profile]` table.
@@ -302,6 +303,8 @@ struct ProfileRaw {
     profile: ProfileMeta,
     #[serde(default)]
     devices: Vec<DeviceEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    removed_devices: Vec<DeviceId>,
     #[serde(default)]
     mappings: Vec<Mapping>,
     #[serde(default)]
@@ -332,6 +335,7 @@ impl Profile {
             calibrations,
             settings: ProfileSettings { startup_mode },
             controllers: None,
+            removed_devices: Vec::new(),
         }
     }
 
@@ -397,6 +401,23 @@ impl Profile {
     #[must_use]
     pub fn controllers(&self) -> Option<&controllers::ControllerConfig> {
         self.controllers.as_ref()
+    }
+
+    /// Return devices hidden from this profile while disconnected and unused.
+    #[must_use]
+    pub fn removed_devices(&self) -> &[DeviceId] {
+        &self.removed_devices
+    }
+
+    pub(crate) fn remove_device(&mut self, device: &DeviceId) {
+        if !self.removed_devices.contains(device) {
+            self.removed_devices.push(device.clone());
+        }
+        self.devices.retain(|entry| &entry.id != device);
+        if let Some(config) = &mut self.controllers {
+            config.selected.retain(|id| id != device);
+            config.bindings.retain(|binding| &binding.device != device);
+        }
     }
 
     /// Replace Linux configuration after validation. Does not acquire hardware.
@@ -727,6 +748,7 @@ impl Profile {
 
         Ok(Self {
             controllers: raw.controllers,
+            removed_devices: raw.removed_devices,
             id: raw.profile.id,
             name: raw.profile.name,
             devices: raw.devices,
@@ -744,6 +766,7 @@ impl Profile {
         ProfileRaw {
             linux: None,
             controllers: self.controllers.clone(),
+            removed_devices: self.removed_devices.clone(),
             modes: self.modes.clone(),
             profile: ProfileMeta {
                 id: self.id.clone(),
@@ -924,8 +947,19 @@ mod tests {
     use crate::action::{Condition, ModeChangeStrategy, OutputBehavior};
     use crate::processing::DeadzoneConfig;
     use crate::types::{
-        DeviceId, KeyCombo, KeyModifier, MergeOp, OutputAddress, OutputId, PhysicalKey, VJoyAxis,
+        KeyCombo, KeyModifier, MergeOp, OutputAddress, OutputId, PhysicalKey, VJoyAxis,
     };
+
+    #[test]
+    fn removed_devices_survive_profile_round_trip() {
+        let toml = minimal_profile().to_toml().unwrap();
+        let toml = format!("removed_devices = [\"old-stick\"]\n{toml}");
+        let profile = Profile::from_toml(&toml).unwrap();
+        let saved = profile.to_toml().unwrap();
+        let parsed: toml::Value = toml::from_str(&saved).unwrap();
+        assert_eq!(parsed["removed_devices"][0].as_str(), Some("old-stick"));
+    }
+
     fn test_profile_with_one_mode() -> Profile {
         let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
         Profile::new(
@@ -1201,6 +1235,7 @@ long_press = []
         let raw = ProfileRaw {
             linux: None,
             controllers: None,
+            removed_devices: Vec::new(),
             modes: Modes::new(vec!["Default".to_owned()]).unwrap(),
             profile: ProfileMeta {
                 id: ProfileId::new(),

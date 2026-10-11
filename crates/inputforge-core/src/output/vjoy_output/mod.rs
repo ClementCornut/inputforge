@@ -45,10 +45,12 @@ impl VJoyOutput {
     }
 }
 fn load_driver() -> Result<VJoy> {
-    VJoy::from_default_dll_location().map_err(|error| {
+    let vjoy = VJoy::from_default_dll_location().map_err(|error| {
         tracing::debug!(?error, "vJoy driver load failed");
         EngineError::VJoyDriverMissing
-    })
+    })?;
+    native::pin_driver_library()?;
+    Ok(vjoy)
 }
 impl OutputSink for VJoyOutput {
     fn start(&mut self, configs: &[VirtualDeviceConfig]) -> Result<()> {
@@ -172,6 +174,37 @@ impl OutputSink for VJoyOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "requires installed vJoy with free devices; run alone in a fresh process"]
+    #[expect(
+        unsafe_code,
+        reason = "query the native DLL lifetime after a session ends"
+    )]
+    fn discovery_and_restart_keep_dll_loaded() {
+        use windows::{Win32::System::LibraryLoader::GetModuleHandleW, core::w};
+
+        let mut output = VJoyOutput::new();
+        let configs = output.list_devices();
+        assert!(
+            !configs.is_empty(),
+            "requires at least one free vJoy device"
+        );
+        // SAFETY: The string is static and null-terminated. The returned handle
+        // is only checked for existence, never dereferenced or freed.
+        let _module =
+            unsafe { GetModuleHandleW(w!("C:\\Program Files\\vJoy\\x64\\vJoyInterface.dll")) }
+                .expect("discovery must not unload the DLL and leave a stale window class");
+        for _ in 0..3 {
+            assert_eq!(output.list_devices(), configs);
+            output
+                .start(&configs)
+                .expect("start after discovery or stop");
+            output.stop().expect("neutralize and release devices");
+            assert!(output.vjoy.is_none());
+            assert_eq!(output.active_devices, HashSet::new());
+        }
+    }
+
     #[test]
     fn inactive_setters_never_load_or_acquire_the_driver() {
         let mut output = VJoyOutput::new();

@@ -6,6 +6,47 @@ use crate::{
     state::EngineStatus,
 };
 impl Engine {
+    pub(super) fn remove_device_from_profile(
+        &mut self,
+        device: &crate::types::DeviceId,
+    ) -> Result<()> {
+        if self.input.is_device_connected(device) {
+            return Err(invalid(
+                "Disconnect the device before removing it from the profile",
+            ));
+        }
+        let mut state = self.state.write();
+        if state
+            .devices
+            .iter()
+            .any(|d| &d.info.id == device && d.connected)
+        {
+            return Err(invalid(
+                "Disconnect the device before removing it from the profile",
+            ));
+        }
+        let mut profile = state
+            .active_profile
+            .clone()
+            .ok_or_else(|| invalid("Create or load a profile first"))?;
+        if profile.mappings().iter().any(|mapping| {
+            super::dependencies::mapping_dependencies(mapping)
+                .iter()
+                .any(|input| input.device() == Some(device))
+        }) {
+            return Err(invalid(
+                "Remove this device's mapping references before removing it from the profile",
+            ));
+        }
+        profile.remove_device(device);
+        if let Some(path) = &state.profile_path {
+            profile.save(path)?;
+        }
+        state.active_profile = Some(profile);
+        state.session.generation = state.session.generation.wrapping_add(1);
+        Ok(())
+    }
+
     pub(super) fn require_stopped(&self) -> Result<()> {
         let state = self.state.read();
         if matches!(

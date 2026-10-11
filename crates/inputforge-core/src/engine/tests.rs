@@ -4283,6 +4283,186 @@ fn set_device_alias_with_blank_value_clears_alias() {
     let _ = std::fs::remove_file(settings_path);
 }
 
+#[test]
+fn remove_device_from_profile_persists_without_forgetting_global_settings() {
+    let (mut engine, state, _tx, _dir, path) = make_engine_with_simple_disk_profile();
+    let other = state.read().active_profile.clone().unwrap();
+    let device = dev_id();
+    engine
+        .settings
+        .device_aliases
+        .insert(device.clone(), "Old Stick".to_owned());
+    let record = crate::settings::DeviceRecord {
+        info: DeviceInfo {
+            id: device.clone(),
+            name: "Stick".to_owned(),
+            axes: 6,
+            buttons: 32,
+            hats: 0,
+            instance_path: None,
+            axis_polarities: vec![],
+        },
+        diagnostics: DeviceDiagnostics::default(),
+        last_seen_unix_ms: Some(1),
+        axis_settings: vec![],
+    };
+    engine
+        .settings
+        .device_registry
+        .insert(device.clone(), record.clone());
+    engine.settings.save_to(&engine.settings_path).unwrap();
+    state
+        .write()
+        .device_registry
+        .insert(device.clone(), record.clone());
+    engine
+        .handle_command(EngineCommand::RemoveDeviceFromProfile {
+            device: device.clone(),
+        })
+        .unwrap();
+    engine
+        .handle_command(EngineCommand::RemoveDeviceFromProfile {
+            device: device.clone(),
+        })
+        .unwrap();
+
+    let saved = Profile::load(&path).unwrap();
+    assert_eq!(saved.removed_devices(), std::slice::from_ref(&device));
+    assert_eq!(saved.controllers().unwrap().selected.len(), 0);
+    assert_eq!(saved.controllers().unwrap().bindings.len(), 0);
+    assert_eq!(
+        saved.controllers().unwrap().virtual_devices,
+        other.controllers().unwrap().virtual_devices
+    );
+    assert_eq!(state.read().active_profile.as_ref(), Some(&saved));
+    assert_eq!(other.removed_devices().len(), 0);
+    let settings = AppSettings::load_from(&engine.settings_path);
+    assert_eq!(
+        settings.device_aliases.get(&device).map(String::as_str),
+        Some("Old Stick")
+    );
+    assert_eq!(settings.device_registry.get(&device), Some(&record));
+    assert_eq!(state.read().device_registry.get(&device), Some(&record));
+}
+
+#[test]
+fn remove_device_from_profile_rejects_connected_devices() {
+    for adapter_connected in [false, true] {
+        let device = dev_id();
+        let input = MockInputSource {
+            connected: if adapter_connected {
+                [device.clone()].into_iter().collect()
+            } else {
+                std::collections::HashSet::new()
+            },
+            ..Default::default()
+        };
+        let profile = make_profile(simple_modes(), vec![]);
+        let (mut engine, state, _tx) = make_engine(input, profile.clone());
+        if !adapter_connected {
+            state.write().devices.push(DeviceState {
+                info: DeviceInfo {
+                    id: device.clone(),
+                    name: "Stick".into(),
+                    axes: 0,
+                    buttons: 0,
+                    hats: 0,
+                    instance_path: None,
+                    axis_polarities: vec![],
+                },
+                connected: true,
+                diagnostics: DeviceDiagnostics::default(),
+            });
+        }
+        assert!(
+            engine
+                .handle_command(EngineCommand::RemoveDeviceFromProfile { device })
+                .is_err()
+        );
+        assert_eq!(state.read().active_profile.as_ref(), Some(&profile));
+    }
+}
+
+#[test]
+fn remove_device_from_profile_rejects_primary_merge_and_nested_condition_references() {
+    let other_axis = InputAddress::Bound {
+        device: DeviceId("other".into()),
+        input: InputId::Axis { index: 0 },
+    };
+    let other_button = InputAddress::Bound {
+        device: DeviceId("other".into()),
+        input: InputId::Button { index: 0 },
+    };
+    for (input, actions) in [
+        (axis_addr(0), vec![]),
+        (
+            other_axis,
+            vec![Action::MergeAxis {
+                second_input: axis_addr(0),
+                operation: MergeOp::Average,
+            }],
+        ),
+        (
+            other_button,
+            vec![Action::PressGesture {
+                threshold_ms: 500,
+                fire_long_when_threshold_crossed: false,
+                short_press: vec![],
+                long_press: vec![Action::Conditional {
+                    condition: Condition::Not {
+                        condition: Box::new(Condition::ButtonPressed {
+                            input: button_addr(0),
+                        }),
+                    },
+                    if_true: vec![],
+                    if_false: vec![],
+                }],
+            }],
+        ),
+    ] {
+        let profile = make_profile(
+            three_modes(),
+            vec![Mapping {
+                input,
+                mode: "Landing".into(),
+                name: None,
+                actions,
+            }],
+        );
+        let (mut engine, state, _tx) = make_engine(MockInputSource::default(), profile.clone());
+        assert!(
+            engine
+                .handle_command(EngineCommand::RemoveDeviceFromProfile { device: dev_id() })
+                .is_err()
+        );
+        assert_eq!(state.read().active_profile.as_ref(), Some(&profile));
+    }
+}
+
+#[test]
+fn remove_device_from_profile_preserves_state_when_save_fails() {
+    let (mut engine, state, _tx, dir, _path) = make_engine_with_simple_disk_profile();
+    let profile = state.read().active_profile.clone().unwrap();
+    state.write().profile_path = Some(dir.path().to_path_buf());
+    assert!(
+        engine
+            .handle_command(EngineCommand::RemoveDeviceFromProfile { device: dev_id() })
+            .is_err()
+    );
+    assert_eq!(state.read().active_profile.as_ref(), Some(&profile));
+}
+
+#[test]
+fn remove_device_from_profile_requires_a_profile() {
+    let (mut engine, state, _tx) = make_engine_no_profile(MockInputSource::default());
+    assert!(
+        engine
+            .handle_command(EngineCommand::RemoveDeviceFromProfile { device: dev_id() })
+            .is_err()
+    );
+    assert!(state.read().active_profile.is_none());
+}
+
 // ---------------------------------------------------------------------------
 // F6 snapshot command handler tests
 // ---------------------------------------------------------------------------

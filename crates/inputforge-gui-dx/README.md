@@ -142,14 +142,13 @@ A full `cargo clean` is unnecessary; the per-package clean is enough.
 
 ### Tray bridge
 
-Tray menu events are observed via the
-`use_muda_event_handler` hook (`dioxus_desktop`'s public hooks API). The
-spec originally specified `Config::with_custom_event_handler` matching
-on `UserWindowEvent::MudaMenuEvent`, but `dioxus_desktop::ipc` is a
-private module in 0.7.6; the type is unreachable from external crates.
-The hook performs the equivalent pattern-match internally and delivers
-the same `muda::MenuEvent` payload through a callback that runs on the
-event-loop thread. F3 routes the menu id to a `TrayAction` via pure
+Tray menu events are received directly through `muda::MenuEvent::set_event_handler`,
+installed once by a Dioxus hook. The tray uses the workspace's newer muda
+version; Dioxus uses an older version with separate event types and queues,
+so its `use_muda_event_handler` hook cannot receive these tray clicks.
+Muda retains the callback for the process lifetime; the application launches
+one tray-enabled root per process. The callback runs on the native
+event-loop thread and routes the menu id to a `TrayAction` via pure
 logic in `tray::action::TrayAction::from_event`, then `try_send`s on a
 bounded `tokio::sync::mpsc` channel created inside `app_root`. A Dioxus
 task (also spawned from `app_root`) drains the channel and dispatches:

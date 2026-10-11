@@ -765,6 +765,15 @@ fn build_device_panel_rows(s: &AppState) -> Vec<DevicePanelRow> {
         });
     }
 
+    if let Some(profile) = &s.active_profile {
+        rows.retain(|row| {
+            row.connected
+                || !profile.removed_devices().contains(&row.device_id)
+                || row.usage.primary_mappings > 0
+                || row.usage.secondary_mappings > 0
+        });
+    }
+
     rows.sort_by(|a, b| {
         b.connected.cmp(&a.connected).then_with(|| {
             a.display_name
@@ -1294,6 +1303,89 @@ mod tests {
         assert!(snapshot.device_panel_rows[0].connected);
         assert_eq!(snapshot.device_panel_rows[1].display_name, "Old Pedals");
         assert!(!snapshot.device_panel_rows[1].connected);
+    }
+
+    #[test]
+    fn removed_device_is_hidden_only_while_disconnected_in_its_profile() {
+        let profile = inputforge_core::profile::Profile::from_toml(
+            "removed_devices = ['old-stick']\nmodes = ['Default']\n[profile]\nid = 'test-profile'\nname = 'P'\nstartup_mode = 'Default'",
+        ).unwrap();
+        let mut state = AppState::with_profile(profile);
+        let info = test_device("old-stick", "Old Stick", 6, 32, 0);
+        state.device_registry.insert(
+            info.id.clone(),
+            inputforge_core::settings::DeviceRecord {
+                axis_settings: vec![],
+                info: info.clone(),
+                diagnostics: DeviceDiagnostics::default(),
+                last_seen_unix_ms: None,
+            },
+        );
+        assert_eq!(
+            ConfigSnapshot::from_state(&state, None)
+                .device_panel_rows
+                .len(),
+            0
+        );
+
+        state.devices.push(DeviceState {
+            info,
+            connected: true,
+            diagnostics: DeviceDiagnostics::default(),
+        });
+        assert_eq!(
+            ConfigSnapshot::from_state(&state, None)
+                .device_panel_rows
+                .len(),
+            1
+        );
+        state.devices[0].connected = false;
+        assert_eq!(
+            ConfigSnapshot::from_state(&state, None)
+                .device_panel_rows
+                .len(),
+            0
+        );
+
+        state.active_profile = Some(inputforge_core::profile::Profile::new(
+            "Other profile".to_owned(),
+            vec![],
+            inputforge_core::mode::Modes::new(vec!["Default".to_owned()]).unwrap(),
+            vec![],
+            vec![],
+            "Default".to_owned(),
+        ));
+        assert_eq!(
+            ConfigSnapshot::from_state(&state, None)
+                .device_panel_rows
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn removed_device_reappears_if_a_mapping_references_it() {
+        let profile = profile_with_primary_merge_and_conditional_device_refs();
+        let toml = format!(
+            "removed_devices = ['dev-1']\n{}",
+            profile.to_toml().unwrap()
+        );
+        let mut state =
+            AppState::with_profile(inputforge_core::profile::Profile::from_toml(&toml).unwrap());
+        let info = test_device("dev-1", "Old Stick", 6, 32, 0);
+        state.device_registry.insert(
+            info.id.clone(),
+            inputforge_core::settings::DeviceRecord {
+                info,
+                axis_settings: vec![],
+                diagnostics: DeviceDiagnostics::default(),
+                last_seen_unix_ms: None,
+            },
+        );
+        let snapshot = ConfigSnapshot::from_state(&state, None);
+        assert_eq!(snapshot.device_panel_rows.len(), 1);
+        assert_eq!(snapshot.device_panel_rows[0].usage.primary_mappings, 1);
+        assert_eq!(snapshot.device_panel_rows[0].usage.secondary_mappings, 2);
     }
 
     #[test]

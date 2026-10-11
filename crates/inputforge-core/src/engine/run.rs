@@ -649,6 +649,7 @@ impl Engine {
             | EngineCommand::ApplyControllerChanges
             | EngineCommand::SetControllerConfig(_)
             | EngineCommand::SelectControllers(_)
+            | EngineCommand::RemoveDeviceFromProfile { .. }
             | EngineCommand::SetAxisPolarity { .. }
             | EngineCommand::DetectAxis { .. }
             | EngineCommand::ConfirmInputBinding { .. } => {

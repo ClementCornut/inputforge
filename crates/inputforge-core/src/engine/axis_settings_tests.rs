@@ -95,6 +95,48 @@ fn failed_save_keeps_previous_axis_settings_and_reports_failure() {
 }
 
 #[test]
+fn axis_modes_update_windows_metadata_and_cached_values_without_movement() {
+    use crate::types::{AxisValue, InputAddress, InputId, InputValue};
+
+    let temp = tempfile::tempdir().unwrap();
+    let mut e = engine(settings(), temp.path().join("settings.toml"));
+    let address = InputAddress::Bound {
+        device: device().id,
+        input: InputId::Axis { index: 0 },
+    };
+    let mut state = e.state.write();
+    state.devices.push(crate::state::DeviceState {
+        info: device(), // SDL publishes no axis-polarity entries on Windows.
+        connected: true,
+        diagnostics: DeviceDiagnostics::default(),
+    });
+    state.input_cache.update(
+        &address,
+        &InputValue::Axis {
+            value: AxisValue::new(-1.0),
+            polarity: AxisPolarity::Bipolar,
+        },
+    );
+    drop(state);
+    e.observe_axis(&device().id, 0, -1.0).unwrap();
+    for (override_polarity, expected) in [
+        (None, AxisPolarity::Unipolar),
+        (Some(AxisPolarity::Bipolar), AxisPolarity::Bipolar),
+        (Some(AxisPolarity::Unipolar), AxisPolarity::Unipolar),
+        (None, AxisPolarity::Unipolar),
+    ] {
+        e.set_axis_polarity(&device().id, 0, override_polarity)
+            .unwrap();
+        let state = e.state.read();
+        assert_eq!(state.devices[0].info.axis_polarities, vec![expected]);
+        assert_eq!(
+            crate::pipeline::InputCache::get_axis(&state.input_cache, &address),
+            (-1.0, expected)
+        );
+    }
+}
+
+#[test]
 fn legacy_axis_choices_import_once_and_existing_controller_setting_wins() {
     let temp = tempfile::tempdir().unwrap();
     for existing in [false, true] {

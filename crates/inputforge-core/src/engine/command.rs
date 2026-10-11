@@ -16,6 +16,10 @@ pub enum EngineCommand {
     /// Recreate virtual controllers using the desired layout while routing is stopped.
     ApplyControllerChanges,
     SelectControllers(Vec<DeviceId>),
+    /// Hide a disconnected, unused device in the active profile.
+    RemoveDeviceFromProfile {
+        device: DeviceId,
+    },
     /// Confirm a physically observed control after an ambiguous layout change.
     ConfirmInputBinding {
         device: DeviceId,

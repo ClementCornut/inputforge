@@ -1,32 +1,19 @@
-//! Tray bridge, observes `dioxus-desktop`'s forwarded muda events via the
-//! `use_muda_event_handler` hook, routes through a bounded
-//! `tokio::sync::mpsc`, and dispatches in a Dioxus task.
+//! Tray bridge, forwards the tray's muda events through a bounded
+//! `tokio::sync::mpsc` and dispatches in a Dioxus task.
 //!
-//! ## Deviation from spec
-//!
-//! The design spec (`2026-04-26-f3-app-shell-tray-bridge-design.md`) calls
-//! for `Config::with_custom_event_handler` matching on
-//! `UserWindowEvent::MudaMenuEvent`. That type lives in
-//! `dioxus_desktop::ipc::UserWindowEvent`, but `mod ipc;` is private in
-//! `dioxus-desktop` 0.7.6, so the type is unreachable from external crates
-//! (verified at `dioxus-desktop-0.7.6/src/lib.rs:21`). `dioxus-desktop`
-//! exposes `use_muda_event_handler` (`hooks.rs:44`, re-exported via
-//! `pub use hooks::*;`) which delivers exactly the same `muda::MenuEvent`
-//! payload through a hook callback running in the event-loop context.
-//!
-//! Architectural invariants are preserved: observe-only handler →
-//! `try_send` into bounded `tokio::sync::mpsc` → drained by a Dioxus task
-//! that calls `lifecycle::*` and engine commands. Pure routing remains in
-//! `tray/action.rs`. The handle returned by the hook is auto-cleaned on
-//! scope teardown.
+//! The tray uses the workspace's muda version, while `dioxus-desktop`
+//! uses its own older version with a separate global event handler.
+//! Register directly with the tray's version so clicks reach this channel.
+//! The callback only routes and `try_send`s; the Dioxus task performs GUI
+//! and engine actions. Muda retains the callback for the process lifetime;
+//! the application launches one tray-enabled root per process.
 
 pub(crate) mod action;
 
 use std::cell::RefCell;
 
-use dioxus::desktop::use_muda_event_handler;
 use dioxus::prelude::*;
-use muda::MenuItem;
+use muda::{MenuEvent, MenuItem};
 use tokio::sync::mpsc;
 
 use inputforge_core::engine::EngineCommand;
@@ -81,8 +68,7 @@ pub(crate) fn take_toggle_menu_item() -> Option<MenuItem> {
 /// `install_event_handler`), which is preferable to blocking the event loop.
 pub(crate) const CHANNEL_CAPACITY: usize = 8;
 
-/// Install the muda event handler. Must be called from inside a Dioxus
-/// scope (it wraps `use_muda_event_handler`, which is itself a hook).
+/// Install the tray's muda event handler once from inside a Dioxus scope.
 ///
 /// The handler runs synchronously on the tao event-loop thread; it must
 /// not block. We `try_send` and log any overflow rather than wait -
@@ -91,13 +77,20 @@ pub(crate) const CHANNEL_CAPACITY: usize = 8;
 /// routing happens in `TrayAction::from_event` (pure) and dispatch in the
 /// listener task spawned via `spawn_listener_task`.
 pub(crate) fn install_event_handler(ids: TrayMenuIds, tx: mpsc::Sender<TrayAction>) {
-    use_muda_event_handler(move |menu_ev| {
-        if let Some(action) = TrayAction::from_event(menu_ev, &ids)
-            && let Err(err) = tx.try_send(action)
-        {
-            tracing::warn!(?err, "tray channel overflow; dropping action");
-        }
+    use_hook(move || {
+        MenuEvent::set_event_handler(Some(move |menu_ev| {
+            forward_menu_event(&menu_ev, &ids, &tx);
+        }));
     });
+}
+
+/// Route a tray event without blocking the native event-loop thread.
+fn forward_menu_event(ev: &MenuEvent, ids: &TrayMenuIds, tx: &mpsc::Sender<TrayAction>) {
+    if let Some(action) = TrayAction::from_event(ev, ids)
+        && let Err(err) = tx.try_send(action)
+    {
+        tracing::warn!(?err, "tray channel overflow; dropping action");
+    }
 }
 
 /// Spawn the listener task. Called from `app_root`'s `use_hook` so the task
@@ -157,6 +150,52 @@ pub(crate) fn toggle_label(status: EngineStatus, pending: bool) -> &'static str 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn menu_event_sends_matching_action() {
+        let ids = TrayMenuIds {
+            show: muda::MenuId::new("show"),
+            toggle: muda::MenuId::new("toggle"),
+            quit: muda::MenuId::new("quit"),
+        };
+        let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
+        forward_menu_event(
+            &MenuEvent {
+                id: ids.toggle.clone(),
+            },
+            &ids,
+            &tx,
+        );
+        assert_eq!(rx.try_recv().unwrap(), TrayAction::Toggle);
+        forward_menu_event(
+            &MenuEvent {
+                id: muda::MenuId::new("unknown"),
+            },
+            &ids,
+            &tx,
+        );
+        assert_eq!(rx.try_recv(), Err(mpsc::error::TryRecvError::Empty));
+    }
+
+    #[test]
+    fn menu_event_drops_overflow_without_blocking() {
+        let ids = TrayMenuIds {
+            show: muda::MenuId::new("show"),
+            toggle: muda::MenuId::new("toggle"),
+            quit: muda::MenuId::new("quit"),
+        };
+        let (tx, mut rx) = mpsc::channel(1);
+        tx.try_send(TrayAction::Show).unwrap();
+        forward_menu_event(
+            &MenuEvent {
+                id: ids.quit.clone(),
+            },
+            &ids,
+            &tx,
+        );
+        assert_eq!(rx.try_recv().unwrap(), TrayAction::Show);
+        assert_eq!(rx.try_recv(), Err(mpsc::error::TryRecvError::Empty));
+    }
 
     #[test]
     fn toggle_label_matches_dispatch_mapping() {

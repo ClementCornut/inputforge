@@ -1,9 +1,45 @@
 //! Conversion between shared controls and native vJoy configuration.
 use crate::{
+    error::{EngineError, Result},
     processing::lerp_range,
     types::{HatDirection, VJoyAxis, VirtualDeviceConfig},
 };
 use vjoy::{HatState, VJoy};
+use windows::{
+    Win32::{
+        Foundation::HMODULE,
+        System::LibraryLoader::{GET_MODULE_HANDLE_EX_FLAG_PIN, GetModuleHandleExW},
+    },
+    core::w,
+};
+
+/// Keep the SDK loaded after a session relinquishes its devices.
+///
+/// The SDK registers its window class against the executable and never
+/// unregisters it on unload. Reloading then fails to create its notification
+/// window. Pinning retains the SDK's initialized state until process exit;
+/// `VJoy::drop` still releases devices after discovery and on Stop.
+#[expect(
+    unsafe_code,
+    reason = "pin the native SDK using the Windows loader API"
+)]
+pub(super) fn pin_driver_library() -> Result<()> {
+    let mut module = HMODULE::default();
+    // SAFETY: The caller holds a live VJoy instance loaded from this exact SDK
+    // path. The string is static and null-terminated, and module is a valid
+    // writable output. PIN keeps the module alive; its handle is never freed.
+    unsafe {
+        GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_PIN,
+            w!("C:\\Program Files\\vJoy\\x64\\vJoyInterface.dll"),
+            &raw mut module,
+        )
+    }
+    .map_err(|error| EngineError::OutputFailed {
+        reason: format!("Could not keep the vJoy SDK loaded: {error}"),
+    })
+}
+
 // vJoy's documented axis range is 0x0001 through 0x8000.
 const VJOY_AXIS_MIN: f64 = 1.0;
 const VJOY_AXIS_MAX: f64 = 32_768.0;

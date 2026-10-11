@@ -247,7 +247,7 @@ fn axis_settings_resolve_native_code_and_expose_auto_and_redetection() {
         assert!(html.contains("Detected: rests at minimum"));
         assert!(html.contains(">Auto<"));
         assert!(html.contains("Detect again"));
-        assert!(html.contains("Axis 0"));
+        assert!(html.contains("sparse-axis-stick \u{00b7} X"));
     }
 }
 

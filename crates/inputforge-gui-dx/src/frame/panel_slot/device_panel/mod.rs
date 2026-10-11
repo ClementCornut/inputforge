@@ -24,6 +24,28 @@ pub(super) fn DevicePanel() -> Element {
     let mut draft_alias = use_signal(|| initial_alias);
     let mut save_error = use_signal(|| None::<String>);
 
+    use_effect(move || {
+        let current_rows = rows.read();
+        if selected
+            .read()
+            .as_ref()
+            .is_some_and(|id| current_rows.iter().any(|row| &row.device_id == id))
+        {
+            return;
+        }
+        let next = select_initial_device(&current_rows);
+        if *selected.peek() != next {
+            draft_alias.set(
+                next.as_ref()
+                    .and_then(|id| current_rows.iter().find(|row| &row.device_id == id))
+                    .map(alias_draft_for_selected_row)
+                    .unwrap_or_default(),
+            );
+            save_error.set(None);
+            selected.set(next);
+        }
+    });
+
     let current_rows = rows.read();
     if current_rows.is_empty() {
         return rsx! {
@@ -277,7 +299,10 @@ mod tests {
         let state = Arc::new(RwLock::new(AppState::new()));
         let (commands, _rx) = mpsc::channel();
         let settings = use_signal(SettingsSnapshot::default);
-        let meta = use_signal(MetaSnapshot::default);
+        let meta = use_signal(|| MetaSnapshot {
+            profile_name: Some("Test".to_owned()),
+            ..Default::default()
+        });
         let config = ConfigSnapshot {
             device_panel_rows: props.rows.clone(),
             ..Default::default()
@@ -548,6 +573,75 @@ mod tests {
         assert!(html.contains("if-badge--neutral"));
         assert!(html.contains(">Disconnected<"));
         assert!(!html.contains("if-badge--success"));
+    }
+
+    #[test]
+    fn remove_device_button_is_enabled_only_for_disconnected_unused_devices() {
+        use scraper::{Html, Selector};
+
+        for (connected, primary, secondary, disabled) in [
+            (false, 0, 0, false),
+            (true, 0, 0, true),
+            (false, 1, 0, true),
+            (false, 0, 1, true),
+        ] {
+            let mut row = panel_row("old", "Old Stick", connected);
+            row.usage.primary_mappings = primary;
+            row.usage.secondary_mappings = secondary;
+            let html = render_device_panel(vec![row]);
+            let document = Html::parse_fragment(&html);
+            let selector = Selector::parse("button.if-device-inspector__remove").unwrap();
+            let button = document.select(&selector).next().expect("remove action");
+            assert_eq!(button.value().attr("disabled").is_some(), disabled);
+        }
+    }
+
+    #[test]
+    fn removing_selected_row_resets_inspector_alias_to_remaining_device() {
+        let old = panel_row_with_alias("old", "Old Stick", "Old Alias", false);
+        let next = panel_row_with_alias("next", "Next Stick", "Next Alias", false);
+        let mut dom = VirtualDom::new_with_props(
+            TestHarness,
+            TestHarnessProps {
+                rows: vec![old, next.clone()],
+            },
+        );
+        dom.rebuild_in_place();
+        dom.render_immediate(&mut dioxus::core::NoOpMutations);
+        dom.in_scope(ScopeId::APP, || {
+            let mut ctx = consume_context::<AppContext>();
+            ctx.config.write().device_panel_rows = vec![next];
+        });
+        dom.render_immediate(&mut dioxus::core::NoOpMutations);
+        dom.render_immediate(&mut dioxus::core::NoOpMutations);
+
+        let html = render(&dom);
+        assert!(html.contains("value=\"Next Alias\""));
+        assert!(!html.contains("Old Alias"));
+        assert!(html.contains("aria-pressed=\"true\""));
+    }
+
+    #[test]
+    fn remove_device_button_is_disabled_without_a_profile() {
+        use scraper::{Html, Selector};
+
+        let mut dom = VirtualDom::new_with_props(
+            TestHarness,
+            TestHarnessProps {
+                rows: vec![panel_row("old", "Old Stick", false)],
+            },
+        );
+        dom.rebuild_in_place();
+        dom.in_scope(ScopeId::APP, || {
+            let mut ctx = consume_context::<AppContext>();
+            ctx.meta.write().profile_name = None;
+        });
+        dom.render_immediate(&mut dioxus::core::NoOpMutations);
+        let html = render(&dom);
+        let document = Html::parse_fragment(&html);
+        let selector = Selector::parse("button.if-device-inspector__remove").unwrap();
+        let button = document.select(&selector).next().expect("remove action");
+        assert!(button.value().attr("disabled").is_some());
     }
 
     #[test]

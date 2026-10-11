@@ -26,6 +26,29 @@ pub(super) fn DeviceInspector(
     let mut save_error_for_keydown = save_error;
     let mut save_error_for_copy = save_error;
     let commands = ctx.commands.clone();
+    let commands_for_remove = commands.clone();
+    let remove_device = row.device_id.clone();
+    let mut save_error_for_remove = save_error;
+    let removal_reason = if ctx.meta.read().profile_name.is_none() {
+        Some("Load a profile to remove a device.")
+    } else if row.connected {
+        Some("Disconnect this device before removing it.")
+    } else if row.usage.primary_mappings > 0 || row.usage.secondary_mappings > 0 {
+        Some("Remove this device's mapping references first.")
+    } else {
+        None
+    };
+    let remove_click = move |_| {
+        if let Err(error) = commands_for_remove.send(
+            inputforge_core::engine::EngineCommand::RemoveDeviceFromProfile {
+                device: remove_device.clone(),
+            },
+        ) {
+            save_error_for_remove.set(Some(error.to_string()));
+        } else {
+            save_error_for_remove.set(None);
+        }
+    };
     let commands_for_keydown = commands.clone();
     let save_device_for_keydown = save_device.clone();
     let persisted_alias_for_keydown = persisted_alias.clone();
@@ -104,6 +127,19 @@ pub(super) fn DeviceInspector(
                 class: "if-device-inspector__copy",
                 onclick: copy_click,
                 "Copy report"
+            }
+            div { class: "if-device-inspector__removal",
+                Button {
+                    size: ButtonSize::Sm, variant: ButtonVariant::Danger,
+                    class: "if-device-inspector__remove",
+                    disabled: removal_reason.is_some(),
+                    onclick: remove_click,
+                    "Remove from profile"
+                }
+                p { class: "if-device-inspector__removal-hint",
+                    if let Some(reason) = removal_reason { "{reason}" }
+                    else { "Hidden in this profile until reconnected." }
+                }
             }
         }
     }

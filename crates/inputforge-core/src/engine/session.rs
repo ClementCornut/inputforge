@@ -31,6 +31,9 @@ impl Engine {
             EngineCommand::SetControllerConfig(config) => {
                 self.save_controller_config(config.clone())?;
             }
+            EngineCommand::RemoveDeviceFromProfile { device } => {
+                self.remove_device_from_profile(device)?;
+            }
             EngineCommand::SelectControllers(ids) => {
                 self.require_stopped()?;
                 let mut config = self

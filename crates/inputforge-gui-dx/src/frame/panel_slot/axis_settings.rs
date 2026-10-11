@@ -6,9 +6,14 @@
 use crate::{
     components::{Button, ButtonSize, ButtonVariant, Select, SelectOption},
     context::AppContext,
+    frame::mapping_list::source_label,
 };
 use dioxus::prelude::*;
-use inputforge_core::{engine::EngineCommand, settings::AxisSetting, types::AxisPolarity};
+use inputforge_core::{
+    engine::EngineCommand,
+    settings::AxisSetting,
+    types::{AxisPolarity, InputAddress, InputId},
+};
 
 fn polarity_value(setting: Option<&AxisSetting>) -> &'static str {
     match setting.and_then(|setting| setting.override_polarity) {
@@ -56,7 +61,7 @@ pub(super) fn AxisSettings() -> Element {
                               Some(AxisPolarity::Unipolar) => "Detected: rests at minimum",
                               None => "Not detected yet",
                           };
-                          let label = format!("{} · Axis {}", config.device_display_name(&device), index);
+                          let label = source_label::format(&InputAddress::Bound { device: device.clone(), input: InputId::Axis { index } }, &config);
                           let available = meta.session.monitored.contains(&device) && table.resolves(&inputforge_core::types::InputId::Axis { index });
                           let detect_device = device.clone();
                           let commands = ctx.commands.clone(); let detect_commands = ctx.commands.clone();
