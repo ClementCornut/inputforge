@@ -15,16 +15,7 @@ impl Engine {
     }
 
     pub(super) fn validate_output_config(&self, configs: &[VirtualDeviceConfig]) -> Result<()> {
-        let caps = self.output.capabilities();
-        for slot in configs {
-            if slot.button_count < caps.min_buttons
-                || slot.button_count > caps.max_buttons
-                || slot.hat_count > caps.max_hats
-            {
-                return Err(invalid("Virtual controller exceeds backend capabilities"));
-            }
-        }
-        Ok(())
+        crate::output::validation::validate_layout(configs, self.output.capabilities())
     }
 
     pub(super) fn start_outputs(&mut self, configs: &[VirtualDeviceConfig]) -> Result<()> {

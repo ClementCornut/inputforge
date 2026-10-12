@@ -80,5 +80,8 @@ fn demo_root() -> dioxus::prelude::Element {
         dioxus::prelude::Callback::new(move |publisher: inputforge_gui_dx::bridge::Publisher| {
             publisher.publish(frame.clone());
         });
-    inputforge_gui_dx::render_editor(state, commands, routing, publish)
+    let controllers = inputforge_gui_dx::controllers::Bindings {
+        dispatch: dioxus::prelude::Callback::new(|_| None),
+    };
+    inputforge_gui_dx::render_editor(state, commands, routing, controllers, publish)
 }

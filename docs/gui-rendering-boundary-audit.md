@@ -17,7 +17,7 @@ Requirements:
   Transitive dependencies may retain X11 support.
 
 The original audit was read-only. The status below now also records the first
-implemented routing and polling extractions; the remaining findings are still open.
+implemented routing, polling, and basic controller-workflow extractions; the remaining findings are still open.
 
 ## Resolved routing controls — 2026-10-12
 
@@ -45,11 +45,12 @@ state as its other snapshots, then publishes the result after releasing the lock
 Unchanged routing models do not trigger redundant signal updates. No second
 polling loop was introduced, and the native tray dispatch cadence is unchanged.
 
-**Still open in #2:** controller selection, configuration edits, virtual-layout
-Apply, and configuration-editing/readiness gates outside these routing controls.
-**#1 is partially resolved:** polling and snapshot preparation now belong to
-the app; see the first slice below. GUI workflow handlers still receive engine
-handles and commands while their ownership remains to be extracted.
+**Controller selection, basic virtual-layout edits, and Apply in #2 are now
+app-owned:** see the controller-workflow slice below. Advanced axis settings and
+configuration-editing/readiness gates outside these controls remain open.
+**#1 is partially resolved:** polling, snapshot preparation, and the basic
+controller workflow now belong to the app. Other GUI workflow handlers still
+receive engine handles and commands while their ownership remains to be extracted.
 **#8 remains open:** only routing-related review navigation moved; other event
 handling and UI state transitions remain.
 
@@ -92,8 +93,9 @@ The polling and snapshot-preparation part of finding **#1** is resolved:
   a prepared fixture once and owns no polling loop.
 
 **Still open in #1:** raw engine reads and command senders used by remaining GUI
-workflow handlers, including capture revalidation. This slice does not complete
-finding #2's controller editing/Apply ownership or findings #3–10. Finding #7's
+workflow handlers, including capture revalidation. The later controller slice
+below resolves basic selection/layout/Apply ownership in #2; advanced axis
+settings, other configuration gates, and findings #3–10 remain open. Finding #7's
 polling metadata read is resolved; dialogs, clipboard, and other services remain.
 
 Behavioral projection and capture-epoch tests moved to
@@ -134,6 +136,134 @@ unchanged-frame suppression and non-subscribing selection reads.
   Native acceptance of this timestamp correction and performance measurements
   remain pending.
 
+## Controller-workflow slice — 2026-10-12
+
+The controller selection, basic virtual-layout editing, and Apply portions of
+findings **#1** and **#2** are resolved:
+
+- [App controller policy](../crates/inputforge-app/src/controllers/policy.rs)
+  prepares selection rows, requested versus fixed-driver layouts, editing locks,
+  retained-output presentation, pending Apply, and action availability.
+  Input readiness alone does not lock editing; Running/Starting, retained input
+  capture, offline state, and a missing profile do.
+- [App controller edits](../crates/inputforge-app/src/controllers/edit.rs) own
+  numeric parsing, selection mutations, slot allocation/removal, button/hat/axis
+  edits, and command construction from the current profile. Disconnected selected
+  controllers can be deselected; disconnected unselected or unknown identities
+  cannot be newly selected. Removed slots and obsolete Apply operations dispatch
+  nothing. Layout edits and selection do not reconnect outputs or start routing.
+- [App callbacks and dispatcher](../crates/inputforge-app/src/controllers/mod.rs)
+  recheck current state on each callback, release the engine read guard before
+  command delivery, and return app-prepared error feedback for the panel alert
+  as well as logging validation or delivery failures. A successful subsequent
+  operation clears that feedback. They do not optimistically mutate engine state; core execution owns persistence, binding
+  acquisition, hardware operations, and execution-time validation.
+- [Core capability validation](../crates/inputforge-core/src/output/validation.rs)
+  is the existing engine validator extracted for reuse by the app and engine.
+  `ControllerConfig::validate()` still owns structural validation, and
+  `SessionState::requires_output_reconfiguration()` still owns exact configurable
+  versus compatible fixed-layout comparison. No parallel GUI validation rules
+  were introduced.
+- [GUI controller contract](../crates/inputforge-gui-dx/src/controllers.rs),
+  [selection rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/controller_session.rs),
+  and [layout rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/virtual_config.rs)
+  retain prepared values, signals, markup, and callback wiring. These controller
+  controls no longer read raw engine state, parse numeric fields, mutate controller
+  configurations, or send engine commands. Repeated fields have slot-specific
+  accessible names. Fixed layouts remain read-only while pending Apply stays
+  separately available.
+
+The existing app bridge prepares this model under the same engine guard as the
+rest of the frame and publishes it after releasing the guard. GUI publication
+uses the existing equality gate. The immediate sample, 16 ms cadence,
+nonblocking contention skips, tray cadence, scope teardown, and remount behavior
+remain unchanged. No extra poller, timer, thread, channel, dependency, or generic
+workflow abstraction was introduced. The old GUI `update_config` helper was
+removed, and the app shares one slot-range constant across projection and edits.
+
+[App regressions](../crates/inputforge-app/tests/controllers.rs) cover state locks,
+readiness, selection identity/disconnection, duplicate prevention, current-state
+dispatch, slot reuse/full capacity, numeric and backend limits, axis toggles,
+explicit Apply, fixed-driver presentation, and failed command delivery without
+optimistic mutation. [Renderer event regressions](../crates/inputforge-gui-dx/src/frame/panel_slot/controller_events_tests.rs)
+exercise the actual form/button handlers and verify app payloads, unparsed numeric
+values, and no raw engine command delivery.
+[Real-bindings feedback regressions](../crates/inputforge-gui-dx/tests/controller_feedback.rs)
+verify visible alerts for rejected numeric edits, invalid Apply, and failed
+command delivery, plus clearing on successful delivery and unchanged engine
+configuration/retained outputs. This covers a review-discovered regression where
+app prevalidation initially only logged errors that the engine previously made
+visible. The missing-alert cases failed before the callback-feedback correction.
+Existing controller rendering tests
+now consume prepared values, including a regression where app availability
+intentionally differs from the metadata snapshot. Publication tests cover
+controller-only changes and unchanged-frame suppression. The renderer integration
+fixture now opens Devices and verifies prepared native-slot updates on the existing
+cadence, contention recovery, single installation, teardown, and remount.
+
+**Still open:** advanced axis settings, capture, mappings/undo, device removal,
+profiles/modes/settings, OS services, other configuration/readiness gates, and
+other workflows in findings #1–10. Transitional raw handles remain for those
+workflows. This slice has no new native acceptance evidence; the earlier
+successful user-reported Apply timeout retest is retained below.
+
+## Controller-slice verification
+
+- Regression tests were written before controller implementation and observed
+  failing for missing app behavior, ignored prepared availability/selection,
+  and missing controller publication. The review-discovered missing alerts were
+  separately reproduced through real app bindings before the feedback fix.
+- `cargo test --workspace --locked --offline`: **2,072 passed, 0 failed,
+  11 ignored**, including the existing explicit-Apply, invalid/running Apply,
+  slow-destruction neutralization, and renderer polling/lifecycle regressions.
+  The final run includes visible validation and failed-delivery feedback.
+- Strict production Clippy passed:
+  `cargo clippy --locked --offline -p inputforge-app -p inputforge-gui-dx -p inputforge-core --lib --bins --examples -- -D warnings`.
+- Strict workspace/all-target Clippy remains blocked by the existing
+  `clippy::assert_is_empty` baseline. The all-target check passed with only that
+  lint excluded:
+  `cargo clippy --workspace --all-targets --locked --offline -- -D warnings -A clippy::assert_is_empty`.
+  New controller/test diagnostics were fixed; repository lint settings remain
+  unchanged and unrelated baseline tests were not edited.
+- Formatting, `git diff --check`, module-size checks, and audit local-link checks
+  passed. The complete prior Apply timeout follow-up and native retest block was
+  verified byte-for-byte against the pre-extraction audit.
+- One independent read-only review found the visible-feedback regression above;
+  it was corrected with failing-then-passing renderer regressions and the final
+  green workspace run. It reported no other actionable issues.
+- Changes are unstaged and uncommitted. Native Wayland/Windows acceptance of
+  this controller slice and runtime performance measurements remain pending.
+
+## Controller-slice manual acceptance
+
+Use a disposable profile and run `dx run -p inputforge-app` on native Wayland;
+repeat the applicable checks on Windows for separate platform acceptance.
+
+1. In Devices while stopped, select/deselect connected controllers. Disconnect a
+   selected controller and confirm it can be deselected; a disconnected unselected
+   controller cannot be selected. Inspecting a device must not select it. Selection
+   changes must preserve virtual layouts and mappings without reconnecting outputs.
+2. On a configurable backend, add/remove slots and edit buttons, hats, and axes
+   within the displayed driver limits. Confirm the first free slot is reused and
+   other slots/selection are preserved. Invalid numeric/count values must not be
+   persisted or applied and must show an explanatory alert; restore a valid value,
+   confirm the alert clears, and reopen the profile to verify.
+3. Start routing: selection and virtual-layout edits must lock. Stop: inputs remain
+   visible and retained outputs remain connected and neutral. Change a layout:
+   pending Apply appears and Start remains unavailable until review is completed.
+4. With at least three virtual controllers, Apply changed layouts repeatedly.
+   Confirm all outputs reconnect successfully, no slot-3 `packet write deadline`
+   appears, pending review clears, and routing remains stopped until explicitly
+   started. Unchanged layouts must not request another Apply.
+5. On a fixed-driver backend, confirm native layouts and limits are displayed,
+   editing/add/remove controls are unavailable, and extra compatible native slots
+   do not create false pending review. A saved-profile layout change that requires
+   reconfiguration must still allow Apply while capability fields stay read-only.
+6. Switch panels/profiles, disconnect/reconnect inputs, and repeat Stop/edit/Apply/
+   Start. Quit and relaunch: updates continue and no duplicate controller resources
+   remain. This is manual lifecycle acceptance; automated fixtures do not prove
+   native kernel timing, Windows behavior, compositor compatibility, or performance.
+
 ## Remaining responsibilities to move
 
 The following areas are ordered by migration priority. Source links identify
@@ -142,8 +272,8 @@ may change during extraction.
 
 | # | Area and evidence | App-owned responsibility |
 | --- | --- | --- |
-| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Remaining GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
-| 2 | **Controller editing policy — partially resolved** — [controller session](../crates/inputforge-gui-dx/src/frame/panel_slot/controller_session.rs); [virtual configuration](../crates/inputforge-gui-dx/src/frame/panel_slot/virtual_config.rs) | Remaining: controller selection and configuration mutations, Apply, and configuration-editing/readiness gates. Shared Start/Stop/Retry/Refresh decisions and routing pending-layout review are app-owned; see resolved status above. |
+| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Basic controller selection/layout/Apply now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
+| 2 | **Controller editing policy — partially resolved** — [app controller policy](../crates/inputforge-app/src/controllers/policy.rs); [advanced axis settings](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Basic selection, virtual-layout mutations, Apply, and shared routing decisions are app-owned. Advanced axis settings and other configuration-editing/readiness gates remain; see resolved status above. |
 | 3 | **Capture workflows** — [live capture](../crates/inputforge-gui-dx/src/patterns/live_capture/mod.rs), line 83; [keyboard capture](../crates/inputforge-gui-dx/src/patterns/keyboard_capture/mod.rs), line 323 | Capture ownership, state machines, input selection, keyboard translation, cancellation, and delivery. The GUI should render prompts, captured values, and errors. |
 | 4 | **Mapping edits and undo** — [stage dispatch](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs), line 28; [undo history](../crates/inputforge-gui-dx/src/frame/mapping_editor/undo_log.rs), line 90 | Action-tree mutations, command construction, undo/redo, drag commits, and keyboard-nudge grouping. Curve/deadzone mutation algorithms also belong outside rendering. |
 | 5 | **Batch mapping** — [entry generation](../crates/inputforge-gui-dx/src/frame/bulk_map/apply.rs), line 19; [Apply handler](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs), line 335 | Automatic target selection, conflict decisions, wizard reconciliation, batch command construction, and snapshot creation requests. |
@@ -198,9 +328,9 @@ engine command sender.
 
 ## Recommended extraction order
 
-1. Polling/snapshot preparation and shared routing controls are complete.
-   Extract remaining workflow engine access alongside controller
-   selection/configuration/Apply policy as a separate part.
+1. Polling/snapshot preparation, shared routing controls, and basic controller
+   selection/virtual-layout/Apply are complete. Extract remaining engine access
+   alongside each deferred workflow, including advanced axis settings.
 2. Extract capture and editor controllers.
 3. Extract the remaining workflows, services, event handling, and timers.
 
@@ -221,6 +351,10 @@ confirmation, accessibility, and renderer lifecycle behavior during migration.
   passed with only that lint excluded for the diagnostic run:
   `cargo clippy --workspace --all-targets --locked --offline -- -D warnings -A clippy::assert_is_empty`.
   No repository lint configuration was relaxed and no unrelated tests were edited.
+
+The timeout follow-up below records the state before the controller-workflow
+extraction. Its native retest evidence is preserved; current ownership is
+recorded in the controller slice above.
 
 ## Apply timeout follow-up — 2026-10-12
 
@@ -264,7 +398,9 @@ The user performed desktop routing checks after the extraction, reported the
 Apply timeout described above, and subsequently reported a successful native
 Apply retest. The new polling slice has automated renderer/runtime and projection
 coverage, and the user reported its manual desktop checks working apart from the
-UTC timestamp display corrected above. That is user-reported native acceptance;
+UTC timestamp display corrected above. The controller-workflow extraction has
+new automated coverage and awaits its manual acceptance checklist above.
+The previous desktop reports are user-reported native acceptance;
 the timestamp correction, separate Windows acceptance, and runtime performance
 measurements remain unverified on native hardware. The recommendations are ownership
 changes; they are not evidence that every listed workflow currently fails at runtime.

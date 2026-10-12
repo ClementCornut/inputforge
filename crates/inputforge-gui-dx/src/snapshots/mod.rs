@@ -30,4 +30,6 @@ pub struct Frame {
     pub settings: SettingsSnapshot,
     /// Prepared routing controls.
     pub routing: crate::routing::View,
+    /// Prepared controller selection, layout editing and Apply controls.
+    pub controllers: crate::controllers::View,
 }

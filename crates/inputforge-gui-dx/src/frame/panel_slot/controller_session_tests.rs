@@ -10,10 +10,16 @@ use parking_lot::RwLock;
 use std::sync::{Arc, mpsc};
 
 #[derive(Clone, Copy, Props, PartialEq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent driver, pending-layout, native-slot and prepared-lock fixture cases"
+)]
 struct HarnessProps {
     configurable: bool,
     pending: bool,
     extra_native: bool,
+    #[props(default)]
+    prepared_locked: bool,
 }
 fn harness(props: HarnessProps) -> Element {
     crate::routing::provide_fixture(crate::routing::View {
@@ -82,6 +88,22 @@ fn harness(props: HarnessProps) -> Element {
         state.session.output_layout[0].button_count = 52;
     }
     state.active_profile = Some(profile);
+    let mut prepared = inputforge_app::controllers::view(
+        &state,
+        &inputforge_app::bridge::prepare(&state, None)
+            .config
+            .device_panel_rows,
+    );
+    if props.prepared_locked {
+        prepared.editable = false;
+        prepared.layout_editable = false;
+        prepared.can_add = false;
+        prepared.can_apply = false;
+        for row in &mut prepared.selections {
+            row.enabled = false;
+        }
+    }
+    crate::controllers::provide_fixture(prepared);
     let meta = use_signal(|| inputforge_app::bridge::prepare(&state, None).meta);
     let config = use_signal(|| inputforge_app::bridge::prepare(&state, None).config);
     let live = use_signal(LiveSnapshot::default);
@@ -105,6 +127,7 @@ fn render_session(configurable: bool) -> String {
             configurable,
             pending: false,
             extra_native: false,
+            prepared_locked: false,
         },
     );
     dom.rebuild_in_place();
@@ -157,6 +180,7 @@ fn extra_fixed_output_slots_do_not_report_pending_profile_changes() {
             configurable: false,
             pending: false,
             extra_native: true,
+            prepared_locked: false,
         },
     );
     dom.rebuild_in_place();
@@ -265,6 +289,7 @@ fn fixed_layout_profile_change_keeps_apply_enabled_but_capabilities_read_only() 
             configurable: false,
             pending: true,
             extra_native: false,
+            prepared_locked: false,
         },
     );
     dom.rebuild_in_place();
@@ -289,4 +314,32 @@ fn fixed_layout_profile_change_keeps_apply_enabled_but_capabilities_read_only() 
             .select(&inputs)
             .all(|input| input.value().attr("disabled").is_some())
     );
+}
+
+#[test]
+fn controller_controls_use_prepared_availability_instead_of_snapshot_policy() {
+    let mut dom = VirtualDom::new_with_props(
+        harness,
+        HarnessProps {
+            configurable: true,
+            pending: true,
+            extra_native: false,
+            prepared_locked: true,
+        },
+    );
+    dom.rebuild_in_place();
+    let html = dioxus_ssr::render(&dom);
+    let document = scraper::Html::parse_fragment(&html);
+    let fields = scraper::Selector::parse("fieldset").unwrap();
+    assert!(
+        document
+            .select(&fields)
+            .all(|field| field.value().attr("disabled").is_some())
+    );
+    let buttons = scraper::Selector::parse("button").unwrap();
+    let apply = document
+        .select(&buttons)
+        .find(|b| b.text().collect::<String>() == "Apply controller changes")
+        .unwrap();
+    assert!(apply.value().attr("disabled").is_some());
 }

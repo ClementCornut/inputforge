@@ -1,5 +1,5 @@
-//! Shared routing controls; inspecting a device never selects it for routing.
-#![allow(
+//! Controller session presentation; inspecting a device never selects it for routing.
+#![expect(
     unused_qualifications,
     reason = "Dioxus event attributes produce false-positive qualification spans"
 )]
@@ -8,39 +8,19 @@ use super::{
     routing_controls::{RefreshControl, RoutingControls},
     virtual_config::VirtualConfig,
 };
-use crate::context::AppContext;
-use dioxus::prelude::*;
-use inputforge_core::{
-    engine::EngineCommand, profile::controllers::ControllerConfig, state::EngineStatus,
+use crate::{
+    context::AppContext,
+    controllers::{Action, Context},
 };
-
-pub(super) fn update_config(ctx: &AppContext, change: impl FnOnce(&mut ControllerConfig)) {
-    let mut config = ctx
-        .state
-        .read()
-        .active_profile
-        .as_ref()
-        .and_then(|p| p.controllers())
-        .cloned()
-        .unwrap_or_default();
-    change(&mut config);
-    let _ = ctx
-        .commands
-        .send(EngineCommand::SetControllerConfig(config));
-}
+use dioxus::prelude::*;
 
 #[component]
 pub(super) fn ControllerSession() -> Element {
     let ctx = use_context::<AppContext>();
+    let controllers = use_context::<Context>();
+    let view = controllers.view.read().clone();
+    let error = controllers.error.read().clone();
     let meta = ctx.meta.read().clone();
-    let config = ctx.config.read().clone();
-    let controllers = config.controllers.clone().unwrap_or_default();
-    let locked = matches!(
-        meta.engine_status,
-        EngineStatus::Running | EngineStatus::Starting
-    ) || !meta.session.captured.is_empty()
-        || meta.session.offline
-        || meta.profile_name.is_none();
     let ready = if meta.session.ready {
         "Inputs ready"
     } else {
@@ -53,26 +33,20 @@ pub(super) fn ControllerSession() -> Element {
             h3 { "Controller session" }
             p { role: "status", "{ready} · {monitored} monitored · {captured} captured" }
             RoutingControls {}
-            if meta.engine_status == EngineStatus::Stopped && meta.session.output_active {
-                p { "Routing stopped. Virtual controllers stay connected and neutral. Inputs remain available." }
-            }
+            if view.retained { p { "Routing stopped. Virtual controllers stay connected and neutral. Inputs remain available." } }
             if let Some(error) = meta.session.error { p { role: "alert", "{error}" } }
+            if let Some(error) = error { p { role: "alert", "{error}" } }
             if !meta.session.keyboard_supported { p { "Keyboard output is unavailable." } }
             if !meta.session.mouse_supported { p { "Mouse output is unavailable." } }
-            fieldset { disabled: locked,
+            fieldset { disabled: !view.editable,
                 legend { "Route these controllers" }
-                for row in config.device_panel_rows.iter().cloned() {
-                    { let id = row.device_id.clone(); let commands = ctx.commands.clone(); let state = std::sync::Arc::clone(&ctx.state);
+                for row in view.selections {
+                    { let dispatch = controllers.dispatch;
                         rsx! { label {
-                            input { r#type: "checkbox", checked: controllers.selected.contains(&id), disabled: !row.connected && !controllers.selected.contains(&id),
-                                onchange: move |event: FormEvent| {
-                                    let mut selected = state.read().active_profile.as_ref().and_then(|p| p.controllers()).map_or_else(Vec::new, |p| p.selected.clone());
-                                    selected.retain(|d| d != &id);
-                                    if event.checked() { selected.push(id.clone()); }
-                                    let _ = commands.send(EngineCommand::SelectControllers(selected));
-                                }
+                            input { r#type: "checkbox", aria_label: row.label.clone(), checked: row.selected, disabled: !row.enabled,
+                                onchange: move |event: FormEvent| dispatch.call(Action::Select { device: row.device.clone(), selected: event.checked() })
                             }
-                            "{row.display_name}"
+                            "{row.label}"
                             if !row.connected { " (disconnected)" }
                         } }
                     }
@@ -81,7 +55,7 @@ pub(super) fn ControllerSession() -> Element {
             }
             RefreshControl {}
             AxisSettings {}
-            VirtualConfig { locked }
+            VirtualConfig {}
         }
     }
 }

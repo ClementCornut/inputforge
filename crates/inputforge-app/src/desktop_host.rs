@@ -90,5 +90,13 @@ fn desktop_root() -> Element {
     let start_polling = Callback::new(move |publisher| {
         crate::bridge::spawn_polling_task(Arc::clone(&state), publisher);
     });
-    inputforge_gui_dx::render_editor(handles.state, handles.commands, routing, start_polling)
+    let controllers =
+        inputforge_app::controllers::bindings(Arc::clone(&handles.state), handles.commands.clone());
+    inputforge_gui_dx::render_editor(
+        handles.state,
+        handles.commands,
+        routing,
+        controllers,
+        start_polling,
+    )
 }

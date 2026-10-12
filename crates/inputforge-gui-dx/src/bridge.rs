@@ -13,13 +13,20 @@ pub struct Publisher {
     context: AppContext,
     selection: Signal<Option<MappingKey>>,
     routing: Context,
+    controllers: crate::controllers::Context,
 }
 impl Publisher {
-    pub(crate) fn new(context: AppContext, view: ViewState, routing: Context) -> Self {
+    pub(crate) fn new(
+        context: AppContext,
+        view: ViewState,
+        routing: Context,
+        controllers: crate::controllers::Context,
+    ) -> Self {
         Self {
             context,
             selection: view.selected_mapping,
             routing,
+            controllers,
         }
     }
     /// Read the selected mapping without subscribing the caller.
@@ -30,6 +37,8 @@ impl Publisher {
     /// Publish changed fields without waking unchanged subscribers.
     pub fn publish(&self, frame: Frame) {
         self.routing.publish(frame.routing);
+        publish(self.controllers.view, frame.controllers);
+
         publish(self.context.meta, frame.meta);
         publish(self.context.config, frame.config);
         publish(self.context.live, frame.live);

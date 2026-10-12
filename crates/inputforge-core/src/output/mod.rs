@@ -2,6 +2,7 @@
 
 mod failure;
 pub mod traits;
+pub mod validation;
 
 #[cfg(all(target_os = "linux", feature = "uinput-output"))]
 pub mod uinput;

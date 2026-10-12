@@ -91,6 +91,7 @@ mod tests {
     )]
     fn TestHarness(props: TestHarnessProps) -> Element {
         crate::routing::provide_fixture(crate::routing::View::default());
+        crate::controllers::provide_fixture(crate::controllers::View::default());
         let main_surface = use_signal(Default::default);
         let editing_mode = use_signal(|| "Default".to_owned());
         let panel_slot = use_signal(|| props.slot);
@@ -196,3 +197,6 @@ mod controller_session;
 mod controller_session_tests;
 mod routing_controls;
 mod virtual_config;
+
+#[cfg(test)]
+mod controller_events_tests;

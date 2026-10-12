@@ -21,6 +21,16 @@ pub(crate) fn app_root() -> Element {
         dispatch: bindings.dispatch,
     };
     use_context_provider(|| routing);
+    let controller_bindings = use_context::<crate::controllers::Bindings>();
+    let mut controller_error = use_signal(|| None);
+    let controllers = crate::controllers::Context {
+        view: use_signal(crate::controllers::View::default),
+        error: controller_error,
+        dispatch: Callback::new(move |action| {
+            controller_error.set(controller_bindings.dispatch.call(action));
+        }),
+    };
+    use_context_provider(|| controllers);
 
     let meta = use_signal(MetaSnapshot::default);
     let config = use_signal(ConfigSnapshot::default);
@@ -66,7 +76,7 @@ pub(crate) fn app_root() -> Element {
 
     // Start the app-owned bridge once after its GUI signals are initialized.
     let start_polling = use_context::<Callback<Publisher>>();
-    use_hook(|| start_polling.call(Publisher::new(ctx.clone(), view, routing)));
+    use_hook(|| start_polling.call(Publisher::new(ctx.clone(), view, routing, controllers)));
 
     // F13: window-level Ctrl+S handler that dispatches the manual snapshot
     // command when focus is outside editable or modal UI. Installed at the
@@ -125,6 +135,7 @@ mod tests {
     /// tests / the smoke run, not by this SSR mount test.
     fn app_root_view_with_stub_contexts() -> Element {
         crate::routing::provide_fixture(crate::routing::View::default());
+        crate::controllers::provide_fixture(crate::controllers::View::default());
         // --- minimal stubs for context providers ---
         let (cmd_tx, _cmd_rx) = mpsc::channel();
         let raw = RawHandles {

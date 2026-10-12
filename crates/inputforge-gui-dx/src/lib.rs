@@ -3,6 +3,7 @@ mod app;
 pub mod bridge;
 pub mod components;
 mod context;
+pub mod controllers;
 mod frame;
 pub mod icons;
 pub mod patterns;
@@ -43,9 +44,11 @@ pub fn render_editor(
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Sender<EngineCommand>,
     routing: routing::Bindings,
+    controllers: controllers::Bindings,
     start_polling: Callback<bridge::Publisher>,
 ) -> Element {
     use_context_provider(|| routing);
+    use_context_provider(|| controllers);
     use_context_provider(|| start_polling);
     use_context_provider(|| context::RawHandles { state, commands });
     app::app_root()

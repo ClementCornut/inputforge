@@ -35,7 +35,12 @@ fn harness(props: Props) -> Element {
         view: use_signal(routing::View::default),
         dispatch: Callback::new(|_| {}),
     };
-    *publisher.borrow_mut() = Some(Publisher::new(context.clone(), view, routing));
+    let controllers = crate::controllers::Context {
+        view: use_signal(crate::controllers::View::default),
+        error: use_signal(|| None),
+        dispatch: Callback::new(|_| {}),
+    };
+    *publisher.borrow_mut() = Some(Publisher::new(context.clone(), view, routing, controllers));
     renders.set(renders.get() + 1);
     let current = context.meta.read().current_mode.clone();
     let device_count = context.config.read().devices.len();
@@ -46,7 +51,8 @@ fn harness(props: Props) -> Element {
         .read()
         .toggle
         .map_or("Unavailable", routing::Action::label);
-    rsx! {span {"{current}:{device_count}:{generation}:{count}:{toggle}"}}
+    let editable = controllers.view.read().editable;
+    rsx! {span {"{current}:{device_count}:{generation}:{count}:{toggle}:{editable}"}}
 }
 #[test]
 fn unchanged_frames_do_not_wake_any_snapshot_subscriber() {
@@ -78,9 +84,23 @@ fn unchanged_frames_do_not_wake_any_snapshot_subscriber() {
     changed.live.capture_epoch.generation = 7;
     changed.settings.unpinned_snapshot_count = 3;
     changed.routing.toggle = Some(routing::Action::Start);
+    changed.controllers.editable = true;
     dom.in_runtime(|| publisher.publish(changed.clone()));
     dom.render_immediate_to_vec();
-    assert!(dioxus_ssr::render(&dom).contains("Prepared:0:7:3:Start"));
+    assert!(dioxus_ssr::render(&dom).contains("Prepared:0:7:3:Start:true"));
+    let after_changed = renders.get();
+    dom.in_runtime(|| publisher.publish(changed.clone()));
+    dom.render_immediate_to_vec();
+    assert_eq!(renders.get(), after_changed);
+    changed.controllers.editable = false;
+    dom.in_runtime(|| publisher.publish(changed.clone()));
+    dom.render_immediate_to_vec();
+    assert_eq!(
+        renders.get(),
+        after_changed + 1,
+        "controller-only changes must publish independently"
+    );
+    assert!(dioxus_ssr::render(&dom).contains("Prepared:0:7:3:Start:false"));
     let after_changed = renders.get();
     dom.in_runtime(|| publisher.publish(changed));
     dom.render_immediate_to_vec();

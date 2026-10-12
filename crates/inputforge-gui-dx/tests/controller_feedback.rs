@@ -1,0 +1,189 @@
+//! App-rejected operations must remain visible without persisting invalid configuration.
+use dioxus::{
+    core::{AttributeValue, ElementId, Mutation, Mutations},
+    html::SerializedHtmlEventConverter,
+    prelude::*,
+};
+use inputforge_core::{
+    engine::EngineCommand,
+    mode::Modes,
+    output::traits::ControllerCapabilities,
+    profile::{Profile, controllers::ControllerConfig},
+    state::AppState,
+    types::VirtualDeviceConfig,
+};
+use inputforge_gui_dx::{EditorNavigation, PanelSlot, render_editor, routing};
+use parking_lot::RwLock;
+use std::{
+    any::Any,
+    rc::Rc,
+    sync::{Arc, mpsc},
+};
+
+fn editor() -> Element {
+    let state = use_context::<Arc<RwLock<AppState>>>();
+    let commands = use_context::<mpsc::Sender<EngineCommand>>();
+    let navigation = EditorNavigation {
+        panel: use_signal(|| PanelSlot::Devices),
+        calibration: use_signal(|| false),
+    };
+    use_context_provider(|| navigation);
+    let controllers = inputforge_app::controllers::bindings(Arc::clone(&state), commands.clone());
+    let frame = inputforge_app::bridge::prepare(&state.read(), None);
+    render_editor(
+        state,
+        commands,
+        routing::Bindings {
+            dispatch: Callback::new(|_| {}),
+        },
+        controllers,
+        Callback::new(move |publisher: inputforge_gui_dx::bridge::Publisher| {
+            publisher.publish(frame.clone());
+        }),
+    )
+}
+fn state(pending: bool) -> Arc<RwLock<AppState>> {
+    let mut state = AppState::with_profile(Profile::new(
+        "feedback".into(),
+        vec![],
+        Modes::new(vec!["Default".into()]).unwrap(),
+        vec![],
+        vec![],
+        "Default".into(),
+    ));
+    state.session.controller_capabilities = ControllerCapabilities {
+        configurable: true,
+        min_buttons: 2,
+        max_buttons: if pending { 7 } else { 53 },
+        max_hats: 4,
+    };
+    state
+        .active_profile
+        .as_mut()
+        .unwrap()
+        .set_controllers(ControllerConfig {
+            virtual_devices: vec![VirtualDeviceConfig {
+                device_id: 1,
+                axes: vec![],
+                button_count: 8,
+                hat_count: 1,
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+    state.session.output_active = pending;
+    Arc::new(RwLock::new(state))
+}
+fn mount(state: &Arc<RwLock<AppState>>) -> (VirtualDom, Mutations, mpsc::Receiver<EngineCommand>) {
+    let (tx, rx) = mpsc::channel();
+    let mut dom = VirtualDom::new(editor);
+    dom.provide_root_context(Arc::clone(state));
+    dom.provide_root_context(tx);
+    let mounted = dom.rebuild_to_vec();
+    (dom, mounted, rx)
+}
+fn element(mounted: &Mutations, label: &str) -> ElementId {
+    mounted
+        .edits
+        .iter()
+        .find_map(|edit| match edit {
+            Mutation::SetAttribute {
+                name: "aria-label",
+                value: AttributeValue::Text(value),
+                id,
+                ..
+            } if value == label => Some(*id),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing control {label}"))
+}
+fn form(dom: &mut VirtualDom, id: ElementId, value: &str) {
+    let data: Rc<dyn Any> = Rc::new(PlatformEventData::new(Box::new(SerializedFormData::new(
+        value.into(),
+        vec![],
+    ))));
+    dom.runtime()
+        .handle_event("change", Event::new(data, false), id);
+    dom.render_immediate_to_vec();
+}
+fn config(state: &Arc<RwLock<AppState>>) -> ControllerConfig {
+    state
+        .read()
+        .active_profile
+        .as_ref()
+        .unwrap()
+        .controllers()
+        .unwrap()
+        .clone()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn invalid_numeric_edit_displays_an_alert_and_valid_delivery_clears_it() {
+    set_event_converter(Box::new(SerializedHtmlEventConverter));
+    let state = state(false);
+    let before = config(&state);
+    let (mut dom, mounted, rx) = mount(&state);
+    let hats = element(&mounted, "Hats for virtual controller 1");
+    form(&mut dom, hats, "5");
+    let html = dioxus_ssr::render(&dom);
+    assert!(
+        html.contains("role=\"alert\""),
+        "rejected edits need visible feedback: {html}"
+    );
+    assert!(html.contains("invalid controller virtual slot"));
+    assert_eq!(rx.try_recv().unwrap_err(), mpsc::TryRecvError::Empty);
+    assert_eq!(config(&state), before);
+    form(&mut dom, hats, "2");
+    assert!(!dioxus_ssr::render(&dom).contains("role=\"alert\""));
+    let EngineCommand::SetControllerConfig(next) = rx.try_recv().unwrap() else {
+        panic!("expected valid edit");
+    };
+    assert_eq!(next.virtual_devices[0].hat_count, 2);
+    assert_eq!(
+        config(&state),
+        before,
+        "delivery must not optimistically mutate engine state"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn invalid_apply_displays_an_alert_without_touching_retained_outputs() {
+    set_event_converter(Box::new(SerializedHtmlEventConverter));
+    let state = state(true);
+    let before = config(&state);
+    let (mut dom, mounted, rx) = mount(&state);
+    let data: Rc<dyn Any> = Rc::new(PlatformEventData::new(Box::new(
+        SerializedMouseData::default(),
+    )));
+    dom.runtime().handle_event(
+        "click",
+        Event::new(data, false),
+        element(&mounted, "Apply controller changes"),
+    );
+    dom.render_immediate_to_vec();
+    let html = dioxus_ssr::render(&dom);
+    assert!(
+        html.contains("role=\"alert\""),
+        "rejected Apply needs visible feedback: {html}"
+    );
+    assert!(html.contains("exceeds backend capabilities"));
+    assert_eq!(rx.try_recv().unwrap_err(), mpsc::TryRecvError::Empty);
+    assert_eq!(config(&state), before);
+    assert!(state.read().session.output_active);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn failed_delivery_displays_an_alert_without_optimistic_configuration() {
+    set_event_converter(Box::new(SerializedHtmlEventConverter));
+    let state = state(false);
+    let before = config(&state);
+    let (mut dom, mounted, rx) = mount(&state);
+    drop(rx);
+    form(
+        &mut dom,
+        element(&mounted, "Hats for virtual controller 1"),
+        "2",
+    );
+    assert!(dioxus_ssr::render(&dom).contains("role=\"alert\""));
+    assert_eq!(config(&state), before);
+}

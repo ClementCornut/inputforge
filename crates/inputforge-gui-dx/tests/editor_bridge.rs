@@ -1,7 +1,7 @@
 //! The public renderer installs the app poller once and owns its lifetime.
 use dioxus::prelude::*;
 use inputforge_core::{mode::Modes, profile::Profile, state::AppState};
-use inputforge_gui_dx::{render_editor, routing::Bindings};
+use inputforge_gui_dx::{EditorNavigation, PanelSlot, render_editor, routing::Bindings};
 use parking_lot::RwLock;
 use std::{
     cell::Cell,
@@ -21,18 +21,26 @@ impl PartialEq for EditorProps {
     }
 }
 fn editor(props: EditorProps) -> Element {
+    let navigation = EditorNavigation {
+        panel: use_signal(|| PanelSlot::Devices),
+        calibration: use_signal(|| false),
+    };
+    use_context_provider(|| navigation);
     let (commands, _) = mpsc::channel();
     let state = Arc::clone(&props.state);
     let start = Callback::new(move |publisher| {
         props.starts.set(props.starts.get() + 1);
         inputforge_app::bridge::spawn_polling_task(Arc::clone(&state), publisher);
     });
+    let controllers =
+        inputforge_app::controllers::bindings(Arc::clone(&props.state), commands.clone());
     render_editor(
         props.state,
         commands,
         Bindings {
             dispatch: Callback::new(|_| {}),
         },
+        controllers,
         start,
     )
 }
@@ -65,6 +73,15 @@ fn renderer_preserves_tick_cadence_skips_contention_and_releases_polling_on_drop
         let state = Arc::new(RwLock::new(AppState::with_profile(profile(
             "Initial fixture",
         ))));
+        state
+            .write()
+            .virtual_devices
+            .push(inputforge_core::types::VirtualDeviceConfig {
+                device_id: 3,
+                axes: vec![],
+                button_count: 8,
+                hat_count: 1,
+            });
         let starts = Rc::new(Cell::new(0));
         let mut dom = VirtualDom::new_with_props(
             editor,
@@ -76,11 +93,15 @@ fn renderer_preserves_tick_cadence_skips_contention_and_releases_polling_on_drop
         dom.rebuild_in_place();
         drive(&mut dom, 0).await;
         assert!(dioxus_ssr::render(&dom).contains("Initial fixture"));
+        assert!(dioxus_ssr::render(&dom).contains("Virtual controller 3"));
         state.write().active_profile = Some(profile("Next fixture"));
+        state.write().virtual_devices[0].device_id = 4;
         drive(&mut dom, 15).await;
         assert!(!dioxus_ssr::render(&dom).contains("Next fixture"));
+        assert!(!dioxus_ssr::render(&dom).contains("Virtual controller 4"));
         drive(&mut dom, 1).await;
         assert!(dioxus_ssr::render(&dom).contains("Next fixture"));
+        assert!(dioxus_ssr::render(&dom).contains("Virtual controller 4"));
         dom.mark_dirty(ScopeId::ROOT);
         dom.render_immediate_to_vec();
         assert_eq!(starts.get(), 1, "rerender must not install a second poller");

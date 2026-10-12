@@ -87,6 +87,7 @@ fn prepare_at(state: &AppState, selection: Option<&MappingKey>, now: Instant) ->
         live: live::project_at(state, &config, now),
         settings: settings::project(state),
         routing: crate::routing_policy::view(state),
+        controllers: crate::controllers::view(state, &config.device_panel_rows),
         config,
     }
 }
