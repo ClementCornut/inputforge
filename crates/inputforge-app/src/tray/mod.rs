@@ -13,7 +13,6 @@ mod events;
 mod linux;
 #[cfg(all(test, any(target_os = "linux", target_os = "windows")))]
 mod native_tests;
-mod policy;
 pub(crate) mod window;
 #[cfg(target_os = "windows")]
 mod windows;

@@ -1,108 +1,51 @@
-// Rust guideline compliant 2026-04-29
-
+//! Engine status presentation with app-owned routing actions.
 mod logic;
-
-use dioxus::prelude::*;
-
-use inputforge_core::engine::EngineCommand;
-
 use crate::{
     context::AppContext,
-    frame::{ViewState, view_state::PanelSlot},
+    routing::{Action, Context},
 };
-
+use dioxus::prelude::*;
 use logic::{Variant, engine_pill_state};
 
 #[component]
+#[expect(
+    unused_qualifications,
+    reason = "Dioxus event attributes produce redundant qualifications"
+)]
 pub(crate) fn EnginePill() -> Element {
     tracing::trace!(target: "frame::render", region = "engine_pill");
     let ctx = use_context::<AppContext>();
+    let routing = use_context::<Context>();
     let status = use_memo(move || ctx.meta.read().engine_status);
-    let has_profile = use_memo(move || ctx.meta.read().profile_name.is_some());
-    let commands = ctx.commands.clone();
-
-    let s = *status.read();
-    let p = *has_profile.read();
-    let (variant, label, command) = engine_pill_state(s);
-    let offline = ctx.meta.read().session.offline;
-    let pending = ctx.controller_changes_pending();
-    let view = try_use_context::<ViewState>();
+    let (variant, label) = engine_pill_state(*status.read());
+    let action = routing.view.read().toggle;
     let class = format!("if-engine-pill if-engine-pill--{}", variant.class_suffix());
-
-    // `aria-pressed` exposes the pill as a toggle button, Running
-    // reads as the "on" state. Stopped read as "off". The
-    // visible dot+label are aria-hidden so AT users hear the action
-    // verb (button accessible name) followed by the live region
-    // announcement, not the raw label twice.
     let aria_pressed = match variant {
         Variant::Live => "true",
         Variant::Warning | Variant::Error => "false",
     };
-    // Action verb is derived from the dispatch command, not the
-    // status: clicking always toggles, and the verb has to match the
-    // outcome of the click for the button name to be honest.
-    let action_verb = if pending {
-        "Review controller changes in Devices"
-    } else {
-        match &command {
-            EngineCommand::Activate => "Start routing",
-            EngineCommand::Deactivate => "Stop routing",
-            _ => "Engine",
-        }
+    let action_verb = match action {
+        Some(Action::Start) => "Start routing",
+        Some(Action::Stop) => "Stop routing",
+        Some(Action::Retry) => "Retry routing",
+        Some(Action::ReviewDevices) => "Review controller changes in Devices",
+        Some(Action::Refresh) => "Refresh devices",
+        None => "Routing unavailable",
     };
-    // sr-only live region carries the state announcement (separate
-    // from the button so the button keeps its native role). Phrasing
-    // is "Engine running / stopped", full sentence so AT
-    // users get the subject, not a bare adjective.
     let live_text = format!("Engine {}", label.to_lowercase());
-
-    // `EngineCommand` is not `Clone`/`Copy` (some variants carry
-    // `Action`s and `PathBuf`s), so we discriminate by reference
-    // and reconstruct the unit variant for sending. The fall-through
-    // arm is a structural guard against `engine_pill_state` ever
-    // returning a third variant, we log and bail rather than
-    // silently rewriting to `Activate`.
-    let onclick = move |_| {
-        if pending {
-            if let Some(mut view) = view {
-                view.via_calibration.set(false);
-                view.panel_slot.set(PanelSlot::Devices);
-            }
-            return;
-        }
-        let cmd = match &command {
-            EngineCommand::Activate => EngineCommand::Activate,
-            EngineCommand::Deactivate => EngineCommand::Deactivate,
-            other => {
-                tracing::error!(
-                    target: "gui",
-                    ?other,
-                    "engine_pill_state returned unexpected variant"
-                );
-                return;
-            }
-        };
-        let _ = commands.send(cmd);
-    };
-
     rsx! {
         button {
             r#type: "button",
             class: "{class}",
-            disabled: !p || offline || (pending && view.is_none()),
+            disabled: action.is_none(),
             title: action_verb,
-            "aria-label": "{action_verb}",
-            "aria-pressed": "{aria_pressed}",
-            onclick,
+            "aria-label": action_verb,
+            "aria-pressed": aria_pressed,
+            onclick: move |_| { if let Some(action) = action { routing.dispatch.call(action); } },
             span { class: "if-engine-pill__dot", "aria-hidden": "true" }
             span { class: "if-engine-pill__label", "aria-hidden": "true", "{label}" }
         }
-        span {
-            class: "if-sr-only",
-            role: "status",
-            "aria-live": "polite",
-            "{live_text}"
-        }
+        span { class: "if-sr-only", role: "status", "aria-live": "polite", "{live_text}" }
     }
 }
 
@@ -116,7 +59,15 @@ mod tests {
     use parking_lot::RwLock;
     use std::sync::{Arc, mpsc};
 
-    fn pending_harness() -> Element {
+    #[derive(Clone, Props, PartialEq)]
+    struct HarnessProps {
+        #[props(default)]
+        unavailable: bool,
+        #[props(default)]
+        recorded: Option<std::rc::Rc<std::cell::RefCell<Vec<Action>>>>,
+    }
+
+    fn pending_harness(props: HarnessProps) -> Element {
         let mut state = AppState::new();
         state.session.output_active = true;
         state.session.output_layout = vec![VirtualDeviceConfig {
@@ -153,16 +104,90 @@ mod tests {
         });
         let view = crate::frame::use_view_state_provider(meta);
         use_context_provider(|| view);
+        let routing = use_signal(|| crate::routing::View {
+            pending: true,
+            toggle: (!props.unavailable).then_some(Action::ReviewDevices),
+            ..Default::default()
+        });
+        use_context_provider(|| Context {
+            view: routing,
+            dispatch: Callback::new(move |action| {
+                if let Some(recorded) = &props.recorded {
+                    recorded.borrow_mut().push(action);
+                }
+            }),
+        });
         rsx! { EnginePill {} }
     }
 
     #[test]
     fn retained_layout_change_offers_review_instead_of_start() {
-        let mut dom = VirtualDom::new(pending_harness);
+        let mut dom = VirtualDom::new_with_props(
+            pending_harness,
+            HarnessProps {
+                unavailable: false,
+                recorded: None,
+            },
+        );
         dom.rebuild_in_place();
         let html = dioxus_ssr::render(&dom);
         assert!(html.contains("aria-label=\"Review controller changes in Devices\""));
         assert!(!html.contains("aria-label=\"Start routing\""));
         assert!(!html.contains(" disabled"));
+    }
+
+    #[test]
+    fn app_prepared_unavailable_action_disables_engine_pill() {
+        let mut dom = VirtualDom::new_with_props(
+            pending_harness,
+            HarnessProps {
+                unavailable: true,
+                recorded: None,
+            },
+        );
+        dom.rebuild_in_place();
+        let html = dioxus_ssr::render(&dom);
+        let document = scraper::Html::parse_fragment(&html);
+        let selector = scraper::Selector::parse("button.if-engine-pill").unwrap();
+        assert!(
+            document
+                .select(&selector)
+                .next()
+                .unwrap()
+                .value()
+                .attr("disabled")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn engine_pill_delivers_the_supplied_review_callback() {
+        use dioxus::html::{PlatformEventData, SerializedHtmlEventConverter, SerializedMouseData};
+        use dioxus_core::Mutation;
+        use std::{any::Any, cell::RefCell, rc::Rc};
+        let recorded = Rc::new(RefCell::new(Vec::new()));
+        let mut dom = VirtualDom::new_with_props(
+            pending_harness,
+            HarnessProps {
+                unavailable: false,
+                recorded: Some(Rc::clone(&recorded)),
+            },
+        );
+        let mutations = dom.rebuild_to_vec();
+        let button = mutations
+            .edits
+            .iter()
+            .find_map(|mutation| match mutation {
+                Mutation::NewEventListener { name, id } if name == "click" => Some(*id),
+                _ => None,
+            })
+            .unwrap();
+        set_event_converter(Box::new(SerializedHtmlEventConverter));
+        let event: Rc<dyn Any> = Rc::new(PlatformEventData::new(Box::new(
+            SerializedMouseData::default(),
+        )));
+        dom.runtime()
+            .handle_event("click", Event::new(event, true), button);
+        assert_eq!(*recorded.borrow(), vec![Action::ReviewDevices]);
     }
 }

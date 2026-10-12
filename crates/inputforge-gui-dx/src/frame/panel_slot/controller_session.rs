@@ -3,11 +3,12 @@
     unused_qualifications,
     reason = "Dioxus event attributes produce false-positive qualification spans"
 )]
-use super::{axis_settings::AxisSettings, virtual_config::VirtualConfig};
-use crate::{
-    components::{Button, ButtonSize, ButtonVariant},
-    context::AppContext,
+use super::{
+    axis_settings::AxisSettings,
+    routing_controls::{RefreshControl, RoutingControls},
+    virtual_config::VirtualConfig,
 };
+use crate::context::AppContext;
 use dioxus::prelude::*;
 use inputforge_core::{
     engine::EngineCommand, profile::controllers::ControllerConfig, state::EngineStatus,
@@ -34,22 +35,12 @@ pub(super) fn ControllerSession() -> Element {
     let meta = ctx.meta.read().clone();
     let config = ctx.config.read().clone();
     let controllers = config.controllers.clone().unwrap_or_default();
-    let pending_layout = meta
-        .session
-        .requires_output_reconfiguration(&controllers.virtual_devices);
     let locked = matches!(
         meta.engine_status,
         EngineStatus::Running | EngineStatus::Starting
     ) || !meta.session.captured.is_empty()
         || meta.session.offline
         || meta.profile_name.is_none();
-    let can_start = meta.profile_name.is_some()
-        && !meta.session.offline
-        && !pending_layout
-        && !matches!(
-            meta.engine_status,
-            EngineStatus::Running | EngineStatus::Starting
-        );
     let ready = if meta.session.ready {
         "Inputs ready"
     } else {
@@ -57,21 +48,11 @@ pub(super) fn ControllerSession() -> Element {
     };
     let monitored = meta.session.monitored.len();
     let captured = meta.session.captured.len();
-    let tx_run = ctx.commands.clone();
-    let tx_stop = ctx.commands.clone();
-    let tx_refresh = ctx.commands.clone();
     rsx! {
         section { class: "if-controller-session", "aria-label": "Controller session",
             h3 { "Controller session" }
             p { role: "status", "{ready} · {monitored} monitored · {captured} captured" }
-            div { class: "if-controller-session__actions",
-                Button { size: ButtonSize::Sm, disabled: !can_start, onclick: move |_| { let _ = tx_run.send(EngineCommand::Activate); },
-                    if meta.engine_status == EngineStatus::Faulted { "Retry" } else { "Start" }
-                }
-                Button { size: ButtonSize::Sm, variant: ButtonVariant::Secondary, disabled: meta.session.offline || meta.engine_status == EngineStatus::Stopped,
-                    onclick: move |_| { let _ = tx_stop.send(EngineCommand::Deactivate); }, "Stop"
-                }
-            }
+            RoutingControls {}
             if meta.engine_status == EngineStatus::Stopped && meta.session.output_active {
                 p { "Routing stopped. Virtual controllers stay connected and neutral. Inputs remain available." }
             }
@@ -98,9 +79,7 @@ pub(super) fn ControllerSession() -> Element {
                 }
                 p { "Stop routing to change the controller selection or virtual output." }
             }
-            Button { size: ButtonSize::Sm, variant: ButtonVariant::Secondary, disabled: meta.session.offline,
-                onclick: move |_| { let _ = tx_refresh.send(EngineCommand::RefreshInput); }, "Refresh devices"
-            }
+            RefreshControl {}
             AxisSettings {}
             VirtualConfig { locked }
         }

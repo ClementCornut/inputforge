@@ -843,6 +843,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     if let Some(capture) = hints_capture.as_ref() {
         *capture.write() = editor.malformed_hints.read().clone();
     }
+    crate::routing::provide_fixture(crate::routing::View::default());
     rsx! { MappingEditor {} }
 }
 

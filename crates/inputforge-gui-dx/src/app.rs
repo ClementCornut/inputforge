@@ -14,6 +14,13 @@ use crate::toast::{ToastQueue, ToastState, ToastViewport, install_warnings_bridg
 /// Assemble editor presentation contexts and render the frame layout.
 pub(crate) fn app_root() -> Element {
     let raw = use_context::<RawHandles>();
+    let bindings = use_context::<crate::routing::Bindings>();
+    let routing_view = use_signal(crate::routing::View::default);
+    let routing = crate::routing::Context {
+        view: routing_view,
+        dispatch: bindings.dispatch,
+    };
+    use_context_provider(|| routing);
 
     let meta = use_signal(MetaSnapshot::default);
     let config = use_signal(ConfigSnapshot::default);
@@ -59,7 +66,7 @@ pub(crate) fn app_root() -> Element {
 
     // Polling task, bridges AppState into Dioxus signals. One-shot per scope
     // mount; auto-cancelled when the runtime tears down.
-    use_hook(|| spawn_polling_task(ctx.clone(), view));
+    use_hook(|| spawn_polling_task(ctx.clone(), view, routing, bindings.project));
 
     // F13: window-level Ctrl+S handler that dispatches the manual snapshot
     // command when focus is outside editable or modal UI. Installed at the
@@ -117,6 +124,7 @@ mod tests {
     /// a live Dioxus desktop runtime and are exercised by integration
     /// tests / the smoke run, not by this SSR mount test.
     fn app_root_view_with_stub_contexts() -> Element {
+        crate::routing::provide_fixture(crate::routing::View::default());
         // --- minimal stubs for context providers ---
         let (cmd_tx, _cmd_rx) = mpsc::channel();
         let raw = RawHandles {

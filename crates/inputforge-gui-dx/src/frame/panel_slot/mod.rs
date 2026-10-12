@@ -90,6 +90,7 @@ mod tests {
         reason = "Dioxus components are PascalCase by convention"
     )]
     fn TestHarness(props: TestHarnessProps) -> Element {
+        crate::routing::provide_fixture(crate::routing::View::default());
         let main_surface = use_signal(Default::default);
         let editing_mode = use_signal(|| "Default".to_owned());
         let panel_slot = use_signal(|| props.slot);
@@ -193,4 +194,5 @@ mod tests {
 mod controller_session;
 #[cfg(test)]
 mod controller_session_tests;
+mod routing_controls;
 mod virtual_config;

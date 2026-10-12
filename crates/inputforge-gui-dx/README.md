@@ -143,7 +143,16 @@ A full `cargo clean` is unnecessary; the per-package clean is enough.
 Tray construction, native event dispatch, labels, availability policy and desktop
 window lifecycle belong entirely to `inputforge-app`. This crate exposes
 `render_editor` and `EditorNavigation`, ordinary presentation state shared with
-panel controls. It has no direct muda, GTK timer or Windows API dependency.
+panel controls. `render_editor` also requires `routing::Bindings`: the app's
+pure routing projection and revalidating action callback. The existing snapshot
+bridge publishes that projection; it does not add a polling loop. The seeded
+demo supplies fixed presentation data and an inert callback.
+
+Routing eligibility, Start/Stop/Retry/Refresh dispatch, and review navigation
+belong to the app's shared `routing` module. GUI controls consume its prepared
+model. Controller configuration editing and other audited workflows still
+remain in this crate; see the [boundary audit](../../docs/gui-rendering-boundary-audit.md).
+It has no direct muda, GTK timer or Windows API dependency.
 
 The app configures hidden startup before constructing the window and dispatches
 tray actions independently of WebView render acknowledgements. Its event-loop

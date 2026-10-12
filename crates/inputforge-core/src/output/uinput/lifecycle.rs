@@ -136,13 +136,16 @@ impl Output {
     pub(super) fn release_all(&mut self, skip_neutral: Option<u8>) -> Result<(), Error> {
         let deadline = self.system.now() + WRITE_LIMIT;
         let mut failure = None;
-        for mut held in self.held.drain(..) {
+        // Device destruction must not consume the neutral-write budget of later slots.
+        for held in &mut self.held {
             if skip_neutral != Some(held.slot) {
                 held.state.neutral();
                 let result = held.flush(&self.system, deadline, true);
                 self.valid &= result.is_ok();
                 collect(&mut failure, result);
             }
+        }
+        for mut held in self.held.drain(..) {
             collect(
                 &mut failure,
                 held.handle

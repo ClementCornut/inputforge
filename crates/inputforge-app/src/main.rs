@@ -10,6 +10,7 @@ mod desktop;
 mod desktop_host;
 mod engine_thread;
 mod platform;
+mod routing;
 mod single_instance;
 mod tray;
 

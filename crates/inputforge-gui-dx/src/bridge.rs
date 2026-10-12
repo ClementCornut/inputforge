@@ -13,7 +13,12 @@ use crate::frame::ViewState;
 ///
 /// The task is bound to the Dioxus runtime: it is auto-cancelled when the
 /// runtime tears down on window close.
-pub(crate) fn spawn_polling_task(ctx: AppContext, view: ViewState) {
+pub(crate) fn spawn_polling_task(
+    ctx: AppContext,
+    view: ViewState,
+    routing: crate::routing::Context,
+    project: fn(&inputforge_core::state::AppState) -> crate::routing::View,
+) {
     spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_millis(16));
         loop {
@@ -33,9 +38,11 @@ pub(crate) fn spawn_polling_task(ctx: AppContext, view: ViewState) {
             let config = ConfigSnapshot::from_state(&guard, selection.as_ref());
             let live = LiveSnapshot::from_state(&guard, &config);
             let settings = SettingsSnapshot::from_state(&guard);
+            let routing_view = project(&guard);
             // Release the read lock before calling Signal::set; reactive re-reads of
             // ctx.state from subscribers must not contend with the held guard.
             drop(guard);
+            routing.publish(routing_view);
 
             // peek() reads without subscribing, the diff gate doesn't wake any component.
             let mut meta_signal = ctx.meta;

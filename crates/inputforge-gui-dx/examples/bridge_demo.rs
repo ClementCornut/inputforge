@@ -18,6 +18,7 @@ use inputforge_core::state::{AppState, DeviceState, EngineStatus};
 use inputforge_core::types::{
     AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, VJoyAxis, VirtualDeviceConfig,
 };
+use inputforge_gui_dx::routing::{Action, Bindings, View};
 
 fn main() {
     let _ = tracing_subscriber::fmt()
@@ -71,5 +72,15 @@ fn main() {
 fn demo_root() -> dioxus::prelude::Element {
     let (state, commands) =
         dioxus::prelude::use_context::<(Arc<RwLock<AppState>>, mpsc::Sender<EngineCommand>)>();
-    inputforge_gui_dx::render_editor(state, commands)
+    let routing = Bindings {
+        project: |_| View {
+            toggle: Some(Action::Stop),
+            stop: Some(Action::Stop),
+            recovery: Some(Action::Refresh),
+            refresh: Some(Action::Refresh),
+            ..View::default()
+        },
+        dispatch: dioxus::prelude::Callback::new(|_| {}),
+    };
+    inputforge_gui_dx::render_editor(state, commands, routing)
 }

@@ -6,6 +6,7 @@ mod context;
 mod frame;
 pub mod icons;
 pub mod patterns;
+pub mod routing;
 pub mod theme;
 pub mod toast;
 
@@ -34,7 +35,9 @@ pub struct EditorNavigation {
 pub fn render_editor(
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Sender<EngineCommand>,
+    routing: routing::Bindings,
 ) -> Element {
+    use_context_provider(|| routing);
     use_context_provider(|| context::RawHandles { state, commands });
     app::app_root()
 }

@@ -16,6 +16,12 @@ struct HarnessProps {
     extra_native: bool,
 }
 fn harness(props: HarnessProps) -> Element {
+    crate::routing::provide_fixture(crate::routing::View {
+        pending: props.pending,
+        start: (!props.pending).then_some(crate::routing::Action::Start),
+        refresh: Some(crate::routing::Action::Refresh),
+        ..Default::default()
+    });
     let mut state = AppState::new();
     state.session.output_active = true;
     state.session.ready = true;

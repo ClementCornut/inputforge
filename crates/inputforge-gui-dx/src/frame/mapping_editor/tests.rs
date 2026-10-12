@@ -584,6 +584,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     use_editor_state_provider();
     let toast_state = use_signal(ToastState::default);
     use_context_provider(|| ToastQueue { state: toast_state });
+    crate::routing::provide_fixture(crate::routing::View::default());
     rsx! { MappingEditor {} }
 }
 
@@ -849,6 +850,7 @@ fn harness() -> Element {
     let toast_state = use_signal(ToastState::default);
     use_context_provider(|| ToastQueue { state: toast_state });
 
+    crate::routing::provide_fixture(crate::routing::View::default());
     rsx! { MappingEditor {} }
 }
 
@@ -976,6 +978,7 @@ fn stopped_routing_keeps_input_monitoring_available() {
         use_editor_state_provider();
         let toast_state = use_signal(ToastState::default);
         use_context_provider(|| ToastQueue { state: toast_state });
+        crate::routing::provide_fixture(crate::routing::View::default());
         rsx! { MappingEditor {} }
     }
     let mut vdom = VirtualDom::new(h);
@@ -1150,6 +1153,7 @@ fn editor_undo_recap_shows_label_and_kbd_hint() {
 
         let toast_state = use_signal(ToastState::default);
         use_context_provider(|| ToastQueue { state: toast_state });
+        crate::routing::provide_fixture(crate::routing::View::default());
         rsx! { MappingEditor {} }
     }
 

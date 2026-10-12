@@ -2,7 +2,7 @@ use super::{
     super::{default_config, device::DeviceKey},
     fixtures,
 };
-use std::{io, time::Duration};
+use std::{collections::BTreeSet, io, time::Duration};
 
 #[test]
 fn release_write_failure_invalidates_owner_even_after_every_device_is_closed() {
@@ -79,5 +79,42 @@ fn expired_cleanup_budget_stops_writes_but_closes_every_slot() {
             .filter(|(_, call)| *call == "close")
             .count(),
         16
+    );
+}
+
+#[test]
+fn slow_destroy_does_not_exhaust_later_controllers_neutral_write_budget() {
+    let (mut output, world) = fixtures::output((1..=3).map(default_config).collect());
+    output.create().unwrap();
+    for slot in 1..=3 {
+        output.set_button(slot, 1, true).unwrap();
+    }
+    output.flush().unwrap();
+    world.lock().unwrap().emitted.clear();
+    world.lock().unwrap().destroy_delay = Duration::from_millis(25);
+    output.release().unwrap();
+    assert!(!output.is_active());
+    let script = world.lock().unwrap();
+    assert!(script.alive.is_empty());
+    assert_eq!(
+        script
+            .emitted
+            .iter()
+            .map(|(key, _)| *key)
+            .collect::<BTreeSet<_>>(),
+        [
+            DeviceKey::Controller(1),
+            DeviceKey::Controller(2),
+            DeviceKey::Controller(3),
+        ]
+        .into_iter()
+        .collect()
+    );
+    assert!(
+        script
+            .emitted
+            .iter()
+            .flat_map(|(_, events)| events)
+            .all(|event| event.value() == 0)
     );
 }

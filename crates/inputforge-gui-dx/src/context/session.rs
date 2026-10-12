@@ -1,5 +1,4 @@
 //! Capture changes must wake the bridge even when sampled values are identical.
-use dioxus::prelude::ReadableExt;
 use inputforge_core::state::AppState;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct CaptureEpoch {
@@ -63,27 +62,5 @@ mod monitoring_tests {
         assert!(!CaptureEpoch::from_state(&state).ready);
         state.session.offline = true;
         assert!(!CaptureEpoch::from_state(&state).allowed);
-    }
-}
-
-impl super::AppContext {
-    /// Shared GUI gate for a retained virtual layout awaiting explicit Apply.
-    pub(crate) fn controller_changes_pending(&self) -> bool {
-        let meta = self.meta.read();
-        if matches!(
-            meta.engine_status,
-            inputforge_core::state::EngineStatus::Running
-                | inputforge_core::state::EngineStatus::Starting
-        ) {
-            return false;
-        }
-        self.config
-            .read()
-            .controllers
-            .as_ref()
-            .is_some_and(|config| {
-                meta.session
-                    .requires_output_reconfiguration(&config.virtual_devices)
-            })
     }
 }

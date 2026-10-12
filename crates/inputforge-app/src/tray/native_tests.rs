@@ -220,7 +220,8 @@ fn relaunch_root() -> Element {
         panel: use_signal(inputforge_gui_dx::PanelSlot::default),
         calibration: use_signal(|| false),
     };
-    super::use_controller(handles, navigation, move || {
+    let routing = crate::routing::bindings(handles.clone(), navigation);
+    super::use_controller(handles, routing, move || {
         fixture
             .instance
             .process_pending(super::window::show_window)

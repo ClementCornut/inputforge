@@ -1,10 +1,7 @@
 //! Engine availability and routing notices shared by every input backend.
-use crate::{
-    context::AppContext,
-    frame::{ViewState, view_state::PanelSlot},
-};
+use crate::{context::AppContext, routing::Context};
 use dioxus::prelude::*;
-use inputforge_core::{engine::EngineCommand, state::EngineStatus};
+use inputforge_core::state::EngineStatus;
 
 #[component]
 #[expect(
@@ -14,8 +11,9 @@ use inputforge_core::{engine::EngineCommand, state::EngineStatus};
 pub(crate) fn EngineOfflineBanner() -> Element {
     let ctx = use_context::<AppContext>();
     let meta = ctx.meta.read().clone();
-    let pending = ctx.controller_changes_pending();
-    let view = try_use_context::<ViewState>();
+    let routing = use_context::<Context>();
+    let routing_view = *routing.view.read();
+    let pending = routing_view.pending;
     let output_failure = meta.session.output_failures.first().cloned();
     let message = if let Some(failure) = &output_failure {
         Some(super::mapping_issue_copy::output_failure_message(failure))
@@ -41,8 +39,7 @@ pub(crate) fn EngineOfflineBanner() -> Element {
     let faulted = output_failure.is_some()
         || meta.session.error.is_some()
         || meta.engine_status == EngineStatus::Faulted;
-    let running = meta.engine_status == EngineStatus::Running;
-    let commands = ctx.commands.clone();
+
     rsx! {
         div { class: "if-editor__offline-banner", role: if faulted { "alert" } else { "status" },
             "aria-live": "polite",
@@ -57,15 +54,9 @@ pub(crate) fn EngineOfflineBanner() -> Element {
                     }
                 }
             }
-            if !meta.session.offline && pending {
-                button { r#type: "button", class: "if-editor__offline-action", disabled: view.is_none(),
-                    onclick: move |_| { if let Some(mut view) = view { view.via_calibration.set(false); view.panel_slot.set(PanelSlot::Devices); } }, "Open Devices"
-                }
-            } else if !meta.session.offline {
+            if let Some(action) = routing_view.recovery {
                 button { r#type: "button", class: "if-editor__offline-action",
-                    disabled: !running && meta.profile_name.is_none(),
-                    onclick: move |_| { let _ = commands.send(if running { EngineCommand::RefreshInput } else if faulted { EngineCommand::Retry } else { EngineCommand::Activate }); },
-                    if running { "Refresh devices" } else if faulted { "Retry" } else { "Start" }
+                    onclick: move |_| routing.dispatch.call(action), "{action.label()}"
                 }
             }
         }
@@ -92,6 +83,18 @@ mod tests {
     }
 
     fn harness(props: Props) -> Element {
+        use crate::routing::{Action, View};
+        crate::routing::provide_fixture(View {
+            pending: props.pending,
+            recovery: if props.offline {
+                None
+            } else if props.pending {
+                Some(Action::ReviewDevices)
+            } else {
+                Some(Action::Refresh)
+            },
+            ..Default::default()
+        });
         let mut state = AppState::new();
         state.engine_status = EngineStatus::Running;
         state.session.offline = props.offline;
@@ -136,6 +139,10 @@ mod tests {
     }
 
     fn injection_harness() -> Element {
+        crate::routing::provide_fixture(crate::routing::View {
+            recovery: Some(crate::routing::Action::Retry),
+            ..Default::default()
+        });
         let mut state = AppState::new();
         state.engine_status = EngineStatus::Faulted;
         state.active_profile = Some(Profile::new(

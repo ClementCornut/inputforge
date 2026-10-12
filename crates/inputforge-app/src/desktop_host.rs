@@ -80,10 +80,11 @@ fn desktop_root() -> Element {
     };
     use_context_provider(|| navigation);
     let instance = Arc::clone(&handles.instance);
-    tray::use_controller(handles.clone(), navigation, move || {
+    let routing = crate::routing::bindings(handles.clone(), navigation);
+    tray::use_controller(handles.clone(), routing, move || {
         if let Err(error) = instance.process_pending(tray::window::show_window) {
             tracing::warn!(%error, "failed to process editor activation request");
         }
     });
-    inputforge_gui_dx::render_editor(handles.state, handles.commands)
+    inputforge_gui_dx::render_editor(handles.state, handles.commands, routing)
 }

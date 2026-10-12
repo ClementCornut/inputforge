@@ -26,6 +26,7 @@ pub(in crate::output::uinput) struct Script {
     pub fail_destroy: BTreeSet<DeviceKey>,
     pub writes: VecDeque<io::Result<usize>>,
     pub write_delay: Duration,
+    pub destroy_delay: Duration,
 }
 
 pub(super) fn output(configs: Vec<VirtualDeviceConfig>) -> (Output, World) {
@@ -46,6 +47,7 @@ fn world() -> World {
         fail_destroy: BTreeSet::new(),
         writes: VecDeque::new(),
         write_delay: Duration::ZERO,
+        destroy_delay: Duration::ZERO,
     }))
 }
 
@@ -152,6 +154,8 @@ impl FakeHandle {
         self.closed = true;
         let mut script = self.world.lock().unwrap();
         script.calls.push((self.key, "destroy"));
+        let delay = script.destroy_delay;
+        script.now += delay;
         script.alive.remove(&self.key);
         script.calls.push((self.key, "close"));
         if script.fail_destroy.contains(&self.key) {
