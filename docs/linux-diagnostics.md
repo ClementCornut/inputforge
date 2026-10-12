@@ -12,12 +12,12 @@ cargo run --locked -p inputforge-diagnostics
 
 This command prints a one-shot report and exits. It does not start the GUI or engine,
 load profiles, create settings, read event streams, grab devices, create virtual
-devices, or change permissions. Normal Linux application startup still returns the
-existing unavailable-backends error. Diagnostics are a separate workspace tool in
-`tools/inputforge-diagnostics`, not an application flag. The tool accepts only
+devices, or change permissions. Normal Linux application startup opens the
+integrated editor; see [controller routing](linux-routing.md). Diagnostics are a
+separate workspace tool in `tools/inputforge-diagnostics`, not an application flag. The tool accepts only
 `--help` and `--version`; running it without arguments generates the report. No
-Dioxus assets are needed. The app no longer enables core's `evdev-input` feature;
-the tool owns that opt-in until an application backend needs it.
+Dioxus assets are needed. The diagnostics tool enables core's `evdev-input`
+feature; the Linux application enables both `evdev-input` and `uinput-output`.
 Building requires the existing Rust toolchain, pkg-config and libudev development
 files; the command does not install system packages.
 
@@ -123,12 +123,14 @@ substitute for the following live acceptance checks.
    must terminate promptly and release descriptors. Optional syscall tracing should
    show event nodes opened O_RDONLY and metadata ioctls, no event reads, EVIOCGRAB or
    uinput open/write. Do not trace unrelated application input streams.
-6. Run the application (`inputforge-app`) without arguments: expect the same
-   intentional Linux startup rejection. Its CLI no longer accepts `--diagnose-linux`.
+6. For separate integrated-app acceptance, run `dx run -p inputforge-app`: expect
+   the Linux editor to open. Its CLI does not accept `--diagnose-linux`; use the
+   standalone tool for this read-only diagnostic.
 
-Native-game/Proton output compatibility, capture acquisition/rollback, evdev state
-recovery, binding translation, calibration and keyboard/mouse output remain later
-slice work.
+Capture acquisition/rollback, evdev state recovery, binding translation,
+calibration, keyboard/mouse output, and native-game/Proton compatibility are
+outside this diagnostic's acceptance scope. Their implementation and validation
+status are tracked in [controller routing](linux-routing.md).
 
 ## Recorded live checks (2026-09-17)
 

@@ -1,5 +1,11 @@
 # InputForge Linux Portable Baseline Design
 
+Status as of 2026-10-12: historical Slice 1 design. Linux now starts the integrated
+editor with real evdev/uinput backends, including keyboard/mouse output. The
+startup rejection described below is superseded. See
+[controller routing and platform parity](../../linux-routing.md) for current
+behavior and remaining work.
+
 ## Goal
 
 Deliver Slice 1 of the Linux port: a portable build baseline, target-specific

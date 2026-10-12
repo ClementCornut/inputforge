@@ -93,9 +93,11 @@ exclusive capture is not a controller-hiding guarantee.
 Automated tests cover exact keyboard/mouse capability descriptions and encoding,
 bounded scripted writes and cleanup, engine lifecycle ordering, projection,
 mapping issue isolation, monitoring readiness, and snapshot rebaselining without
-launching a GUI or creating a real uinput device. Live Linux keyboard/mouse and
-controller desktop acceptance, native Windows runtime behavior, and
-native/Proton game recognition require separate host acceptance. Prior standalone
+launching a GUI or creating a real uinput device. On 2026-10-12, the user reported
+that the application works on Windows after their Windows fixes. This is user
+acceptance, not a recorded exhaustive platform test matrix. Live Linux
+keyboard/mouse and controller desktop acceptance and native/Proton game
+recognition still require separate host acceptance. Prior standalone
 results in [linux-streaming.md](linux-streaming.md) and
 [linux-uinput.md](linux-uinput.md) apply only to those tested components.
 
@@ -105,3 +107,43 @@ with that layout. Field edits do not recreate devices. Loading another profile
 stops routing and retains matching controllers; a different layout requires
 Apply before Start. Native failures can require releasing unusable resources;
 Retry remains explicit and passive input monitoring continues.
+
+## Platform parity status as of 2026-10-12
+
+Linux implements controller discovery and hotplug, passive monitoring and live
+rebind, exclusive evdev capture, configurable virtual controllers, keyboard
+combinations, five mouse buttons and vertical wheel pulses, axis interpretation
+and calibration, profile editing, recovery, and XDG autostart. Device removal and
+the recent axis-setting fixes are shared engine/editor behavior. These features
+do not need another Linux implementation.
+
+The remaining work is:
+
+| Area | Current behavior | Remaining work |
+| --- | --- | --- |
+| Physical-controller hiding | Exclusive evdev capture does not guarantee hiding from game input backends using joydev or hidraw. | Design and implement selected-controller hiding with rollback, crash/restart recovery, and unplug/replug restoration. Keep normal game launches unchanged. |
+| Tray and background operation | Linux opens visibly, has no tray, and quits on window close. Start-minimized opens visibly with an explanation. Autostart itself is implemented. | Add tray controls, close-to-tray, and start-minimized behavior with a usable fallback when a desktop has no tray support. |
+| Distribution and permission setup | Release automation tests and bundles Windows only. Linux access rules are a manual development setup. | Provide Linux CI, an Arch/CachyOS package or guided setup, narrowly scoped access rules, and upgrade/removal documentation. Keep the application unprivileged. |
+| Integrated host acceptance | Standalone evdev/uinput and isolated native SDL results cover only their documented scenarios. | Verify real-controller routing, keyboard/mouse delivery, cleanup and recovery, then ordinary native/Proton game recognition and absence of duplicate physical input while hiding is active. |
+
+Linux virtual controllers support 2–53 buttons, with 32 by default, eight available
+axes, and up to four hats. The old 128-button proposal is deliberately unsupported
+because its contiguous event-code range crossed unrelated input categories; see
+[uinput capabilities](linux-uinput.md). Profiles requesting larger layouts require
+adaptation. Loading a profile also does not make SDL and evdev device identities
+interchangeable; unresolved controls need explicit local binding/rebind.
+Pointer movement and physical keyboard/mouse capture are outside the existing
+action scope on both platforms, not missing Linux parity features.
+
+For the next session, first verify the integrated Linux routing baseline, then
+design physical hiding and its recovery before implementation. Finish game
+acceptance with normal launches after hiding is available. Packaging and tray
+support remain separate deliverables. No implementation or installation of this
+remaining work was performed in the documentation update.
+
+The earlier documents under `docs/superpowers/` are historical designs and plans;
+some are tracked, while newer ones are Git-ignored local files. Their original
+status, API sketches, startup rejection,
+128-button layout, and teardown descriptions are not the current implementation
+contract; use this guide and the component acceptance documents for current
+behavior.

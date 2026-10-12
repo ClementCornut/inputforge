@@ -2,7 +2,16 @@
 
 **Date:** 2026-07-11
 
-**Status:** Approved for implementation
+**Status as of 2026-10-12:** Portable baseline, evdev input, controller routing,
+and keyboard/mouse output are implemented. Linux distribution and integrated
+native/Proton acceptance remain unfinished; physical hiding and tray parity are
+also pending. Windows operation was confirmed by the user on 2026-10-12.
+
+This is the original design, not the current implementation contract. Later work
+changed binding handling, retained-controller teardown, the diagnostics CLI, and
+the virtual-controller limit (53 buttons maximum, 32 by default). Use
+[controller routing and platform parity](../../linux-routing.md) for current
+behavior and the next-session backlog.
 
 ## Goal
 

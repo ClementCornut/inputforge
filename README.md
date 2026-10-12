@@ -15,10 +15,12 @@ Remap physical joystick, pedal, and throttle inputs to virtual devices.
 - Windows app builds need `SDL/SDL3.dll` from the repository's Git LFS files.
   Installer packaging also requires the NSIS tooling used by Dioxus.
 
-The full application currently runs on Windows. On Linux it deliberately exits
-with an unavailable-backends message before starting the GUI: evdev and uinput
-support are not implemented yet. The GUI demo and gallery are separate development
-harnesses; they do not provide hardware input/output support.
+The full application has Windows and Linux backends. Windows uses SDL3, vJoy,
+and Win32 keyboard/mouse output; Linux uses evdev and uinput controller,
+keyboard, and mouse output. Both use the same mapping editor and engine.
+See [controller routing and platform parity](docs/linux-routing.md) for setup,
+implemented features, remaining Linux work, and validation boundaries.
+The GUI demo and gallery use mock data rather than hardware input/output.
 
 ## Common tasks
 

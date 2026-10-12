@@ -1,5 +1,10 @@
 # InputForge Linux Portable Baseline Implementation Plan
 
+Status as of 2026-10-12: historical Slice 1 plan. The portable foundation and later
+Linux routing/output stages are implemented; do not execute these old steps or
+restore startup rejection. Historical checkboxes and file hashes below are not a
+current backlog. See [controller routing and platform parity](../../linux-routing.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver Slice 1 of the Linux port: hardware-free defaults, target-specific backend composition, deterministic unsupported-Linux startup, preserved Windows behavior, generic virtual-device copy, and frozen v0.2.0 profile compatibility.
