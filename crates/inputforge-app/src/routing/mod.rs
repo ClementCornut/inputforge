@@ -1,5 +1,5 @@
 //! Shared routing effects and editor bindings for Windows and Linux.
-pub(crate) mod policy;
+pub(crate) use inputforge_app::routing_policy as policy;
 #[cfg(test)]
 mod tests;
 
@@ -16,7 +16,6 @@ use std::sync::mpsc;
 
 pub(crate) fn bindings(handles: DesktopHandles, mut navigation: EditorNavigation) -> Bindings {
     Bindings {
-        project: policy::view,
         dispatch: Callback::new(move |action| {
             if let Err(error) = dispatch(action, &handles.state, &handles.commands, || {
                 crate::tray::window::show_window();

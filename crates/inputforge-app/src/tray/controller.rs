@@ -50,7 +50,7 @@ pub(crate) fn use_controller(
             TrayAction::Show => window::show_window(),
             TrayAction::Quit => window::request_quit(),
             TrayAction::Toggle => {
-                let action = (routing.project)(&handles.state.read()).toggle;
+                let action = crate::routing::policy::view(&handles.state.read()).toggle;
                 if let Some(action) = action {
                     routing.dispatch.call(action);
                 }
@@ -62,7 +62,7 @@ pub(crate) fn use_controller(
             let Some(state) = tick_state.try_read() else {
                 return;
             };
-            let action = (routing.project)(&state).toggle;
+            let action = crate::routing::policy::view(&state).toggle;
             drop(state);
             let label = match action {
                 Some(Action::ReviewDevices) => "Review controller changes",

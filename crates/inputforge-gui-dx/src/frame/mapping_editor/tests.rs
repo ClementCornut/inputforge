@@ -159,7 +159,7 @@ fn live_snapshot_with_axes(axes: Vec<(f64, AxisPolarity)>) -> LiveSnapshot {
 /// at index 0 with the supplied `output_axes`. Tests pair this with
 /// `add_vjoy_device` on the `AppState` so `cfg.virtual_devices[0]` aligns
 /// with `live.output_values[0]`, matching the production projection in
-/// `LiveSnapshot::from_state`.
+/// the app live projection.
 fn live_snapshot_with_axes_and_outputs(
     axes: Vec<(f64, AxisPolarity)>,
     output_axes: Vec<(VJoyAxis, f64)>,
@@ -553,7 +553,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     use_context_provider(|| raw.clone());
 
     let selection: crate::frame::MappingKey = ("Default".to_owned(), addr.clone());
-    let snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
+    let snap = inputforge_app::bridge::prepare(&raw.state.read(), Some(&selection)).config;
     let meta = use_signal(|| MetaSnapshot {
         engine_status: runtime_engine_status,
         profile_name: Some("P".to_owned()),
@@ -701,8 +701,8 @@ fn LiveReadoutExpandHarness(props: LiveReadoutExpandHarnessProps) -> Element {
     use_context_provider(|| raw.clone());
 
     let selection: crate::frame::MappingKey = ("Default".to_owned(), primary.clone());
-    let snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
-    let live_snapshot = LiveSnapshot::from_state(&raw.state.read(), &snap);
+    let snap = inputforge_app::bridge::prepare(&raw.state.read(), Some(&selection)).config;
+    let live_snapshot = inputforge_app::bridge::prepare(&raw.state.read(), Some(&selection)).live;
     let meta = use_signal(|| MetaSnapshot {
         engine_status: EngineStatus::Running,
         profile_name: Some("P".to_owned()),
@@ -1105,7 +1105,7 @@ fn editor_undo_recap_shows_label_and_kbd_hint() {
         use_context_provider(|| raw.clone());
 
         let selection: crate::frame::MappingKey = ("Default".to_owned(), addr.clone());
-        let snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
+        let snap = inputforge_app::bridge::prepare(&raw.state.read(), Some(&selection)).config;
         let meta = use_signal(|| MetaSnapshot {
             engine_status: EngineStatus::Running,
             profile_name: Some("P".to_owned()),

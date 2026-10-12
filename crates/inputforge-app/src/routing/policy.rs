@@ -2,7 +2,9 @@
 use inputforge_core::state::{AppState, EngineStatus};
 use inputforge_gui_dx::routing::{Action, View};
 
-pub(crate) fn view(state: &AppState) -> View {
+/// Prepare available routing actions from current engine state.
+#[must_use]
+pub fn view(state: &AppState) -> View {
     let active = matches!(
         state.engine_status,
         EngineStatus::Running | EngineStatus::Starting
@@ -63,7 +65,9 @@ pub(crate) fn view(state: &AppState) -> View {
     }
 }
 
-pub(crate) fn resolve(state: &AppState, action: Action) -> Option<Action> {
+/// Revalidate a requested action against current engine state.
+#[must_use]
+pub fn resolve(state: &AppState, action: Action) -> Option<Action> {
     let view = view(state);
     // A previously rendered Start must never bypass a newly pending layout.
     if view.pending && matches!(action, Action::Start | Action::Retry) {

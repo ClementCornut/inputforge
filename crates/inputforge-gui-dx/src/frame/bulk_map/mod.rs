@@ -1112,7 +1112,7 @@ fn apply_for_test(
     // accessor so the test exercises the same alias lookup path
     // (alias > hardware > id, with disconnected-but-remembered
     // devices covered through `device_registry`).
-    let cfg = ConfigSnapshot::from_state(state, None);
+    let cfg = inputforge_app::bridge::prepare(state, None).config;
     let source_display_name = wizard
         .source_device_id
         .as_ref()

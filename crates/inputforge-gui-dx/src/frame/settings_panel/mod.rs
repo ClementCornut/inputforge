@@ -180,7 +180,7 @@ mod tests {
     fn polled_settings_signal_reflects_state_snapshot_config() {
         // Verifies the mirror chain end to end:
         // engine writes AppState.snapshot_config (Task 1.5);
-        // bridge polls SettingsSnapshot::from_state into ctx.settings (Task 5);
+        // the app bridge publishes prepared settings into ctx.settings;
         // SnapshotsSection reads ctx.settings.snapshot.max_count.
         // The PolledHarness above exercises the second and third hops in
         // isolation; this test seeds the source-of-truth and asserts the

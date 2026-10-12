@@ -1,5 +1,5 @@
 use super::controller_session::ControllerSession;
-use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
+use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, SettingsSnapshot};
 use dioxus::prelude::*;
 use inputforge_core::{
     output::traits::ControllerCapabilities,
@@ -82,8 +82,8 @@ fn harness(props: HarnessProps) -> Element {
         state.session.output_layout[0].button_count = 52;
     }
     state.active_profile = Some(profile);
-    let meta = use_signal(|| MetaSnapshot::from_state(&state));
-    let config = use_signal(|| ConfigSnapshot::from_state(&state, None));
+    let meta = use_signal(|| inputforge_app::bridge::prepare(&state, None).meta);
+    let config = use_signal(|| inputforge_app::bridge::prepare(&state, None).config);
     let live = use_signal(LiveSnapshot::default);
     let settings = use_signal(SettingsSnapshot::default);
     let (commands, _rx) = mpsc::channel();
@@ -215,7 +215,7 @@ fn axis_harness(props: AxisHarnessProps) -> Element {
     if !props.profile_loaded {
         state.session.bindings = vec![binding];
     }
-    let meta = use_signal(|| MetaSnapshot::from_state(&state));
+    let meta = use_signal(|| inputforge_app::bridge::prepare(&state, None).meta);
     let config = use_signal(|| snapshot);
     let live = use_signal(LiveSnapshot::default);
     let settings = use_signal(SettingsSnapshot::default);

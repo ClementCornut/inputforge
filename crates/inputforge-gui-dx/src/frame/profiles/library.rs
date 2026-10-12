@@ -141,7 +141,7 @@ pub(crate) fn ProfileLibrary(
                     // path). When an external profile shares its name with
                     // a library profile, name-keying matches both rows
                     // because the external row is appended to
-                    // `meta.profile_rows` (`context.rs:267-271`). Two
+                    // `meta.profile_rows`. Two
                     // simultaneous rename inputs steal focus from each
                     // other and the loser's `onblur` clears
                     // `rename_profile`, so the click looks like it does

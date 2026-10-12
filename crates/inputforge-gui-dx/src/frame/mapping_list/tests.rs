@@ -949,9 +949,9 @@ fn mapping_list_renders_axes_and_buttons_groups_in_order() {
         let mut cfg_signal = use_context::<AppContext>().config;
         let mut meta_signal = use_context::<AppContext>().meta;
         use_hook(move || {
-            let cfg = ConfigSnapshot::from_state(&state, None);
+            let cfg = inputforge_app::bridge::prepare(&state, None).config;
             cfg_signal.set(cfg);
-            let meta = MetaSnapshot::from_state(&state);
+            let meta = inputforge_app::bridge::prepare(&state, None).meta;
             meta_signal.set(meta);
         });
 
@@ -1026,8 +1026,8 @@ fn context_menu_renders_when_menu_open_is_set() {
         let mut cfg_signal = ctx_app.config;
         let mut meta_signal = ctx_app.meta;
         use_hook(move || {
-            cfg_signal.set(ConfigSnapshot::from_state(&state, None));
-            meta_signal.set(MetaSnapshot::from_state(&state));
+            cfg_signal.set(inputforge_app::bridge::prepare(&state, None).config);
+            meta_signal.set(inputforge_app::bridge::prepare(&state, None).meta);
         });
 
         rsx! { MappingList {} }
@@ -1256,8 +1256,8 @@ fn rail_with_seeded_snapshot_renders_groups_rows_and_glyphs() {
         let mut cfg_signal = ctx_app.config;
         let mut meta_signal = ctx_app.meta;
         use_hook(move || {
-            cfg_signal.set(ConfigSnapshot::from_state(&state, None));
-            meta_signal.set(MetaSnapshot::from_state(&state));
+            cfg_signal.set(inputforge_app::bridge::prepare(&state, None).config);
+            meta_signal.set(inputforge_app::bridge::prepare(&state, None).meta);
         });
 
         rsx! { MappingList {} }
@@ -1323,8 +1323,8 @@ fn active_row_carries_is_active_class_in_full_rail() {
         let view = use_context::<crate::frame::view_state::ViewState>();
         let mut sel = view.selected_mapping;
         use_hook(move || {
-            cfg_signal.set(ConfigSnapshot::from_state(&state, None));
-            meta_signal.set(MetaSnapshot::from_state(&state));
+            cfg_signal.set(inputforge_app::bridge::prepare(&state, None).config);
+            meta_signal.set(inputforge_app::bridge::prepare(&state, None).meta);
             sel.set(Some(("Default".to_owned(), target_input)));
         });
 
@@ -1433,8 +1433,8 @@ fn mode_tabs_active_tab_renders_canonical_if_tab_active_class() {
         let mf: Signal<Option<String>> = use_signal(|| None);
         use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeFocusSignal(mf));
         use_hook(move || {
-            cfg_signal.set(ConfigSnapshot::from_state(&state, None));
-            meta_signal.set(MetaSnapshot::from_state(&state));
+            cfg_signal.set(inputforge_app::bridge::prepare(&state, None).config);
+            meta_signal.set(inputforge_app::bridge::prepare(&state, None).meta);
         });
 
         rsx! { ModeTabs {} }
@@ -1492,8 +1492,8 @@ fn mode_tabs_add_button_lives_outside_tablist() {
         let mf: Signal<Option<String>> = use_signal(|| None);
         use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeFocusSignal(mf));
         use_hook(move || {
-            cfg_signal.set(ConfigSnapshot::from_state(&state, None));
-            meta_signal.set(MetaSnapshot::from_state(&state));
+            cfg_signal.set(inputforge_app::bridge::prepare(&state, None).config);
+            meta_signal.set(inputforge_app::bridge::prepare(&state, None).meta);
         });
 
         rsx! { ModeTabs {} }
@@ -1557,8 +1557,8 @@ fn mode_tabs_running_pip_uses_canonical_class() {
         let mf: Signal<Option<String>> = use_signal(|| None);
         use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeFocusSignal(mf));
         use_hook(move || {
-            cfg_signal.set(ConfigSnapshot::from_state(&state, None));
-            meta_signal.set(MetaSnapshot::from_state(&state));
+            cfg_signal.set(inputforge_app::bridge::prepare(&state, None).config);
+            meta_signal.set(inputforge_app::bridge::prepare(&state, None).meta);
         });
 
         rsx! { ModeTabs {} }
@@ -1614,8 +1614,8 @@ fn group_header_renders_post_filter_row_count() {
         let mut cfg_signal = use_context::<AppContext>().config;
         let mut meta_signal = use_context::<AppContext>().meta;
         use_hook(move || {
-            cfg_signal.set(ConfigSnapshot::from_state(&state, None));
-            meta_signal.set(MetaSnapshot::from_state(&state));
+            cfg_signal.set(inputforge_app::bridge::prepare(&state, None).config);
+            meta_signal.set(inputforge_app::bridge::prepare(&state, None).meta);
         });
 
         rsx! { MappingList {} }

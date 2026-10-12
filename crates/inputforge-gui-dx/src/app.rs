@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::bridge::spawn_polling_task;
+use crate::bridge::Publisher;
 use crate::context::{
     AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
 };
@@ -64,9 +64,9 @@ pub(crate) fn app_root() -> Element {
     let last_seen = use_signal(|| ctx.meta.peek().warnings.len());
     use_effect(install_warnings_bridge(ctx.clone(), toast_queue, last_seen));
 
-    // Polling task, bridges AppState into Dioxus signals. One-shot per scope
-    // mount; auto-cancelled when the runtime tears down.
-    use_hook(|| spawn_polling_task(ctx.clone(), view, routing, bindings.project));
+    // Start the app-owned bridge once after its GUI signals are initialized.
+    let start_polling = use_context::<Callback<Publisher>>();
+    use_hook(|| start_polling.call(Publisher::new(ctx.clone(), view, routing)));
 
     // F13: window-level Ctrl+S handler that dispatches the manual snapshot
     // command when focus is outside editable or modal UI. Installed at the

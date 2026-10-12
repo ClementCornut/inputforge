@@ -11,6 +11,7 @@
 use std::path::PathBuf;
 
 use dioxus::prelude::*;
+#[cfg(test)]
 use inputforge_core::types::InputAddress;
 
 use crate::context::MetaSnapshot;
@@ -19,7 +20,7 @@ use crate::context::MetaSnapshot;
 ///
 /// Used by `view.selected_mapping`, `ConfigSnapshot.selected_mapping_key`,
 /// the `UndoLog` map key, and every editor key passing.
-pub(crate) type MappingKey = (String, InputAddress);
+pub(crate) use crate::snapshots::MappingKey;
 
 /// Which right-side panel is currently mounted.
 ///

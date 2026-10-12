@@ -81,7 +81,7 @@ fn provide_mode_tabs_contexts() {
 }
 
 /// Build an `AppState` with the supplied flat modes and a single bound mapping
-/// so `ConfigSnapshot::from_state` produces a non-empty render.
+/// so the app projection produces a non-empty render.
 fn build_state(mode_names: &[&str], current: &str) -> AppState {
     let modes = Modes::new(mode_names.iter().map(|mode| (*mode).to_owned()).collect()).unwrap();
     let mappings = vec![Mapping {
@@ -131,8 +131,8 @@ fn StateBootstrap(props: StateBootstrapProps) -> Element {
     let mut meta_signal = ctx_app.meta;
     let state_for_hook = Arc::clone(&props.state.0);
     use_hook(move || {
-        cfg_signal.set(ConfigSnapshot::from_state(state_for_hook.as_ref(), None));
-        meta_signal.set(MetaSnapshot::from_state(state_for_hook.as_ref()));
+        cfg_signal.set(inputforge_app::bridge::prepare(state_for_hook.as_ref(), None).config);
+        meta_signal.set(inputforge_app::bridge::prepare(state_for_hook.as_ref(), None).meta);
     });
     rsx! { ModeTabs {} }
 }

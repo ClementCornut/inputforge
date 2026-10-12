@@ -63,7 +63,7 @@ fn show_devices(reason: &MappingIssueReason) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::{ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
+    use crate::context::{ConfigSnapshot, LiveSnapshot, SettingsSnapshot};
     use inputforge_core::{
         output::{OutputFailure, OutputKind, OutputPhase},
         state::{AppState, MappingIssue},
@@ -99,7 +99,7 @@ mod tests {
                 },
             },
         ];
-        let meta = use_signal(|| MetaSnapshot::from_state(&state));
+        let meta = use_signal(|| inputforge_app::bridge::prepare(&state, None).meta);
         let config = use_signal(ConfigSnapshot::default);
         let live = use_signal(LiveSnapshot::default);
         let settings = use_signal(SettingsSnapshot::default);
@@ -134,7 +134,7 @@ mod tests {
                 },
             },
         }];
-        let meta = use_signal(|| MetaSnapshot::from_state(&state));
+        let meta = use_signal(|| inputforge_app::bridge::prepare(&state, None).meta);
         let config = use_signal(ConfigSnapshot::default);
         let live = use_signal(LiveSnapshot::default);
         let settings = use_signal(SettingsSnapshot::default);

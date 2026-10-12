@@ -52,7 +52,7 @@ pub(crate) fn EnginePill() -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::{ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
+    use crate::context::{ConfigSnapshot, LiveSnapshot, SettingsSnapshot};
     use inputforge_core::{
         profile::controllers::ControllerConfig, state::AppState, types::VirtualDeviceConfig,
     };
@@ -76,7 +76,7 @@ mod tests {
             button_count: 2,
             hat_count: 0,
         }];
-        let mut meta = MetaSnapshot::from_state(&state);
+        let mut meta = inputforge_app::bridge::prepare(&state, None).meta;
         meta.profile_name = Some("test".into());
         let meta = use_signal(|| meta);
         let config = use_signal(|| ConfigSnapshot {

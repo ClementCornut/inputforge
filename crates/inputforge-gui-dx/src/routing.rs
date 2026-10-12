@@ -2,8 +2,10 @@
 //!
 //! Hosts supply the decision model; components only render it and forward actions.
 use dioxus::prelude::*;
-use inputforge_core::state::AppState;
+#[cfg(test)]
+pub use inputforge_gui_dx::routing::{Action, Bindings, View};
 
+#[cfg(not(test))]
 /// Routing operation requested by a rendered control.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
@@ -19,6 +21,7 @@ pub enum Action {
     ReviewDevices,
 }
 
+#[cfg(not(test))]
 /// Available actions prepared by the application; absent actions are disabled.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct View {
@@ -36,16 +39,15 @@ pub struct View {
     pub refresh: Option<Action>,
 }
 
-/// App-owned projection and dispatch used by the existing snapshot bridge.
+#[cfg(not(test))]
+/// App-owned dispatch for rendered routing actions.
 #[derive(Clone, Copy, Debug)]
 pub struct Bindings {
-    /// Pure projection; called while the bridge holds its engine read lock.
-    // shortcut: raw state remains at the existing bridge boundary, remove with bridge extraction.
-    pub project: fn(&AppState) -> View,
     /// Revalidate current engine state and execute a requested action.
     pub dispatch: Callback<Action>,
 }
 
+#[cfg(not(test))]
 impl Action {
     /// Short display label for a routing action.
     #[must_use]
@@ -60,7 +62,7 @@ impl Action {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct Context {
     pub view: Signal<View>,
     pub dispatch: Callback<Action>,

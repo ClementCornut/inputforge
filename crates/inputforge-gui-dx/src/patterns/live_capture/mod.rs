@@ -136,7 +136,11 @@ pub(crate) fn use_live_capture_provider() -> LiveCapture {
             };
             (
                 guard.input_cache.clone_compact(),
-                crate::context::session::CaptureEpoch::from_state(&guard),
+                crate::context::session::CaptureEpoch {
+                    generation: guard.session.generation,
+                    ready: guard.session.ready,
+                    allowed: !guard.session.offline,
+                },
             )
         };
         let previous = *previous_generation.peek();

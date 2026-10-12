@@ -2717,6 +2717,7 @@ name = "inputforge-app"
 version = "0.3.1"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "dioxus",
  "glib",
@@ -2731,6 +2732,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tray-icon 0.26.1",
+ "ulid",
  "uuid",
  "windows 0.62.2",
  "zbus",
@@ -2794,7 +2796,9 @@ dependencies = [
  "chrono",
  "dioxus",
  "dioxus-ssr",
+ "inputforge-app",
  "inputforge-core",
+ "inputforge-gui-dx",
  "parking_lot",
  "rfd",
  "scraper",

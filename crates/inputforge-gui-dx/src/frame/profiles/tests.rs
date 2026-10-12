@@ -11,7 +11,7 @@ use inputforge_core::profile::Profile;
 use inputforge_core::snapshot::{SnapshotConfig, SnapshotId, SnapshotKind, create};
 use inputforge_core::state::{AppState, ProfileOrigin};
 
-use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
+use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, SettingsSnapshot};
 use crate::context::{ProfileRowOrigin, ProfileRowView, SnapshotRowView};
 use crate::frame::layout::EmptyState;
 use crate::frame::profiles::ProfilesPanel;
@@ -54,7 +54,7 @@ fn sample_profiles_context() -> AppState {
 #[component]
 fn ProfilesHarness() -> Element {
     let app_state = sample_profiles_context();
-    let initial_meta = MetaSnapshot::from_state(&app_state);
+    let initial_meta = inputforge_app::bridge::prepare(&app_state, None).meta;
     let state = Arc::new(RwLock::new(app_state));
     let (commands, _rx) = mpsc::channel();
     let meta = use_signal(|| initial_meta.clone());
@@ -111,7 +111,7 @@ fn sample_snapshot_context() -> Vec<SnapshotRowView> {
         kind_label: "Manual".to_owned(),
         label: Some("Before trim".to_owned()),
         time_relative: "12m ago".to_owned(),
-        time_absolute: "2026-05-06 20:00 UTC".to_owned(),
+        time_absolute: "2026-05-06 22:00 +02:00".to_owned(),
         sort_key: 1,
         pinned: true,
     }]
@@ -124,7 +124,7 @@ fn sample_session_start_row() -> SnapshotRowView {
         kind_label: "Session start".to_owned(),
         label: None,
         time_relative: "just now".to_owned(),
-        time_absolute: "2026-05-07 14:42 UTC".to_owned(),
+        time_absolute: "2026-05-07 16:42 +02:00".to_owned(),
         sort_key: 0,
         pinned: false,
     }
@@ -133,7 +133,7 @@ fn sample_session_start_row() -> SnapshotRowView {
 #[component]
 fn SnapshotDrawerHarness(rows: Vec<SnapshotRowView>, open: bool) -> Element {
     let app_state = sample_profiles_context();
-    let initial_meta = MetaSnapshot::from_state(&app_state);
+    let initial_meta = inputforge_app::bridge::prepare(&app_state, None).meta;
     let state = Arc::new(RwLock::new(app_state));
     let (commands, _rx) = mpsc::channel();
     let meta = use_signal(|| initial_meta.clone());
@@ -230,7 +230,7 @@ fn sample_profile_rows(active: &str, names: &[&str]) -> Vec<ProfileRowView> {
 #[component]
 fn ProfilesHarnessWithMode(mode: ProfilesPanelMode) -> Element {
     let app_state = sample_profiles_context();
-    let initial_meta = MetaSnapshot::from_state(&app_state);
+    let initial_meta = inputforge_app::bridge::prepare(&app_state, None).meta;
     let state = Arc::new(RwLock::new(app_state));
     let (commands, _rx) = mpsc::channel();
     let meta = use_signal(|| initial_meta.clone());
@@ -908,7 +908,8 @@ fn snapshot_row_renders_two_line_layout_with_icon_only_actions() {
     assert!(html.contains("class=\"snapshot-row__label\""));
     assert!(html.contains("title=\"Before trim\""));
     assert!(html.contains("<time"));
-    assert!(html.contains("datetime=\"2026-05-06 20:00 UTC\""));
+    assert!(html.contains("datetime=\"2026-05-06 22:00 +02:00\""));
+    assert!(html.contains("title=\"2026-05-06 22:00 +02:00\""));
     assert!(html.contains("12m ago"));
     // The old single-line grouping is retired.
     assert!(!html.contains("snapshot-row__title"));

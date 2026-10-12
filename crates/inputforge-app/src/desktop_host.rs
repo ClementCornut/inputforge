@@ -86,5 +86,9 @@ fn desktop_root() -> Element {
             tracing::warn!(%error, "failed to process editor activation request");
         }
     });
-    inputforge_gui_dx::render_editor(handles.state, handles.commands, routing)
+    let state = Arc::clone(&handles.state);
+    let start_polling = Callback::new(move |publisher| {
+        crate::bridge::spawn_polling_task(Arc::clone(&state), publisher);
+    });
+    inputforge_gui_dx::render_editor(handles.state, handles.commands, routing, start_polling)
 }

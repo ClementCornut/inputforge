@@ -31,10 +31,10 @@ use crate::toast::{ToastQueue, ToastState};
 pub(super) fn provide(state: AppState) -> (AppContext, mpsc::Receiver<EngineCommand>) {
     let (tx, rx) = mpsc::channel();
     // Mirror production wiring: ctx.config is populated from state via
-    // `ConfigSnapshot::from_state`, so the bulk-map panel sees the
+    // the app projection, so the bulk-map panel sees the
     // resolved `device_display_names` map without each test having to
     // build it by hand.
-    let initial_config = ConfigSnapshot::from_state(&state, None);
+    let initial_config = inputforge_app::bridge::prepare(&state, None).config;
     let ctx = AppContext {
         state: Arc::new(RwLock::new(state)),
         commands: tx,

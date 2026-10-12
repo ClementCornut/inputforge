@@ -793,7 +793,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     use_context_provider(|| raw.clone());
 
     let selection = ("Default".to_owned(), addr.clone());
-    let mut snap = ConfigSnapshot::from_state(&raw.state.read(), Some(&selection));
+    let mut snap = inputforge_app::bridge::prepare(&raw.state.read(), Some(&selection)).config;
     // Inject test-supplied virtual devices into the snapshot so body
     // components (Task 23+) that read `cfg.virtual_devices` see them.
     if !virtual_devices.is_empty() {

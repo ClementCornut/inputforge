@@ -66,7 +66,7 @@ pub(crate) fn EngineOfflineBanner() -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::{ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
+    use crate::context::{ConfigSnapshot, LiveSnapshot, SettingsSnapshot};
     use inputforge_core::{
         mode::Modes,
         output::{OutputFailure, OutputKind, OutputPhase},
@@ -122,7 +122,7 @@ mod tests {
                 ..Default::default()
             });
         }
-        let meta = use_signal(|| MetaSnapshot::from_state(&state));
+        let meta = use_signal(|| inputforge_app::bridge::prepare(&state, None).meta);
         let config = use_signal(|| snapshot);
         let live = use_signal(LiveSnapshot::default);
         let settings = use_signal(SettingsSnapshot::default);
@@ -170,7 +170,7 @@ mod tests {
                 cleanup: vec![],
             },
         ];
-        let meta = use_signal(|| MetaSnapshot::from_state(&state));
+        let meta = use_signal(|| inputforge_app::bridge::prepare(&state, None).meta);
         let config = use_signal(ConfigSnapshot::default);
         let live = use_signal(LiveSnapshot::default);
         let settings = use_signal(SettingsSnapshot::default);

@@ -5,6 +5,7 @@
 //! Parses portable command-line arguments before dispatching to the current
 //! platform. Hardware sessions begin only after an explicit engine command.
 
+use inputforge_app::bridge;
 mod cli;
 mod desktop;
 mod desktop_host;
