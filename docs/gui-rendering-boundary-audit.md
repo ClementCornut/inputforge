@@ -17,7 +17,8 @@ Requirements:
   Transitive dependencies may retain X11 support.
 
 The original audit was read-only. The status below now also records the first
-implemented routing, polling, and basic controller-workflow extractions; the remaining findings are still open.
+implemented routing, polling, controller-workflow, and advanced-axis extractions;
+the remaining findings are still open.
 
 ## Resolved routing controls — 2026-10-12
 
@@ -46,8 +47,9 @@ Unchanged routing models do not trigger redundant signal updates. No second
 polling loop was introduced, and the native tray dispatch cadence is unchanged.
 
 **Controller selection, basic virtual-layout edits, and Apply in #2 are now
-app-owned:** see the controller-workflow slice below. Advanced axis settings and
-configuration-editing/readiness gates outside these controls remain open.
+app-owned:** see the controller-workflow slice below. Advanced axis settings are
+also app-owned in the later axis slice. Other configuration-editing/readiness gates
+outside these controls remain open.
 **#1 is partially resolved:** polling, snapshot preparation, and the basic
 controller workflow now belong to the app. Other GUI workflow handlers still
 receive engine handles and commands while their ownership remains to be extracted.
@@ -94,8 +96,9 @@ The polling and snapshot-preparation part of finding **#1** is resolved:
 
 **Still open in #1:** raw engine reads and command senders used by remaining GUI
 workflow handlers, including capture revalidation. The later controller slice
-below resolves basic selection/layout/Apply ownership in #2; advanced axis
-settings, other configuration gates, and findings #3–10 remain open. Finding #7's
+below resolves basic selection/layout/Apply ownership in #2; the later axis slice
+resolves advanced axis settings. Other configuration gates and findings #3–10
+remain open. Finding #7's
 polling metadata read is resolved; dialogs, clipboard, and other services remain.
 
 Behavioral projection and capture-epoch tests moved to
@@ -201,10 +204,11 @@ controller-only changes and unchanged-frame suppression. The renderer integratio
 fixture now opens Devices and verifies prepared native-slot updates on the existing
 cadence, contention recovery, single installation, teardown, and remount.
 
-**Still open:** advanced axis settings, capture, mappings/undo, device removal,
+**Still open after this controller slice:** capture, mappings/undo, device removal,
 profiles/modes/settings, OS services, other configuration/readiness gates, and
 other workflows in findings #1–10. Transitional raw handles remain for those
-workflows. This slice has no new native acceptance evidence; the earlier
+workflows. Advanced axis settings moved in the later axis slice below.
+This controller slice has no new native acceptance evidence; the earlier
 successful user-reported Apply timeout retest is retained below.
 
 ## Controller-slice verification
@@ -264,6 +268,119 @@ repeat the applicable checks on Windows for separate platform acceptance.
    remain. This is manual lifecycle acceptance; automated fixtures do not prove
    native kernel timing, Windows behavior, compositor compatibility, or performance.
 
+## Advanced-axis slice — 2026-10-12
+
+The advanced axis settings portions of findings **#1** and **#2** are resolved:
+
+- [App axis preparation and resolution](../crates/inputforge-app/src/controllers/axes.rs)
+  select live session bindings first and saved profile bindings only for devices
+  absent from the live table. Rows resolve persisted detection/override choices
+  by native axis code, independently of logical display indices.
+- The existing [controller contract](../crates/inputforge-gui-dx/src/controllers.rs)
+  now carries axis rows and raw select-value/redetection intents. Each intent
+  includes device identity, logical index, and native code. The existing app
+  dispatcher rechecks the current table and refuses obsolete identities, removed
+  slots, offline operations, or unavailable redetection before delivering commands.
+- Global overrides remain available online regardless of Running/Starting,
+  profile presence, input readiness, retained capture, or virtual-layout ownership.
+  Redetection additionally requires a monitored device and a resolving axis.
+  These rules intentionally differ from the basic controller-editing lock.
+- App preparation and dispatch reuse `DeviceBinding::validate()`; redetection
+  reuses `DeviceBinding::resolves()`. Malformed tables produce no rendered rows,
+  and attempted operations against them return core validation feedback.
+  The core axis engine and adapters retain sampling, detection heuristics,
+  automatic/manual interpretation, persistence/rollback, and cached-value updates.
+- [Axis rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs)
+  retains shared controls, display labels/formatting, and callback wiring. It
+  no longer selects binding tables, resolves settings, decides availability,
+  interprets field events, or sends engine commands. The sole-consumer raw
+  `ConfigSnapshot.axis_settings` map and its per-tick copy were removed.
+- Axis operations reuse the existing visible controller alert and app callback
+  feedback, including failed command delivery and clearing on successful delivery.
+  Dispatch releases the engine guard before delivery and never optimistically
+  changes persisted settings. Backend persistence failures retain core warnings.
+
+Axis rows travel in the existing coherent controller projection and equality-gated
+publication. No extra poller, timer, thread, channel, dependency, host API, or generic
+workflow framework was introduced. Immediate sampling, the 16 ms cadence,
+nonblocking contention skips, tray cadence, scope teardown, and remount are intact.
+The existing no-profile editor shell still hides Devices; app policy and isolated
+axis rendering support no-profile data without changing that shell workflow.
+
+[App regressions](../crates/inputforge-app/tests/axes.rs) cover sparse native codes,
+live precedence/saved fallback, separate devices sharing native codes, logical
+reordering, stale callbacks, missing devices/indices, automatic/manual choices,
+readiness/monitoring/offline/resolution gates, core rejection of malformed tables,
+failed delivery, and absence of optimistic settings mutation.
+[Renderer regressions](../crates/inputforge-gui-dx/src/frame/panel_slot/controller_session_tests.rs)
+retain prepared values and shared controls and make prepared availability disagree
+with metadata. [Actual event regressions](../crates/inputforge-gui-dx/src/frame/panel_slot/controller_events_tests.rs)
+verify native identity and raw field values reach app callbacks with no raw engine
+dispatch. [Real-bindings feedback](../crates/inputforge-gui-dx/tests/controller_feedback.rs)
+covers invalid values, failed delivery, clearing, and unchanged settings.
+[Publication](../crates/inputforge-gui-dx/src/bridge_tests.rs) covers axis-only updates
+and unchanged rows; [the polling fixture](../crates/inputforge-gui-dx/tests/editor_bridge.rs)
+now verifies axis detection updates on the existing cadence, contention recovery,
+single installation, teardown, and remount.
+
+**Still open:** capture, mappings/undo, device removal, profiles/modes/settings,
+OS services, other configuration/readiness gates, and other workflows in findings
+#1–10. Transitional raw handles remain for those workflows. This extraction has
+no new native acceptance evidence; the previous Apply timeout/native retest block
+is preserved below without changes.
+
+## Advanced-axis verification
+
+- Regression tests preceded the extraction. The new app contract first failed
+  to compile for missing axis rows/actions; after the minimal contract was added,
+  five app cases failed for missing projection, dispatch, and validation behavior.
+  GUI regressions separately failed for ignored prepared availability and missing
+  prepared controls/events/feedback. These cases now pass through real app bindings.
+- `cargo test --workspace --locked --offline`: **2,082 passed, 0 failed,
+  11 ignored**. The sandbox run could not create local IPC sockets in the five
+  existing single-instance tests; the host-enabled rerun passed. This includes
+  core detection/override/Auto/redetection persistence, save rollback, cached
+  polarity metadata updates, controller/Apply, and slow-destruction regressions.
+- Strict production Clippy passed:
+  `cargo clippy --locked --offline -p inputforge-app -p inputforge-gui-dx -p inputforge-core --lib --bins --examples -- -D warnings`.
+- Strict workspace/all-target Clippy remains blocked by the existing
+  `clippy::assert_is_empty` baseline. The diagnostic check passed with only that
+  lint excluded:
+  `cargo clippy --workspace --all-targets --locked --offline -- -D warnings -A clippy::assert_is_empty`.
+  New test diagnostics were fixed, the larger polling fixture setup was separated
+  from lifecycle assertions, and the controller resolver now routes global actions
+  before profile edits. Repository lint settings and unrelated tests are unchanged.
+- Formatting, `git diff --check`, touched-module size checks, and audit local-link
+  checks passed. The complete Apply timeout follow-up/native retest block was
+  verified byte-for-byte against the pre-extraction audit.
+- One independent read-only review found no actionable extraction regressions.
+  It confirmed the existing no-profile shell limitation described above.
+- Changes remain unstaged and uncommitted. Native Wayland/Windows acceptance and
+  runtime performance measurements for this axis slice remain pending.
+
+## Advanced-axis manual acceptance
+
+Run `dx run -p inputforge-app` with a disposable profile on native Wayland.
+Repeat applicable steps on Windows for separate platform acceptance.
+
+1. Open Devices → Advanced axis settings. Verify device aliases/names, axis labels,
+   saved choices, and detected/not-detected text. With a sparse native-axis device,
+   confirm changing one row affects that physical axis and no other device/axis.
+2. Leave controls at rest, choose Auto, then Detect again. Verify the resting
+   classification updates. Cycle Centered → Rests at minimum → Auto and confirm
+   live bars update even without movement. Redetection must preserve an explicit
+   override; Auto must restore the detected interpretation.
+3. Start/Stop routing and repeat axis choices/redetection. Global axis controls
+   remain usable while their engine is online even when layout/selection controls
+   lock. An unmonitored or unavailable axis cannot redetect. A saved disconnected
+   axis retains its override editor but cannot redetect; reconnect and verify.
+4. Switch profiles, close/reopen Devices, and disconnect/reconnect the device.
+   Verify settings remain global, identities stay correct, and updates continue.
+   Quit/relaunch and confirm persisted choices/detection and continued updates.
+5. Check existing Stop/edit-layout/Apply/Start behavior, including multiple virtual
+   controllers, still works. Preserve the previous native Apply retest as separate
+   historical evidence; this new extraction still requires its own acceptance.
+
 ## Remaining responsibilities to move
 
 The following areas are ordered by migration priority. Source links identify
@@ -272,8 +389,8 @@ may change during extraction.
 
 | # | Area and evidence | App-owned responsibility |
 | --- | --- | --- |
-| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Basic controller selection/layout/Apply now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
-| 2 | **Controller editing policy — partially resolved** — [app controller policy](../crates/inputforge-app/src/controllers/policy.rs); [advanced axis settings](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Basic selection, virtual-layout mutations, Apply, and shared routing decisions are app-owned. Advanced axis settings and other configuration-editing/readiness gates remain; see resolved status above. |
+| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply and advanced axis settings now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
+| 2 | **Controller editing policy — partially resolved** — [app controller policy](../crates/inputforge-app/src/controllers/policy.rs); [app axis settings](../crates/inputforge-app/src/controllers/axes.rs); [axis rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Selection, virtual-layout mutations, Apply, shared routing decisions, and advanced axis settings are app-owned. Other configuration-editing/readiness gates remain; see resolved status above. |
 | 3 | **Capture workflows** — [live capture](../crates/inputforge-gui-dx/src/patterns/live_capture/mod.rs), line 83; [keyboard capture](../crates/inputforge-gui-dx/src/patterns/keyboard_capture/mod.rs), line 323 | Capture ownership, state machines, input selection, keyboard translation, cancellation, and delivery. The GUI should render prompts, captured values, and errors. |
 | 4 | **Mapping edits and undo** — [stage dispatch](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs), line 28; [undo history](../crates/inputforge-gui-dx/src/frame/mapping_editor/undo_log.rs), line 90 | Action-tree mutations, command construction, undo/redo, drag commits, and keyboard-nudge grouping. Curve/deadzone mutation algorithms also belong outside rendering. |
 | 5 | **Batch mapping** — [entry generation](../crates/inputforge-gui-dx/src/frame/bulk_map/apply.rs), line 19; [Apply handler](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs), line 335 | Automatic target selection, conflict decisions, wizard reconciliation, batch command construction, and snapshot creation requests. |
@@ -329,8 +446,8 @@ engine command sender.
 ## Recommended extraction order
 
 1. Polling/snapshot preparation, shared routing controls, and basic controller
-   selection/virtual-layout/Apply are complete. Extract remaining engine access
-   alongside each deferred workflow, including advanced axis settings.
+   selection/virtual-layout/Apply and advanced axis settings are complete. Extract
+   remaining engine access alongside each deferred workflow.
 2. Extract capture and editor controllers.
 3. Extract the remaining workflows, services, event handling, and timers.
 
@@ -400,6 +517,8 @@ Apply retest. The new polling slice has automated renderer/runtime and projectio
 coverage, and the user reported its manual desktop checks working apart from the
 UTC timestamp display corrected above. The controller-workflow extraction has
 new automated coverage and awaits its manual acceptance checklist above.
+The advanced-axis slice has app, renderer-event/feedback, and polling/lifecycle
+coverage; its native manual acceptance remains pending.
 The previous desktop reports are user-reported native acceptance;
 the timestamp correction, separate Windows acceptance, and runtime performance
 measurements remain unverified on native hardware. The recommendations are ownership

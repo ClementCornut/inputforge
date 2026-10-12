@@ -39,11 +39,6 @@ pub(super) fn project(s: &AppState, selection: Option<&MappingKey>) -> ConfigSna
             .as_ref()
             .and_then(|p| p.controllers())
             .cloned(),
-        axis_settings: s
-            .device_registry
-            .iter()
-            .map(|(id, record)| (id.clone(), record.axis_settings.clone()))
-            .collect(),
         devices: s.devices.clone(),
         virtual_devices: s.virtual_devices.clone(),
         mapped_inputs,

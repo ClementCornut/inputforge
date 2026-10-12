@@ -21,13 +21,7 @@ const AXES: [VJoyAxis; 8] = [
     VJoyAxis::Slider1,
 ];
 
-/// Resolve an operation against current engine state without mutating it.
-///
-/// Unavailable or obsolete operations produce no command. The core still
-/// validates commands when executing them and owns persistence and hardware.
-/// # Errors
-/// Returns malformed numeric input or core configuration validation errors.
-pub fn resolve(state: &AppState, action: Action) -> Result<Option<EngineCommand>> {
+pub(super) fn resolve(state: &AppState, action: Action) -> Result<Option<EngineCommand>> {
     if !policy::editable(state) {
         return Ok(None);
     }
@@ -39,14 +33,13 @@ pub fn resolve(state: &AppState, action: Action) -> Result<Option<EngineCommand>
         .unwrap_or_default();
     let capabilities = state.session.controller_capabilities;
     match action {
+        Action::Polarity { .. } | Action::Detect { .. } => return Ok(None),
         Action::Select { device, selected } => {
-            if !config.selected.contains(&device)
-                && (!selected
-                    || !state
-                        .devices
-                        .iter()
-                        .any(|d| d.connected && d.info.id == device))
-            {
+            let connected = state
+                .devices
+                .iter()
+                .any(|d| d.connected && d.info.id == device);
+            if !config.selected.contains(&device) && (!selected || !connected) {
                 return Ok(None);
             }
             config.selected.retain(|id| id != &device);

@@ -10,7 +10,6 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ConfigSnapshot {
     pub controllers: Option<inputforge_core::profile::controllers::ControllerConfig>,
-    pub axis_settings: HashMap<DeviceId, Vec<inputforge_core::settings::AxisSetting>>,
     pub devices: Vec<DeviceState>,
     pub virtual_devices: Vec<VirtualDeviceConfig>,
     pub mapped_inputs: HashSet<InputAddress>,

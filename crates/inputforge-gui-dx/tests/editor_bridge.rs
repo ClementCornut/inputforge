@@ -1,6 +1,12 @@
 //! The public renderer installs the app poller once and owns its lifetime.
 use dioxus::prelude::*;
-use inputforge_core::{mode::Modes, profile::Profile, state::AppState};
+use inputforge_core::{
+    mode::Modes,
+    profile::Profile,
+    settings::{AxisSetting, DeviceRecord},
+    state::AppState,
+    types::{AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo},
+};
 use inputforge_gui_dx::{EditorNavigation, PanelSlot, render_editor, routing::Bindings};
 use parking_lot::RwLock;
 use std::{
@@ -58,6 +64,53 @@ async fn drive(dom: &mut VirtualDom, millis: u64) {
     tokio::time::advance(Duration::from_millis(millis)).await;
     dom.render_immediate_to_vec();
 }
+fn fixture() -> (Arc<RwLock<AppState>>, DeviceId) {
+    let mut state = AppState::with_profile(profile("Initial fixture"));
+    state
+        .virtual_devices
+        .push(inputforge_core::types::VirtualDeviceConfig {
+            device_id: 3,
+            axes: vec![],
+            button_count: 8,
+            hat_count: 1,
+        });
+    let axis_device = DeviceId("polling-axis".into());
+    state.session.bindings = vec![inputforge_core::profile::controllers::DeviceBinding {
+        device: axis_device.clone(),
+        observed_layout: None,
+        unavailable: vec![],
+        buttons: vec![],
+        hats: vec![],
+        axes: vec![inputforge_core::profile::controllers::AxisBinding {
+            code: 24,
+            minimum: -100,
+            maximum: 100,
+            polarity: AxisPolarity::Bipolar,
+        }],
+    }];
+    state.device_registry.insert(
+        axis_device.clone(),
+        DeviceRecord {
+            info: DeviceInfo {
+                id: axis_device.clone(),
+                name: "Polling stick".into(),
+                axes: 1,
+                buttons: 0,
+                hats: 0,
+                instance_path: None,
+                axis_polarities: vec![],
+            },
+            diagnostics: DeviceDiagnostics::default(),
+            last_seen_unix_ms: None,
+            axis_settings: vec![AxisSetting {
+                code: 24,
+                override_polarity: None,
+                detected: None,
+            }],
+        },
+    );
+    (Arc::new(RwLock::new(state)), axis_device)
+}
 #[test]
 #[expect(
     clippy::await_holding_lock,
@@ -70,18 +123,7 @@ fn renderer_preserves_tick_cadence_skips_contention_and_releases_polling_on_drop
         .build()
         .unwrap();
     runtime.block_on(async {
-        let state = Arc::new(RwLock::new(AppState::with_profile(profile(
-            "Initial fixture",
-        ))));
-        state
-            .write()
-            .virtual_devices
-            .push(inputforge_core::types::VirtualDeviceConfig {
-                device_id: 3,
-                axes: vec![],
-                button_count: 8,
-                hat_count: 1,
-            });
+        let (state, axis_device) = fixture();
         let starts = Rc::new(Cell::new(0));
         let mut dom = VirtualDom::new_with_props(
             editor,
@@ -94,26 +136,44 @@ fn renderer_preserves_tick_cadence_skips_contention_and_releases_polling_on_drop
         drive(&mut dom, 0).await;
         assert!(dioxus_ssr::render(&dom).contains("Initial fixture"));
         assert!(dioxus_ssr::render(&dom).contains("Virtual controller 3"));
+        assert!(dioxus_ssr::render(&dom).contains("Not detected yet"));
         state.write().active_profile = Some(profile("Next fixture"));
         state.write().virtual_devices[0].device_id = 4;
+        state
+            .write()
+            .device_registry
+            .get_mut(&axis_device)
+            .unwrap()
+            .axis_settings[0]
+            .detected = Some(AxisPolarity::Unipolar);
         drive(&mut dom, 15).await;
         assert!(!dioxus_ssr::render(&dom).contains("Next fixture"));
         assert!(!dioxus_ssr::render(&dom).contains("Virtual controller 4"));
+        assert!(!dioxus_ssr::render(&dom).contains("Detected: rests at minimum"));
         drive(&mut dom, 1).await;
         assert!(dioxus_ssr::render(&dom).contains("Next fixture"));
         assert!(dioxus_ssr::render(&dom).contains("Virtual controller 4"));
+        assert!(dioxus_ssr::render(&dom).contains("Detected: rests at minimum"));
         dom.mark_dirty(ScopeId::ROOT);
         dom.render_immediate_to_vec();
         assert_eq!(starts.get(), 1, "rerender must not install a second poller");
         let blocked_html = {
             let mut guard = state.write();
             guard.active_profile = Some(profile("Recovered fixture"));
+            guard
+                .device_registry
+                .get_mut(&axis_device)
+                .unwrap()
+                .axis_settings[0]
+                .detected = Some(AxisPolarity::Bipolar);
             drive(&mut dom, 16).await;
             dioxus_ssr::render(&dom)
         };
         assert!(!blocked_html.contains("Recovered fixture"));
+        assert!(!blocked_html.contains("Detected: centered"));
         drive(&mut dom, 16).await;
         assert!(dioxus_ssr::render(&dom).contains("Recovered fixture"));
+        assert!(dioxus_ssr::render(&dom).contains("Detected: centered"));
         drop(dom);
         assert_eq!(
             Arc::strong_count(&state),
@@ -131,6 +191,7 @@ fn renderer_preserves_tick_cadence_skips_contention_and_releases_polling_on_drop
         drive(&mut remount, 0).await;
         assert_eq!(starts.get(), 2);
         assert!(dioxus_ssr::render(&remount).contains("Recovered fixture"));
+        assert!(dioxus_ssr::render(&remount).contains("Detected: centered"));
         drop(remount);
         assert_eq!(Arc::strong_count(&state), 1);
     });

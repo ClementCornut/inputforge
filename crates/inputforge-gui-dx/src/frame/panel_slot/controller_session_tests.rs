@@ -192,13 +192,12 @@ fn extra_fixed_output_slots_do_not_report_pending_profile_changes() {
 #[derive(Clone, Copy, Props, PartialEq)]
 struct AxisHarnessProps {
     profile_loaded: bool,
+    #[props(default)]
+    prepared_locked: bool,
 }
 
 fn axis_harness(props: AxisHarnessProps) -> Element {
-    use inputforge_core::{
-        profile::controllers::{AxisBinding, ControllerConfig, DeviceBinding},
-        settings::AxisSetting,
-    };
+    use inputforge_core::profile::controllers::{AxisBinding, ControllerConfig, DeviceBinding};
     let device = DeviceId("sparse-axis-stick".to_owned());
     let mut snapshot = ConfigSnapshot::default();
     let binding = DeviceBinding {
@@ -220,21 +219,6 @@ fn axis_harness(props: AxisHarnessProps) -> Element {
             ..ControllerConfig::default()
         });
     }
-    snapshot.axis_settings.insert(
-        device,
-        vec![
-            AxisSetting {
-                code: 0,
-                detected: None,
-                override_polarity: Some(AxisPolarity::Bipolar),
-            },
-            AxisSetting {
-                code: 24,
-                detected: Some(AxisPolarity::Unipolar),
-                override_polarity: Some(AxisPolarity::Unipolar),
-            },
-        ],
-    );
     let mut state = AppState::new();
     if !props.profile_loaded {
         state.session.bindings = vec![binding];
@@ -252,13 +236,31 @@ fn axis_harness(props: AxisHarnessProps) -> Element {
         live,
         settings,
     });
+    crate::controllers::provide_fixture(crate::controllers::View {
+        axes: vec![crate::controllers::AxisRow {
+            device: DeviceId("sparse-axis-stick".into()),
+            index: 0,
+            code: 24,
+            override_polarity: Some(AxisPolarity::Unipolar),
+            detected: Some(AxisPolarity::Unipolar),
+            can_override: !props.prepared_locked,
+            can_detect: !props.prepared_locked,
+        }],
+        ..Default::default()
+    });
     rsx! { super::axis_settings::AxisSettings {} }
 }
 
 #[test]
-fn axis_settings_resolve_native_code_and_expose_auto_and_redetection() {
+fn axis_settings_render_prepared_choice_detection_and_shared_controls() {
     for profile_loaded in [false, true] {
-        let mut dom = VirtualDom::new_with_props(axis_harness, AxisHarnessProps { profile_loaded });
+        let mut dom = VirtualDom::new_with_props(
+            axis_harness,
+            AxisHarnessProps {
+                profile_loaded,
+                prepared_locked: false,
+            },
+        );
         dom.rebuild_in_place();
         let html = dioxus_ssr::render(&dom);
         let document = scraper::Html::parse_fragment(&html);
@@ -278,6 +280,33 @@ fn axis_settings_resolve_native_code_and_expose_auto_and_redetection() {
         assert!(html.contains(">Auto<"));
         assert!(html.contains("Detect again"));
         assert!(html.contains("sparse-axis-stick \u{00b7} X"));
+    }
+}
+
+#[test]
+fn axis_controls_honor_prepared_availability_instead_of_metadata() {
+    let mut dom = VirtualDom::new_with_props(
+        axis_harness,
+        AxisHarnessProps {
+            profile_loaded: false,
+            prepared_locked: true,
+        },
+    );
+    dom.rebuild_in_place();
+    let html = dioxus_ssr::render(&dom);
+    let document = scraper::Html::parse_fragment(&html);
+    for selector in ["select", "button"] {
+        let selector = scraper::Selector::parse(selector).unwrap();
+        assert!(
+            document
+                .select(&selector)
+                .next()
+                .unwrap()
+                .value()
+                .attr("disabled")
+                .is_some(),
+            "prepared availability must win: {html}"
+        );
     }
 }
 

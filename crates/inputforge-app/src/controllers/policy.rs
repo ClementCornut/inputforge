@@ -25,6 +25,7 @@ pub fn view(state: &AppState, rows: &[DevicePanelRow]) -> View {
     let requested = config.map_or(&[][..], |c| c.virtual_devices.as_slice());
     let pending = state.session.requires_output_reconfiguration(requested);
     View {
+        axes: super::axes::rows(state),
         editable,
         layout_editable,
         pending,

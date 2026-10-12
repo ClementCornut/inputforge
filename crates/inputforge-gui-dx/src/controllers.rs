@@ -3,11 +3,11 @@ use dioxus::prelude::*;
 #[cfg(not(test))]
 use inputforge_core::{
     output::traits::ControllerCapabilities,
-    types::{DeviceId, VJoyAxis, VirtualDeviceConfig},
+    types::{AxisPolarity, DeviceId, VJoyAxis, VirtualDeviceConfig},
 };
 
 #[cfg(test)]
-pub use inputforge_gui_dx::controllers::{Action, Bindings, Selection, View};
+pub use inputforge_gui_dx::controllers::{Action, AxisRow, Bindings, Selection, View};
 
 #[cfg(not(test))]
 /// Controller operation requested by a rendered control.
@@ -31,6 +31,38 @@ pub enum Action {
     },
     /// Apply a pending retained-output layout.
     Apply,
+    /// Commit a global axis interpretation field without parsing it in the renderer.
+    Polarity {
+        device: DeviceId,
+        axis: u8,
+        code: u16,
+        value: String,
+    },
+    /// Request a new resting sample for the same native axis.
+    Detect {
+        device: DeviceId,
+        axis: u8,
+        code: u16,
+    },
+}
+#[cfg(not(test))]
+/// Prepared global axis interpretation and independent control availability.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AxisRow {
+    /// Stable physical controller identity.
+    pub device: DeviceId,
+    /// Adapter logical axis slot, also used for the display label.
+    pub index: u8,
+    /// Native identity used to resolve settings and reject obsolete callbacks.
+    pub code: u16,
+    /// Persisted manual choice; absent means automatic detection.
+    pub override_polarity: Option<AxisPolarity>,
+    /// Last engine-confirmed resting classification.
+    pub detected: Option<AxisPolarity>,
+    /// Global override editing is available.
+    pub can_override: bool,
+    /// Current monitoring and binding permit redetection.
+    pub can_detect: bool,
 }
 #[cfg(not(test))]
 /// Prepared selection row.
@@ -73,6 +105,8 @@ pub struct View {
     pub selections: Vec<Selection>,
     /// Requested or native driver layouts to render.
     pub slots: Vec<VirtualDeviceConfig>,
+    /// Global axis settings, independent of profile/layout editing locks.
+    pub axes: Vec<AxisRow>,
 }
 #[cfg(not(test))]
 /// App dispatch supplied by the editor host.

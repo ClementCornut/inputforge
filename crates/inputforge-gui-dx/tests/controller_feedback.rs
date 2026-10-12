@@ -72,6 +72,20 @@ fn state(pending: bool) -> Arc<RwLock<AppState>> {
         })
         .unwrap();
     state.session.output_active = pending;
+    state.session.bindings = vec![inputforge_core::profile::controllers::DeviceBinding {
+        device: inputforge_core::types::DeviceId("axis-stick".into()),
+        observed_layout: None,
+        unavailable: vec![],
+        buttons: vec![],
+        hats: vec![],
+        axes: vec![inputforge_core::profile::controllers::AxisBinding {
+            code: 24,
+            minimum: -100,
+            maximum: 100,
+            polarity: inputforge_core::types::AxisPolarity::Bipolar,
+        }],
+    }];
+    state.session.monitored = vec![inputforge_core::types::DeviceId("axis-stick".into())];
     Arc::new(RwLock::new(state))
 }
 fn mount(state: &Arc<RwLock<AppState>>) -> (VirtualDom, Mutations, mpsc::Receiver<EngineCommand>) {
@@ -88,7 +102,7 @@ fn element(mounted: &Mutations, label: &str) -> ElementId {
         .iter()
         .find_map(|edit| match edit {
             Mutation::SetAttribute {
-                name: "aria-label",
+                name: "aria-label" | "id",
                 value: AttributeValue::Text(value),
                 id,
                 ..
@@ -186,4 +200,48 @@ async fn failed_delivery_displays_an_alert_without_optimistic_configuration() {
     );
     assert!(dioxus_ssr::render(&dom).contains("role=\"alert\""));
     assert_eq!(config(&state), before);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn axis_validation_feedback_clears_after_valid_delivery_without_optimistic_settings() {
+    set_event_converter(Box::new(SerializedHtmlEventConverter));
+    let state = state(false);
+    let before = state.read().device_registry.clone();
+    let (mut dom, mounted, rx) = mount(&state);
+    let axis = element(&mounted, "axis-polarity-axis-stick-0-24");
+    form(&mut dom, axis, "invalid");
+    let html = dioxus_ssr::render(&dom);
+    assert!(
+        html.contains("role=\"alert\""),
+        "invalid axis choice needs visible feedback: {html}"
+    );
+    assert!(html.contains("axis interpretation"));
+    assert_eq!(rx.try_recv().unwrap_err(), mpsc::TryRecvError::Empty);
+    form(&mut dom, axis, "minimum");
+    assert!(!dioxus_ssr::render(&dom).contains("role=\"alert\""));
+    assert_eq!(
+        rx.try_recv().unwrap(),
+        EngineCommand::SetAxisPolarity {
+            device: inputforge_core::types::DeviceId("axis-stick".into()),
+            axis: 0,
+            polarity: Some(inputforge_core::types::AxisPolarity::Unipolar),
+        }
+    );
+    assert_eq!(state.read().device_registry, before);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn axis_failed_delivery_displays_feedback_without_optimistic_settings() {
+    set_event_converter(Box::new(SerializedHtmlEventConverter));
+    let state = state(false);
+    let before = state.read().device_registry.clone();
+    let (mut dom, mounted, rx) = mount(&state);
+    drop(rx);
+    form(
+        &mut dom,
+        element(&mounted, "axis-polarity-axis-stick-0-24"),
+        "centered",
+    );
+    assert!(dioxus_ssr::render(&dom).contains("role=\"alert\""));
+    assert_eq!(state.read().device_registry, before);
 }

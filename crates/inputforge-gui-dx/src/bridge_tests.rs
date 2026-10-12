@@ -123,4 +123,36 @@ fn unchanged_frames_do_not_wake_any_snapshot_subscriber() {
         after_changed,
         "peek must not subscribe the rendering root"
     );
+    let mut axis_frame = Frame::default();
+    axis_frame
+        .controllers
+        .axes
+        .push(crate::controllers::AxisRow {
+            device: inputforge_core::types::DeviceId("publication-axis".into()),
+            index: 0,
+            code: 24,
+            override_polarity: None,
+            detected: None,
+            can_override: true,
+            can_detect: false,
+        });
+    dom.in_runtime(|| publisher.publish(axis_frame.clone()));
+    dom.render_immediate_to_vec();
+    let after_axis = renders.get();
+    axis_frame.controllers.axes[0].detected = Some(inputforge_core::types::AxisPolarity::Unipolar);
+    dom.in_runtime(|| publisher.publish(axis_frame.clone()));
+    dom.render_immediate_to_vec();
+    assert_eq!(
+        renders.get(),
+        after_axis + 1,
+        "axis-only changes must publish"
+    );
+    let after_axis = renders.get();
+    dom.in_runtime(|| publisher.publish(axis_frame));
+    dom.render_immediate_to_vec();
+    assert_eq!(
+        renders.get(),
+        after_axis,
+        "unchanged axis rows must not wake subscribers"
+    );
 }

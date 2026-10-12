@@ -2,7 +2,7 @@
 use super::controller_session::ControllerSession;
 use crate::{
     context::{AppContext, LiveSnapshot, SettingsSnapshot},
-    controllers::{Action, Context, Selection, View},
+    controllers::{Action, AxisRow, Context, Selection, View},
 };
 use dioxus::{core::Mutation, html::SerializedHtmlEventConverter, prelude::*};
 use inputforge_core::{
@@ -51,6 +51,15 @@ fn harness() -> Element {
     let meta = use_signal(|| frame.meta);
     let config = use_signal(|| frame.config);
     let view = use_signal(|| View {
+        axes: vec![AxisRow {
+            device: DeviceId("prepared-axis".into()),
+            index: 2,
+            code: 24,
+            detected: None,
+            override_polarity: None,
+            can_override: true,
+            can_detect: true,
+        }],
         editable: true,
         layout_editable: true,
         pending: true,
@@ -101,7 +110,7 @@ fn rendered_controls_forward_app_intents_without_engine_dispatch_or_parsing() {
             .iter()
             .find_map(|edit| match edit {
                 Mutation::SetAttribute {
-                    name: "aria-label",
+                    name: "aria-label" | "id",
                     value: dioxus::core::AttributeValue::Text(value),
                     id,
                     ..
@@ -115,6 +124,7 @@ fn rendered_controls_forward_app_intents_without_engine_dispatch_or_parsing() {
         ("Buttons for virtual controller 3", "not-a-number"),
         ("Hats for virtual controller 3", "4"),
         ("X for virtual controller 3", "true"),
+        ("axis-polarity-prepared-axis-2-24", "unknown"),
     ] {
         let data = PlatformEventData::new(Box::new(SerializedFormData::new(value.into(), vec![])));
         dom.runtime().handle_event(
@@ -127,6 +137,7 @@ fn rendered_controls_forward_app_intents_without_engine_dispatch_or_parsing() {
         "Apply controller changes",
         "Remove controller 3",
         "Add virtual controller",
+        "Detect prepared-axis · Z again",
     ] {
         let data = PlatformEventData::new(Box::new(SerializedMouseData::default()));
         dom.runtime().handle_event(
@@ -155,9 +166,20 @@ fn rendered_controls_forward_app_intents_without_engine_dispatch_or_parsing() {
                 axis: VJoyAxis::X,
                 enabled: true
             },
+            Action::Polarity {
+                device: DeviceId("prepared-axis".into()),
+                axis: 2,
+                code: 24,
+                value: "unknown".into()
+            },
             Action::Apply,
             Action::Remove { slot: 3 },
             Action::Add,
+            Action::Detect {
+                device: DeviceId("prepared-axis".into()),
+                axis: 2,
+                code: 24
+            },
         ]
     );
     assert_eq!(receiver.try_recv().unwrap_err(), mpsc::TryRecvError::Empty);
