@@ -14,7 +14,6 @@ categories.workspace   = true
 inputforge-core      = { workspace = true }
 dioxus               = { workspace = true, features = ["desktop"] }
 tokio                = { workspace = true }
-muda                 = { workspace = true }
 parking_lot          = { workspace = true }
 tracing              = { workspace = true }
 serde                = { workspace = true }

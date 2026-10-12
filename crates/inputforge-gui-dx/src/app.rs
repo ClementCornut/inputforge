@@ -1,6 +1,5 @@
 use dioxus::prelude::*;
 
-use crate::LaunchParams;
 use crate::bridge::spawn_polling_task;
 use crate::context::{
     AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
@@ -11,16 +10,10 @@ use crate::patterns::keyboard_capture::use_keyboard_capture_provider;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::theme::ThemeProvider;
 use crate::toast::{ToastQueue, ToastState, ToastViewport, install_warnings_bridge};
-use crate::tray;
-use crate::tray::action::TrayAction;
 
-/// Root Dioxus component, assembles `AppContext`, installs it for descendants,
-/// installs `ViewState` for frame chrome, spawns the polling task, wires the
-/// tray bridge (channel + handler + listener), applies `--start-minimized`,
-/// and renders the F7 frame layout.
+/// Assemble editor presentation contexts and render the frame layout.
 pub(crate) fn app_root() -> Element {
     let raw = use_context::<RawHandles>();
-    let params = use_context::<LaunchParams>();
 
     let meta = use_signal(MetaSnapshot::default);
     let config = use_signal(ConfigSnapshot::default);
@@ -76,43 +69,6 @@ pub(crate) fn app_root() -> Element {
     // `frame::profiles::snapshot_drawer::install_snapshot_shortcut_listener`.
     frame::install_snapshot_shortcut_listener(ctx.commands.clone());
 
-    // Tray bridge, channel + listener task created once; the handler is
-    // installed at the top level (it's itself a hook).
-    //
-    // The channel construction lives inside `use_hook` so it runs exactly
-    // once per scope mount. `spawn_listener_task` consumes `rx` there.
-    // `install_event_handler` stays top-level because it wraps `use_hook`;
-    // nesting it in another hook's initializer would change hook order
-    // after the first render.
-    // Launch parameters are immutable for the lifetime of this root.
-    if let Some(ids) = params.tray_menu_ids {
-        let tx = use_hook(|| {
-            let (tx, rx) = tokio::sync::mpsc::channel::<TrayAction>(tray::CHANNEL_CAPACITY);
-            tray::spawn_listener_task(rx, ctx.clone(), view);
-            tx
-        });
-        tray::install_event_handler(ids, tx);
-
-        // Keep the tray's "Start / Stop" label in sync with the engine
-        // status. The handle to the toggle `MenuItem` is taken once on first
-        // mount via the `tray::take_toggle_menu_item` thread-local handoff
-        // (the test harness does not install one and is skipped). The effect
-        // re-runs whenever `ctx.meta` changes, including on first render, so
-        // the initial label is reconciled with the actual status, robust
-        // against `--enable` racing GUI startup. `MenuItem` is `!Send`/
-        // `!Sync`, but the effect closure runs on the Dioxus desktop thread,
-        // the same thread that owns the underlying menu, so mutation through
-        // the cheap `Rc` clone is safe.
-        let toggle_item = use_hook(tray::take_toggle_menu_item);
-        if let Some(toggle_item) = toggle_item {
-            let ctx = ctx.clone();
-            use_effect(move || {
-                let status = ctx.meta.read().engine_status;
-                toggle_item.set_text(tray::toggle_label(status, ctx.controller_changes_pending()));
-            });
-        }
-    }
-
     app_root_view()
 }
 
@@ -142,25 +98,22 @@ mod tests {
 
     use inputforge_core::state::AppState;
 
-    use crate::LaunchParams;
     use crate::context::{
         AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
     };
     use crate::frame;
     use crate::toast::{ToastQueue, ToastState};
-    use crate::tray::action::TrayMenuIds;
 
     /// Test harness: provides every context that `app_root_view` reads
     /// (`AppContext`, `ViewState`, `ToastQueue`, plus the upstream
-    /// `RawHandles` and `LaunchParams` for symmetry with the runtime
+    /// `RawHandles` for symmetry with the runtime
     /// path), then renders the **same** `app_root_view()` that `app_root`
     /// renders at runtime. This makes the rsx tree at the application
     /// root single-source-of-truth: a regression that changes
     /// `frame::Layout {}` to anything else lives in `app_root_view` and
     /// fails the assertions below.
     ///
-    /// Side-effect hooks (`warnings_bridge`, polling task, tray bridge,
-    /// `start-minimized`) are intentionally not wired here, they require
+    /// Side-effect hooks (`warnings_bridge`, polling task) are intentionally not wired here, they require
     /// a live Dioxus desktop runtime and are exercised by integration
     /// tests / the smoke run, not by this SSR mount test.
     fn app_root_view_with_stub_contexts() -> Element {
@@ -171,14 +124,6 @@ mod tests {
             commands: cmd_tx,
         };
         use_context_provider(|| raw.clone());
-        use_context_provider(|| LaunchParams {
-            tray_menu_ids: Some(TrayMenuIds {
-                show: muda::MenuId::new("show"),
-                toggle: muda::MenuId::new("toggle"),
-                quit: muda::MenuId::new("quit"),
-            }),
-        });
-
         let meta = use_signal(MetaSnapshot::default);
         let config = use_signal(ConfigSnapshot::default);
         let live = use_signal(LiveSnapshot::default);

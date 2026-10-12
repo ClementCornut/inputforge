@@ -3,7 +3,7 @@
 //! Builds a mock `AppState` with seeded device / virtual-device / profile
 //! entries, wraps it in `Arc<RwLock<_>>`, builds a drop-channel
 //! `mpsc::Sender<EngineCommand>` whose receiver is leaked, and calls
-//! `launch_gui` directly. No engine thread, no tray, no profile I/O,
+//! the editor renderer. No engine thread, no tray, no profile I/O,
 //! no `HidHide` scan, predictable seeded data, hot-reload safe.
 //!
 //! Run via:
@@ -19,7 +19,7 @@ use inputforge_core::types::{
     AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, VJoyAxis, VirtualDeviceConfig,
 };
 
-fn main() -> anyhow::Result<()> {
+fn main() {
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .try_init();
@@ -62,25 +62,14 @@ fn main() -> anyhow::Result<()> {
     let (commands, rx) = mpsc::channel::<EngineCommand>();
     Box::leak(Box::new(rx));
 
-    // Stub menu IDs, wired through to `use_muda_event_handler` at F3, but
-    // harmless here because no real tray icon is registered in this example,
-    // so muda never emits `MenuEvent`s matching these IDs.
-    let menu_ids = (
-        muda::MenuId::new("show-gui"),
-        muda::MenuId::new("toggle-activation"),
-        muda::MenuId::new("quit"),
-    );
+    dioxus::LaunchBuilder::desktop()
+        .with_cfg(dioxus::desktop::Config::new().with_disable_drag_drop_handler(true))
+        .with_context((state, commands))
+        .launch(demo_root);
+}
 
-    // Stub toggle item; no real tray exists in this example, so the label
-    // sync effect just mutates a detached `MenuItem` that nothing renders.
-    let toggle_item = muda::MenuItem::new("Activate", true, None);
-
-    inputforge_gui_dx::launch_gui(
-        state,
-        commands,
-        menu_ids,
-        toggle_item,
-        false,
-        Box::new(|| {}),
-    )
+fn demo_root() -> dioxus::prelude::Element {
+    let (state, commands) =
+        dioxus::prelude::use_context::<(Arc<RwLock<AppState>>, mpsc::Sender<EngineCommand>)>();
+    inputforge_gui_dx::render_editor(state, commands)
 }

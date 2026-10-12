@@ -7,9 +7,10 @@
 
 mod cli;
 mod desktop;
+mod desktop_host;
 mod engine_thread;
 mod platform;
-#[cfg(target_os = "windows")]
+mod single_instance;
 mod tray;
 
 use anyhow::Result;
@@ -25,5 +26,12 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let cli = Cli::parse();
-    desktop::run(&cli)
+    let Some(instance) =
+        single_instance::Instance::acquire(&inputforge_core::settings::AppSettings::config_dir())?
+    else {
+        return Ok(());
+    };
+    // Keep ownership outside GUI scopes until engine shutdown has completed.
+    let instance = std::sync::Arc::new(instance);
+    desktop::run(&cli, std::sync::Arc::clone(&instance))
 }

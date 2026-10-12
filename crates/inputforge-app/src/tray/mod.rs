@@ -5,7 +5,21 @@
 //! Provides [`AppTray`] which creates and manages the system tray icon,
 //! context menu, and menu event polling.
 
-use std::sync::Arc;
+mod action;
+pub(crate) mod availability;
+mod controller;
+mod events;
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(all(test, any(target_os = "linux", target_os = "windows")))]
+mod native_tests;
+mod policy;
+pub(crate) mod window;
+#[cfg(target_os = "windows")]
+mod windows;
+pub(crate) use controller::{clear, install, use_controller};
+
+use std::sync::{Arc, atomic::AtomicBool};
 
 use anyhow::Result;
 use parking_lot::RwLock;
@@ -22,6 +36,9 @@ pub(crate) struct AppTray {
     toggle_item: MenuItem,
     quit_item: MenuItem,
     state: Arc<RwLock<AppState>>,
+    pub(crate) available: Arc<AtomicBool>,
+    #[cfg(target_os = "linux")]
+    _monitor: linux::HostMonitor,
 }
 
 impl std::fmt::Debug for AppTray {
@@ -50,11 +67,20 @@ impl AppTray {
 
         let icon = load_icon()?;
 
+        let tray_id = format!("inputforge-{}", std::process::id());
         let tray = TrayIconBuilder::new()
+            .with_id(tray_id.as_str())
             .with_menu(Box::new(menu))
             .with_tooltip("InputForge")
             .with_icon(icon)
             .build()?;
+
+        #[cfg(target_os = "linux")]
+        let monitor = linux::HostMonitor::new(tray_id)?;
+        #[cfg(target_os = "linux")]
+        let available = Arc::clone(&monitor.available);
+        #[cfg(not(target_os = "linux"))]
+        let available = Arc::new(AtomicBool::new(true));
 
         Ok(Self {
             _icon: tray,
@@ -62,12 +88,15 @@ impl AppTray {
             toggle_item,
             quit_item,
             state,
+            available,
+            #[cfg(target_os = "linux")]
+            _monitor: monitor,
         })
     }
 
     /// Return cloned menu item IDs for (show, toggle, quit).
     ///
-    /// Used to pass IDs to the GUI so it can poll `MenuEvent` while open.
+    /// Consumed by the application controller.
     pub(crate) fn menu_item_ids(&self) -> (MenuId, MenuId, MenuId) {
         (
             self.show_item.id().clone(),
@@ -76,12 +105,7 @@ impl AppTray {
         )
     }
 
-    /// Return a clone of the toggle `MenuItem`.
-    ///
-    /// `MenuItem` wraps an `Rc<RefCell<...>>` internally so the clone is
-    /// cheap and shares the underlying handle. The GUI uses this clone to
-    /// call `set_text` reactively as the engine status changes, keeping
-    /// the tray label ("Activate" / "Deactivate") in sync.
+    /// Shared handle for application-owned label updates.
     pub(crate) fn toggle_menu_item(&self) -> MenuItem {
         self.toggle_item.clone()
     }
@@ -92,7 +116,7 @@ const ICON_SIZE: u32 = 32;
 
 /// Load the embedded tray icon from the compiled-in RGBA data.
 fn load_icon() -> Result<Icon> {
-    let rgba = include_bytes!("../assets/icon.rgba").to_vec();
+    let rgba = include_bytes!("../../assets/icon.rgba").to_vec();
     let icon = Icon::from_rgba(rgba, ICON_SIZE, ICON_SIZE)?;
     Ok(icon)
 }

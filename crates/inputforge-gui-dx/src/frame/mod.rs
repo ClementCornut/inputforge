@@ -8,7 +8,7 @@ mod panel_slot;
 mod profiles;
 mod settings_panel;
 mod top_bar;
-mod view_state;
+pub(crate) mod view_state;
 
 pub(crate) use layout::Layout;
 pub(crate) use mapping_editor::{MappingEditor, use_editor_state_provider};

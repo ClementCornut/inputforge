@@ -1,179 +1,40 @@
-//! Dioxus Desktop GUI for `InputForge`.
-
+//! Dioxus editor rendering for `InputForge`. Desktop hosting belongs to the app.
 mod app;
 mod bridge;
+pub mod components;
 mod context;
 mod frame;
-mod lifecycle;
-pub mod toast;
-mod tray;
-
-pub mod components;
 pub mod icons;
 pub mod patterns;
 pub mod theme;
+pub mod toast;
 
+pub use frame::view_state::PanelSlot;
 #[doc(hidden)]
 pub use toast::ToastViewport;
 pub use toast::{ToastLevel, ToastQueue, ToastState};
 
+use dioxus::prelude::*;
+use inputforge_core::{engine::EngineCommand, state::AppState};
+use parking_lot::RwLock;
 use std::sync::{Arc, mpsc};
 
-use dioxus::desktop::{Config, LogicalSize, WindowBuilder, WindowCloseBehaviour};
-use dioxus::prelude::*;
-use muda::{MenuId, MenuItem};
-use parking_lot::RwLock;
-
-use inputforge_core::engine::EngineCommand;
-use inputforge_core::state::AppState;
-
-use crate::context::RawHandles;
-use crate::tray::action::TrayMenuIds;
-
-/// Per-launch parameters carried from `launch_gui` into `app_root` via
-/// `LaunchBuilder::with_context`.
-///
-/// `tray_menu_ids` flows through here (rather than through a separate context
-/// type) because it's only consumed by `app_root` once, during initial mount,
-/// to install the tray's muda event handler. Both halves of the tokio mpsc
-/// channel live inside `app_root`'s `use_hook` body.
-#[derive(Clone)]
-pub(crate) struct LaunchParams {
-    pub tray_menu_ids: Option<TrayMenuIds>,
+/// Host-owned presentation state shared with the editor's panel controls.
+#[derive(Clone, Copy, Debug)]
+pub struct EditorNavigation {
+    pub panel: Signal<PanelSlot>,
+    pub calibration: Signal<bool>,
 }
 
-/// Launch the Dioxus Desktop GUI. Blocks the calling thread on the OS event
-/// loop (wry/tao underneath). `on_exit` must stop and join the engine before
-/// returning: normal event-loop exit terminates the process without unwinding.
-///
-/// `tray_menu_ids` flow through `LaunchParams::tray_menu_ids` into
-/// `app_root`, which calls `tray::install_event_handler(...)` from inside a
-/// hook. The handler receives menu events directly from the tray's muda version,
-/// routes them via `TrayAction::from_event`, and pushes onto a bounded
-/// `tokio::sync::mpsc` channel created inside `app_root`. A Dioxus task
-/// (also spawned from `app_root`) drains the channel and dispatches.
+/// Render the editor inside a host-provided Dioxus scope.
+/// The host owns desktop configuration, lifecycle and external events.
 ///
 /// # Errors
-///
-/// Currently always returns `Ok(())`. The `Result` return type is reserved
-/// for future tasks that may surface engine or runtime initialization
-/// failures.
-#[allow(
-    clippy::needless_pass_by_value,
-    reason = "the body moves every argument into the Dioxus context, so the \
-              lint may not fire today; future body changes that borrow \
-              instead of move must remain suppressed."
-)]
-pub fn launch_gui(
+/// Propagates render errors from the editor root.
+pub fn render_editor(
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Sender<EngineCommand>,
-    tray_menu_ids: (MenuId, MenuId, MenuId),
-    toggle_menu_item: MenuItem,
-    start_minimized: bool,
-    on_exit: Box<dyn FnMut()>,
-) -> anyhow::Result<()> {
-    let (show, toggle, quit) = tray_menu_ids;
-    let menu_ids = TrayMenuIds { show, toggle, quit };
-
-    tray::install_toggle_menu_item(toggle_menu_item);
-    launch(
-        state,
-        commands,
-        LaunchParams {
-            tray_menu_ids: Some(menu_ids),
-        },
-        start_minimized,
-        on_exit,
-    )
-}
-
-/// Launch a visible editor that quits on close, without a system tray.
-/// # Errors
-/// Returns a desktop initialization error when supported by the runtime.
-pub fn launch_gui_without_tray(
-    state: Arc<RwLock<AppState>>,
-    commands: mpsc::Sender<EngineCommand>,
-    on_exit: Box<dyn FnMut()>,
-) -> anyhow::Result<()> {
-    launch(
-        state,
-        commands,
-        LaunchParams {
-            tray_menu_ids: None,
-        },
-        false,
-        on_exit,
-    )
-}
-
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "shared fallible public launch contract"
-)]
-fn launch(
-    state: Arc<RwLock<AppState>>,
-    commands: mpsc::Sender<EngineCommand>,
-    params: LaunchParams,
-    start_minimized: bool,
-    mut on_exit: Box<dyn FnMut()>,
-) -> anyhow::Result<()> {
-    let close = if params.tray_menu_ids.is_some() {
-        WindowCloseBehaviour::WindowHides
-    } else {
-        WindowCloseBehaviour::WindowCloses
-    };
-    let handles = RawHandles { state, commands };
-    // Configure visibility at construction so the window is born hidden
-    // when start-minimized is on. Hiding post-mount via `set_visible(false)`
-    // races the WebView2 first paint and leaves the window visible under
-    // `dx run`; tao's `with_visible(false)` sidesteps the race entirely.
-    // Tray "Show" later calls `lifecycle::show_window()` which re-shows.
-    let window = WindowBuilder::new()
-        .with_title("InputForge")
-        .with_inner_size(LogicalSize::new(1280.0, 800.0))
-        .with_min_inner_size(LogicalSize::new(800.0, 500.0))
-        .with_visible(!start_minimized);
-
-    let cfg = Config::new()
-        .with_custom_event_handler(move |event, _| {
-            if matches!(event, dioxus::desktop::tao::event::Event::LoopDestroyed) {
-                on_exit();
-            }
-        })
-        .with_window(window)
-        .with_close_behaviour(close)
-        // Required for HTML5 drag-and-drop on Windows. WebView2 ships
-        // with a native file-drop handler that swallows dragover events
-        // before the page can respond, leaving the cursor stuck on
-        // `no-drop`. Disabling it lets the sortable primitive's HTML5
-        // DnD plumbing fire normally. Documented upstream:
-        // https://docs.rs/dioxus-desktop/latest/dioxus_desktop/struct.Config.html#method.with_disable_drag_drop_handler
-        // ("On Windows the drop handler must be disabled for HTML drag
-        // and drop APIs to work.") The trade-off is that the OS file
-        // drop handler no longer fires, but InputForge does not consume
-        // dropped files anywhere, so this is a no-op for the app's
-        // current feature set. (Issue surfaced during F8 reorder
-        // smoke; see Phase A of the sortable primitive plan.)
-        .with_disable_drag_drop_handler(true);
-    // exit_on_last_window_close left at its default (true).
-    // LoopDestroyed runs before Tao exits the process. The callback must join
-    // the engine here: desktop launch does not return on normal window close.
-
-    // CDP for chrome-devtools-mcp: debug+Windows only. WRY_DEFAULTS must be
-    // re-included verbatim, Wry replaces (not appends) browser args, and
-    // dropping these re-enables SmartScreen prompts (tauri-apps/wry#705).
-    #[cfg(all(debug_assertions, target_os = "windows"))]
-    let cfg = {
-        const WRY_DEFAULTS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
-        let extra = format!("{WRY_DEFAULTS} --remote-debugging-port=9222 --remote-allow-origins=*");
-        cfg.with_windows_browser_args(extra)
-    };
-
-    LaunchBuilder::desktop()
-        .with_cfg(cfg)
-        .with_context(handles)
-        .with_context(params)
-        .launch(app::app_root);
-
-    Ok(())
+) -> Element {
+    use_context_provider(|| context::RawHandles { state, commands });
+    app::app_root()
 }

@@ -25,17 +25,28 @@ anyhow             = { workspace = true }
 tracing-subscriber = { workspace = true }
 mimalloc           = { workspace = true }
 clap               = { workspace = true }
+tray-icon          = { workspace = true }
+muda = { workspace = true }
+uuid = { workspace = true }
+dioxus = { workspace = true, features = ["desktop"] }
+tokio = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 inputforge-core = {
     workspace = true,
     features = ["sdl3-input", "vjoy-output", "win32-io"],
 }
-tray-icon             = { workspace = true }
 windows               = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+tray-icon = { workspace = true, features = ["ksni"] }
+zbus = { workspace = true }
+glib = { workspace = true }
 inputforge-core = { workspace = true, features = ["evdev-input", "uinput-output"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+muda = { workspace = true, features = ["snapshot"] }
 
 [lints]
 workspace = true

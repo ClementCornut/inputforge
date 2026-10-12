@@ -1,6 +1,6 @@
 //! GUI-only chrome state.
 //!
-//! Provided in `app_root` alongside `AppContext`, `LaunchParams`, and
+//! Provided in `app_root` alongside `AppContext` and
 //! `ToastQueue`. Four Signals carry chrome-only state, `editing_mode`
 //! (the user's authoring focus), `panel_slot` (which right panel is open),
 //! `via_calibration` (sticky while `panel_slot == Devices` so the
@@ -27,7 +27,7 @@ pub(crate) type MappingKey = (String, InputAddress);
 /// respective panel content (F12 / F13 own contents, F7 ships placeholders).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(dead_code, reason = "Used by regions in Task 18+")]
-pub(crate) enum PanelSlot {
+pub enum PanelSlot {
     #[default]
     None,
     Devices,
@@ -229,8 +229,11 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
 
     let editing_mode = use_signal(|| initial_editing.clone());
     let main_surface = use_signal(MainSurface::default);
-    let panel_slot = use_signal(PanelSlot::default);
-    let via_calibration = use_signal(|| false);
+    let local_panel = use_signal(PanelSlot::default);
+    let local_calibration = use_signal(|| false);
+    let navigation = try_consume_context::<crate::EditorNavigation>();
+    let panel_slot = navigation.map_or(local_panel, |navigation| navigation.panel);
+    let via_calibration = navigation.map_or(local_calibration, |navigation| navigation.calibration);
     let selected_mapping: Signal<Option<MappingKey>> = use_signal(|| None);
     let profiles_panel = use_signal(ProfilesPanelState::default);
 
@@ -302,6 +305,26 @@ mod tests {
     use inputforge_core::types::{DeviceId, InputId};
 
     /// Compile-time gate, proves `selected_mapping` lives on `ViewState`.
+    #[test]
+    fn host_navigation_selects_the_rendered_panel() {
+        fn root() -> Element {
+            let navigation = crate::EditorNavigation {
+                panel: use_signal(|| PanelSlot::Devices),
+                calibration: use_signal(|| true),
+            };
+            use_context_provider(|| navigation);
+            let meta = use_signal(MetaSnapshot::default);
+            let view = use_view_state_provider(meta);
+            assert_eq!(*view.panel_slot.peek(), PanelSlot::Devices);
+            assert!(*view.via_calibration.peek());
+            assert_eq!(view.panel_slot, navigation.panel);
+            assert_eq!(view.via_calibration, navigation.calibration);
+            rsx! { div {} }
+        }
+        let mut dom = VirtualDom::new(root);
+        dom.rebuild_in_place();
+    }
+
     #[test]
     fn selected_mapping_field_type() {
         fn _assert(view: ViewState) {

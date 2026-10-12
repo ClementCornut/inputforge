@@ -11,7 +11,7 @@ use parking_lot::RwLock;
 use std::sync::{Arc, mpsc};
 use std::{cell::RefCell, rc::Rc, thread};
 
-pub(crate) fn run(cli: &Cli) -> Result<()> {
+pub(crate) fn run(cli: &Cli, instance: Arc<crate::single_instance::Instance>) -> Result<()> {
     let settings = AppSettings::load();
     let profile = resolve_profile_path(cli, &settings)?;
     let minimized = resolve_start_minimized(
@@ -23,7 +23,9 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
         cli.enable,
         minimized,
         crate::engine_thread::run_engine,
-        launch,
+        move |state, commands, minimized, on_exit| {
+            launch(state, commands, minimized, on_exit, instance)
+        },
     )
 }
 
@@ -79,35 +81,24 @@ fn stop_engine(
     }
 }
 
-#[cfg(target_os = "windows")]
 fn launch(
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Sender<EngineCommand>,
     minimized: bool,
     on_exit: Box<dyn FnMut()>,
+    instance: Arc<crate::single_instance::Instance>,
 ) -> Result<()> {
-    let tray = crate::tray::AppTray::new(Arc::clone(&state))?;
-    inputforge_gui_dx::launch_gui(
-        state,
-        commands,
-        tray.menu_item_ids(),
-        tray.toggle_menu_item(),
-        minimized,
-        on_exit,
-    )
-}
-#[cfg(target_os = "linux")]
-fn launch(
-    state: Arc<RwLock<AppState>>,
-    commands: mpsc::Sender<EngineCommand>,
-    minimized: bool,
-    on_exit: Box<dyn FnMut()>,
-) -> Result<()> {
-    if minimized {
-        state.write().session.notice =
-            Some("Start minimized is unavailable on Linux; the editor opens visibly.".into());
-    }
-    inputforge_gui_dx::launch_gui_without_tray(state, commands, on_exit)
+    let tray = match crate::tray::AppTray::new(Arc::clone(&state)) {
+        Ok(tray) => Some(tray),
+        Err(error) => {
+            tracing::warn!(%error, "tray initialization failed; opening a visible editor");
+            state.write().session.notice = Some(
+                "Tray initialization failed; the editor opens visibly and closing it quits InputForge.".into()
+            );
+            None
+        }
+    };
+    crate::desktop_host::launch(state, commands, tray, minimized, on_exit, instance)
 }
 
 fn resolve_profile_path(cli: &Cli, settings: &AppSettings) -> Result<std::path::PathBuf> {

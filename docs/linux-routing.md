@@ -77,8 +77,36 @@ platform.
 
 ## Platform behavior and validation boundary
 
-On Linux the app opens visibly without a tray; closing its window quits and
-joins the engine thread. `--start-minimized` opens visibly with an explanation.
+Windows and Linux share the tray menu, editor lifecycle, and engine commands in
+`inputforge-app`. The GUI crate renders the editor; it owns no tray menu, event
+dispatch, availability policy, label updates, native timers, or desktop launch.
+With an available tray, closing the editor hides it while routing continues;
+`--start-minimized` or the saved startup preference creates a hidden editor.
+**Show GUI** restores the same window; **Start / Stop** controls routing, and
+pending controller-layout changes open Devices for review. **Quit** closes the
+application and joins the engine before process exit.
+
+The app crate also owns a shared Windows/Linux single-instance protocol. Launching
+the shortcut again restores the existing editor, including while it is hidden;
+it does not restart routing, reload a profile, or apply the second launch's options.
+Ownership is per user configuration directory and remains held through engine
+shutdown. A file lock and authenticated loopback messages require no X11 APIs.
+The operating system releases ownership after a crash. If the owner does not
+acknowledge Show within approximately five seconds, the second launch reports an
+error without starting another engine.
+
+Linux uses the KSNI StatusNotifierItem/D-Bus backend. InputForge adds no direct
+X11 APIs, commands, or workarounds; dependencies may retain X11 support. A missing
+tray host or failed tray initialization opens the editor visibly with an
+explanation and normal close-to-quit behavior. Host/item registration is checked
+with a bounded D-Bus probe every 500 ms, and the GUI checks that result every
+250 ms using a GTK timer independent of WebView rendering. Show, routing commands,
+and Quit use the same native-thread dispatcher on Windows and Linux. Availability
+also requires a live StatusNotifierHost bus name, or GNOME shell ownership of its integrated watcher. An unrecognized host stays in visible
+fallback. Losing tray access restores the editor. A host arriving later enables
+close-to-tray without hiding an already-visible editor. Saved startup preferences
+are preserved during fallback. Native Wayland is the primary Linux acceptance
+target; the compositor controls whether a restored window receives focus.
 `--enable` requests activation after loading the profile. Linux keyboard/mouse
 injection uses separate uinput event devices. Readiness verifies their exact sysfs
 identity and capability bitmaps plus initialized udev classification without opening
@@ -122,7 +150,7 @@ The remaining work is:
 | Area | Current behavior | Remaining work |
 | --- | --- | --- |
 | Physical-controller hiding | Exclusive evdev capture does not guarantee hiding from game input backends using joydev or hidraw. | Design and implement selected-controller hiding with rollback, crash/restart recovery, and unplug/replug restoration. Keep normal game launches unchanged. |
-| Tray and background operation | Linux opens visibly, has no tray, and quits on window close. Start-minimized opens visibly with an explanation. Autostart itself is implemented. | Add tray controls, close-to-tray, and start-minimized behavior with a usable fallback when a desktop has no tray support. |
+| Tray and background operation | Shared tray controls, close-to-tray, hidden startup, XDG autostart, and visible fallback/recovery are implemented. Linux uses KSNI over D-Bus. | Native Wayland and Windows desktop acceptance remain required; automated fixtures do not prove compositor behavior or routing while hidden. |
 | Distribution and permission setup | Release automation tests and bundles Windows only. Linux access rules are a manual development setup. | Provide Linux CI, an Arch/CachyOS package or guided setup, narrowly scoped access rules, and upgrade/removal documentation. Keep the application unprivileged. |
 | Integrated host acceptance | Standalone evdev/uinput and isolated native SDL results cover only their documented scenarios. | Verify real-controller routing, keyboard/mouse delivery, cleanup and recovery, then ordinary native/Proton game recognition and absence of duplicate physical input while hiding is active. |
 
@@ -137,9 +165,8 @@ action scope on both platforms, not missing Linux parity features.
 
 For the next session, first verify the integrated Linux routing baseline, then
 design physical hiding and its recovery before implementation. Finish game
-acceptance with normal launches after hiding is available. Packaging and tray
-support remain separate deliverables. No implementation or installation of this
-remaining work was performed in the documentation update.
+acceptance with normal launches after hiding is available. Physical hiding and
+packaging remain separate deliverables; tray desktop acceptance is listed below.
 
 The earlier documents under `docs/superpowers/` are historical designs and plans;
 some are tracked, while newer ones are Git-ignored local files. Their original
@@ -147,3 +174,50 @@ status, API sketches, startup rejection,
 128-button layout, and teardown descriptions are not the current implementation
 contract; use this guide and the component acceptance documents for current
 behavior.
+
+## Tray and background acceptance
+
+The automated private-bus fixture never connects to the user's desktop session.
+It covers absent/delayed host registration, our item registration, host loss,
+item removal, host loss with a surviving watcher, GNOME integrated-host ownership,
+unique-name sandbox registration, and watcher restart. Run it with:
+
+```sh
+cargo test --locked -p inputforge-app --bin inputforge tray::linux -- --include-ignored
+```
+
+A separate native Wayland regression opens an isolated test window, hides it,
+activates Show, hides it again, and verifies Toggle dispatch and Quit exit.
+It reproduced the hidden WebView dispatch failure and passes with native-thread
+dispatch. It does not open controllers or verify compositor focus:
+
+```sh
+cargo test --locked -p inputforge-app --bin inputforge tray::native_tests::hidden_window_dispatches_show_toggle_and_quit -- --ignored --exact
+```
+
+Single-instance tests cover separate processes, authenticated activation, crash
+recovery, and refusal to start a duplicate when the owner is unresponsive. A native
+Wayland fixture also restores a window created hidden without a tray:
+
+```sh
+cargo test --locked -p inputforge-app --bin inputforge single_instance::tests
+cargo test --locked -p inputforge-app --bin inputforge tray::native_tests::hidden_window_relaunch_shows_without_tray -- --ignored --exact
+```
+
+Full desktop and real-controller acceptance remains pending:
+
+- KDE Wayland with XWayland unavailable: launch through `dx run -p inputforge-app`,
+  close/show repeatedly, and verify editor state survives. Check mixed scaling.
+- Start via `--start-minimized` and the saved preference; confirm no editor flash,
+  then restore it using **Show GUI**, including after ordinary OS minimization.
+- Launch the shortcut again while the editor is hidden and while visible; verify
+  the same editor state and engine remain, including during login autostart.
+- Start and stop routing from the tray while hidden; check labels, input delivery,
+  and controller-change review behavior. Quitting must release capture and outputs.
+- Restart the desktop panel while hidden: the editor must reappear, close must quit
+  while tray access is absent, and recovered tray access must not hide the editor.
+- GNOME with and without tray support: check visible fallback, delayed host startup,
+  and login autostart. Do not install an extension automatically.
+- Windows: repeat tray controls, hidden startup, close/show, and Quit cleanup.
+
+No desktop/hardware acceptance is implied by the implementation or fixture tests.

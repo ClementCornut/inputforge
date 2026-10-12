@@ -12,8 +12,8 @@ unconditionally; build with `cargo build -p inputforge-app` or
 
 ## Dev workflow: primary RSX loop (recommended)
 
-The `bridge_demo` example seeds a mock `AppState` and calls `launch_gui`
-directly. No engine, no tray, no profile I/O; safe to hot-reload.
+The `bridge_demo` example seeds a mock `AppState` and hosts the editor through
+`render_editor`. No engine, no tray, no profile I/O; safe to hot-reload.
 
 ```bash
 cargo install dioxus-cli --version 0.7.6
@@ -140,50 +140,16 @@ A full `cargo clean` is unnecessary; the per-package clean is enough.
 
 ## F3: Tray bridge & hide-to-tray lifecycle
 
-### Tray bridge
+Tray construction, native event dispatch, labels, availability policy and desktop
+window lifecycle belong entirely to `inputforge-app`. This crate exposes
+`render_editor` and `EditorNavigation`, ordinary presentation state shared with
+panel controls. It has no direct muda, GTK timer or Windows API dependency.
 
-Tray menu events are received directly through `muda::MenuEvent::set_event_handler`,
-installed once by a Dioxus hook. The tray uses the workspace's newer muda
-version; Dioxus uses an older version with separate event types and queues,
-so its `use_muda_event_handler` hook cannot receive these tray clicks.
-Muda retains the callback for the process lifetime; the application launches
-one tray-enabled root per process. The callback runs on the native
-event-loop thread and routes the menu id to a `TrayAction` via pure
-logic in `tray::action::TrayAction::from_event`, then `try_send`s on a
-bounded `tokio::sync::mpsc` channel created inside `app_root`. A Dioxus
-task (also spawned from `app_root`) drains the channel and dispatches:
-`Show` → `lifecycle::show_window`, `Toggle` → engine command via
-`AppContext::commands`, `Quit` → `lifecycle::request_quit`.
-
-The handler is observe-only: it only `try_send`s and logs overflow. It
-never mutates `ControlFlow` or interacts with the event loop directly.
-Routing logic is pure (`tray::action`) and unit-tested.
-
-### Hide-to-tray window lifecycle
-
-`Config::with_close_behaviour(WindowCloseBehaviour::WindowHides)` makes
-X-click hide the window natively (Dioxus calls `set_visible(false)` and
-consumes the close-requested event; F3 has no close-handler code path).
-Tray Show re-opens via `set_visible(true)` + `set_focus()`. Tray Quit
-flips this window's close behavior to `WindowCloses` then calls
-`close()`; with the default `exit_on_last_window_close = true` the
-event loop exits and `launch_gui` returns. `main.rs::shutdown()` then
-runs, the engine thread joins, `HidHide` unhide and `vJoy` release fire
-via `Drop`.
-
-`--start-minimized` is plumbed via the `start_minimized: bool`
-parameter on `launch_gui`. `app_root` calls `set_visible(false)` once
-during mount when the flag is set; tray Show then re-opens the window.
-The WebView2 window plus the polling and listener tasks are always
-created at startup; the flag only hides the window. Dioxus 0.7's
-`tao::EventLoop::run` is one-shot, so a tray-triggered defer-launch
-isn't viable without restructuring the whole event loop, deferred as a
-future investigation.
-
-Note the dioxus-desktop 0.7.6 API spelling asymmetry:
-- `Config::with_close_behaviour`: UK (builder method)
-- `WindowCloseBehaviour`: UK (enum)
-- `DesktopService::set_close_behavior`: US (per-window setter)
+The app configures hidden startup before constructing the window and dispatches
+tray actions independently of WebView render acknowledgements. Its event-loop
+exit callback stops and joins the engine before Tao terminates the process.
+See [Linux routing and tray acceptance](../../docs/linux-routing.md#tray-and-background-acceptance)
+for policy, regression fixtures and native acceptance checks.
 
 ### New primitives (F3)
 
