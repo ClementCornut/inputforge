@@ -86,9 +86,20 @@ fn desktop_root() -> Element {
             tracing::warn!(%error, "failed to process editor activation request");
         }
     });
+    let capture = use_hook(|| {
+        inputforge_app::live_capture::Controller::new(
+            Arc::clone(&handles.state),
+            handles.commands.clone(),
+        )
+    });
+    let capture_for_polling = capture.clone();
     let state = Arc::clone(&handles.state);
     let start_polling = Callback::new(move |publisher| {
-        crate::bridge::spawn_polling_task(Arc::clone(&state), publisher);
+        crate::bridge::spawn_polling_task(
+            Arc::clone(&state),
+            publisher,
+            capture_for_polling.clone(),
+        );
     });
     let controllers =
         inputforge_app::controllers::bindings(Arc::clone(&handles.state), handles.commands.clone());
@@ -97,6 +108,7 @@ fn desktop_root() -> Element {
         handles.commands,
         routing,
         controllers,
+        capture.bindings(),
         start_polling,
     )
 }

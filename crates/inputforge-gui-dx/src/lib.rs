@@ -1,6 +1,10 @@
 //! Dioxus editor rendering for `InputForge`. Desktop hosting belongs to the app.
 mod app;
 pub mod bridge;
+#[cfg(not(test))]
+pub mod capture;
+#[cfg(test)]
+pub use inputforge_gui_dx::capture;
 pub mod components;
 mod context;
 pub mod controllers;
@@ -45,10 +49,12 @@ pub fn render_editor(
     commands: mpsc::Sender<EngineCommand>,
     routing: routing::Bindings,
     controllers: controllers::Bindings,
+    capture: capture::Bindings,
     start_polling: Callback<bridge::Publisher>,
 ) -> Element {
     use_context_provider(|| routing);
     use_context_provider(|| controllers);
+    use_context_provider(|| capture);
     use_context_provider(|| start_polling);
     use_context_provider(|| context::RawHandles { state, commands });
     app::app_root()

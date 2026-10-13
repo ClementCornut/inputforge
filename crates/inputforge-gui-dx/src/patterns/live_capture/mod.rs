@@ -1,47 +1,9 @@
-//! Live-capture primitive, see Task 7's `machine.rs` for the pure
-//! state-transition logic.
-//!
-//! Single-instance pattern: provided once via context in `app_root`.
-//! Each consumer reads via `use_context::<LiveCapture>()`. Starting a
-//! new capture cancels any in-flight one, there is exactly one
-//! capture at a time across the entire GUI.
-
-mod confirmation;
-mod machine;
-pub(crate) use confirmation::confirm_binding;
-#[cfg(test)]
-mod tests;
-
-use std::time::Instant;
-
+//! Live-capture publication signals and app callback wiring.
+use crate::capture::{Bindings, Capture, CaptureFilter, Publication, Request, Target};
 use dioxus::prelude::*;
-
 use inputforge_core::types::InputAddress;
 
-use crate::context::AppContext;
-
-pub(crate) use machine::{CoreState, LiveCaptureCore};
-
-/// Filter governing which input kinds the primitive accepts. F9-F12
-/// will use `AxesOnly` / `ButtonsOnly` to discriminate range-record vs.
-/// button-bind flows. F8's `+ Add mapping` always uses `Any`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[allow(
-    dead_code,
-    reason = "AxesOnly / ButtonsOnly are exercised by tests; lib consumers land in F9-F12"
-)]
-pub(crate) enum CaptureFilter {
-    #[default]
-    Any,
-    AxesOnly,
-    ButtonsOnly,
-}
-
 pub(crate) const CAPTURE_PROMPT: &str = "Press an input\u{2026}";
-
-pub(crate) fn is_current_capture_session(owned_session: Option<u64>, current_session: u64) -> bool {
-    owned_session == Some(current_session)
-}
 
 pub(crate) fn rebind_composite_class(input: &InputAddress, is_listening: bool) -> &'static str {
     match (is_listening, input.is_unbound()) {
@@ -54,195 +16,77 @@ pub(crate) fn rebind_composite_class(input: &InputAddress, is_listening: bool) -
     }
 }
 
-/// Public handle exposed via context. `Copy` (every field is `Signal`
-/// or `Callback`, both `Copy` in Dioxus 0.7+) so consumers do
-/// `use_context::<LiveCapture>()` without an explicit clone.
-#[derive(Clone, Copy)]
-#[allow(
-    dead_code,
-    reason = "captured/cancel exposed for F8 row consumers and Esc handling"
-)]
-pub(crate) struct LiveCapture {
+/// Prepared root state used by other rendered keyboard surfaces.
+#[derive(Debug, Clone, Copy)]
+pub struct LiveCapture {
     pub active: Signal<bool>,
-    pub session: Signal<u64>,
-    pub captured: Signal<Option<InputAddress>>,
-    pub start: Callback<CaptureFilter>,
-    pub cancel: Callback<()>,
 }
 
-/// Allocate the signals and callbacks, install the polling effect and
-/// the document-level Esc-priority listener, AND register the resulting
-/// `LiveCapture` with the Dioxus context system. Call exactly once from
-/// `app_root`, the provider self-installs.
-#[allow(
-    clippy::too_many_lines,
-    reason = "single-instance hook braids 5 signals + 2 callbacks + polling effect + Esc \
-              listener; splitting forces the closures to capture indirected handles instead \
-              of values, which obscures the single-source-of-truth wiring"
+/// Allocate the renderer's single root listening signal.
+#[expect(
+    clippy::must_use_candidate,
+    reason = "installs context and lifecycle even when the returned handle is unused"
 )]
-pub(crate) fn use_live_capture_provider() -> LiveCapture {
-    let active: Signal<bool> = use_signal(|| false);
-    let session: Signal<u64> = use_signal(|| 0);
-    let captured: Signal<Option<InputAddress>> = use_signal(|| None);
-    let core_state: Signal<CoreState> = use_signal(CoreState::default);
-
-    let armed_listener_mounted: Signal<bool> = use_signal(|| false);
-    let shutdown_signal: Signal<bool> = use_signal(|| false);
-
-    let start = use_callback(move |filter: CaptureFilter| {
-        let mut s = core_state;
-        s.set(CoreState {
-            baseline: None,
-            pending: None,
-            filter,
-        });
-        let mut cap = captured;
-        cap.set(None);
-        let mut session_signal = session;
-        let next_session = session_signal.peek().wrapping_add(1);
-        session_signal.set(next_session);
-        let mut a = active;
-        a.set(true);
-        tracing::debug!(target: "f8::live_capture", ?filter, "capture armed");
+pub fn use_live_capture_provider() -> LiveCapture {
+    #[cfg(not(test))]
+    let bindings = use_context::<Bindings>();
+    #[cfg(test)]
+    let bindings = try_use_context::<Bindings>().unwrap_or_else(|| {
+        let ctx = use_context::<crate::context::AppContext>();
+        inputforge_app::live_capture::Controller::new(ctx.state, ctx.commands).bindings()
     });
-
-    let cancel = use_callback(move |()| {
-        let mut s = core_state;
-        let prev_filter = s.read().filter;
-        s.set(CoreState {
-            baseline: None,
-            pending: None,
-            filter: prev_filter,
-        });
-        let mut a = active;
-        a.set(false);
-        let mut cap = captured;
-        cap.set(None);
-        let mut sd = shutdown_signal;
-        sd.set(true);
-        tracing::debug!(target: "f8::live_capture", "capture cancelled");
+    use_context_provider(|| bindings);
+    let active = use_signal(|| false);
+    #[cfg(not(test))]
+    let view = use_context::<crate::frame::ViewState>();
+    #[cfg(test)]
+    let view = try_use_context::<crate::frame::ViewState>().unwrap_or_else(|| {
+        let ctx = use_context::<crate::context::AppContext>();
+        crate::frame::use_view_state_provider(ctx.meta)
     });
-
-    let ctx = use_context::<AppContext>();
-
-    let mut previous_generation = use_signal(|| None::<u64>);
-
-    // Polling effect, subscribes to ctx.live as wake gate.
-    use_effect(move || {
-        let _wake = ctx.live.read().capture_epoch;
-        let (snapshot, epoch) = {
-            let Some(guard) = ctx.state.try_read() else {
-                return;
-            };
-            (
-                guard.input_cache.clone_compact(),
-                crate::context::session::CaptureEpoch {
-                    generation: guard.session.generation,
-                    ready: guard.session.ready,
-                    allowed: !guard.session.offline,
-                },
-            )
-        };
-        let previous = *previous_generation.peek();
-        if previous != Some(epoch.generation) && captured.peek().is_some() {
-            let mut cap = captured;
-            cap.set(None);
-        }
-        if !epoch.allowed {
-            if *active.peek() || captured.peek().is_some() {
-                cancel.call(());
-            }
-            if previous != Some(epoch.generation) {
-                previous_generation.set(Some(epoch.generation));
-            }
-            return;
-        }
-        if !*active.read() {
-            return;
-        }
-
-        let prev = core_state.peek().clone();
-        let (next, fired) =
-            LiveCaptureCore::step_session(prev, &snapshot, Instant::now(), previous, epoch);
-        previous_generation.set(Some(epoch.generation));
-        let mut s = core_state;
-        if *s.peek() != next {
-            s.set(next);
-        }
-        if let Some(addr) = fired {
-            let mut cap = captured;
-            cap.set(Some(addr.clone()));
-            let mut a = active;
-            a.set(false);
-            let mut sd = shutdown_signal;
-            sd.set(true);
-            tracing::debug!(target: "f8::live_capture", ?addr, "capture fired");
-        }
-    });
-
-    // Document-level Esc listener, mirrors the document::eval / dioxus.send
-    // pattern used in mode_tabs::context_menu (see frame/top_bar/mode_tabs/mod.rs).
-    let cancel_for_esc = cancel;
-    use_effect(move || {
-        if !*active.read() {
-            return;
-        }
-        let mut mounted = armed_listener_mounted;
-        if *mounted.peek() {
-            return;
-        }
-        mounted.set(true);
-
-        let mut sd = shutdown_signal;
-        sd.set(false);
-
-        spawn(async move {
-            let mut handle = document::eval(
-                "const h = (ev) => {\n\
-                   if (ev.key === 'Escape') {\n\
-                     ev.stopPropagation();\n\
-                     dioxus.send('esc');\n\
-                   }\n\
-                 };\n\
-                 window.addEventListener('keydown', h, true);\n\
-                 (async () => {\n\
-                   while (true) {\n\
-                     const msg = await dioxus.recv();\n\
-                     if (msg === '__shutdown__') {\n\
-                       window.removeEventListener('keydown', h, true);\n\
-                       dioxus.send('shutdown_ack');\n\
-                       return;\n\
-                     }\n\
-                   }\n\
-                 })();\n\
-                 ",
-            );
-
-            loop {
-                if *shutdown_signal.peek() {
-                    let _ = handle.send("__shutdown__".to_owned());
-                    let _ = handle.recv::<String>().await;
-                    break;
-                }
-                match handle.recv::<String>().await {
-                    Ok(s) if s == "esc" => {
-                        cancel_for_esc.call(());
-                    }
-                    _ => break,
-                }
-            }
-            let mut mounted = armed_listener_mounted;
-            mounted.set(false);
+    use_hook(|| {
+        bindings.install.call(Publication {
+            active,
+            mode: view.editing_mode,
+            selection: view.selected_mapping,
         });
     });
-
-    let live = LiveCapture {
-        active,
-        session,
-        captured,
-        start,
-        cancel,
-    };
+    use_drop(move || bindings.dispose.call(()));
+    let live = LiveCapture { active };
     use_context_provider(|| live);
     live
 }
+
+/// Wire one capture surface to app-owned start, cancel and completion callbacks.
+pub fn use_capture(
+    target: Target,
+    filter: CaptureFilter,
+    on_capture: impl FnMut(InputAddress) + 'static,
+    on_cancel: impl FnMut(()) + 'static,
+) -> Capture {
+    let bindings = use_context::<Bindings>();
+    let mut target_signal = use_signal(|| target.clone());
+    if *target_signal.peek() != target {
+        target_signal.set(target);
+    }
+    let listening = use_signal(|| false);
+    let request = Request {
+        owner: dioxus::core::current_scope_id(),
+        filter,
+        target: target_signal,
+        listening,
+        on_capture: use_callback(on_capture),
+        on_cancel: use_callback(on_cancel),
+    };
+    let start = use_callback(move |()| bindings.start.call(request));
+    let cancel = use_callback(move |()| bindings.cancel.call(request.owner));
+    use_drop(move || bindings.cancel.call(request.owner));
+    Capture {
+        listening,
+        start,
+        cancel,
+    }
+}
+
+#[cfg(test)]
+mod tests;

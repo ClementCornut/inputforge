@@ -28,6 +28,9 @@ fn editor() -> Element {
         calibration: use_signal(|| false),
     };
     use_context_provider(|| navigation);
+    let capture = use_hook(|| {
+        inputforge_app::live_capture::Controller::new(Arc::clone(&state), commands.clone())
+    });
     let controllers = inputforge_app::controllers::bindings(Arc::clone(&state), commands.clone());
     let frame = inputforge_app::bridge::prepare(&state.read(), None);
     render_editor(
@@ -37,6 +40,7 @@ fn editor() -> Element {
             dispatch: Callback::new(|_| {}),
         },
         controllers,
+        capture.bindings(),
         Callback::new(move |publisher: inputforge_gui_dx::bridge::Publisher| {
             publisher.publish(frame.clone());
         }),

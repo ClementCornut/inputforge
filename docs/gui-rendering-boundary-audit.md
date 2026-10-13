@@ -17,7 +17,7 @@ Requirements:
   Transitive dependencies may retain X11 support.
 
 The original audit was read-only. The status below now also records the first
-implemented routing, polling, controller-workflow, and advanced-axis extractions;
+implemented routing, polling, controller-workflow, advanced-axis, and live-capture extractions;
 the remaining findings are still open.
 
 ## Resolved routing controls — 2026-10-12
@@ -95,7 +95,7 @@ The polling and snapshot-preparation part of finding **#1** is resolved:
   a prepared fixture once and owns no polling loop.
 
 **Still open in #1:** raw engine reads and command senders used by remaining GUI
-workflow handlers, including capture revalidation. The later controller slice
+workflow handlers. Capture revalidation moved in the live-capture slice below. The later controller slice
 below resolves basic selection/layout/Apply ownership in #2; the later axis slice
 resolves advanced axis settings. Other configuration gates and findings #3–10
 remain open. Finding #7's
@@ -204,7 +204,7 @@ controller-only changes and unchanged-frame suppression. The renderer integratio
 fixture now opens Devices and verifies prepared native-slot updates on the existing
 cadence, contention recovery, single installation, teardown, and remount.
 
-**Still open after this controller slice:** capture, mappings/undo, device removal,
+**Still open after this controller slice:** keyboard capture, mappings/undo, device removal,
 profiles/modes/settings, OS services, other configuration/readiness gates, and
 other workflows in findings #1–10. Transitional raw handles remain for those
 workflows. Advanced axis settings moved in the later axis slice below.
@@ -381,6 +381,124 @@ Repeat applicable steps on Windows for separate platform acceptance.
    controllers, still works. Preserve the previous native Apply retest as separate
    historical evidence; this new extraction still requires its own acceptance.
 
+## Live-capture slice — 2026-10-13
+
+The live-input portion of finding **#3** and its engine access in **#1** are
+resolved. Keyboard capture, Add/duplicate collision decisions, mapping mutations,
+command construction and undo in **#4**, and other workflows are deferred.
+
+- [App capture controller](../crates/inputforge-app/src/live_capture/mod.rs) owns
+  exclusive capture and replacement, detector state, Escape interception, native
+  binding confirmation, cancellation and one-time delivery. A consumer's stale
+  cancel/drop cannot cancel another owner. Rearming the same owner keeps its
+  workflow open and starts a fresh baseline. Listener cleanup dispatches directly
+  during teardown and wakes the waiting receive task; unique listener keys and
+  capture serials prevent old Escape events from cancelling a newer request.
+- [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs) and
+  [hook wiring](../crates/inputforge-gui-dx/src/patterns/live_capture/mod.rs) retain
+  prepared targets, root/per-consumer listening signals, prompts, markup, and
+  supplied callbacks. The four surfaces are Add, primary rebind, MergeAxis
+  secondary input, and predicate input. Their existing completion handlers,
+  explicit Add commit, no-op behavior, dispatch-before-undo and failure handling
+  remain in the GUI pending their own extraction.
+- [The existing app poller](../crates/inputforge-app/src/bridge/mod.rs) samples
+  capture on every successful tick under its coherent engine read guard, then
+  publishes and delivers after releasing the guard. Immediate sampling, the
+  16 ms interval, nonblocking contention skips/recovery, root-scope cancellation,
+  and tray cadence remain. Poller timestamps use Tokio's monotonic clock, matching
+  its interval and allowing deterministic paused-time debounce tests. No second
+  poller, timer, thread, dependency, or snapshot channel was introduced.
+- The detector retains native cached addresses, first-tick baseline, the 0.15 axis
+  deadband, 50 ms debounce, deterministic ties, and axis/button/hat filters.
+  Unchanged held inputs still finish their debounce on polling ticks. Unready
+  sessions wait and rebaseline; Running does not prohibit capture; offline
+  sessions cancel. Generation and native-code layout changes rebaseline pending
+  detection and reject candidates already awaiting delivery.
+- [Current-state validation](../crates/inputforge-app/src/live_capture/policy.rs)
+  checks stable profile identity, the live editing mode and selection, mapping
+  existence, stored optional name and root actions, and rendered field identity.
+  It repeats these checks plus readiness, epoch/native layout and captured-address
+  presence immediately before delivery. Navigation changes are caught before
+  consumer rerender. Engine guards are released before confirmation, callbacks
+  or signal publication. Sparse native controls retain their original address.
+- Mapping consumers retain same-address native confirmation before their no-op
+  edit handlers. Failed confirmation cancels without completion. Add retains its
+  existing explicit commit policy. Invalid MergeAxis paths are rejected from the
+  prepared target before confirmation, preserving the previous rejection order.
+  The new target-name lookup uses both mode and input and preserves `None`;
+  display fallback names and another mode's name cannot invalidate capture.
+  Existing mapping-save name policies are deferred with mapping edits.
+
+[App detector regressions](../crates/inputforge-app/src/live_capture/tests/detection.rs)
+move with the behavior. [Controller regressions](../crates/inputforge-app/tests/live_capture.rs)
+cover ownership/rearm, delayed delivery, reentrant completion, profile/mode/name/
+action/field invalidation, pre-rerender navigation, epoch/layout/readiness changes,
+cache eviction, Running/offline rules and confirmation failure.
+[Real renderer event regressions](../crates/inputforge-gui-dx/src/frame/mapping_editor/capture_events_tests/mod.rs)
+click all four surfaces and preserve native addresses, existing commands/undo,
+explicit Add commit, cancel controls, unnamed/cross-mode target names and invalid
+stage rejection. The name and invalid-path cases failed before their corrections.
+[Paused polling/lifecycle regressions](../crates/inputforge-gui-dx/tests/live_capture_polling.rs)
+cover unchanged-input debounce, cadence, contention, exactly-once delivery,
+stale/fresh Escape, root cleanup and remount with the real app bindings.
+
+## Live-capture verification
+
+- `cargo test --workspace --locked --offline`: 2,091 passed, 0 failed, 11 ignored.
+  Five existing single-instance IPC tests could not create loopback sockets in
+  the sandbox (`Operation not permitted`); the host-permission rerun passed.
+- Focused checks passed: 68 app library tests, 10 app capture tests, 877 GUI
+  library tests (including four real capture-event regressions), two capture
+  polling/lifecycle tests, and the six existing bridge/controller-feedback tests.
+- Strict production Clippy passed:
+  `cargo clippy --locked --offline -p inputforge-app -p inputforge-gui-dx --lib --bins --examples -- -D warnings`.
+  Strict workspace/all-target Clippy still encounters the existing Rust 1.99
+  `clippy::assert_is_empty` baseline. The diagnostic check passed with only that
+  lint excluded:
+  `cargo clippy --workspace --all-targets --locked --offline -- -D warnings -A clippy::assert_is_empty`.
+  New fixture warnings were corrected; repository lint configuration is unchanged.
+- Formatting, `git diff --check`, new-module size checks, and local audit links
+  passed. The full Apply timeout/native retest section below was checked
+  byte-for-byte against the pre-extraction audit.
+- Independent read-only review identified the unnamed/cross-mode target-name
+  regressions and invalid-stage confirmation ordering; reproducing regressions
+  passed after correction, and the follow-up review found no remaining issues.
+- A Node self-check of the extracted production listener script verified
+  capture-phase Escape, synchronous removal, shutdown acknowledgement and
+  isolated listener keys. The Dioxus fake-document fixtures verify dispatched
+  cleanup and receive-task release, not native WebView execution.
+- Changes remain unstaged and uncommitted. Native Wayland/Windows hardware,
+  WebView lifecycle acceptance and performance measurements remain pending.
+
+## Live-capture manual acceptance
+
+Run `dx run -p inputforge-app` with a disposable profile on native Wayland.
+Repeat applicable checks on Windows for separate platform acceptance.
+
+1. Add a mapping by pressing a button or moving an axis/hat. Confirm the prompt
+   ends once, the source identifies the correct physical control, and the mapping
+   is saved only by the existing explicit commit. Repeat with sparse native codes
+   and multiple devices; no ordinal/device substitution may occur.
+2. Rebind a named and an unnamed primary mapping, a MergeAxis secondary source,
+   and a predicate source. Verify existing edit/undo behavior, axis-only filtering
+   for MergeAxis, and that another mode using the same primary input does not
+   cancel capture. Capture the same current source to verify its existing no-op
+   behavior. For an ambiguous retained native control, verify deliberate rebind
+   confirms only that control.
+3. Arm one surface then another, rearm Add, press Escape, and use the Cancel
+   buttons. Only the current owner may consume input; cancellation must produce
+   no mapping edit/undo and must restore normal Escape behavior afterward.
+4. While listening or during debounce, change editing mode/selection/profile,
+   rename/edit/remove the target, disconnect/reconnect or refresh the input
+   layout, and stop/start routing. No stale result may edit a different target.
+   Unready capture waits for a fresh baseline; Running remains capturable.
+5. Hold an input after its initial movement and verify completion still occurs.
+   Close/reopen the editor and quit/relaunch while listening; verify no lingering
+   Escape interception, double delivery or duplicate polling after remount.
+6. Check the existing Stop/edit-layout/Apply/Start flow still works. The prior
+   successful native Apply retest below remains historical evidence for that
+   timeout fix; it is not acceptance of this capture extraction.
+
 ## Remaining responsibilities to move
 
 The following areas are ordered by migration priority. Source links identify
@@ -389,9 +507,9 @@ may change during extraction.
 
 | # | Area and evidence | App-owned responsibility |
 | --- | --- | --- |
-| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply and advanced axis settings now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
+| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, and live capture now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
 | 2 | **Controller editing policy — partially resolved** — [app controller policy](../crates/inputforge-app/src/controllers/policy.rs); [app axis settings](../crates/inputforge-app/src/controllers/axes.rs); [axis rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Selection, virtual-layout mutations, Apply, shared routing decisions, and advanced axis settings are app-owned. Other configuration-editing/readiness gates remain; see resolved status above. |
-| 3 | **Capture workflows** — [live capture](../crates/inputforge-gui-dx/src/patterns/live_capture/mod.rs), line 83; [keyboard capture](../crates/inputforge-gui-dx/src/patterns/keyboard_capture/mod.rs), line 323 | Capture ownership, state machines, input selection, keyboard translation, cancellation, and delivery. The GUI should render prompts, captured values, and errors. |
+| 3 | **Capture workflows — partially resolved** — [app live capture](../crates/inputforge-app/src/live_capture/mod.rs); [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs); [keyboard capture](../crates/inputforge-gui-dx/src/patterns/keyboard_capture/mod.rs) | Live detection, ownership, epoch/target revalidation, native confirmation, cancellation, Escape and delivery are app-owned. Keyboard capture and translation remain open. Add/collision decisions and mapping edits/undo remain with their deferred workflows. |
 | 4 | **Mapping edits and undo** — [stage dispatch](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs), line 28; [undo history](../crates/inputforge-gui-dx/src/frame/mapping_editor/undo_log.rs), line 90 | Action-tree mutations, command construction, undo/redo, drag commits, and keyboard-nudge grouping. Curve/deadzone mutation algorithms also belong outside rendering. |
 | 5 | **Batch mapping** — [entry generation](../crates/inputforge-gui-dx/src/frame/bulk_map/apply.rs), line 19; [Apply handler](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs), line 335 | Automatic target selection, conflict decisions, wizard reconciliation, batch command construction, and snapshot creation requests. |
 | 6 | **Profiles, modes, snapshots, and settings** — [profile actions](../crates/inputforge-gui-dx/src/frame/profiles/actions.rs), line 114; [snapshot settings](../crates/inputforge-gui-dx/src/frame/settings_panel/snapshots_section.rs), line 85 | CRUD workflows, validation, destructive-confirmation decisions, pruning calculations, optimistic state, and command dispatch. Reuse existing core validation rather than maintaining separate GUI rules. |
@@ -448,7 +566,7 @@ engine command sender.
 1. Polling/snapshot preparation, shared routing controls, and basic controller
    selection/virtual-layout/Apply and advanced axis settings are complete. Extract
    remaining engine access alongside each deferred workflow.
-2. Extract capture and editor controllers.
+2. Extract keyboard capture and editor controllers; live capture is complete below.
 3. Extract the remaining workflows, services, event handling, and timers.
 
 Move existing behavioral tests with the responsibilities they verify. Retain
@@ -518,7 +636,9 @@ coverage, and the user reported its manual desktop checks working apart from the
 UTC timestamp display corrected above. The controller-workflow extraction has
 new automated coverage and awaits its manual acceptance checklist above.
 The advanced-axis slice has app, renderer-event/feedback, and polling/lifecycle
-coverage; its native manual acceptance remains pending.
+coverage; its native manual acceptance remains pending. The live-capture slice
+has app detector/controller, real renderer-event, and paused polling/lifecycle
+coverage; native WebView/hardware acceptance and timing measurements remain pending.
 The previous desktop reports are user-reported native acceptance;
 the timestamp correction, separate Windows acceptance, and runtime performance
 measurements remain unverified on native hardware. The recommendations are ownership

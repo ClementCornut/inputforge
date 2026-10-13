@@ -9,15 +9,9 @@
 //! 1. **Operation picker** -- a [`Select`] with three options:
 //!    `Bidirectional`, `Average`, `Maximum`. Dispatches on every change.
 //! 2. **Secondary input picker** -- read-only source label + ghost `rebind`
-//!    button that arms `LiveCapture::AxesOnly` via the consumer-flag pattern.
+//!    button wired to app-owned axis capture.
 //!
-//! # Capture-arming (consumer-flag pattern)
-//!
-//! `LiveCapture` is single-instance. Both the editor-frame `InputField` (Task
-//! 16) and this component consume `LiveCapture.captured`. To prevent races each
-//! consumer stores the `LiveCapture.session` it armed. Only the consumer whose
-//! stored session matches the current session reacts when `captured` fires; a
-//! newer session means another capture surface superseded it.
+//! The app owns exclusive capture, target revalidation, confirmation and delivery.
 //!
 //! # Malformed hints (Amendment 1, Task 9)
 //!
@@ -50,6 +44,7 @@ use inputforge_core::action::{Action, Mapping};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{InputAddress, MergeOp};
 
+use crate::capture::{CaptureFilter, Target};
 use crate::components::{Select, SelectOption};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
@@ -57,10 +52,7 @@ use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::pipeline::replace_at_path;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 use crate::frame::mapping_list::source_label;
-use crate::patterns::live_capture::{
-    CAPTURE_PROMPT, CaptureFilter, LiveCapture, confirm_binding, is_current_capture_session,
-    rebind_composite_class,
-};
+use crate::patterns::live_capture::{CAPTURE_PROMPT, rebind_composite_class, use_capture};
 
 /// Malformed-hint message shown when the [`MergeAxisBody`] secondary input
 /// is [`InputAddress::Unbound`].
@@ -119,12 +111,6 @@ pub(crate) fn MergeAxisBody(
 ) -> Element {
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
-    let capture = use_context::<LiveCapture>();
-
-    // --- Capture-session ownership for LiveCapture race prevention ---
-    // Stores the LiveCapture session this component owns; a newer session
-    // means another surface superseded this secondary-input capture.
-    let mut armed_session: Signal<Option<u64>> = use_signal(|| None);
 
     // Task 9 + Amendment 1: malformed-hint write / clear on every render.
     // Priority: Unbound > secondary-equals-primary. Written during the
@@ -154,7 +140,7 @@ pub(crate) fn MergeAxisBody(
     }
 
     // --- Capture-and-commit for secondary input ---
-    // When a LiveCapture fires and we are armed, dispatch SetMapping with
+    // On app capture completion, dispatch SetMapping with
     // the new secondary address, then push an undo entry.
     // Pre-clone second_input for the cap closure; the original is still
     // needed by the op-change handler and the final rsx! label below.
@@ -165,128 +151,99 @@ pub(crate) fn MergeAxisBody(
     let cmd_tx_cap = ctx.commands.clone();
     let mut undo_log_cap = editor.undo_log;
     let cfg_for_cap = ctx.config;
-    let meta_for_cap = ctx.meta;
-    let mut captured_mut = capture.captured;
 
-    use_effect(move || {
-        let captured_addr = captured_mut.read().clone();
+    let capture = use_capture(
+        Target {
+            profile: ctx.meta.read().profile_id.clone(),
+            mode: mapping_key.0.clone(),
+            mapping: Some(mapping_key.1.clone()),
+            name: ctx
+                .config
+                .read()
+                .mappings
+                .iter()
+                .find(|mapping| mapping.input == mapping_key.1 && mapping.mode == mapping_key.0)
+                .and_then(|mapping| mapping.name.clone()),
+            // Reject invalid paths before the app confirms an ambiguous native control.
+            actions: replace_at_path(
+                &root_actions,
+                &stage_id,
+                Action::MergeAxis {
+                    second_input: second_input.clone(),
+                    operation,
+                },
+            ),
+            field: format!("secondary:{stage_id:?}"),
+        },
+        CaptureFilter::AxesOnly,
+        move |new_addr| {
+            // Amendment 2: read current name from snapshot so user-set names
+            // are never silently cleared.
+            let cfg = cfg_for_cap.read();
+            let current_name = cfg.mapping_names.get(&key_for_cap.1).cloned();
 
-        // Only act when this component owns the current capture session.
-        if !is_current_capture_session(*armed_session.peek(), *capture.session.peek()) {
-            return;
-        }
-        let Some(new_addr) = captured_addr else {
-            return;
-        };
+            // Build the secondary source labels for the undo entry before
+            // dispatch so we can read the snapshot before it may update.
+            let old_label = source_label::format(&second_input_for_cap, &cfg);
+            let new_label = source_label::format(&new_addr, &cfg);
+            drop(cfg);
 
-        // Amendment 2: read current name from snapshot so user-set names
-        // are never silently cleared.
-        let cfg = cfg_for_cap.read();
-        let current_name = cfg.mapping_names.get(&key_for_cap.1).cloned();
+            let new_action = Action::MergeAxis {
+                second_input: new_addr.clone(),
+                operation,
+            };
+            let Some(new_actions) = replace_at_path(&root_for_cap, &stage_id_for_cap, new_action)
+            else {
+                // Invalid path: skip edit so no phantom undo entry is created.
+                return;
+            };
 
-        // Build the secondary source labels for the undo entry before
-        // dispatch so we can read the snapshot before it may update.
-        let old_label = source_label::format(&second_input_for_cap, &cfg);
-        let new_label = source_label::format(&new_addr, &cfg);
-        drop(cfg);
-
-        let new_action = Action::MergeAxis {
-            second_input: new_addr.clone(),
-            operation,
-        };
-        let Some(new_actions) = replace_at_path(&root_for_cap, &stage_id_for_cap, new_action)
-        else {
-            // Invalid path: skip edit so no phantom undo entry is created.
-            armed_session.set(None);
-            captured_mut.set(None);
-            return;
-        };
-
-        let before = Mapping {
-            input: key_for_cap.1.clone(),
-            mode: key_for_cap.0.clone(),
-            name: current_name.clone(),
-            actions: root_for_cap.clone(),
-        };
-
-        if confirm_binding(&cmd_tx_cap, &meta_for_cap.peek().session, &new_addr).is_err()
-            || new_addr == second_input_for_cap
-        {
-            armed_session.set(None);
-            captured_mut.set(None);
-            return;
-        }
-
-        // Amendment 3: dispatch first; push undo only on success.
-        if cmd_tx_cap
-            .send(EngineCommand::SetMapping {
+            let before = Mapping {
                 input: key_for_cap.1.clone(),
                 mode: key_for_cap.0.clone(),
-                name: current_name,
-                actions: new_actions,
-            })
-            .is_err()
-        {
-            tracing::warn!(
-                target: "f9::mapping_editor",
-                action = "merge_axis_secondary_drop_offline",
-                "secondary capture dropped: engine channel disconnected"
+                name: current_name.clone(),
+                actions: root_for_cap.clone(),
+            };
+
+            if new_addr == second_input_for_cap {
+                return;
+            }
+
+            // Amendment 3: dispatch first; push undo only on success.
+            if cmd_tx_cap
+                .send(EngineCommand::SetMapping {
+                    input: key_for_cap.1.clone(),
+                    mode: key_for_cap.0.clone(),
+                    name: current_name,
+                    actions: new_actions,
+                })
+                .is_err()
+            {
+                tracing::warn!(
+                    target: "f9::mapping_editor",
+                    action = "merge_axis_secondary_drop_offline",
+                    "secondary capture dropped: engine channel disconnected"
+                );
+                return;
+            }
+
+            let label = format_undo_label(
+                UndoKind::StageEdit,
+                LabelArgs {
+                    stage_name: Some("Merge axis"),
+                    field: Some("secondary"),
+                    before_after: Some((&old_label, &new_label)),
+                    ..LabelArgs::default()
+                },
             );
-            armed_session.set(None);
-            captured_mut.set(None);
-            return;
-        }
-
-        let label = format_undo_label(
-            UndoKind::StageEdit,
-            LabelArgs {
-                stage_name: Some("Merge axis"),
-                field: Some("secondary"),
-                before_after: Some((&old_label, &new_label)),
-                ..LabelArgs::default()
-            },
-        );
-        undo_log_cap
-            .write()
-            .push_edit(key_for_cap.clone(), before, UndoKind::StageEdit, label);
-
-        // Disarm and clear so stale effects do not re-fire.
-        armed_session.set(None);
-        captured_mut.set(None);
-    });
-
-    // --- Rebind button click handler ---
-    // Set armed flag BEFORE calling start so the captured effect cannot
-    // fire before the flag is true (effects run synchronously in SSR).
-    let start_cb = capture.start;
-    let on_rebind = move |_: MouseEvent| {
-        start_cb.call(CaptureFilter::AxesOnly);
-        armed_session.set(Some(*capture.session.peek()));
-    };
-    let cancel_cb = capture.cancel;
-    let on_cancel_rebind = move |_: MouseEvent| {
-        cancel_cb.call(());
-        armed_session.set(None);
-    };
-
-    // External-cancel / supersede watcher. `active=false` handles Esc/cancel;
-    // `session` mismatch handles another capture surface starting while the
-    // global capture remains active.
-    use_effect(move || {
-        let active_now = *capture.active.read();
-        let current_session = *capture.session.read();
-        let owned_session = *armed_session.peek();
-        if owned_session.is_none() {
-            return;
-        }
-        if capture.captured.peek().is_some() {
-            return;
-        }
-        if active_now && is_current_capture_session(owned_session, current_session) {
-            return;
-        }
-        armed_session.set(None);
-    });
+            undo_log_cap
+                .write()
+                .push_edit(key_for_cap.clone(), before, UndoKind::StageEdit, label);
+        },
+        |()| {},
+    );
+    let on_rebind = move |_: MouseEvent| capture.start.call(());
+    let on_cancel_rebind = move |_: MouseEvent| capture.cancel.call(());
 
     // --- Operation picker change handler ---
     let key_for_op = mapping_key.clone();
@@ -389,8 +346,7 @@ pub(crate) fn MergeAxisBody(
     // Compose the rebind-composite class so the placeholder label renders
     // muted/italic when the secondary input is `Unbound`, and flips to the
     // listening treatment while this component owns a capture.
-    let is_secondary_listening =
-        is_current_capture_session(*armed_session.read(), *capture.session.read());
+    let is_secondary_listening = *capture.listening.read();
     let composite_class = rebind_composite_class(&second_input, is_secondary_listening);
 
     rsx! {
@@ -416,6 +372,7 @@ pub(crate) fn MergeAxisBody(
                         button {
                             class: "if-rebind-composite__action",
                             r#type: "button",
+                            "aria-label": "Cancel secondary input capture",
                             onclick: on_cancel_rebind,
                             "Cancel"
                         }
@@ -424,6 +381,7 @@ pub(crate) fn MergeAxisBody(
                         button {
                             class: "if-rebind-composite__action",
                             r#type: "button",
+                            "aria-label": "Rebind secondary input",
                             onclick: on_rebind,
                             "rebind"
                         }

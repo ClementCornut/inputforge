@@ -42,6 +42,7 @@ use inputforge_core::action::Action;
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{InputAddress, InputId};
 
+use crate::capture::{CaptureFilter, Target};
 use crate::components::{
     Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Chip, ChipVariant, IconButton,
     InputSize, TextInput,
@@ -50,9 +51,7 @@ use crate::context::{AppContext, MappingSummary};
 use crate::frame::mapping_list::source_label;
 use crate::frame::view_state::ViewState;
 use crate::icons::Icon as IconKind;
-use crate::patterns::live_capture::{
-    CAPTURE_PROMPT, CaptureFilter, LiveCapture, is_current_capture_session,
-};
+use crate::patterns::live_capture::{CAPTURE_PROMPT, LiveCapture, use_capture};
 
 #[derive(Debug, Clone, PartialEq)]
 enum AddState {
@@ -174,7 +173,42 @@ pub(crate) fn AddInline(
     // duplicate flow so Refresh-icon recapture and Add-commit can both
     // see it. Cleared on Cancel / Esc / commit / Resting transitions.
     let mut local_source: Signal<Option<MappingSummary>> = use_signal(|| None);
-    let mut capture_session: Signal<Option<u64>> = use_signal(|| None);
+
+    let capture = use_capture(
+        Target {
+            profile: ctx.meta.read().profile_id.clone(),
+            mode: view.editing_mode.read().clone(),
+            mapping: None,
+            name: None,
+            actions: None,
+            field: "add".into(),
+        },
+        CaptureFilter::Any,
+        move |addr| {
+            let mode = view.editing_mode.peek().clone();
+            let cfg = ctx.config.peek();
+            let collision = cfg
+                .mappings
+                .iter()
+                .find(|m| m.input == addr && m.mode == mode);
+            let next = match collision {
+                Some(existing) => AddState::Collision {
+                    existing_name: existing.name.clone().unwrap_or_else(|| "(unnamed)".into()),
+                    existing: existing.input.clone(),
+                },
+                None => AddState::Pad {
+                    phase: PadPhase::Captured(addr),
+                },
+            };
+            drop(cfg);
+            state.set(next);
+        },
+        move |()| {
+            state.set(AddState::Resting);
+            name.set(String::new());
+            local_source.set(None);
+        },
+    );
 
     // Honor `force_expanded` from the parent, used by EmptyZeroMappings'
     // primary button to skip the dashed-row click. The component clears
@@ -194,8 +228,7 @@ pub(crate) fn AddInline(
             state.set(AddState::Pad {
                 phase: PadPhase::Capturing,
             });
-            cap.start.call(CaptureFilter::Any);
-            capture_session.set(Some(*cap.session.peek()));
+            capture.start.call(());
             force.set(false);
         }
     });
@@ -205,8 +238,7 @@ pub(crate) fn AddInline(
             state.set(AddState::Pad {
                 phase: PadPhase::Capturing,
             });
-            cap.start.call(CaptureFilter::Any);
-            capture_session.set(Some(*cap.session.peek()));
+            capture.start.call(());
             force_for_effect.set(false);
         }
     });
@@ -230,8 +262,7 @@ pub(crate) fn AddInline(
             state.set(AddState::Pad {
                 phase: PadPhase::Capturing,
             });
-            cap.start.call(CaptureFilter::Any);
-            capture_session.set(Some(*cap.session.peek()));
+            capture.start.call(());
             pending.set(None);
         }
     });
@@ -245,87 +276,9 @@ pub(crate) fn AddInline(
             state.set(AddState::Pad {
                 phase: PadPhase::Capturing,
             });
-            cap.start.call(CaptureFilter::Any);
-            capture_session.set(Some(*cap.session.peek()));
+            capture.start.call(());
             pending_for_effect.set(None);
         }
-    });
-
-    // Watch `cap.captured`, when capture lands, transition the pad's
-    // phase to `Captured(addr)`, or transition the whole state to
-    // `Collision` if the address is already mapped in the active mode.
-    let editing_for_cap = view.editing_mode;
-    let ctx_for_cap = ctx.clone();
-    use_effect(move || {
-        let captured_now = cap.captured.read().clone();
-        if !matches!(
-            *state.peek(),
-            AddState::Pad {
-                phase: PadPhase::Capturing,
-            }
-        ) {
-            return;
-        }
-        if !is_current_capture_session(*capture_session.peek(), *cap.session.peek()) {
-            return;
-        }
-        let Some(addr) = captured_now else {
-            return;
-        };
-        let mode_now = editing_for_cap.read().clone();
-        let cfg = ctx_for_cap.config.read();
-        let collision = cfg
-            .mappings
-            .iter()
-            .find(|m| m.input == addr && m.mode == mode_now);
-        let next_state = match collision {
-            Some(existing) => AddState::Collision {
-                existing_name: existing
-                    .name
-                    .clone()
-                    .unwrap_or_else(|| "(unnamed)".to_owned()),
-                existing: existing.input.clone(),
-            },
-            None => AddState::Pad {
-                phase: PadPhase::Captured(addr.clone()),
-            },
-        };
-        drop(cfg);
-        cap.cancel.call(());
-        capture_session.set(None);
-        state.set(next_state);
-    });
-
-    // External-cancel / supersede watcher: `cap.active=false` handles Esc
-    // and explicit cancel; session mismatch handles another capture surface
-    // starting while the global capture remains active. Either case closes
-    // the pad outright (per design choice 2.a, first Esc closes, no
-    // Disarmed intermediate).
-    //
-    // Distinguishing case: when `cap.captured` is `Some`, the captured-
-    // watcher above is doing the work; this watcher must not race it.
-    use_effect(move || {
-        let active_now = *cap.active.read();
-        let current_session = *cap.session.read();
-        if !matches!(
-            *state.peek(),
-            AddState::Pad {
-                phase: PadPhase::Capturing,
-            }
-        ) {
-            return;
-        }
-        if cap.captured.peek().is_some() {
-            return;
-        }
-        let owned_session = *capture_session.peek();
-        if active_now && is_current_capture_session(owned_session, current_session) {
-            return;
-        }
-        state.set(AddState::Resting);
-        name.set(String::new());
-        local_source.set(None);
-        capture_session.set(None);
     });
 
     // Collision drift: re-validate once per polling tick. If `existing` is
@@ -404,7 +357,6 @@ pub(crate) fn AddInline(
                         state.set(AddState::Resting);
                         name.set(String::new());
                         local_source.set(None);
-                        capture_session.set(None);
                     }
                     _ => break,
                 }
@@ -422,8 +374,7 @@ pub(crate) fn AddInline(
                         state.set(AddState::Pad {
                             phase: PadPhase::Capturing,
                         });
-                        cap.start.call(CaptureFilter::Any);
-                        capture_session.set(Some(*cap.session.peek()));
+                        capture.start.call(());
                     },
                     "aria-label": "Add mapping",
                     "+ Add mapping"
@@ -495,7 +446,6 @@ pub(crate) fn AddInline(
                             state.set(AddState::Resting);
                             name.set(String::new());
                             local_source.set(None);
-                            capture_session.set(None);
                         }
                     },
                     div { class: "if-add-inline__readout",
@@ -525,8 +475,7 @@ pub(crate) fn AddInline(
                                 state.set(AddState::Pad {
                                     phase: PadPhase::Capturing,
                                 });
-                                cap.start.call(CaptureFilter::Any);
-                                capture_session.set(Some(*cap.session.peek()));
+                                capture.start.call(());
                             },
                         }
                     }
@@ -541,11 +490,10 @@ pub(crate) fn AddInline(
                             variant: ButtonVariant::Ghost,
                             size: ButtonSize::Sm,
                             onclick: move |_| {
-                                cap.cancel.call(());
+                                capture.cancel.call(());
                                 state.set(AddState::Resting);
                                 name.set(String::new());
                                 local_source.set(None);
-                                capture_session.set(None);
                             },
                             "Cancel"
                         }
@@ -568,7 +516,6 @@ pub(crate) fn AddInline(
                                     state.set(AddState::Resting);
                                     name.set(String::new());
                                     local_source.set(None);
-                                    capture_session.set(None);
                                 }
                             },
                             "Add"
@@ -604,7 +551,6 @@ pub(crate) fn AddInline(
                             state.set(AddState::Resting);
                             name.set(String::new());
                             local_source.set(None);
-                            capture_session.set(None);
                         },
                         "Edit existing"
                     }
@@ -614,7 +560,6 @@ pub(crate) fn AddInline(
                             state.set(AddState::Resting);
                             name.set(String::new());
                             local_source.set(None);
-                            capture_session.set(None);
                         },
                         "Cancel"
                     }

@@ -28,18 +28,23 @@ use std::{
 const POLL_INTERVAL: Duration = Duration::from_millis(16);
 
 /// Start one editor-scoped polling task; scope teardown cancels it.
-pub fn spawn_polling_task(state: Arc<RwLock<AppState>>, publisher: Publisher) {
+pub fn spawn_polling_task(
+    state: Arc<RwLock<AppState>>,
+    publisher: Publisher,
+    capture: crate::live_capture::Controller,
+) {
     spawn(async move {
-        let mut poller = Poller::new(state);
+        let mut poller = Poller::new(state, capture.clone());
         let mut tick = tokio::time::interval(POLL_INTERVAL);
         loop {
             tick.tick().await;
             if let Some(frame) = poller.sample(
                 publisher.selected_mapping().as_ref(),
-                Instant::now(),
+                tokio::time::Instant::now().into_std(),
                 modified,
             ) {
                 publisher.publish(frame);
+                capture.deliver();
             }
         }
     });
@@ -52,12 +57,14 @@ fn modified(path: &Path) -> Option<SystemTime> {
 struct Poller {
     state: Arc<RwLock<AppState>>,
     metadata: profile_metadata::Cache,
+    capture: crate::live_capture::Controller,
 }
 impl Poller {
-    fn new(state: Arc<RwLock<AppState>>) -> Self {
+    fn new(state: Arc<RwLock<AppState>>, capture: crate::live_capture::Controller) -> Self {
         Self {
             state,
             metadata: profile_metadata::Cache::default(),
+            capture,
         }
     }
     fn sample(
@@ -68,6 +75,7 @@ impl Poller {
     ) -> Option<Frame> {
         let mut frame = {
             let state = self.state.try_read()?;
+            self.capture.sample(&state, now);
             prepare_at(&state, selection, now)
         };
         self.metadata.complete(&mut frame.meta, now, read_metadata);

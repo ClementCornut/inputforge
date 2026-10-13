@@ -141,7 +141,7 @@ fn seeded_profile_with_polarities_and_axes(
 /// `axes` is `[(value, polarity)]` indexed by the device's axis index.
 fn live_snapshot_with_axes(axes: Vec<(f64, AxisPolarity)>) -> LiveSnapshot {
     LiveSnapshot {
-        capture_epoch: crate::context::session::CaptureEpoch::default(),
+        capture_epoch: crate::snapshots::CaptureEpoch::default(),
         device_inputs: vec![crate::context::DeviceInputValues {
             axes,
             buttons: vec![],
@@ -165,7 +165,7 @@ fn live_snapshot_with_axes_and_outputs(
     output_axes: Vec<(VJoyAxis, f64)>,
 ) -> LiveSnapshot {
     LiveSnapshot {
-        capture_epoch: crate::context::session::CaptureEpoch::default(),
+        capture_epoch: crate::snapshots::CaptureEpoch::default(),
         device_inputs: vec![crate::context::DeviceInputValues {
             axes,
             buttons: vec![],
@@ -453,7 +453,7 @@ fn render_with_pipeline_and_engine(
         live_hats[usize::from(input_index(addr))] = *direction;
     }
     let live = LiveSnapshot {
-        capture_epoch: crate::context::session::CaptureEpoch::default(),
+        capture_epoch: crate::snapshots::CaptureEpoch::default(),
         device_inputs: vec![crate::context::DeviceInputValues {
             axes: live_axes,
             buttons: live_buttons,
@@ -1284,7 +1284,7 @@ fn editor_live_readout_button_mapping_uses_binary_in_and_out_rows() {
     let mut state = seeded_profile_with_input_mapping(primary.clone(), actions.clone(), 0, 1, 0);
     add_vjoy_device_with_controls(&mut state, 1, vec![], 1, 0);
     let live = LiveSnapshot {
-        capture_epoch: crate::context::session::CaptureEpoch::default(),
+        capture_epoch: crate::snapshots::CaptureEpoch::default(),
         device_inputs: vec![crate::context::DeviceInputValues {
             axes: vec![],
             buttons: vec![false],
@@ -1314,7 +1314,7 @@ fn editor_live_readout_button_mapping_uses_binary_in_and_out_rows() {
     let mut state = seeded_profile_with_input_mapping(primary.clone(), actions, 0, 1, 0);
     add_vjoy_device_with_controls(&mut state, 1, vec![], 1, 0);
     let live = LiveSnapshot {
-        capture_epoch: crate::context::session::CaptureEpoch::default(),
+        capture_epoch: crate::snapshots::CaptureEpoch::default(),
         device_inputs: vec![crate::context::DeviceInputValues {
             axes: vec![],
             buttons: vec![true],
@@ -1359,7 +1359,7 @@ fn editor_live_readout_tap_gesture_vjoy_button_uses_latched_activity() {
     let mut state = seeded_profile_with_input_mapping(primary.clone(), actions, 0, 1, 0);
     add_vjoy_device_with_controls(&mut state, 1, vec![], 1, 0);
     let live = LiveSnapshot {
-        capture_epoch: crate::context::session::CaptureEpoch::default(),
+        capture_epoch: crate::snapshots::CaptureEpoch::default(),
         device_inputs: vec![crate::context::DeviceInputValues {
             axes: vec![],
             buttons: vec![false],
@@ -1410,7 +1410,7 @@ fn editor_live_readout_tap_gesture_mouse_button_uses_latched_activity() {
     );
     let state = seeded_profile_with_input_mapping(primary.clone(), actions, 0, 1, 0);
     let live = LiveSnapshot {
-        capture_epoch: crate::context::session::CaptureEpoch::default(),
+        capture_epoch: crate::snapshots::CaptureEpoch::default(),
         device_inputs: vec![crate::context::DeviceInputValues {
             axes: vec![],
             buttons: vec![false],
@@ -1457,7 +1457,7 @@ fn editor_live_readout_tap_gesture_keyboard_uses_latched_activity() {
     );
     let state = seeded_profile_with_input_mapping(primary.clone(), actions, 0, 1, 0);
     let live = LiveSnapshot {
-        capture_epoch: crate::context::session::CaptureEpoch::default(),
+        capture_epoch: crate::snapshots::CaptureEpoch::default(),
         device_inputs: vec![crate::context::DeviceInputValues {
             axes: vec![],
             buttons: vec![false],
@@ -1506,7 +1506,7 @@ fn editor_live_readout_expired_tap_gesture_activity_returns_idle() {
         Duration::from_millis(250),
     );
     let live = LiveSnapshot {
-        capture_epoch: crate::context::session::CaptureEpoch::default(),
+        capture_epoch: crate::snapshots::CaptureEpoch::default(),
         device_inputs: vec![crate::context::DeviceInputValues {
             axes: vec![],
             buttons: vec![false],
@@ -1541,7 +1541,7 @@ fn editor_live_readout_hat_mapping_uses_compass_rows() {
     let mut state = seeded_profile_with_input_mapping(primary.clone(), actions, 0, 0, 1);
     add_vjoy_device_with_controls(&mut state, 1, vec![], 0, 1);
     let live = LiveSnapshot {
-        capture_epoch: crate::context::session::CaptureEpoch::default(),
+        capture_epoch: crate::snapshots::CaptureEpoch::default(),
         device_inputs: vec![crate::context::DeviceInputValues {
             axes: vec![],
             buttons: vec![],
@@ -1589,7 +1589,7 @@ fn editor_live_readout_output_button_freezes_binary_state_when_engine_stopped() 
     let mut state = seeded_profile_with_input_mapping(primary.clone(), actions, 0, 1, 0);
     add_vjoy_device_with_controls(&mut state, 1, vec![], 1, 0);
     let live = LiveSnapshot {
-        capture_epoch: crate::context::session::CaptureEpoch::default(),
+        capture_epoch: crate::snapshots::CaptureEpoch::default(),
         device_inputs: vec![crate::context::DeviceInputValues {
             axes: vec![],
             buttons: vec![true],

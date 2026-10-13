@@ -27,16 +27,13 @@ use inputforge_core::action::{Action, Mapping};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{InputAddress, OutputAddress, OutputId, VJoyAxis};
 
+use crate::capture::{CaptureFilter, Target};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, UndoKind, format_undo_label};
 use crate::frame::mapping_list::source_label;
-use crate::frame::view_state::ViewState;
-use crate::patterns::live_capture::{
-    CAPTURE_PROMPT, CaptureFilter, LiveCapture, confirm_binding, is_current_capture_session,
-    rebind_composite_class,
-};
+use crate::patterns::live_capture::{CAPTURE_PROMPT, rebind_composite_class, use_capture};
 
 #[component]
 #[allow(
@@ -58,134 +55,95 @@ pub(crate) fn Header(
 ) -> Element {
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
-    let capture = use_context::<LiveCapture>();
-    let view = use_context::<ViewState>();
 
     // Local UI state.
     let mut armed: Signal<bool> = use_signal(|| false);
     let mut local_name: Signal<String> = use_signal(|| name.clone());
-    // Disambiguates "we armed this capture" from another consumer's capture.
-    // Stores the LiveCapture session this header owns; a newer session means
-    // another surface superseded us while `capture.active` can remain true.
-    let mut armed_session: Signal<Option<u64>> = use_signal(|| None);
-
-    // Cancel any in-flight rebind capture when the user switches mappings.
-    //
-    // Subscribe to `view.selected_mapping` (the change source) so the effect
-    // re-fires when the user picks a different mapping in the rail. Use
-    // `peek()` for `armed_session` so arming in `on_rebind`
-    // does NOT trigger this effect to cancel itself.
-    let selected_for_cancel = view.selected_mapping;
-    use_effect(move || {
-        let _selected = selected_for_cancel.read();
-        if armed_session.peek().is_some() {
-            capture.cancel.call(());
-            armed_session.set(None);
-        }
-    });
-
-    // Rebind capture handler: on a fresh `captured` value while we are the
-    // armed consumer, dispatch `SetMapping` then push a `Rebind` undo entry.
-    //
-    // Subscribe to `capture.captured` (the change source). Read
-    // `armed_session` via `peek()` so the dispatch path's cleanup does not
-    // retrigger the effect.
     let mapping_key_for_capture = mapping_key.clone();
     let actions_for_capture = actions.clone();
     let name_for_capture = Some(name.clone());
     let cmd_tx_for_capture = ctx.commands.clone();
     let mut undo_log_for_capture = editor.undo_log;
     let cfg_for_capture = ctx.config;
-    let meta_for_capture = ctx.meta;
 
-    use_effect(move || {
-        let captured_addr = capture.captured.read().clone();
-        if !is_current_capture_session(*armed_session.peek(), *capture.session.peek()) {
-            return;
-        }
-        let Some(new_addr) = captured_addr else {
-            return;
-        };
+    let capture = use_capture(
+        Target {
+            profile: ctx.meta.read().profile_id.clone(),
+            mode: mapping_key.0.clone(),
+            mapping: Some(mapping_key.1.clone()),
+            name: ctx
+                .config
+                .read()
+                .mappings
+                .iter()
+                .find(|mapping| mapping.input == mapping_key.1 && mapping.mode == mapping_key.0)
+                .and_then(|mapping| mapping.name.clone()),
+            actions: Some(actions.clone()),
+            field: "primary".into(),
+        },
+        CaptureFilter::Any,
+        move |new_addr| {
+            let (mode, old_addr) = mapping_key_for_capture.clone();
+            // No-op rebind: the user pressed the input that is already mapped
+            // here. Skip dispatch + undo, mirroring the rename path's same-name skip.
+            if new_addr == old_addr {
+                return;
+            }
 
-        let (mode, old_addr) = mapping_key_for_capture.clone();
-        if confirm_binding(
-            &cmd_tx_for_capture,
-            &meta_for_capture.peek().session,
-            &new_addr,
-        )
-        .is_err()
-        {
-            armed_session.set(None);
-            capture.cancel.call(());
-            return;
-        }
+            // Resolve labels before dispatch so the undo entry survives the
+            // config snapshot rebuild that follows.
+            let old_label = source_label::format(&old_addr, &cfg_for_capture.read());
+            let new_label = source_label::format(&new_addr, &cfg_for_capture.read());
 
-        // No-op rebind: the user pressed the input that is already mapped
-        // here. Skip dispatch + undo, mirroring the rename path's
-        // same-name skip. Clearing `captured` and the consumer flag keeps
-        // the listening UI from sticking around.
-        if new_addr == old_addr {
-            armed_session.set(None);
-            let mut cap = capture.captured;
-            cap.set(None);
-            return;
-        }
-
-        // Resolve labels before dispatch so the undo entry survives the
-        // config snapshot rebuild that follows.
-        let old_label = source_label::format(&old_addr, &cfg_for_capture.read());
-        let new_label = source_label::format(&new_addr, &cfg_for_capture.read());
-
-        let before = Mapping {
-            input: old_addr.clone(),
-            mode: mode.clone(),
-            name: name_for_capture.clone(),
-            actions: actions_for_capture.clone(),
-        };
-
-        if cmd_tx_for_capture
-            .send(EngineCommand::SetMapping {
-                input: new_addr.clone(),
+            let before = Mapping {
+                input: old_addr.clone(),
                 mode: mode.clone(),
                 name: name_for_capture.clone(),
                 actions: actions_for_capture.clone(),
-            })
-            .is_err()
-        {
-            tracing::warn!(
-                target: "f9::mapping_editor",
-                action = "rebind_drop_offline",
-                "rebind dropped: engine channel disconnected"
+            };
+
+            if cmd_tx_for_capture
+                .send(EngineCommand::SetMapping {
+                    input: new_addr.clone(),
+                    mode: mode.clone(),
+                    name: name_for_capture.clone(),
+                    actions: actions_for_capture.clone(),
+                })
+                .is_err()
+            {
+                tracing::warn!(
+                    target: "f9::mapping_editor",
+                    action = "rebind_drop_offline",
+                    "rebind dropped: engine channel disconnected"
+                );
+                return;
+            }
+
+            let label = format_undo_label(
+                UndoKind::Rebind,
+                LabelArgs {
+                    old_new: Some((&old_label, &new_label)),
+                    ..LabelArgs::default()
+                },
             );
-            armed_session.set(None);
-            capture.cancel.call(());
-            return;
-        }
+            // Undo entry keys on the OLD address: that is the mapping that
+            // existed before this rebind; restoring it writes the old snapshot
+            // back under the old key.
+            undo_log_for_capture.write().push_edit(
+                (mode, old_addr),
+                before,
+                UndoKind::Rebind,
+                label,
+            );
 
-        let label = format_undo_label(
-            UndoKind::Rebind,
-            LabelArgs {
-                old_new: Some((&old_label, &new_label)),
-                ..LabelArgs::default()
-            },
-        );
-        // Undo entry keys on the OLD address: that is the mapping that
-        // existed before this rebind; restoring it writes the old snapshot
-        // back under the old key.
-        undo_log_for_capture
-            .write()
-            .push_edit((mode, old_addr), before, UndoKind::Rebind, label);
-
-        tracing::info!(
-            target: "f9::mapping_editor",
-            action = "rebind",
-            "mapping rebound"
-        );
-
-        armed_session.set(None);
-        let mut cap = capture.captured;
-        cap.set(None);
-    });
+            tracing::info!(
+                target: "f9::mapping_editor",
+                action = "rebind",
+                "mapping rebound"
+            );
+        },
+        |()| {},
+    );
 
     // Read source label and (optional) output label for the subtitle.
     let cfg = ctx.config.read();
@@ -317,44 +275,9 @@ pub(crate) fn Header(
         local_name.set(evt.value());
     };
 
-    // External-cancel / supersede watcher. `active=false` handles Esc/cancel;
-    // `session` mismatch handles another capture surface starting while the
-    // global capture remains active.
-    use_effect(move || {
-        let active_now = *capture.active.read();
-        let current_session = *capture.session.read();
-        let owned_session = *armed_session.peek();
-        if owned_session.is_none() {
-            return;
-        }
-        if capture.captured.peek().is_some() {
-            return;
-        }
-        if active_now && is_current_capture_session(owned_session, current_session) {
-            return;
-        }
-        armed_session.set(None);
-    });
-
-    // Rebind button: arm `LiveCapture::Any`. Set the consumer flag BEFORE
-    // calling start so the captured-signal effect cannot fire before the
-    // flag is true (effects run synchronously in SSR and on the next
-    // microtask tick in the browser).
-    let on_rebind = move |_: MouseEvent| {
-        capture.start.call(CaptureFilter::Any);
-        armed_session.set(Some(*capture.session.peek()));
-    };
-
-    // Cancel button (visible only while armed): drop the capture and clear
-    // our consumer flag. Esc is handled by F8's own listener; this is the
-    // mouse path.
-    let on_cancel_rebind = move |_: MouseEvent| {
-        capture.cancel.call(());
-        armed_session.set(None);
-    };
-
-    let is_rebind_listening =
-        is_current_capture_session(*armed_session.read(), *capture.session.read());
+    let on_rebind = move |_: MouseEvent| capture.start.call(());
+    let on_cancel_rebind = move |_: MouseEvent| capture.cancel.call(());
+    let is_rebind_listening = *capture.listening.read();
 
     rsx! {
         div { class: "if-editor__header",
@@ -405,6 +328,7 @@ pub(crate) fn Header(
                         button {
                             class: "if-rebind-composite__action",
                             r#type: "button",
+                            "aria-label": "Cancel mapping input capture",
                             onclick: on_cancel_rebind,
                             "Cancel"
                         }
@@ -415,6 +339,7 @@ pub(crate) fn Header(
                         button {
                             class: "if-rebind-composite__action",
                             r#type: "button",
+                            "aria-label": "Rebind mapping input",
                             onclick: on_rebind,
                             "rebind"
                         }

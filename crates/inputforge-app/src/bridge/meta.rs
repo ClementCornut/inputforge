@@ -72,6 +72,10 @@ pub(super) fn project(s: &AppState) -> MetaSnapshot {
         })
         .collect();
     MetaSnapshot {
+        profile_id: s
+            .active_profile
+            .as_ref()
+            .map(|profile| profile.id().clone()),
         session: s.session.clone(),
         engine_status: s.engine_status,
         current_mode: s.current_mode.clone(),

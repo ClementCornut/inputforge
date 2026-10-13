@@ -102,7 +102,9 @@ fn metadata_reader_can_write_engine_state() {
     state.profile_path = Some(PathBuf::from("external.toml"));
     state.active_profile_origin = Some(ProfileOrigin::External);
     let state = Arc::new(RwLock::new(state));
-    let mut poller = Poller::new(Arc::clone(&state));
+    let (commands, _) = std::sync::mpsc::channel();
+    let capture = crate::live_capture::Controller::new(Arc::clone(&state), commands);
+    let mut poller = Poller::new(Arc::clone(&state), capture);
     let frame = poller
         .sample(None, Instant::now(), |_| {
             state

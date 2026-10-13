@@ -8,6 +8,8 @@
               clippy's reachability check loses some pub(crate) items here."
 )]
 
+#[cfg(test)]
+mod capture_events_tests;
 mod empty_state;
 mod engine_offline_banner;
 mod header;

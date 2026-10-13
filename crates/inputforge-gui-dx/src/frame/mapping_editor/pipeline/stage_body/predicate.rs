@@ -40,7 +40,7 @@
 //!
 //! 1. Name preservation: current name read from `cfg.mapping_names`.
 //! 2. Dispatch-before-undo: `push_edit` called only after `cmd.send` succeeds.
-//! 3. `LiveCapture.session` ownership pattern (same as `MergeAxisBody`).
+//! 3. App-owned capture ownership and completion delivery.
 //! 4. Malformed-hint write for `AxisInRange` (min > max), `HatDirection`
 //!    (empty directions), `All` / `Any` (zero conditions).
 
@@ -52,6 +52,7 @@ use inputforge_core::action::{Action, Condition, Mapping};
 use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::{HatDirection, InputAddress};
 
+use crate::capture::{CaptureFilter, Target};
 use crate::components::{NumberInput, Select, SelectOption};
 use crate::context::{AppContext, ConfigSnapshot};
 use crate::frame::MappingKey;
@@ -59,10 +60,7 @@ use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::pipeline::replace_at_path;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 use crate::frame::mapping_list::source_label;
-use crate::patterns::live_capture::{
-    CAPTURE_PROMPT, CaptureFilter, LiveCapture, confirm_binding, is_current_capture_session,
-    rebind_composite_class,
-};
+use crate::patterns::live_capture::{CAPTURE_PROMPT, rebind_composite_class, use_capture};
 
 // ---------------------------------------------------------------------------
 // Kind string constants -- stable keys shared between picker and parser.
@@ -270,9 +268,8 @@ fn commit_condition(
 ///
 /// Renders the shared `if-rebind-composite` cluster (same primitive used by
 /// the editor header subtitle and the `MergeAxis` Secondary input row) so the
-/// rebind affordance reads identically across all three call sites. Follows
-/// the session-ownership pattern from `MergeAxisBody`: the row only reacts
-/// when its stored `LiveCapture.session` still matches the current session.
+/// rebind affordance reads identically across all three call sites. The app
+/// delivers only to the current capture owner.
 #[component]
 #[allow(
     unused_qualifications,
@@ -284,58 +281,20 @@ fn PredicateInputRow(
     input: InputAddress,
     /// Callback invoked with the new address after a successful capture.
     on_input_change: EventHandler<InputAddress>,
+    target: Target,
 ) -> Element {
-    let capture = use_context::<LiveCapture>();
     let ctx = use_context::<AppContext>();
-
-    let mut armed_session: Signal<Option<u64>> = use_signal(|| None);
-
-    // Watch `capture.captured`: when we armed it, forward the new address.
-    let input_for_effect = input.clone();
-    let confirm_commands = ctx.commands.clone();
-    let confirm_meta = ctx.meta;
-    use_effect(move || {
-        let captured_addr = capture.captured.read().clone();
-        if !is_current_capture_session(*armed_session.peek(), *capture.session.peek()) {
-            return;
-        }
-        let Some(new_addr) = captured_addr else {
-            return;
-        };
-
-        // Disarm before calling the handler to prevent self-fire on re-render.
-        armed_session.set(None);
-        let mut cap = capture.captured;
-        cap.set(None);
-
-        // Confirm ambiguity even when the logical address stays unchanged.
-        if confirm_binding(&confirm_commands, &confirm_meta.peek().session, &new_addr).is_err()
-            || new_addr == input_for_effect
-        {
-            return;
-        }
-
-        on_input_change.call(new_addr);
-    });
-
-    // External-cancel / supersede watcher. `active=false` handles Esc/cancel;
-    // `session` mismatch handles another capture surface starting while the
-    // global capture remains active.
-    use_effect(move || {
-        let active_now = *capture.active.read();
-        let current_session = *capture.session.read();
-        let owned_session = *armed_session.peek();
-        if owned_session.is_none() {
-            return;
-        }
-        if capture.captured.peek().is_some() {
-            return;
-        }
-        if active_now && is_current_capture_session(owned_session, current_session) {
-            return;
-        }
-        armed_session.set(None);
-    });
+    let input_for_capture = input.clone();
+    let capture = use_capture(
+        target,
+        CaptureFilter::Any,
+        move |new_addr| {
+            if new_addr != input_for_capture {
+                on_input_change.call(new_addr);
+            }
+        },
+        |()| {},
+    );
 
     let source = source_label::format(&input, &ctx.config.read());
 
@@ -351,17 +310,9 @@ fn PredicateInputRow(
     let composite_class = rebind_composite_class(&input, false);
     let listening_class = rebind_composite_class(&input, true);
 
-    let on_rebind = move |_: MouseEvent| {
-        capture.start.call(CaptureFilter::Any);
-        armed_session.set(Some(*capture.session.peek()));
-    };
-
-    let on_cancel = move |_: MouseEvent| {
-        capture.cancel.call(());
-        armed_session.set(None);
-    };
-
-    let is_listening = is_current_capture_session(*armed_session.read(), *capture.session.read());
+    let on_rebind = move |_: MouseEvent| capture.start.call(());
+    let on_cancel = move |_: MouseEvent| capture.cancel.call(());
+    let is_listening = *capture.listening.read();
 
     rsx! {
         div { class: "if-predicate__input-row",
@@ -376,6 +327,7 @@ fn PredicateInputRow(
                     button {
                         class: "if-rebind-composite__action",
                         r#type: "button",
+                        "aria-label": "Cancel predicate input capture",
                         onclick: on_cancel,
                         "Cancel"
                     }
@@ -386,6 +338,7 @@ fn PredicateInputRow(
                     button {
                         class: "if-rebind-composite__action",
                         r#type: "button",
+                        "aria-label": "Rebind predicate input",
                         onclick: on_rebind,
                         "rebind"
                     }
@@ -431,6 +384,20 @@ pub(crate) fn PredicateEditor(
 ) -> Element {
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
+    let capture_target = Target {
+        profile: ctx.meta.read().profile_id.clone(),
+        mode: mapping_key.0.clone(),
+        mapping: Some(mapping_key.1.clone()),
+        name: ctx
+            .config
+            .read()
+            .mappings
+            .iter()
+            .find(|mapping| mapping.input == mapping_key.1 && mapping.mode == mapping_key.0)
+            .and_then(|mapping| mapping.name.clone()),
+        actions: Some(root_actions.clone()),
+        field: format!("predicate:{stage_id:?}:{condition:?}"),
+    };
 
     // Extract the two context fields used by commit_condition.
     // cmd_tx is cloned once here; cfg is Copy.
@@ -597,6 +564,7 @@ pub(crate) fn PredicateEditor(
 
             rsx! {
                 PredicateInputRow {
+                    target: capture_target.clone(),
                     input: input_clone,
                     on_input_change: move |new_addr: InputAddress| {
                         let new_condition = match &cond_op {
@@ -692,6 +660,7 @@ pub(crate) fn PredicateEditor(
 
             rsx! {
                 PredicateInputRow {
+                    target: capture_target.clone(),
                     input: addr_in,
                     on_input_change: move |new_addr: InputAddress| {
                         commit_condition(
@@ -827,6 +796,7 @@ pub(crate) fn PredicateEditor(
 
             rsx! {
                 PredicateInputRow {
+                    target: capture_target.clone(),
                     input: input_addr.clone(),
                     on_input_change: move |new_addr: InputAddress| {
                         commit_condition(

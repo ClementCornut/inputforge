@@ -33,10 +33,18 @@ fn editor(props: EditorProps) -> Element {
     };
     use_context_provider(|| navigation);
     let (commands, _) = mpsc::channel();
+    let capture = use_hook(|| {
+        inputforge_app::live_capture::Controller::new(Arc::clone(&props.state), commands.clone())
+    });
+    let tick_capture = capture.clone();
     let state = Arc::clone(&props.state);
     let start = Callback::new(move |publisher| {
         props.starts.set(props.starts.get() + 1);
-        inputforge_app::bridge::spawn_polling_task(Arc::clone(&state), publisher);
+        inputforge_app::bridge::spawn_polling_task(
+            Arc::clone(&state),
+            publisher,
+            tick_capture.clone(),
+        );
     });
     let controllers =
         inputforge_app::controllers::bindings(Arc::clone(&props.state), commands.clone());
@@ -47,6 +55,7 @@ fn editor(props: EditorProps) -> Element {
             dispatch: Callback::new(|_| {}),
         },
         controllers,
+        capture.bindings(),
         start,
     )
 }

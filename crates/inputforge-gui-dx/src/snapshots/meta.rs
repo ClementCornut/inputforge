@@ -8,6 +8,8 @@ pub struct MetaSnapshot {
     pub engine_status: EngineStatus,
     pub current_mode: String,
     pub profile_name: Option<String>,
+    /// Stable identity for capture destination revalidation.
+    pub profile_id: Option<inputforge_core::profile::ProfileId>,
     pub profile_path: Option<PathBuf>,
     pub warnings: Vec<String>,
     /// Ordered flat mode names.

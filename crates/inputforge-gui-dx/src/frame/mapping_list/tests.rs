@@ -1082,29 +1082,42 @@ fn delete_dialog_renders_when_target_set() {
 
 #[test]
 fn duplicate_click_arms_live_capture() {
-    use crate::patterns::live_capture::{CaptureFilter, LiveCapture};
-
+    use super::add_inline::AddInline;
+    use crate::context::{GlyphFlags, MappingSummary};
+    use crate::patterns::live_capture::LiveCapture;
+    use inputforge_core::types::{DeviceId, InputAddress, InputId};
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         let cap = use_context::<LiveCapture>();
-        // Synthesize a "user clicked Duplicate" by emulating its body:
-        // arm capture. (Real wiring lives in ContextMenuMount; the
-        // SSR-friendly version of this test asserts that arming flips
-        // LiveCapture::active to true.)
-        use_hook(move || {
-            cap.start.call(CaptureFilter::Any);
+        let force = use_signal(|| false);
+        let duplicate = use_signal(|| {
+            Some(MappingSummary {
+                input: InputAddress::Bound {
+                    device: DeviceId("dev".into()),
+                    input: InputId::Button { index: 0 },
+                },
+                mode: "Default".into(),
+                name: Some("Boost".into()),
+                glyphs: GlyphFlags::default(),
+                referenced_devices: vec![],
+                first_vjoy_output: None,
+            })
         });
-        let armed_marker = if *cap.active.read() { "ARMED" } else { "IDLE" };
-        rsx! { span { "{armed_marker}" } }
+        let armed = if *cap.active.read() { "ARMED" } else { "IDLE" };
+        rsx! {
+            AddInline { force_expanded: force, pending_duplicate: duplicate }
+            span { "{armed}" }
+        }
     }
     let mut vdom = VirtualDom::new(TestComponent);
     vdom.rebuild_in_place();
-    vdom.rebuild_in_place();
+    vdom.render_immediate_to_vec();
     let html = render(&vdom);
     assert!(
         html.contains("ARMED"),
-        "Duplicate flow's start.call must arm LiveCapture; got: {html}",
+        "actual duplicate mount must arm capture: {html}"
     );
+    assert!(html.contains("Boost (copy)"));
 }
 
 #[test]

@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use inputforge_core::state::InputCacheEntry;
 use inputforge_core::types::{HatDirection, InputAddress, InputValue};
 
-use super::CaptureFilter;
+use inputforge_gui_dx::capture::CaptureFilter;
 
 /// Axis movement threshold. A delta below this against baseline is
 /// ignored, protects against sympathetic stick movement and analog
@@ -45,103 +45,99 @@ pub(crate) struct CoreState {
 /// same tick with identical absolute deltas, the first axis encountered
 /// in `snapshot`'s iteration order wins. `InputCacheStore::clone_compact`
 /// guarantees stable, deterministic order (Task 4 contract).
-pub(crate) struct LiveCaptureCore;
-
-impl LiveCaptureCore {
-    pub(crate) fn step_session(
-        mut prev: CoreState,
-        snapshot: &[InputCacheEntry],
-        now: Instant,
-        previous_generation: Option<u64>,
-        epoch: crate::context::session::CaptureEpoch,
-    ) -> (CoreState, Option<InputAddress>) {
-        if previous_generation != Some(epoch.generation) || !epoch.ready || !epoch.allowed {
-            prev.baseline = None;
-            prev.pending = None;
-        }
-        if !epoch.ready || !epoch.allowed {
-            return (prev, None);
-        }
-        Self::step(prev, snapshot, now)
+pub(crate) fn step_session(
+    mut prev: CoreState,
+    snapshot: &[InputCacheEntry],
+    now: Instant,
+    previous_generation: Option<u64>,
+    epoch: inputforge_gui_dx::snapshots::CaptureEpoch,
+) -> (CoreState, Option<InputAddress>) {
+    if previous_generation != Some(epoch.generation) || !epoch.ready || !epoch.allowed {
+        prev.baseline = None;
+        prev.pending = None;
     }
+    if !epoch.ready || !epoch.allowed {
+        return (prev, None);
+    }
+    step(prev, snapshot, now)
+}
 
-    #[allow(
-        clippy::too_many_lines,
-        reason = "single state-transition fn, splitting it would obscure the branch structure"
-    )]
-    pub(crate) fn step(
-        prev: CoreState,
-        snapshot: &[InputCacheEntry],
-        now: Instant,
-    ) -> (CoreState, Option<InputAddress>) {
-        // Branch 1: first tick, record baseline, never fire.
-        let Some(baseline) = prev.baseline.as_ref() else {
-            return (
-                CoreState {
-                    baseline: Some(snapshot.to_vec()),
-                    pending: None,
-                    filter: prev.filter,
-                },
-                None,
-            );
-        };
+#[allow(
+    clippy::too_many_lines,
+    reason = "single state-transition fn, splitting it would obscure the branch structure"
+)]
+pub(crate) fn step(
+    prev: CoreState,
+    snapshot: &[InputCacheEntry],
+    now: Instant,
+) -> (CoreState, Option<InputAddress>) {
+    // Branch 1: first tick, record baseline, never fire.
+    let Some(baseline) = prev.baseline.as_ref() else {
+        return (
+            CoreState {
+                baseline: Some(snapshot.to_vec()),
+                pending: None,
+                filter: prev.filter,
+            },
+            None,
+        );
+    };
 
-        // Branch 2: collect crossings against baseline, scoped by filter.
-        let crossings = collect_crossings(prev.filter, baseline, snapshot);
+    // Branch 2: collect crossings against baseline, scoped by filter.
+    let crossings = collect_crossings(prev.filter, baseline, snapshot);
 
-        // Branch 3: window-state evolution.
-        match prev.pending {
-            None if crossings.is_empty() => (
+    // Branch 3: window-state evolution.
+    match prev.pending {
+        None if crossings.is_empty() => (
+            CoreState {
+                baseline: prev.baseline,
+                pending: None,
+                filter: prev.filter,
+            },
+            None,
+        ),
+        None => {
+            let winner = pick_winner(&crossings);
+            (
                 CoreState {
                     baseline: prev.baseline,
-                    pending: None,
+                    pending: Some((winner, now)),
                     filter: prev.filter,
                 },
                 None,
-            ),
-            None => {
-                let winner = pick_winner(&crossings);
-                (
+            )
+        }
+        Some((pending_addr, t0)) => {
+            if now.duration_since(t0) >= Duration::from_millis(DEBOUNCE_MS) {
+                return (
                     CoreState {
-                        baseline: prev.baseline,
-                        pending: Some((winner, now)),
+                        baseline: None,
+                        pending: None,
                         filter: prev.filter,
                     },
-                    None,
-                )
-            }
-            Some((pending_addr, t0)) => {
-                if now.duration_since(t0) >= Duration::from_millis(DEBOUNCE_MS) {
-                    return (
-                        CoreState {
-                            baseline: None,
-                            pending: None,
-                            filter: prev.filter,
-                        },
-                        Some(pending_addr),
-                    );
-                }
-                let mut best_addr = pending_addr.clone();
-                let mut best_delta = current_delta_for(
-                    &pending_addr,
-                    prev.baseline.as_ref().expect("baseline set"),
-                    snapshot,
+                    Some(pending_addr),
                 );
-                for (addr, d, _) in &crossings {
-                    if *d > best_delta {
-                        best_delta = *d;
-                        best_addr = addr.clone();
-                    }
-                }
-                (
-                    CoreState {
-                        baseline: prev.baseline,
-                        pending: Some((best_addr, t0)),
-                        filter: prev.filter,
-                    },
-                    None,
-                )
             }
+            let mut best_addr = pending_addr.clone();
+            let mut best_delta = current_delta_for(
+                &pending_addr,
+                prev.baseline.as_ref().expect("baseline set"),
+                snapshot,
+            );
+            for (addr, d, _) in &crossings {
+                if *d > best_delta {
+                    best_delta = *d;
+                    best_addr = addr.clone();
+                }
+            }
+            (
+                CoreState {
+                    baseline: prev.baseline,
+                    pending: Some((best_addr, t0)),
+                    filter: prev.filter,
+                },
+                None,
+            )
         }
     }
 }

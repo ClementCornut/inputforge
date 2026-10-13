@@ -26,7 +26,6 @@ pub(crate) struct AppContext {
     pub config: Signal<ConfigSnapshot>,
     pub live: Signal<LiveSnapshot>,
 }
-pub(crate) mod session;
 
 #[cfg(test)]
 pub(crate) use crate::snapshots::{
