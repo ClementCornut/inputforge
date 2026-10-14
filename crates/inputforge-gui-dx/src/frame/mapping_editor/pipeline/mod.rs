@@ -25,6 +25,8 @@ mod stage_header;
 #[cfg(test)]
 mod keyboard_events_tests;
 #[cfg(test)]
+mod pointer_events_tests;
+#[cfg(test)]
 mod tests;
 
 use add_palette::AddPalette;
@@ -171,6 +173,10 @@ pub(crate) fn Pipeline(
     let editor = use_context::<EditorState>();
     let sortable = use_context::<SortableState<StageId>>();
     let profile_name = ctx.meta.read().profile_name.clone();
+    let drag_context = format!(
+        "profile:{:?};mapping:{mapping_key:?};actions:{root_actions:?}",
+        ctx.meta.read().profile_id
+    );
 
     // The parent pipeline path for the sortable group is the
     // `path_prefix` interpreted as a `StageId`. Every gap in this
@@ -298,7 +304,7 @@ pub(crate) fn Pipeline(
         // the empty case stays structurally close to the non-empty case
         // (`<ol>` with `<li>` children).
         return rsx! {
-            ol { class: "if-pipeline if-pipeline--empty",
+            ol { class: "if-pipeline if-pipeline--empty", "data-sortable-group": "{sortable.drag_from.id():?}", "data-sortable-context": "{drag_context}",
                 SortableGap {
                     state: sortable,
                     gap_index: 0_usize,
@@ -328,7 +334,7 @@ pub(crate) fn Pipeline(
     let parent_path_for_gaps = parent_pipeline_path.clone();
 
     rsx! {
-        ol { class: "if-pipeline",
+        ol { class: "if-pipeline", "data-sortable-group": "{sortable.drag_from.id():?}", "data-sortable-context": "{drag_context}",
             SortableGap {
                 key: "gap-0",
                 state: sortable,
@@ -344,6 +350,7 @@ pub(crate) fn Pipeline(
                     let stage_id = StageId(path);
                     rsx! {
                         Stage {
+                            drag_context: drag_context.clone(),
                             key: "stage-{i}",
                             stage_id,
                             mapping_key: key_for_iter.clone(),

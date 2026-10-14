@@ -214,3 +214,46 @@ fn forget_callback_invalidates_only_the_overwritten_mapping_history() {
     p.selection.set(Some(key()));
     assert!(!bindings.undo.call(key()));
 }
+
+#[test]
+fn disposed_rail_controller_rejects_saved_pad_and_remount_can_start_fresh() {
+    use inputforge_gui_dx::mapping_rail::{AddIntent, AddRequest, AddView, Phase, Scope};
+    let (controller, state, rx) = fixture(vec![Action::Invert]);
+    let (dom, _) = mount(controller.clone());
+    let scope = Scope {
+        profile: state
+            .read()
+            .active_profile
+            .as_ref()
+            .map(inputforge_core::profile::Profile::id)
+            .cloned(),
+        mode: "Default".into(),
+    };
+    let view = controller.add(AddRequest {
+        view: AddView::default(),
+        intent: AddIntent::Start {
+            scope: scope.clone(),
+            source: None,
+        },
+    });
+    assert_eq!(view.phase, Phase::Capturing);
+    drop(dom);
+    let view = controller.add(AddRequest {
+        view,
+        intent: AddIntent::Commit("late".into()),
+    });
+    assert_eq!(view.phase, Phase::Resting);
+    let (_dom, _) = mount(controller.clone());
+    let view = controller.add(AddRequest {
+        view: AddView::default(),
+        intent: AddIntent::Start {
+            scope,
+            source: None,
+        },
+    });
+    assert_eq!(view.phase, Phase::Capturing);
+    assert_eq!(
+        rx.try_recv().unwrap_err(),
+        std::sync::mpsc::TryRecvError::Empty
+    );
+}

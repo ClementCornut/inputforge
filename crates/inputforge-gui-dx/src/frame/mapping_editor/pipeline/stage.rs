@@ -91,6 +91,7 @@ fn parent_pipeline_len(root_actions: &[Action], parent_pipeline_path: &StageId) 
 )]
 pub(crate) fn Stage(
     stage_id: StageId,
+    drag_context: String,
     /// `(mode, InputAddress)` key for the mapping being edited. Named
     /// `mapping_key` to avoid collision with Dioxus's reserved `key` prop.
     mapping_key: MappingKey,
@@ -201,11 +202,13 @@ pub(crate) fn Stage(
         li {
             class: "{base_class}",
             "data-stage-id": "{super::format_stage_id(&stage_id)}",
+            "data-sortable-row": "true",
             oncontextmenu,
             SortableHandle {
                 state: sortable,
                 index: local_index,
                 group: parent_pipeline_path.clone(),
+                context: drag_context,
                 group_len,
             }
             StageHeader {

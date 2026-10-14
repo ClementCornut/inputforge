@@ -14,12 +14,9 @@
 //!
 //! A list of N rows has N+1 gaps: one before each row plus one trailing
 //! gap after the last row. The gap's `gap_index` IS the destination slot
-//! index; no `Before/After` enum, no rect midpoint computation, no async
-//! `get_client_rect()` race. The previous primitive's row-half model
-//! (`use_sortable_item`) had three observed bugs in tall-row consumers
-//! (double bars between rows separated by flex `gap`, async ondragover
-//! resolution races, source-adjacent self-drop ambiguity); the gap
-//! model eliminates all three by construction.
+//! index. The browser measures adjacent card midpoints synchronously to route
+//! pointer hover/drop to this existing gap, including after scrolling. One gap
+//! owns each insertion hint; no asynchronous rectangle query or overlay is needed.
 //!
 //! Source-adjacent suppression: when dragging row N in group G, gaps at
 //! `gap_index == N` and `gap_index == N + 1` of group G are silent

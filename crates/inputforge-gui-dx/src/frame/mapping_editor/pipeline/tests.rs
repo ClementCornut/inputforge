@@ -99,7 +99,7 @@ fn at_path_into_missing_if_false_returns_none() {
 // SSR helpers for pipeline rendering tests (Task 20)
 // ---------------------------------------------------------------------------
 
-fn build_state(actions: Vec<Action>) -> (AppState, InputAddress) {
+pub(super) fn build_state(actions: Vec<Action>) -> (AppState, InputAddress) {
     let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
     let addr = InputAddress::Bound {
         device: DeviceId("dev-1".to_owned()),
@@ -417,7 +417,11 @@ fn HarnessComponent(props: HarnessProps) -> Element {
         snap.virtual_devices = virtual_devices;
     }
     let meta_modes_value = meta_modes;
+    let profile_id = inputforge_app::bridge::prepare(&raw.state.read(), None)
+        .meta
+        .profile_id;
     let meta = use_signal(|| MetaSnapshot {
+        profile_id,
         engine_status: EngineStatus::Running,
         profile_name: Some("P".to_owned()),
         modes: meta_modes_value,
@@ -464,7 +468,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     rsx! { MappingEditor {} }
 }
 
-fn render_with(state: AppState, addr: InputAddress) -> String {
+pub(super) fn render_with(state: AppState, addr: InputAddress) -> String {
     render_with_expanded(state, addr, vec![], &["Default"])
 }
 
@@ -2522,6 +2526,7 @@ fn four_stage_pipeline_renders_all_categories_and_summaries() {
         stages.len()
     );
 
+    let visible_text: Vec<String> = stages.iter().map(|stage| stage.text().collect()).collect();
     // Stage 0: Deadzone -- is-processing category.
     let s0_class = stages[0].value().attr("class").unwrap_or("");
     assert!(
@@ -2529,7 +2534,7 @@ fn four_stage_pipeline_renders_all_categories_and_summaries() {
         "stage 0 (Deadzone) must carry is-processing class; class='{s0_class}'"
     );
     assert!(
-        stages[0].html().contains("Deadzone"),
+        visible_text[0].contains("Deadzone"),
         "stage 0 must display 'Deadzone' title"
     );
 
@@ -2541,16 +2546,16 @@ fn four_stage_pipeline_renders_all_categories_and_summaries() {
         "stage 1 (ResponseCurve) must carry is-processing class; class='{s1_class}'"
     );
     assert!(
-        stages[1].html().contains("Response curve"),
+        visible_text[1].contains("Response curve"),
         "stage 1 must display 'Response curve' title"
     );
     assert!(
-        stages[1].html().contains("3 pts"),
+        visible_text[1].contains("3 pts"),
         "stage 1 summary must contain '3 pts' point count"
     );
     // symmetric=false: the "sym" qualifier must NOT appear.
     assert!(
-        !stages[1].html().contains("sym"),
+        !visible_text[1].contains("sym"),
         "stage 1 summary must not contain 'sym' when symmetric=false"
     );
 
@@ -2561,7 +2566,7 @@ fn four_stage_pipeline_renders_all_categories_and_summaries() {
         "stage 2 (MergeAxis) must carry is-output class; class='{s2_class}'"
     );
     assert!(
-        stages[2].html().contains("Merge axis"),
+        visible_text[2].contains("Merge axis"),
         "stage 2 must display 'Merge axis' title"
     );
 
@@ -2572,7 +2577,7 @@ fn four_stage_pipeline_renders_all_categories_and_summaries() {
         "stage 3 (MapToVJoy) must carry is-output class; class='{s3_class}'"
     );
     assert!(
-        stages[3].html().contains("Map to virtual device"),
+        visible_text[3].contains("Map to virtual device"),
         "stage 3 must display 'Map to virtual device' title"
     );
 }

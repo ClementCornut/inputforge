@@ -29,11 +29,7 @@ pub(crate) enum Key {
     FilterShortcut,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ReorderDir {
-    Up,
-    Down,
-}
+use crate::mapping_rail::Move as ReorderDir;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct State<'a> {

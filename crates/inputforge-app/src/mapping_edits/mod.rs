@@ -4,6 +4,7 @@ mod grouping;
 mod history;
 mod paths;
 mod prepare;
+mod rail;
 use dioxus::prelude::{Callback, ReadableExt, WritableExt};
 use inputforge_core::{engine::EngineCommand, state::AppState};
 use inputforge_gui_dx::{
@@ -31,6 +32,11 @@ struct State {
     history: history::History,
     publication: Option<Publication>,
     navigation: Option<(String, Option<MappingKey>)>,
+    disposed: bool,
+    reorders: std::collections::HashMap<
+        (String, inputforge_gui_dx::mapping_rail::Group),
+        (inputforge_core::profile::ProfileId, u64),
+    >,
 }
 impl Controller {
     /// Create an editor-scoped controller without modifying engine state.
@@ -55,9 +61,20 @@ impl Controller {
         let group = self.clone();
         let reconcile = self.clone();
         let dispose = self.clone();
+        let menu = self.clone();
+        let rail = self.clone();
+        let add = self.clone();
         Bindings {
+            instance: self.owner,
+            menu: Callback::new(move |lookup| menu.rail_menu(lookup)),
+            rail: Callback::new(move |request| rail.rail(request)),
+            add: Callback::new(move |request| add.add(request)),
             install: Callback::new(move |publication| {
-                install.inner.borrow_mut().publication = Some(publication);
+                {
+                    let mut inner = install.inner.borrow_mut();
+                    inner.disposed = false;
+                    inner.publication = Some(publication);
+                };
                 install.reconcile();
             }),
             dispatch: Callback::new(move |request| dispatch.dispatch(request, Instant::now())),
@@ -70,7 +87,10 @@ impl Controller {
             end_group: Callback::new(move |()| group.end_group()),
             reconcile: Callback::new(move |()| reconcile.reconcile()),
             dispose: Callback::new(move |()| {
-                *dispose.inner.borrow_mut() = State::default();
+                *dispose.inner.borrow_mut() = State {
+                    disposed: true,
+                    ..State::default()
+                };
             }),
         }
     }
@@ -105,6 +125,17 @@ impl Controller {
             }
             if let Some(state) = self.state.try_read() {
                 inner.history.reconcile(&state, self.owner);
+                let confirmed = state
+                    .mapping_edit_barrier
+                    .filter(|(owner, _)| *owner == self.owner)
+                    .map_or(0, |(_, serial)| serial);
+                inner.reorders.retain(|_, (profile, serial)| {
+                    state
+                        .active_profile
+                        .as_ref()
+                        .is_some_and(|p| p.id() == profile)
+                        && *serial > confirmed
+                });
             }
         };
         self.publish();

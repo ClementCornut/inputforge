@@ -125,6 +125,7 @@ pub(crate) fn decide(
 /// an `"__ack__"` echo before exiting, mirroring the F8 pattern.
 const KB_LISTENER_JS: &str = "\
 const h = (ev) => {
+  if (window.__ifSortableDrag) return;
   const el = document.activeElement;
   let target = 'Outside';
   if (el && el.closest('.if-editor')) {

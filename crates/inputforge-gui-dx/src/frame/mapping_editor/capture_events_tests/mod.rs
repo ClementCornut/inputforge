@@ -1,5 +1,6 @@
 //! Actual capture controls exercise app bindings and existing edit handlers.
 mod fixture;
+mod rail;
 use dioxus::{
     core::{DynamicNode, ElementId, TemplateAttribute, TemplateNode},
     html::SerializedHtmlEventConverter,

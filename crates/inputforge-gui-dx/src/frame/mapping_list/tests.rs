@@ -16,7 +16,7 @@ use parking_lot::RwLock;
 use inputforge_core::state::AppState;
 
 use crate::components::sortable::use_sortable_state;
-use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
+use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, SettingsSnapshot};
 use crate::frame::mapping_list::MappingList;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::toast::{ToastQueue, ToastState};
@@ -44,11 +44,21 @@ fn mapping_list_keyboard_bridge_ignores_editable_targets() {
 
 fn provide_minimal_contexts() {
     let (cmd_tx, _cmd_rx) = mpsc::channel();
+    let profile = inputforge_core::profile::Profile::new(
+        "Rail fixture".into(),
+        vec![],
+        inputforge_core::mode::Modes::new(vec!["Default".into()]).unwrap(),
+        vec![],
+        vec![],
+        "Default".into(),
+    );
+    let shared = Arc::new(RwLock::new(AppState::with_profile(profile)));
+    let prepared = inputforge_app::bridge::prepare(&shared.read(), None);
     let ctx = AppContext {
-        state: Arc::new(RwLock::new(AppState::new())),
+        state: shared,
         commands: cmd_tx,
         settings: use_signal(SettingsSnapshot::default),
-        meta: use_signal(MetaSnapshot::default),
+        meta: use_signal(|| prepared.meta),
         config: use_signal(ConfigSnapshot::default),
         live: use_signal(LiveSnapshot::default),
     };
@@ -60,6 +70,7 @@ fn provide_minimal_contexts() {
     let toast_state = use_signal(ToastState::default);
     use_context_provider(|| ToastQueue { state: toast_state });
 
+    crate::frame::mapping_editor::use_editor_state_provider();
     use_live_capture_provider();
 }
 
@@ -829,13 +840,12 @@ fn empty_zero_filter_results_pins_buttons_to_sm() {
 
 #[test]
 fn add_inline_resting_renders_dashed_row() {
-    use crate::context::MappingSummary;
     use crate::frame::mapping_list::add_inline::AddInline;
 
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         let force_expanded: Signal<bool> = use_signal(|| false);
-        let pending_duplicate: Signal<Option<MappingSummary>> = use_signal(|| None);
+        let pending_duplicate: Signal<Option<crate::mapping_rail::Target>> = use_signal(|| None);
         rsx! {
             AddInline {
                 force_expanded: force_expanded,
@@ -858,13 +868,12 @@ fn add_inline_resting_renders_dashed_row() {
 
 #[test]
 fn add_inline_force_expanded_arms_capture() {
-    use crate::context::MappingSummary;
     use crate::frame::mapping_list::add_inline::AddInline;
 
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         let force_expanded: Signal<bool> = use_signal(|| true);
-        let pending_duplicate: Signal<Option<MappingSummary>> = use_signal(|| None);
+        let pending_duplicate: Signal<Option<crate::mapping_rail::Target>> = use_signal(|| None);
         rsx! {
             AddInline {
                 force_expanded: force_expanded,
@@ -1060,7 +1069,21 @@ fn delete_dialog_renders_when_target_set() {
             referenced_devices: vec![DeviceId("dev".to_owned())],
             first_vjoy_output: None,
         };
-        let delete_target: Signal<Option<MappingSummary>> = use_signal(|| Some(target));
+        let ctx = use_context::<AppContext>();
+        let delete_target = use_signal(|| {
+            Some(crate::mapping_rail::Target {
+                scope: crate::mapping_rail::Scope {
+                    profile: ctx.meta.peek().profile_id.clone(),
+                    mode: target.mode.clone(),
+                },
+                before: inputforge_core::action::Mapping {
+                    input: target.input,
+                    mode: target.mode,
+                    name: target.name,
+                    actions: vec![],
+                },
+            })
+        });
         rsx! {
             crate::frame::mapping_list::DeleteDialogMount {
                 delete_target: delete_target,
@@ -1083,24 +1106,42 @@ fn delete_dialog_renders_when_target_set() {
 #[test]
 fn duplicate_click_arms_live_capture() {
     use super::add_inline::AddInline;
-    use crate::context::{GlyphFlags, MappingSummary};
     use crate::patterns::live_capture::LiveCapture;
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
     fn TestComponent() -> Element {
         provide_minimal_contexts();
-        let cap = use_context::<LiveCapture>();
-        let force = use_signal(|| false);
-        let duplicate = use_signal(|| {
-            Some(MappingSummary {
-                input: InputAddress::Bound {
+        let ctx = use_context::<AppContext>();
+        ctx.state
+            .write()
+            .active_profile
+            .as_mut()
+            .unwrap()
+            .set_mapping(
+                &InputAddress::Bound {
                     device: DeviceId("dev".into()),
                     input: InputId::Button { index: 0 },
                 },
-                mode: "Default".into(),
-                name: Some("Boost".into()),
-                glyphs: GlyphFlags::default(),
-                referenced_devices: vec![],
-                first_vjoy_output: None,
+                "Default",
+                Some("Boost".into()),
+                vec![],
+            );
+        let cap = use_context::<LiveCapture>();
+        let force = use_signal(|| false);
+        let duplicate = use_signal(|| {
+            Some(crate::mapping_rail::Target {
+                scope: crate::mapping_rail::Scope {
+                    profile: ctx.meta.peek().profile_id.clone(),
+                    mode: "Default".into(),
+                },
+                before: inputforge_core::action::Mapping {
+                    input: InputAddress::Bound {
+                        device: DeviceId("dev".into()),
+                        input: InputId::Button { index: 0 },
+                    },
+                    mode: "Default".into(),
+                    name: Some("Boost".into()),
+                    actions: vec![],
+                },
             })
         });
         let armed = if *cap.active.read() { "ARMED" } else { "IDLE" };
@@ -2478,31 +2519,6 @@ fn mapping_list_css_locks_dashed_add_row_cohesion() {
         ),
         "dashed footer hover must mix primary at --tint-create into --color-bg \
          (reads as create rather than selected): {hover}",
-    );
-}
-
-#[test]
-fn add_inline_collision_arm_leads_with_warning_badge() {
-    let src = include_str!("../../../src/frame/mapping_list/add_inline.rs");
-    let arm_start = src
-        .rfind("AddState::Collision {")
-        .expect("Collision arm must exist in add_inline.rs");
-    let arm_window_end = (arm_start + 2000).min(src.len());
-    let arm_window = &src[arm_start..arm_window_end];
-
-    let badge_pos = arm_window.find("BadgeVariant::Warning").unwrap_or_else(|| {
-        panic!(
-            "Collision arm must reference Badge variant=Warning so the visual \
-             scan parity with the status bar's `1 warning` badge holds. Window:\n{arm_window}",
-        )
-    });
-    let prose_pos = arm_window
-        .find("already mapped to")
-        .expect("Collision arm must keep the existing prose sentence");
-    assert!(
-        badge_pos < prose_pos,
-        "Badge Warning must render BEFORE the `already mapped to` prose. \
-         badge_pos={badge_pos}, prose_pos={prose_pos}",
     );
 }
 

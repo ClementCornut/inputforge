@@ -18,7 +18,7 @@ Requirements:
 
 The original audit was read-only. The status below now also records the first
 implemented routing, polling, controller-workflow, advanced-axis, live-capture,
-keyboard-capture, and shared mapping-dispatch/history extractions;
+keyboard-capture, shared mapping-dispatch/history, and mapping-rail extractions;
 the remaining findings are still open.
 
 ## Resolved routing controls — 2026-10-12
@@ -743,7 +743,7 @@ mapping, profile/mode/snapshot workflows and curve/deadzone algorithms remain op
   latest delivered tree; known older renderer snapshots can support disjoint
   field edits across engine acknowledgements, but structural/restore boundaries
   block stale positional edits and parent replacement cannot erase newer children.
-- [History](../crates/inputforge-app/src/mapping_edits/history.rs) keeps restore
+- [History](../crates/inputforge-app/src/mapping_edits/history/mod.rs) keeps restore
   snapshots private, with the existing 50-entry FIFO limit per mapping. Fresh
   edits clear redo. Undo restores the before snapshot and redo the delivered final
   snapshot, including a grouped burst. Empty mappings remain present with their
@@ -865,6 +865,295 @@ measurements; those remain unverified. This evidence is separate from the prior
 native Apply retest, live-capture success and earlier user-reported app acceptance,
 whose recorded evidence remains unchanged.
 
+## Mapping-rail workflow slice — 2026-10-14
+
+This approved bounded extraction partially resolves findings **#1**, **#3**, **#4**
+and **#8**. It supersedes the earlier sections' deferral of rail Add/duplicate,
+collision decisions, duplicate-to-mode, delete and row reorder. Batch mapping,
+profile/mode workflows and curve/deadzone algorithms remain deferred.
+
+- [The existing app mapping controller](../crates/inputforge-app/src/mapping_edits/mod.rs)
+  supplies rail callbacks and retains editor-scoped history, navigation publication,
+  reconciliation and disposal. No separate controller, poller, timer or dependency
+  was introduced. Disposed rail callbacks reject saved targets; reinstall starts
+  fresh while the existing queue owner/serial identity remains intact.
+- [Target/menu preparation](../crates/inputforge-app/src/mapping_edits/rail/mod.rs)
+  checks stable profile identity, editing mode, offline state, source existence and
+  captured metadata. It prepares full mapping targets, other modes and reorder
+  availability from current app state. Known queued edits supply current actions;
+  missing or externally replaced sources cannot silently become empty duplicates.
+- [Add preparation](../crates/inputforge-app/src/mapping_edits/rail/add.rs) owns
+  opening, capture completion, refresh, cancellation, collision reconciliation,
+  explicit commit and collision navigation. Blank names remain `None`; nonblank
+  names are trimmed. Add capture still requires an explicit button/Enter commit.
+  Both collision surfaces open the existing destination rather than overwriting it.
+  Commit rechecks collisions, so a newly occupied destination cannot be silently
+  replaced. Removed duplicate sources close the pad and release capture.
+- [Dispatch](../crates/inputforge-app/src/mapping_edits/rail/dispatch.rs) releases
+  engine/controller guards before delivery and publication. Successful mapping
+  delivery plus the existing queue barrier precede affected-history invalidation,
+  selection changes and closing the pad/dialog/menu. Failed delivery retains the
+  draft or confirmation surface and publishes visible error feedback. Action-tree
+  validation remains core-owned and is reused before dispatch.
+- [Forward history invalidation](../crates/inputforge-app/src/mapping_edits/history/rail.rs)
+  clears affected/dependent restore stacks while preserving the already delivered
+  command chain. This retains acknowledgement of delete→re-add round trips.
+  Unrelated mappings and modes keep their history. Delete still uses forward
+  removal and history invalidation; it does not introduce a new delete-undo stack.
+  The confirmation text no longer incorrectly promises undo for that operation.
+- [Reorder preparation](../crates/inputforge-app/src/mapping_edits/rail/reorder.rs)
+  validates source identity, mode, group, captured order and filtering. It handles
+  Up/Down and pre-removal gaps; boundaries and source-adjacent gaps are no-ops.
+  Outstanding reorders and queued membership changes gate further moves until
+  the existing owner/serial barrier acknowledges them, preventing old positions
+  from being reused. Reorder preserves edit history and ends an active nudge group.
+- [The GUI contract](../crates/inputforge-gui-dx/src/mapping_rail.rs),
+  [Add pad](../crates/inputforge-gui-dx/src/frame/mapping_list/add_inline.rs),
+  [rail handlers](../crates/inputforge-gui-dx/src/frame/mapping_list/mod.rs) and
+  [row wiring](../crates/inputforge-gui-dx/src/frame/mapping_list/row.rs) retain
+  prepared data, signals, labels, markup and supplied callbacks. The rail no
+  longer reads raw engine state or constructs/sends mapping commands. Drag start
+  captures the app-prepared source and group order; a later rerender cannot
+  substitute another row at the same index. Accessibility success announcements
+  are formatted only from successful app reorder results.
+- Existing rail keyboard and idle-Escape transports remain renderer wiring.
+  They now remove listeners synchronously and send shutdown on scope teardown;
+  controller/scope keys isolate mounts. The capture primitives, native target
+  confirmation, keyboard pending display, stage dispatch, nudge grouping and
+  core persistence/execution behavior remain unchanged. The existing bridge still
+  samples immediately and every 16 ms, skips contended reads and owns one task.
+
+All affected callers are included:
+
+| Callers | Result |
+| --- | --- |
+| Add dashed row, forced open, pending Duplicate hook/effect; three rail mount branches | App prepares opening/duplicate state; GUI retains copy-name display and capture wiring. |
+| Capture completion, Refresh, Cancel, idle Escape and collision-drift effect | App transitions/revalidation; existing capture owner cancellation is retained. |
+| Add button and Enter; collision Edit existing | Shared app commit/navigation callbacks; failed dispatch retains the draft. |
+| Context menu Duplicate to mode | Current source actions and destination collision decision in app; source mode history retained. |
+| Delete confirmation | Current-target validation, forward removal and affected-history invalidation after delivery. |
+| Alt+Up/Down, Move up/Move down menu items and sortable gap drop | Shared app reorder policy and successful-delivery results. Drag identity is captured at start. |
+| Existing bridge/history reconciliation, navigation and teardown/remount | Same controller callbacks and polling cadence; rail guards and pending reorder acknowledgements share lifecycle. |
+
+The desktop host, bridge demo, controller-feedback fixture, editor-bridge fixture
+and live-capture polling fixture still call the same `render_editor` signature
+with `Controller::bindings()`. No core command, dependency, hook or lint-setting
+change is part of this slice.
+
+## Mapping-rail verification
+
+- `bash .githooks/pre-commit` passed unchanged: formatting and
+  `cargo clippy --all-targets -- -D warnings`, with no lint exclusions.
+- `cargo test --workspace --locked --offline -j 2` passed: **2,135 passed,
+  0 failed, 11 existing ignored**, including 58 app mapping tests and 830 GUI
+  library tests. The same command was rerun with host permissions after the
+  sandbox denied loopback sockets in five existing single-instance IPC tests;
+  all five passed on that rerun. Ignored native/platform checks were not enabled.
+- Both executable listener checks passed:
+  `node crates/inputforge-gui-dx/tests/mapping_rail_listener.mjs` and
+  `node crates/inputforge-app/tests/keyboard_capture/listener.mjs crates/inputforge-app/assets/keyboard_capture_listener.js`.
+- Audit local links and byte-for-byte preservation of the four prior acceptance
+  sections (Apply timeout/native retest, live capture, keyboard/app acceptance
+  and shared mapping-slice acceptance) passed. App mapping modules remain within
+  200 nonblank code lines. The history file became `history/mod.rs` for the
+  repository's required module-folder layout; its existing history behavior is
+  retained and rail-specific pending-chain operations live in `history/rail.rs`.
+- Independent read-only review identified the delete/re-add queue variant above;
+  its reproducing regression passes after preserving the pending chain.
+  Follow-up review found no actionable regressions in the final changes.
+  Changes remain unstaged and uncommitted.
+
+Regression tests preceded implementation of the app workflows. Actual Add-button
+regressions reproduced missing queue acknowledgement and failed-dispatch pad closure.
+Additional regressions reproduced queued reorder/deletion positions, delete→re-add
+membership ambiguity, and disposed rail targets before their corrections. App tests
+cover explicit commit, optional names, latest queued actions, source disappearance,
+late/drifting collisions, stale profile/mode/source targets, delivery failure,
+history isolation and group-local movement. Real renderer handlers cover Add/Enter,
+collision navigation, menu duplicate/reorder, delete confirmation, keyboard delivery,
+stale drag identity, pre-rerender duplicate-mode/filter changes, visible feedback
+and listener teardown/remount. The old
+source-text collision assertion is replaced by a rendered collision regression.
+
+Earlier native Apply retest, live-capture success, keyboard/app acceptance and
+mapping-slice acceptance blocks remain unchanged. This slice has no new native
+acceptance evidence; automated fixtures do not establish native Wayland/Windows
+WebView behavior, focus, hardware delivery or performance.
+
+## Mapping-rail manual acceptance
+
+Use a disposable profile and run `dx run -p inputforge-app` on native Wayland.
+Repeat applicable checks on Windows for separate platform acceptance.
+
+1. Add a named and unnamed button/axis/hat mapping. Capture must finish once, keep
+   native identity and wait for Add/Enter. Refresh and Cancel/Escape must work;
+   typing a name must not be consumed by rail shortcuts.
+2. Duplicate a named and unnamed mapping to a fresh input, including nested stages.
+   Check the copy name and complete action tree. Capture an occupied input and use
+   Edit existing: the destination must open without being overwritten. Remove or
+   change the source while the pad is open; no empty/stale duplicate may be saved.
+3. Duplicate to another mode with and without an existing destination. Check exact
+   optional names/actions, collision navigation and isolation of both mode histories.
+   Delete after editing: confirmation is required, the row disappears after delivery,
+   and unrelated mappings remain undoable. Old history must not resurrect the row.
+4. Reorder axes, buttons and hats using menu Up/Down, Alt+Up/Down and drag gaps.
+   Check boundaries, source-adjacent gaps and text/device filters. Change the order
+   or mode during a drag; no different row may move. Rapid moves and delete/re-add
+   must not reuse old positions; success announcements must match delivered moves.
+5. Repeat live primary/MergeAxis/predicate capture and keyboard capture/undo. Check
+   immediate combo display, unchanged stale props, labels and cancellation. Switch
+   profile/mode and close/reopen while capturing; no stale delivery, lingering Escape
+   interception, duplicate listener or old history may affect the new surface.
+6. Quit/relaunch and repeat Stop/edit-layout/Apply/Start. The earlier successful
+   native Apply retest remains separate historical evidence for its timeout fix.
+
+## Native drag transport follow-up — 2026-10-14
+
+This records the initial HTML5 transport correction. The approved pointer-gesture
+follow-up below supersedes that gesture and expands the browser regression check.
+
+The user reported a cancel cursor, missing drop hints and no working drop on Linux.
+The [shared drag handle](../crates/inputforge-gui-dx/src/components/sortable/handle.rs)
+initialized data through Dioxus's desktop `SerializedDataTransfer`; its setters
+are no-ops in the installed 0.7.10 dependency. The browser therefore received no
+drag payload, matching the [WebKitGTK empty-drag failure](https://bugs.webkit.org/show_bug.cgi?id=265857).
+
+The handle now supplies a nonempty `text/plain` marker and `effectAllowed=move`
+directly in its synchronous browser `ondragstart` attribute. Existing Rust handlers
+still capture identity, produce gap hints, cancel, validate and dispatch through
+app callbacks. No document listener, timer, dependency or native-platform workaround
+was added. Both rail rows and editor pipeline stages use this shared primitive;
+their reorder policies, boundaries and history ownership are unchanged.
+
+The browser initializer regression reproduced the absent native payload, and the
+renderer regression reproduced the absent synchronous attribute before the fix.
+The executable [browser self-check](../crates/inputforge-gui-dx/tests/sortable_drag.mjs)
+and [renderer drag regressions](../crates/inputforge-gui-dx/src/frame/mapping_list/workflow_events_tests/reorder.rs)
+now pass, including hover hints, cancellation without delivery, successful drop
+and rejection of order drift. The unchanged strict pre-commit hook passed.
+`cargo test --workspace --locked --offline -j 2` passed with host permissions:
+**2,137 passed, 0 failed, 11 existing ignored**. All three executable listener/drag
+checks passed. Read-only review found no actionable issues; the browser attribute
+and Rust event listener coexist, and both shared consumers retain their validation.
+Changes remain unstaged and uncommitted.
+
+Native pointer-gesture acceptance remains pending. With `dx run -p inputforge-app`
+on native Wayland, drag the grip across nonadjacent gaps in one mapping group:
+the valid gap should show a move cursor and cyan hint, and releasing should reorder
+the captured row. Try the leading/trailing gaps, cross-group rejection, adjacent
+no-op gaps, Escape/off-target cancellation and another drag afterwards. Repeat
+within an editor pipeline and check undo. Repeat on Windows for separate platform
+acceptance. Prior native acceptance sections remain unchanged; this report is
+evidence of the defect, not a successful retest.
+
+## Pointer drag targets and scrolling — 2026-10-14
+
+The approved enhancement replaces native HTML5 dragging with a pointer gesture on
+the existing grip, so normal wheel/trackpad scrolling remains available. The
+[browser transport](../crates/inputforge-gui-dx/assets/components/sortable_drag.js)
+forwards start, hover, leave, drop and end events to the existing Rust handlers.
+For each insertion gap, the hit region spans the lower half of the previous card,
+the entire gap and the upper half of the next card. Measurements are synchronous
+and refreshed during scrolling; no invisible overlay intercepts ordinary controls.
+The visible insertion hint stays on the gap. Nested pipeline groups and empty
+branches retain their own destinations.
+
+Near the containing scroll pane's top/bottom edge, a drag-only animation frame
+ramps scrolling with proximity to the edge. It changes only that pane, clamps
+elapsed time/scroll limits and updates the destination under a stationary pointer.
+Drop, Escape, pointer cancellation/capture loss, blur, source removal and scope
+teardown release capture, frame and gesture listeners. The existing immediate-first
+sample/16 ms app bridge is unchanged; the browser frame does no engine polling.
+
+[Mounted owner/handle cancellation](../crates/inputforge-gui-dx/src/components/sortable/interaction.rs)
+uses the signals' generational identities to isolate remounts. The
+[handle](../crates/inputforge-gui-dx/src/components/sortable/handle.rs) also clears
+its active Rust drag state when removed while its list remains mounted. Prepared
+context markers cancel a reused source when profile/mode/mapping changes; pipeline
+markers additionally include the complete prepared action tree. They prevent a
+reused index-based stage node from moving replacement content. No editor remount
+is introduced on ordinary edits, preserving keyboard/capture display behavior.
+Release clicks are suppressed after a drag; ordinary grip clicks remain available.
+
+Both callers are wired: [mapping groups/rows](../crates/inputforge-gui-dx/src/frame/mapping_list/mod.rs)
+and [pipeline groups/stages](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/mod.rs).
+Their app-owned dispatch/history and target/order validation remain unchanged.
+Rail/editor keyboard transports defer during a pointer gesture and retain their
+ordinary behavior afterwards. No dependency, core algorithm, profile workflow,
+batch workflow, hook or lint-setting change is part of this extension.
+
+Regression tests preceded implementation. The missing pointer initializer and
+DOM boundaries failed first; release-click/keyboard interaction and the two
+reviewed source-removal/reuse cases reproduced failures before their fixes.
+The executable [pointer checks](../crates/inputforge-gui-dx/tests/sortable_drag.mjs)
+exercise unequal card halves, midpoint boundaries, wheel/edge scrolling, stationary
+target refresh, cancellation/removal, disabled/foreign sources, release clicks,
+nested branches and changing prepared context. Real renderer tests cover emission,
+owned teardown/remount, source removal and unchanged app delivery/order rejection.
+The existing four-stage summary test now inspects visible text rather than hidden
+identity attributes. `bash .githooks/pre-commit` passed unchanged with no lint
+exclusions. `cargo test --workspace --locked --offline -j 2` passed with host
+permissions: **2,140 passed, 0 failed, 11 existing ignored**, including 835 GUI
+library tests. All **11 executable pointer cases**, the rail/editor listener
+check and the unchanged keyboard-capture listener check passed. Follow-up read-only
+review found no remaining actionable findings after the source-removal/reuse fixes.
+Audit links and byte-for-byte preservation of the four prior native acceptance
+sections passed. Changes remain unstaged and uncommitted.
+
+Native acceptance is pending. On native Wayland with `dx run -p inputforge-app`,
+use a disposable profile long enough to overflow the rail, then repeat in a long
+editor pipeline. Repeat on Windows for separate platform acceptance:
+
+1. Drag the grip across either neighboring card half and the gap; the same insertion
+   line must remain selected. Check different card heights and leading/trailing gaps.
+2. Hold the grip while scrolling with the wheel/trackpad. Keep the pointer stationary
+   as rows move underneath it, then release; the currently indicated slot must receive
+   the captured item. Normal fields/buttons remain usable outside a gesture.
+3. Hold near the top/bottom edge; the containing pane should scroll, accelerate nearer
+   the edge and stop when the pointer leaves the edge band or the gesture ends.
+4. Cancel with Escape, release outside a destination and close/reopen while dragging.
+   Check no scrolling, lingering dimmed row/hint, accidental release click or duplicate
+   handler remains, then start another drag and verify keyboard reorder still works.
+5. Change/remove the source or switch profile/mode/selected mapping during a gesture.
+   It must cancel rather than move replacement content. Check cross-group rejection,
+   nested/empty branches, pipeline undo and isolation of other mappings' history.
+
+The four prior native acceptance sections remain unchanged. Automated browser
+geometry/renderer fixtures do not establish native pointer, wheel or focus behavior.
+
+## Card ghost follow-up — 2026-10-14
+
+The user described the pointer interaction as "almost perfect" and reported the
+missing card ghost. This is user-reported feedback before ghost restoration;
+it does not establish separate platform or per-case acceptance.
+
+The existing [pointer transport](../crates/inputforge-gui-dx/assets/components/sortable_drag.js)
+now snapshots the complete source card when the drag threshold is crossed, retaining
+its measured size, pointer grab offset, inherited typography/color and canvas drawings.
+The viewport-fixed translucent copy follows pointer movement while wheel/edge scrolling
+moves only the underlying list. It is inert and hidden from accessibility, with pointer
+events disabled throughout the clone. DOM/renderer/stage IDs, form bindings, inline
+handlers and sortable metadata are stripped; the copy cannot register as another
+interactive card or drop target. The shared finish path removes it before drop/end
+delivery, including cancellation, context changes, source removal and unmount.
+
+Only the browser presentation script, shared sortable CSS, browser fixtures/tests
+and this audit changed in this follow-up. Reorder policy, target validation, command
+delivery/history, capture, polling and lifecycle ownership remain unchanged.
+Three new preview regressions failed before implementation; pointer-following,
+non-interference and canvas snapshots now pass alongside the existing cleanup cases.
+Validation: all 14 executable pointer regressions and the rail/editor listener and
+keyboard-capture listener checks passed. The unchanged pre-commit hook passed with
+no lint exclusions. `cargo test --workspace --locked --offline -j 2` passed on the
+host: 2,140 passed, zero failed and 11 existing ignored tests. Read-only review found
+no actionable issues. Changes remain unstaged and uncommitted.
+
+Manual retest: drag a mapping card and an expanded pipeline stage with a graph;
+confirm the complete translucent card follows the grip at the original grab point,
+retains its content, leaves drop hints/wheel/edge scrolling functional and disappears
+on drop, Escape, source/context changes and close/reopen. Native ghost appearance
+remains pending; the earlier acceptance sections are preserved unchanged.
+
 ## Remaining responsibilities to move
 
 The following areas are ordered by migration priority. Source links identify
@@ -873,10 +1162,10 @@ may change during extraction.
 
 | # | Area and evidence | App-owned responsibility |
 | --- | --- | --- |
-| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, live capture, keyboard capture, and shared mapping dispatch/history now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
+| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, live capture, keyboard capture, shared mapping dispatch/history, and mapping rail workflows now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
 | 2 | **Controller editing policy — partially resolved** — [app controller policy](../crates/inputforge-app/src/controllers/policy.rs); [app axis settings](../crates/inputforge-app/src/controllers/axes.rs); [axis rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Selection, virtual-layout mutations, Apply, shared routing decisions, and advanced axis settings are app-owned. Other configuration-editing/readiness gates remain; see resolved status above. |
-| 3 | **Capture workflows — partially resolved** — [app live capture](../crates/inputforge-app/src/live_capture/mod.rs); [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs); [app keyboard capture](../crates/inputforge-app/src/keyboard_capture/mod.rs); [GUI keyboard contract](../crates/inputforge-gui-dx/src/keyboard_capture.rs) | Live and keyboard capture, physical keyboard translation, ownership, target revalidation, cancellation, interception and delivery are app-owned; live input additionally owns epoch/native confirmation. Shared stage edits/undo are app-owned in the later mapping slice; Add/collision decisions remain deferred. |
-| 4 | **Mapping edits and undo — partially resolved** — [app controller](../crates/inputforge-app/src/mapping_edits/mod.rs); [app paths](../crates/inputforge-app/src/mapping_edits/paths.rs); [app history](../crates/inputforge-app/src/mapping_edits/history.rs); [GUI callback wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs) | Shared mapping stage edits, command construction, restore snapshots, undo/redo, invalidation and nudge grouping are app-owned. Curve/deadzone algorithms, draft/drag geometry and broader rail/add/collision/profile workflows remain deferred. |
+| 3 | **Capture workflows — partially resolved** — [app live capture](../crates/inputforge-app/src/live_capture/mod.rs); [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs); [app keyboard capture](../crates/inputforge-app/src/keyboard_capture/mod.rs); [GUI keyboard contract](../crates/inputforge-gui-dx/src/keyboard_capture.rs) | Live and keyboard capture, physical keyboard translation, ownership, target revalidation, cancellation, interception and delivery are app-owned; live input additionally owns epoch/native confirmation. Shared stage edits/undo and rail Add/collision decisions are app-owned in the later mapping slices. |
+| 4 | **Mapping edits and undo — partially resolved** — [app controller](../crates/inputforge-app/src/mapping_edits/mod.rs); [app paths](../crates/inputforge-app/src/mapping_edits/paths.rs); [app history](../crates/inputforge-app/src/mapping_edits/history/mod.rs); [GUI callback wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs) | Shared mapping stage edits, command construction, restore snapshots, undo/redo, invalidation and nudge grouping are app-owned. Rail Add/duplicate/collision/delete/reorder workflows are app-owned. Curve/deadzone algorithms, draft/drag geometry, batch mapping and profile workflows remain deferred. |
 | 5 | **Batch mapping** — [entry generation](../crates/inputforge-gui-dx/src/frame/bulk_map/apply.rs), line 19; [Apply handler](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs), line 335 | Automatic target selection, conflict decisions, wizard reconciliation, batch command construction, and snapshot creation requests. |
 | 6 | **Profiles, modes, snapshots, and settings** — [profile actions](../crates/inputforge-gui-dx/src/frame/profiles/actions.rs), line 114; [snapshot settings](../crates/inputforge-gui-dx/src/frame/settings_panel/snapshots_section.rs), line 85 | CRUD workflows, validation, destructive-confirmation decisions, pruning calculations, optimistic state, and command dispatch. Reuse existing core validation rather than maintaining separate GUI rules. |
 | 7 | **Operating-system services and filesystem access** — [file picker](../crates/inputforge-gui-dx/src/frame/profiles/mod.rs), line 30; [clipboard](../crates/inputforge-gui-dx/src/frame/panel_slot/device_panel/mod.rs), line 239; [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Dialog invocation, clipboard writes, and other OS services remain. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
@@ -932,8 +1221,8 @@ engine command sender.
 1. Polling/snapshot preparation, shared routing controls, and basic controller
    selection/virtual-layout/Apply and advanced axis settings are complete. Extract
    remaining engine access alongside each deferred workflow.
-2. Live/keyboard capture and shared mapping dispatch/history are complete. Extract
-   deferred mapping/editor algorithms and broader workflows next.
+2. Live/keyboard capture, shared mapping dispatch/history and mapping rail workflows
+   are complete. Extract deferred editor algorithms, batch mapping and profile workflows next.
 3. Extract the remaining workflows, services, event handling, and timers.
 
 Move existing behavioral tests with the responsibilities they verify. Retain
@@ -1013,6 +1302,8 @@ coverage and timing measurements remain unverified.
 The mapping dispatch/history slice has app regression and GUI callback/lifecycle
 coverage, and the user subsequently reported it seems to work fine as recorded
 above. Individual native checklist cases, platforms and timing remain unverified.
+The mapping rail slice has app workflow/queue regressions, real renderer handlers
+and listener cleanup checks; its native manual checklist remains pending.
 The previous desktop reports are user-reported native acceptance;
 the timestamp correction, separate Windows acceptance, and runtime performance
 measurements remain unverified on native hardware. The recommendations are ownership

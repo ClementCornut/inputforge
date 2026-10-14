@@ -17,9 +17,10 @@
 //!   rows + leading + trailing per group
 //! * `SortableLiveRegion` -- visually-hidden `aria-live="polite"` mount
 //!
-//! The `event.data_transfer().set_data("text/html", "")` incantation in
-//! `SortableHandle.ondragstart` is required for Firefox / WebView2 to
-//! actually start a native HTML5 drag operation.
+//! Pointer capture keeps wheel scrolling available. Browser geometry extends
+//! each gap's hit target to the neighboring card midpoints without overlays.
+//! Edge scrolling runs only during a gesture; cancellation and unmount release
+//! capture, listeners and the animation frame. Rust retains drop validation.
 //!
 //! CSS lives in `/assets/components/sortable.css` and is mounted
 //! alongside the rest of the design-system stylesheets in
@@ -32,6 +33,7 @@
 
 mod gap;
 mod handle;
+mod interaction;
 mod live_region;
 mod state;
 

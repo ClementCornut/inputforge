@@ -1,184 +1,58 @@
-//! `+ Add mapping` inline state machine. See spec section "+ Add mapping
-//! state machine" for the full transition table.
-//!
-//! State graph:
-//!
-//! ```text
-//!   Resting
-//!     | click dashed row | force_expanded rising edge
-//!     v
-//!   Pad { phase: Capturing }
-//!     |  ^                                       cap.captured fires
-//!     |  |  refresh-icon click (re-arm,            |
-//!     |  |  keep typed name)                       |   collision in active mode
-//!     |  |                                         v   |
-//!     |  └──────────────────────── Pad { phase: Captured(addr) } ──┐
-//!     |                                            |               |
-//!     | Esc / cap.cancel external                  | Esc / Cancel  | (no collision)
-//!     | (closes pad outright)                      | / Add commit  |
-//!     v                                            v               v
-//!                                              Resting          Collision
-//!                                                  ^               |
-//!                                                  └── Esc / Cancel / Edit existing
-//! ```
-//!
-//! `Pad` is a single shell with a `PadPhase` discriminator. The chip cell
-//! shows a listening animation in `Capturing` and the taxonomy-tinted
-//! input identifier in `Captured(addr)`; the refresh icon-button and Add
-//! button are disabled during `Capturing` (no captured input yet). Phase
-//! flips do not remount the shell, so the typed name and focus carry
-//! through.
-//!
-//! Collision drift: every effect tick, the `Collision` arm re-validates
-//! against `cfg.mappings` for the active mode. If the existing mapping is
-//! gone, the state transitions to `Pad { phase: Captured(addr) }` so the
-//! user can complete the add without re-pressing the input.
-
-use std::sync::mpsc::Sender;
-
-use dioxus::prelude::*;
-
-use inputforge_core::action::Action;
-use inputforge_core::engine::EngineCommand;
-use inputforge_core::types::{InputAddress, InputId};
-
-use crate::capture::{CaptureFilter, Target};
-use crate::components::{
-    Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Chip, ChipVariant, IconButton,
-    InputSize, TextInput,
-};
-use crate::context::{AppContext, MappingSummary};
-use crate::frame::mapping_list::source_label;
-use crate::frame::view_state::ViewState;
-use crate::icons::Icon as IconKind;
-use crate::patterns::live_capture::{CAPTURE_PROMPT, LiveCapture, use_capture};
-
-#[derive(Debug, Clone, PartialEq)]
-enum AddState {
-    /// Pad collapsed; only the dashed `+ Add mapping` row renders.
-    Resting,
-    /// Pad expanded. The shell (chip, device cell, refresh icon, name
-    /// input, actions row) is identical between phases, only the chip
-    /// cell and the disabled-state of refresh/Add change. Phase flips do
-    /// not remount the shell, so the typed name carries through and
-    /// focus stays put.
-    Pad { phase: PadPhase },
-    /// Capture landed on an input that is already mapped in the active
-    /// mode. Distinct from `Pad` because the action row changes
-    /// semantics (Edit existing / Cancel) and the chip would otherwise
-    /// have to mean two different things ("what you captured" vs "what
-    /// was already there").
-    Collision {
-        existing_name: String,
-        existing: InputAddress,
+//! Add pad rendering; app callbacks prepare every workflow transition.
+use crate::{
+    capture::{CaptureFilter, Target},
+    components::{
+        Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Chip, ChipVariant, IconButton,
+        InputSize, TextInput,
     },
-}
+    context::AppContext,
+    frame::{mapping_list::source_label, view_state::ViewState},
+    icons::Icon as IconKind,
+    mapping_edits::Bindings,
+    mapping_rail::{AddIntent, AddRequest, AddView, Phase, Scope, Target as RailTarget},
+    patterns::live_capture::{CAPTURE_PROMPT, LiveCapture, use_capture},
+};
+use dioxus::prelude::*;
+use inputforge_core::types::InputId;
 
-#[derive(Debug, Clone, PartialEq)]
-enum PadPhase {
-    /// `LiveCapture` is armed. Chip shows the listening animation; refresh
-    /// icon and Add button are disabled (no captured input yet).
-    Capturing,
-    /// `LiveCapture` fired. Chip shows the taxonomy-tinted input
-    /// identifier; refresh and Add are enabled.
-    Captured(InputAddress),
-}
-
-/// Free-function commit path. Keeps the per-arm closures `Fn` (no
-/// `FnMut` move-out errors when the same dispatch logic is referenced
-/// from both the Captured/Enter handler and the Captured/Add button).
-///
-/// `actions` is the full action vec to commit. For a fresh `+ Add
-/// mapping` flow it's `vec![]` (placeholder until F9's action editor
-/// lands). For a Duplicate flow it's the source mapping's cloned
-/// actions, looked up from `active_profile` at dispatch time.
-fn dispatch_add_helper(
-    addr: InputAddress,
-    name_value: &str,
-    actions: Vec<Action>,
-    view: ViewState,
-    commands: &Sender<EngineCommand>,
-) {
-    let mode_now = view.editing_mode.read().clone();
-    let trimmed = name_value.trim();
-    let delivered = commands
-        .send(EngineCommand::SetMapping {
-            input: addr.clone(),
-            mode: mode_now.clone(),
-            name: if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_owned())
-            },
-            actions,
-        })
-        .is_ok();
-    if delivered && let Some(bindings) = try_consume_context::<crate::mapping_edits::Bindings>() {
-        bindings.forget.call((mode_now.clone(), addr.clone()));
+fn submit(
+    mut state: Signal<AddView>,
+    mut name: Signal<String>,
+    bindings: &Bindings,
+    intent: AddIntent,
+) -> bool {
+    let next = bindings.add.call(AddRequest {
+        view: state.peek().clone(),
+        intent,
+    });
+    let capturing = next.phase == Phase::Capturing;
+    if next.phase == Phase::Resting {
+        name.set(String::new());
     }
-    let mut sel = view.selected_mapping;
-    sel.set(Some((mode_now, addr)));
-    tracing::info!(
-        target: "f8::mapping_list",
-        action = "add",
-        "dispatch SetMapping (add)",
-    );
-}
-
-/// Resolve the actions vec to commit. `Some(source)` means we're in a
-/// Duplicate flow, clone the source mapping's actions from the active
-/// profile (or fall back to an empty vec if the source disappeared
-/// mid-flow). `None` means a fresh add, empty actions placeholder.
-fn resolve_actions(source: Option<&MappingSummary>, ctx: &AppContext) -> Vec<Action> {
-    match source {
-        None => Vec::new(),
-        Some(src) => ctx
-            .state
-            .read()
-            .active_profile
-            .as_ref()
-            .and_then(|p| {
-                p.find_mapping(&src.input, &src.mode)
-                    .map(|m| m.actions.clone())
-            })
-            .unwrap_or_default(),
+    if *state.peek() != next {
+        state.set(next);
     }
+    capturing
 }
-
+fn commit(state: Signal<AddView>, name: Signal<String>, bindings: &Bindings) {
+    let raw = name.peek().clone();
+    submit(state, name, bindings, AddIntent::Commit(raw));
+}
 #[component]
-#[allow(
+#[expect(
     unused_qualifications,
-    reason = "Dioxus 0.7 RSX macro emits redundant `dioxus_elements::*` qualifications \
-              on per-element event listeners with bound closures."
+    reason = "Dioxus RSX emits redundant qualifications"
 )]
 pub(crate) fn AddInline(
-    /// When set to `true` from outside, expand directly into
-    /// `Pad { Capturing }`, skipping the Resting -> click step. The
-    /// component clears this prop back to `false` once the rising edge
-    /// has been observed, so the parent only needs to set it once per
-    /// open request.
     force_expanded: Signal<bool>,
-    /// When set to `Some(source)` from outside (right-click "Duplicate"
-    /// in the context menu), open the pad in `Pad { Capturing }` with
-    /// the name pre-filled to `<source.name> (copy)` and stash the
-    /// source for the commit path so the dispatched `SetMapping`
-    /// carries the source's cloned actions instead of an empty vec.
-    /// The component clears this prop back to `None` once the rising
-    /// edge has been observed (one-shot, like `force_expanded`).
-    pending_duplicate: Signal<Option<MappingSummary>>,
+    pending_duplicate: Signal<Option<RailTarget>>,
 ) -> Element {
-    tracing::trace!(target: "frame::render", region = "mapping_list::add_inline");
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
     let cap = use_context::<LiveCapture>();
-
-    let mut state: Signal<AddState> = use_signal(|| AddState::Resting);
-    let mut name: Signal<String> = use_signal(String::new);
-    // Local stash of the duplicate source. Held throughout a single
-    // duplicate flow so Refresh-icon recapture and Add-commit can both
-    // see it. Cleared on Cancel / Esc / commit / Resting transitions.
-    let mut local_source: Signal<Option<MappingSummary>> = use_signal(|| None);
-
+    let bindings = use_context::<Bindings>();
+    let state = use_signal(AddView::default);
+    let mut name = use_signal(String::new);
     let capture = use_capture(
         Target {
             profile: ctx.meta.read().profile_id.clone(),
@@ -190,212 +64,111 @@ pub(crate) fn AddInline(
         },
         CaptureFilter::Any,
         move |addr| {
-            let mode = view.editing_mode.peek().clone();
-            let cfg = ctx.config.peek();
-            let collision = cfg
-                .mappings
-                .iter()
-                .find(|m| m.input == addr && m.mode == mode);
-            let next = match collision {
-                Some(existing) => AddState::Collision {
-                    existing_name: existing.name.clone().unwrap_or_else(|| "(unnamed)".into()),
-                    existing: existing.input.clone(),
-                },
-                None => AddState::Pad {
-                    phase: PadPhase::Captured(addr),
-                },
-            };
-            drop(cfg);
-            state.set(next);
+            submit(state, name, &bindings, AddIntent::Captured(addr));
         },
         move |()| {
-            state.set(AddState::Resting);
-            name.set(String::new());
-            local_source.set(None);
+            submit(state, name, &bindings, AddIntent::CaptureCancelled);
         },
     );
-
-    // Honor `force_expanded` from the parent, used by EmptyZeroMappings'
-    // primary button to skip the dashed-row click. The component clears
-    // the prop after observing the rising edge so the parent only needs
-    // to set it once per open request.
-    //
-    // `use_hook` fires synchronously on first render so the initial mount
-    // case (parent passes `Signal::new(true)`) lands in `Pad { Capturing }`
-    // without waiting for an effect tick, this is how the SSR test
-    // `add_inline_force_expanded_arms_capture` observes the listening pad.
-    // The `use_effect` below handles subsequent rising edges (parent
-    // re-flips false → true after a previous capture cycle closed).
-    use_hook(|| {
+    let ctx_start = ctx.clone();
+    let begin = use_callback(move |source: Option<RailTarget>| {
+        let scope = Scope {
+            profile: ctx_start.meta.peek().profile_id.clone(),
+            mode: view.editing_mode.peek().clone(),
+        };
+        if let Some(source) = &source {
+            name.set(format!(
+                "{} (copy)",
+                source.before.name.as_deref().unwrap_or("(unnamed)")
+            ));
+        }
+        if submit(state, name, &bindings, AddIntent::Start { scope, source }) {
+            capture.start.call(());
+        }
+    });
+    let observe = move || {
+        let mut pending = pending_duplicate;
+        let source = pending.peek().clone();
+        if source.is_some() {
+            pending.set(None);
+            begin.call(source);
+        }
         let mut force = force_expanded;
         if *force.peek() {
-            let mut state = state;
-            state.set(AddState::Pad {
-                phase: PadPhase::Capturing,
-            });
-            capture.start.call(());
             force.set(false);
+            begin.call(None);
         }
-    });
-    let mut force_for_effect = force_expanded;
+    };
+    use_hook(observe);
     use_effect(move || {
-        if *force_for_effect.read() {
-            state.set(AddState::Pad {
-                phase: PadPhase::Capturing,
-            });
-            capture.start.call(());
-            force_for_effect.set(false);
-        }
+        let _ = pending_duplicate.read();
+        let _ = force_expanded.read();
+        observe();
     });
-
-    // Honor `pending_duplicate` from the parent, set by the right-click
-    // menu's Duplicate item. Pre-fill name with `<source.name> (copy)`,
-    // stash the source for the commit path, arm capture, and clear the
-    // parent's signal (one-shot rising edge, same pattern as
-    // `force_expanded`).
-    use_hook(|| {
-        let mut pending = pending_duplicate;
-        // Snapshot then drop the borrow before mutating `pending`.
-        let snapshot = pending.peek().clone();
-        if let Some(source) = snapshot {
-            let prefilled = format!("{} (copy)", source.name.as_deref().unwrap_or("(unnamed)"));
-            let mut name = name;
-            name.set(prefilled);
-            let mut local = local_source;
-            local.set(Some(source));
-            let mut state = state;
-            state.set(AddState::Pad {
-                phase: PadPhase::Capturing,
-            });
-            capture.start.call(());
-            pending.set(None);
-        }
-    });
-    let mut pending_for_effect = pending_duplicate;
     use_effect(move || {
-        let snapshot = pending_for_effect.read().clone();
-        if let Some(source) = snapshot {
-            let prefilled = format!("{} (copy)", source.name.as_deref().unwrap_or("(unnamed)"));
-            name.set(prefilled);
-            local_source.set(Some(source));
-            state.set(AddState::Pad {
-                phase: PadPhase::Capturing,
-            });
-            capture.start.call(());
-            pending_for_effect.set(None);
+        let _ = ctx.config.read();
+        let _ = ctx.meta.read();
+        let _ = view.editing_mode.read();
+        let _ = state.read();
+        submit(state, name, &bindings, AddIntent::Reconcile);
+        if state.peek().phase == Phase::Resting && *capture.listening.peek() {
+            capture.cancel.call(());
         }
     });
-
-    // Collision drift: re-validate once per polling tick. If `existing` is
-    // no longer in cfg.mappings for the active mode, transition to
-    // `Pad { Captured(addr) }` so the user can complete the add without
-    // re-pressing.
-    let editing_for_drift = view.editing_mode;
-    let ctx_for_drift = ctx.clone();
-    use_effect(move || {
-        let s = state.read().clone();
-        if let AddState::Collision { existing, .. } = s {
-            let mode_now = editing_for_drift.read().clone();
-            let cfg = ctx_for_drift.config.read();
-            let still_present = cfg
-                .mappings
-                .iter()
-                .any(|m| m.input == existing && m.mode == mode_now);
-            drop(cfg);
-            if !still_present {
-                state.set(AddState::Pad {
-                    phase: PadPhase::Captured(existing),
-                });
-            }
-        }
-    });
-
-    // Document-level Esc listener that closes the pad whenever LiveCapture
-    // is NOT active. While `cap.active == true` (Pad { Capturing }),
-    // LiveCapture's own Esc listener (Task 8) owns the key and fires
-    // `cap.cancel`; the external-cancel watcher above then closes the
-    // pad. This listener handles the cap.active==false cases (Pad with
-    // Captured phase / Collision), where Esc closes the pad and clears
-    // the typed name.
-    //
-    // The JS handler short-circuits if the keystroke originated inside the
-    // rail's filter input so Task 22's filter-Esc-clears-query routing
-    // keeps working without contention.
-    //
-    // Pattern mirrors Task 8's LiveCapture Esc listener, capture-phase
-    // window listener, parked recv loop, no shutdown signal because the
-    // listener lives for the lifetime of the AddInline component (which
-    // is the lifetime of the rail).
-    let esc_listener_mounted: Signal<bool> = use_signal(|| false);
-    use_effect(move || {
-        let mut mounted = esc_listener_mounted;
-        if *mounted.peek() {
-            return;
-        }
-        mounted.set(true);
-
+    // The existing idle-Escape transport only forwards cancellation to the app.
+    let listener = use_hook(|| {
+        let key = format!(
+            "if-rail-add-{}-{}",
+            bindings.instance,
+            dioxus::core::current_scope_id().0
+        );
+        let mut handle = document::eval(&format!(
+            r"
+            window['{key}']?.();
+            const h = (ev) => {{
+                if (ev.key === 'Escape' && !ev.target?.closest?.('.if-rail__filter')) dioxus.send('esc');
+            }};
+            window.addEventListener('keydown', h, true);
+            window['{key}'] = () => window.removeEventListener('keydown', h, true);
+            (async () => {{ while (await dioxus.recv() !== '__shutdown__') {{}} dioxus.send('shutdown_ack'); }})();
+        "
+        ));
         spawn(async move {
-            let mut handle = document::eval(
-                "const h = (ev) => {\n\
-                   if (ev.key !== 'Escape') return;\n\
-                   // Defer to MappingList's filter-Esc handling when the\n\
-                   // filter input is the event target.\n\
-                   if (ev.target && ev.target.closest && ev.target.closest('.if-rail__filter')) return;\n\
-                   dioxus.send('esc');\n\
-                 };\n\
-                 window.addEventListener('keydown', h, true);\n\
-                 (async () => { while (true) { await dioxus.recv(); } })();\n\
-                 ",
-            );
-
-            loop {
-                match handle.recv::<String>().await {
-                    Ok(s) if s == "esc" => {
-                        // Gate: only close when LiveCapture is off and the
-                        // pad is currently expanded.
-                        if *cap.active.read() {
-                            continue;
-                        }
-                        if *state.peek() == AddState::Resting {
-                            continue;
-                        }
-                        state.set(AddState::Resting);
-                        name.set(String::new());
-                        local_source.set(None);
-                    }
-                    _ => break,
+            while let Ok(message) = handle.recv::<String>().await {
+                if message != "esc" {
+                    break;
+                }
+                if !*cap.active.peek() {
+                    submit(state, name, &bindings, AddIntent::Cancel);
                 }
             }
         });
+        (handle, key)
     });
-
-    match state.read().clone() {
-        AddState::Resting => rsx! {
+    use_drop(move || {
+        let _ = document::eval(&format!(
+            "window['{}']?.(); delete window['{}'];",
+            listener.1, listener.1
+        ));
+        let _ = listener.0.send("__shutdown__");
+    });
+    let error = state.read().error.clone();
+    let phase = state.read().phase.clone();
+    let body = match phase {
+        Phase::Resting => rsx! {
             div { class: "if-add-inline if-add-inline--resting",
-                button {
-                    r#type: "button",
-                    class: "if-add-inline__dashed-row",
-                    onclick: move |_| {
-                        state.set(AddState::Pad {
-                            phase: PadPhase::Capturing,
-                        });
-                        capture.start.call(());
-                    },
-                    "aria-label": "Add mapping",
-                    "+ Add mapping"
+                button { r#type: "button", class: "if-add-inline__dashed-row",
+                    onclick: move |_| begin.call(None), "aria-label": "Add mapping", "+ Add mapping"
                 }
             }
         },
-        AddState::Pad { phase } => {
-            // Compute phase-dependent content up-front so the rsx body is
-            // a single shell (no nested conditional that would reshape the
-            // DOM and reset focus / animation timing).
-            let captured_addr: Option<InputAddress> = match &phase {
-                PadPhase::Capturing => None,
-                PadPhase::Captured(addr) => Some(addr.clone()),
+        Phase::Capturing | Phase::Captured(_) => {
+            let captured_addr = if let Phase::Captured(addr) = phase {
+                Some(addr)
+            } else {
+                None
             };
             let is_capturing = captured_addr.is_none();
-
             let cfg = ctx.config.read();
             let (chip_label, device_label, kind_class): (String, String, &'static str) =
                 if let Some(addr) = &captured_addr {
@@ -414,20 +187,8 @@ pub(crate) fn AddInline(
                 };
             drop(cfg);
 
-            // Closures need owned captures; clone once per arm (Captured
-            // phase only, Capturing's clones are unused but cheap).
             let addr_for_enter = captured_addr.clone();
-            let addr_for_btn = captured_addr.clone();
-            let view_for_enter = view;
-            let view_for_btn = view;
-            let cmd_for_enter = ctx.commands.clone();
-            let cmd_for_btn = ctx.commands.clone();
-            // For the commit path: clone the AppContext so closures can
-            // call `resolve_actions` to look up the duplicate source's
-            // actions in the active profile (or use vec![] for fresh add).
-            let ctx_for_enter = ctx.clone();
-            let ctx_for_btn = ctx.clone();
-
+            let addr_for_btn = captured_addr;
             rsx! {
                 div {
                     class: "if-add-inline if-add-inline--pad",
@@ -435,22 +196,10 @@ pub(crate) fn AddInline(
                         // Enter commits when an input has been captured.
                         // Esc is handled by the document-level listener.
                         if evt.key() == Key::Enter
-                            && let Some(addr) = &addr_for_enter
+                            && addr_for_enter.is_some()
                         {
                             evt.prevent_default();
-                            let n = name.read().clone();
-                            let source_snap = local_source.peek().clone();
-                            let actions = resolve_actions(source_snap.as_ref(), &ctx_for_enter);
-                            dispatch_add_helper(
-                                addr.clone(),
-                                &n,
-                                actions,
-                                view_for_enter,
-                                &cmd_for_enter,
-                            );
-                            state.set(AddState::Resting);
-                            name.set(String::new());
-                            local_source.set(None);
+                            commit(state, name, &bindings);
                         }
                     },
                     div { class: "if-add-inline__readout",
@@ -477,10 +226,7 @@ pub(crate) fn AddInline(
                             size: ButtonSize::Sm,
                             disabled: is_capturing,
                             onclick: move |_| {
-                                state.set(AddState::Pad {
-                                    phase: PadPhase::Capturing,
-                                });
-                                capture.start.call(());
+                                if submit(state, name, &bindings, AddIntent::Refresh) { capture.start.call(()); }
                             },
                         }
                     }
@@ -496,9 +242,7 @@ pub(crate) fn AddInline(
                             size: ButtonSize::Sm,
                             onclick: move |_| {
                                 capture.cancel.call(());
-                                state.set(AddState::Resting);
-                                name.set(String::new());
-                                local_source.set(None);
+                                submit(state, name, &bindings, AddIntent::Cancel);
                             },
                             "Cancel"
                         }
@@ -507,20 +251,8 @@ pub(crate) fn AddInline(
                             size: ButtonSize::Sm,
                             disabled: is_capturing,
                             onclick: move |_| {
-                                if let Some(addr) = &addr_for_btn {
-                                    let n = name.read().clone();
-                                    let source_snap = local_source.peek().clone();
-                                    let actions = resolve_actions(source_snap.as_ref(), &ctx_for_btn);
-                                    dispatch_add_helper(
-                                        addr.clone(),
-                                        &n,
-                                        actions,
-                                        view_for_btn,
-                                        &cmd_for_btn,
-                                    );
-                                    state.set(AddState::Resting);
-                                    name.set(String::new());
-                                    local_source.set(None);
+                                if addr_for_btn.is_some() {
+                                    commit(state, name, &bindings);
                                 }
                             },
                             "Add"
@@ -529,13 +261,10 @@ pub(crate) fn AddInline(
                 }
             }
         }
-        AddState::Collision {
-            existing_name,
-            existing,
-        } => {
-            let existing_for_btn = existing.clone();
+        Phase::Collision(existing) => {
+            let existing_name = existing.name.as_deref().unwrap_or("(unnamed)");
             let cfg = ctx.config.read();
-            let captured_label = source_label::format(&existing, &cfg);
+            let captured_label = source_label::format(&existing.input, &cfg);
             drop(cfg);
             rsx! {
                 div { class: "if-add-inline if-add-inline--collision",
@@ -550,26 +279,23 @@ pub(crate) fn AddInline(
                     Button {
                         variant: ButtonVariant::Secondary,
                         onclick: move |_| {
-                            let mode_now = view.editing_mode.read().clone();
-                            let mut sel = view.selected_mapping;
-                            sel.set(Some((mode_now, existing_for_btn.clone())));
-                            state.set(AddState::Resting);
-                            name.set(String::new());
-                            local_source.set(None);
+                            submit(state, name, &bindings, AddIntent::Open);
                         },
                         "Edit existing"
                     }
                     Button {
                         variant: ButtonVariant::Ghost,
                         onclick: move |_| {
-                            state.set(AddState::Resting);
-                            name.set(String::new());
-                            local_source.set(None);
+                            submit(state, name, &bindings, AddIntent::Cancel);
                         },
                         "Cancel"
                     }
                 }
             }
         }
+    };
+    rsx! {
+        if let Some(error) = error { div { role: "alert", "{error}" } }
+        {body}
     }
 }

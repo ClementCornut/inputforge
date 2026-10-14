@@ -1,9 +1,8 @@
 //! Drag-handle component. Renders a 6-dot grip SVG and owns the
 //! `ondragstart` handler for the row.
 //!
-//! Only the handle is `draggable=true`; the row body keeps click-to-
-//! select semantics. Hover-only opacity is driven by the consumer's CSS
-//! (Phase A hardcodes `.if-row:hover .if-sortable-handle`).
+//! Only the handle starts a pointer gesture; the row body keeps click-to-select
+//! semantics. The gesture forwards drag events to the existing Rust handlers.
 
 use dioxus::prelude::*;
 
@@ -11,11 +10,9 @@ use super::state::SortableState;
 
 /// Hover-revealed drag-handle. Wraps a 6-dot grip SVG (2x3 grid).
 ///
-/// The handle's `ondragstart` calls
-/// `event.data_transfer().set_data("text/html", "")` -- this incantation
-/// is required for Firefox/WebView2 to actually start a drag operation.
-/// (Without it, the cursor stays as `no-drop` and the drop is never
-/// fired.)
+/// Browser pointer capture permits wheel scrolling and forwards hover/drop
+/// events to the existing gap handlers. Native HTML dragging is disabled so
+/// the browser does not suppress normal input for the duration of a gesture.
 ///
 /// `group_len` is currently unused by the primitive itself but is kept
 /// on the prop list so the consumer can pass it forward consistently
@@ -30,6 +27,8 @@ pub fn SortableHandle<G: 'static + Clone + PartialEq>(
     state: SortableState<G>,
     index: usize,
     group: G,
+    /// Prepared identity/revision of the source content; changing it cancels a gesture.
+    context: String,
     #[allow(
         unused_variables,
         reason = "group_len is part of the public API; reserved for consumer parity \
@@ -38,17 +37,22 @@ pub fn SortableHandle<G: 'static + Clone + PartialEq>(
     group_len: usize,
     #[props(default = true)] draggable: bool,
 ) -> Element {
+    let handle = super::interaction::use_handle();
+    let owner = format!("{:?}", state.drag_from.id());
     let mut drag_from = state.drag_from;
     let mut drag_group = state.drag_group;
     let mut drop_target = state.drop_target;
+    let mut active = use_signal(|| false);
+    use_drop(move || {
+        if *active.peek() {
+            drag_from.set(None);
+            drag_group.set(None);
+            drop_target.set(None);
+        }
+    });
 
-    let ondragstart = move |evt: Event<DragData>| {
-        // Firefox/WebView2 fix: the source's dataTransfer must carry
-        // some payload OR the drag is silently aborted. This is the
-        // exact incantation from the official Dioxus DragAndDropList
-        // primitive.
-        let _ = evt.data_transfer().set_data("text/html", "");
-        evt.data_transfer().set_effect_allowed("move");
+    let ondragstart = move |_evt: Event<DragData>| {
+        active.set(true);
         drag_from.set(Some(index));
         // Clone the group into the signal. For Copy types (e.g. `u32`)
         // this is a zero-cost bitwise copy; for non-Copy types (e.g.
@@ -56,17 +60,9 @@ pub fn SortableHandle<G: 'static + Clone + PartialEq>(
         drag_group.set(Some(group.clone()));
     };
 
-    // The browser fires `dragend` on the drag source regardless of where
-    // the drop landed (gap, row, empty space, off-window, Esc-cancelled).
-    // Gaps own their own ondragend for the case where the cursor IS on a
-    // gap at the moment of release, but anything else (drop on a row,
-    // drop in the gap between groups, drop in empty page area, drag
-    // cancelled) wouldn't trigger any gap's handler. Without this
-    // source-side fallback the dragging modifier (`if-sortable--
-    // dragging`, opacity 0.4) sticks until the next dragstart. Clear
-    // every shared signal here so the source-side state is the single
-    // authoritative reset.
+    // Every completed or cancelled pointer gesture forwards dragend to its source.
     let ondragend = move |_evt: Event<DragData>| {
+        active.set(false);
         drag_from.set(None);
         drag_group.set(None);
         if drop_target.peek().is_some() {
@@ -79,7 +75,13 @@ pub fn SortableHandle<G: 'static + Clone + PartialEq>(
     rsx! {
         span {
             class: "if-sortable-handle",
-            draggable: "{draggable_str}",
+            draggable: "false",
+            "data-sortable-enabled": "{draggable_str}",
+            "data-sortable-owner": "{owner}",
+            "data-sortable-handle": "{handle}",
+            "data-sortable-context": "{context}",
+            "onpointerdown": "window.__ifSortableStart?.(event);",
+            "onclick": "if(this.__ifSortableMoved){{this.__ifSortableMoved=false;event.preventDefault();event.stopPropagation();}}",
             ondragstart,
             ondragend,
             "aria-hidden": "true",

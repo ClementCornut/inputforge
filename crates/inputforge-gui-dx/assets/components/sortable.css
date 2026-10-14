@@ -1,12 +1,13 @@
 /* Sortable primitive: DnD affordances. Tokens-only.
  *
- * Gap-drop-zone model. The primitive exposes three CSS surfaces:
+ * Gap-drop-zone model. The primitive exposes these CSS surfaces:
  *
  *   .if-sortable-handle     - the 6-dot grip rendered inside each row
  *   .if-sortable--dragging  - applied to the source row while a drag is
  *                              in flight (consumer adds it on the row)
  *   .if-sortable-gap        - inter-row drop zone, one before each row
  *                              plus one trailing per group
+ *   .if-sortable-ghost      - non-interactive card snapshot following the pointer
  *
  * Hover-reveal is consumer-agnostic via `:has()`: any container holding
  * `.if-sortable-handle` as a direct child reveals the handle on hover.
@@ -26,6 +27,7 @@
  * centers the SVG vertically against the row's `padding: 8px / line-
  * height` rhythm without coupling to the row's exact height. */
 .if-sortable-handle {
+    touch-action: none;
     position: absolute;
     left: 4px;
     top: 50%;
@@ -37,6 +39,12 @@
     display: flex;
     align-items: center;
     transition: opacity var(--duration-fast) var(--easing-fast);
+}
+
+.if-sortable-active,
+.if-sortable-active * {
+    cursor: grabbing !important;
+    user-select: none;
 }
 
 /* Consumer-agnostic hover trigger: matches any container that holds the
@@ -56,6 +64,21 @@
 .if-sortable--dragging {
     opacity: 0.4;
     transition: opacity var(--duration-fast) var(--easing-fast);
+}
+
+/* The card snapshot is viewport-fixed and stays below toast feedback. */
+.if-sortable-ghost {
+    box-sizing: border-box;
+    margin: 0;
+    list-style: none;
+    opacity: 0.65;
+    z-index: calc(var(--z-toast) - 1);
+    transition: none;
+}
+
+.if-sortable-ghost,
+.if-sortable-ghost * {
+    pointer-events: none !important;
 }
 
 /* Inter-row gap: container for the drop-target bar. Height is set by

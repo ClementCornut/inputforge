@@ -81,6 +81,11 @@ pub struct Publication {
 /// App-owned mapping and history operations.
 #[derive(Debug, Clone, Copy)]
 pub struct Bindings {
+    /// Unique mounted-controller identity for isolated listener wiring.
+    pub instance: u128,
+    pub menu: Callback<crate::mapping_rail::Lookup, Option<crate::mapping_rail::Menu>>,
+    pub rail: Callback<crate::mapping_rail::Request, crate::mapping_rail::Outcome>,
+    pub add: Callback<crate::mapping_rail::AddRequest, crate::mapping_rail::AddView>,
     pub install: Callback<Publication>,
     pub dispatch: Callback<Request, bool>,
     pub undo: Callback<MappingKey, bool>,

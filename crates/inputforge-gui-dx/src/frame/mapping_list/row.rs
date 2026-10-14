@@ -102,10 +102,16 @@ pub(crate) fn Row(
     /// RMB / Shift+F10 fires this with `(input, x, y)` so the parent can
     /// open the context menu at the cursor. Coordinates are page-space.
     on_open_menu: EventHandler<(InputAddress, f64, f64)>,
+    #[props(default)] on_drag_start: Option<Callback<MappingSummary>>,
 ) -> Element {
     tracing::trace!(target: "frame::render", region = "mapping_list::row");
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
+    let drag_context = format!(
+        "profile:{:?};mode:{}",
+        ctx.meta.read().profile_id,
+        summary.mode
+    );
 
     // Subscribe to the 60 Hz live snapshot and derive this row's input
     // intensity in `[0.0, 1.0]`. Drives the `is-live-active` class and
@@ -210,10 +216,13 @@ pub(crate) fn Row(
             style: "{live_style}",
             onclick,
             oncontextmenu,
+            ondragstart: { let source = summary.clone(); move |_| { if let Some(callback) = on_drag_start { callback.call(source.clone()); } } },
+            "data-sortable-row": "true",
             SortableHandle {
                 state: sortable,
                 index: subgroup_idx,
                 group: group_id,
+                context: drag_context,
                 group_len,
                 draggable: !filter_active,
             }

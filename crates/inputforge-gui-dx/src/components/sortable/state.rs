@@ -118,10 +118,12 @@ impl<G: 'static + Clone + PartialEq> PartialEq for SortableState<G> {
 /// }
 /// ```
 pub fn use_sortable_state<G: 'static + Clone + PartialEq>() -> SortableState<G> {
-    SortableState {
+    let state = SortableState {
         drag_from: use_signal(|| None),
         drag_group: use_signal(|| None),
         drop_target: use_signal(|| None),
         live_announcement: use_signal(String::new),
-    }
+    };
+    super::interaction::use_drag(&format!("{:?}", state.drag_from.id()));
+    state
 }

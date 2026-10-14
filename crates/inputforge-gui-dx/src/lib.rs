@@ -21,6 +21,10 @@ mod keyboard_document;
 pub mod mapping_edits;
 #[cfg(test)]
 pub use inputforge_gui_dx::mapping_edits;
+#[cfg(not(test))]
+pub mod mapping_rail;
+#[cfg(test)]
+pub use inputforge_gui_dx::mapping_rail;
 pub mod patterns;
 pub mod routing;
 #[cfg(not(test))]
