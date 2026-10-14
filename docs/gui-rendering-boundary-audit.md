@@ -18,7 +18,7 @@ Requirements:
 
 The original audit was read-only. The status below now also records the first
 implemented routing, polling, controller-workflow, advanced-axis, live-capture,
-keyboard-capture, shared mapping-dispatch/history, and mapping-rail extractions;
+keyboard-capture, shared mapping-dispatch/history, mapping-rail and batch-mapping extractions;
 the remaining findings are still open.
 
 ## Resolved routing controls — 2026-10-12
@@ -1154,6 +1154,145 @@ retains its content, leaves drop hints/wheel/edge scrolling functional and disap
 on drop, Escape, source/context changes and close/reopen. Native ghost appearance
 remains pending; the earlier acceptance sections are preserved unchanged.
 
+## Batch mapping slice — 2026-10-14
+
+This approved bounded extraction resolves finding **#5** and its workflow engine
+access in **#1**. Earlier dated sections describe ownership at their implementation
+time. Profile/settings workflows and curve/deadzone algorithms remain deferred.
+
+- [The existing app mapping controller](../crates/inputforge-app/src/mapping_edits/mod.rs)
+  supplies batch callbacks and owns the mounted wizard alongside private history.
+  [Batch lifecycle and validation](../crates/inputforge-app/src/mapping_edits/batch/mod.rs)
+  use stable profile identity, editing navigation, selected mode/all-mode scope,
+  source capabilities/native bindings and target capabilities. Mounted-owner and
+  context-generation tokens reject obsolete callbacks, including before rerender;
+  old disposal cannot close a newer mount. Profile/navigation changes reset drafts.
+- [Row preparation](../crates/inputforge-app/src/mapping_edits/batch/rows.rs)
+  owns automatic selection and positional target defaults, source/target fallback,
+  capability validation and row reconciliation. Live native bindings take precedence
+  over saved bindings; core binding validation and unavailable-control resolution
+  preserve logical identities for sparse controls and retained tombstones. Overflow
+  stays excluded. Valid row overrides and replace flags survive unrelated capacity
+  changes; invalid choices are rebuilt from current capabilities. A stale Apply
+  rejects rather than silently dispatching to a fallback source or target.
+- [Policy](../crates/inputforge-app/src/mapping_edits/batch/policy.rs) prepares
+  current collisions, mode choices, target choices, summary counts, contextual group
+  controls, Reset and Apply availability. Collision checks use the existing private
+  history's latest delivered mapping view, including queued additions/deletions.
+  Create/replace/skip fan out per selected mode; excluded counts once per input row.
+- [App transitions](../crates/inputforge-app/src/mapping_edits/batch/edit.rs) own
+  raw form parsing, source/target/mode choices, All modes, row targets, replace,
+  Include/Exclude, Skip/Replace conflicts and Reset. Malformed, wrong-kind and
+  out-of-capability values show visible feedback without changing the draft.
+- [Batch dispatch](../crates/inputforge-app/src/mapping_edits/batch/dispatch.rs)
+  prepares entries and the alias-aware recovery label under the validation guard,
+  then releases engine/controller guards before command delivery, publication or
+  completion. Empty batches request no snapshot. Successful batch plus queue-barrier
+  delivery precede affected/dependent history invalidation and navigation; unrelated
+  mappings/modes retain history. The existing pending command chain survives
+  delete→batch re-add and prevents stale membership or history restoration.
+- [The GUI contract](../crates/inputforge-gui-dx/src/batch_mapping.rs) contains
+  prepared rendering data, signal publication and callbacks. [The panel](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs),
+  [metadata controls](../crates/inputforge-gui-dx/src/frame/bulk_map/metadata.rs),
+  [rows](../crates/inputforge-gui-dx/src/frame/bulk_map/rows.rs) and
+  [labels](../crates/inputforge-gui-dx/src/frame/bulk_map/labels.rs) retain markup,
+  labels, signals, live readouts and callback wiring. The wizard no longer reads
+  raw engine state, maintains reconciliation/collision policy or sends commands.
+  The mirrored test-only Apply handler and redundant GUI policy modules were removed.
+
+Failed command or barrier delivery leaves the wizard and choices visible, publishes
+an alert, and invokes no completion/success/navigation callback or batch history
+invalidation. Delivery feedback now says **Requested N mappings**, rather than
+claiming mappings have been created. Core still owns pre-save → recovery snapshot →
+bulk upserts → post-save and its warnings/abort behavior; queue delivery alone does
+not acknowledge successful snapshot creation or persistence. Existing replacements
+remain unnamed single MapToVJoy mappings, and recovery uses the existing snapshots.
+
+```mermaid
+flowchart LR
+    GUI["GUI: prepared wizard, signals, labels"] -->|"captured owner/context + intent"| App["App: revalidation, wizard, collisions, entries"]
+    App -->|"batch + existing serial barrier"| Core["Core: recovery snapshot, update, save"]
+    App -->|"prepared model / delivery feedback"| GUI
+```
+
+All affected callers are wired: workspace/panel mount and empty states; metadata
+selectors and All modes; axis/button/hat targets and Replace; all four group controls;
+Reset and Apply; existing mapping reconciliation/disposal; batch/layout fixtures and
+the real editor bridge. Desktop host, demo and other renderer fixtures retain the
+existing render_editor signature and Controller::bindings(). No dependency, hook,
+lint setting, core command, capture listener or drag implementation changed.
+
+The same app poller still samples immediately and every 16 ms, skips contended
+reads and publishes after releasing its guard. Batch reconciliation uses the existing
+mapping callback; there is no additional polling loop, timer, thread or channel.
+Capture fixes, drag scrolling/ghost cleanup, nudge grouping, history limits and
+root teardown/remount remain intact.
+
+### Batch verification
+
+Real renderer regressions first reproduced failed-send navigation/success and
+pre-rerender disconnected-source dispatch. App regressions were written before
+implementation. An additional failing regression reproduced loss of a valid axis
+choice/replace flag when button capacity shrank; reconciliation now preserves it.
+
+[App workflow regressions](../crates/inputforge-app/tests/mapping_edits/batch/mod.rs)
+cover defaults/overflow, invalid choices, summary/collisions, profile/source/target/
+mode/native-layout drift, sparse controls, failed delivery, empty batches, queued
+membership, affected history and mount ownership. [Real renderer handlers](../crates/inputforge-gui-dx/src/frame/bulk_map/events_tests/mod.rs)
+cover metadata/row/group controls, Reset, feedback, snapshot payload and navigation.
+[The real editor bridge](../crates/inputforge-gui-dx/tests/editor_bridge/batch.rs)
+checks cadence, contention recovery, one installation and state release on teardown;
+existing remount/capture/drag/history fixtures remain in the workspace suite.
+
+Final verification:
+
+- `bash .githooks/pre-commit` passed unchanged: formatting and strict all-target
+  Clippy, with no lint exclusions.
+- Host-enabled `cargo test --workspace --locked --offline -j 2` passed:
+  **2,122 passed, 0 failed, 11 existing ignored**, across 25 reported suites.
+  This includes 79 app mapping tests (21 batch cases), 795 GUI library tests
+  (35 batch rendering/event cases), both editor-bridge tests, existing capture,
+  history/drag/lifecycle checks and core bulk snapshot/save-failure coverage.
+  The first workspace run identified a layout fixture missing the newly required
+  toast context; its app callback/presentation contexts now match the runtime.
+- All 14 executable pointer/ghost regressions and both rail/editor and keyboard
+  listener checks passed. Native/hardware fixtures remain ignored.
+- Diff integrity, audit local links, and touched production-module sizes passed;
+  new batch modules and the mapping controller stay within 200 nonblank code lines.
+  Seven prior acceptance/drag evidence sections were verified byte-for-byte unchanged.
+- Independent read-only review found no actionable issues. The subsequent valid-row
+  preservation correction was verified by its failing-then-passing regression and
+  the final green workspace run. No second review was performed.
+- Changes remain unstaged and uncommitted. No new native acceptance or runtime
+  performance measurement is claimed. Prior Apply timeout, live capture,
+  keyboard/app acceptance, mapping acceptance and drag evidence remain separate.
+
+### Batch manual acceptance
+
+Use a disposable profile and run `dx run -p inputforge-app` on native Wayland.
+Repeat applicable checks on Windows for separate platform acceptance.
+
+1. Open Batch map, choose different sources/targets and override axes/buttons/hats.
+   Check positional defaults, sparse physical identities, target labels, overflow,
+   Do not map, Include/Exclude and Reset; valid overrides must survive an unrelated
+   capacity change. Invalid/unavailable choices must retain the draft and show an alert.
+2. Create named and unnamed collisions in two modes. Exercise row Replace and group
+   Skip/Replace, then All modes. Check counts and that skipped/excluded mappings remain
+   unchanged; only chosen replacements lose their old pipeline/name as before.
+3. Apply once and confirm a Before batch map recovery snapshot with the source alias
+   and target device. Verify persisted results and restore the snapshot. The requested
+   feedback is delivery feedback; backend snapshot/save failures must still warn.
+4. Change profile/mode, disconnect the source, remove/change target capacity, and close/
+   reopen the wizard. No stale click may act on another context. On rejected/failed
+   delivery, the wizard must stay open without a success announcement/navigation.
+5. Make editor history before a batch, including another mode and inputs that will be
+   skipped. After Apply, unrelated/skipped history must remain usable and old affected
+   history must not overwrite batch work. Repeat live/keyboard capture, undo/redo,
+   pointer drag with ghost/wheel/edge scrolling, and Stop/edit-layout/Apply/Start.
+6. Quit/relaunch and repeat. Check no duplicate updates or stale callback/listener
+   behavior. Earlier successful native Apply/capture reports remain separate evidence;
+   native WebView/hardware timing and performance are not established by these fixtures.
+
 ## Remaining responsibilities to move
 
 The following areas are ordered by migration priority. Source links identify
@@ -1162,11 +1301,11 @@ may change during extraction.
 
 | # | Area and evidence | App-owned responsibility |
 | --- | --- | --- |
-| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, live capture, keyboard capture, shared mapping dispatch/history, and mapping rail workflows now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
+| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, live capture, keyboard capture, shared mapping dispatch/history, mapping rail and batch workflows now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
 | 2 | **Controller editing policy — partially resolved** — [app controller policy](../crates/inputforge-app/src/controllers/policy.rs); [app axis settings](../crates/inputforge-app/src/controllers/axes.rs); [axis rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Selection, virtual-layout mutations, Apply, shared routing decisions, and advanced axis settings are app-owned. Other configuration-editing/readiness gates remain; see resolved status above. |
 | 3 | **Capture workflows — partially resolved** — [app live capture](../crates/inputforge-app/src/live_capture/mod.rs); [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs); [app keyboard capture](../crates/inputforge-app/src/keyboard_capture/mod.rs); [GUI keyboard contract](../crates/inputforge-gui-dx/src/keyboard_capture.rs) | Live and keyboard capture, physical keyboard translation, ownership, target revalidation, cancellation, interception and delivery are app-owned; live input additionally owns epoch/native confirmation. Shared stage edits/undo and rail Add/collision decisions are app-owned in the later mapping slices. |
-| 4 | **Mapping edits and undo — partially resolved** — [app controller](../crates/inputforge-app/src/mapping_edits/mod.rs); [app paths](../crates/inputforge-app/src/mapping_edits/paths.rs); [app history](../crates/inputforge-app/src/mapping_edits/history/mod.rs); [GUI callback wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs) | Shared mapping stage edits, command construction, restore snapshots, undo/redo, invalidation and nudge grouping are app-owned. Rail Add/duplicate/collision/delete/reorder workflows are app-owned. Curve/deadzone algorithms, draft/drag geometry, batch mapping and profile workflows remain deferred. |
-| 5 | **Batch mapping** — [entry generation](../crates/inputforge-gui-dx/src/frame/bulk_map/apply.rs), line 19; [Apply handler](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs), line 335 | Automatic target selection, conflict decisions, wizard reconciliation, batch command construction, and snapshot creation requests. |
+| 4 | **Mapping edits and undo — partially resolved** — [app controller](../crates/inputforge-app/src/mapping_edits/mod.rs); [app paths](../crates/inputforge-app/src/mapping_edits/paths.rs); [app history](../crates/inputforge-app/src/mapping_edits/history/mod.rs); [GUI callback wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs) | Shared mapping stage edits, command construction, restore snapshots, undo/redo, invalidation and nudge grouping are app-owned. Rail Add/duplicate/collision/delete/reorder workflows are app-owned. Curve/deadzone algorithms, draft/drag geometry and profile workflows remain deferred; batch mapping is app-owned in the later slice. |
+| 5 | **Batch mapping — resolved** — [app wizard](../crates/inputforge-app/src/mapping_edits/batch/mod.rs); [app dispatch](../crates/inputforge-app/src/mapping_edits/batch/dispatch.rs); [GUI rendering](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs) | Target selection/validation, collisions, reconciliation, entry generation, snapshot requests and delivery are app-owned. Core retains snapshot/persistence execution. |
 | 6 | **Profiles, modes, snapshots, and settings** — [profile actions](../crates/inputforge-gui-dx/src/frame/profiles/actions.rs), line 114; [snapshot settings](../crates/inputforge-gui-dx/src/frame/settings_panel/snapshots_section.rs), line 85 | CRUD workflows, validation, destructive-confirmation decisions, pruning calculations, optimistic state, and command dispatch. Reuse existing core validation rather than maintaining separate GUI rules. |
 | 7 | **Operating-system services and filesystem access** — [file picker](../crates/inputforge-gui-dx/src/frame/profiles/mod.rs), line 30; [clipboard](../crates/inputforge-gui-dx/src/frame/panel_slot/device_panel/mod.rs), line 239; [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Dialog invocation, clipboard writes, and other OS services remain. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
 | 8 | **Event handling and UI state transitions** — [snapshot shortcut](../crates/inputforge-gui-dx/src/frame/profiles/snapshot_drawer.rs), line 306; [navigation reconciliation](../crates/inputforge-gui-dx/src/frame/view_state.rs), line 244; [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs), line 163 | Document listeners, shortcut interpretation, focus navigation, click-away behavior, drag/drop decisions, draft commits, and selection reconciliation. This includes reusable component behavior under the strict rendering-only boundary. |
@@ -1221,8 +1360,8 @@ engine command sender.
 1. Polling/snapshot preparation, shared routing controls, and basic controller
    selection/virtual-layout/Apply and advanced axis settings are complete. Extract
    remaining engine access alongside each deferred workflow.
-2. Live/keyboard capture, shared mapping dispatch/history and mapping rail workflows
-   are complete. Extract deferred editor algorithms, batch mapping and profile workflows next.
+2. Live/keyboard capture, shared mapping dispatch/history, mapping rail and batch
+   workflows are complete. Extract deferred editor algorithms and profile workflows next.
 3. Extract the remaining workflows, services, event handling, and timers.
 
 Move existing behavioral tests with the responsibilities they verify. Retain
@@ -1304,7 +1443,8 @@ coverage, and the user subsequently reported it seems to work fine as recorded
 above. Individual native checklist cases, platforms and timing remain unverified.
 The mapping rail slice has app workflow/queue regressions, real renderer handlers
 and listener cleanup checks; its native manual checklist remains pending.
-The previous desktop reports are user-reported native acceptance;
+The batch slice adds app, real-handler and existing-poller coverage; its native
+manual acceptance remains pending. The previous desktop reports are user-reported native acceptance;
 the timestamp correction, separate Windows acceptance, and runtime performance
 measurements remain unverified on native hardware. The recommendations are ownership
 changes; they are not evidence that every listed workflow currently fails at runtime.

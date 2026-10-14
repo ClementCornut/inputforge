@@ -6,7 +6,6 @@
     reason = "Dioxus components are PascalCase by convention"
 )]
 
-use std::collections::HashMap;
 use std::sync::{Arc, mpsc};
 
 use dioxus::prelude::*;
@@ -19,11 +18,11 @@ use inputforge_core::mode::Modes;
 use inputforge_core::profile::Profile;
 use inputforge_core::state::{AppState, DeviceState};
 use inputforge_core::types::{
-    AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId, OutputAddress,
-    OutputId, VJoyAxis, VirtualDeviceConfig,
+    AxisPolarity, DeviceDiagnostics, DeviceId, DeviceInfo, InputAddress, InputId, VJoyAxis,
+    VirtualDeviceConfig,
 };
 
-use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
+use crate::context::{AppContext, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
 use crate::frame::bulk_map::BulkMapPanel;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::toast::{ToastQueue, ToastState};
@@ -49,6 +48,11 @@ pub(super) fn provide(state: AppState) -> (AppContext, mpsc::Receiver<EngineComm
         live: use_signal(LiveSnapshot::default),
     };
     use_context_provider(|| ctx.clone());
+    let controller = use_hook(|| {
+        inputforge_app::mapping_edits::Controller::new(Arc::clone(&ctx.state), ctx.commands.clone())
+    });
+    let bindings = use_hook(|| controller.bindings());
+    use_context_provider(|| bindings);
     let view = crate::frame::use_view_state_provider(ctx.meta);
     use_context_provider(|| view);
     let toast_state = use_signal(ToastState::default);
@@ -244,7 +248,7 @@ fn panel_target_picker_renders_capability_summary() {
 #[test]
 fn virtual_device_option_formats_normal_capabilities() {
     assert_eq!(
-        super::format_virtual_device_option(&one_vjoy()),
+        super::labels::format_virtual_device_option(&one_vjoy()),
         "Device 1 · 8 axes · 32 btn · 1 hat"
     );
 }
@@ -257,7 +261,7 @@ fn virtual_device_option_formats_maximum_capabilities() {
     device.hat_count = 4;
 
     assert_eq!(
-        super::format_virtual_device_option(&device),
+        super::labels::format_virtual_device_option(&device),
         "Device 16 · 8 axes · 128 btn · 4 hats"
     );
 }
@@ -272,7 +276,7 @@ fn virtual_device_option_pluralizes_axes_and_hats_but_not_btn() {
     };
 
     assert_eq!(
-        super::format_virtual_device_option(&device),
+        super::labels::format_virtual_device_option(&device),
         "Device 3 · 1 axis · 1 btn · 2 hats"
     );
 }
@@ -570,194 +574,6 @@ fn panel_summary_and_actions_share_footer_region() {
 }
 
 #[test]
-fn row_dirty_detection_flags_user_overrides_only() {
-    use crate::frame::bulk_map::rows_dirty;
-
-    let baseline = super::derive_rows(&DeviceId("dev-1".to_owned()), 2, 0, 0, &one_vjoy());
-    let mut edited = baseline.clone();
-    edited[0].target = None;
-
-    assert!(!rows_dirty(&baseline, &baseline));
-    assert!(rows_dirty(&edited, &baseline));
-}
-
-#[test]
-fn row_key_includes_source_device_identity() {
-    let dev_1 = super::derive_rows(&DeviceId("dev-1".to_owned()), 1, 0, 0, &one_vjoy());
-    let dev_2 = super::derive_rows(&DeviceId("dev-2".to_owned()), 1, 0, 0, &one_vjoy());
-
-    assert_ne!(super::row_key(&dev_1[0]), super::row_key(&dev_2[0]));
-}
-
-#[test]
-fn source_row_labels_are_user_facing_one_based() {
-    use crate::frame::bulk_map::state::RowKind;
-
-    assert_eq!(super::source_row_label(RowKind::Axis, 0), "Axis 1");
-    assert_eq!(super::source_row_label(RowKind::Button, 0), "Button 1");
-    assert_eq!(super::source_row_label(RowKind::Hat, 0), "Hat 1");
-    assert_eq!(super::source_row_label(RowKind::Button, 7), "Button 8");
-}
-
-#[test]
-fn row_conflicts_detects_any_active_mode_conflict() {
-    let modes = Modes::new(vec!["Default".to_owned(), "Combat".to_owned()]).unwrap();
-    let mut profile = Profile::new(
-        "T".to_owned(),
-        vec![],
-        modes,
-        vec![],
-        vec![],
-        "Default".to_owned(),
-    );
-    let rows = super::derive_rows(&DeviceId("dev-1".to_owned()), 1, 0, 0, &one_vjoy());
-    profile.set_mapping(
-        &rows[0].input,
-        "Combat",
-        Some("Combat throttle".to_owned()),
-        vec![Action::Invert],
-    );
-
-    let active_modes = vec!["Default".to_owned(), "Combat".to_owned()];
-
-    assert_eq!(
-        super::row_conflicts(&rows, &profile, &active_modes),
-        vec![true]
-    );
-}
-
-#[test]
-fn row_conflicts_ignores_inactive_mode_conflicts() {
-    let modes = Modes::new(vec!["Default".to_owned(), "Combat".to_owned()]).unwrap();
-    let mut profile = Profile::new(
-        "T".to_owned(),
-        vec![],
-        modes,
-        vec![],
-        vec![],
-        "Default".to_owned(),
-    );
-    let rows = super::derive_rows(&DeviceId("dev-1".to_owned()), 1, 0, 0, &one_vjoy());
-    profile.set_mapping(
-        &rows[0].input,
-        "Combat",
-        Some("Combat throttle".to_owned()),
-        vec![Action::Invert],
-    );
-
-    assert_eq!(
-        super::row_conflicts(&rows, &profile, &["Default".to_owned()]),
-        vec![false]
-    );
-}
-
-#[test]
-fn reconcile_missing_source_falls_back_and_rebuilds_rows() {
-    use crate::frame::bulk_map::state::WizardState;
-
-    let devices = vec![one_device_state()];
-    let vjoys = vec![one_vjoy()];
-    let mut wizard = WizardState::empty("Default".to_owned());
-    wizard.source_device_id = Some(DeviceId("missing".to_owned()));
-    wizard.target_vjoy_id = Some(1);
-    wizard.rows = super::derive_rows(&DeviceId("missing".to_owned()), 1, 0, 0, &vjoys[0]);
-
-    super::reconcile_wizard_state(&mut wizard, &devices, &vjoys);
-
-    assert_eq!(wizard.source_device_id, Some(DeviceId("dev-1".to_owned())));
-    assert_eq!(wizard.rows.len(), 13);
-    assert!(matches!(
-        wizard.rows[0].input,
-        InputAddress::Bound {
-            device: DeviceId(ref id),
-            ..
-        } if id == "dev-1"
-    ));
-}
-
-#[test]
-fn reconcile_missing_target_falls_back_and_rebuilds_rows() {
-    use crate::frame::bulk_map::state::WizardState;
-
-    let devices = vec![one_device_state()];
-    let mut fallback = one_vjoy();
-    fallback.device_id = 2;
-    let vjoys = vec![fallback];
-    let mut wizard = WizardState::empty("Default".to_owned());
-    wizard.source_device_id = Some(DeviceId("dev-1".to_owned()));
-    wizard.target_vjoy_id = Some(9);
-    wizard.rows = Vec::new();
-
-    super::reconcile_wizard_state(&mut wizard, &devices, &vjoys);
-
-    assert_eq!(wizard.target_vjoy_id, Some(2));
-    assert_eq!(wizard.rows.len(), 13);
-    assert!(
-        wizard
-            .rows
-            .iter()
-            .all(|row| row.target.as_ref().is_none_or(|target| target.device == 2))
-    );
-}
-
-#[test]
-fn reconcile_changed_capabilities_rebuilds_rows() {
-    use crate::frame::bulk_map::state::WizardState;
-
-    let mut device = one_device_state();
-    device.info.axes = 2;
-    device.info.buttons = 1;
-    device.info.hats = 0;
-    device.info.axis_polarities = vec![AxisPolarity::Bipolar; 2];
-    let devices = vec![device];
-    let vjoys = vec![one_vjoy()];
-    let mut wizard = WizardState::empty("Default".to_owned());
-    wizard.source_device_id = Some(DeviceId("dev-1".to_owned()));
-    wizard.target_vjoy_id = Some(1);
-    wizard.rows = super::derive_rows(&DeviceId("dev-1".to_owned()), 4, 8, 1, &vjoys[0]);
-
-    super::reconcile_wizard_state(&mut wizard, &devices, &vjoys);
-
-    assert_eq!(wizard.rows.len(), 3);
-}
-
-#[test]
-fn reconcile_valid_selection_leaves_rows_untouched() {
-    use crate::frame::bulk_map::state::WizardState;
-
-    let devices = vec![one_device_state()];
-    let vjoys = vec![one_vjoy()];
-    let rows = super::derive_rows(&DeviceId("dev-1".to_owned()), 4, 8, 1, &vjoys[0]);
-    let mut wizard = WizardState::empty("Default".to_owned());
-    wizard.source_device_id = Some(DeviceId("dev-1".to_owned()));
-    wizard.target_vjoy_id = Some(1);
-    wizard.rows = rows.clone();
-
-    super::reconcile_wizard_state(&mut wizard, &devices, &vjoys);
-
-    assert_eq!(wizard.rows, rows);
-}
-
-#[test]
-fn reconcile_valid_selection_preserves_row_overrides() {
-    use crate::frame::bulk_map::state::WizardState;
-
-    let devices = vec![one_device_state()];
-    let vjoys = vec![one_vjoy()];
-    let mut rows = super::derive_rows(&DeviceId("dev-1".to_owned()), 4, 8, 1, &vjoys[0]);
-    rows[0].replace = true;
-    rows[1].target = None;
-    let mut wizard = WizardState::empty("Default".to_owned());
-    wizard.source_device_id = Some(DeviceId("dev-1".to_owned()));
-    wizard.target_vjoy_id = Some(1);
-    wizard.rows = rows.clone();
-
-    super::reconcile_wizard_state(&mut wizard, &devices, &vjoys);
-
-    assert_eq!(wizard.rows, rows);
-}
-
-#[test]
 fn panel_summary_includes_across_n_modes_when_apply_to_all_checked() {
     fn TestComponent() -> Element {
         let modes = Modes::new(vec!["Default".to_owned(), "Combat".to_owned()]).unwrap();
@@ -786,108 +602,6 @@ fn panel_summary_includes_across_n_modes_when_apply_to_all_checked() {
 }
 
 #[test]
-fn panel_do_not_map_target_excludes_row_from_apply_count() {
-    use crate::frame::bulk_map::{
-        apply_for_test,
-        state::{RowKind, RowState, WizardState},
-    };
-
-    let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
-    let profile = Profile::new(
-        "T".to_owned(),
-        vec![],
-        modes,
-        vec![],
-        vec![],
-        "Default".to_owned(),
-    );
-    let state = AppState::with_profile(profile);
-    let row = RowState {
-        kind: RowKind::Axis,
-        source_index: 0,
-        input: InputAddress::Bound {
-            device: DeviceId("dev-1".to_owned()),
-            input: InputId::Axis { index: 0 },
-        },
-        target: None,
-        replace: false,
-    };
-    let wizard = WizardState::with_seed_rows(vec![row], "Default".to_owned());
-    let (tx, rx) = mpsc::channel();
-
-    apply_for_test(&state, &wizard, &["Default".to_owned()], &tx);
-
-    let cmd = rx
-        .try_recv()
-        .expect("dispatch must always send a command, even if entries empty");
-    match cmd {
-        EngineCommand::SetMappingsBulk { entries, .. } => {
-            assert!(
-                entries.is_empty(),
-                "do-not-map row must not produce an entry"
-            );
-        }
-        _ => panic!("expected SetMappingsBulk"),
-    }
-}
-
-#[test]
-fn panel_apply_for_test_dispatches_set_mappings_bulk_with_snapshot_label() {
-    use crate::frame::bulk_map::{
-        apply_for_test,
-        state::{RowKind, RowState, WizardState},
-    };
-
-    let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
-    let profile = Profile::new(
-        "T".to_owned(),
-        vec![],
-        modes,
-        vec![],
-        vec![],
-        "Default".to_owned(),
-    );
-    let state = AppState::with_profile(profile);
-    let row = RowState {
-        kind: RowKind::Axis,
-        source_index: 0,
-        input: InputAddress::Bound {
-            device: DeviceId("dev-1".to_owned()),
-            input: InputId::Axis { index: 0 },
-        },
-        target: Some(OutputAddress {
-            device: 1,
-            output: OutputId::Axis { id: VJoyAxis::X },
-        }),
-        replace: false,
-    };
-    let mut wizard = WizardState::with_seed_rows(vec![row], "Default".to_owned());
-    wizard.source_device_id = Some(DeviceId("dev-1".to_owned()));
-    wizard.target_vjoy_id = Some(1);
-    let (tx, rx) = mpsc::channel();
-
-    apply_for_test(&state, &wizard, &["Default".to_owned()], &tx);
-
-    let cmd = rx.try_recv().expect("dispatch arrives");
-    match cmd {
-        EngineCommand::SetMappingsBulk {
-            entries,
-            snapshot_label,
-        } => {
-            assert_eq!(entries.len(), 1);
-            // The kind badge in the snapshot row already says "Before
-            // batch map", so the recovery label carries only the
-            // resolved source-device display name and the destination
-            // vJoy slot. With no alias / hardware name registered for
-            // "dev-1", the resolver falls through to the raw id string
-            // (last-resort behaviour of `display_name_for`).
-            assert_eq!(snapshot_label, "dev-1 \u{00b7} Device 1");
-        }
-        _ => panic!("expected SetMappingsBulk"),
-    }
-}
-
-#[test]
 fn bulk_map_css_keeps_metadata_cap_and_fits_maximum_target_label() {
     let css = include_str!("../../../assets/frame/bulk_map.css");
     let block = css
@@ -904,66 +618,4 @@ fn bulk_map_css_keeps_metadata_cap_and_fits_maximum_target_label() {
         block.contains("minmax(17.5rem, 1.3fr)"),
         "target track must fit `Device 16 · 8 axes · 128 btn · 4 hats`: {block}"
     );
-}
-
-#[test]
-fn source_options_use_alias_via_snapshot_accessor() {
-    use crate::frame::bulk_map::build_source_options;
-    let device = DeviceState {
-        info: DeviceInfo {
-            id: DeviceId("dev-1".to_owned()),
-            name: "Generic HID Joystick".to_owned(),
-            axes: 4,
-            buttons: 16,
-            hats: 1,
-            instance_path: None,
-            axis_polarities: vec![AxisPolarity::Bipolar; 4],
-        },
-        connected: true,
-        diagnostics: DeviceDiagnostics::default(),
-    };
-    let mut device_display_names = HashMap::new();
-    device_display_names.insert(DeviceId("dev-1".to_owned()), "Throttle Quadrant".to_owned());
-    let cfg = ConfigSnapshot {
-        devices: vec![device.clone()],
-        device_display_names,
-        ..ConfigSnapshot::default()
-    };
-
-    let opts = build_source_options(&[device], &cfg);
-    // The label cell shows the alias, never the raw hardware name.
-    assert_eq!(opts.len(), 1);
-    assert_eq!(opts[0].value, "dev-1");
-    assert_eq!(opts[0].label, "Throttle Quadrant");
-}
-
-#[test]
-fn source_options_fall_back_to_hardware_name_when_no_alias() {
-    use crate::frame::bulk_map::build_source_options;
-    let device = DeviceState {
-        info: DeviceInfo {
-            id: DeviceId("dev-1".to_owned()),
-            name: "Generic HID Joystick".to_owned(),
-            axes: 4,
-            buttons: 16,
-            hats: 1,
-            instance_path: None,
-            axis_polarities: vec![AxisPolarity::Bipolar; 4],
-        },
-        connected: true,
-        diagnostics: DeviceDiagnostics::default(),
-    };
-    let mut device_display_names = HashMap::new();
-    device_display_names.insert(
-        DeviceId("dev-1".to_owned()),
-        "Generic HID Joystick".to_owned(),
-    );
-    let cfg = ConfigSnapshot {
-        devices: vec![device.clone()],
-        device_display_names,
-        ..ConfigSnapshot::default()
-    };
-
-    let opts = build_source_options(&[device], &cfg);
-    assert_eq!(opts[0].label, "Generic HID Joystick");
 }

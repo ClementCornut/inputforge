@@ -1,4 +1,5 @@
 //! Application-owned mapping edits, restoration and editor-scoped history.
+mod batch;
 mod dispatch;
 mod grouping;
 mod history;
@@ -30,6 +31,7 @@ pub struct Controller {
 #[derive(Debug, Default)]
 struct State {
     history: history::History,
+    batch: Option<batch::Wizard>,
     publication: Option<Publication>,
     navigation: Option<(String, Option<MappingKey>)>,
     disposed: bool,
@@ -65,6 +67,7 @@ impl Controller {
         let rail = self.clone();
         let add = self.clone();
         Bindings {
+            batch: self.batch_bindings(),
             instance: self.owner,
             menu: Callback::new(move |lookup| menu.rail_menu(lookup)),
             rail: Callback::new(move |request| rail.rail(request)),
@@ -139,6 +142,7 @@ impl Controller {
             }
         };
         self.publish();
+        self.batch_refresh();
     }
     fn fence(&self) -> Option<u64> {
         let serial = self

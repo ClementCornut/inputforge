@@ -14,8 +14,8 @@ use dioxus::prelude::*;
 
 use inputforge_core::types::{HatDirection, InputAddress};
 
+use crate::batch_mapping::RowKind;
 use crate::context::AppContext;
-use crate::frame::bulk_map::state::RowKind;
 use crate::frame::mapping_editor::live_readout::{
     AxisPolarity, read_axis_display, read_button_pressed, read_hat_direction,
 };

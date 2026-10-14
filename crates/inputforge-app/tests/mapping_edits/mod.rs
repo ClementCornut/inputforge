@@ -7,3 +7,5 @@ mod paths;
 
 mod callbacks;
 mod rail;
+
+mod batch;

@@ -128,6 +128,18 @@ mod tests {
             live: use_signal(LiveSnapshot::default),
         };
         use_context_provider(|| ctx.clone());
+        let controller = use_hook(|| {
+            inputforge_app::mapping_edits::Controller::new(
+                Arc::clone(&ctx.state),
+                ctx.commands.clone(),
+            )
+        });
+        let bindings = use_hook(|| controller.bindings());
+        use_context_provider(|| bindings);
+        crate::routing::provide_fixture(crate::routing::View::default());
+        crate::controllers::provide_fixture(crate::controllers::View::default());
+        let toasts = use_signal(crate::toast::ToastState::default);
+        use_context_provider(|| crate::toast::ToastQueue { state: toasts });
         let mut view = crate::frame::use_view_state_provider(ctx.meta);
         view.main_surface.set(MainSurface::BulkMap);
         use_context_provider(|| view);

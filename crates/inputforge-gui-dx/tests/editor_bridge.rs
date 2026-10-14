@@ -217,3 +217,6 @@ fn renderer_preserves_tick_cadence_skips_contention_and_releases_polling_on_drop
         assert_eq!(Arc::strong_count(&state), 1);
     });
 }
+
+#[path = "editor_bridge/batch.rs"]
+mod batch;

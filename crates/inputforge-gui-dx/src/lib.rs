@@ -1,5 +1,9 @@
 //! Dioxus editor rendering for `InputForge`. Desktop hosting belongs to the app.
 mod app;
+#[cfg(not(test))]
+pub mod batch_mapping;
+#[cfg(test)]
+pub use inputforge_gui_dx::batch_mapping;
 pub mod bridge;
 #[cfg(not(test))]
 pub mod capture;
