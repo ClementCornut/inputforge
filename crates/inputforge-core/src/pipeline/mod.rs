@@ -631,7 +631,7 @@ mod tests {
         let cache = MockCache::new();
         let mut ctx = axis_ctx(&cache, 0.5);
         execute_pipeline(&[], &mut ctx);
-        assert!(ctx.outputs.is_empty());
+        assert_eq!(ctx.outputs.len(), 0);
     }
 
     // -- Axis passthrough -----------------------------------------------------
@@ -911,7 +911,7 @@ mod tests {
             if_false: Vec::new(),
         }];
         execute_pipeline(&actions, &mut ctx);
-        assert!(ctx.outputs.is_empty());
+        assert_eq!(ctx.outputs.len(), 0);
     }
 
     // -- MergeAxis ------------------------------------------------------------
@@ -1655,7 +1655,7 @@ mod tests {
             behavior: OutputBehavior::Hold,
         }];
         execute_pipeline(&actions, &mut ctx);
-        assert!(ctx.outputs.is_empty());
+        assert_eq!(ctx.outputs.len(), 0);
     }
 
     // -- evaluate_actions_through ---------------------------------------------

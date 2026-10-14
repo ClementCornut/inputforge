@@ -40,7 +40,8 @@ use crate::frame::mapping_editor::pipeline::{insert_at_path, path_invalidated_by
 use crate::frame::mapping_editor::undo_log::{
     LabelArgs, StageId, StageIdSegment, UndoKind, format_undo_label,
 };
-use crate::patterns::keyboard_capture::use_keyboard_capture;
+use crate::keyboard_capture::Destination;
+use crate::patterns::keyboard_capture::{target, use_keyboard_capture};
 
 /// Gestures are terminal control flow on a button mapping. Profile validation
 /// (`inputforge_core::profile::validate_mapping_action_tree`) rejects nested
@@ -95,25 +96,6 @@ fn default_map_to_vjoy() -> Action {
             output: OutputId::Axis { id: VJoyAxis::X },
         },
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CaptureTarget {
-    profile_name: Option<String>,
-    mapping_key: MappingKey,
-    path_prefix: Vec<StageIdSegment>,
-    target_len: usize,
-}
-
-fn captured_keyboard_action(
-    armed: Option<&CaptureTarget>,
-    current: &CaptureTarget,
-    combo: KeyCombo,
-) -> Option<Action> {
-    (armed == Some(current)).then_some(Action::MapToKeyboard {
-        key: combo,
-        behavior: OutputBehavior::Hold,
-    })
 }
 
 fn default_map_to_mouse() -> Action {
@@ -267,14 +249,6 @@ pub(crate) fn AddPalette(
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
 
-    let capture_target = CaptureTarget {
-        profile_name: ctx.meta.read().profile_name.clone(),
-        mapping_key: mapping_key.clone(),
-        path_prefix: path_prefix.clone(),
-        target_len,
-    };
-    let mut armed_target: Signal<Option<CaptureTarget>> = use_signal(|| None);
-
     let show_gestures =
         mapping_key.1.is_button_shaped() && !path_is_inside_gesture_branch(&path_prefix);
 
@@ -350,21 +324,33 @@ pub(crate) fn AddPalette(
         expanded.write().insert(insert_path);
     });
 
-    let insert_captured_keyboard = insert_action;
-    let current_capture_target = capture_target.clone();
-    let keyboard_capture = use_keyboard_capture(use_callback(move |combo: KeyCombo| {
-        let action =
-            captured_keyboard_action(armed_target.peek().as_ref(), &current_capture_target, combo);
-        armed_target.set(None);
-        if let Some(action) = action {
-            insert_captured_keyboard.call(action);
-        }
-    }));
-    let start_capture_target = capture_target;
-    let start_keyboard_capture = move |_| {
-        armed_target.set(Some(start_capture_target.clone()));
-        keyboard_capture.start.call(());
-    };
+    let mut insertion_path: Vec<_> = path_prefix
+        .iter()
+        .map(|segment| match segment {
+            StageIdSegment::Index(i) => inputforge_core::pipeline::ActionPathSegment::Index(*i),
+            StageIdSegment::Branch(branch) => {
+                inputforge_core::pipeline::ActionPathSegment::Branch(*branch)
+            }
+        })
+        .collect();
+    insertion_path.push(inputforge_core::pipeline::ActionPathSegment::Index(
+        target_len,
+    ));
+    let keyboard_capture = use_keyboard_capture(
+        target(
+            &ctx,
+            &mapping_key,
+            &root_actions,
+            Destination::Insert(insertion_path),
+        ),
+        use_callback(move |combo: KeyCombo| {
+            insert_action.call(Action::MapToKeyboard {
+                key: combo,
+                behavior: OutputBehavior::Hold,
+            });
+        }),
+    );
+    let start_keyboard_capture = move |_| keyboard_capture.start.call(());
 
     let make_insert_handler = move |action: Action| {
         let insert = insert_action;
@@ -389,7 +375,6 @@ pub(crate) fn AddPalette(
     let capture_hint = *keyboard_capture.hint.read();
     if *keyboard_capture.active.read() {
         let onclick = move |_| {
-            armed_target.set(None);
             keyboard_capture.cancel.call(());
         };
         return rsx! {
@@ -494,7 +479,6 @@ fn action_palette_label(action: &Action) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use inputforge_core::types::PhysicalKey;
 
     fn capture_prompt_harness() -> Element {
         rsx! { KeyboardCapturePrompt { onclick: |_| {} } }
@@ -535,32 +519,6 @@ mod tests {
             StageIdSegment::Index(2),
         ];
         assert!(path_is_inside_gesture_branch(&path));
-    }
-
-    #[test]
-    fn captured_keyboard_combo_is_rejected_after_mapping_changes() {
-        let armed = CaptureTarget {
-            profile_name: Some("Profile".to_owned()),
-            mapping_key: ("Default".to_owned(), InputAddress::Unbound),
-            path_prefix: Vec::new(),
-            target_len: 0,
-        };
-        let current = CaptureTarget {
-            mapping_key: ("Alternate".to_owned(), InputAddress::Unbound),
-            ..armed.clone()
-        };
-
-        assert_eq!(
-            captured_keyboard_action(
-                Some(&armed),
-                &current,
-                KeyCombo {
-                    key: PhysicalKey::KeyQ,
-                    modifiers: Vec::new(),
-                },
-            ),
-            None
-        );
     }
 
     #[test]

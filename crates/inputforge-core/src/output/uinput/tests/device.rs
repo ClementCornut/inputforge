@@ -30,7 +30,7 @@ fn controller_spec_preserves_existing_identity_and_capabilities() {
             .map(|(code, minimum, maximum)| (code, minimum, maximum).into())
             .collect::<Vec<_>>()
     );
-    assert!(spec.relatives.is_empty());
+    assert_eq!(spec.relatives.len(), 0);
     assert_eq!(spec.required_class, "ID_INPUT_JOYSTICK");
 }
 
@@ -50,8 +50,8 @@ fn keyboard_spec_advertises_exact_keys_and_keyboard_class() {
     assert_eq!(spec.phys, "inputforge/output/keyboard");
     assert_eq!(spec.id, InputId::new(BusType::BUS_VIRTUAL, 0, 0, 1));
     assert_eq!(spec.keys, keys);
-    assert!(spec.relatives.is_empty());
-    assert!(spec.absolutes.is_empty());
+    assert_eq!(spec.relatives.len(), 0);
+    assert_eq!(spec.absolutes.len(), 0);
     assert_eq!(spec.events(), vec![0, 1]);
     assert_eq!(spec.required_class, "ID_INPUT_KEYBOARD");
 }
@@ -75,7 +75,7 @@ fn mouse_spec_advertises_five_buttons_wheel_and_no_movement() {
         ]
     );
     assert_eq!(spec.relatives, [RelativeAxisCode::REL_WHEEL.0]);
-    assert!(spec.absolutes.is_empty());
+    assert_eq!(spec.absolutes.len(), 0);
     assert_eq!(spec.events(), vec![0, 1, 2]);
     assert_eq!(spec.required_class, "ID_INPUT_MOUSE");
 }

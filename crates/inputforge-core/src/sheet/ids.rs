@@ -73,7 +73,7 @@ mod tests {
         let first = SheetId::new();
         let second = SheetId::new();
 
-        assert!(!first.as_str().is_empty());
+        assert_ne!(first.as_str().len(), 0);
         assert_ne!(first, second);
     }
 

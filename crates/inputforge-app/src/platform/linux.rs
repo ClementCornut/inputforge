@@ -24,8 +24,8 @@ mod tests {
     fn startup_backends_are_real_supported_and_inert() {
         let backends = create().unwrap();
         assert!(backends.input.supports_exclusive());
-        assert!(backends.input.enumerate_devices().is_empty());
-        assert!(backends.controller.list_devices().is_empty());
+        assert_eq!(backends.input.enumerate_devices().len(), 0);
+        assert_eq!(backends.controller.list_devices().len(), 0);
         assert!(backends.keyboard.supported());
         assert!(backends.mouse.supported());
     }

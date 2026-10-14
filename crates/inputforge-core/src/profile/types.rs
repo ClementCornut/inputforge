@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn profile_id_default() {
         let id = ProfileId::default();
-        assert!(!id.as_str().is_empty());
+        assert_ne!(id.as_str().len(), 0);
     }
 
     #[test]

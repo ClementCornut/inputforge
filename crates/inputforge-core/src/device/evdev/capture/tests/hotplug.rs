@@ -13,7 +13,7 @@ fn notifications_and_periodic_reconciliation_refresh_inventory() {
     fake.borrow_mut().now += Duration::from_secs(1);
     capture.poll().unwrap();
     assert_eq!(capture.devices().len(), 1);
-    assert!(capture.captured().is_empty());
+    assert_eq!(capture.captured().len(), 0);
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn reconnected_inventory_uses_stable_id_without_automatic_capture() {
     fake.borrow_mut().pending = 1;
     capture.poll().unwrap();
     assert_eq!(capture.devices()[0].identity.id, Some(id("a")));
-    assert!(capture.captured().is_empty());
+    assert_eq!(capture.captured().len(), 0);
     released(&fake);
 }
 
@@ -121,7 +121,7 @@ fn delayed_metadata_and_collision_resolution_restore_only_eligibility() {
     fake.borrow_mut().now += Duration::from_secs(1);
     capture.poll().unwrap();
     assert_eq!(capture.devices()[0].identity.id, Some(id("a")));
-    assert!(capture.captured().is_empty());
+    assert_eq!(capture.captured().len(), 0);
     capture.acquire([id("a")]).unwrap();
 }
 
@@ -154,7 +154,7 @@ fn poll_preserves_primary_failure_and_reports_all_cleanup_failures() {
     assert_eq!(error.raw_os_error(), Some(5));
     assert_eq!(error.cleanup_failures().len(), 2);
     released(&fake);
-    assert!(capture.captured().is_empty());
+    assert_eq!(capture.captured().len(), 0);
     capture.release().unwrap();
 }
 

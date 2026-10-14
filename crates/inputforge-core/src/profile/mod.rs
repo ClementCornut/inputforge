@@ -1563,7 +1563,7 @@ type = "invert"
         assert_eq!(profile.name(), "Minimal");
         assert_eq!(profile.id().as_str(), "test-id-1234");
         assert_eq!(profile.settings().startup_mode(), "Default");
-        assert!(profile.devices().is_empty());
+        assert_eq!(profile.devices().len(), 0);
         assert_eq!(profile.mappings().len(), 1);
     }
 
@@ -1892,7 +1892,7 @@ name = "No Cals"
 startup_mode = "Default"
 "#;
         let profile = Profile::from_toml(toml_str).unwrap();
-        assert!(profile.calibrations().is_empty());
+        assert_eq!(profile.calibrations().len(), 0);
     }
 
     #[test]
@@ -2029,7 +2029,7 @@ enabled = true
         );
         let m = profile.find_mapping(&test_input(), "Default").unwrap();
         assert_eq!(m.name, Some("Cleared".to_owned()));
-        assert!(m.actions.is_empty());
+        assert_eq!(m.actions.len(), 0);
     }
 
     #[test]
@@ -2038,7 +2038,7 @@ enabled = true
 
         let mut profile = test_profile_with_one_mode();
         profile.set_mappings_bulk(&[] as &[BulkMapEntry]);
-        assert!(profile.mappings().is_empty());
+        assert_eq!(profile.mappings().len(), 0);
     }
 
     #[test]

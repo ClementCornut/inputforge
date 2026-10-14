@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn get_all_axis_entries_empty_cache() {
         let cache = InputCacheStore::new();
-        assert!(cache.get_all_axis_entries().is_empty());
+        assert_eq!(cache.get_all_axis_entries().len(), 0);
     }
 
     // --- clone_compact ---
@@ -396,7 +396,7 @@ mod tests {
     #[test]
     fn clone_compact_empty_cache_returns_empty_vec() {
         let cache = InputCacheStore::new();
-        assert!(cache.clone_compact().is_empty());
+        assert_eq!(cache.clone_compact().len(), 0);
     }
 
     #[test]
@@ -427,6 +427,6 @@ mod tests {
         let (value, _) = cache.get_axis(&axis_address(0));
         assert!(value.abs() < f64::EPSILON);
         assert!(!cache.get_button(&button_address(0)));
-        assert!(cache.get_all_axis_entries().is_empty());
+        assert_eq!(cache.get_all_axis_entries().len(), 0);
     }
 }

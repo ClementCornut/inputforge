@@ -56,7 +56,7 @@ fn fatal_readiness_failure_rolls_back_without_wait_or_writes() {
     let script = world.lock().unwrap();
     assert_eq!(script.now, start);
     assert!(script.alive.is_empty());
-    assert!(script.emitted.is_empty());
+    assert_eq!(script.emitted.len(), 0);
 }
 
 #[test]

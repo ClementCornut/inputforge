@@ -71,7 +71,7 @@ fn events_arriving_during_snapshot_delay_publication_and_are_not_replayed() {
         .during_snapshot = vec![event(3, 0, -999), report()];
     let mut out = Vec::new();
     assert!(!capture.poll_stream(&mut out).unwrap().ready);
-    assert!(out.is_empty());
+    assert_eq!(out.len(), 0);
     assert!(capture.poll_stream(&mut out).unwrap().ready);
     assert_eq!(frames(&out), 0);
     assert_eq!(capture.stream_state(&id("a")).unwrap().axes[&0], 123);

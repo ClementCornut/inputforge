@@ -262,6 +262,6 @@ fn injection_unrelated_mappings_and_empty_profiles_get_no_mapping_issue() {
         vec![],
         "Default".into(),
     ));
-    assert!(validation::issues(&state).is_empty());
+    assert_eq!(validation::issues(&state).len(), 0);
     assert_eq!(state.session.output_failures.len(), 1);
 }

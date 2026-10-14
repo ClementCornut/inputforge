@@ -33,6 +33,8 @@ fn editor() -> Element {
     });
     let controllers = inputforge_app::controllers::bindings(Arc::clone(&state), commands.clone());
     let frame = inputforge_app::bridge::prepare(&state.read(), None);
+    let keyboard =
+        use_hook(|| inputforge_app::keyboard_capture::Controller::new(Arc::clone(&state)));
     render_editor(
         state,
         commands,
@@ -41,6 +43,7 @@ fn editor() -> Element {
         },
         controllers,
         capture.bindings(),
+        keyboard.bindings(),
         Callback::new(move |publisher: inputforge_gui_dx::bridge::Publisher| {
             publisher.publish(frame.clone());
         }),

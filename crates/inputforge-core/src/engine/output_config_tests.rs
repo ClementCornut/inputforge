@@ -22,7 +22,7 @@ fn layout_edits_wait_for_explicit_apply_while_selection_does_not_recreate_output
     config.virtual_devices[0].button_count = 3;
     e.handle_command(EngineCommand::SetControllerConfig(config))
         .unwrap();
-    assert!(s.lock().calls.is_empty());
+    assert_eq!(s.lock().calls.len(), 0);
     let error = e.handle_command(EngineCommand::Activate).unwrap_err();
     assert!(error.to_string().contains("Apply controller changes"));
     assert!(e.state.read().session.output_active);
@@ -32,7 +32,7 @@ fn layout_edits_wait_for_explicit_apply_while_selection_does_not_recreate_output
     assert_eq!(e.read_status(), EngineStatus::Stopped);
     s.lock().calls.clear();
     e.handle_command(EngineCommand::Activate).unwrap();
-    assert!(s.lock().calls.is_empty());
+    assert_eq!(s.lock().calls.len(), 0);
     assert_eq!(e.read_status(), EngineStatus::Running);
 }
 
@@ -115,7 +115,7 @@ fn reconfiguration_rejects_running_and_invalid_layouts_before_destroying_outputs
         e.handle_command(EngineCommand::ApplyControllerChanges)
             .is_err()
     );
-    assert!(s.lock().calls.is_empty());
+    assert_eq!(s.lock().calls.len(), 0);
     e.handle_command(EngineCommand::Deactivate).unwrap();
     let mut config = e
         .state

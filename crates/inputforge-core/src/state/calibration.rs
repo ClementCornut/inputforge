@@ -94,13 +94,13 @@ mod tests {
     fn new_store_is_empty() {
         let store = DeviceCalibrationStore::new();
         assert!(store.get(&device("dev1"), 0).is_none());
-        assert!(store.get_for_device(&device("dev1")).is_empty());
+        assert_eq!(store.get_for_device(&device("dev1")).len(), 0);
     }
 
     #[test]
     fn default_delegates_to_new() {
         let store = DeviceCalibrationStore::default();
-        assert!(store.get_for_device(&device("any")).is_empty());
+        assert_eq!(store.get_for_device(&device("any")).len(), 0);
     }
 
     #[test]
@@ -158,7 +158,7 @@ mod tests {
         let mut store = DeviceCalibrationStore::new();
         store.set(device("dev1"), 0, test_calibration());
         store.remove(&device("dev1"), 0);
-        assert!(store.device_ids().is_empty());
+        assert_eq!(store.device_ids().len(), 0);
     }
 
     #[test]

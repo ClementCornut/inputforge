@@ -77,10 +77,10 @@ fn sparse_buttons_preserve_logical_addresses_without_keyboard_codes() {
         assert!(state.button(id, true).is_err());
     }
     state.commit();
-    assert!(records(&state, false).is_empty());
+    assert_eq!(records(&state, false).len(), 0);
     state.button(12, false).unwrap();
     state.button(12, true).unwrap();
-    assert!(records(&state, false).is_empty());
+    assert_eq!(records(&state, false).len(), 0);
 }
 
 #[test]
@@ -140,5 +140,5 @@ fn undeclared_axes_are_rejected_and_reset_replaces_pending_state() {
     state.axis(VJoyAxis::Z, 1.0).unwrap();
     state.button(1, true).unwrap();
     state.neutral();
-    assert!(records(&state, false).is_empty());
+    assert_eq!(records(&state, false).len(), 0);
 }

@@ -502,7 +502,7 @@ mod tests {
     fn split_outer_index_zero() {
         let id = make_id(vec![StageIdSegment::Index(0)]);
         let (parent, idx) = split_stage_path(&id).unwrap();
-        assert!(parent.is_empty());
+        assert_eq!(parent.len(), 0);
         assert_eq!(idx, 0);
     }
 
@@ -510,7 +510,7 @@ mod tests {
     fn split_outer_index_two() {
         let id = make_id(vec![StageIdSegment::Index(2)]);
         let (parent, idx) = split_stage_path(&id).unwrap();
-        assert!(parent.is_empty());
+        assert_eq!(parent.len(), 0);
         assert_eq!(idx, 2);
     }
 

@@ -1003,7 +1003,7 @@ fn pending_tap_is_cleared_when_mapping_is_replaced() {
     harness.advance_time_ms(500);
     harness.tick();
 
-    assert!(harness.output_events().is_empty());
+    assert_eq!(harness.output_events().len(), 0);
 }
 
 #[test]
@@ -1673,7 +1673,7 @@ fn failed_hold_acquisition_is_retryable() {
 
     mouse.fail_next_button_down();
     assert!(engine.tick().is_err());
-    assert!(mouse.calls().is_empty());
+    assert_eq!(mouse.calls().len(), 0);
     assert_eq!(state.read().engine_status, EngineStatus::Faulted);
     let mut neutral_input = MockInputSource::default();
     neutral_input.events.push(button_event(0, false));
@@ -2129,7 +2129,7 @@ fn refresh_axes_skips_mode_changes_and_keys() {
     refresh_axes_for_state(&mut state, &[mapping], "Default", &mut sink).unwrap();
 
     // No axis/button outputs were produced, mode changes and keys skipped.
-    assert!(sink.calls().is_empty());
+    assert_eq!(sink.calls().len(), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -2978,7 +2978,7 @@ fn delete_active_library_profile_enters_no_profile_state_and_refreshes_rows() {
     assert!(state.active_profile.is_none());
     assert!(state.profile_path.is_none());
     assert!(state.active_profile_origin.is_none());
-    assert!(state.active_snapshot_rows.is_empty());
+    assert_eq!(state.active_snapshot_rows.len(), 0);
     assert!(
         state
             .profile_library_rows
@@ -3211,7 +3211,7 @@ fn process_outputs_set_axis_wrong_output_id() {
     )
     .unwrap();
 
-    assert!(sink.calls().is_empty());
+    assert_eq!(sink.calls().len(), 0);
 }
 
 #[test]
@@ -3246,7 +3246,7 @@ fn process_outputs_set_button_wrong_output_id() {
     )
     .unwrap();
 
-    assert!(sink.calls().is_empty());
+    assert_eq!(sink.calls().len(), 0);
 }
 
 #[test]
@@ -4554,7 +4554,7 @@ fn delete_snapshot_via_command_removes() {
         .unwrap();
     engine.tick().unwrap();
 
-    assert!(crate::snapshot::list(&path).unwrap().is_empty());
+    assert_eq!(crate::snapshot::list(&path).unwrap().len(), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -6066,14 +6066,15 @@ fn engine_set_mappings_bulk_pre_snapshot_save_failure_aborts_and_warns() {
         warns.iter().any(|w| w.contains("Bulk-map aborted")),
         "warnings must surface a Bulk-map aborted line, got: {warns:?}"
     );
-    assert!(
+    assert_eq!(
         state
             .read()
             .active_profile
             .as_ref()
             .unwrap()
             .mappings()
-            .is_empty()
+            .len(),
+        0
     );
 }
 
@@ -6090,14 +6091,15 @@ fn engine_set_mappings_bulk_aborts_apply_when_snapshot_creation_fails() {
     .unwrap();
     engine.tick().unwrap();
 
-    assert!(
+    assert_eq!(
         state
             .read()
             .active_profile
             .as_ref()
             .unwrap()
             .mappings()
-            .is_empty()
+            .len(),
+        0
     );
     let warns = state.read().warnings.clone();
     assert!(

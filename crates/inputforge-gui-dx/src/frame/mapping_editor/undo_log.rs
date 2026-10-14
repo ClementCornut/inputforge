@@ -310,7 +310,7 @@ mod tests {
 
         let stack = &log.stacks[&key];
         assert_eq!(stack.undo.len(), 1);
-        assert!(stack.redo.is_empty());
+        assert_eq!(stack.redo.len(), 0);
     }
 
     #[test]
@@ -368,7 +368,7 @@ mod tests {
         let entry = log.undo(&key).unwrap();
         assert_eq!(entry.label, "a");
         let stack = &log.stacks[&key];
-        assert!(stack.undo.is_empty());
+        assert_eq!(stack.undo.len(), 0);
         assert_eq!(stack.redo.len(), 1);
     }
 
@@ -395,7 +395,7 @@ mod tests {
         assert_eq!(entry.label, "a");
         let stack = &log.stacks[&key];
         assert_eq!(stack.undo.len(), 1);
-        assert!(stack.redo.is_empty());
+        assert_eq!(stack.redo.len(), 0);
     }
 
     #[test]

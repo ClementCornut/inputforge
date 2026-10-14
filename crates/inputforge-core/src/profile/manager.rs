@@ -373,9 +373,9 @@ mod tests {
 
         let profile = Profile::load(&path).unwrap();
         assert_eq!(profile.name(), "Test Profile");
-        assert!(profile.devices().is_empty());
-        assert!(profile.mappings().is_empty());
-        assert!(profile.calibrations().is_empty());
+        assert_eq!(profile.devices().len(), 0);
+        assert_eq!(profile.mappings().len(), 0);
+        assert_eq!(profile.calibrations().len(), 0);
         assert_eq!(profile.settings().startup_mode(), "Default");
     }
 

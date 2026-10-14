@@ -77,6 +77,6 @@ fn mouse_wrapper_reports_typed_runtime_failures() {
     assert_eq!(failure.phase, OutputPhase::Emission);
     assert_eq!(failure.category, io::ErrorKind::BrokenPipe);
     assert!(failure.details.contains("write event packet"));
-    assert!(failure.cleanup.is_empty());
+    assert_eq!(failure.cleanup.len(), 0);
     assert!(world.lock().unwrap().alive.contains(&DeviceKey::Mouse));
 }

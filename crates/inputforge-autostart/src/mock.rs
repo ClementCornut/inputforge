@@ -161,7 +161,7 @@ mod tests {
         assert!(calls[0].enabled);
         assert_eq!(calls[0].args, vec!["--start-minimized".to_owned()]);
         assert!(!calls[1].enabled);
-        assert!(calls[1].args.is_empty());
+        assert_eq!(calls[1].args.len(), 0);
     }
 
     #[test]

@@ -108,31 +108,31 @@ fn profile_with_primary_merge_and_conditional_device_refs() -> inputforge_core::
 fn meta_snapshot_default_is_empty() {
     let m = MetaSnapshot::default();
     assert_eq!(m.engine_status, EngineStatus::Stopped);
-    assert!(m.current_mode.is_empty());
+    assert_eq!(m.current_mode.len(), 0);
     assert!(m.profile_name.is_none());
     assert!(m.profile_path.is_none());
-    assert!(m.warnings.is_empty());
-    assert!(m.modes.is_empty());
+    assert_eq!(m.warnings.len(), 0);
+    assert_eq!(m.modes.len(), 0);
     assert!(m.startup_mode.is_none());
 }
 
 #[test]
 fn config_snapshot_default_is_empty() {
     let c = ConfigSnapshot::default();
-    assert!(c.devices.is_empty());
-    assert!(c.virtual_devices.is_empty());
+    assert_eq!(c.devices.len(), 0);
+    assert_eq!(c.virtual_devices.len(), 0);
     assert!(c.mapped_inputs.is_empty());
     assert!(c.mapping_names.is_empty());
-    assert!(c.mappings.is_empty());
-    assert!(c.device_panel_rows.is_empty());
+    assert_eq!(c.mappings.len(), 0);
+    assert_eq!(c.device_panel_rows.len(), 0);
 }
 
 #[test]
 fn live_snapshot_default_is_empty() {
     let l = LiveSnapshot::default();
-    assert!(l.device_inputs.is_empty());
-    assert!(l.output_values.is_empty());
-    assert!(l.output_activity.is_empty());
+    assert_eq!(l.device_inputs.len(), 0);
+    assert_eq!(l.output_values.len(), 0);
+    assert_eq!(l.output_activity.len(), 0);
 }
 
 fn test_output_owner() -> OutputOwner {
@@ -208,7 +208,7 @@ fn live_snapshot_from_state_at_omits_expired_output_activity() {
             + std::time::Duration::from_millis(1),
     );
 
-    assert!(live.output_activity.is_empty());
+    assert_eq!(live.output_activity.len(), 0);
 }
 
 #[test]
@@ -457,8 +457,8 @@ fn live_from_state_handles_empty_config() {
     let state = AppState::new();
     let cfg = config::project(&state, None);
     let live = live::project(&state, &cfg);
-    assert!(live.device_inputs.is_empty());
-    assert!(live.output_values.is_empty());
+    assert_eq!(live.device_inputs.len(), 0);
+    assert_eq!(live.output_values.len(), 0);
 }
 
 #[test]
@@ -665,7 +665,7 @@ fn meta_from_state_projects_modes_and_startup_mode() {
 fn meta_from_state_with_no_profile_has_empty_modes_and_no_startup() {
     let state = AppState::new();
     let meta = meta::project(&state);
-    assert!(meta.modes.is_empty());
+    assert_eq!(meta.modes.len(), 0);
     assert!(meta.startup_mode.is_none());
 }
 

@@ -80,10 +80,9 @@ fn failed_save_keeps_previous_axis_settings_and_reports_failure() {
         e.set_axis_polarity(&device().id, 0, Some(AxisPolarity::Unipolar))
             .is_err()
     );
-    assert!(
-        e.settings.device_registry[&device().id]
-            .axis_settings
-            .is_empty()
+    assert_eq!(
+        e.settings.device_registry[&device().id].axis_settings.len(),
+        0
     );
     assert!(
         e.state

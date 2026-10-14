@@ -137,6 +137,6 @@ fn version_succeeds_before_preflight() {
 fn diagnostics_flag_belongs_to_the_standalone_tool() {
     let output = run_inputforge(&["--diagnose-linux"]);
     assert_eq!(output.status.code(), Some(2));
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout.len(), 0);
     assert!(String::from_utf8_lossy(&output.stderr).contains("unexpected argument"));
 }

@@ -17,7 +17,7 @@ Requirements:
   Transitive dependencies may retain X11 support.
 
 The original audit was read-only. The status below now also records the first
-implemented routing, polling, controller-workflow, advanced-axis, and live-capture extractions;
+implemented routing, polling, controller-workflow, advanced-axis, live-capture, and keyboard-capture extractions;
 the remaining findings are still open.
 
 ## Resolved routing controls — 2026-10-12
@@ -499,6 +499,228 @@ Repeat applicable checks on Windows for separate platform acceptance.
    successful native Apply retest below remains historical evidence for that
    timeout fix; it is not acceptance of this capture extraction.
 
+## Live-capture acceptance update — 2026-10-13
+
+The user reported live capture working. This is user-reported native acceptance
+of the live-input slice above, recorded separately from the previous successful
+native Apply timeout retest below. It is not an independent hardware trace,
+complete Windows/Wayland acceptance matrix, or performance measurement. It does
+not establish native acceptance of the keyboard-capture extraction below.
+
+## Keyboard-capture slice — 2026-10-13
+
+Keyboard capture and translation in finding **#3** are now app-owned. Mapping
+mutations, command construction, undo, and other editor workflows in **#4** remain
+deferred.
+
+- [App controller](../crates/inputforge-app/src/keyboard_capture/mod.rs) owns
+  editor-scoped exclusive capture, replacement/rearm, cancellation and hint
+  ownership. Stale consumer cancel/drop cannot cancel another owner. A request
+  serial rejects events queued before replacement; pending commits ignore repeat
+  events. One passive root listener is installed before editor shortcuts and
+  reused across arms and rerenders.
+- [Physical translation](../crates/inputforge-app/src/keyboard_capture/translation.rs)
+  and [capture machine](../crates/inputforge-app/src/keyboard_capture/machine.rs)
+  retain physical `code` identity rather than layout-dependent characters, numpad
+  distinctions, left/right modifiers, unidentified Meta/Super location, AltGr's
+  synthetic Ctrl suppression, fallback flags, modifier-only release, multi-modifier
+  rejection and the swallowed-base-keydown fallback. Unsupported keys and Escape
+  cancel without committing.
+- [App listener](../crates/inputforge-app/src/keyboard_capture/listener.rs) and
+  [production script](../crates/inputforge-app/assets/keyboard_capture_listener.js)
+  own capture-phase interception, arming/disarming, synchronous root cleanup and
+  receive-task release. While armed, default/propagation prevention includes
+  immediate propagation so later same-window editor shortcut listeners cannot
+  interpret captured keys. Unique listener keys isolate root replacement; an old
+  shutdown cannot dispose the new listener. Idle listeners do not intercept keys.
+- [Target policy](../crates/inputforge-app/src/keyboard_capture/policy.rs) checks
+  stable profile identity, editing mode and selection, the mapping's stored
+  optional name and root actions, and the exact typed edit/insertion path. The
+  app validates on start, reactive target/navigation changes and immediately
+  before delivery. Removed mappings, invalid branches, shifted stages and stale
+  targets receive no completion. Another mode's name and display fallback names
+  cannot invalidate capture. Keyboard capture adds no controller readiness,
+  native-layout, Running, or hardware-confirmation gate.
+- [App delivery](../crates/inputforge-app/src/keyboard_capture/delivery.rs) keeps
+  the surface logically active through pending completion and until its existing
+  commit handler returns. It releases engine and controller guards before the
+  callback; completion may rearm the same or another owner. Cancel/replacement
+  discards pending completion, and signal publication tolerates disposed consumers.
+- [GUI contract](../crates/inputforge-gui-dx/src/keyboard_capture.rs) and
+  [hook wiring](../crates/inputforge-gui-dx/src/patterns/keyboard_capture/mod.rs)
+  retain prepared targets, display/pending signals, navigation subscriptions and
+  supplied callbacks. The hooks forward target/navigation changes to app
+  validation rather than owning cancellation policy. The existing
+  [Add stage](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/add_palette.rs)
+  and [keyboard field](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/map_to_keyboard.rs)
+  retain action construction, dispatch and undo handlers. The keyboard field still
+  publishes its local combo only after successful dispatch, ignores unchanged stale
+  props, and accepts later external edits/undo. Existing mapping-save name lookup
+  policy remains deferred with mapping edits.
+
+The shared global owner counter, delivery sequence/wrapper, GUI state machine,
+GUI browser translation and listener flags were removed. Add's separate armed
+profile-name/path snapshot and comparison helper were replaced by the app's
+stable target validation. These simplifications are covered by owner/rearm,
+pending display, target invalidation and real-handler regressions. No new poller,
+timer, thread, generic workflow framework or third-party dependency was added;
+Serde and test JSON reuse existing workspace dependencies. The existing poller's
+immediate sample, 16 ms cadence, contention behavior and teardown are unchanged.
+
+[Moved behavioral tests](../crates/inputforge-app/src/keyboard_capture/tests.rs)
+cover translation and modifiers. [App controller regressions](../crates/inputforge-app/tests/keyboard_capture.rs)
+cover ownership, repeats, pending delivery/cancel, current-state rejection,
+pre-rerender navigation, invalid destinations, reentrancy, exclusive hints and
+root lifecycle. [Renderer frame regressions](../crates/inputforge-gui-dx/src/patterns/keyboard_capture/display_tests.rs)
+cover pending-display ordering and cancellation on target/navigation changes
+before any further key. [Actual control regressions](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/keyboard_events_tests.rs)
+click both surfaces through real app bindings, verifying existing commands,
+name preservation, dispatch-before-undo, no optimistic engine mutation, stale
+props and failed-dispatch display. The previous unit coverage for later prop
+changes/undo and failed dispatch remains in the keyboard field.
+
+## Keyboard-capture verification
+
+- Final host-enabled `cargo test --workspace --locked --offline -j 2`:
+  **2,099 passed, 0 failed, 11 ignored**. The first sandbox run failed in the five
+  existing single-instance IPC fixtures because loopback socket creation is denied
+  there; the host rerun passed. Two build jobs bounded linker memory during the
+  final run. No ignored native/hardware fixture was enabled.
+- This includes **88 app library tests, 12 keyboard-controller tests and 853 GUI
+  library tests**, plus existing controller/Apply, live-capture, feedback and
+  paused polling/lifecycle coverage. Renderer tests exercise both actual keyboard
+  surfaces, successful/failed dispatch and capture display frames.
+- Strict production Clippy passed for both affected crates and examples:
+  `cargo clippy --locked --offline -p inputforge-app -p inputforge-gui-dx --lib --bins --examples -- -D warnings`.
+  Strict workspace/all-target Clippy still fails exclusively on the existing
+  Rust 1.99 `clippy::assert_is_empty` baseline. Its diagnostic run passed with only
+  that lint excluded:
+  `cargo clippy --workspace --all-targets --locked --offline -- -D warnings -A clippy::assert_is_empty`.
+  New fixture/style diagnostics were corrected; repository lint settings and
+  unrelated baseline tests were not changed.
+- Formatting, `git diff --check`, local audit links and app-module size checks
+  passed. The complete Apply timeout/native-retest block was checked byte-for-byte
+  against the pre-extraction audit. `use_combo_sync`, `commit_capture_combo`,
+  `dispatch_keyboard` and Add's existing insertion/undo handler were unchanged at
+  extraction completion. The label follow-up below fills the keyboard handler's
+  presentation values without moving mapping/undo ownership.
+- The executable production listener self-check passed:
+  `node crates/inputforge-app/tests/keyboard_capture/listener.mjs crates/inputforge-app/assets/keyboard_capture_listener.js`.
+  It verifies passive idle behavior, physical payloads, capture-phase/default/
+  same-window shortcut interception, arming/disarming, isolated synchronous cleanup
+  and shutdown acknowledgement. Fake Dioxus document tests verify dispatched
+  lifecycle operations and receive-task release; they do not execute a native WebView.
+- Independent read-only review found target-invalidation and exclusive-hint parity
+  gaps. Both were reproduced before correction, and the follow-up found no
+  remaining actionable issues.
+- Changes were left unstaged and uncommitted at extraction completion. Subsequent
+  user-reported app acceptance is recorded below; platform-specific checklist
+  coverage and performance measurements remain unverified.
+
+The controller tests first failed for the missing app contract and listening
+behavior. The executable listener check reproduced missing synchronous cleanup; the
+root-reuse, reinstall, target-invalidation and exclusive-hint cases
+were separately reproduced before their corrections; independent review found
+the latter two parity gaps and its follow-up found no remaining actionable issues.
+The old source-text listener assertion and sequence-counter assertion were
+replaced by executable listener and end-to-end delivery/lifecycle checks.
+
+## Keyboard-capture manual acceptance
+
+Run `dx run -p inputforge-app` with a disposable profile on native Wayland.
+Repeat applicable checks on Windows for separate platform acceptance.
+
+1. Capture a keyboard stage through Add, then recapture an existing keyboard
+   field. Try a different physical layout (including AZERTY), main/numpad keys,
+   right/left modifiers, AltGr and a modifier-only release. Verify physical
+   identity, the displayed combo and saved output behavior; multi-modifier-only
+   or unsupported input must cancel with the existing hint.
+2. Hold/repeat a key or modifier and try Ctrl+S, Ctrl+Z, Alt+arrow and another
+   available WebView shortcut while armed. Capture must finish once with one
+   mapping edit/undo, and no unrelated shortcut action. After completion/cancel,
+   normal shortcuts must work again. OS-reserved keys may never reach the WebView.
+3. Arm one surface, another surface and the same surface again. Try Escape and
+   the Add prompt's cancel control. Only the current owner may receive input;
+   cancellation must produce no edit/undo. An unsupported-key hint from the first
+   owner must disappear when another owner starts.
+4. While listening, switch editing mode/selection/profile, change keyboard output
+   behavior, or edit/remove/reorder the destination. Capture must disarm when the
+   prepared target/navigation changes; no delayed result may edit another target.
+   Verify a different mode using the same source does not invalidate a valid target.
+5. Recapture F11 as F12 and watch the transition: the old key must not briefly
+   return. Undo/redo must synchronize afterward. Verify rejected/failed delivery
+   retains the saved key and produces no phantom undo. Close/reopen and quit/relaunch
+   while armed; no lingering interception or duplicate listener may remain.
+6. Repeat live input capture and Stop/edit-layout/Apply/Start. The earlier native
+   Apply retest and separately reported live-capture success remain historical
+   evidence for those slices; this extraction needs its own native acceptance.
+
+## Keyboard undo-label follow-up — 2026-10-14
+
+The user reported `Map to keyboard: key ? -> ?`. The existing GUI keyboard
+handler supplied the stage and field names to the undo formatter but omitted
+`before_after`, so the formatter used its `?` fallback. The extraction had kept
+that handler unchanged; this is a separate presentation fix.
+
+[The shared keyboard dispatcher](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/map_to_keyboard.rs)
+now resolves the saved keyboard action at the exact stage path and supplies old
+and new values. Key changes reuse the field's combo formatter, including modifier
+labels; behavior changes display Hold/Pulse values. Command construction and
+successful-dispatch-before-undo ordering remain unchanged. Existing history
+labels are not rewritten; subsequent edits create the corrected labels. Mapping
+and undo workflow extraction remains deferred.
+
+[Actual-control regressions](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/keyboard_events_tests.rs)
+first reproduced `key ? -> ?` and `behavior ? -> ?`, then passed with
+`Map to keyboard: key F11 -> F12` and
+`Map to keyboard: behavior Hold -> Pulse`. The control selector was narrowed to
+text within the exact button so Pulse tests cannot accidentally click a sibling.
+Existing failed-dispatch, stale-props and undo-order coverage remains in place.
+
+- `cargo test --workspace --locked --offline -j 2` with host IPC permissions:
+  **2,100 passed, 0 failed, 11 ignored**. The 22 focused keyboard-related GUI tests
+  include the reproducing label cases and both successful/failed delivery paths.
+- Strict app/GUI production Clippy and examples passed. GUI all-target Clippy
+  passed with only the existing `clippy::assert_is_empty` baseline excluded;
+  repository lint configuration remains unchanged.
+- Formatting, `git diff --check`, local audit links and byte-for-byte preservation
+  of the previous Apply timeout/native-retest block passed.
+- Changes were left unstaged and uncommitted at follow-up completion; subsequent
+  user-reported app acceptance is recorded below.
+For native acceptance, capture a new key combination and change Hold/Pulse;
+check the new undo hints and confirm undo/redo still restores the expected mapping.
+Earlier Apply and live-capture acceptance evidence remains separate and unchanged.
+
+## User-reported app acceptance — 2026-10-14
+
+After the keyboard-capture extraction and undo-label follow-up, the user reported:
+“i tested the app. It works”. This records successful user-reported app acceptance
+of the current changes. The report does not specify individual checklist cases,
+platforms or explicit undo-label observations; those details and performance
+measurements remain unverified. This is separate from the earlier native Apply
+retest and live-capture success, whose evidence remains unchanged.
+
+## Pre-commit Clippy follow-up — 2026-10-14
+
+The user reported commit-time Clippy failures. The unchanged pre-commit command,
+`cargo clippy --all-targets -- -D warnings`, reproduced 136
+`clippy::assert_is_empty` diagnostics with Rust 1.99. Earlier all-target checks
+excluded that baseline lint and therefore did not establish a passing commit gate.
+
+The 136 flagged test assertions across 49 Rust files now compare collection/string
+lengths with zero using `assert_eq!` or `assert_ne!`. The expected empty/nonempty
+conditions remain the same, with actual lengths shown on failure. Only those
+assertions and their formatting changed; production behavior, the hook and lint
+configuration remain unchanged.
+
+- `bash .githooks/pre-commit` passed formatting and strict all-target Clippy with
+  no lint exclusions.
+- `cargo test --workspace --locked --offline -j 2` with host IPC permissions:
+  **2,100 passed, 0 failed, 11 ignored**.
+- The previous native Apply evidence and separate user-reported acceptance remain
+  unchanged. These follow-up changes are uncommitted; the user's staged hook
+  permission changes were preserved.
+
 ## Remaining responsibilities to move
 
 The following areas are ordered by migration priority. Source links identify
@@ -507,9 +729,9 @@ may change during extraction.
 
 | # | Area and evidence | App-owned responsibility |
 | --- | --- | --- |
-| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, and live capture now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
+| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, live capture, and keyboard capture now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
 | 2 | **Controller editing policy — partially resolved** — [app controller policy](../crates/inputforge-app/src/controllers/policy.rs); [app axis settings](../crates/inputforge-app/src/controllers/axes.rs); [axis rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Selection, virtual-layout mutations, Apply, shared routing decisions, and advanced axis settings are app-owned. Other configuration-editing/readiness gates remain; see resolved status above. |
-| 3 | **Capture workflows — partially resolved** — [app live capture](../crates/inputforge-app/src/live_capture/mod.rs); [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs); [keyboard capture](../crates/inputforge-gui-dx/src/patterns/keyboard_capture/mod.rs) | Live detection, ownership, epoch/target revalidation, native confirmation, cancellation, Escape and delivery are app-owned. Keyboard capture and translation remain open. Add/collision decisions and mapping edits/undo remain with their deferred workflows. |
+| 3 | **Capture workflows — partially resolved** — [app live capture](../crates/inputforge-app/src/live_capture/mod.rs); [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs); [app keyboard capture](../crates/inputforge-app/src/keyboard_capture/mod.rs); [GUI keyboard contract](../crates/inputforge-gui-dx/src/keyboard_capture.rs) | Live and keyboard capture, physical keyboard translation, ownership, target revalidation, cancellation, interception and delivery are app-owned; live input additionally owns epoch/native confirmation. Add/collision decisions and mapping edits/undo remain with their deferred workflows. |
 | 4 | **Mapping edits and undo** — [stage dispatch](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs), line 28; [undo history](../crates/inputforge-gui-dx/src/frame/mapping_editor/undo_log.rs), line 90 | Action-tree mutations, command construction, undo/redo, drag commits, and keyboard-nudge grouping. Curve/deadzone mutation algorithms also belong outside rendering. |
 | 5 | **Batch mapping** — [entry generation](../crates/inputforge-gui-dx/src/frame/bulk_map/apply.rs), line 19; [Apply handler](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs), line 335 | Automatic target selection, conflict decisions, wizard reconciliation, batch command construction, and snapshot creation requests. |
 | 6 | **Profiles, modes, snapshots, and settings** — [profile actions](../crates/inputforge-gui-dx/src/frame/profiles/actions.rs), line 114; [snapshot settings](../crates/inputforge-gui-dx/src/frame/settings_panel/snapshots_section.rs), line 85 | CRUD workflows, validation, destructive-confirmation decisions, pruning calculations, optimistic state, and command dispatch. Reuse existing core validation rather than maintaining separate GUI rules. |
@@ -566,7 +788,7 @@ engine command sender.
 1. Polling/snapshot preparation, shared routing controls, and basic controller
    selection/virtual-layout/Apply and advanced axis settings are complete. Extract
    remaining engine access alongside each deferred workflow.
-2. Extract keyboard capture and editor controllers; live capture is complete below.
+2. Live and keyboard capture primitives are complete. Extract the remaining mapping/editor controllers and undo workflows next.
 3. Extract the remaining workflows, services, event handling, and timers.
 
 Move existing behavioral tests with the responsibilities they verify. Retain
@@ -638,7 +860,11 @@ new automated coverage and awaits its manual acceptance checklist above.
 The advanced-axis slice has app, renderer-event/feedback, and polling/lifecycle
 coverage; its native manual acceptance remains pending. The live-capture slice
 has app detector/controller, real renderer-event, and paused polling/lifecycle
-coverage; native WebView/hardware acceptance and timing measurements remain pending.
+coverage, and the user separately reported live capture working as recorded above.
+The keyboard slice has app/controller, real-handler, renderer-frame and executable
+listener coverage. After its extraction and undo-label follow-up, the user reported
+the app working as recorded above; individual native checklist cases, platform
+coverage and timing measurements remain unverified.
 The previous desktop reports are user-reported native acceptance;
 the timestamp correction, separate Windows acceptance, and runtime performance
 measurements remain unverified on native hardware. The recommendations are ownership

@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn build_resolves_exe_path() {
         let l = LinuxAutostart::new().expect("current_exe must succeed in test runner");
-        assert!(!l.app_path.is_empty());
+        assert_ne!(l.app_path.len(), 0);
     }
 
     /// Round-trip against a tempdir-rooted `XDG_CONFIG_HOME` to avoid touching

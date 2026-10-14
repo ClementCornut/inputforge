@@ -509,7 +509,7 @@ fn output_failure_successful_retry_is_the_only_clearing_path() {
     tx.send(EngineCommand::Retry).unwrap();
     engine.tick().unwrap();
     let state = engine.state.read();
-    assert!(state.session.output_failures.is_empty());
+    assert_eq!(state.session.output_failures.len(), 0);
     assert!(state.session.error.is_none());
     assert_eq!(state.engine_status, EngineStatus::Running);
 }
@@ -768,7 +768,7 @@ fn passive_snapshot_blocks_held_controls_when_routing_starts_and_stop_keeps_moni
     e.tick().unwrap();
     assert_eq!(&s.lock().calls[..2], ["release", "neutral"]);
     assert!(!s.lock().calls.iter().any(|c| c == "stop"));
-    assert!(e.state.read().session.captured.is_empty());
+    assert_eq!(e.state.read().session.captured.len(), 0);
 }
 
 #[test]
@@ -937,7 +937,7 @@ fn restart_retains_outputs_and_direct_flush_failure_releases_the_whole_session()
     e.tick().unwrap_err();
     assert!(s.lock().calls.ends_with(&["release".into(), "stop".into()]));
     assert_eq!(e.state.read().engine_status, EngineStatus::Faulted);
-    assert!(e.state.read().session.captured.is_empty());
+    assert_eq!(e.state.read().session.captured.len(), 0);
     s.lock().failures.remove(&Failure::Flush);
     s.lock().calls.clear();
     tx.send(EngineCommand::Retry).unwrap();
@@ -1059,7 +1059,7 @@ fn monitoring_without_profile_has_values_and_never_starts_outputs_or_grabs() {
     let state = e.state.read();
     assert_eq!(state.session.monitored, [DeviceId("evdev:v1:test".into())]);
     assert_eq!(state.input_cache.clone_compact().len(), 1);
-    assert!(state.session.captured.is_empty());
+    assert_eq!(state.session.captured.len(), 0);
     assert!(!state.session.output_active);
 }
 
@@ -1174,7 +1174,7 @@ fn output_failure_keeps_passive_values_updating_without_reacquiring() {
     assert_eq!(s.lock().calls, ["poll"]);
     let state = e.state.read();
     assert_eq!(state.engine_status, EngineStatus::Faulted);
-    assert!(state.session.captured.is_empty());
+    assert_eq!(state.session.captured.len(), 0);
     assert_eq!(state.session.monitored, [DeviceId("evdev:v1:test".into())]);
     assert_eq!(
         state.input_cache.clone_compact()[0].value,
@@ -1197,9 +1197,9 @@ fn resetting_last_monitored_device_clears_readiness_and_held_output() {
     e.tick().unwrap();
     assert_eq!(s.lock().buttons, [(1, true), (1, false)]);
     let state = e.state.read();
-    assert!(state.session.monitored.is_empty());
+    assert_eq!(state.session.monitored.len(), 0);
     assert!(!state.session.ready);
-    assert!(state.input_cache.clone_compact().is_empty());
+    assert_eq!(state.input_cache.clone_compact().len(), 0);
 }
 
 #[test]
@@ -1502,7 +1502,7 @@ fn output_failure_still_consumes_other_controllers_updates_already_drained_in_po
         e.tick().unwrap_err();
         let state = e.state.read();
         assert_eq!(state.engine_status, EngineStatus::Faulted);
-        assert!(state.session.captured.is_empty());
+        assert_eq!(state.session.captured.len(), 0);
         assert!(state.session.monitored.contains(&other));
         assert!(
             state
@@ -1625,7 +1625,7 @@ fn stationary_calibration_edit_refreshes_axis_once_without_double_calibration() 
     assert_eq!(s.lock().axes, [(1, VJoyAxis::X, 0.25)]);
     s.lock().axes.clear();
     e.tick().unwrap();
-    assert!(s.lock().axes.is_empty());
+    assert_eq!(s.lock().axes.len(), 0);
 }
 
 #[test]
@@ -1636,7 +1636,7 @@ fn output_initialization_failure_preserves_preview_and_retry_activates() {
     s.lock().polls.push_back(vec![snapshot(true)]);
     e.tick().unwrap();
     assert_eq!(e.state.read().engine_status, EngineStatus::Faulted);
-    assert!(s.lock().acquired.is_empty());
+    assert_eq!(s.lock().acquired.len(), 0);
     assert_eq!(
         e.state.read().input_cache.clone_compact()[0].value,
         InputValue::Button { pressed: true }

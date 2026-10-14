@@ -84,7 +84,7 @@ fn readiness_timeout_closes_every_created_device_with_a_shared_deadline() {
     let script = world.lock().unwrap();
     assert!(script.now - start <= Duration::from_secs(2));
     assert!(script.alive.is_empty());
-    assert!(script.emitted.is_empty());
+    assert_eq!(script.emitted.len(), 0);
 }
 
 #[test]
@@ -158,7 +158,7 @@ fn drop_destroys_without_flushing_pending_values() {
     world.lock().unwrap().emitted.clear();
     output.set_button(1, 1, true).unwrap();
     drop(output);
-    assert!(world.lock().unwrap().emitted.is_empty());
+    assert_eq!(world.lock().unwrap().emitted.len(), 0);
     assert!(world.lock().unwrap().alive.is_empty());
 }
 

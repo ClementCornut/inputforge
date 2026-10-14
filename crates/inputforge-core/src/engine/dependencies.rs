@@ -199,7 +199,7 @@ mod tests {
 
         let active = active_mappings_for_event(&mappings, &axis(0), "Combat");
 
-        assert!(active.is_empty());
+        assert_eq!(active.len(), 0);
     }
 
     #[test]
@@ -218,7 +218,7 @@ mod tests {
 
         let active = active_mappings_for_event(&mappings, &axis(1), "Combat");
 
-        assert!(active.is_empty());
+        assert_eq!(active.len(), 0);
     }
 
     #[test]

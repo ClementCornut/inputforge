@@ -54,7 +54,7 @@ fn unfinished_frame_storage_is_bounded_including_ignored_events() {
             queue(&fake, "a", vec![event(kind, 0x120, 1); 256]);
             owner.poll_stream(&mut out).unwrap();
         }
-        assert!(out.is_empty());
+        assert_eq!(out.len(), 0);
         queue(&fake, "a", vec![event(kind, 0x120, 1)]);
         assert_eq!(
             owner.poll_stream(&mut out).unwrap_err().issue().kind,
@@ -79,7 +79,7 @@ fn initialization_deadline_does_not_restart_after_failed_snapshot() {
         owner.poll_stream(&mut out).unwrap_err().issue().kind,
         ErrorKind::TimedOut
     );
-    assert!(out.is_empty());
+    assert_eq!(out.len(), 0);
     released(&fake);
 }
 

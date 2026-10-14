@@ -909,6 +909,6 @@ mod tests {
     #[test]
     fn sample_curve_path_zero_samples_returns_empty() {
         let curve = ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (1.0, 1.0)], false).unwrap();
-        assert!(sample_curve_path(&curve, 0).is_empty());
+        assert_eq!(sample_curve_path(&curve, 0).len(), 0);
     }
 }

@@ -5,3 +5,5 @@ pub mod routing_policy;
 
 pub mod controllers;
 pub mod live_capture;
+
+pub mod keyboard_capture;

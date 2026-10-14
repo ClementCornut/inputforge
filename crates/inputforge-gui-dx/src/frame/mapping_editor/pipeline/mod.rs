@@ -24,6 +24,8 @@ pub(crate) mod stage_body;
 mod stage_header;
 
 #[cfg(test)]
+mod keyboard_events_tests;
+#[cfg(test)]
 mod tests;
 
 use add_palette::AddPalette;

@@ -29,7 +29,7 @@ fn split_frames_preserve_transitions_and_hide_incomplete_state() {
     queue(&fake, "a", vec![event(1, 0x2c0, 0), event(3, 0x10, 1)]);
     let mut out = Vec::new();
     assert!(capture.poll_stream(&mut out).unwrap().pending);
-    assert!(out.is_empty());
+    assert_eq!(out.len(), 0);
     assert!(capture.stream_state(&id("a")).unwrap().keys[&0x2c0]);
     queue(
         &fake,
@@ -112,6 +112,6 @@ fn interrupted_reads_yield_and_lifecycle_only_poll_never_reads() {
         .push_back(Err(4));
     let mut out = Vec::new();
     assert!(!capture.poll_stream(&mut out).unwrap().ready);
-    assert!(out.is_empty());
+    assert_eq!(out.len(), 0);
     assert!(capture.poll_stream(&mut out).unwrap().ready);
 }

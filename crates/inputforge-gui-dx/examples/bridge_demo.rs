@@ -86,12 +86,16 @@ fn demo_root() -> dioxus::prelude::Element {
     let capture = dioxus::prelude::use_hook(|| {
         inputforge_app::live_capture::Controller::new(Arc::clone(&state), commands.clone())
     });
+    let keyboard = dioxus::prelude::use_hook(|| {
+        inputforge_app::keyboard_capture::Controller::new(Arc::clone(&state))
+    });
     inputforge_gui_dx::render_editor(
         state,
         commands,
         routing,
         controllers,
         capture.bindings(),
+        keyboard.bindings(),
         publish,
     )
 }

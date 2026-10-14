@@ -43,7 +43,7 @@ fn incomplete_snapshot_is_fatal_and_never_published() {
         .remove(&0x10);
     let mut out = Vec::new();
     owner.poll_stream(&mut out).unwrap_err();
-    assert!(out.is_empty());
+    assert_eq!(out.len(), 0);
     released(&fake);
 }
 
@@ -72,7 +72,7 @@ fn selected_disconnect_revocation_and_node_replacement_release_everything() {
         fake.borrow_mut().dead.clear();
         assert!(owner.acquire([id("b")]).is_err());
         let mut replacement = capture(&fake);
-        assert!(replacement.captured().is_empty());
+        assert_eq!(replacement.captured().len(), 0);
         replacement.acquire([id("b")]).unwrap();
         ready(&fake, &mut replacement);
     }

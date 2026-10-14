@@ -307,7 +307,7 @@ mod tests {
     fn format_predicate_chip_label_reuses_source_label() {
         let label = format_predicate_chip_label(&button(3), &cfg());
 
-        assert!(!label.is_empty());
+        assert_ne!(label.len(), 0);
     }
 
     #[test]

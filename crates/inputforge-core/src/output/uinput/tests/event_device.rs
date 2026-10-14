@@ -102,12 +102,12 @@ fn pulse_during_an_existing_hold_emits_no_extra_edge() {
 
     device.press(&[A]).unwrap();
     device.release(&[A]).unwrap();
-    assert!(world.lock().unwrap().emitted.is_empty());
+    assert_eq!(world.lock().unwrap().emitted.len(), 0);
     device.release(&[A]).unwrap();
     assert_eq!(key_events(&world), [(A, 0)]);
     world.lock().unwrap().emitted.clear();
     device.stop().unwrap();
-    assert!(world.lock().unwrap().emitted.is_empty());
+    assert_eq!(world.lock().unwrap().emitted.len(), 0);
 }
 
 #[test]
@@ -213,5 +213,5 @@ fn uncertain_wheel_delivery_is_not_replayed() {
     world.lock().unwrap().emitted.clear();
 
     device.stop().unwrap();
-    assert!(world.lock().unwrap().emitted.is_empty());
+    assert_eq!(world.lock().unwrap().emitted.len(), 0);
 }

@@ -2727,6 +2727,8 @@ dependencies = [
  "mimalloc",
  "muda 0.21.2",
  "parking_lot",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "tracing",

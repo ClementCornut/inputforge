@@ -188,7 +188,7 @@ mod tests {
     fn read_missing_returns_empty() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("does_not_exist.toml");
-        assert!(read_index(&path).unwrap().is_empty());
+        assert_eq!(read_index(&path).unwrap().len(), 0);
     }
 
     #[test]
@@ -197,6 +197,6 @@ mod tests {
         let path = dir.path().join("index.toml");
         std::fs::write(&path, "{{{{ not toml").unwrap();
         // Should NOT propagate the parse error, caller handles rebuild.
-        assert!(read_index(&path).unwrap().is_empty());
+        assert_eq!(read_index(&path).unwrap().len(), 0);
     }
 }

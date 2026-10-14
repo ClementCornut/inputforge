@@ -303,7 +303,7 @@ mod tests {
         mock.set_button(1, 1, true).unwrap();
         assert_eq!(mock.calls().len(), 2);
         mock.clear();
-        assert!(mock.calls().is_empty());
+        assert_eq!(mock.calls().len(), 0);
     }
 
     // --- MockKeyboardSink ---
@@ -373,7 +373,7 @@ mod tests {
         mock.key_down(&combo).unwrap();
         assert_eq!(mock.calls().len(), 1);
         mock.clear();
-        assert!(mock.calls().is_empty());
+        assert_eq!(mock.calls().len(), 0);
     }
 
     #[test]
@@ -386,7 +386,7 @@ mod tests {
         MouseSink::start(&mut mouse).unwrap();
         MouseSink::stop(&mut mouse).unwrap();
 
-        assert!(keyboard.calls().is_empty());
-        assert!(mouse.calls().is_empty());
+        assert_eq!(keyboard.calls().len(), 0);
+        assert_eq!(mouse.calls().len(), 0);
     }
 }

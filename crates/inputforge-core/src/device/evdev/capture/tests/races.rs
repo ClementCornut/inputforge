@@ -7,7 +7,7 @@ fn notification_during_final_scan_prevents_commit_and_allows_explicit_retry() {
     let mut capture = capture(&fake);
     fake.borrow_mut().pending_on_scan = Some((3, 1));
     assert!(capture.acquire([id("a"), id("b")]).is_err());
-    assert!(capture.captured().is_empty());
+    assert_eq!(capture.captured().len(), 0);
     released(&fake);
     capture.poll().unwrap();
     capture.acquire([id("a"), id("b")]).unwrap();
@@ -21,7 +21,7 @@ fn notification_during_initial_scan_is_reconciled_on_first_poll() {
     fake.borrow_mut().devices = vec![device("new")];
     capture.poll().unwrap();
     assert_eq!(capture.devices()[0].identity.id, Some(id("new")));
-    assert!(capture.captured().is_empty());
+    assert_eq!(capture.captured().len(), 0);
 }
 
 #[test]

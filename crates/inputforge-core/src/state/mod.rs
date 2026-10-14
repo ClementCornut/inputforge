@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn app_state_default_values() {
         let state = AppState::new();
-        assert!(state.devices.is_empty());
+        assert_eq!(state.devices.len(), 0);
         assert_eq!(state.current_mode, "Default");
         assert_eq!(state.engine_status, EngineStatus::Stopped);
         assert!(state.active_profile.is_none());

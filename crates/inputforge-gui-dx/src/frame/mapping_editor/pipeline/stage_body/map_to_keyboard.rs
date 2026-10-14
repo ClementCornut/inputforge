@@ -32,9 +32,12 @@ use crate::components::{SegmentedControl, SegmentedControlOption};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::replace_at_path;
+use crate::frame::mapping_editor::pipeline::{at_path, replace_at_path};
+use crate::frame::mapping_editor::undo_log::StageIdSegment;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
-use crate::patterns::keyboard_capture::use_keyboard_capture;
+use crate::keyboard_capture::Destination;
+use crate::patterns::keyboard_capture::{target, use_keyboard_capture};
+use inputforge_core::pipeline::ActionPathSegment;
 
 /// `MapToKeyboard` body: key-combo capture and behavior selector.
 ///
@@ -98,7 +101,24 @@ pub(crate) fn MapToKeyboardBody(
         );
     });
 
-    let keyboard_capture = use_keyboard_capture(on_capture_commit);
+    let keyboard_capture = use_keyboard_capture(
+        target(
+            &ctx,
+            &mapping_key,
+            &root_actions,
+            Destination::Edit(
+                stage_id
+                    .0
+                    .iter()
+                    .map(|segment| match segment {
+                        StageIdSegment::Index(i) => ActionPathSegment::Index(*i),
+                        StageIdSegment::Branch(branch) => ActionPathSegment::Branch(*branch),
+                    })
+                    .collect(),
+            ),
+        ),
+        on_capture_commit,
+    );
     use_combo_sync(&combo, *keyboard_capture.active.read(), local_combo);
     let on_capture_start = move |_| {
         keyboard_capture.start.call(());
@@ -307,6 +327,14 @@ fn dispatch_keyboard(
     cmd_tx: &std::sync::mpsc::Sender<EngineCommand>,
     undo_log: &mut Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
 ) -> bool {
+    let Some(Action::MapToKeyboard { key, behavior }) = at_path(&before.actions, stage_id) else {
+        return false;
+    };
+    let (before_value, after_value) = if field_label == "key" {
+        (format_key_combo(key), format_key_combo(&new_combo))
+    } else {
+        (format!("{behavior:?}"), format!("{new_behavior:?}"))
+    };
     let new_action = Action::MapToKeyboard {
         key: new_combo,
         behavior: new_behavior,
@@ -337,6 +365,7 @@ fn dispatch_keyboard(
         LabelArgs {
             stage_name: Some("Map to keyboard"),
             field: Some(field_label),
+            before_after: Some((&before_value, &after_value)),
             ..LabelArgs::default()
         },
     );
@@ -430,9 +459,7 @@ mod tests {
                 OutputBehavior::Hold,
                 local,
                 &(before.mode.clone(), before.input.clone()),
-                &StageId(vec![
-                    crate::frame::mapping_editor::undo_log::StageIdSegment::Index(0),
-                ]),
+                &StageId(vec![StageIdSegment::Index(0)]),
                 &before.actions,
                 &before,
                 None,

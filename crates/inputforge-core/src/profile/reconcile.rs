@@ -142,7 +142,7 @@ mod tests {
         assert!(saved.resolves(&InputId::Button { index: 2 }));
         saved.reconcile(&table(vec![5, 10, 20]), true);
         assert_eq!(saved.buttons, [10, 20, 5]);
-        assert!(saved.unavailable.is_empty());
+        assert_eq!(saved.unavailable.len(), 0);
     }
     #[test]
     fn legacy_layout_metadata_is_optional_and_unknown_observed_codes_are_rejected() {

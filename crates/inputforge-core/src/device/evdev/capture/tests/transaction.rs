@@ -11,7 +11,7 @@ fn every_acquisition_stage_rolls_back_every_position() {
             let error = capture.acquire([id("c"), id("a"), id("b")]).unwrap_err();
             assert_eq!(error.operation(), operation);
             assert_eq!(error.raw_os_error(), Some(16));
-            assert!(capture.captured().is_empty());
+            assert_eq!(capture.captured().len(), 0);
             released(&fake);
         }
     }
@@ -117,7 +117,7 @@ fn final_inventory_change_rolls_back_before_publishing_capture() {
     assert!(capture.acquire([id("a"), id("b")]).is_err());
     assert!(fake.borrow().calls.contains(&"grab:b".into()));
     released(&fake);
-    assert!(capture.captured().is_empty());
+    assert_eq!(capture.captured().len(), 0);
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn foreign_identity_is_rejected_even_if_inventory_contains_it() {
     fake.borrow_mut().devices[0].identity.id = Some(foreign.clone());
     let mut capture = capture(&fake);
     assert!(capture.acquire([foreign]).is_err());
-    assert!(fake.borrow().calls.is_empty());
+    assert_eq!(fake.borrow().calls.len(), 0);
     released(&fake);
 }
 

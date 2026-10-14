@@ -702,9 +702,9 @@ mod tests {
     fn model_default_is_empty() {
         let model = LiveReadoutModel::default();
 
-        assert!(model.pipeline_inputs.is_empty());
-        assert!(model.predicates.is_empty());
-        assert!(model.outputs.is_empty());
+        assert_eq!(model.pipeline_inputs.len(), 0);
+        assert_eq!(model.predicates.len(), 0);
+        assert_eq!(model.outputs.len(), 0);
     }
 
     #[test]
@@ -848,8 +848,8 @@ mod walker_tests {
         let model = analyze_actions(&[], &primary);
 
         assert_eq!(model.pipeline_inputs, vec![primary]);
-        assert!(model.predicates.is_empty());
-        assert!(model.outputs.is_empty());
+        assert_eq!(model.predicates.len(), 0);
+        assert_eq!(model.outputs.len(), 0);
     }
 
     #[test]
@@ -871,7 +871,7 @@ mod walker_tests {
         let model = analyze_actions(&actions, &primary);
 
         assert_eq!(model.pipeline_inputs, vec![primary, second, third]);
-        assert!(model.outputs.is_empty());
+        assert_eq!(model.outputs.len(), 0);
     }
 
     #[test]
@@ -1319,7 +1319,7 @@ mod walker_tests {
             }
         );
         assert_eq!(model.pipeline_inputs, vec![primary, secondary]);
-        assert!(model.predicates.is_empty());
+        assert_eq!(model.predicates.len(), 0);
     }
 
     #[test]
@@ -1835,6 +1835,6 @@ mod walker_tests {
         let model = analyze_actions(&actions, &primary);
 
         assert_eq!(model.pipeline_inputs, vec![primary]);
-        assert!(model.outputs.is_empty());
+        assert_eq!(model.outputs.len(), 0);
     }
 }

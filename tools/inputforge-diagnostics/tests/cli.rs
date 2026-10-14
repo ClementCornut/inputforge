@@ -11,7 +11,7 @@ fn run(arguments: &[&str]) -> Output {
 fn help_and_version_do_not_require_device_access() {
     let help = run(&["--help"]);
     assert!(help.status.success());
-    assert!(help.stderr.is_empty());
+    assert_eq!(help.stderr.len(), 0);
     let text = String::from_utf8(help.stdout).expect("UTF-8 help");
     assert!(text.contains("Usage: inputforge-diagnostics"));
     assert!(text.contains("read-only Linux input"));
@@ -33,7 +33,7 @@ fn application_arguments_are_rejected_before_discovery() {
     ] {
         let output = run(&[argument]);
         assert_eq!(output.status.code(), Some(2));
-        assert!(output.stdout.is_empty());
+        assert_eq!(output.stdout.len(), 0);
         assert!(String::from_utf8_lossy(&output.stderr).contains("unexpected argument"));
     }
 }

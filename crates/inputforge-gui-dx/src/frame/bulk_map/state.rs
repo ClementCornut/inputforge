@@ -73,6 +73,6 @@ mod tests {
         assert!(s.target_vjoy_id.is_none());
         assert_eq!(s.mode, "Default");
         assert!(!s.apply_to_all_modes);
-        assert!(s.rows.is_empty());
+        assert_eq!(s.rows.len(), 0);
     }
 }

@@ -92,7 +92,7 @@ mod tests {
     fn excludes_do_not_map_rows() {
         let p = one_mode_profile();
         let rows = vec![axis_row(0, None, false)];
-        assert!(build_entries(&p, &rows, &["Default".to_owned()]).is_empty());
+        assert_eq!(build_entries(&p, &rows, &["Default".to_owned()]).len(), 0);
     }
 
     #[test]
@@ -100,7 +100,7 @@ mod tests {
         let mut p = one_mode_profile();
         let rows = vec![axis_row(0, Some(x_target()), false)];
         p.set_mapping(&rows[0].input, "Default", None, vec![Action::Invert]);
-        assert!(build_entries(&p, &rows, &["Default".to_owned()]).is_empty());
+        assert_eq!(build_entries(&p, &rows, &["Default".to_owned()]).len(), 0);
     }
 
     #[test]

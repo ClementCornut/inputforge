@@ -353,7 +353,7 @@ fn branch_path_helpers_traverse_all_action_branch_variants() {
     let removed =
         remove_at_path(&actions, &double_path).expect("tap double branch path must remove");
     match &removed[0] {
-        Action::TapGesture { double_tap, .. } => assert!(double_tap.is_empty()),
+        Action::TapGesture { double_tap, .. } => assert_eq!(double_tap.len(), 0),
         _ => panic!("outer wrapper should remain TapGesture"),
     }
 
@@ -399,7 +399,7 @@ fn branch_path_helpers_traverse_all_action_branch_variants() {
 
     let removed = remove_at_path(&actions, &long_path).expect("press long branch path must remove");
     match &removed[1] {
-        Action::PressGesture { long_press, .. } => assert!(long_press.is_empty()),
+        Action::PressGesture { long_press, .. } => assert_eq!(long_press.len(), 0),
         _ => panic!("outer wrapper should remain PressGesture"),
     }
 }

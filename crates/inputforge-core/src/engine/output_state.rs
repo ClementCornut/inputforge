@@ -443,10 +443,11 @@ mod tests {
             vec![OutputEvent::KeyDown(key.clone())],
         );
         state.commit_hold(owner.clone());
-        assert!(
+        assert_eq!(
             state
                 .reconcile_keyboard(owner.clone(), key.clone(), OutputBehavior::Hold, true)
-                .is_empty()
+                .len(),
+            0
         );
 
         let release =
@@ -457,10 +458,11 @@ mod tests {
         );
 
         state.commit_release(&owner);
-        assert!(
+        assert_eq!(
             state
                 .reconcile_keyboard(owner, key, OutputBehavior::Hold, false)
-                .is_empty()
+                .len(),
+            0
         );
     }
 
@@ -497,10 +499,11 @@ mod tests {
             }]
         );
         state.commit_hold(second.clone());
-        assert!(
+        assert_eq!(
             state
                 .reconcile_keyboard(first, key.clone(), OutputBehavior::Hold, false)
-                .is_empty()
+                .len(),
+            0
         );
 
         let release =
@@ -530,15 +533,17 @@ mod tests {
         );
 
         state.commit_pulse(owner.clone());
-        assert!(
+        assert_eq!(
             state
                 .reconcile_keyboard(owner.clone(), key.clone(), OutputBehavior::Pulse, true)
-                .is_empty()
+                .len(),
+            0
         );
-        assert!(
+        assert_eq!(
             state
                 .reconcile_keyboard(owner.clone(), key.clone(), OutputBehavior::Pulse, false)
-                .is_empty()
+                .len(),
+            0
         );
         assert_eq!(
             events(state.reconcile_keyboard(owner, key.clone(), OutputBehavior::Pulse, true)),
@@ -576,10 +581,11 @@ mod tests {
         );
 
         state.commit_pulse(owner.clone());
-        assert!(
+        assert_eq!(
             state
                 .reconcile_keyboard(owner, key, OutputBehavior::Pulse, true)
-                .is_empty()
+                .len(),
+            0
         );
     }
 
@@ -646,6 +652,6 @@ mod tests {
         assert_eq!(state.set_button_owners().len(), 1);
         assert_eq!(state.absent_set_buttons_for_scope(&scope, &[]).len(), 1);
         state.commit_set_button(owner, address, false);
-        assert!(state.set_button_owners().is_empty());
+        assert_eq!(state.set_button_owners().len(), 0);
     }
 }

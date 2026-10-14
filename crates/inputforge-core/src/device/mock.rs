@@ -185,7 +185,7 @@ mod tests {
         assert_eq!(hider.hidden_devices.len(), 1);
 
         hider.unhide_device(&device).unwrap();
-        assert!(hider.hidden_devices.is_empty());
+        assert_eq!(hider.hidden_devices.len(), 0);
     }
 
     #[test]

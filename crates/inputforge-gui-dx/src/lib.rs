@@ -10,6 +10,13 @@ mod context;
 pub mod controllers;
 mod frame;
 pub mod icons;
+#[cfg(not(test))]
+pub mod keyboard_capture;
+#[cfg(test)]
+pub use inputforge_gui_dx::keyboard_capture;
+#[cfg(test)]
+#[path = "../../inputforge-app/tests/keyboard_capture/document.rs"]
+mod keyboard_document;
 pub mod patterns;
 pub mod routing;
 #[cfg(not(test))]
@@ -50,11 +57,13 @@ pub fn render_editor(
     routing: routing::Bindings,
     controllers: controllers::Bindings,
     capture: capture::Bindings,
+    keyboard: keyboard_capture::Bindings,
     start_polling: Callback<bridge::Publisher>,
 ) -> Element {
     use_context_provider(|| routing);
     use_context_provider(|| controllers);
     use_context_provider(|| capture);
+    use_context_provider(|| keyboard);
     use_context_provider(|| start_polling);
     use_context_provider(|| context::RawHandles { state, commands });
     app::app_root()

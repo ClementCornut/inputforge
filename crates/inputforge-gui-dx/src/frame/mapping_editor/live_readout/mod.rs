@@ -292,7 +292,7 @@ mod tests {
             now + OUTPUT_ACTIVITY_PREVIEW_LATCH + std::time::Duration::from_millis(1),
         );
 
-        assert!(expired.is_empty());
+        assert_eq!(expired.len(), 0);
     }
 
     #[test]
@@ -317,6 +317,6 @@ mod tests {
             now + OUTPUT_ACTIVITY_PREVIEW_LATCH + std::time::Duration::from_millis(1),
         );
 
-        assert!(expired.is_empty());
+        assert_eq!(expired.len(), 0);
     }
 }

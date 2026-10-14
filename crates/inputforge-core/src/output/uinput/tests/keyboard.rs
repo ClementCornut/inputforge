@@ -165,7 +165,7 @@ fn keyboard_wrapper_reports_typed_native_failures_and_cleanup() {
     assert_eq!(failure.phase, OutputPhase::Initialization);
     assert_eq!(failure.category, io::ErrorKind::PermissionDenied);
     assert!(failure.details.contains("create uinput"));
-    assert!(failure.cleanup.is_empty());
+    assert_eq!(failure.cleanup.len(), 0);
 }
 
 #[test]

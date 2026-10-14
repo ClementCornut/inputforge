@@ -214,7 +214,7 @@ fn create_skip_dedup_when_skip_if_unchanged_false() {
 #[test]
 fn list_empty_when_no_snapshots() {
     let (_dir, path) = fresh_profile_dir();
-    assert!(list(&path).unwrap().is_empty());
+    assert_eq!(list(&path).unwrap().len(), 0);
 }
 
 #[test]
@@ -292,7 +292,7 @@ fn delete_removes_file_and_index_entry() {
 
     let snap_dir = snapshots_dir_for(&path).unwrap();
     assert!(!snap_dir.join(format!("{}.toml", snap.id)).exists());
-    assert!(list(&path).unwrap().is_empty());
+    assert_eq!(list(&path).unwrap().len(), 0);
 }
 
 #[test]
