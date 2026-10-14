@@ -3,12 +3,9 @@
 //! Numeric toolbar above the plot. Four `NumberInput` rows wrapped in
 //! `Field` form-rows (for label and inline error), plus a Reset button.
 
-use std::sync::mpsc::Sender;
-
 use dioxus::prelude::*;
 
 use inputforge_core::action::Action;
-use inputforge_core::engine::EngineCommand;
 use inputforge_core::processing::deadzone::DeadzoneConfig;
 
 use crate::components::{Button, ButtonSize, ButtonVariant, Field, NumberInput};
@@ -28,9 +25,7 @@ pub(crate) fn Toolbar(
 ) -> Element {
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
-    let mut undo_log = editor.undo_log;
     let mut malformed_hints = editor.malformed_hints;
-    let cmd_tx = ctx.commands.clone();
     let config_signal = ctx.config;
 
     // Build a single `EventHandler<f64>` per field (4 fields), wired to BOTH
@@ -43,10 +38,7 @@ pub(crate) fn Toolbar(
         root_actions.clone(),
         stage_id.clone(),
         mapping_key.clone(),
-        cmd_tx.clone(),
-        undo_log,
         malformed_hints,
-        config_signal,
     );
     let on_cl = make_field_handler(
         FieldId::CL,
@@ -54,10 +46,7 @@ pub(crate) fn Toolbar(
         root_actions.clone(),
         stage_id.clone(),
         mapping_key.clone(),
-        cmd_tx.clone(),
-        undo_log,
         malformed_hints,
-        config_signal,
     );
     let on_ch = make_field_handler(
         FieldId::CH,
@@ -65,10 +54,7 @@ pub(crate) fn Toolbar(
         root_actions.clone(),
         stage_id.clone(),
         mapping_key.clone(),
-        cmd_tx.clone(),
-        undo_log,
         malformed_hints,
-        config_signal,
     );
     let on_high = make_field_handler(
         FieldId::High,
@@ -76,16 +62,12 @@ pub(crate) fn Toolbar(
         root_actions.clone(),
         stage_id.clone(),
         mapping_key.clone(),
-        cmd_tx.clone(),
-        undo_log,
         malformed_hints,
-        config_signal,
     );
 
     let cfg_current = config.clone();
     let stage_id_reset = stage_id.clone();
     let mapping_key_reset = mapping_key.clone();
-    let cmd_tx_reset = cmd_tx.clone();
     let actions_reset = root_actions.clone();
     let on_reset = move |_| {
         let default = default_config();
@@ -95,16 +77,12 @@ pub(crate) fn Toolbar(
             return;
         }
         let cfg_snap = config_signal.read();
-        let name = cfg_snap.mapping_names.get(&mapping_key_reset.1).cloned();
         drop(cfg_snap);
         dispatch_stage_edit(
             &actions_reset,
             &stage_id_reset,
             Action::Deadzone { config: default },
             &mapping_key_reset,
-            name,
-            &cmd_tx_reset,
-            &mut undo_log,
             "deadzone: reset".to_owned(),
         );
         malformed_hints.write().remove(&stage_id_reset);
@@ -193,20 +171,13 @@ enum FieldId {
 /// threshold. Invoked once per field at component render. The returned handler
 /// is `Copy` so the rsx site wires it to BOTH `oncommit` (text edit) and
 /// `onstep` (+/- buttons) without further cloning.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "matches commit_field's argument set; one binding site per field"
-)]
 fn make_field_handler(
     field: FieldId,
     config: DeadzoneConfig,
     actions: Vec<Action>,
     stage_id: StageId,
     mapping_key: MappingKey,
-    cmd_tx: Sender<EngineCommand>,
-    mut undo_log: Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
     mut malformed_hints: Signal<std::collections::HashMap<StageId, String>>,
-    config_signal: Signal<crate::context::ConfigSnapshot>,
 ) -> EventHandler<f64> {
     EventHandler::new(move |v: f64| {
         commit_field(
@@ -216,18 +187,11 @@ fn make_field_handler(
             &actions,
             &stage_id,
             &mapping_key,
-            &cmd_tx,
-            &mut undo_log,
             &mut malformed_hints,
-            config_signal,
         );
     })
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "matches dispatch_stage_edit signature plus malformed_hints"
-)]
 fn commit_field(
     config: &DeadzoneConfig,
     field: FieldId,
@@ -235,10 +199,7 @@ fn commit_field(
     actions: &[Action],
     stage_id: &StageId,
     mapping_key: &MappingKey,
-    cmd_tx: &Sender<EngineCommand>,
-    undo_log: &mut Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
     malformed_hints: &mut Signal<std::collections::HashMap<StageId, String>>,
-    config_signal: Signal<crate::context::ConfigSnapshot>,
 ) {
     let (low, cl, ch, high) = match field {
         FieldId::Low => (
@@ -265,9 +226,6 @@ fn commit_field(
             return;
         }
     };
-    let cfg_snap = config_signal.read();
-    let name = cfg_snap.mapping_names.get(&mapping_key.1).cloned();
-    drop(cfg_snap);
     let label_field = match field {
         FieldId::Low => "low",
         FieldId::CL => "center_low",
@@ -286,9 +244,6 @@ fn commit_field(
         stage_id,
         Action::Deadzone { config: candidate },
         mapping_key,
-        name,
-        cmd_tx,
-        undo_log,
         label,
     );
     malformed_hints.write().remove(stage_id);

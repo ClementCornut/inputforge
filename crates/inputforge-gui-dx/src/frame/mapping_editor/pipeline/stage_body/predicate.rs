@@ -29,7 +29,7 @@
 //! `AppContext` is `Clone` but not `Copy` (it holds `Arc` and `mpsc::Sender`
 //! fields). Rather than passing the whole context into `move` closures,
 //! each handler captures only the two fields it needs:
-//! - `cmd_tx: mpsc::Sender<EngineCommand>` (cloned once per handler group)
+//! - An app edit callback supplied through the mapping bindings
 //! - `cfg: Signal<ConfigSnapshot>` (`Copy`, safe to copy into every closure)
 //!
 //! `EditorState` IS `Copy` (all `Signal` fields) and is copied directly.
@@ -38,26 +38,22 @@
 //!
 //! # Amendments applied
 //!
-//! 1. Name preservation: current name read from `cfg.mapping_names`.
-//! 2. Dispatch-before-undo: `push_edit` called only after `cmd.send` succeeds.
+//! 1. App dispatch preserves the exact mapping target's optional name.
+//! 2. App dispatch records history only after successful command delivery.
 //! 3. App-owned capture ownership and completion delivery.
 //! 4. Malformed-hint write for `AxisInRange` (min > max), `HatDirection`
 //!    (empty directions), `All` / `Any` (zero conditions).
 
-use std::sync::mpsc;
-
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Condition, Mapping};
-use inputforge_core::engine::EngineCommand;
+use inputforge_core::action::{Action, Condition};
 use inputforge_core::types::{HatDirection, InputAddress};
 
 use crate::capture::{CaptureFilter, Target};
 use crate::components::{NumberInput, Select, SelectOption};
-use crate::context::{AppContext, ConfigSnapshot};
+use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::replace_at_path;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 use crate::frame::mapping_list::source_label;
 use crate::patterns::live_capture::{CAPTURE_PROMPT, rebind_composite_class, use_capture};
@@ -183,68 +179,21 @@ const HAT_VARIANTS: [(HatDirection, &str); 8] = [
 // Shared dispatch helper
 // ---------------------------------------------------------------------------
 
-/// Commit a new `Condition` to the engine by rebuilding the outer
-/// `Action::Conditional` at `stage_id`, dispatching `SetMapping`, and on
-/// success pushing an undo entry.
-///
-/// Takes `cmd_tx` and `cfg` instead of a full `AppContext` so that `move`
-/// closures can stay `FnMut` (neither `mpsc::Sender` nor `Signal` causes a
-/// `FnOnce` degradation when cloned/copied into repeated calls).
-/// `EditorState` is taken by value; it is `Copy`.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "all parameters carry necessary context for a SetMapping dispatch; \
-              extracting a struct would add boilerplate without clarity gain"
-)]
+/// Wire the updated predicate and unchanged branches to the app controller.
 fn commit_condition(
     new_condition: Condition,
-    mapping_key: MappingKey,
+    mapping_key: &MappingKey,
     stage_id: &StageId,
-    root_actions: Vec<Action>,
+    root_actions: &[Action],
     if_true: Vec<Action>,
     if_false: Vec<Action>,
-    cmd_tx: &mpsc::Sender<EngineCommand>,
-    cfg: Signal<ConfigSnapshot>,
-    mut editor: EditorState,
 ) {
-    let current_name = cfg.read().mapping_names.get(&mapping_key.1).cloned();
-
     // Re-assemble the Conditional with the updated condition but unchanged branches.
     let new_action = Action::Conditional {
         condition: new_condition,
         if_true,
         if_false,
     };
-
-    let Some(new_actions) = replace_at_path(&root_actions, stage_id, new_action) else {
-        // Invalid path -- skip to avoid phantom undo entry.
-        return;
-    };
-
-    let before = Mapping {
-        input: mapping_key.1.clone(),
-        mode: mapping_key.0.clone(),
-        name: current_name.clone(),
-        actions: root_actions,
-    };
-
-    // Amendment 2: dispatch first; push undo only on success.
-    if cmd_tx
-        .send(EngineCommand::SetMapping {
-            input: mapping_key.1.clone(),
-            mode: mapping_key.0.clone(),
-            name: current_name,
-            actions: new_actions,
-        })
-        .is_err()
-    {
-        tracing::warn!(
-            target: "f9::mapping_editor",
-            action = "predicate_edit_drop_offline",
-            "predicate edit dropped: engine channel disconnected"
-        );
-        return;
-    }
 
     let label = format_undo_label(
         UndoKind::StageEdit,
@@ -254,10 +203,13 @@ fn commit_condition(
             ..LabelArgs::default()
         },
     );
-    editor
-        .undo_log
-        .write()
-        .push_edit(mapping_key, before, UndoKind::StageEdit, label);
+    super::instruments::stage_dispatch::dispatch_stage_edit(
+        root_actions,
+        stage_id,
+        new_action,
+        mapping_key,
+        label,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -399,11 +351,6 @@ pub(crate) fn PredicateEditor(
         field: format!("predicate:{stage_id:?}:{condition:?}"),
     };
 
-    // Extract the two context fields used by commit_condition.
-    // cmd_tx is cloned once here; cfg is Copy.
-    let cmd_tx = ctx.commands.clone();
-    let cfg = ctx.config;
-
     // Build the 7-option kind picker options vec.
     let kind_options: Vec<SelectOption> = vec![
         SelectOption {
@@ -508,8 +455,6 @@ pub(crate) fn PredicateEditor(
     let it_kind = if_true.clone();
     let iff_kind = if_false.clone();
     let cond_for_kind = condition.clone();
-    let cmd_tx_kind = cmd_tx.clone();
-
     // FnMut: clones mk_kind / sid_kind / root_kind etc. on each call.
     let on_kind_change = move |evt: FormEvent| {
         let new_kind = evt.value();
@@ -517,14 +462,11 @@ pub(crate) fn PredicateEditor(
         let new_condition = default_condition_for_kind(&new_kind, prev_input);
         commit_condition(
             new_condition,
-            mk_kind.clone(),
+            &mk_kind.clone(),
             &sid_kind,
-            root_kind.clone(),
+            &root_kind.clone(),
             it_kind.clone(),
             iff_kind.clone(),
-            &cmd_tx_kind,
-            cfg,
-            editor,
         );
     };
 
@@ -560,38 +502,31 @@ pub(crate) fn PredicateEditor(
             let it = if_true.clone();
             let iff = if_false.clone();
             let cond_op = condition.clone();
-            let cmd_tx_op = cmd_tx.clone();
-
             rsx! {
-                PredicateInputRow {
-                    target: capture_target.clone(),
-                    input: input_clone,
-                    on_input_change: move |new_addr: InputAddress| {
-                        let new_condition = match &cond_op {
-                            Condition::ButtonPressed { .. } => {
-                                Condition::ButtonPressed { input: new_addr }
-                            }
-                            Condition::ButtonReleased { .. } => {
-                                Condition::ButtonReleased { input: new_addr }
-                            }
-                            // Defensive: this arm is only reached for the two button
-                            // kinds, but the match must be exhaustive.
-                            other => other.clone(),
-                        };
-                        commit_condition(
-                            new_condition,
-                            mk.clone(),
-                            &sid,
-                            root.clone(),
-                            it.clone(),
-                            iff.clone(),
-                            &cmd_tx_op,
-                            cfg,
-                            editor,
-                        );
-                    },
-                }
-            }
+                                        PredicateInputRow {
+                                            target: capture_target.clone(),
+                                            input: input_clone,
+                                            on_input_change: move |new_addr: InputAddress| {
+                                                let new_condition = match &cond_op {
+                                                    Condition::ButtonPressed { .. } => {
+                                                        Condition::ButtonPressed { input: new_addr }
+                                                    }
+                                                    Condition::ButtonReleased { .. } => {
+                                                        Condition::ButtonReleased { input: new_addr }
+                                                    }
+                                                    // Defensive: this arm is only reached for the two button
+                                                    // kinds, but the match must be exhaustive.
+                                                    other => other.clone(),
+                                                };
+                                                commit_condition(new_condition,
+            &mk.clone(),
+            &sid,
+            &root.clone(),
+            it.clone(),
+            iff.clone());
+                                            },
+                                        }
+                                    }
         }
 
         // ---------------------------------------------------------------
@@ -638,8 +573,6 @@ pub(crate) fn PredicateEditor(
             let it_in = if_true.clone();
             let iff_in = if_false.clone();
             let addr_in = input_addr.clone();
-            let cmd_tx_in = cmd_tx.clone();
-
             // Clones for the min onstep callback.
             let mk_min = mapping_key.clone();
             let sid_min = stage_id.clone();
@@ -647,8 +580,6 @@ pub(crate) fn PredicateEditor(
             let it_min = if_true.clone();
             let iff_min = if_false.clone();
             let addr_min = input_addr.clone();
-            let cmd_tx_min = cmd_tx.clone();
-
             // Clones for the max onstep callback.
             let mk_max = mapping_key.clone();
             let sid_max = stage_id.clone();
@@ -656,98 +587,81 @@ pub(crate) fn PredicateEditor(
             let it_max = if_true.clone();
             let iff_max = if_false.clone();
             let addr_max = input_addr.clone();
-            let cmd_tx_max = cmd_tx.clone();
-
             rsx! {
-                PredicateInputRow {
-                    target: capture_target.clone(),
-                    input: addr_in,
-                    on_input_change: move |new_addr: InputAddress| {
-                        commit_condition(
-                            Condition::AxisInRange {
-                                input: new_addr,
-                                min: *min_sig.peek(),
-                                max: *max_sig.peek(),
-                            },
-                            mk_in.clone(),
-                            &sid_in,
-                            root_in.clone(),
-                            it_in.clone(),
-                            iff_in.clone(),
-                            &cmd_tx_in,
-                            cfg,
-                            editor,
-                        );
-                    },
-                }
-                div { class: "if-predicate__range-row",
-                    label { class: "if-predicate__range-label", "min" }
-                    NumberInput {
-                        value: min_sig,
-                        min: -1.0,
-                        max: 1.0,
-                        step: 0.01,
-                        precision: 2_usize,
-                        // oninput updates the local signal only; no dispatch (avoids
-                        // flooding the engine channel with one entry per keystroke).
-                        oninput: move |evt: FormEvent| {
-                            if let Ok(v) = evt.value().parse::<f64>() {
-                                min_sig.set(v);
-                            }
-                        },
-                        // onstep dispatches immediately (one click = one dispatch).
-                        onstep: move |v: f64| {
-                            min_sig.set(v);
-                            commit_condition(
-                                Condition::AxisInRange {
-                                    input: addr_min.clone(),
-                                    min: v,
-                                    max: *max_sig.peek(),
-                                },
-                                mk_min.clone(),
-                                &sid_min,
-                                root_min.clone(),
-                                it_min.clone(),
-                                iff_min.clone(),
-                                &cmd_tx_min,
-                                cfg,
-                                editor,
-                            );
-                        },
-                    }
-                    label { class: "if-predicate__range-label", "max" }
-                    NumberInput {
-                        value: max_sig,
-                        min: -1.0,
-                        max: 1.0,
-                        step: 0.01,
-                        precision: 2_usize,
-                        oninput: move |evt: FormEvent| {
-                            if let Ok(v) = evt.value().parse::<f64>() {
-                                max_sig.set(v);
-                            }
-                        },
-                        onstep: move |v: f64| {
-                            max_sig.set(v);
-                            commit_condition(
-                                Condition::AxisInRange {
-                                    input: addr_max.clone(),
-                                    min: *min_sig.peek(),
-                                    max: v,
-                                },
-                                mk_max.clone(),
-                                &sid_max,
-                                root_max.clone(),
-                                it_max.clone(),
-                                iff_max.clone(),
-                                &cmd_tx_max,
-                                cfg,
-                                editor,
-                            );
-                        },
-                    }
-                }
-            }
+                                        PredicateInputRow {
+                                            target: capture_target.clone(),
+                                            input: addr_in,
+                                            on_input_change: move |new_addr: InputAddress| {
+                                                commit_condition(Condition::AxisInRange {
+                                                        input: new_addr,
+                                                        min: *min_sig.peek(),
+                                                        max: *max_sig.peek(),
+                                                    },
+            &mk_in.clone(),
+            &sid_in,
+            &root_in.clone(),
+            it_in.clone(),
+            iff_in.clone());
+                                            },
+                                        }
+                                        div { class: "if-predicate__range-row",
+                                            label { class: "if-predicate__range-label", "min" }
+                                            NumberInput {
+                                                value: min_sig,
+                                                min: -1.0,
+                                                max: 1.0,
+                                                step: 0.01,
+                                                precision: 2_usize,
+                                                // oninput updates the local signal only; no dispatch (avoids
+                                                // flooding the engine channel with one entry per keystroke).
+                                                oninput: move |evt: FormEvent| {
+                                                    if let Ok(v) = evt.value().parse::<f64>() {
+                                                        min_sig.set(v);
+                                                    }
+                                                },
+                                                // onstep dispatches immediately (one click = one dispatch).
+                                                onstep: move |v: f64| {
+                                                    min_sig.set(v);
+                                                    commit_condition(Condition::AxisInRange {
+                                                            input: addr_min.clone(),
+                                                            min: v,
+                                                            max: *max_sig.peek(),
+                                                        },
+            &mk_min.clone(),
+            &sid_min,
+            &root_min.clone(),
+            it_min.clone(),
+            iff_min.clone());
+                                                },
+                                            }
+                                            label { class: "if-predicate__range-label", "max" }
+                                            NumberInput {
+                                                value: max_sig,
+                                                min: -1.0,
+                                                max: 1.0,
+                                                step: 0.01,
+                                                precision: 2_usize,
+                                                oninput: move |evt: FormEvent| {
+                                                    if let Ok(v) = evt.value().parse::<f64>() {
+                                                        max_sig.set(v);
+                                                    }
+                                                },
+                                                onstep: move |v: f64| {
+                                                    max_sig.set(v);
+                                                    commit_condition(Condition::AxisInRange {
+                                                            input: addr_max.clone(),
+                                                            min: *min_sig.peek(),
+                                                            max: v,
+                                                        },
+            &mk_max.clone(),
+            &sid_max,
+            &root_max.clone(),
+            it_max.clone(),
+            iff_max.clone());
+                                                },
+                                            }
+                                        }
+                                    }
         }
 
         // ---------------------------------------------------------------
@@ -792,79 +706,66 @@ pub(crate) fn PredicateEditor(
             let it_in = if_true.clone();
             let iff_in = if_false.clone();
             let dirs_in = dirs.clone();
-            let cmd_tx_in = cmd_tx.clone();
-
             rsx! {
-                PredicateInputRow {
-                    target: capture_target.clone(),
-                    input: input_addr.clone(),
-                    on_input_change: move |new_addr: InputAddress| {
-                        commit_condition(
-                            Condition::HatDirection {
-                                input: new_addr,
-                                directions: dirs_in.clone(),
-                            },
-                            mk_in.clone(),
-                            &sid_in,
-                            root_in.clone(),
-                            it_in.clone(),
-                            iff_in.clone(),
-                            &cmd_tx_in,
-                            cfg,
-                            editor,
-                        );
-                    },
-                }
-                div { class: "if-hat-direction-grid",
-                    for (dir, label) in HAT_VARIANTS {
-                        {
-                            let is_checked = dirs.contains(&dir);
-                            // Per-checkbox copies -- each loop iteration owns
-                            // its own clones for its move closure.
-                            let dirs_cb = dirs.clone();
-                            let mk_cb = mapping_key.clone();
-                            let sid_cb = stage_id.clone();
-                            let root_cb = root_actions.clone();
-                            let it_cb = if_true.clone();
-                            let iff_cb = if_false.clone();
-                            let addr_cb = input_addr.clone();
-                            let cmd_cb = cmd_tx.clone();
-                            rsx! {
-                                label { class: "if-hat-direction-grid__cell",
-                                    input {
-                                        r#type: "checkbox",
-                                        checked: is_checked,
-                                        onchange: move |_| {
-                                            // Toggle this direction in the set.
-                                            let mut new_dirs = dirs_cb.clone();
-                                            if new_dirs.contains(&dir) {
-                                                new_dirs.retain(|d| *d != dir);
-                                            } else {
-                                                new_dirs.push(dir);
+                                        PredicateInputRow {
+                                            target: capture_target.clone(),
+                                            input: input_addr.clone(),
+                                            on_input_change: move |new_addr: InputAddress| {
+                                                commit_condition(Condition::HatDirection {
+                                                        input: new_addr,
+                                                        directions: dirs_in.clone(),
+                                                    },
+            &mk_in.clone(),
+            &sid_in,
+            &root_in.clone(),
+            it_in.clone(),
+            iff_in.clone());
+                                            },
+                                        }
+                                        div { class: "if-hat-direction-grid",
+                                            for (dir, label) in HAT_VARIANTS {
+                                                {
+                                                    let is_checked = dirs.contains(&dir);
+                                                    // Per-checkbox copies -- each loop iteration owns
+                                                    // its own clones for its move closure.
+                                                    let dirs_cb = dirs.clone();
+                                                    let mk_cb = mapping_key.clone();
+                                                    let sid_cb = stage_id.clone();
+                                                    let root_cb = root_actions.clone();
+                                                    let it_cb = if_true.clone();
+                                                    let iff_cb = if_false.clone();
+                                                    let addr_cb = input_addr.clone();
+                                                    rsx! {
+                                                        label { class: "if-hat-direction-grid__cell",
+                                                            input {
+                                                                r#type: "checkbox",
+                                                                checked: is_checked,
+                                                                onchange: move |_| {
+                                                                    // Toggle this direction in the set.
+                                                                    let mut new_dirs = dirs_cb.clone();
+                                                                    if new_dirs.contains(&dir) {
+                                                                        new_dirs.retain(|d| *d != dir);
+                                                                    } else {
+                                                                        new_dirs.push(dir);
+                                                                    }
+                                                                    commit_condition(Condition::HatDirection {
+                                                                            input: addr_cb.clone(),
+                                                                            directions: new_dirs,
+                                                                        },
+            &mk_cb.clone(),
+            &sid_cb,
+            &root_cb.clone(),
+            it_cb.clone(),
+            iff_cb.clone());
+                                                                },
+                                                            }
+                                                            "{label}"
+                                                        }
+                                                    }
+                                                }
                                             }
-                                            commit_condition(
-                                                Condition::HatDirection {
-                                                    input: addr_cb.clone(),
-                                                    directions: new_dirs,
-                                                },
-                                                mk_cb.clone(),
-                                                &sid_cb,
-                                                root_cb.clone(),
-                                                it_cb.clone(),
-                                                iff_cb.clone(),
-                                                &cmd_cb,
-                                                cfg,
-                                                editor,
-                                            );
-                                        },
+                                        }
                                     }
-                                    "{label}"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         // ---------------------------------------------------------------

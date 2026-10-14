@@ -28,7 +28,11 @@ use crate::frame::mapping_editor::EditorState;
 pub(crate) fn UndoRecap(mapping_key: MappingKey) -> Element {
     let editor = use_context::<EditorState>();
     let log = editor.undo_log.read();
-    let label = log.last_label(&mapping_key);
+    let label = log
+        .stacks
+        .get(&mapping_key)
+        .and_then(|s| s.undo.last())
+        .map(|e| e.label.clone());
 
     let Some(label) = label else {
         return rsx! {};

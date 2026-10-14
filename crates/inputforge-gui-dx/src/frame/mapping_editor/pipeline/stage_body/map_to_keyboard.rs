@@ -25,14 +25,13 @@
 use dioxus::prelude::*;
 
 use inputforge_core::action::{Action, Mapping, OutputBehavior};
-use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::KeyCombo;
 
 use crate::components::{SegmentedControl, SegmentedControlOption};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::{at_path, replace_at_path};
+use crate::frame::mapping_editor::pipeline::at_path;
 use crate::frame::mapping_editor::undo_log::StageIdSegment;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 use crate::keyboard_capture::Destination;
@@ -83,9 +82,6 @@ pub(crate) fn MapToKeyboardBody(
     let stage_id_capture = stage_id.clone();
     let root_actions_capture = root_actions.clone();
     let before_capture = before_mapping.clone();
-    let current_name_capture = current_name.clone();
-    let cmd_tx_capture = ctx.commands.clone();
-    let mut undo_log_capture = editor.undo_log;
     let on_capture_commit = use_callback(move |new_combo: KeyCombo| {
         commit_capture_combo(
             new_combo,
@@ -95,9 +91,6 @@ pub(crate) fn MapToKeyboardBody(
             &stage_id_capture,
             &root_actions_capture,
             &before_capture,
-            current_name_capture.clone(),
-            &cmd_tx_capture,
-            &mut undo_log_capture,
         );
     });
 
@@ -148,9 +141,6 @@ pub(crate) fn MapToKeyboardBody(
     let stage_id_hold = stage_id.clone();
     let root_actions_hold = root_actions.clone();
     let before_hold = before_mapping.clone();
-    let current_name_hold = current_name.clone();
-    let cmd_tx_hold = ctx.commands.clone();
-    let mut undo_log_hold = editor.undo_log;
     let on_hold = move |_| {
         if is_output_behavior_click_noop(behavior, OutputBehavior::Hold) {
             return;
@@ -164,9 +154,6 @@ pub(crate) fn MapToKeyboardBody(
             &stage_id_hold,
             &root_actions_hold,
             &before_hold,
-            current_name_hold.clone(),
-            &cmd_tx_hold,
-            &mut undo_log_hold,
         );
     };
 
@@ -174,9 +161,6 @@ pub(crate) fn MapToKeyboardBody(
     let stage_id_pulse = stage_id.clone();
     let root_actions_pulse = root_actions.clone();
     let before_pulse = before_mapping.clone();
-    let current_name_pulse = current_name.clone();
-    let cmd_tx_pulse = ctx.commands.clone();
-    let mut undo_log_pulse = editor.undo_log;
     let on_pulse = move |_| {
         if is_output_behavior_click_noop(behavior, OutputBehavior::Pulse) {
             return;
@@ -190,9 +174,6 @@ pub(crate) fn MapToKeyboardBody(
             &stage_id_pulse,
             &root_actions_pulse,
             &before_pulse,
-            current_name_pulse.clone(),
-            &cmd_tx_pulse,
-            &mut undo_log_pulse,
         );
     };
 
@@ -273,9 +254,6 @@ fn commit_capture_combo(
     stage_id: &StageId,
     root_actions: &[Action],
     before: &Mapping,
-    current_name: Option<String>,
-    cmd_tx: &std::sync::mpsc::Sender<EngineCommand>,
-    undo_log: &mut Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
 ) {
     let old_combo = local_combo.peek().clone();
     if new_combo == old_combo {
@@ -289,9 +267,6 @@ fn commit_capture_combo(
         stage_id,
         root_actions,
         before,
-        current_name,
-        cmd_tx,
-        undo_log,
     ) {
         local_combo.set(new_combo);
     }
@@ -304,11 +279,7 @@ fn is_output_behavior_click_noop(
     current_behavior == requested_behavior
 }
 
-/// Dispatch a `SetMapping` command and push an undo entry if it succeeds.
-///
-/// This is the shared commit path for all five field handlers. Amendment 7:
-/// `push_edit` is skipped when `cmd_tx.send` returns `Err` so that a
-/// disconnected engine channel never generates phantom undo entries.
+/// Wire field values and their display label to app-owned dispatch and history.
 #[allow(
     clippy::too_many_arguments,
     reason = "All arguments are logically distinct; grouping them into a struct \
@@ -323,9 +294,6 @@ fn dispatch_keyboard(
     stage_id: &StageId,
     root_actions: &[Action],
     before: &Mapping,
-    current_name: Option<String>,
-    cmd_tx: &std::sync::mpsc::Sender<EngineCommand>,
-    undo_log: &mut Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
 ) -> bool {
     let Some(Action::MapToKeyboard { key, behavior }) = at_path(&before.actions, stage_id) else {
         return false;
@@ -339,27 +307,6 @@ fn dispatch_keyboard(
         key: new_combo,
         behavior: new_behavior,
     };
-    let Some(new_actions) = replace_at_path(root_actions, stage_id, new_action) else {
-        return false;
-    };
-    // Amendment 7: dispatch first; skip push_edit if the channel is closed.
-    if cmd_tx
-        .send(EngineCommand::SetMapping {
-            input: mapping_key.1.clone(),
-            mode: mapping_key.0.clone(),
-            name: current_name,
-            actions: new_actions,
-        })
-        .is_err()
-    {
-        tracing::warn!(
-            target: "f9::mapping_editor",
-            action = "map_to_keyboard_drop_offline",
-            field = field_label,
-            "keyboard change dropped: engine channel disconnected"
-        );
-        return false;
-    }
     let label = format_undo_label(
         UndoKind::StageEdit,
         LabelArgs {
@@ -369,13 +316,13 @@ fn dispatch_keyboard(
             ..LabelArgs::default()
         },
     );
-    undo_log.write().push_edit(
-        mapping_key.clone(),
-        before.clone(),
-        UndoKind::StageEdit,
+    super::instruments::stage_dispatch::dispatch_stage_edit(
+        root_actions,
+        stage_id,
+        new_action,
+        mapping_key,
         label,
-    );
-    true
+    )
 }
 
 #[cfg(test)]
@@ -439,9 +386,6 @@ mod tests {
                 modifiers: Vec::new(),
             };
             let local = use_signal(|| old.clone());
-            let mut undo = use_signal(crate::frame::mapping_editor::undo_log::UndoLog::default);
-            let (sender, receiver) = std::sync::mpsc::channel();
-            drop(receiver);
             let before = Mapping {
                 input: InputAddress::Unbound,
                 mode: "Default".to_owned(),
@@ -451,6 +395,37 @@ mod tests {
                     behavior: OutputBehavior::Hold,
                 }],
             };
+            let state = std::sync::Arc::new(parking_lot::RwLock::new(
+                inputforge_core::state::AppState::with_profile(
+                    inputforge_core::profile::Profile::new(
+                        "Fixture".into(),
+                        vec![],
+                        inputforge_core::mode::Modes::new(vec!["Default".into()]).unwrap(),
+                        vec![before.clone()],
+                        vec![],
+                        "Default".into(),
+                    ),
+                ),
+            ));
+            let key = (before.mode.clone(), before.input.clone());
+            let frame = inputforge_app::bridge::prepare(&state.read(), Some(&key));
+            let (commands, receiver) =
+                std::sync::mpsc::channel::<inputforge_core::engine::EngineCommand>();
+            drop(receiver);
+            let meta = use_signal(|| frame.meta);
+            let ctx = AppContext {
+                state,
+                commands,
+                meta,
+                config: use_signal(|| frame.config),
+                live: use_signal(crate::context::LiveSnapshot::default),
+                settings: use_signal(crate::context::SettingsSnapshot::default),
+            };
+            use_context_provider(|| ctx);
+            let mut view = crate::frame::use_view_state_provider(meta);
+            use_hook(|| view.selected_mapping.set(Some(key)));
+            use_context_provider(|| view);
+            crate::frame::mapping_editor::use_editor_state_provider();
             commit_capture_combo(
                 KeyCombo {
                     key: PhysicalKey::F12,
@@ -462,9 +437,6 @@ mod tests {
                 &StageId(vec![StageIdSegment::Index(0)]),
                 &before.actions,
                 &before,
-                None,
-                &sender,
-                &mut undo,
             );
             rsx! { span { "{format_key_combo(&local.read())}" } }
         }

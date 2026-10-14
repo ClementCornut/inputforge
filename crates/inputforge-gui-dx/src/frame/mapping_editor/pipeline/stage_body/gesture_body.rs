@@ -8,25 +8,15 @@
 //! `ActionBranch` enum tags. `GestureKind` carries those differences so a
 //! single component handles both.
 
-use std::sync::mpsc::Sender;
-
 use dioxus::prelude::*;
 
 use inputforge_core::action::{Action, ActionBranch};
-use inputforge_core::engine::EngineCommand;
 
 use crate::components::{InputSize, IntegerInput, Switch};
-use crate::context::AppContext;
 use crate::frame::MappingKey;
-use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::replace_at_path;
 use crate::frame::mapping_editor::pipeline::stage_body::branches::{BranchContainer, BranchSpec};
-use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::{
-    dispatch_stage_edit, dispatch_stage_edit_into,
-};
-use crate::frame::mapping_editor::undo_log::{
-    LabelArgs, StageId, UndoKind, UndoLog, format_undo_label,
-};
+use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::dispatch_stage_edit;
+use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 
 const THRESHOLD_MIN: usize = 1;
 const THRESHOLD_MAX: usize = 10_000;
@@ -148,8 +138,6 @@ pub(crate) fn GestureBody(
     root_actions: Vec<Action>,
     depth: u8,
 ) -> Element {
-    let ctx = use_context::<AppContext>();
-    let editor = use_context::<EditorState>();
     let threshold_value = usize::try_from(threshold_ms).unwrap_or(THRESHOLD_MAX);
     let mut threshold_signal = use_signal(|| threshold_value);
     use_effect(use_reactive!(|threshold_value| {
@@ -161,7 +149,6 @@ pub(crate) fn GestureBody(
         toggle_signal.set(toggle);
     }));
 
-    let current_name = ctx.config.read().mapping_names.get(&mapping_key.1).cloned();
     let formatted_stage_id = crate::frame::mapping_editor::pipeline::format_stage_id(&stage_id);
     let threshold_id = format!(
         "if-stage-{}-{}",
@@ -178,23 +165,11 @@ pub(crate) fn GestureBody(
         let mapping_key = mapping_key.clone();
         let stage_id = stage_id.clone();
         let root_actions = root_actions.clone();
-        let cmd_tx = ctx.commands.clone();
-        let mut undo_log = editor.undo_log;
-        let current_name = current_name.clone();
         let branch_a = branch_a_actions.clone();
         let branch_b = branch_b_actions.clone();
         move |candidate: usize| {
             let current_threshold_ms = u64::try_from(threshold_signal()).unwrap_or(u64::MAX);
             let current_toggle = toggle_signal();
-            let actions_before = root_actions_with_state(
-                kind,
-                &root_actions,
-                &stage_id,
-                current_threshold_ms,
-                current_toggle,
-                branch_a.clone(),
-                branch_b.clone(),
-            );
             let new_threshold_ms = u64::try_from(candidate).unwrap_or(u64::MAX);
             threshold_signal.set(candidate);
             let label = edit_label(
@@ -204,7 +179,7 @@ pub(crate) fn GestureBody(
                 &format!("{new_threshold_ms} ms"),
             );
             dispatch_stage_edit(
-                &actions_before,
+                &root_actions,
                 &stage_id,
                 kind.build_action(
                     new_threshold_ms,
@@ -213,9 +188,6 @@ pub(crate) fn GestureBody(
                     branch_b.clone(),
                 ),
                 &mapping_key,
-                current_name.clone(),
-                &cmd_tx,
-                &mut undo_log,
                 label,
             );
         }
@@ -225,23 +197,11 @@ pub(crate) fn GestureBody(
         let mapping_key = mapping_key.clone();
         let stage_id = stage_id.clone();
         let root_actions = root_actions.clone();
-        let cmd_tx = ctx.commands.clone();
-        let mut undo_log = editor.undo_log;
-        let current_name = current_name.clone();
         let branch_a = branch_a_actions.clone();
         let branch_b = branch_b_actions.clone();
         move |_: FormEvent| {
             let new_value = !toggle_signal();
             let current_threshold_ms = u64::try_from(threshold_signal()).unwrap_or(u64::MAX);
-            let actions_before = root_actions_with_state(
-                kind,
-                &root_actions,
-                &stage_id,
-                current_threshold_ms,
-                toggle_signal(),
-                branch_a.clone(),
-                branch_b.clone(),
-            );
             toggle_signal.set(new_value);
             let label = edit_label(
                 kind,
@@ -250,7 +210,7 @@ pub(crate) fn GestureBody(
                 &kind.timing_label(new_value),
             );
             dispatch_stage_edit(
-                &actions_before,
+                &root_actions,
                 &stage_id,
                 kind.build_action(
                     current_threshold_ms,
@@ -259,9 +219,6 @@ pub(crate) fn GestureBody(
                     branch_b.clone(),
                 ),
                 &mapping_key,
-                current_name.clone(),
-                &cmd_tx,
-                &mut undo_log,
                 label,
             );
         }
@@ -321,37 +278,6 @@ pub(crate) fn GestureBody(
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "test helper mirrors the complete gesture edit payload"
-)]
-pub(crate) fn dispatch_gesture_edit_into(
-    kind: GestureKind,
-    undo_log: &mut UndoLog,
-    mapping_key: &MappingKey,
-    stage_id: &StageId,
-    root_actions: &[Action],
-    name: Option<String>,
-    cmd_tx: &Sender<EngineCommand>,
-    label: String,
-    threshold_ms: u64,
-    toggle: bool,
-    branch_a: Vec<Action>,
-    branch_b: Vec<Action>,
-) {
-    let new_action = kind.build_action(threshold_ms, toggle, branch_a, branch_b);
-    dispatch_stage_edit_into(
-        undo_log,
-        root_actions,
-        stage_id,
-        new_action,
-        mapping_key,
-        name,
-        cmd_tx,
-        label,
-    );
-}
-
 fn edit_label(kind: GestureKind, field: &'static str, before: &str, after: &str) -> String {
     format_undo_label(
         UndoKind::StageEdit,
@@ -362,21 +288,4 @@ fn edit_label(kind: GestureKind, field: &'static str, before: &str, after: &str)
             ..LabelArgs::default()
         },
     )
-}
-
-pub(crate) fn root_actions_with_state(
-    kind: GestureKind,
-    root_actions: &[Action],
-    stage_id: &StageId,
-    threshold_ms: u64,
-    toggle: bool,
-    branch_a: Vec<Action>,
-    branch_b: Vec<Action>,
-) -> Vec<Action> {
-    replace_at_path(
-        root_actions,
-        stage_id,
-        kind.build_action(threshold_ms, toggle, branch_a, branch_b),
-    )
-    .unwrap_or_else(|| root_actions.to_vec())
 }

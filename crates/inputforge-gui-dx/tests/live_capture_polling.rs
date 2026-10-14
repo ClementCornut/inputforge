@@ -89,14 +89,23 @@ fn editor() -> Element {
     let keyboard =
         use_hook(|| inputforge_app::keyboard_capture::Controller::new(Arc::clone(&fixture.state)));
     let editor = inputforge_gui_dx::render_editor(
-        Arc::clone(&fixture.state),
-        commands,
+        inputforge_gui_dx::RawHandles {
+            state: Arc::clone(&fixture.state),
+            commands: (commands).clone(),
+        },
         inputforge_gui_dx::routing::Bindings {
             dispatch: Callback::new(|_| {}),
         },
         controllers,
         capture.bindings(),
         keyboard.bindings(),
+        use_hook(|| {
+            inputforge_app::mapping_edits::Controller::new(
+                Arc::clone(&fixture.state),
+                commands.clone(),
+            )
+        })
+        .bindings(),
         start,
     );
     rsx! { {editor} CaptureProbe {} }

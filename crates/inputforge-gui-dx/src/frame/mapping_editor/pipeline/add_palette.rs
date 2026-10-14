@@ -21,14 +21,11 @@
 //! 4. After insert: `editor_state.expanded_stages` AND
 //!    `editor_state.malformed_hints` are cleared, then the new stage's
 //!    `StageId` is re-inserted so it opens expanded.
-//! 5. `push_edit` is only called when `cmd_tx.send` succeeds.
+//! 5. App history is recorded only after successful dispatch.
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{
-    Action, ActionBranch, Condition, Mapping, MouseTarget, OutputBehavior,
-};
-use inputforge_core::engine::EngineCommand;
+use inputforge_core::action::{Action, ActionBranch, Condition, MouseTarget, OutputBehavior};
 use inputforge_core::processing::{DeadzoneConfig, ResponseCurve};
 use inputforge_core::types::{InputAddress, KeyCombo, MergeOp, OutputAddress, OutputId, VJoyAxis};
 
@@ -36,7 +33,7 @@ use crate::components::{Anchor, Icon, MenuItem, MenuItems, MenuRoot, MenuTrigger
 use crate::context::{AppContext, SettingsSnapshot};
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::{insert_at_path, path_invalidated_by_mutation};
+use crate::frame::mapping_editor::pipeline::path_invalidated_by_mutation;
 use crate::frame::mapping_editor::undo_log::{
     LabelArgs, StageId, StageIdSegment, UndoKind, format_undo_label,
 };
@@ -255,9 +252,6 @@ pub(crate) fn AddPalette(
     let key = mapping_key.clone();
     let prefix = path_prefix.clone();
     let root = root_actions.clone();
-    let cmd_tx = ctx.commands.clone();
-    let cfg_sig = ctx.config;
-    let mut undo_log = editor.undo_log;
     let mut expanded = editor.expanded_stages;
     let mut malformed = editor.malformed_hints;
     let mut tags = editor.malformed_summary_tags;
@@ -267,38 +261,7 @@ pub(crate) fn AddPalette(
         path_segs.push(StageIdSegment::Index(insert_len));
         let insert_path = StageId(path_segs);
 
-        let Some(new_actions) = insert_at_path(&root, &insert_path, action.clone()) else {
-            return;
-        };
-
-        let cfg = cfg_sig.read();
-        let current_name = cfg.mapping_names.get(&key.1).cloned();
-        drop(cfg);
-
-        let before = Mapping {
-            input: key.1.clone(),
-            mode: key.0.clone(),
-            name: current_name.clone(),
-            actions: root.clone(),
-        };
         let stage_title = action_palette_label(&action);
-
-        if cmd_tx
-            .send(EngineCommand::SetMapping {
-                input: key.1.clone(),
-                mode: key.0.clone(),
-                name: current_name,
-                actions: new_actions,
-            })
-            .is_err()
-        {
-            tracing::warn!(
-                target: "f9::mapping_editor",
-                action = "add_palette_drop_offline",
-                "stage add dropped: engine channel disconnected"
-            );
-            return;
-        }
 
         let label = format_undo_label(
             UndoKind::StageAdd,
@@ -308,9 +271,19 @@ pub(crate) fn AddPalette(
                 ..LabelArgs::default()
             },
         );
-        undo_log
-            .write()
-            .push_edit(key.clone(), before, UndoKind::StageAdd, label);
+        if !super::stage_body::instruments::stage_dispatch::submit(
+            &key,
+            &root,
+            crate::mapping_edits::Edit::Insert {
+                path: insert_path.clone(),
+                action,
+            },
+            label,
+            None,
+            true,
+        ) {
+            return;
+        }
 
         let parent_path = insert_path.0[..insert_path.0.len() - 1].to_vec();
         expanded

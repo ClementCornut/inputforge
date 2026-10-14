@@ -3,10 +3,6 @@
 
 use inputforge_core::processing::curves::ResponseCurve;
 
-use crate::frame::mapping_editor::pipeline::stage_body::instruments::nudge_coalesce::NudgeCoalesce;
-
-use super::keyboard::KeyKind;
-
 /// Per-mounted-component state held in a `Signal<BodyState>` inside
 /// `ResponseCurveBody`. Pure data; no Signals.
 #[derive(Debug, Clone, PartialEq)]
@@ -22,10 +18,6 @@ pub(crate) struct BodyState {
     /// Flat list of draggable points; mutation.rs index space.
     pub cached_anchors: Vec<(f64, f64)>,
     pub cache_dirty: bool,
-    /// Coalesce state for the 250 ms same-key undo merge window. Owned by
-    /// the shared `instruments::nudge_coalesce` module so F10 and F11 share
-    /// one implementation.
-    pub nudge_coalesce: NudgeCoalesce<KeyKind>,
 }
 
 // Manual `Default` so `cache_dirty` defaults to `true`. The Task 4 test
@@ -42,7 +34,6 @@ impl Default for BodyState {
             cached_path: Vec::new(),
             cached_anchors: Vec::new(),
             cache_dirty: true,
-            nudge_coalesce: NudgeCoalesce::default(),
         }
     }
 }

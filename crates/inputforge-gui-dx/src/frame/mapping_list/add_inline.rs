@@ -101,16 +101,21 @@ fn dispatch_add_helper(
 ) {
     let mode_now = view.editing_mode.read().clone();
     let trimmed = name_value.trim();
-    let _ = commands.send(EngineCommand::SetMapping {
-        input: addr.clone(),
-        mode: mode_now.clone(),
-        name: if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_owned())
-        },
-        actions,
-    });
+    let delivered = commands
+        .send(EngineCommand::SetMapping {
+            input: addr.clone(),
+            mode: mode_now.clone(),
+            name: if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_owned())
+            },
+            actions,
+        })
+        .is_ok();
+    if delivered && let Some(bindings) = try_consume_context::<crate::mapping_edits::Bindings>() {
+        bindings.forget.call((mode_now.clone(), addr.clone()));
+    }
     let mut sel = view.selected_mapping;
     sel.set(Some((mode_now, addr)));
     tracing::info!(

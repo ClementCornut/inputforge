@@ -201,6 +201,7 @@ fn keyboard_buttons_dispatch_once_preserve_names_and_record_undo_after_delivery(
                                 .len(),
                             1
                         );
+                        expect_fence(&received);
                         assert_eq!(received.try_recv().unwrap_err(), mpsc::TryRecvError::Empty);
                         if !add {
                             assert_eq!(
@@ -306,4 +307,11 @@ fn fixture(
     dom.provide_root_context(Rc::clone(&document) as Rc<dyn document::Document>);
     dom.rebuild_in_place();
     (dom, f, document, received)
+}
+
+fn expect_fence(received: &mpsc::Receiver<EngineCommand>) {
+    assert!(matches!(
+        received.try_recv().unwrap(),
+        EngineCommand::MappingEditBarrier { .. }
+    ));
 }

@@ -35,10 +35,7 @@ pub(crate) enum KeyInput {
     Escape,
 }
 
-/// Coarse-grained kind used by the coalesce-window state. Two presses
-/// of the same `KeyKind` within
-/// `instruments::nudge_coalesce::COALESCE_WINDOW_MS` merge into a
-/// single undo entry; presses of different kinds always push.
+/// Arrow identity forwarded to app-owned grouping.
 ///
 /// The `Arrow` prefix is kept verbatim because it mirrors the `KeyInput`
 /// variant names and the plan's literal source; the enum is small and
@@ -57,7 +54,7 @@ pub(crate) enum KeyKind {
 }
 
 impl KeyInput {
-    fn nudge_kind(self) -> Option<KeyKind> {
+    pub(crate) fn nudge_kind(self) -> Option<KeyKind> {
         Some(match self {
             Self::ArrowLeft { .. } => KeyKind::ArrowLeft,
             Self::ArrowRight { .. } => KeyKind::ArrowRight,
@@ -68,32 +65,10 @@ impl KeyInput {
     }
 }
 
-/// Tells the host how to record this key event in the undo log.
-///
-/// The `UndoLog` API at `mapping_editor/undo_log.rs:95-113` exposes only
-/// `push_edit(key, before, kind, label)`; there is no `merge_with_top` /
-/// `update_top` operation. `MergeUndo` therefore relies on the following
-/// host-side contract:
-///
-/// 1. On the FIRST key in a coalesce streak (`PushUndo`), the host
-///    captures `mapping_before = mapping_at(actions_root, mapping_key)`
-///    and calls `dispatch_stage_edit(...)`, which internally calls
-///    `undo_log.push_edit(key, mapping_before, StageEdit, label)`.
-/// 2. On every SUBSEQUENT key in the same streak (`MergeUndo`), the host
-///    calls `dispatch_stage_edit_no_undo(...)`, which dispatches
-///    `EngineCommand::SetMapping` to the engine but does NOT touch the
-///    undo log. The first entry's `mapping_before` already captures the
-///    pre-streak state, so undo restores correctly.
-/// 3. Redo replays the first nudge's `SetMapping` only (not the streak
-///    total). Accepted as a deliberate UX simplification.
-///
-/// The 250 ms coalesce window is owned by `handle_key`; the host does not
-/// need to track timing. The host MUST treat `MergeUndo` as "skip the
-/// undo write but still dispatch the engine command".
+/// Label for a computed instrument edit; the app decides grouping.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum KeyOutcome {
     PushUndo { label: String },
-    MergeUndo,
 }
 
 /// Return type of [`handle_key`]: `(next_state, new_curve, undo_outcome, changed)`.
@@ -104,9 +79,6 @@ pub(crate) type KeyHandlerOut = (BodyState, Option<ResponseCurve>, Option<KeyOut
 /// The function is pure: it takes ownership of `state`, applies the key
 /// semantics, and returns the updated state together with an optional new
 /// curve and undo hint. No Signals are touched.
-///
-/// `now_ms` is the current timestamp in milliseconds since component mount
-/// (or any monotonic epoch); it drives the 250 ms same-key coalesce window.
 #[must_use]
 #[expect(
     clippy::too_many_lines,
@@ -117,7 +89,6 @@ pub(crate) fn handle_key(
     mut state: BodyState,
     curve: &ResponseCurve,
     key: KeyInput,
-    now_ms: u64,
 ) -> KeyHandlerOut {
     if let KeyInput::Escape = key {
         if state.dragging.is_some() {
@@ -187,16 +158,9 @@ pub(crate) fn handle_key(
             let Ok(valid) = mutation::reconstruct_curve(&local) else {
                 return (state, None, None, false);
             };
-            let kind = key.nudge_kind().expect("arrow key has nudge kind");
-            let merge = state.nudge_coalesce.should_merge(now_ms, kind);
-            state.nudge_coalesce.record(now_ms, kind);
             state.cache_dirty = true;
-            let outcome = if merge {
-                KeyOutcome::MergeUndo
-            } else {
-                KeyOutcome::PushUndo {
-                    label: outcome_label_for_nudge,
-                }
+            let outcome = KeyOutcome::PushUndo {
+                label: outcome_label_for_nudge,
             };
             (state, Some(valid), Some(outcome), true)
         }
@@ -226,7 +190,6 @@ pub(crate) fn handle_key(
                 return (state, None, None, false);
             }
             state.cache_dirty = true;
-            state.nudge_coalesce.reset();
             (
                 state,
                 Some(local),
@@ -242,7 +205,6 @@ pub(crate) fn handle_key(
                 return (state, None, None, false);
             }
             state.cache_dirty = true;
-            state.nudge_coalesce.reset();
             // Clamp focused index after removal.
             let new_anchors = super::state::extract_anchors(&local);
             state.focused_point = if new_anchors.is_empty() {
@@ -348,7 +310,7 @@ mod tests {
         // F10 keyboard does NOT wrap at the end of the anchor list; Tab
         // returns None so the browser advances focus past the plot.
         let (curve, state) = seed();
-        let (next, _, _, _) = handle_key(state, &curve, KeyInput::Tab, 0);
+        let (next, _, _, _) = handle_key(state, &curve, KeyInput::Tab);
         assert_eq!(next.focused_point, Some(2));
     }
 
@@ -378,7 +340,7 @@ mod tests {
             focused_point: Some(3), // seg1.end (0,0)
             ..BodyState::default()
         };
-        let (next, _, _, _) = handle_key(state, &curve, KeyInput::Tab, 0);
+        let (next, _, _, _) = handle_key(state, &curve, KeyInput::Tab);
         // Next visit must skip index 4 (seg2.start, same point) and
         // land on index 5 (seg2.control1).
         assert_eq!(next.focused_point, Some(5));
@@ -411,7 +373,7 @@ mod tests {
             focused_point: Some(5),
             ..BodyState::default()
         };
-        let (next, _, _, _) = handle_key(state, &curve, KeyInput::ShiftTab, 0);
+        let (next, _, _, _) = handle_key(state, &curve, KeyInput::ShiftTab);
         assert_eq!(
             next.focused_point,
             Some(3),
@@ -439,7 +401,7 @@ mod tests {
             focused_point: Some(0),
             ..BodyState::default()
         };
-        let (_, new_curve, _, changed) = handle_key(state, &curve, KeyInput::Enter, 0);
+        let (_, new_curve, _, changed) = handle_key(state, &curve, KeyInput::Enter);
         assert!(
             !changed,
             "Enter must be a no-op when right neighbor is a handle"
@@ -451,7 +413,7 @@ mod tests {
     fn arrow_right_nudges_x_by_step() {
         let (curve, state) = seed();
         let (_next, new_curve, outcome, changed) =
-            handle_key(state, &curve, KeyInput::ArrowRight { shift: false }, 1000);
+            handle_key(state, &curve, KeyInput::ArrowRight { shift: false });
         assert!(changed);
         let new_curve = new_curve.expect("nudge yields a curve");
         if let ResponseCurve::PiecewiseLinear { points, .. } = new_curve {
@@ -463,8 +425,7 @@ mod tests {
     #[test]
     fn shift_arrow_uses_large_step() {
         let (curve, state) = seed();
-        let (_, new_curve, _, _) =
-            handle_key(state, &curve, KeyInput::ArrowRight { shift: true }, 1000);
+        let (_, new_curve, _, _) = handle_key(state, &curve, KeyInput::ArrowRight { shift: true });
         if let Some(ResponseCurve::PiecewiseLinear { points, .. }) = new_curve {
             assert!((points[1].0 - 0.10).abs() < 1e-9);
         }
@@ -473,7 +434,7 @@ mod tests {
     #[test]
     fn enter_inserts_midpoint_when_focused_anchor_has_right_neighbor() {
         let (curve, state) = seed();
-        let (_, new_curve, _, changed) = handle_key(state, &curve, KeyInput::Enter, 1000);
+        let (_, new_curve, _, changed) = handle_key(state, &curve, KeyInput::Enter);
         assert!(changed);
         let new_curve = new_curve.expect("Enter inserts");
         if let ResponseCurve::PiecewiseLinear { points, .. } = new_curve {
@@ -485,7 +446,7 @@ mod tests {
     fn enter_on_rightmost_anchor_is_no_op() {
         let (curve, mut state) = seed();
         state.focused_point = Some(2);
-        let (_, new_curve, _, changed) = handle_key(state, &curve, KeyInput::Enter, 1000);
+        let (_, new_curve, _, changed) = handle_key(state, &curve, KeyInput::Enter);
         assert!(!changed);
         assert!(new_curve.is_none());
     }
@@ -502,7 +463,7 @@ mod tests {
             focused_point: Some(1),
             ..BodyState::default()
         };
-        let (_, new_curve, _, changed) = handle_key(state, &curve, KeyInput::Delete, 1000);
+        let (_, new_curve, _, changed) = handle_key(state, &curve, KeyInput::Delete);
         assert!(changed);
         if let Some(ResponseCurve::PiecewiseLinear { points, .. }) = new_curve {
             assert_eq!(points.len(), 3);
@@ -513,7 +474,7 @@ mod tests {
     fn delete_edge_is_no_op() {
         let (curve, mut state) = seed();
         state.focused_point = Some(0);
-        let (_, new_curve, _, changed) = handle_key(state, &curve, KeyInput::Delete, 1000);
+        let (_, new_curve, _, changed) = handle_key(state, &curve, KeyInput::Delete);
         assert!(!changed);
         assert!(new_curve.is_none());
     }
@@ -535,7 +496,7 @@ mod tests {
             pre_drag_curve: Some(pre.clone()),
             ..BodyState::default()
         };
-        let (next, new_curve, _, _) = handle_key(state, &curve, KeyInput::Escape, 1000);
+        let (next, new_curve, _, _) = handle_key(state, &curve, KeyInput::Escape);
         assert!(next.dragging.is_none());
         let reverted = new_curve.expect("Escape during drag reverts");
         if let ResponseCurve::PiecewiseLinear { points, .. } = reverted {
@@ -546,31 +507,10 @@ mod tests {
     #[test]
     fn home_and_end_jump_focus() {
         let (curve, state) = seed();
-        let (next, _, _, _) = handle_key(state.clone(), &curve, KeyInput::Home, 1000);
+        let (next, _, _, _) = handle_key(state.clone(), &curve, KeyInput::Home);
         assert_eq!(next.focused_point, Some(0));
-        let (next, _, _, _) = handle_key(state, &curve, KeyInput::End, 1000);
+        let (next, _, _, _) = handle_key(state, &curve, KeyInput::End);
         assert_eq!(next.focused_point, Some(2));
-    }
-
-    #[test]
-    fn same_key_within_window_merges_undo() {
-        let (curve, mut state) = seed();
-        state.nudge_coalesce.record(1000, KeyKind::ArrowRight);
-        let (_, _, outcome, _) =
-            handle_key(state, &curve, KeyInput::ArrowRight { shift: false }, 1100);
-        match outcome {
-            Some(KeyOutcome::MergeUndo) => {}
-            other => panic!("expected MergeUndo, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn same_key_after_window_pushes_new_undo() {
-        let (curve, mut state) = seed();
-        state.nudge_coalesce.record(1000, KeyKind::ArrowRight);
-        let (_, _, outcome, _) =
-            handle_key(state, &curve, KeyInput::ArrowRight { shift: false }, 1500);
-        assert!(matches!(outcome, Some(KeyOutcome::PushUndo { .. })));
     }
 
     #[test]
@@ -581,7 +521,7 @@ mod tests {
         // trapped at index 0.
         let (curve, mut state) = seed();
         state.focused_point = Some(0);
-        let (next, _, _, _) = handle_key(state, &curve, KeyInput::ShiftTab, 0);
+        let (next, _, _, _) = handle_key(state, &curve, KeyInput::ShiftTab);
         assert_eq!(
             next.focused_point, None,
             "ShiftTab on first anchor releases focus"

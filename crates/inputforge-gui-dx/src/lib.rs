@@ -17,6 +17,10 @@ pub use inputforge_gui_dx::keyboard_capture;
 #[cfg(test)]
 #[path = "../../inputforge-app/tests/keyboard_capture/document.rs"]
 mod keyboard_document;
+#[cfg(not(test))]
+pub mod mapping_edits;
+#[cfg(test)]
+pub use inputforge_gui_dx::mapping_edits;
 pub mod patterns;
 pub mod routing;
 #[cfg(not(test))]
@@ -32,10 +36,8 @@ pub use frame::view_state::PanelSlot;
 pub use toast::ToastViewport;
 pub use toast::{ToastLevel, ToastQueue, ToastState};
 
+pub use context::RawHandles;
 use dioxus::prelude::*;
-use inputforge_core::{engine::EngineCommand, state::AppState};
-use parking_lot::RwLock;
-use std::sync::{Arc, mpsc};
 
 /// Host-owned presentation state shared with the editor's panel controls.
 #[derive(Clone, Copy, Debug)]
@@ -52,19 +54,20 @@ pub struct EditorNavigation {
 /// # Errors
 /// Propagates render errors from the editor root.
 pub fn render_editor(
-    state: Arc<RwLock<AppState>>,
-    commands: mpsc::Sender<EngineCommand>,
+    handles: RawHandles,
     routing: routing::Bindings,
     controllers: controllers::Bindings,
     capture: capture::Bindings,
     keyboard: keyboard_capture::Bindings,
+    mappings: mapping_edits::Bindings,
     start_polling: Callback<bridge::Publisher>,
 ) -> Element {
     use_context_provider(|| routing);
     use_context_provider(|| controllers);
     use_context_provider(|| capture);
     use_context_provider(|| keyboard);
+    use_context_provider(|| mappings);
     use_context_provider(|| start_polling);
-    use_context_provider(|| context::RawHandles { state, commands });
+    use_context_provider(|| handles);
     app::app_root()
 }

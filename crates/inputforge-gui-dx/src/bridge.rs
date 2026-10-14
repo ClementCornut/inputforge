@@ -14,6 +14,7 @@ pub struct Publisher {
     selection: Signal<Option<MappingKey>>,
     routing: Context,
     controllers: crate::controllers::Context,
+    mappings: Option<crate::mapping_edits::Bindings>,
 }
 impl Publisher {
     pub(crate) fn new(
@@ -27,12 +28,19 @@ impl Publisher {
             selection: view.selected_mapping,
             routing,
             controllers,
+            mappings: try_consume_context::<crate::mapping_edits::Bindings>(),
         }
     }
     /// Read the selected mapping without subscribing the caller.
     #[must_use]
     pub fn selected_mapping(&self) -> Option<MappingKey> {
         self.selection.peek().clone()
+    }
+    /// Forward the app reconciliation callback on the existing polling cadence.
+    pub fn reconcile_history(&self) {
+        if let Some(bindings) = self.mappings {
+            bindings.reconcile.call(());
+        }
     }
     /// Publish changed fields without waking unchanged subscribers.
     pub fn publish(&self, frame: Frame) {

@@ -53,12 +53,10 @@ fn dispatch_bridge_event(
     mut body: Signal<state::BodyState>,
     mut working_config: Signal<Option<DeadzoneConfig>>,
     config_signal: Signal<crate::context::ConfigSnapshot>,
-    mut undo_log: Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
     mut malformed_hints: Signal<std::collections::HashMap<StageId, String>>,
     mapping_key: &MappingKey,
     stage_id: &StageId,
     config_seed: &DeadzoneConfig,
-    cmd_tx: &std::sync::mpsc::Sender<inputforge_core::engine::EngineCommand>,
 ) {
     if payload.rs <= 0.0 {
         return;
@@ -109,7 +107,6 @@ fn dispatch_bridge_event(
             let actions = cfg.selected_mapping_actions.as_deref().unwrap_or(&[]);
             let live = project_stage_config(actions, stage_id, config_seed);
             let actions_snap = actions.to_vec();
-            let name = cfg.mapping_names.get(&mapping_key.1).cloned();
             drop(cfg);
             let dragged = working_config
                 .peek()
@@ -134,9 +131,6 @@ fn dispatch_bridge_event(
                         stage_id,
                         Action::Deadzone { config: valid },
                         mapping_key,
-                        name,
-                        cmd_tx,
-                        &mut undo_log,
                         "deadzone: drag".to_owned(),
                     );
                     malformed_hints.write().remove(stage_id);
@@ -183,7 +177,6 @@ pub(crate) fn DeadzoneBody(
     let ctx = use_context::<AppContext>();
     let config_signal = ctx.config;
     let editor = use_context::<EditorState>();
-    let mut undo_log = editor.undo_log;
     let malformed_hints = editor.malformed_hints;
 
     let mut body: Signal<state::BodyState> = use_signal(state::BodyState::default);
@@ -198,8 +191,6 @@ pub(crate) fn DeadzoneBody(
     // computed as `Instant::now().saturating_duration_since(*time_baseline.peek())`.
     // No `Instant::EPOCH` exists on either std or web_time, so a baseline
     // captured here is the simplest source of monotonic ms.
-    let time_baseline = use_signal(std::time::Instant::now);
-
     // Re-project on each render so the toolbar and plot see the freshest
     // live data. Clone the snapshot to drop the read guard before later
     // reads.
@@ -229,7 +220,6 @@ pub(crate) fn DeadzoneBody(
     let plot_dom_id = instruments::bridge::stage_id_dom_id("if-deadzone-plot", &stage_id);
     let mapping_key_for_bridge = mapping_key.clone();
     let stage_id_for_bridge = stage_id.clone();
-    let cmd_tx_for_bridge = ctx.commands.clone();
     let config_seed_for_bridge = config.clone();
     let dispatch = move |payload: instruments::bridge::BridgeEvent| {
         dispatch_bridge_event(
@@ -237,12 +227,10 @@ pub(crate) fn DeadzoneBody(
             body,
             working_config,
             config_signal,
-            undo_log,
             malformed_hints,
             &mapping_key_for_bridge,
             &stage_id_for_bridge,
             &config_seed_for_bridge,
-            &cmd_tx_for_bridge,
         );
     };
     let on_mounted = instruments::bridge::mount_mouse_bridge(plot_dom_id.clone(), dispatch);
@@ -255,7 +243,6 @@ pub(crate) fn DeadzoneBody(
     // all other handled keys consume the event.
     let mapping_key_for_key = mapping_key.clone();
     let stage_id_for_key = stage_id.clone();
-    let cmd_tx_for_key = ctx.commands.clone();
     let config_seed_for_key = config.clone();
     let on_key = move |evt: KeyboardEvent| {
         let key = match (evt.key(), evt.modifiers().shift()) {
@@ -272,59 +259,49 @@ pub(crate) fn DeadzoneBody(
             (Key::Escape, _) => keyboard::KeyInput::Escape,
             _ => return,
         };
+        if key.nudge_kind().is_none() {
+            consume_context::<crate::mapping_edits::Bindings>()
+                .end_group
+                .call(());
+        }
         if !matches!(key, keyboard::KeyInput::Tab | keyboard::KeyInput::ShiftTab) {
             evt.prevent_default();
         }
-        #[allow(
-            clippy::cast_possible_truncation,
-            reason = "ms-since-mount fits u64 for any session"
-        )]
-        let now_ms = std::time::Instant::now()
-            .saturating_duration_since(*time_baseline.peek())
-            .as_millis() as u64;
         let cfg = config_signal.read();
         let actions: Vec<Action> = cfg.selected_mapping_actions.clone().unwrap_or_default();
         let live_cfg = project_stage_config(&actions, &stage_id_for_key, &config_seed_for_key);
-        let name = cfg.mapping_names.get(&mapping_key_for_key.1).cloned();
         drop(cfg);
-        let (next, new_cfg, outcome, _) =
-            keyboard::handle_key(body.peek().clone(), &live_cfg, key, now_ms);
+        let (next, new_cfg, outcome, _) = keyboard::handle_key(body.peek().clone(), &live_cfg, key);
         body.set(next);
         let Some(new) = new_cfg else { return };
-        match outcome {
-            Some(keyboard::KeyOutcome::PushUndo { label }) => {
+        if let Some(keyboard::KeyOutcome::PushUndo { label }) = outcome {
+            if let Some(kind) = key.nudge_kind() {
+                instruments::stage_dispatch::dispatch_stage_nudge(
+                    &actions,
+                    &stage_id_for_key,
+                    Action::Deadzone { config: new },
+                    &mapping_key_for_key,
+                    label,
+                    format!("{kind:?}:{:?}", body.peek().focused_handle),
+                );
+            } else {
                 instruments::stage_dispatch::dispatch_stage_edit(
                     &actions,
                     &stage_id_for_key,
                     Action::Deadzone { config: new },
                     &mapping_key_for_key,
-                    name,
-                    &cmd_tx_for_key,
-                    &mut undo_log,
                     label,
                 );
             }
-            Some(keyboard::KeyOutcome::MergeUndo) => {
-                instruments::stage_dispatch::dispatch_stage_edit_no_undo(
-                    &actions,
-                    &stage_id_for_key,
-                    Action::Deadzone { config: new },
-                    &mapping_key_for_key,
-                    name,
-                    &cmd_tx_for_key,
-                );
-            }
-            None => {} // Escape revert: body-local, no dispatch.
         }
     };
 
     // Reset coalesce on focus-out so the next nudge after refocus pushes a
     // fresh undo entry rather than merging into a stale prior burst.
-    let mut body_for_focusout = body;
     let on_focus_out = move |_| {
-        body_for_focusout.with_mut(|s| {
-            s.nudge_coalesce.reset();
-        });
+        consume_context::<crate::mapping_edits::Bindings>()
+            .end_group
+            .call(());
     };
 
     let snap = body.read();

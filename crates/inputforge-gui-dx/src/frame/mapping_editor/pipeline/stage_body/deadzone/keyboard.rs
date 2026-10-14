@@ -35,7 +35,6 @@ pub(crate) enum KeyKind {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum KeyOutcome {
     PushUndo { label: String },
-    MergeUndo,
 }
 
 pub(crate) type KeyHandlerOut = (BodyState, Option<DeadzoneConfig>, Option<KeyOutcome>, bool);
@@ -47,7 +46,6 @@ pub(crate) fn handle_key(
     mut state: BodyState,
     config: &DeadzoneConfig,
     key: KeyInput,
-    now_ms: u64,
 ) -> KeyHandlerOut {
     match key {
         KeyInput::Tab => {
@@ -79,12 +77,8 @@ pub(crate) fn handle_key(
             }
             (state, None, None, false)
         }
-        KeyInput::ArrowLeft { shift } => {
-            nudge(state, config, -step(shift), KeyKind::ArrowLeft, now_ms)
-        }
-        KeyInput::ArrowRight { shift } => {
-            nudge(state, config, step(shift), KeyKind::ArrowRight, now_ms)
-        }
+        KeyInput::ArrowLeft { shift } => nudge(state, config, -step(shift)),
+        KeyInput::ArrowRight { shift } => nudge(state, config, step(shift)),
         // Up/Down arrows are silently ignored: F11 is an X-axis-only
         // editor, so vertical nudges have no semantics. Enter and Delete
         // also fall through here since the body has no commit / remove
@@ -100,13 +94,7 @@ const fn step(shift: bool) -> f64 {
     if shift { LARGE_STEP } else { SMALL_STEP }
 }
 
-fn nudge(
-    mut state: BodyState,
-    config: &DeadzoneConfig,
-    delta: f64,
-    kind: KeyKind,
-    now_ms: u64,
-) -> KeyHandlerOut {
+fn nudge(state: BodyState, config: &DeadzoneConfig, delta: f64) -> KeyHandlerOut {
     let Some(handle) = state.focused_handle else {
         return (state, None, None, false);
     };
@@ -124,22 +112,26 @@ fn nudge(
     let Ok(new_config) = with_handle(config, handle, target) else {
         return (state, None, None, false);
     };
-    let merge = state.nudge_coalesce.should_merge(now_ms, kind);
-    state.nudge_coalesce.record(now_ms, kind);
-    let outcome = if merge {
-        KeyOutcome::MergeUndo
-    } else {
-        let label_handle = match handle {
-            HandleId::Low => "low",
-            HandleId::CenterLow => "center_low",
-            HandleId::CenterHigh => "center_high",
-            HandleId::High => "high",
-        };
-        KeyOutcome::PushUndo {
-            label: format!("deadzone: {label_handle} {current_x:+.2} -> {target:+.2}"),
-        }
+    let label_handle = match handle {
+        HandleId::Low => "low",
+        HandleId::CenterLow => "center_low",
+        HandleId::CenterHigh => "center_high",
+        HandleId::High => "high",
+    };
+    let outcome = KeyOutcome::PushUndo {
+        label: format!("deadzone: {label_handle} {current_x:+.2} -> {target:+.2}"),
     };
     (state, Some(new_config), Some(outcome), true)
+}
+
+impl KeyInput {
+    pub(crate) fn nudge_kind(self) -> Option<KeyKind> {
+        match self {
+            Self::ArrowLeft { .. } => Some(KeyKind::ArrowLeft),
+            Self::ArrowRight { .. } => Some(KeyKind::ArrowRight),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -164,7 +156,7 @@ mod tests {
     fn tab_advances_focus() {
         let (c, mut s) = seed();
         s.focused_handle = Some(HandleId::CenterLow);
-        let (next, _, _, _) = handle_key(s, &c, KeyInput::Tab, 0);
+        let (next, _, _, _) = handle_key(s, &c, KeyInput::Tab);
         assert_eq!(next.focused_handle, Some(HandleId::CenterHigh));
     }
 
@@ -172,7 +164,7 @@ mod tests {
     fn tab_at_high_yields_none_so_browser_advances_focus() {
         let (c, mut s) = seed();
         s.focused_handle = Some(HandleId::High);
-        let (next, _, _, _) = handle_key(s, &c, KeyInput::Tab, 0);
+        let (next, _, _, _) = handle_key(s, &c, KeyInput::Tab);
         assert_eq!(next.focused_handle, None);
     }
 
@@ -180,7 +172,7 @@ mod tests {
     fn shift_tab_at_low_yields_none() {
         let (c, mut s) = seed();
         s.focused_handle = Some(HandleId::Low);
-        let (next, _, _, _) = handle_key(s, &c, KeyInput::ShiftTab, 0);
+        let (next, _, _, _) = handle_key(s, &c, KeyInput::ShiftTab);
         assert_eq!(next.focused_handle, None);
     }
 
@@ -188,7 +180,7 @@ mod tests {
     fn home_jumps_to_low() {
         let (c, mut s) = seed();
         s.focused_handle = Some(HandleId::High);
-        let (next, _, _, _) = handle_key(s, &c, KeyInput::Home, 0);
+        let (next, _, _, _) = handle_key(s, &c, KeyInput::Home);
         assert_eq!(next.focused_handle, Some(HandleId::Low));
     }
 
@@ -196,7 +188,7 @@ mod tests {
     fn arrow_left_nudges_low_by_step_and_pushes_undo() {
         let (c, s) = seed();
         let (_, new_cfg, outcome, changed) =
-            handle_key(s, &c, KeyInput::ArrowLeft { shift: false }, 0);
+            handle_key(s, &c, KeyInput::ArrowLeft { shift: false });
         assert!(changed);
         let new = new_cfg.unwrap();
         assert!((new.low() - -0.86).abs() < 1e-9);
@@ -206,41 +198,22 @@ mod tests {
     #[test]
     fn shift_arrow_uses_large_step() {
         let (c, s) = seed();
-        let (_, new_cfg, _, _) = handle_key(s, &c, KeyInput::ArrowRight { shift: true }, 0);
+        let (_, new_cfg, _, _) = handle_key(s, &c, KeyInput::ArrowRight { shift: true });
         let new = new_cfg.unwrap();
         assert!((new.low() - -0.75).abs() < 1e-9);
-    }
-
-    #[test]
-    fn second_same_key_within_window_merges_undo() {
-        let (c, s) = seed();
-        let (s1, new1, _, _) = handle_key(s, &c, KeyInput::ArrowRight { shift: false }, 100);
-        let new1 = new1.unwrap();
-        let (_, _, outcome2, _) = handle_key(s1, &new1, KeyInput::ArrowRight { shift: false }, 200);
-        assert_eq!(outcome2, Some(KeyOutcome::MergeUndo));
-    }
-
-    #[test]
-    fn second_same_key_past_window_pushes_new_undo() {
-        let (c, s) = seed();
-        let (s1, new1, _, _) = handle_key(s, &c, KeyInput::ArrowRight { shift: false }, 100);
-        let new1 = new1.unwrap();
-        let (_, _, outcome2, _) =
-            handle_key(s1, &new1, KeyInput::ArrowRight { shift: false }, 100 + 251);
-        assert!(matches!(outcome2, Some(KeyOutcome::PushUndo { .. })));
     }
 
     #[test]
     fn arrow_at_clamp_boundary_is_noop() {
         let (c, s) = seed();
         // Drive the Low handle to the clamp bound first.
-        let (s2, _, _, _) = handle_key(s, &c, KeyInput::ArrowLeft { shift: false }, 0);
+        let (s2, _, _, _) = handle_key(s, &c, KeyInput::ArrowLeft { shift: false });
         // Now nudge again from -1.0; nothing further is allowed.
         let mut s = s2;
         s.focused_handle = Some(HandleId::Low);
         let stuck = DeadzoneConfig::new(-1.0, -0.15, 0.15, 0.85).expect("valid");
         let (_, new_cfg, outcome, changed) =
-            handle_key(s, &stuck, KeyInput::ArrowLeft { shift: false }, 1000);
+            handle_key(s, &stuck, KeyInput::ArrowLeft { shift: false });
         assert!(!changed);
         assert!(new_cfg.is_none());
         assert!(outcome.is_none());
@@ -249,8 +222,7 @@ mod tests {
     #[test]
     fn arrow_up_and_down_silent_no_op() {
         let (c, s) = seed();
-        let (_, new_cfg, outcome, changed) =
-            handle_key(s, &c, KeyInput::ArrowUp { shift: false }, 0);
+        let (_, new_cfg, outcome, changed) = handle_key(s, &c, KeyInput::ArrowUp { shift: false });
         assert!(!changed);
         assert!(new_cfg.is_none());
         assert!(outcome.is_none());
@@ -259,11 +231,11 @@ mod tests {
     #[test]
     fn enter_and_delete_silent_no_op() {
         let (c, s) = seed();
-        let (_, new_cfg, _, changed) = handle_key(s, &c, KeyInput::Enter, 0);
+        let (_, new_cfg, _, changed) = handle_key(s, &c, KeyInput::Enter);
         assert!(!changed);
         assert!(new_cfg.is_none());
         let (c, s) = seed();
-        let (_, new_cfg, _, changed) = handle_key(s, &c, KeyInput::Delete, 0);
+        let (_, new_cfg, _, changed) = handle_key(s, &c, KeyInput::Delete);
         assert!(!changed);
         assert!(new_cfg.is_none());
     }
@@ -279,7 +251,7 @@ mod tests {
         );
         s.pre_drag_config = Some(c.clone());
         let working = with_handle(&c, HandleId::Low, -0.5).unwrap();
-        let (next, new_cfg, outcome, changed) = handle_key(s, &working, KeyInput::Escape, 0);
+        let (next, new_cfg, outcome, changed) = handle_key(s, &working, KeyInput::Escape);
         assert!(changed);
         assert_eq!(new_cfg.unwrap(), c);
         assert!(next.dragging.is_none());

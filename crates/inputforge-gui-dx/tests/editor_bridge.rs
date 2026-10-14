@@ -51,14 +51,23 @@ fn editor(props: EditorProps) -> Element {
     let keyboard =
         use_hook(|| inputforge_app::keyboard_capture::Controller::new(Arc::clone(&props.state)));
     render_editor(
-        props.state,
-        commands,
+        inputforge_gui_dx::RawHandles {
+            state: Arc::clone(&props.state),
+            commands: (commands).clone(),
+        },
         Bindings {
             dispatch: Callback::new(|_| {}),
         },
         controllers,
         capture.bindings(),
         keyboard.bindings(),
+        use_hook(|| {
+            inputforge_app::mapping_edits::Controller::new(
+                Arc::clone(&props.state),
+                (commands).clone(),
+            )
+        })
+        .bindings(),
         start,
     )
 }

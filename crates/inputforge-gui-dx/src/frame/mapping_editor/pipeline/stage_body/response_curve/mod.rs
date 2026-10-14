@@ -51,7 +51,7 @@ use crate::frame::mapping_editor::pipeline::stage_body::instruments::bridge::{
     BridgeEvent, mount_mouse_bridge, stage_id_dom_id,
 };
 use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::{
-    dispatch_stage_edit, dispatch_stage_edit_no_undo,
+    dispatch_stage_edit, dispatch_stage_nudge,
 };
 use crate::frame::mapping_editor::undo_log::StageId;
 
@@ -101,12 +101,10 @@ fn dispatch_bridge_event(
     mut body: Signal<BodyState>,
     mut working_curve: Signal<Option<ResponseCurve>>,
     config_signal: Signal<crate::context::ConfigSnapshot>,
-    mut undo_log: Signal<crate::frame::mapping_editor::undo_log::UndoLog>,
     mut malformed_hints: Signal<std::collections::HashMap<StageId, String>>,
     mapping_key: &MappingKey,
     stage_id: &StageId,
     curve_seed: &ResponseCurve,
-    cmd_tx: &std::sync::mpsc::Sender<inputforge_core::engine::EngineCommand>,
 ) {
     // Build a fresh PlotRect from the live rect carried by every event payload.
     // The rect is captured by the JS bridge per-event via getBoundingClientRect,
@@ -176,16 +174,12 @@ fn dispatch_bridge_event(
             match result {
                 Ok(valid) => {
                     let cfg2 = config_signal.read();
-                    let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
                     drop(cfg2);
                     dispatch_stage_edit(
                         &actions_snap,
                         stage_id,
                         Action::ResponseCurve { curve: valid },
                         mapping_key,
-                        name,
-                        cmd_tx,
-                        &mut undo_log,
                         "curve: drag".to_owned(),
                     );
                     malformed_hints.write().remove(stage_id);
@@ -225,16 +219,12 @@ fn dispatch_bridge_event(
                                 None => "curve: add point".to_owned(),
                             };
                         let cfg2 = config_signal.read();
-                        let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
                         drop(cfg2);
                         dispatch_stage_edit(
                             &actions_snap,
                             stage_id,
                             Action::ResponseCurve { curve: valid },
                             mapping_key,
-                            name,
-                            cmd_tx,
-                            &mut undo_log,
                             label,
                         );
                         malformed_hints.write().remove(stage_id);
@@ -261,16 +251,12 @@ fn dispatch_bridge_event(
                 match mutation::reconstruct_curve(&new_curve) {
                     Ok(valid) => {
                         let cfg2 = config_signal.read();
-                        let name = cfg2.mapping_names.get(&mapping_key.1).cloned();
                         drop(cfg2);
                         dispatch_stage_edit(
                             &actions_snap,
                             stage_id,
                             Action::ResponseCurve { curve: valid },
                             mapping_key,
-                            name,
-                            cmd_tx,
-                            &mut undo_log,
                             "curve: remove point".to_owned(),
                         );
                         malformed_hints.write().remove(stage_id);
@@ -314,7 +300,6 @@ pub(crate) fn ResponseCurveBody(
     let ctx = use_context::<AppContext>();
     let config_signal = ctx.config;
     let editor = use_context::<EditorState>();
-    let mut undo_log = editor.undo_log;
     let malformed_hints = editor.malformed_hints;
 
     // Seed the cache immediately from the prop so the first SSR render
@@ -340,8 +325,6 @@ pub(crate) fn ResponseCurveBody(
     // as `Instant::now().saturating_duration_since(*time_baseline.peek())`. The
     // `web_time` crate is NOT used; `Instant::EPOCH` does not exist on either
     // `std::time::Instant` or `web_time::Instant`.
-    let time_baseline = use_signal(std::time::Instant::now);
-
     // Reactivity: read the config signal inside the effect closure so any
     // change to `selected_mapping_actions` (own dispatch, undo replay, or
     // external edit) re-fires this effect and keeps the cached path and
@@ -408,7 +391,6 @@ pub(crate) fn ResponseCurveBody(
     // so the component body retains ownership of the originals.
     let mapping_key_for_evt = mapping_key.clone();
     let stage_id_for_evt = stage_id.clone();
-    let cmd_tx = ctx.commands.clone();
 
     // ----- JS-bridge mouse-event dispatch -----
     //
@@ -437,19 +419,16 @@ pub(crate) fn ResponseCurveBody(
     let curve_for_bridge = curve.clone();
     let mapping_key_for_bridge = mapping_key_for_evt.clone();
     let stage_id_for_bridge = stage_id_for_evt.clone();
-    let cmd_tx_for_bridge = cmd_tx.clone();
     let dispatch = move |payload: BridgeEvent| {
         dispatch_bridge_event(
             &payload,
             body,
             working_curve,
             config_signal,
-            undo_log,
             malformed_hints,
             &mapping_key_for_bridge,
             &stage_id_for_bridge,
             &curve_for_bridge,
-            &cmd_tx_for_bridge,
         );
     };
     let on_mounted = mount_mouse_bridge(plot_dom_id.clone(), dispatch);
@@ -462,7 +441,6 @@ pub(crate) fn ResponseCurveBody(
     // consume the event.
     let mapping_key_for_key = mapping_key.clone();
     let stage_id_for_key = stage_id.clone();
-    let cmd_tx_for_key = cmd_tx.clone();
     let on_key = move |evt: KeyboardEvent| {
         let key = match (evt.key(), evt.modifiers().shift()) {
             (Key::Tab, true) => keyboard::KeyInput::ShiftTab,
@@ -483,69 +461,45 @@ pub(crate) fn ResponseCurveBody(
         // wrap when the user reaches the end of the anchor list (the outer
         // page should advance focus past the plot). All other keys are
         // consumed locally.
+        if key.nudge_kind().is_none() {
+            consume_context::<crate::mapping_edits::Bindings>()
+                .end_group
+                .call(());
+        }
         if !matches!(key, keyboard::KeyInput::Tab | keyboard::KeyInput::ShiftTab) {
             evt.prevent_default();
         }
 
-        // `now_ms` is the milliseconds since component mount. Using
-        // `std::time::Instant` directly mirrors `live_capture`. There is no
-        // `Instant::EPOCH` on either std or web_time, so we use a baseline
-        // captured once at mount and compute elapsed time from it.
-        //
-        // `as_millis()` is u128; cast to u64 saturates the unreachable
-        // >584-million-year arm. Even on wraparound the value would not
-        // collide with the 250 ms coalesce window for any real session.
-        #[allow(clippy::cast_possible_truncation, reason = "see comment")]
-        let now_ms = std::time::Instant::now()
-            .saturating_duration_since(*time_baseline.peek())
-            .as_millis() as u64;
-
         // Re-project curve and root actions from the live config so the handler
         // sees the freshest state (no stale prop closures). Drop the read guard
-        // before dispatch_stage_edit acquires its own write on undo_log.
+        // before invoking the app edit callback.
         let cfg = config_signal.read();
         let actions: Vec<Action> = cfg.selected_mapping_actions.clone().unwrap_or_default();
         let live_curve = project_stage_curve(&actions, &stage_id_for_key, &curve);
-        let name = cfg.mapping_names.get(&mapping_key_for_key.1).cloned();
         drop(cfg);
 
         let (next_state, new_curve, outcome, _changed) =
-            keyboard::handle_key(body.peek().clone(), &live_curve, key, now_ms);
+            keyboard::handle_key(body.peek().clone(), &live_curve, key);
         body.set(next_state);
         let Some(new) = new_curve else { return };
-        match outcome {
-            Some(keyboard::KeyOutcome::PushUndo { label }) => {
+        if let Some(keyboard::KeyOutcome::PushUndo { label }) = outcome {
+            if let Some(kind) = key.nudge_kind() {
+                dispatch_stage_nudge(
+                    &actions,
+                    &stage_id_for_key,
+                    Action::ResponseCurve { curve: new },
+                    &mapping_key_for_key,
+                    label,
+                    format!("{kind:?}:{:?}", body.peek().focused_point),
+                );
+            } else {
                 dispatch_stage_edit(
                     &actions,
                     &stage_id_for_key,
                     Action::ResponseCurve { curve: new },
                     &mapping_key_for_key,
-                    name,
-                    &cmd_tx_for_key,
-                    &mut undo_log,
                     label,
                 );
-            }
-            Some(keyboard::KeyOutcome::MergeUndo) => {
-                // Same-key burst within 250 ms: dispatch the new curve to the
-                // engine but do NOT push a new undo entry. The first nudge of
-                // the burst already pushed an entry whose `mapping_before`
-                // captures the pre-burst state, so undo restores correctly.
-                // Redo replays the first nudge's SetMapping only; accepted as
-                // a deliberate UX simplification.
-                dispatch_stage_edit_no_undo(
-                    &actions,
-                    &stage_id_for_key,
-                    Action::ResponseCurve { curve: new },
-                    &mapping_key_for_key,
-                    name,
-                    &cmd_tx_for_key,
-                );
-            }
-            None => {
-                // Escape revert: body-local only. The drag never dispatched,
-                // so the engine state is already correct; no dispatch is
-                // needed. (Pointer-up's revert path is analogous.)
             }
         }
     };
@@ -554,11 +508,10 @@ pub(crate) fn ResponseCurveBody(
     // Reset the coalesce state when the plot wrapper loses focus so that the
     // next nudge after refocus pushes a fresh undo entry rather than merging
     // into a stale prior burst.
-    let mut body_for_focusout = body;
     let on_focus_out = move |_| {
-        body_for_focusout.with_mut(|s| {
-            s.nudge_coalesce.reset();
-        });
+        consume_context::<crate::mapping_edits::Bindings>()
+            .end_group
+            .call(());
     };
 
     // Derive data-attribute values from the current body snapshot. These drive

@@ -87,6 +87,8 @@ pub struct ActiveSnapshotRow {
 /// between the engine and GUI threads.
 #[derive(Debug)]
 pub struct AppState {
+    /// Latest processed mapping fence, scoped to its editor controller lifetime.
+    pub mapping_edit_barrier: Option<(u128, u64)>,
     pub session: SessionState,
     /// Connected devices and their live input values.
     pub devices: Vec<DeviceState>,
@@ -138,6 +140,7 @@ impl AppState {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            mapping_edit_barrier: None,
             session: SessionState::default(),
             devices: Vec::new(),
             device_aliases: HashMap::new(),
@@ -186,6 +189,7 @@ impl AppState {
             }
         }
         Self {
+            mapping_edit_barrier: None,
             session: SessionState::default(),
             devices: Vec::new(),
             device_aliases: HashMap::new(),

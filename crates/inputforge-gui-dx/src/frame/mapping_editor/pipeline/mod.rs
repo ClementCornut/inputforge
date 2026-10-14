@@ -3,8 +3,7 @@
 //! F9 pipeline graph component tree.
 //!
 //! Composition (inside-out, in dependency order):
-//!   - `at_path` / `replace_at_path` / `insert_at_path` / `remove_at_path`,
-//!     pure `StageId` tree mutators used by every body and the `DnD` handler
+//!   - `at_path`, prepared action lookup for body rendering and callback targets
 //!   - `stage_body::*`, per-variant body components
 //!   - `stage_header`, title + summary + chevron
 //!   - `stage`, header + body container
@@ -89,8 +88,7 @@ pub(super) fn path_invalidated_by_mutation(
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, ActionBranch, Mapping, branch_actions, branch_actions_mut};
-use inputforge_core::engine::EngineCommand;
+use inputforge_core::action::{Action, ActionBranch, branch_actions};
 
 use crate::components::sortable::{SortableGap, SortableState};
 use crate::context::AppContext;
@@ -124,159 +122,6 @@ pub(crate) fn at_path<'a>(actions: &'a [Action], path: &StageId) -> Option<&'a A
         }
     }
     None
-}
-
-/// Replace the action at `path` with `replacement` and return the new tree.
-///
-/// Returns `None` for invalid paths (out-of-range index, missing branch,
-/// expected `Conditional` got something else, empty path, path starting
-/// with a branch segment). Callers must skip the edit and skip the
-/// `push_edit` on `None`, otherwise a phantom undo entry would be created
-/// against unchanged state. See `EditorState` mutator pattern in Task 22+.
-#[must_use]
-pub(crate) fn replace_at_path(
-    actions: &[Action],
-    path: &StageId,
-    replacement: Action,
-) -> Option<Vec<Action>> {
-    fn walk(
-        actions: &[Action],
-        path: &[StageIdSegment],
-        replacement: Action,
-    ) -> Option<Vec<Action>> {
-        let mut out = actions.to_vec();
-        let (head, tail) = path.split_first()?;
-        match head {
-            StageIdSegment::Index(i) => {
-                if tail.is_empty() {
-                    if *i >= out.len() {
-                        return None;
-                    }
-                    out[*i] = replacement;
-                    Some(out)
-                } else {
-                    let target = out.get_mut(*i)?;
-                    let (branch_seg, rest) = tail.split_first()?;
-                    match branch_seg {
-                        StageIdSegment::Branch(branch) => {
-                            let branch_actions = branch_actions_mut(target, *branch)?;
-                            let new = walk(branch_actions.as_slice(), rest, replacement)?;
-                            *branch_actions = new;
-                        }
-                        StageIdSegment::Index(_) => return None,
-                    }
-                    Some(out)
-                }
-            }
-            // StageId must always start with an Index segment.
-            StageIdSegment::Branch(_) => None,
-        }
-    }
-    walk(actions, &path.0, replacement)
-}
-
-/// Insert `new_action` at `path`. The terminal segment must be an
-/// `Index` indicating the insertion point; existing actions at that
-/// index and beyond shift right. Indexes past the end append.
-///
-/// Returns `None` for invalid paths (empty, starts with branch, branch
-/// segment after non-`Conditional`). Callers MUST skip the edit and skip
-/// `push_edit` on `None` to avoid phantom undo entries.
-///
-/// # Structural-mutation invariant
-///
-/// When called from an `EditorState` mutator the caller MUST clear
-/// `editor_state.expanded_stages` and `editor_state.malformed_hints`
-/// AFTER dispatching the new actions. `StageId` paths are positional;
-/// inserting a stage invalidates every cached path at or after the
-/// mutation point. (Enforced by a test in Task 22.)
-#[must_use]
-pub(crate) fn insert_at_path(
-    actions: &[Action],
-    path: &StageId,
-    new_action: Action,
-) -> Option<Vec<Action>> {
-    fn walk(
-        actions: &[Action],
-        path: &[StageIdSegment],
-        new_action: Action,
-    ) -> Option<Vec<Action>> {
-        let mut out = actions.to_vec();
-        let (head, tail) = path.split_first()?;
-        match head {
-            StageIdSegment::Index(i) => {
-                if tail.is_empty() {
-                    let pos = (*i).min(out.len());
-                    out.insert(pos, new_action);
-                    Some(out)
-                } else {
-                    let target = out.get_mut(*i)?;
-                    let (branch_seg, rest) = tail.split_first()?;
-                    match branch_seg {
-                        StageIdSegment::Branch(branch) => {
-                            let branch_actions = branch_actions_mut(target, *branch)?;
-                            let new = walk(branch_actions.as_slice(), rest, new_action)?;
-                            *branch_actions = new;
-                        }
-                        StageIdSegment::Index(_) => return None,
-                    }
-                    Some(out)
-                }
-            }
-            // StageId must always start with an Index segment.
-            StageIdSegment::Branch(_) => None,
-        }
-    }
-    walk(actions, &path.0, new_action)
-}
-
-/// Remove the action at `path`. Both branches stay as `Vec`s, possibly
-/// empty: an empty `if_false` is the engine's "do nothing" shape.
-///
-/// Returns `None` for invalid paths (empty, starts with branch,
-/// out-of-range terminal index, branch segment after non-`Conditional`).
-/// Callers MUST skip the edit and skip `push_edit` on `None` to avoid
-/// phantom undo entries.
-///
-/// # Structural-mutation invariant
-///
-/// When called from an `EditorState` mutator the caller MUST clear
-/// `editor_state.expanded_stages` and `editor_state.malformed_hints`
-/// AFTER dispatching the new actions. `StageId` paths are positional;
-/// removing a stage invalidates every cached path at or after the
-/// mutation point. (Enforced by a test in Task 22.)
-#[must_use]
-pub(crate) fn remove_at_path(actions: &[Action], path: &StageId) -> Option<Vec<Action>> {
-    fn walk(actions: &[Action], path: &[StageIdSegment]) -> Option<Vec<Action>> {
-        let mut out = actions.to_vec();
-        let (head, tail) = path.split_first()?;
-        match head {
-            StageIdSegment::Index(i) => {
-                if tail.is_empty() {
-                    if *i >= out.len() {
-                        return None;
-                    }
-                    out.remove(*i);
-                    Some(out)
-                } else {
-                    let target = out.get_mut(*i)?;
-                    let (branch_seg, rest) = tail.split_first()?;
-                    match branch_seg {
-                        StageIdSegment::Branch(branch) => {
-                            let branch_actions = branch_actions_mut(target, *branch)?;
-                            let new = walk(branch_actions.as_slice(), rest)?;
-                            *branch_actions = new;
-                        }
-                        StageIdSegment::Index(_) => return None,
-                    }
-                    Some(out)
-                }
-            }
-            // StageId must always start with an Index segment.
-            StageIdSegment::Branch(_) => None,
-        }
-    }
-    walk(actions, &path.0)
 }
 
 /// Recursive pipeline component. Renders the action vector as an `<ol>`
@@ -334,9 +179,6 @@ pub(crate) fn Pipeline(
 
     // Build the per-pipeline drop handler. Each SortableGap below
     // clones this `EventHandler` (which is `Copy`) into its props.
-    let cmd_tx = ctx.commands.clone();
-    let cfg_sig = ctx.config;
-    let mut undo_log = editor.undo_log;
     let mut expanded_stages = editor.expanded_stages;
     let mut malformed_hints = editor.malformed_hints;
     let mut malformed_summary_tags = editor.malformed_summary_tags;
@@ -385,49 +227,6 @@ pub(crate) fn Pipeline(
         tgt_segs.push(StageIdSegment::Index(post_remove_to));
         let tgt_id = StageId(tgt_segs);
 
-        // Fetch the dragged action from the current tree.
-        let Some(dragged) = at_path(&root_for_drop, &src_id).cloned() else {
-            return;
-        };
-
-        // Remove then insert. Both helpers return None on invalid paths;
-        // bail to avoid a phantom undo entry.
-        let Some(after_remove) = remove_at_path(&root_for_drop, &src_id) else {
-            return;
-        };
-        let Some(new_actions) = insert_at_path(&after_remove, &tgt_id, dragged) else {
-            return;
-        };
-
-        // Build the before-Mapping snapshot using the live config name.
-        let cfg_read = cfg_sig.read();
-        let current_name = cfg_read.mapping_names.get(&mapping_key_for_drop.1).cloned();
-        drop(cfg_read);
-
-        let before = Mapping {
-            input: mapping_key_for_drop.1.clone(),
-            mode: mapping_key_for_drop.0.clone(),
-            name: current_name.clone(),
-            actions: root_for_drop.clone(),
-        };
-
-        if cmd_tx
-            .send(EngineCommand::SetMapping {
-                input: mapping_key_for_drop.1.clone(),
-                mode: mapping_key_for_drop.0.clone(),
-                name: current_name,
-                actions: new_actions,
-            })
-            .is_err()
-        {
-            tracing::warn!(
-                target: "f9::mapping_editor",
-                action = "stage_dnd_drop_offline",
-                "stage DnD drop dropped: engine channel disconnected"
-            );
-            return;
-        }
-
         // Friendly stage name for the undo label, looked up before the
         // mutation so the original tree resolves.
         let stage_name = at_path(&root_for_drop, &src_id).map_or("stage", stage_title_for);
@@ -439,12 +238,19 @@ pub(crate) fn Pipeline(
                 ..LabelArgs::default()
             },
         );
-        undo_log.write().push_edit(
-            mapping_key_for_drop.clone(),
-            before,
-            UndoKind::StageReorder,
+        if !stage_body::instruments::stage_dispatch::submit(
+            &mapping_key_for_drop,
+            &root_for_drop,
+            crate::mapping_edits::Edit::Move {
+                from: src_id,
+                to: tgt_id,
+            },
             label,
-        );
+            None,
+            true,
+        ) {
+            return;
+        }
 
         // Drag-reorder shifts indices in the source branch (from
         // src_local_index) and in the target branch (from

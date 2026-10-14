@@ -7028,3 +7028,31 @@ fn engine_startup_tolerates_is_enabled_error() {
     // is_enabled was attempted but no set_enabled call followed.
     assert_eq!(mock.calls().len(), 0);
 }
+
+#[test]
+fn mapping_edit_barrier_confirms_prior_queued_mapping_commands() {
+    let (mut engine, state, tx, _dir, _path) = make_engine_with_simple_disk_profile();
+    let owner = 1;
+    for (serial, actions) in [(1, vec![Action::Invert]), (2, vec![])] {
+        tx.send(EngineCommand::SetMapping {
+            input: InputAddress::Unbound,
+            mode: "Default".into(),
+            name: Some("row".into()),
+            actions: actions.clone(),
+        })
+        .unwrap();
+        tx.send(EngineCommand::MappingEditBarrier { owner, serial })
+            .unwrap();
+        engine.tick().unwrap();
+        let state = state.read();
+        assert_eq!(state.mapping_edit_barrier, Some((owner, serial)));
+        let mapping = state
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .find_mapping(&InputAddress::Unbound, "Default")
+            .unwrap();
+        assert_eq!(mapping.actions, actions);
+        assert_eq!(mapping.name.as_deref(), Some("row"));
+    }
+}

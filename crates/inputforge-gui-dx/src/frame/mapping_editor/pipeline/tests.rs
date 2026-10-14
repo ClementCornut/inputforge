@@ -37,7 +37,7 @@ use crate::patterns::live_capture::use_live_capture_provider;
 use crate::toast::{ToastQueue, ToastState};
 
 use super::super::undo_log::{StageId, StageIdSegment, UndoKind, UndoLog};
-use super::{at_path, insert_at_path, remove_at_path, replace_at_path, stage_body};
+use super::{at_path, stage_body};
 
 // ---------------------------------------------------------------------------
 // Helpers shared by path-walker tests
@@ -93,377 +93,6 @@ fn at_path_into_missing_if_false_returns_none() {
         StageIdSegment::Index(0),
     ]);
     assert!(at_path(&actions, &path).is_none());
-}
-
-#[test]
-fn replace_at_path_outer_swaps_action() {
-    let actions = vec![Action::Invert];
-    let path = StageId(vec![StageIdSegment::Index(0)]);
-    let new = replace_at_path(
-        &actions,
-        &path,
-        Action::MergeAxis {
-            second_input: synth_addr(),
-            operation: MergeOp::Average,
-        },
-    )
-    .expect("valid path must succeed");
-    assert!(matches!(new[0], Action::MergeAxis { .. }));
-}
-
-#[test]
-fn replace_at_path_inside_if_true_swaps_action() {
-    let actions = vec![Action::Conditional {
-        condition: Condition::ButtonPressed {
-            input: synth_addr(),
-        },
-        if_true: vec![Action::Invert],
-        if_false: Vec::new(),
-    }];
-    let path = StageId(vec![
-        StageIdSegment::Index(0),
-        StageIdSegment::Branch(ActionBranch::ConditionalTrue),
-        StageIdSegment::Index(0),
-    ]);
-    let new = replace_at_path(
-        &actions,
-        &path,
-        Action::MergeAxis {
-            second_input: synth_addr(),
-            operation: MergeOp::Average,
-        },
-    )
-    .expect("valid path must succeed");
-    match &new[0] {
-        Action::Conditional { if_true, .. } => {
-            assert!(matches!(if_true[0], Action::MergeAxis { .. }));
-        }
-        _ => panic!("outer wrapper should remain Conditional"),
-    }
-}
-
-#[test]
-fn replace_at_path_invalid_path_returns_none() {
-    // Out-of-range index: must return None, not panic, in BOTH debug
-    // and release. Callers depend on this to skip the edit + skip
-    // push_edit (no phantom undo entries).
-    let actions = vec![Action::Invert];
-    let path = StageId(vec![StageIdSegment::Index(99)]);
-    assert!(replace_at_path(&actions, &path, Action::Invert).is_none());
-
-    // Empty path.
-    let path = StageId(vec![]);
-    assert!(replace_at_path(&actions, &path, Action::Invert).is_none());
-
-    // Path starts with a branch segment.
-    let path = StageId(vec![StageIdSegment::Branch(ActionBranch::ConditionalTrue)]);
-    assert!(replace_at_path(&actions, &path, Action::Invert).is_none());
-
-    // Branch segment after a non-Conditional action.
-    let path = StageId(vec![
-        StageIdSegment::Index(0),
-        StageIdSegment::Branch(ActionBranch::ConditionalTrue),
-    ]);
-    assert!(replace_at_path(&actions, &path, Action::Invert).is_none());
-}
-
-#[test]
-fn insert_at_path_outer_appends() {
-    let actions = vec![Action::Invert];
-    let path = StageId(vec![StageIdSegment::Index(1)]);
-    let new = insert_at_path(&actions, &path, Action::Invert).expect("valid path");
-    assert_eq!(new.len(), 2);
-}
-
-#[test]
-fn insert_at_path_outer_inserts_at_index() {
-    let actions = vec![Action::Invert];
-    let path = StageId(vec![StageIdSegment::Index(0)]);
-    let new = insert_at_path(
-        &actions,
-        &path,
-        Action::MergeAxis {
-            second_input: synth_addr(),
-            operation: MergeOp::Average,
-        },
-    )
-    .expect("valid path");
-    assert_eq!(new.len(), 2);
-    assert!(matches!(new[0], Action::MergeAxis { .. }));
-    assert!(matches!(new[1], Action::Invert));
-}
-
-#[test]
-fn insert_at_path_into_if_false_creates_branch() {
-    let actions = vec![Action::Conditional {
-        condition: Condition::ButtonPressed {
-            input: synth_addr(),
-        },
-        if_true: vec![],
-        if_false: Vec::new(),
-    }];
-    let path = StageId(vec![
-        StageIdSegment::Index(0),
-        StageIdSegment::Branch(ActionBranch::ConditionalFalse),
-        StageIdSegment::Index(0),
-    ]);
-    let new = insert_at_path(&actions, &path, Action::Invert).expect("valid path");
-    match &new[0] {
-        Action::Conditional { if_false, .. } => {
-            assert_eq!(if_false.len(), 1);
-        }
-        _ => panic!("expected Conditional"),
-    }
-}
-
-#[test]
-fn remove_at_path_outer_drops_action() {
-    let actions = vec![Action::Invert, Action::Invert];
-    let path = StageId(vec![StageIdSegment::Index(0)]);
-    let new = remove_at_path(&actions, &path).expect("valid path");
-    assert_eq!(new.len(), 1);
-}
-
-#[test]
-fn remove_at_path_last_in_if_false_leaves_empty_branch() {
-    let actions = vec![Action::Conditional {
-        condition: Condition::ButtonPressed {
-            input: synth_addr(),
-        },
-        if_true: vec![],
-        if_false: vec![Action::Invert],
-    }];
-    let path = StageId(vec![
-        StageIdSegment::Index(0),
-        StageIdSegment::Branch(ActionBranch::ConditionalFalse),
-        StageIdSegment::Index(0),
-    ]);
-    let new = remove_at_path(&actions, &path).expect("valid path");
-    match &new[0] {
-        Action::Conditional { if_false, .. } => {
-            assert!(
-                if_false.is_empty(),
-                "removing the last action must leave an empty if_false branch"
-            );
-        }
-        _ => panic!("expected Conditional"),
-    }
-}
-
-#[test]
-fn insert_remove_invalid_paths_return_none() {
-    // Same contract as replace_at_path: callers depend on None
-    // (NOT panic in release) so they can skip the edit + skip push_edit.
-    let actions = vec![Action::Invert];
-
-    // Empty path.
-    assert!(insert_at_path(&actions, &StageId(vec![]), Action::Invert).is_none());
-    assert!(remove_at_path(&actions, &StageId(vec![])).is_none());
-
-    // Path starts with branch segment.
-    assert!(
-        insert_at_path(
-            &actions,
-            &StageId(vec![StageIdSegment::Branch(ActionBranch::ConditionalTrue)]),
-            Action::Invert
-        )
-        .is_none()
-    );
-    assert!(
-        remove_at_path(
-            &actions,
-            &StageId(vec![StageIdSegment::Branch(ActionBranch::ConditionalTrue)])
-        )
-        .is_none()
-    );
-
-    // Out-of-range index for remove_at_path.
-    assert!(remove_at_path(&actions, &StageId(vec![StageIdSegment::Index(99)])).is_none());
-
-    // Branch segment after a non-Conditional action.
-    let path = StageId(vec![
-        StageIdSegment::Index(0),
-        StageIdSegment::Branch(ActionBranch::ConditionalTrue),
-        StageIdSegment::Index(0),
-    ]);
-    assert!(insert_at_path(&actions, &path, Action::Invert).is_none());
-    assert!(remove_at_path(&actions, &path).is_none());
-}
-
-#[test]
-fn branch_path_helpers_traverse_all_action_branch_variants() {
-    let actions = vec![
-        Action::TapGesture {
-            threshold_ms: 250,
-            fire_single_immediately: false,
-            single_tap: vec![Action::Invert],
-            double_tap: vec![Action::MergeAxis {
-                second_input: synth_addr(),
-                operation: MergeOp::Average,
-            }],
-        },
-        Action::PressGesture {
-            threshold_ms: 500,
-            fire_long_when_threshold_crossed: false,
-            short_press: vec![Action::MapToMouse {
-                target: MouseTarget::LeftButton,
-                behavior: OutputBehavior::Pulse,
-            }],
-            long_press: vec![Action::MapToMouse {
-                target: MouseTarget::RightButton,
-                behavior: OutputBehavior::Pulse,
-            }],
-        },
-    ];
-
-    let single_path = StageId(vec![
-        StageIdSegment::Index(0),
-        StageIdSegment::Branch(ActionBranch::TapSingle),
-        StageIdSegment::Index(0),
-    ]);
-    assert!(matches!(
-        at_path(&actions, &single_path),
-        Some(Action::Invert)
-    ));
-
-    let double_path = StageId(vec![
-        StageIdSegment::Index(0),
-        StageIdSegment::Branch(ActionBranch::TapDouble),
-        StageIdSegment::Index(0),
-    ]);
-    assert!(matches!(
-        at_path(&actions, &double_path),
-        Some(Action::MergeAxis { .. })
-    ));
-
-    let replaced = replace_at_path(&actions, &single_path, Action::Invert)
-        .expect("tap single branch path must replace");
-    assert!(matches!(
-        at_path(&replaced, &single_path),
-        Some(Action::Invert)
-    ));
-
-    let inserted = insert_at_path(&actions, &double_path, Action::Invert)
-        .expect("tap double branch path must insert");
-    match &inserted[0] {
-        Action::TapGesture { double_tap, .. } => assert_eq!(double_tap.len(), 2),
-        _ => panic!("outer wrapper should remain TapGesture"),
-    }
-
-    let removed =
-        remove_at_path(&actions, &double_path).expect("tap double branch path must remove");
-    match &removed[0] {
-        Action::TapGesture { double_tap, .. } => assert_eq!(double_tap.len(), 0),
-        _ => panic!("outer wrapper should remain TapGesture"),
-    }
-
-    let short_path = StageId(vec![
-        StageIdSegment::Index(1),
-        StageIdSegment::Branch(ActionBranch::PressShort),
-        StageIdSegment::Index(0),
-    ]);
-    assert!(matches!(
-        at_path(&actions, &short_path),
-        Some(Action::MapToMouse {
-            target: MouseTarget::LeftButton,
-            ..
-        })
-    ));
-
-    let long_path = StageId(vec![
-        StageIdSegment::Index(1),
-        StageIdSegment::Branch(ActionBranch::PressLong),
-        StageIdSegment::Index(0),
-    ]);
-    assert!(matches!(
-        at_path(&actions, &long_path),
-        Some(Action::MapToMouse {
-            target: MouseTarget::RightButton,
-            ..
-        })
-    ));
-
-    let replaced = replace_at_path(&actions, &short_path, Action::Invert)
-        .expect("press short branch path must replace");
-    assert!(matches!(
-        at_path(&replaced, &short_path),
-        Some(Action::Invert)
-    ));
-
-    let inserted = insert_at_path(&actions, &long_path, Action::Invert)
-        .expect("press long branch path must insert");
-    match &inserted[1] {
-        Action::PressGesture { long_press, .. } => assert_eq!(long_press.len(), 2),
-        _ => panic!("outer wrapper should remain PressGesture"),
-    }
-
-    let removed = remove_at_path(&actions, &long_path).expect("press long branch path must remove");
-    match &removed[1] {
-        Action::PressGesture { long_press, .. } => assert_eq!(long_press.len(), 0),
-        _ => panic!("outer wrapper should remain PressGesture"),
-    }
-}
-
-#[test]
-fn generic_branch_paths_insert_replace_remove_and_reorder() {
-    let actions = vec![Action::TapGesture {
-        threshold_ms: 275,
-        fire_single_immediately: false,
-        single_tap: vec![Action::Invert],
-        double_tap: vec![Action::Deadzone {
-            config: DeadzoneConfig::default(),
-        }],
-    }];
-    let single = StageId(vec![
-        StageIdSegment::Index(0),
-        StageIdSegment::Branch(ActionBranch::TapSingle),
-        StageIdSegment::Index(0),
-    ]);
-    let double_insert = StageId(vec![
-        StageIdSegment::Index(0),
-        StageIdSegment::Branch(ActionBranch::TapDouble),
-        StageIdSegment::Index(1),
-    ]);
-
-    let replaced = replace_at_path(
-        &actions,
-        &single,
-        Action::MergeAxis {
-            second_input: synth_addr(),
-            operation: MergeOp::Average,
-        },
-    )
-    .expect("generic branch path replacement succeeds");
-    assert!(matches!(
-        at_path(&replaced, &single),
-        Some(Action::MergeAxis { .. })
-    ));
-
-    let inserted =
-        insert_at_path(&replaced, &double_insert, Action::Invert).expect("branch insert succeeds");
-    match &inserted[0] {
-        Action::TapGesture { double_tap, .. } => assert_eq!(double_tap.len(), 2),
-        _ => panic!("outer wrapper should remain TapGesture"),
-    }
-
-    let double_first = StageId(vec![
-        StageIdSegment::Index(0),
-        StageIdSegment::Branch(ActionBranch::TapDouble),
-        StageIdSegment::Index(0),
-    ]);
-    let moved = at_path(&inserted, &double_first)
-        .cloned()
-        .expect("source resolves");
-    let after_remove = remove_at_path(&inserted, &double_first).expect("branch remove succeeds");
-    let after_reorder =
-        insert_at_path(&after_remove, &double_insert, moved).expect("branch reorder succeeds");
-    match &after_reorder[0] {
-        Action::TapGesture { double_tap, .. } => {
-            assert!(matches!(double_tap[0], Action::Invert));
-            assert!(matches!(double_tap[1], Action::Deadzone { .. }));
-        }
-        _ => panic!("outer wrapper should remain TapGesture"),
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -626,7 +255,7 @@ pub(crate) fn simulate_dispatch_strategy_change(
     target: stage_body::change_mode::StrategyTarget,
 ) -> (Vec<inputforge_core::engine::EngineCommand>, Option<String>) {
     use crate::frame::MappingKey;
-    use crate::frame::mapping_editor::pipeline::stage_body::change_mode::dispatch_strategy_change_into;
+    use crate::frame::mapping_editor::pipeline::stage_body::change_mode::dispatch_strategy_change;
     use inputforge_core::action::ModeChangeStrategy;
     use inputforge_core::engine::EngineCommand;
 
@@ -643,24 +272,21 @@ pub(crate) fn simulate_dispatch_strategy_change(
     let root_actions = vec![Action::ChangeMode {
         strategy: strategy_before,
     }];
-    let names: HashMap<InputAddress, String> = HashMap::new();
-
+    let state = state_for_dispatch(&mapping_key, root_actions.clone(), None);
     let (tx, rx) = mpsc::channel::<EngineCommand>();
-    let mut undo_log = UndoLog::default();
-    let label = dispatch_strategy_change_into(
-        target,
-        &mode_before,
-        is_hold,
-        hold_disabled,
-        &mapping_key,
-        &stage_id,
-        &root_actions,
-        &names,
-        &tx,
-        &mut undo_log,
-    );
-    drop(tx);
-    let commands: Vec<EngineCommand> = rx.try_iter().collect();
+    let dom = dispatch_dom(state, tx);
+    let label = dom.in_scope(ScopeId::APP, || {
+        dispatch_strategy_change(
+            target,
+            &mode_before,
+            is_hold,
+            hold_disabled,
+            &mapping_key,
+            &stage_id,
+            &root_actions,
+        )
+    });
+    let commands = rx.try_iter().collect();
     (commands, label)
 }
 
@@ -674,7 +300,7 @@ pub(crate) fn simulate_dispatch_target_change(
     new_mode: &str,
 ) -> (Vec<inputforge_core::engine::EngineCommand>, Option<String>) {
     use crate::frame::MappingKey;
-    use crate::frame::mapping_editor::pipeline::stage_body::change_mode::dispatch_target_change_into;
+    use crate::frame::mapping_editor::pipeline::stage_body::change_mode::dispatch_target_change;
     use inputforge_core::engine::EngineCommand;
 
     let addr = parse_primary_for_test(primary);
@@ -687,28 +313,19 @@ pub(crate) fn simulate_dispatch_target_change(
     let root_actions = vec![Action::ChangeMode {
         strategy: strategy_before,
     }];
-    let Action::ChangeMode {
-        strategy: strategy_ref,
-    } = &root_actions[0]
-    else {
-        unreachable!("just constructed above");
-    };
-    let names: HashMap<InputAddress, String> = HashMap::new();
-
+    let state = state_for_dispatch(&mapping_key, root_actions.clone(), None);
     let (tx, rx) = mpsc::channel::<EngineCommand>();
-    let mut undo_log = UndoLog::default();
-    let label = dispatch_target_change_into(
-        new_mode,
-        strategy_ref,
-        &mapping_key,
-        &stage_id,
-        &root_actions,
-        &names,
-        &tx,
-        &mut undo_log,
-    );
-    drop(tx);
-    let commands: Vec<EngineCommand> = rx.try_iter().collect();
+    let dom = dispatch_dom(state, tx);
+    let label = dom.in_scope(ScopeId::APP, || {
+        dispatch_target_change(
+            new_mode,
+            &root_actions_strategy(&root_actions),
+            &mapping_key,
+            &stage_id,
+            &root_actions,
+        )
+    });
+    let commands = rx.try_iter().collect();
     (commands, label)
 }
 
@@ -1293,7 +910,7 @@ fn tap_gesture_threshold_edit_sends_replacement() {
     let (tx, rx) = mpsc::channel();
     let mut undo_log = UndoLog::default();
 
-    stage_body::gesture_body::dispatch_gesture_edit_into(
+    dispatch_gesture_with_app(
         stage_body::gesture_body::GestureKind::Tap,
         &mut undo_log,
         &mapping_key,
@@ -1347,7 +964,7 @@ fn tap_gesture_toggle_edit_sends_replacement() {
     let (tx, rx) = mpsc::channel();
     let mut undo_log = UndoLog::default();
 
-    stage_body::gesture_body::dispatch_gesture_edit_into(
+    dispatch_gesture_with_app(
         stage_body::gesture_body::GestureKind::Tap,
         &mut undo_log,
         &mapping_key,
@@ -1378,7 +995,11 @@ fn tap_gesture_toggle_edit_sends_replacement() {
         other => panic!("expected SetMapping, got {other:?}"),
     }
     assert_eq!(
-        undo_log.last_label(&mapping_key).as_deref(),
+        undo_log
+            .stacks
+            .get(&mapping_key)
+            .and_then(|s| s.undo.last())
+            .map(|e| e.label.as_str()),
         Some("Tap gesture: single timing exclusive single/double -> immediate single")
     );
 }
@@ -1396,7 +1017,7 @@ fn press_gesture_threshold_edit_sends_replacement() {
     let (tx, rx) = mpsc::channel();
     let mut undo_log = UndoLog::default();
 
-    stage_body::gesture_body::dispatch_gesture_edit_into(
+    dispatch_gesture_with_app(
         stage_body::gesture_body::GestureKind::Press,
         &mut undo_log,
         &mapping_key,
@@ -1450,7 +1071,7 @@ fn press_gesture_toggle_edit_sends_replacement() {
     let (tx, rx) = mpsc::channel();
     let mut undo_log = UndoLog::default();
 
-    stage_body::gesture_body::dispatch_gesture_edit_into(
+    dispatch_gesture_with_app(
         stage_body::gesture_body::GestureKind::Press,
         &mut undo_log,
         &mapping_key,
@@ -1481,7 +1102,11 @@ fn press_gesture_toggle_edit_sends_replacement() {
         other => panic!("expected SetMapping, got {other:?}"),
     }
     assert_eq!(
-        undo_log.last_label(&mapping_key).as_deref(),
+        undo_log
+            .stacks
+            .get(&mapping_key)
+            .and_then(|s| s.undo.last())
+            .map(|e| e.label.as_str()),
         Some("Press gesture: long timing decide on release -> long fires while held")
     );
 }
@@ -2652,11 +2277,7 @@ fn dnd_can_move_stage_from_outer_into_conditional_if_true() {
         "moving an outer stage into a Conditional's if_true branch must be allowed"
     );
 
-    let dragged = at_path(&actions, &drag_id)
-        .cloned()
-        .expect("drag_id must resolve");
-    let after_remove = remove_at_path(&actions, &drag_id).expect("remove must succeed");
-    let result = insert_at_path(&after_remove, &drop_id, dragged).expect("insert must succeed");
+    let result = dispatch_move(&actions, &drag_id, &drop_id).unwrap();
 
     match &result[0] {
         Action::Conditional { if_true, .. } => {
@@ -2720,11 +2341,7 @@ fn dnd_gap_drop_dispatches_correct_target_index() {
 
     let src_id = StageId(vec![StageIdSegment::Index(src_local_index)]);
     let tgt_id = StageId(vec![StageIdSegment::Index(post_remove_to)]);
-    let dragged = at_path(&actions, &src_id)
-        .cloned()
-        .expect("source resolves");
-    let after_remove = remove_at_path(&actions, &src_id).expect("remove succeeds");
-    let result = insert_at_path(&after_remove, &tgt_id, dragged).expect("insert succeeds");
+    let result = dispatch_move(&actions, &src_id, &tgt_id).unwrap();
 
     assert_eq!(result.len(), 3, "stage count is preserved");
     assert!(matches!(result[0], Action::Deadzone { .. }));
@@ -2772,11 +2389,7 @@ fn dnd_gap_drop_cross_pipeline_no_shift() {
     tgt_segs.push(StageIdSegment::Index(post_remove_to));
     let tgt_id = StageId(tgt_segs);
 
-    let dragged = at_path(&actions, &src_id)
-        .cloned()
-        .expect("source resolves");
-    let after_remove = remove_at_path(&actions, &src_id).expect("remove succeeds");
-    let result = insert_at_path(&after_remove, &tgt_id, dragged).expect("insert succeeds");
+    let result = dispatch_move(&actions, &src_id, &tgt_id).unwrap();
 
     match &result[0] {
         Action::Conditional { if_true, .. } => {
@@ -2817,21 +2430,7 @@ fn dnd_source_adjacent_gap_is_noop() {
         let src_id = StageId(vec![StageIdSegment::Index(src_local_index)]);
         let tgt_id = StageId(vec![StageIdSegment::Index(post_remove_to)]);
 
-        let dragged = at_path(&actions, &src_id)
-            .cloned()
-            .expect("source resolves");
-        let after_remove = remove_at_path(&actions, &src_id).expect("remove succeeds");
-        let result = insert_at_path(&after_remove, &tgt_id, dragged).expect("insert succeeds");
-
-        assert_eq!(
-            result.len(),
-            actions.len(),
-            "no-op preserves stage count for gap_index {gap_index}"
-        );
-        assert!(
-            matches!(result[1], Action::Deadzone { .. }),
-            "source returns to its original slot for gap_index {gap_index}"
-        );
+        assert!(dispatch_move(&actions, &src_id, &tgt_id).is_none());
     }
 }
 
@@ -3551,4 +3150,133 @@ fn change_mode_header_summary_preempted_by_target_empty_hint() {
         html.contains(r#"<div class="if-stage__summary">Set target mode</div>"#),
         "expected summary slot to render the compact tag: {html}"
     );
+}
+
+fn root_actions_strategy(actions: &[Action]) -> inputforge_core::action::ModeChangeStrategy {
+    let Action::ChangeMode { strategy } = &actions[0] else {
+        panic!("strategy fixture required")
+    };
+    strategy.clone()
+}
+fn state_for_dispatch(
+    key: &crate::frame::MappingKey,
+    actions: Vec<Action>,
+    name: Option<String>,
+) -> Arc<RwLock<AppState>> {
+    Arc::new(RwLock::new(AppState::with_profile(Profile::new(
+        "Dispatch".into(),
+        vec![],
+        Modes::new(vec!["Default".into()]).unwrap(),
+        vec![Mapping {
+            input: key.1.clone(),
+            mode: key.0.clone(),
+            name,
+            actions,
+        }],
+        vec![],
+        "Default".into(),
+    ))))
+}
+fn dispatch_dom(
+    state: Arc<RwLock<AppState>>,
+    commands: mpsc::Sender<inputforge_core::engine::EngineCommand>,
+) -> VirtualDom {
+    fn harness() -> Element {
+        let (state, commands) = use_context::<(
+            Arc<RwLock<AppState>>,
+            mpsc::Sender<inputforge_core::engine::EngineCommand>,
+        )>();
+        let key = {
+            let state = state.read();
+            let m = &state.active_profile.as_ref().unwrap().mappings()[0];
+            (m.mode.clone(), m.input.clone())
+        };
+        let frame = inputforge_app::bridge::prepare(&state.read(), Some(&key));
+        let meta = use_signal(|| frame.meta);
+        let ctx = AppContext {
+            state,
+            commands,
+            meta,
+            config: use_signal(|| frame.config),
+            live: use_signal(LiveSnapshot::default),
+            settings: use_signal(SettingsSnapshot::default),
+        };
+        use_context_provider(|| ctx);
+        let mut view = use_view_state_provider(meta);
+        use_hook(|| view.selected_mapping.set(Some(key)));
+        use_context_provider(|| view);
+        use_editor_state_provider();
+        rsx! {}
+    }
+    let mut dom = VirtualDom::new(harness);
+    dom.provide_root_context((state, commands));
+    dom.rebuild_in_place();
+    dom
+}
+#[expect(
+    clippy::too_many_arguments,
+    reason = "migrated gesture fixture exercises all retained fields"
+)]
+fn dispatch_gesture_with_app(
+    kind: stage_body::gesture_body::GestureKind,
+    view: &mut UndoLog,
+    key: &crate::frame::MappingKey,
+    path: &StageId,
+    actions: &[Action],
+    name: Option<String>,
+    commands: &mpsc::Sender<inputforge_core::engine::EngineCommand>,
+    label: String,
+    threshold: u64,
+    toggle: bool,
+    a: Vec<Action>,
+    b: Vec<Action>,
+) {
+    let state = state_for_dispatch(key, actions.to_vec(), name.clone());
+    let request = crate::mapping_edits::Request {
+        profile: state.read().active_profile.as_ref().map(|p| p.id().clone()),
+        before: Mapping {
+            input: key.1.clone(),
+            mode: key.0.clone(),
+            name,
+            actions: actions.to_vec(),
+        },
+        edit: crate::mapping_edits::Edit::Replace {
+            path: path.clone(),
+            action: kind.build_action(threshold, toggle, a, b),
+        },
+        label,
+        group: None,
+        editor: true,
+    };
+    let controller = inputforge_app::mapping_edits::Controller::new(state, commands.clone());
+    assert!(controller.dispatch(request, std::time::Instant::now()));
+    *view = controller.view();
+}
+
+fn dispatch_move(actions: &[Action], from: &StageId, to: &StageId) -> Option<Vec<Action>> {
+    let key = ("Default".into(), InputAddress::Unbound);
+    let state = state_for_dispatch(&key, actions.to_vec(), None);
+    let (tx, rx) = mpsc::channel();
+    let dom = dispatch_dom(state, tx);
+    let delivered = dom.in_scope(ScopeId::APP, || {
+        stage_body::instruments::stage_dispatch::submit(
+            &key,
+            actions,
+            crate::mapping_edits::Edit::Move {
+                from: from.clone(),
+                to: to.clone(),
+            },
+            "move".into(),
+            None,
+            true,
+        )
+    });
+    if !delivered {
+        assert_eq!(rx.try_recv().unwrap_err(), mpsc::TryRecvError::Empty);
+        return None;
+    }
+    match rx.try_recv().unwrap() {
+        inputforge_core::engine::EngineCommand::SetMapping { actions, .. } => Some(actions),
+        other => panic!("unexpected {other:?}"),
+    }
 }

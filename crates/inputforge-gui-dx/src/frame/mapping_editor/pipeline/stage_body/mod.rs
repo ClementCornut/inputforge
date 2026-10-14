@@ -20,7 +20,7 @@ pub(crate) mod change_mode;
 mod conditional;
 mod deadzone;
 pub(crate) mod gesture_body;
-mod instruments;
+pub(crate) mod instruments;
 mod invert;
 mod map_to_keyboard;
 mod map_to_mouse;

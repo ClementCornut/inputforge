@@ -822,14 +822,15 @@ fn ContextMenuMount(
                                                         .map(|m| m.actions.clone())
                                                     })
                                                     .unwrap_or_default();
-                                                let _ = cmd_for_each.send(
+                                                let delivered = cmd_for_each.send(
                                                     EngineCommand::SetMapping {
                                                         input: target_for_each.input.clone(),
                                                         mode: target_mode_clone.clone(),
                                                         name: target_for_each.name.clone(),
                                                         actions,
                                                     },
-                                                );
+                                                ).is_ok();
+                                                if delivered && let Some(bindings) = try_consume_context::<crate::mapping_edits::Bindings>() { bindings.forget.call((target_mode_clone.clone(), target_for_each.input.clone())); }
                                                 tracing::info!(
                                                     target: "f8::mapping_list",
                                                     action = "duplicate_to_mode",
@@ -985,10 +986,9 @@ pub(crate) fn DeleteDialogMount(delete_target: Signal<Option<MappingSummary>>) -
                     variant: crate::components::ButtonVariant::Danger,
                     onclick: move |_| {
                         if let Some(target) = &target_clone {
-                            let _ = cmd_for_delete.send(EngineCommand::RemoveMapping {
-                                input: target.input.clone(),
-                                mode: target.mode.clone(),
-                            });
+                            if cmd_for_delete.send(EngineCommand::RemoveMapping {
+                                input: target.input.clone(), mode: target.mode.clone(),
+                            }).is_ok() && let Some(bindings) = try_consume_context::<crate::mapping_edits::Bindings>() { bindings.forget.call((target.mode.clone(), target.input.clone())); }
                             tracing::info!(
                                 target: "f8::mapping_list",
                                 action = "remove",
@@ -1014,3 +1014,6 @@ pub(crate) fn DeleteDialogMount(delete_target: Signal<Option<MappingSummary>>) -
 // goes through the normal Pad{Capturing} -> Pad{Captured} -> Add
 // dispatch flow. The user can edit the name and press the refresh
 // icon to recapture, exactly like a fresh add.
+
+#[cfg(test)]
+mod rename_tests;

@@ -10,7 +10,7 @@ use std::sync::{Arc, mpsc};
 /// Transitional engine handles used by workflows awaiting extraction.
 // shortcut: workflow reads and commands remain here, remove as findings 2-10 move to the app.
 #[derive(Clone, Debug)]
-pub(crate) struct RawHandles {
+pub struct RawHandles {
     pub state: Arc<RwLock<AppState>>,
     pub commands: mpsc::Sender<EngineCommand>,
 }

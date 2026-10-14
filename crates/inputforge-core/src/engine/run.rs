@@ -644,6 +644,9 @@ impl Engine {
             return Ok(());
         }
         match cmd {
+            EngineCommand::MappingEditBarrier { owner, serial } => {
+                self.state.write().mapping_edit_barrier = Some((owner, serial));
+            }
             EngineCommand::Retry
             | EngineCommand::RefreshInput
             | EngineCommand::ApplyControllerChanges

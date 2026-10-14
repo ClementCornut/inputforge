@@ -1,6 +1,6 @@
 # GUI rendering boundary audit
 
-Date: 2026-10-12
+Date: 2026-10-12. Latest implementation update: 2026-10-14.
 
 ## Scope and conclusion
 
@@ -17,7 +17,8 @@ Requirements:
   Transitive dependencies may retain X11 support.
 
 The original audit was read-only. The status below now also records the first
-implemented routing, polling, controller-workflow, advanced-axis, live-capture, and keyboard-capture extractions;
+implemented routing, polling, controller-workflow, advanced-axis, live-capture,
+keyboard-capture, and shared mapping-dispatch/history extractions;
 the remaining findings are still open.
 
 ## Resolved routing controls — 2026-10-12
@@ -721,6 +722,149 @@ configuration remain unchanged.
   unchanged. These follow-up changes are uncommitted; the user's staged hook
   permission changes were preserved.
 
+## Shared mapping dispatch and history slice — 2026-10-14
+
+This approved extraction partially resolves findings **#1**, **#4** and **#8**.
+The dated capture sections above record ownership at their implementation time;
+this section supersedes their deferral of shared mapping dispatch and undo. Batch
+mapping, profile/mode/snapshot workflows and curve/deadzone algorithms remain open.
+
+- [The app controller](../crates/inputforge-app/src/mapping_edits/mod.rs) owns
+  editor-scoped history and lifecycle, current profile/mode/selection validation,
+  dispatch, undo/redo, invalidation and the inclusive 250 ms nudge window. Grouping
+  includes mapping, stage, arrow direction and focused handle; timeout, focus or
+  navigation changes, intervening edits and restores end a group.
+- [Preparation](../crates/inputforge-app/src/mapping_edits/prepare.rs) preserves
+  exact optional names, uses core's existing action-tree validator, and rejects
+  stale or malformed targets before delivery. Edits and restores reconcile private
+  history under their validation read guard, so a polling contention skip cannot
+  allow stale history to resurrect an external deletion. [Path edits](../crates/inputforge-app/src/mapping_edits/paths.rs)
+  handle root-relative Conditional, Tap and Press branches. Queued edits use the
+  latest delivered tree; known older renderer snapshots can support disjoint
+  field edits across engine acknowledgements, but structural/restore boundaries
+  block stale positional edits and parent replacement cannot erase newer children.
+- [History](../crates/inputforge-app/src/mapping_edits/history.rs) keeps restore
+  snapshots private, with the existing 50-entry FIFO limit per mapping. Fresh
+  edits clear redo. Undo restores the before snapshot and redo the delivered final
+  snapshot, including a grouped burst. Empty mappings remain present with their
+  optional names. Rebind preserves its existing forward SetMapping behavior;
+  undo restores or removes the destination according to its original existence.
+  Destination edits invalidate dependent history, and source deletion cannot
+  restore stale rebind history. Stable profile identity, mappings and modes
+  isolate histories; external replacements/deletions invalidate affected stacks.
+- [Dispatch](../crates/inputforge-app/src/mapping_edits/dispatch.rs) releases
+  engine/controller guards before command delivery and signal publication. History
+  changes only after successful edit/restore delivery. A small
+  [core queue barrier](../crates/inputforge-core/src/engine/command.rs) records an
+  owner/serial marker in AppState after preceding commands. This distinguishes
+  unfinished A→B→A command chains from confirmed round trips and external changes,
+  including intermediate engine snapshots; equality alone cannot acknowledge them.
+  It introduces no routing decision, dependency, thread or polling task.
+- [The GUI contract](../crates/inputforge-gui-dx/src/mapping_edits.rs) contains
+  prepared paths/intents, display labels, read-only history summaries, signals and
+  callbacks. The old GUI mutable history and nudge timer were removed. Field
+  action construction, labels, SVG/geometry, local capture display and callback
+  wiring remain in the GUI. Keyboard capture still publishes the local combo
+  only after successful dispatch, resists unchanged stale props and accepts
+  external edits/undo. Gesture threshold/toggle local drafts remain intact.
+- The existing 16 ms app bridge calls history reconciliation after publication;
+  reconciliation skips contended state reads. GUI navigation changes forward the
+  same callback. Teardown disposes history; remount starts empty while owner/serial
+  identity prevents old queue acknowledgements from confirming new commands.
+  Engine handles at the renderer entry now use the existing RawHandles bundle;
+  they remain transitional for deferred workflows.
+
+```mermaid
+flowchart LR
+    GUI["GUI: prepared targets, labels, signals"] -->|"edit / undo / redo callbacks"| App["App: validation, dispatch, private history"]
+    App -->|"mapping command + serial barrier"| Core["Core: queued execution"]
+    Core -->|"state and acknowledged serial"| App
+    App -->|"prepared history labels"| GUI
+```
+
+All history callers were included:
+
+| Callers | Result |
+| --- | --- |
+| Stage fields: ChangeMode, keyboard/mouse/vJoy, MergeAxis, predicate, Tap/Press | Shared app replacement dispatch; labels and typed capture targets remain GUI-prepared. |
+| Add palette, stage menu remove/move, pipeline drop | App insert/remove/move dispatch; GUI expansion/hint invalidation and gap/drag wiring retained. |
+| Curve/deadzone toolbars, pointer-release commits and keyboard nudges | Shared dispatch/history; one drag commit, nudge group metadata and focus callbacks retained. Algorithms deferred. |
+| Editor header rename and primary rebind | App dispatch and complete destination restoration. |
+| Editor keyboard undo/redo and history recap | App restore callbacks and prepared label summaries. |
+| Rail inline rename | App obtains current actions and validates captured optional-name metadata even after config advances; no GUI engine-state read. |
+| Rail add/duplicate/replace, duplicate to another mode and delete | Existing deferred forward workflow retained; successful delivery invokes app forget for the affected mapping, while failed delivery leaves history intact. |
+| External profile/mode/mapping changes | App reconciliation detects stable profile identity changes and missing/replaced mappings, invalidating related history rather than resurrecting stale state. |
+| Root unmount/remount and existing bridge publication | App disposal/reconciliation with GUI signal ownership; no new poller. |
+
+Regression coverage was written before the extraction implementation. Additional
+review regressions reproduced stale structural targets, core-rejected trees,
+round-trip acknowledgement ambiguity, overlapping nested edits, write-contention
+revalidation, delivery-before-
+render timing and rebind invalidation before their controller fixes. Tree mutation
+coverage moved to app-backed tests; real GUI keyboard/capture handlers, labels,
+DnD callback delivery, stale rail metadata and root lifecycle are also covered.
+
+## Mapping-slice verification
+
+- `bash .githooks/pre-commit` passed unchanged: formatting and
+  `cargo clippy --all-targets -- -D warnings`, with no lint exclusions.
+- `cargo test --workspace --locked --offline -j 2` with host IPC permissions:
+  **2,107 passed, 0 failed, 11 ignored**. The initial sandbox run could not create
+  sockets for five existing single-instance tests; the host-enabled suite passed.
+- The suite includes **43 app mapping regressions**, **817 GUI library tests**,
+  app-backed renderer integration/polling/lifecycle tests and the core command-
+  barrier regression. The added contention test covers both dispatch and undo.
+- `git diff --check`, audit local-link checks and unchanged acceptance-section
+  checks passed. All new app modules remain below 200 nonblank code lines.
+  Independent read-only review found no further issues after regression fixes.
+- The hook, lint configuration and dependencies remain unchanged. All changes
+  remain uncommitted and unstaged.
+
+The user subsequently reported this slice seems to work fine; see the acceptance
+update below. Individual native checklist cases, platforms and performance remain
+unverified. Earlier native Apply, live-capture and user-reported app acceptance
+sections remain unchanged. No commit or staging is part of this work.
+
+## Mapping-slice manual acceptance
+
+Run `dx run -p inputforge-app` on native Wayland; repeat on Windows when available.
+
+1. Edit named and unnamed mappings, including the same input in two modes. Change
+   keyboard/mouse/vJoy targets, ChangeMode, MergeAxis and predicates. Confirm names,
+   undo labels and input identities; switching mode/profile must isolate histories.
+2. Capture a keyboard combo in the field and Add palette. It must update immediately,
+   remain visible through unchanged stale props, and dispatch once. Check unsupported
+   keys/Escape, modifier-only combos, typing in text fields, and Ctrl+Z/Y interception
+   while listening. Undo/redo and external changes must restore the displayed combo.
+3. Add, remove and reorder stages in every Conditional/Tap/Press branch, including
+   cross-branch drops. Confirm expansion survives in unaffected branches, invalid or
+   source-adjacent drops do nothing, and deleting the last stage keeps its named row.
+   Quickly edit sibling stages and gesture threshold then toggle; no queued edit
+   may disappear. Undo/redo repeatedly and confirm each complete before/after tree.
+4. For both curve and deadzone plots, drag and release once, then undo/redo once.
+   A same-arrow/same-handle burst within 250 ms must undo to its initial value and
+   redo to its final value. Wait longer, change arrow/handle/stage, Tab/Home/End,
+   focus elsewhere, navigate away/back or perform another edit; each must split
+   the group. Existing plot geometry and calculations should behave identically.
+5. Rename in the editor and rail, rebind a primary input to unused and existing
+   targets, then undo/redo. Destination mappings must restore correctly. Use rail
+   add/duplicate/replace, duplicate-to-mode and delete after making editor history;
+   old history must not overwrite replacement work or resurrect a deleted source.
+   Change/delete targets during capture and verify stale completion is rejected.
+6. Close/reopen the editor and quit/relaunch. History must be fresh, listeners and
+   polling must install once, and no stale undo/redo may affect a new session.
+   Recheck Stop/edit-layout/Apply/Start; the previous successful native Apply retest
+   is historical evidence for its timeout fix, independent of this slice.
+
+## Mapping-slice acceptance update — 2026-10-14
+
+After the shared mapping dispatch/history extraction, the user reported:
+“seem to work fine”. This records user-reported acceptance of this slice. The
+report does not specify individual manual checklist cases, platforms or timing
+measurements; those remain unverified. This evidence is separate from the prior
+native Apply retest, live-capture success and earlier user-reported app acceptance,
+whose recorded evidence remains unchanged.
+
 ## Remaining responsibilities to move
 
 The following areas are ordered by migration priority. Source links identify
@@ -729,10 +873,10 @@ may change during extraction.
 
 | # | Area and evidence | App-owned responsibility |
 | --- | --- | --- |
-| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, live capture, and keyboard capture now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
+| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, live capture, keyboard capture, and shared mapping dispatch/history now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
 | 2 | **Controller editing policy — partially resolved** — [app controller policy](../crates/inputforge-app/src/controllers/policy.rs); [app axis settings](../crates/inputforge-app/src/controllers/axes.rs); [axis rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Selection, virtual-layout mutations, Apply, shared routing decisions, and advanced axis settings are app-owned. Other configuration-editing/readiness gates remain; see resolved status above. |
-| 3 | **Capture workflows — partially resolved** — [app live capture](../crates/inputforge-app/src/live_capture/mod.rs); [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs); [app keyboard capture](../crates/inputforge-app/src/keyboard_capture/mod.rs); [GUI keyboard contract](../crates/inputforge-gui-dx/src/keyboard_capture.rs) | Live and keyboard capture, physical keyboard translation, ownership, target revalidation, cancellation, interception and delivery are app-owned; live input additionally owns epoch/native confirmation. Add/collision decisions and mapping edits/undo remain with their deferred workflows. |
-| 4 | **Mapping edits and undo** — [stage dispatch](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs), line 28; [undo history](../crates/inputforge-gui-dx/src/frame/mapping_editor/undo_log.rs), line 90 | Action-tree mutations, command construction, undo/redo, drag commits, and keyboard-nudge grouping. Curve/deadzone mutation algorithms also belong outside rendering. |
+| 3 | **Capture workflows — partially resolved** — [app live capture](../crates/inputforge-app/src/live_capture/mod.rs); [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs); [app keyboard capture](../crates/inputforge-app/src/keyboard_capture/mod.rs); [GUI keyboard contract](../crates/inputforge-gui-dx/src/keyboard_capture.rs) | Live and keyboard capture, physical keyboard translation, ownership, target revalidation, cancellation, interception and delivery are app-owned; live input additionally owns epoch/native confirmation. Shared stage edits/undo are app-owned in the later mapping slice; Add/collision decisions remain deferred. |
+| 4 | **Mapping edits and undo — partially resolved** — [app controller](../crates/inputforge-app/src/mapping_edits/mod.rs); [app paths](../crates/inputforge-app/src/mapping_edits/paths.rs); [app history](../crates/inputforge-app/src/mapping_edits/history.rs); [GUI callback wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs) | Shared mapping stage edits, command construction, restore snapshots, undo/redo, invalidation and nudge grouping are app-owned. Curve/deadzone algorithms, draft/drag geometry and broader rail/add/collision/profile workflows remain deferred. |
 | 5 | **Batch mapping** — [entry generation](../crates/inputforge-gui-dx/src/frame/bulk_map/apply.rs), line 19; [Apply handler](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs), line 335 | Automatic target selection, conflict decisions, wizard reconciliation, batch command construction, and snapshot creation requests. |
 | 6 | **Profiles, modes, snapshots, and settings** — [profile actions](../crates/inputforge-gui-dx/src/frame/profiles/actions.rs), line 114; [snapshot settings](../crates/inputforge-gui-dx/src/frame/settings_panel/snapshots_section.rs), line 85 | CRUD workflows, validation, destructive-confirmation decisions, pruning calculations, optimistic state, and command dispatch. Reuse existing core validation rather than maintaining separate GUI rules. |
 | 7 | **Operating-system services and filesystem access** — [file picker](../crates/inputforge-gui-dx/src/frame/profiles/mod.rs), line 30; [clipboard](../crates/inputforge-gui-dx/src/frame/panel_slot/device_panel/mod.rs), line 239; [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Dialog invocation, clipboard writes, and other OS services remain. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
@@ -788,7 +932,8 @@ engine command sender.
 1. Polling/snapshot preparation, shared routing controls, and basic controller
    selection/virtual-layout/Apply and advanced axis settings are complete. Extract
    remaining engine access alongside each deferred workflow.
-2. Live and keyboard capture primitives are complete. Extract the remaining mapping/editor controllers and undo workflows next.
+2. Live/keyboard capture and shared mapping dispatch/history are complete. Extract
+   deferred mapping/editor algorithms and broader workflows next.
 3. Extract the remaining workflows, services, event handling, and timers.
 
 Move existing behavioral tests with the responsibilities they verify. Retain
@@ -865,6 +1010,9 @@ The keyboard slice has app/controller, real-handler, renderer-frame and executab
 listener coverage. After its extraction and undo-label follow-up, the user reported
 the app working as recorded above; individual native checklist cases, platform
 coverage and timing measurements remain unverified.
+The mapping dispatch/history slice has app regression and GUI callback/lifecycle
+coverage, and the user subsequently reported it seems to work fine as recorded
+above. Individual native checklist cases, platforms and timing remain unverified.
 The previous desktop reports are user-reported native acceptance;
 the timestamp correction, separate Windows acceptance, and runtime performance
 measurements remain unverified on native hardware. The recommendations are ownership

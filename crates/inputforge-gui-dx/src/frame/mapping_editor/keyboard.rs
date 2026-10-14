@@ -17,8 +17,6 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::engine::EngineCommand;
-
 use crate::context::AppContext;
 use crate::frame::mapping_editor::EditorState;
 use crate::frame::view_state::ViewState;
@@ -172,16 +170,10 @@ window.addEventListener('keydown', h, true);
 /// | `StageMoveDown` | Stub: logs to console (Task 41 smoke). |
 /// | `StageMenuOpen` | Stub: logs to console (Task 41 smoke). |
 /// | `PassThrough` | No-op; native handlers proceed. |
-#[expect(
-    clippy::too_many_lines,
-    reason = "The hook is a single logical unit: signal allocation, effect mount, \
-              and the async listener loop. Splitting it across helpers would \
-              break Dioxus hook ordering rules and scatter the signal lifetimes."
-)]
 pub(crate) fn use_kb_listener() {
-    let ctx = use_context::<AppContext>();
+    let _ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
-    let mut editor = use_context::<EditorState>();
+    let editor = use_context::<EditorState>();
 
     // Guard: install the JS listener only once per component mount.
     let kb_listener_mounted: Signal<bool> = use_signal(|| false);
@@ -197,7 +189,6 @@ pub(crate) fn use_kb_listener() {
         sd.set(false);
 
         // Clone all context handles the spawned future needs.
-        let cmd_tx = ctx.commands.clone();
         let view_sel = view.selected_mapping;
 
         spawn(async move {
@@ -233,55 +224,17 @@ pub(crate) fn use_kb_listener() {
                     }
 
                     KbIntent::Undo => {
-                        let Some(key) = view_sel.peek().clone() else {
-                            continue;
-                        };
-                        let Some(entry) = editor.undo_log.write().undo(&key) else {
-                            continue;
-                        };
-                        let m = &entry.mapping_before;
-                        if cmd_tx
-                            .send(EngineCommand::SetMapping {
-                                input: m.input.clone(),
-                                mode: m.mode.clone(),
-                                name: m.name.clone(),
-                                actions: m.actions.clone(),
-                            })
-                            .is_err()
-                        {
-                            tracing::warn!(
-                                target: "f9::keyboard",
-                                action = "undo_dropped_offline",
-                                "undo dropped: engine channel disconnected"
-                            );
-                            // Known concern (documented in plan): we do NOT
-                            // roll back the undo pop; the entry has already
-                            // been pushed to the redo stack by UndoLog::undo.
+                        if let Some(key) = view_sel.peek().clone() {
+                            consume_context::<crate::mapping_edits::Bindings>()
+                                .undo
+                                .call(key);
                         }
                     }
-
                     KbIntent::Redo => {
-                        let Some(key) = view_sel.peek().clone() else {
-                            continue;
-                        };
-                        let Some(entry) = editor.undo_log.write().redo(&key) else {
-                            continue;
-                        };
-                        let m = &entry.mapping_before;
-                        if cmd_tx
-                            .send(EngineCommand::SetMapping {
-                                input: m.input.clone(),
-                                mode: m.mode.clone(),
-                                name: m.name.clone(),
-                                actions: m.actions.clone(),
-                            })
-                            .is_err()
-                        {
-                            tracing::warn!(
-                                target: "f9::keyboard",
-                                action = "redo_dropped_offline",
-                                "redo dropped: engine channel disconnected"
-                            );
+                        if let Some(key) = view_sel.peek().clone() {
+                            consume_context::<crate::mapping_edits::Bindings>()
+                                .redo
+                                .call(key);
                         }
                     }
 

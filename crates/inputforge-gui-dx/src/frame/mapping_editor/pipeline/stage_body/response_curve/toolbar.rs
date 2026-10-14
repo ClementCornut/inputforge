@@ -11,7 +11,6 @@ use crate::components::tabs::{TabItem, Tabs};
 use crate::components::{Button, ButtonSize, ButtonVariant, Switch};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
-use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::dispatch_stage_edit;
 use crate::frame::mapping_editor::undo_log::StageId;
 
@@ -35,11 +34,7 @@ pub(crate) fn Toolbar(
     mapping_key: MappingKey,
 ) -> Element {
     let ctx = use_context::<AppContext>();
-    let editor = use_context::<EditorState>();
-    let cmd_tx = ctx.commands.clone();
-    let config_signal = ctx.config;
-    let mut undo_log = editor.undo_log;
-
+    let _config_signal = ctx.config;
     let current_kind = match &curve {
         ResponseCurve::PiecewiseLinear { .. } => CurveType::PiecewiseLinear,
         ResponseCurve::CubicSpline { .. } => CurveType::CubicSpline,
@@ -72,7 +67,6 @@ pub(crate) fn Toolbar(
     let actions_for_type = root_actions.clone();
     let key_for_type = mapping_key.clone();
     let stage_for_type = stage_id.clone();
-    let cmd_for_type = cmd_tx.clone();
     let on_type_change = move |id: String| {
         let target = match id.as_str() {
             "linear" => CurveType::PiecewiseLinear,
@@ -86,19 +80,11 @@ pub(crate) fn Toolbar(
         let Some(new) = mutation::convert_curve_type(&curve_for_type, target) else {
             return;
         };
-        let name = config_signal
-            .read()
-            .mapping_names
-            .get(&key_for_type.1)
-            .cloned();
         dispatch_stage_edit(
             &actions_for_type,
             &stage_for_type,
             Action::ResponseCurve { curve: new },
             &key_for_type,
-            name,
-            &cmd_for_type,
-            &mut undo_log,
             format!(
                 "curve: type {} -> {}",
                 kind_label(current_kind),
@@ -111,7 +97,6 @@ pub(crate) fn Toolbar(
     let actions_for_sym = root_actions.clone();
     let key_for_sym = mapping_key.clone();
     let stage_for_sym = stage_id.clone();
-    let cmd_for_sym = cmd_tx.clone();
     let on_symmetric_change = move |evt: FormEvent| {
         // Switch renders <input type="checkbox">. evt.value() returns the
         // static `value` attribute (always "on") regardless of checked
@@ -123,19 +108,11 @@ pub(crate) fn Toolbar(
         let Some(new) = mutation::apply_symmetry(&curve_for_sym, new_state) else {
             return;
         };
-        let name = config_signal
-            .read()
-            .mapping_names
-            .get(&key_for_sym.1)
-            .cloned();
         dispatch_stage_edit(
             &actions_for_sym,
             &stage_for_sym,
             Action::ResponseCurve { curve: new },
             &key_for_sym,
-            name,
-            &cmd_for_sym,
-            &mut undo_log,
             format!("curve: symmetric {}", if new_state { "on" } else { "off" }),
         );
     };
@@ -144,25 +121,16 @@ pub(crate) fn Toolbar(
     let actions_for_reset = root_actions.clone();
     let key_for_reset = mapping_key.clone();
     let stage_for_reset = stage_id.clone();
-    let cmd_for_reset = cmd_tx.clone();
     let on_reset = move |_| {
         let new = mutation::default_identity_curve(&curve_for_reset);
         if new == curve_for_reset {
             return;
         }
-        let name = config_signal
-            .read()
-            .mapping_names
-            .get(&key_for_reset.1)
-            .cloned();
         dispatch_stage_edit(
             &actions_for_reset,
             &stage_for_reset,
             Action::ResponseCurve { curve: new },
             &key_for_reset,
-            name,
-            &cmd_for_reset,
-            &mut undo_log,
             "curve: reset".to_owned(),
         );
     };

@@ -90,12 +90,18 @@ fn demo_root() -> dioxus::prelude::Element {
         inputforge_app::keyboard_capture::Controller::new(Arc::clone(&state))
     });
     inputforge_gui_dx::render_editor(
-        state,
-        commands,
+        inputforge_gui_dx::RawHandles {
+            state: Arc::clone(&state),
+            commands: (commands).clone(),
+        },
         routing,
         controllers,
         capture.bindings(),
         keyboard.bindings(),
+        dioxus::prelude::use_hook(|| {
+            inputforge_app::mapping_edits::Controller::new(Arc::clone(&state), (commands).clone())
+        })
+        .bindings(),
         publish,
     )
 }

@@ -31,15 +31,13 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Mapping};
-use inputforge_core::engine::EngineCommand;
+use inputforge_core::action::Action;
 use inputforge_core::types::{OutputAddress, OutputId, VJoyAxis};
 
 use crate::components::{Select, SelectOption};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::replace_at_path;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 
 /// Human-readable label for a [`VJoyAxis`] variant.
@@ -221,30 +219,11 @@ pub(crate) fn MapToVJoyBody(
         output_value_str.set(output_str);
     }
 
-    // --- Shared dispatch helper (captures by value via closures) ---
-
-    // Amendment 2: look up the current name from the snapshot so we never
-    // clear a user-set name by passing None.
-    let current_name = cfg.mapping_names.get(&mapping_key.1).cloned();
-
-    // Snapshot of the mapping before any edit, used for undo entries.
-    let before_mapping = Mapping {
-        input: mapping_key.1.clone(),
-        mode: mapping_key.0.clone(),
-        name: current_name.clone(),
-        actions: root_actions.clone(),
-    };
-
     // --- Device picker change handler ---
     let mapping_key_dev = mapping_key.clone();
     let stage_id_dev = stage_id.clone();
     let root_actions_dev = root_actions.clone();
-    let before_dev = before_mapping.clone();
-    let current_name_dev = current_name.clone();
-    let cmd_tx_dev = ctx.commands.clone();
     let output_cloned_dev = output.clone();
-    let mut undo_log_dev = editor.undo_log;
-
     let on_device_change = move |evt: FormEvent| {
         let new_device_str = evt.value();
         let Ok(new_device) = new_device_str.parse::<u8>() else {
@@ -260,27 +239,6 @@ pub(crate) fn MapToVJoyBody(
         let new_action = Action::MapToVJoy {
             output: new_output.clone(),
         };
-        let Some(new_actions) = replace_at_path(&root_actions_dev, &stage_id_dev, new_action)
-        else {
-            return;
-        };
-        // Amendment 5: dispatch first; skip push_edit if the channel is closed.
-        if cmd_tx_dev
-            .send(EngineCommand::SetMapping {
-                input: mapping_key_dev.1.clone(),
-                mode: mapping_key_dev.0.clone(),
-                name: current_name_dev.clone(),
-                actions: new_actions,
-            })
-            .is_err()
-        {
-            tracing::warn!(
-                target: "f9::mapping_editor",
-                action = "map_to_vjoy_device_drop_offline",
-                "device change dropped: engine channel disconnected"
-            );
-            return;
-        }
         let before_str = format!("Device {}", output_cloned_dev.device);
         let after_str = format!("Device {new_device}");
         let label = format_undo_label(
@@ -292,10 +250,11 @@ pub(crate) fn MapToVJoyBody(
                 ..LabelArgs::default()
             },
         );
-        undo_log_dev.write().push_edit(
-            mapping_key_dev.clone(),
-            before_dev.clone(),
-            UndoKind::StageEdit,
+        super::instruments::stage_dispatch::dispatch_stage_edit(
+            &root_actions_dev,
+            &stage_id_dev,
+            new_action,
+            &mapping_key_dev,
             label,
         );
     };
@@ -304,12 +263,7 @@ pub(crate) fn MapToVJoyBody(
     let mapping_key_out = mapping_key.clone();
     let stage_id_out = stage_id.clone();
     let root_actions_out = root_actions.clone();
-    let before_out = before_mapping.clone();
-    let current_name_out = current_name.clone();
-    let cmd_tx_out = ctx.commands.clone();
     let output_cloned_out = output.clone();
-    let mut undo_log_out = editor.undo_log;
-
     let on_output_change = move |evt: FormEvent| {
         let key_str = evt.value();
         let Some(new_output_id) = parse_output_id(&key_str) else {
@@ -325,27 +279,6 @@ pub(crate) fn MapToVJoyBody(
         let new_action = Action::MapToVJoy {
             output: new_output.clone(),
         };
-        let Some(new_actions) = replace_at_path(&root_actions_out, &stage_id_out, new_action)
-        else {
-            return;
-        };
-        // Amendment 5: dispatch first; skip push_edit if the channel is closed.
-        if cmd_tx_out
-            .send(EngineCommand::SetMapping {
-                input: mapping_key_out.1.clone(),
-                mode: mapping_key_out.0.clone(),
-                name: current_name_out.clone(),
-                actions: new_actions,
-            })
-            .is_err()
-        {
-            tracing::warn!(
-                target: "f9::mapping_editor",
-                action = "map_to_vjoy_output_drop_offline",
-                "output change dropped: engine channel disconnected"
-            );
-            return;
-        }
         let before_key = output_id_key(&output_cloned_out.output);
         let after_key = output_id_key(&new_output_id);
         let label = format_undo_label(
@@ -357,10 +290,11 @@ pub(crate) fn MapToVJoyBody(
                 ..LabelArgs::default()
             },
         );
-        undo_log_out.write().push_edit(
-            mapping_key_out.clone(),
-            before_out.clone(),
-            UndoKind::StageEdit,
+        super::instruments::stage_dispatch::dispatch_stage_edit(
+            &root_actions_out,
+            &stage_id_out,
+            new_action,
+            &mapping_key_out,
             label,
         );
     };

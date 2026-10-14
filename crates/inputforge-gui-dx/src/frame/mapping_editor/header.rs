@@ -23,8 +23,7 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Mapping};
-use inputforge_core::engine::EngineCommand;
+use inputforge_core::action::Action;
 use inputforge_core::types::{InputAddress, OutputAddress, OutputId, VJoyAxis};
 
 use crate::capture::{CaptureFilter, Target};
@@ -54,16 +53,13 @@ pub(crate) fn Header(
     actions: Vec<Action>,
 ) -> Element {
     let ctx = use_context::<AppContext>();
-    let editor = use_context::<EditorState>();
+    let _editor = use_context::<EditorState>();
 
     // Local UI state.
     let mut armed: Signal<bool> = use_signal(|| false);
     let mut local_name: Signal<String> = use_signal(|| name.clone());
     let mapping_key_for_capture = mapping_key.clone();
     let actions_for_capture = actions.clone();
-    let name_for_capture = Some(name.clone());
-    let cmd_tx_for_capture = ctx.commands.clone();
-    let mut undo_log_for_capture = editor.undo_log;
     let cfg_for_capture = ctx.config;
 
     let capture = use_capture(
@@ -83,7 +79,7 @@ pub(crate) fn Header(
         },
         CaptureFilter::Any,
         move |new_addr| {
-            let (mode, old_addr) = mapping_key_for_capture.clone();
+            let (_, old_addr) = mapping_key_for_capture.clone();
             // No-op rebind: the user pressed the input that is already mapped
             // here. Skip dispatch + undo, mirroring the rename path's same-name skip.
             if new_addr == old_addr {
@@ -95,30 +91,6 @@ pub(crate) fn Header(
             let old_label = source_label::format(&old_addr, &cfg_for_capture.read());
             let new_label = source_label::format(&new_addr, &cfg_for_capture.read());
 
-            let before = Mapping {
-                input: old_addr.clone(),
-                mode: mode.clone(),
-                name: name_for_capture.clone(),
-                actions: actions_for_capture.clone(),
-            };
-
-            if cmd_tx_for_capture
-                .send(EngineCommand::SetMapping {
-                    input: new_addr.clone(),
-                    mode: mode.clone(),
-                    name: name_for_capture.clone(),
-                    actions: actions_for_capture.clone(),
-                })
-                .is_err()
-            {
-                tracing::warn!(
-                    target: "f9::mapping_editor",
-                    action = "rebind_drop_offline",
-                    "rebind dropped: engine channel disconnected"
-                );
-                return;
-            }
-
             let label = format_undo_label(
                 UndoKind::Rebind,
                 LabelArgs {
@@ -126,15 +98,14 @@ pub(crate) fn Header(
                     ..LabelArgs::default()
                 },
             );
-            // Undo entry keys on the OLD address: that is the mapping that
-            // existed before this rebind; restoring it writes the old snapshot
-            // back under the old key.
-            undo_log_for_capture.write().push_edit(
-                (mode, old_addr),
-                before,
-                UndoKind::Rebind,
+            if !super::mapping_editor_submit(
+                &mapping_key_for_capture,
+                &actions_for_capture,
+                crate::mapping_edits::Edit::Rebind(new_addr),
                 label,
-            );
+            ) {
+                return;
+            }
 
             tracing::info!(
                 target: "f9::mapping_editor",
@@ -189,41 +160,11 @@ pub(crate) fn Header(
     let mapping_key_for_blur = mapping_key.clone();
     let actions_for_blur = actions.clone();
     let initial_for_blur = name.clone();
-    let cmd_tx_for_blur = ctx.commands.clone();
-    let mut undo_log_for_blur = editor.undo_log;
-
     let on_input_blur = move |_| {
         let new = local_name.peek().trim().to_owned();
         if new.is_empty() || new == initial_for_blur {
             // Empty (or whitespace-only) revert; same-name no-op skip.
             local_name.set(initial_for_blur.clone());
-            armed.set(false);
-            return;
-        }
-        let before = Mapping {
-            input: mapping_key_for_blur.1.clone(),
-            mode: mapping_key_for_blur.0.clone(),
-            name: Some(initial_for_blur.clone()),
-            actions: actions_for_blur.clone(),
-        };
-        // Dispatch FIRST. When the engine is offline (channel disconnected)
-        // do NOT push an undo entry: otherwise the user accumulates phantom
-        // entries that Ctrl+Z would later dispatch into a dead channel.
-        if cmd_tx_for_blur
-            .send(EngineCommand::SetMapping {
-                input: mapping_key_for_blur.1.clone(),
-                mode: mapping_key_for_blur.0.clone(),
-                name: Some(new.clone()),
-                actions: actions_for_blur.clone(),
-            })
-            .is_err()
-        {
-            tracing::warn!(
-                target: "f9::mapping_editor",
-                action = "rename_drop_offline",
-                new_name = %new,
-                "rename dropped: engine channel disconnected"
-            );
             armed.set(false);
             return;
         }
@@ -234,12 +175,15 @@ pub(crate) fn Header(
                 ..LabelArgs::default()
             },
         );
-        undo_log_for_blur.write().push_edit(
-            mapping_key_for_blur.clone(),
-            before,
-            UndoKind::Rename,
+        if !super::mapping_editor_submit(
+            &mapping_key_for_blur,
+            &actions_for_blur,
+            crate::mapping_edits::Edit::Rename(new.clone()),
             label,
-        );
+        ) {
+            armed.set(false);
+            return;
+        }
         tracing::info!(
             target: "f9::mapping_editor",
             action = "rename",

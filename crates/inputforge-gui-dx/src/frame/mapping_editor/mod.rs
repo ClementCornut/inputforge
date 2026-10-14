@@ -56,11 +56,6 @@ pub(crate) fn MappingEditor() -> Element {
     tracing::trace!(target: "frame::render", region = "mapping_editor");
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
-    // `editor` must be `mut` because the Task 32 use_effect below calls
-    // `editor.undo_log.write()` to clear the log on profile flip. Dioxus
-    // Signals are Copy and the mutability lives on the binding, not the type.
-    let mut editor = use_context::<EditorState>();
-
     // One shared sortable state for the entire editor. Mounted unconditionally
     // (Dioxus hook rules) so the signals exist regardless of whether a mapping
     // is selected. Provided as context so Stage components can read it without
@@ -77,45 +72,6 @@ pub(crate) fn MappingEditor() -> Element {
     // rules require all hooks to run every render). The listener internally
     // guards against re-installation on subsequent renders.
     keyboard::use_kb_listener();
-
-    // Task 32 (AC #26): clear the undo log on profile flip.
-    //
-    // The proper intercept point (a DirtyConfirmDialog wired into a real
-    // profile-picker component) cannot be implemented yet because the Profiles
-    // side panel is an F13 placeholder with no dispatch surface. Instead, we
-    // watch `ctx.meta.profile_name` for changes and clear on every transition.
-    //
-    // Race-condition note: a profile flip also rebuilds `ConfigSnapshot`
-    // (via the polling task in bridge.rs), so by the time any mapping-editor
-    // sub-component reads the new snapshot the undo log is already empty.
-    // The only observable gap is between the `profile_name` signal updating
-    // and this effect running, which is sub-frame and therefore safe.
-    //
-    // When F13 ships a real picker, replace this with a DirtyConfirmDialog
-    // onsave callback that calls `editor.undo_log.write().clear_all()` before
-    // dispatching the load-profile command, then remove this effect.
-    let profile_name_memo = use_memo(move || ctx.meta.read().profile_name.clone());
-    // `prev_profile` holds the last-seen name so we can detect the None to Some,
-    // Some to None, and Some(a) to Some(b) transitions without clearing on mount.
-    // Outer `Option` distinguishes "not yet observed" (initial mount) from
-    // "observed and stored". Inner `Option<String>` mirrors the meta field.
-    let mut prev_profile: Signal<Option<Option<String>>> = use_signal(|| None);
-    use_effect(move || {
-        let current = profile_name_memo.read().clone();
-        // Clone out of the read guard so we can call .set() without overlap.
-        let prev_snapshot = prev_profile.read().clone();
-        match prev_snapshot {
-            // First render: record the baseline without clearing.
-            None => prev_profile.set(Some(current)),
-            // Subsequent renders: clear only when the name actually changed.
-            Some(last) if last != current => {
-                editor.undo_log.write().clear_all();
-                prev_profile.set(Some(current));
-            }
-            // Same name: no-op.
-            Some(_) => {}
-        }
-    });
 
     // Task 34 (AC #27): revert to empty state when the selected mapping has
     // been deleted externally (e.g. from the rail or via an external edit).
@@ -223,8 +179,7 @@ pub(crate) struct StageMenuState {
 /// Components read via `use_context::<EditorState>()`.
 #[derive(Clone, Copy)]
 pub(crate) struct EditorState {
-    /// Per-mapping undo stacks. Cleared on profile flip via Task 32's
-    /// `DirtyConfirmDialog::onsave` callback.
+    /// Prepared per-mapping history labels published by the app controller.
     pub undo_log: Signal<UndoLog>,
     /// Stage IDs that are currently expanded. Resets on selection change
     /// AND on every structural mutation (insert/remove): see Task 11.
@@ -248,6 +203,38 @@ pub(crate) struct EditorState {
 /// once from `app_root`, the provider self-installs.
 pub(crate) fn use_editor_state_provider() -> EditorState {
     let undo_log: Signal<UndoLog> = use_signal(UndoLog::default);
+    #[cfg(test)]
+    {
+        let ctx = use_context::<AppContext>();
+        let fixture = use_hook(|| {
+            try_consume_context::<crate::mapping_edits::Bindings>().unwrap_or_else(|| {
+                inputforge_app::mapping_edits::Controller::new(
+                    std::sync::Arc::clone(&ctx.state),
+                    ctx.commands.clone(),
+                )
+                .bindings()
+            })
+        });
+        use_context_provider(|| fixture);
+        let fallback = crate::frame::use_view_state_provider(ctx.meta);
+        let view = use_hook(|| try_consume_context::<ViewState>().unwrap_or(fallback));
+        use_context_provider(|| view);
+    };
+    let bindings = use_context::<crate::mapping_edits::Bindings>();
+    let view = use_context::<ViewState>();
+    use_hook(|| {
+        bindings.install.call(crate::mapping_edits::Publication {
+            history: undo_log,
+            mode: view.editing_mode,
+            selection: view.selected_mapping,
+        });
+    });
+    use_drop(move || bindings.dispose.call(()));
+    use_effect(move || {
+        let _ = view.editing_mode.read();
+        let _ = view.selected_mapping.read();
+        bindings.reconcile.call(());
+    });
     let expanded_stages: Signal<HashSet<StageId>> = use_signal(HashSet::new);
     let stage_menu: Signal<Option<StageMenuState>> = use_signal(|| None);
     let malformed_hints: Signal<HashMap<StageId, String>> = use_signal(HashMap::new);
@@ -269,3 +256,12 @@ mod tests;
 
 #[cfg(test)]
 pub(crate) mod test_helpers;
+
+fn mapping_editor_submit(
+    key: &MappingKey,
+    actions: &[inputforge_core::action::Action],
+    edit: crate::mapping_edits::Edit,
+    label: String,
+) -> bool {
+    pipeline::stage_body::instruments::stage_dispatch::submit(key, actions, edit, label, None, true)
+}

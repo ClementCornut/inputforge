@@ -105,13 +105,22 @@ fn desktop_root() -> Element {
         inputforge_app::controllers::bindings(Arc::clone(&handles.state), handles.commands.clone());
     let keyboard =
         use_hook(|| inputforge_app::keyboard_capture::Controller::new(Arc::clone(&handles.state)));
+    let mappings = use_hook(|| {
+        inputforge_app::mapping_edits::Controller::new(
+            Arc::clone(&handles.state),
+            handles.commands.clone(),
+        )
+    });
     inputforge_gui_dx::render_editor(
-        handles.state,
-        handles.commands,
+        inputforge_gui_dx::RawHandles {
+            state: handles.state,
+            commands: handles.commands,
+        },
         routing,
         controllers,
         capture.bindings(),
         keyboard.bindings(),
+        mappings.bindings(),
         start_polling,
     )
 }

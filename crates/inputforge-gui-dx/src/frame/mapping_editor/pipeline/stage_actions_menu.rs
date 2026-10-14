@@ -18,16 +18,13 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Mapping, branch_actions};
-use inputforge_core::engine::EngineCommand;
+use inputforge_core::action::{Action, branch_actions};
 
 use crate::components::{AnchoredMenu, CloseReason, MenuAnchor, MenuItem};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
+use crate::frame::mapping_editor::pipeline::path_invalidated_by_mutation;
 use crate::frame::mapping_editor::pipeline::stage::stage_title_for;
-use crate::frame::mapping_editor::pipeline::{
-    path_invalidated_by_mutation, remove_at_path, replace_at_path,
-};
 use crate::frame::mapping_editor::undo_log::{
     LabelArgs, StageId, StageIdSegment, UndoKind, format_undo_label,
 };
@@ -114,7 +111,7 @@ pub(crate) fn StageActionsMenu(
     root_actions: Vec<Action>,
 ) -> Element {
     let editor = use_context::<EditorState>();
-    let ctx = use_context::<AppContext>();
+    let _ctx = use_context::<AppContext>();
 
     let menu_state: Option<StageMenuState> = editor.stage_menu.read().clone();
     let Some(menu) = menu_state else {
@@ -172,68 +169,12 @@ pub(crate) fn StageActionsMenu(
         let stage_id = stage_id.clone();
         let parent_path = parent_path.clone();
         let root = root_actions.clone();
-        let cmd_tx = ctx.commands.clone();
-        let cfg_sig = ctx.config;
-        let mut undo_log = editor.undo_log;
         let mut expanded = editor.expanded_stages;
         let mut malformed = editor.malformed_hints;
         let mut tags = editor.malformed_summary_tags;
 
         move |_: MouseEvent| {
             if move_up_disabled {
-                return;
-            }
-
-            // Build sibling id (current_idx - 1).
-            let prev_id = make_stage_id(&parent_path, current_idx - 1);
-
-            // Swap: step1 = set slot (current_idx - 1) <- current action
-            //       step2 = set slot current_idx       <- prev action
-            let Some(current_action) =
-                crate::frame::mapping_editor::pipeline::at_path(&root, &stage_id).cloned()
-            else {
-                return;
-            };
-            let Some(prev_action) =
-                crate::frame::mapping_editor::pipeline::at_path(&root, &prev_id).cloned()
-            else {
-                return;
-            };
-
-            let Some(step1) = replace_at_path(&root, &prev_id, current_action) else {
-                return;
-            };
-            let Some(new_actions) = replace_at_path(&step1, &stage_id, prev_action) else {
-                return;
-            };
-
-            // Amendment 3: name from live snapshot.
-            let cfg = cfg_sig.read();
-            let current_name = cfg.mapping_names.get(&key.1).cloned();
-            drop(cfg);
-
-            let before = Mapping {
-                input: key.1.clone(),
-                mode: key.0.clone(),
-                name: current_name.clone(),
-                actions: root.clone(),
-            };
-
-            // Dispatch first; undo only on success.
-            if cmd_tx
-                .send(EngineCommand::SetMapping {
-                    input: key.1.clone(),
-                    mode: key.0.clone(),
-                    name: current_name,
-                    actions: new_actions,
-                })
-                .is_err()
-            {
-                tracing::warn!(
-                    target: "f9::mapping_editor",
-                    action = "stage_move_up_drop_offline",
-                    "stage move-up dropped: engine channel disconnected"
-                );
                 return;
             }
 
@@ -245,9 +186,19 @@ pub(crate) fn StageActionsMenu(
                     ..LabelArgs::default()
                 },
             );
-            undo_log
-                .write()
-                .push_edit(key.clone(), before, UndoKind::StageReorder, label);
+            if !super::stage_body::instruments::stage_dispatch::submit(
+                &key,
+                &root,
+                crate::mapping_edits::Edit::Move {
+                    from: stage_id.clone(),
+                    to: make_stage_id(&parent_path, current_idx - 1),
+                },
+                label,
+                None,
+                true,
+            ) {
+                return;
+            }
 
             // Reorder swaps current_idx with current_idx - 1; invalidate
             // only paths in the same branch at the lower of the two indices
@@ -273,9 +224,6 @@ pub(crate) fn StageActionsMenu(
         let stage_id = stage_id.clone();
         let parent_path = parent_path.clone();
         let root = root_actions.clone();
-        let cmd_tx = ctx.commands.clone();
-        let cfg_sig = ctx.config;
-        let mut undo_log = editor.undo_log;
         let mut expanded = editor.expanded_stages;
         let mut malformed = editor.malformed_hints;
         let mut tags = editor.malformed_summary_tags;
@@ -286,57 +234,6 @@ pub(crate) fn StageActionsMenu(
             }
 
             // Build sibling id (current_idx + 1).
-            let next_id = make_stage_id(&parent_path, current_idx + 1);
-
-            let Some(current_action) =
-                crate::frame::mapping_editor::pipeline::at_path(&root, &stage_id).cloned()
-            else {
-                return;
-            };
-            let Some(next_action) =
-                crate::frame::mapping_editor::pipeline::at_path(&root, &next_id).cloned()
-            else {
-                return;
-            };
-
-            // Swap: step1 = set slot (current_idx + 1) <- current action
-            //       step2 = set slot current_idx       <- next action
-            let Some(step1) = replace_at_path(&root, &next_id, current_action) else {
-                return;
-            };
-            let Some(new_actions) = replace_at_path(&step1, &stage_id, next_action) else {
-                return;
-            };
-
-            // Amendment 3: name from live snapshot.
-            let cfg = cfg_sig.read();
-            let current_name = cfg.mapping_names.get(&key.1).cloned();
-            drop(cfg);
-
-            let before = Mapping {
-                input: key.1.clone(),
-                mode: key.0.clone(),
-                name: current_name.clone(),
-                actions: root.clone(),
-            };
-
-            if cmd_tx
-                .send(EngineCommand::SetMapping {
-                    input: key.1.clone(),
-                    mode: key.0.clone(),
-                    name: current_name,
-                    actions: new_actions,
-                })
-                .is_err()
-            {
-                tracing::warn!(
-                    target: "f9::mapping_editor",
-                    action = "stage_move_down_drop_offline",
-                    "stage move-down dropped: engine channel disconnected"
-                );
-                return;
-            }
-
             let label = format_undo_label(
                 UndoKind::StageReorder,
                 LabelArgs {
@@ -345,9 +242,19 @@ pub(crate) fn StageActionsMenu(
                     ..LabelArgs::default()
                 },
             );
-            undo_log
-                .write()
-                .push_edit(key.clone(), before, UndoKind::StageReorder, label);
+            if !super::stage_body::instruments::stage_dispatch::submit(
+                &key,
+                &root,
+                crate::mapping_edits::Edit::Move {
+                    from: stage_id.clone(),
+                    to: make_stage_id(&parent_path, current_idx + 1),
+                },
+                label,
+                None,
+                true,
+            ) {
+                return;
+            }
 
             // Reorder swaps current_idx with current_idx + 1; invalidate
             // only paths in the same branch at current_idx and beyond.
@@ -371,48 +278,11 @@ pub(crate) fn StageActionsMenu(
         let key = mapping_key.clone();
         let stage_id = stage_id.clone();
         let root = root_actions.clone();
-        let cmd_tx = ctx.commands.clone();
-        let cfg_sig = ctx.config;
-        let mut undo_log = editor.undo_log;
         let mut expanded = editor.expanded_stages;
         let mut malformed = editor.malformed_hints;
         let mut tags = editor.malformed_summary_tags;
 
         move |_: MouseEvent| {
-            let Some(new_actions) = remove_at_path(&root, &stage_id) else {
-                // Invalid path: skip the edit + skip phantom undo entry.
-                return;
-            };
-
-            // Amendment 3: name from live snapshot.
-            let cfg = cfg_sig.read();
-            let current_name = cfg.mapping_names.get(&key.1).cloned();
-            drop(cfg);
-
-            let before = Mapping {
-                input: key.1.clone(),
-                mode: key.0.clone(),
-                name: current_name.clone(),
-                actions: root.clone(),
-            };
-
-            if cmd_tx
-                .send(EngineCommand::SetMapping {
-                    input: key.1.clone(),
-                    mode: key.0.clone(),
-                    name: current_name,
-                    actions: new_actions,
-                })
-                .is_err()
-            {
-                tracing::warn!(
-                    target: "f9::mapping_editor",
-                    action = "stage_delete_drop_offline",
-                    "stage delete dropped: engine channel disconnected"
-                );
-                return;
-            }
-
             let label = format_undo_label(
                 UndoKind::StageRemove,
                 LabelArgs {
@@ -421,9 +291,16 @@ pub(crate) fn StageActionsMenu(
                     ..LabelArgs::default()
                 },
             );
-            undo_log
-                .write()
-                .push_edit(key.clone(), before, UndoKind::StageRemove, label);
+            if !super::stage_body::instruments::stage_dispatch::submit(
+                &key,
+                &root,
+                crate::mapping_edits::Edit::Remove(stage_id.clone()),
+                label,
+                None,
+                true,
+            ) {
+                return;
+            }
 
             // Delete removes stage at current_idx and shifts subsequent
             // siblings up; invalidate paths in the same branch at-or-after

@@ -11,14 +11,9 @@
 //! When (2) and (3) hold simultaneously the body emits a combined hint
 //! so the user can recover both errors in one edit pass.
 
-use std::collections::HashMap;
-use std::sync::mpsc::Sender;
-
 use dioxus::prelude::*;
 
 use inputforge_core::action::{Action, ModeChangeStrategy};
-use inputforge_core::engine::EngineCommand;
-use inputforge_core::types::InputAddress;
 
 use crate::components::{
     SegmentedControl, SegmentedControlOption, Select, SelectOption, Tooltip, TooltipPlacement,
@@ -26,10 +21,8 @@ use crate::components::{
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::dispatch_stage_edit_into;
-use crate::frame::mapping_editor::undo_log::{
-    LabelArgs, StageId, UndoKind, UndoLog, format_undo_label,
-};
+use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::dispatch_stage_edit;
+use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 
 /// Hint copy. Centralised so tests can grep these strings unchanged.
 pub(crate) const HINT_TARGET_EMPTY: &str = "Choose a mode to switch to";
@@ -52,22 +45,12 @@ pub(crate) enum StrategyTarget {
     Hold,
 }
 
-/// Pure dispatch helper for the Set/Hold strategy pills.
-///
-/// Mirrors the [`dispatch_stage_edit_into`] split: this `_into` form takes
-/// `&mut UndoLog` so tests can exercise it without spinning up a Dioxus
-/// runtime to allocate a `Signal`. Returns the formatted undo label that was
-/// committed (`None` when the dispatch was skipped, e.g. the pill was
-/// `aria-disabled` or already active).
+/// Wire a Set/Hold edit and its display label to the app controller.
 ///
 /// Target preservation across Set <-> Hold falls out for free: the caller
 /// passes the same `current_mode` regardless of `target`, so flipping
 /// strategy keeps the previously selected target mode.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "matches dispatch_stage_edit_into argument set; one callsite per pill"
-)]
-pub(crate) fn dispatch_strategy_change_into(
+pub(crate) fn dispatch_strategy_change(
     target: StrategyTarget,
     current_mode: &str,
     is_currently_hold: bool,
@@ -75,9 +58,6 @@ pub(crate) fn dispatch_strategy_change_into(
     mapping_key: &MappingKey,
     stage_id: &StageId,
     root_actions: &[Action],
-    mapping_names: &HashMap<InputAddress, String>,
-    cmd_tx: &Sender<EngineCommand>,
-    undo_log: &mut UndoLog,
 ) -> Option<String> {
     let was_active = match target {
         StrategyTarget::Set => !is_currently_hold,
@@ -112,75 +92,28 @@ pub(crate) fn dispatch_strategy_change_into(
             ..LabelArgs::default()
         },
     );
-    let name = mapping_names.get(&mapping_key.1).cloned();
-    dispatch_stage_edit_into(
-        undo_log,
+    let delivered = dispatch_stage_edit(
         root_actions,
         stage_id,
         new_action,
         mapping_key,
-        name,
-        cmd_tx,
         label.clone(),
     );
-    Some(label)
+    delivered.then_some(label)
 }
 
-/// Signal-wrapping form. Body call sites pass their `Signal<UndoLog>` here;
-/// the wrapper takes the `write()` borrow once and threads it into the pure
-/// helper. Same shape as the `dispatch_stage_edit` / `dispatch_stage_edit_into`
-/// split in `instruments::stage_dispatch`.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "matches dispatch_strategy_change_into plus the Signal handle"
-)]
-pub(crate) fn dispatch_strategy_change(
-    target: StrategyTarget,
-    current_mode: &str,
-    is_currently_hold: bool,
-    hold_disabled: bool,
-    mapping_key: &MappingKey,
-    stage_id: &StageId,
-    root_actions: &[Action],
-    mapping_names: &HashMap<InputAddress, String>,
-    cmd_tx: &Sender<EngineCommand>,
-    undo_log: &mut Signal<UndoLog>,
-) -> Option<String> {
-    let mut guard = undo_log.write();
-    dispatch_strategy_change_into(
-        target,
-        current_mode,
-        is_currently_hold,
-        hold_disabled,
-        mapping_key,
-        stage_id,
-        root_actions,
-        mapping_names,
-        cmd_tx,
-        &mut guard,
-    )
-}
-
-/// Dispatch a target-mode change. Pure form takes `&mut UndoLog` for tests;
-/// see [`dispatch_target_change`] for the Signal-wrapping component form.
+/// Wire a target-mode change to the app controller.
 /// Returns the formatted undo label that was committed (`None` when the
 /// new mode equals the current mode, i.e. picking the same option twice).
 ///
 /// The `<unset>` token in the undo label preserves the empty-mode signal
 /// to the user (prior strategy with `mode: ""` becomes `target <unset> -> X`).
-#[expect(
-    clippy::too_many_arguments,
-    reason = "matches dispatch_strategy_change_into argument set"
-)]
-pub(crate) fn dispatch_target_change_into(
+pub(crate) fn dispatch_target_change(
     new_mode: &str,
     current_strategy: &ModeChangeStrategy,
     mapping_key: &MappingKey,
     stage_id: &StageId,
     root_actions: &[Action],
-    mapping_names: &HashMap<InputAddress, String>,
-    cmd_tx: &Sender<EngineCommand>,
-    undo_log: &mut UndoLog,
 ) -> Option<String> {
     let mode_before = match current_strategy {
         ModeChangeStrategy::SwitchTo { mode } | ModeChangeStrategy::Temporary { mode } => {
@@ -215,47 +148,14 @@ pub(crate) fn dispatch_target_change_into(
             ..LabelArgs::default()
         },
     );
-    let name = mapping_names.get(&mapping_key.1).cloned();
-    dispatch_stage_edit_into(
-        undo_log,
+    let delivered = dispatch_stage_edit(
         root_actions,
         stage_id,
         new_action,
         mapping_key,
-        name,
-        cmd_tx,
         label.clone(),
     );
-    Some(label)
-}
-
-/// Signal-wrapping form for the target-mode change. Body call sites pass
-/// their `Signal<UndoLog>` here; same shape as `dispatch_strategy_change`.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "matches dispatch_target_change_into plus the Signal handle"
-)]
-pub(crate) fn dispatch_target_change(
-    new_mode: &str,
-    current_strategy: &ModeChangeStrategy,
-    mapping_key: &MappingKey,
-    stage_id: &StageId,
-    root_actions: &[Action],
-    mapping_names: &HashMap<InputAddress, String>,
-    cmd_tx: &Sender<EngineCommand>,
-    undo_log: &mut Signal<UndoLog>,
-) -> Option<String> {
-    let mut guard = undo_log.write();
-    dispatch_target_change_into(
-        new_mode,
-        current_strategy,
-        mapping_key,
-        stage_id,
-        root_actions,
-        mapping_names,
-        cmd_tx,
-        &mut guard,
-    )
+    delivered.then_some(label)
 }
 
 #[component]
@@ -411,15 +311,12 @@ pub(crate) fn ChangeModeBody(
     // `dispatch_strategy_change`; all business logic (gate, label, action
     // construction, target preservation) lives in the helper.
     let cfg_signal = ctx.config;
-    let cmd_tx_set = ctx.commands.clone();
-    let mut undo_log_set = editor.undo_log;
     let mapping_key_set = mapping_key.clone();
     let stage_id_set = stage_id.clone();
     let root_actions_set = root_actions.clone();
     let mode_set = mode.clone();
     let on_set_click = move |_evt: MouseEvent| {
         let cfg = cfg_signal.read();
-        let names = cfg.mapping_names.clone();
         drop(cfg);
         let _ = dispatch_strategy_change(
             StrategyTarget::Set,
@@ -430,21 +327,15 @@ pub(crate) fn ChangeModeBody(
             &mapping_key_set,
             &stage_id_set,
             &root_actions_set,
-            &names,
-            &cmd_tx_set,
-            &mut undo_log_set,
         );
     };
 
-    let cmd_tx_hold = ctx.commands.clone();
-    let mut undo_log_hold = editor.undo_log;
     let mapping_key_hold = mapping_key.clone();
     let stage_id_hold = stage_id.clone();
     let root_actions_hold = root_actions.clone();
     let mode_hold = mode.clone();
     let on_hold_click = move |_evt: MouseEvent| {
         let cfg = cfg_signal.read();
-        let names = cfg.mapping_names.clone();
         drop(cfg);
         let _ = dispatch_strategy_change(
             StrategyTarget::Hold,
@@ -454,9 +345,6 @@ pub(crate) fn ChangeModeBody(
             &mapping_key_hold,
             &stage_id_hold,
             &root_actions_hold,
-            &names,
-            &cmd_tx_hold,
-            &mut undo_log_hold,
         );
     };
 
@@ -467,11 +355,8 @@ pub(crate) fn ChangeModeBody(
     let stage_id_t = stage_id.clone();
     let root_actions_t = root_actions.clone();
     let strategy_for_t = strategy.clone();
-    let cmd_tx_t = ctx.commands.clone();
-    let mut undo_log_t = editor.undo_log;
     let on_target_change = move |evt: FormEvent| {
         let cfg = cfg_signal.read();
-        let names = cfg.mapping_names.clone();
         drop(cfg);
         let _ = dispatch_target_change(
             &evt.value(),
@@ -479,9 +364,6 @@ pub(crate) fn ChangeModeBody(
             &mapping_key_t,
             &stage_id_t,
             &root_actions_t,
-            &names,
-            &cmd_tx_t,
-            &mut undo_log_t,
         );
     };
 
@@ -535,6 +417,7 @@ pub(crate) fn ChangeModeBody(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     use crate::frame::mapping_editor::pipeline::tests::render_change_mode_body_for_test;
     use crate::frame::mapping_editor::undo_log::StageIdSegment;

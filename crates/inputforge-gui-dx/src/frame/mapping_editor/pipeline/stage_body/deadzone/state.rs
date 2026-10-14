@@ -5,9 +5,6 @@
 
 use inputforge_core::processing::deadzone::DeadzoneConfig;
 
-use crate::frame::mapping_editor::pipeline::stage_body::deadzone::keyboard::KeyKind;
-use crate::frame::mapping_editor::pipeline::stage_body::instruments::nudge_coalesce::NudgeCoalesce;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum HandleId {
     Low,
@@ -58,7 +55,6 @@ pub(crate) struct BodyState {
     pub hovered_handle: Option<HandleId>,
     pub focused_handle: Option<HandleId>,
     pub pre_drag_config: Option<DeadzoneConfig>,
-    pub nudge_coalesce: NudgeCoalesce<KeyKind>,
     /// Set on a pointer-down that lands inside the hit-radius of two
     /// handles at once (CL and CH stacked at the same x, the default
     /// config's most common state). The first significant pointer-move

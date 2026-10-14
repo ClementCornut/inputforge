@@ -96,6 +96,7 @@ fn four_capture_surfaces_preserve_native_addresses_and_existing_mapping_and_undo
                     Surface::Add => unreachable!(),
                 }
                 assert_eq!(fixture.editor.borrow().unwrap().undo_log.peek().stacks[&("Default".into(), primary())].undo.len(), 1);
+                assert!(matches!(received.try_recv().unwrap(), EngineCommand::MappingEditBarrier { .. }));
                 assert_eq!(received.try_recv().unwrap_err(), mpsc::TryRecvError::Empty);
             }
             assert_eq!(fixture.state.read().active_profile.as_ref().unwrap().find_mapping(&primary(), "Default").unwrap().actions, actions(), "delivery must not optimistically mutate engine mappings");

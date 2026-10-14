@@ -1084,7 +1084,6 @@ fn editor_header_h2_carries_focus_marker_and_name() {
 
 #[test]
 fn editor_undo_recap_shows_label_and_kbd_hint() {
-    use inputforge_core::action::Mapping as CoreMapping;
     use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
     use crate::frame::mapping_editor::undo_log::UndoKind;
@@ -1138,18 +1137,17 @@ fn editor_undo_recap_shows_label_and_kbd_hint() {
         // UndoRecap has a label to display.
         let mut editor = use_editor_state_provider();
         let mapping_key: crate::frame::MappingKey = ("Default".to_owned(), addr.clone());
-        let before = CoreMapping {
-            input: addr,
-            mode: "Default".to_owned(),
-            name: Some("X".to_owned()),
-            actions: vec![],
-        };
-        editor.undo_log.write().push_edit(
-            mapping_key,
-            before,
-            UndoKind::Rename,
-            "rename: 'X' -> 'Yaw'".to_owned(),
-        );
+        editor
+            .undo_log
+            .write()
+            .stacks
+            .entry(mapping_key)
+            .or_default()
+            .undo
+            .push(crate::mapping_edits::Entry {
+                kind: UndoKind::Rename,
+                label: "rename: 'X' -> 'Yaw'".into(),
+            });
 
         let toast_state = use_signal(ToastState::default);
         use_context_provider(|| ToastQueue { state: toast_state });

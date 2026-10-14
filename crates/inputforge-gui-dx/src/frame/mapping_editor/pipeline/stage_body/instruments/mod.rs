@@ -6,7 +6,6 @@
 
 pub(crate) mod bridge;
 pub(crate) mod live_axis;
-pub(crate) mod nudge_coalesce;
 pub(crate) mod stage_dispatch;
 
 /// SVG `feGaussianBlur` standard deviation used by every instrument's curve

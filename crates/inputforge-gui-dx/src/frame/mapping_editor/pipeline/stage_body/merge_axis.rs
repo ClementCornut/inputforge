@@ -30,18 +30,15 @@
 //!
 //! # Name preservation (Amendment 2)
 //!
-//! Every dispatch reads the current name from `cfg.mapping_names` so
-//! user-set names are never silently cleared.
+//! App dispatch preserves the exact target mapping's optional name.
 //!
 //! # Dispatch-before-undo (Amendment 3)
 //!
-//! `push_edit` is only called after `cmd_tx.send` succeeds. A closed channel
-//! never generates phantom undo entries.
+//! App history is recorded after successful dispatch. Closed channels create no history.
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, Mapping};
-use inputforge_core::engine::EngineCommand;
+use inputforge_core::action::Action;
 use inputforge_core::types::{InputAddress, MergeOp};
 
 use crate::capture::{CaptureFilter, Target};
@@ -49,7 +46,6 @@ use crate::components::{Select, SelectOption};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::replace_at_path;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 use crate::frame::mapping_list::source_label;
 use crate::patterns::live_capture::{CAPTURE_PROMPT, rebind_composite_class, use_capture};
@@ -148,8 +144,6 @@ pub(crate) fn MergeAxisBody(
     let key_for_cap = mapping_key.clone();
     let stage_id_for_cap = stage_id.clone();
     let root_for_cap = root_actions.clone();
-    let cmd_tx_cap = ctx.commands.clone();
-    let mut undo_log_cap = editor.undo_log;
     let cfg_for_cap = ctx.config;
 
     let capture = use_capture(
@@ -165,14 +159,9 @@ pub(crate) fn MergeAxisBody(
                 .find(|mapping| mapping.input == mapping_key.1 && mapping.mode == mapping_key.0)
                 .and_then(|mapping| mapping.name.clone()),
             // Reject invalid paths before the app confirms an ambiguous native control.
-            actions: replace_at_path(
-                &root_actions,
-                &stage_id,
-                Action::MergeAxis {
-                    second_input: second_input.clone(),
-                    operation,
-                },
-            ),
+            actions: super::super::at_path(&root_actions, &stage_id)
+                .filter(|action| matches!(action, Action::MergeAxis { .. }))
+                .map(|_| root_actions.clone()),
             field: format!("secondary:{stage_id:?}"),
         },
         CaptureFilter::AxesOnly,
@@ -180,8 +169,6 @@ pub(crate) fn MergeAxisBody(
             // Amendment 2: read current name from snapshot so user-set names
             // are never silently cleared.
             let cfg = cfg_for_cap.read();
-            let current_name = cfg.mapping_names.get(&key_for_cap.1).cloned();
-
             // Build the secondary source labels for the undo entry before
             // dispatch so we can read the snapshot before it may update.
             let old_label = source_label::format(&second_input_for_cap, &cfg);
@@ -192,41 +179,9 @@ pub(crate) fn MergeAxisBody(
                 second_input: new_addr.clone(),
                 operation,
             };
-            let Some(new_actions) = replace_at_path(&root_for_cap, &stage_id_for_cap, new_action)
-            else {
-                // Invalid path: skip edit so no phantom undo entry is created.
-                return;
-            };
-
-            let before = Mapping {
-                input: key_for_cap.1.clone(),
-                mode: key_for_cap.0.clone(),
-                name: current_name.clone(),
-                actions: root_for_cap.clone(),
-            };
-
             if new_addr == second_input_for_cap {
                 return;
             }
-
-            // Amendment 3: dispatch first; push undo only on success.
-            if cmd_tx_cap
-                .send(EngineCommand::SetMapping {
-                    input: key_for_cap.1.clone(),
-                    mode: key_for_cap.0.clone(),
-                    name: current_name,
-                    actions: new_actions,
-                })
-                .is_err()
-            {
-                tracing::warn!(
-                    target: "f9::mapping_editor",
-                    action = "merge_axis_secondary_drop_offline",
-                    "secondary capture dropped: engine channel disconnected"
-                );
-                return;
-            }
-
             let label = format_undo_label(
                 UndoKind::StageEdit,
                 LabelArgs {
@@ -236,9 +191,13 @@ pub(crate) fn MergeAxisBody(
                     ..LabelArgs::default()
                 },
             );
-            undo_log_cap
-                .write()
-                .push_edit(key_for_cap.clone(), before, UndoKind::StageEdit, label);
+            super::instruments::stage_dispatch::dispatch_stage_edit(
+                &root_for_cap,
+                &stage_id_for_cap,
+                new_action,
+                &key_for_cap,
+                label,
+            );
         },
         |()| {},
     );
@@ -250,9 +209,6 @@ pub(crate) fn MergeAxisBody(
     let stage_id_for_op = stage_id.clone();
     let root_for_op = root_actions.clone();
     let second_for_op = second_input.clone();
-    let cmd_tx_op = ctx.commands.clone();
-    let mut undo_log_op = editor.undo_log;
-
     let on_op_change = move |evt: FormEvent| {
         let new_op_str = evt.value();
         let Some(new_op) = parse_op(&new_op_str) else {
@@ -264,45 +220,14 @@ pub(crate) fn MergeAxisBody(
 
         // Amendment 2: name from snapshot.
         let cfg = ctx.config.read();
-        let current_name = cfg.mapping_names.get(&key_for_op.1).cloned();
         drop(cfg);
 
         let new_action = Action::MergeAxis {
             second_input: second_for_op.clone(),
             operation: new_op,
         };
-        let Some(new_actions) = replace_at_path(&root_for_op, &stage_id_for_op, new_action) else {
-            return;
-        };
-
-        let before = Mapping {
-            input: key_for_op.1.clone(),
-            mode: key_for_op.0.clone(),
-            name: current_name.clone(),
-            actions: root_for_op.clone(),
-        };
-
         let before_op_str = op_to_str(operation);
         let new_op_str_ref = op_to_str(new_op);
-
-        // Amendment 3: dispatch first; push undo only on success.
-        if cmd_tx_op
-            .send(EngineCommand::SetMapping {
-                input: key_for_op.1.clone(),
-                mode: key_for_op.0.clone(),
-                name: current_name,
-                actions: new_actions,
-            })
-            .is_err()
-        {
-            tracing::warn!(
-                target: "f9::mapping_editor",
-                action = "merge_axis_op_drop_offline",
-                "operation change dropped: engine channel disconnected"
-            );
-            return;
-        }
-
         let label = format_undo_label(
             UndoKind::StageEdit,
             LabelArgs {
@@ -312,9 +237,13 @@ pub(crate) fn MergeAxisBody(
                 ..LabelArgs::default()
             },
         );
-        undo_log_op
-            .write()
-            .push_edit(key_for_op.clone(), before, UndoKind::StageEdit, label);
+        super::instruments::stage_dispatch::dispatch_stage_edit(
+            &root_for_op,
+            &stage_id_for_op,
+            new_action,
+            &key_for_op,
+            label,
+        );
     };
 
     // --- Build Select value and options ---

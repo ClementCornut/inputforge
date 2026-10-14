@@ -9,25 +9,17 @@
 //! relies on event bubbling, same shape F7's `mode_tabs::rename_inline`
 //! uses.
 
-use std::sync::mpsc::Sender;
-
 use dioxus::prelude::*;
 
-use inputforge_core::action::Action;
-use inputforge_core::engine::EngineCommand;
 use inputforge_core::types::InputAddress;
 
 use crate::components::{InputSize, TextInput};
-use crate::context::{AppContext, MappingSummary};
+use crate::context::MappingSummary;
 
-/// Shared commit path. Each event handler clones its `Sender` and calls
-/// this directly; that keeps the per-handler closures `Fn` (mirroring
-/// F7's `mode_tabs::rename_inline::run_commit`).
-fn run_commit(
+/// Submit prepared row metadata; the app obtains and preserves current actions.
+pub(super) fn run_commit(
     raw: &str,
     summary: &MappingSummary,
-    commands: &Sender<EngineCommand>,
-    actions: Vec<Action>,
     mut state: Signal<Option<InputAddress>>,
 ) {
     let trimmed = raw.trim();
@@ -42,36 +34,29 @@ fn run_commit(
         state.set(None);
         return;
     }
-    let _ = commands.send(EngineCommand::SetMapping {
-        input: summary.input.clone(),
-        mode: summary.mode.clone(),
-        name: Some(new_name),
-        actions,
-    });
-    tracing::info!(
-        target: "f8::mapping_list",
-        action = "rename",
-        ?summary.input,
-        mode = %summary.mode,
-        "dispatch SetMapping (rename)",
-    );
+    let ctx = consume_context::<crate::context::AppContext>();
+    let delivered = consume_context::<crate::mapping_edits::Bindings>()
+        .dispatch
+        .call(crate::mapping_edits::Request {
+            profile: ctx.meta.peek().profile_id.clone(),
+            before: inputforge_core::action::Mapping {
+                input: summary.input.clone(),
+                mode: summary.mode.clone(),
+                name: summary.name.clone(),
+                actions: vec![],
+            },
+            edit: crate::mapping_edits::Edit::Rename(new_name.clone()),
+            label: format!(
+                "rename: '{}' -> '{new_name}'",
+                summary.name.as_deref().unwrap_or("")
+            ),
+            group: None,
+            editor: false,
+        });
+    if delivered {
+        tracing::info!(target: "f8::mapping_list", action = "rename", ?summary.input, mode = %summary.mode, "dispatched mapping rename");
+    }
     state.set(None);
-}
-
-/// Read the current actions for `(input, mode)` from the active profile,
-/// returning `Vec::new()` if the mapping (or profile) is not present.
-/// `SetMapping` on an empty actions list removes the mapping, so callers
-/// must only invoke this when a mapping is known to exist.
-fn read_actions(ctx: &AppContext, summary: &MappingSummary) -> Vec<Action> {
-    ctx.state
-        .read()
-        .active_profile
-        .as_ref()
-        .and_then(|p| {
-            p.find_mapping(&summary.input, &summary.mode)
-                .map(|m| m.actions.clone())
-        })
-        .unwrap_or_default()
 }
 
 /// Parent-driven inline rename editor for a mapping row. The parent owns
@@ -91,21 +76,12 @@ pub(crate) fn RenameInline(
     state: Signal<Option<InputAddress>>,
 ) -> Element {
     tracing::trace!(target: "frame::render", region = "mapping_list::rename_inline");
-    let ctx = use_context::<AppContext>();
 
     let initial = summary.name.clone().unwrap_or_default();
     let mut value: Signal<String> = use_signal(|| initial);
 
-    // Per-handler clones, `Sender` is `!Copy` but trivially clonable;
-    // cloning upfront lets each event closure own its sender and stay
-    // `Fn` (no `FnMut` move-out errors when the same pair of closures
-    // is referenced from both `onkeydown` and `onfocusout`).
     let summary_for_kb = summary.clone();
     let summary_for_blur = summary.clone();
-    let cmd_for_kb = ctx.commands.clone();
-    let cmd_for_blur = ctx.commands.clone();
-    let ctx_for_kb = ctx.clone();
-    let ctx_for_blur = ctx.clone();
 
     rsx! {
         div {
@@ -115,8 +91,7 @@ pub(crate) fn RenameInline(
                     Key::Enter => {
                         evt.prevent_default();
                         let raw = value.read().clone();
-                        let actions = read_actions(&ctx_for_kb, &summary_for_kb);
-                        run_commit(&raw, &summary_for_kb, &cmd_for_kb, actions, state);
+                        run_commit(&raw, &summary_for_kb, state);
                     }
                     Key::Escape => {
                         evt.prevent_default();
@@ -128,8 +103,7 @@ pub(crate) fn RenameInline(
             },
             onfocusout: move |_evt: FocusEvent| {
                 let raw = value.read().clone();
-                let actions = read_actions(&ctx_for_blur, &summary_for_blur);
-                run_commit(&raw, &summary_for_blur, &cmd_for_blur, actions, state);
+                run_commit(&raw, &summary_for_blur, state);
             },
             TextInput {
                 value: ReadSignal::from(value),

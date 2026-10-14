@@ -44,6 +44,7 @@ pub fn spawn_polling_task(
                 modified,
             ) {
                 publisher.publish(frame);
+                publisher.reconcile_history();
                 capture.deliver();
             }
         }
