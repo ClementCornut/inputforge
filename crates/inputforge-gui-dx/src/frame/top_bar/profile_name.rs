@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::context::AppContext;
-use crate::frame::view_state::{PanelSlot, ViewState};
+use crate::frame::view_state::ViewState;
 
 #[component]
 #[allow(
@@ -15,6 +15,7 @@ pub(crate) fn ProfileName() -> Element {
     tracing::trace!(target: "frame::render", region = "profile_name");
     let ctx = use_context::<AppContext>();
     let view = use_context::<ViewState>();
+    let profiles = crate::frame::profiles::use_bindings();
     let name = use_memo(move || ctx.meta.read().profile_name.clone());
 
     let n = name.read().clone();
@@ -27,8 +28,7 @@ pub(crate) fn ProfileName() -> Element {
                     class: "if-profile-name if-profile-name--loaded",
                     "aria-label": format!("Profile: {s}"),
                     onclick: move |_| {
-                        let mut slot = view.panel_slot;
-                        slot.set(PanelSlot::Profiles);
+                        profiles.open_panel.call(view.panel_slot);
                     },
                     span { class: "if-profile-name__role", "profile" }
                     span { class: "if-profile-name__value", "{s}" }
@@ -46,8 +46,7 @@ pub(crate) fn ProfileName() -> Element {
                     class: "if-profile-name if-profile-name--empty",
                     "aria-label": "Choose profile",
                     onclick: move |_| {
-                        let mut slot = view.panel_slot;
-                        slot.set(PanelSlot::Profiles);
+                        profiles.open_panel.call(view.panel_slot);
                     },
                     span { class: "if-profile-name__role", "profile" }
                     span { class: "if-profile-name__value", "no profile loaded" }

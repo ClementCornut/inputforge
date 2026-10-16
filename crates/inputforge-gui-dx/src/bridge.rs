@@ -15,6 +15,7 @@ pub struct Publisher {
     routing: Context,
     controllers: crate::controllers::Context,
     mappings: Option<crate::mapping_edits::Bindings>,
+    profiles: Option<crate::profiles::Bindings>,
 }
 impl Publisher {
     pub(crate) fn new(
@@ -29,6 +30,7 @@ impl Publisher {
             routing,
             controllers,
             mappings: try_consume_context::<crate::mapping_edits::Bindings>(),
+            profiles: try_consume_context::<crate::profiles::Bindings>(),
         }
     }
     /// Read the selected mapping without subscribing the caller.
@@ -44,6 +46,9 @@ impl Publisher {
     }
     /// Publish changed fields without waking unchanged subscribers.
     pub fn publish(&self, frame: Frame) {
+        if let Some(bindings) = self.profiles {
+            bindings.reconcile.call(frame.meta.clone());
+        }
         self.routing.publish(frame.routing);
         publish(self.controllers.view, frame.controllers);
 

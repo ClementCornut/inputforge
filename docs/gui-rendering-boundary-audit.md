@@ -18,7 +18,8 @@ Requirements:
 
 The original audit was read-only. The status below now also records the first
 implemented routing, polling, controller-workflow, advanced-axis, live-capture,
-keyboard-capture, shared mapping-dispatch/history, mapping-rail, batch-mapping and mode-management extractions;
+keyboard-capture, shared mapping-dispatch/history, mapping-rail, batch-mapping, mode-management,
+editor-instrument and profile-workflow extractions;
 the remaining findings are still open.
 
 ## Resolved routing controls — 2026-10-12
@@ -1442,10 +1443,10 @@ may change during extraction.
 | 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, live capture, keyboard capture, shared mapping dispatch/history, mapping rail, batch and mode workflows now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
 | 2 | **Controller editing policy — partially resolved** — [app controller policy](../crates/inputforge-app/src/controllers/policy.rs); [app axis settings](../crates/inputforge-app/src/controllers/axes.rs); [axis rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Selection, virtual-layout mutations, Apply, shared routing decisions, and advanced axis settings are app-owned. Other configuration-editing/readiness gates remain; see resolved status above. |
 | 3 | **Capture workflows — partially resolved** — [app live capture](../crates/inputforge-app/src/live_capture/mod.rs); [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs); [app keyboard capture](../crates/inputforge-app/src/keyboard_capture/mod.rs); [GUI keyboard contract](../crates/inputforge-gui-dx/src/keyboard_capture.rs) | Live and keyboard capture, physical keyboard translation, ownership, target revalidation, cancellation, interception and delivery are app-owned; live input additionally owns epoch/native confirmation. Shared stage edits/undo and rail Add/collision decisions are app-owned in the later mapping slices. |
-| 4 | **Mapping edits and instruments — resolved** — [app controller](../crates/inputforge-app/src/mapping_edits/mod.rs); [app paths](../crates/inputforge-app/src/mapping_edits/paths.rs); [app history](../crates/inputforge-app/src/mapping_edits/history/mod.rs); [GUI callback wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs) | Shared mapping stage edits, command construction, restore snapshots, undo/redo, invalidation and nudge grouping are app-owned. Rail Add/duplicate/collision/delete/reorder workflows are app-owned. Curve/deadzone mutation, draft/drag decisions, keyboard and numeric behavior are app-owned in Part 2; screen/viewbox geometry stays with rendering. Profile workflows remain deferred; batch mapping is app-owned in the later slice. |
+| 4 | **Mapping edits and instruments — resolved** — [app controller](../crates/inputforge-app/src/mapping_edits/mod.rs); [app paths](../crates/inputforge-app/src/mapping_edits/paths.rs); [app history](../crates/inputforge-app/src/mapping_edits/history/mod.rs); [GUI callback wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs) | Shared mapping stage edits, command construction, restore snapshots, undo/redo, invalidation and nudge grouping are app-owned. Rail Add/duplicate/collision/delete/reorder workflows are app-owned. Curve/deadzone mutation, draft/drag decisions, keyboard and numeric behavior are app-owned in Part 2; screen/viewbox geometry stays with rendering. Profile workflows are app-owned in Part 3; batch mapping is app-owned in the later slice. |
 | 5 | **Batch mapping — resolved** — [app wizard](../crates/inputforge-app/src/mapping_edits/batch/mod.rs); [app dispatch](../crates/inputforge-app/src/mapping_edits/batch/dispatch.rs); [GUI rendering](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs) | Target selection/validation, collisions, reconciliation, entry generation, snapshot requests and delivery are app-owned. Core retains snapshot/persistence execution. |
-| 6 | **Profiles, snapshots, and settings; modes resolved** — [profile actions](../crates/inputforge-gui-dx/src/frame/profiles/actions.rs), line 114; [snapshot settings](../crates/inputforge-gui-dx/src/frame/settings_panel/snapshots_section.rs), line 85 | Mode CRUD, startup/activation, validation, confirmation/counts, dispatch and selection/focus decisions are app-owned. Profile/snapshot/settings CRUD, pruning and related services remain deferred. |
-| 7 | **Operating-system services and filesystem access** — [file picker](../crates/inputforge-gui-dx/src/frame/profiles/mod.rs), line 30; [clipboard](../crates/inputforge-gui-dx/src/frame/panel_slot/device_panel/mod.rs), line 239; [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Dialog invocation, clipboard writes, and other OS services remain. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
+| 6 | **Snapshots and settings; profiles and modes resolved** — [app profiles](../crates/inputforge-app/src/profiles/mod.rs); [snapshot settings](../crates/inputforge-gui-dx/src/frame/settings_panel/snapshots_section.rs), line 85 | Mode CRUD, startup/activation, validation, confirmation/counts, dispatch and selection/focus decisions are app-owned. Profile workflows, name/collision policy, captured identities, file dialogs, confirmation and failed-delivery retention are app-owned. Snapshot/settings CRUD and pruning remain deferred. |
+| 7 | **Operating-system services and filesystem access** — [app file picker](../crates/inputforge-app/src/profiles/dialog.rs); [clipboard](../crates/inputforge-gui-dx/src/frame/panel_slot/device_panel/mod.rs), line 239; [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Native profile dialog invocation and obsolete-result rejection are app-owned; clipboard writes and other OS services remain. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
 | 8 | **Event handling and UI state transitions** — [snapshot shortcut](../crates/inputforge-gui-dx/src/frame/profiles/snapshot_drawer.rs), line 306; [navigation reconciliation](../crates/inputforge-gui-dx/src/frame/view_state.rs), line 244; [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs), line 163 | Document listeners, shortcut interpretation, focus navigation, click-away behavior, drag/drop decisions, draft commits, and selection reconciliation. This includes reusable component behavior under the strict rendering-only boundary. |
 | 9 | **Live readout analysis** — [analyzer](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/analyzer.rs), line 146; [activity timer](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/mod.rs), line 100 | Pipeline interpretation, activity calculations, and expiry scheduling. Supply a completed readout model to the renderer. |
 | 10 | **Notifications** — [toast queue](../crates/inputforge-gui-dx/src/toast/queue.rs), line 26; [toast timer and handlers](../crates/inputforge-gui-dx/src/toast/viewport.rs), line 27 | Warning delivery, notification expiry, pause/resume, dismissal, and undo actions. The GUI should display the current notifications and wire supplied callbacks. |
@@ -1793,3 +1794,93 @@ Native Wayland/Windows acceptance and runtime performance remain manual. Use
 
 Part 3 and later parts remain pending. Earlier native Apply/drag evidence remains
 historical evidence rather than acceptance of this instrument refactor.
+
+
+## Profile workflows and file dialogs — 2026-10-16
+
+Part 3 of the [approved plan](gui-rendering-boundary-plan.md) moves profile
+selection, creation, copying, external-file choice/import, add-to-library, rename,
+duplicate, deletion and reveal decisions into the [app controller](../crates/inputforge-app/src/profiles/mod.rs).
+The [policy](../crates/inputforge-app/src/profiles/policy.rs) reuses core name
+validation and filename sanitization, isolates the library namespace from active
+external profiles, validates case/sanitized collisions and keeps the active row
+visible under filtering. [Form preparation](../crates/inputforge-app/src/profiles/forms.rs)
+and [dispatch](../crates/inputforge-app/src/profiles/dispatch.rs) revalidate the
+captured native path, profile identity and workflow context before sending the
+existing engine commands. They release the engine guard before delivery and only
+publish accepted presentation transitions. Invalid or failed delivery retains the
+form/rename/confirmation, with accessible feedback and no success announcement,
+selection, focus or navigation change. Core retains filesystem execution and its
+existing warning/error semantics; delivery does not prove that a file was saved.
+
+The [native picker lifecycle](../crates/inputforge-app/src/profiles/dialog.rs)
+rejects cancelled/obsolete results after Back, a newer request, profile replacement,
+or panel close/remount. Obsolete ownership is checked before a potentially
+contended engine read. Picker invocation and `rfd` ownership moved to the app;
+the GUI no longer depends on `rfd`. No dependency package, engine poller, timer,
+thread, channel, persisted profile format or direct X11 path was added. Existing
+bridge reconciliation refreshes the mounted profile view through nonblocking
+reads and equality-gated signal publication. Library metadata now carries an
+optional persisted profile ID from its existing core load, so a same-name,
+same-path replacement cannot receive an old row action or confirmation. Loaded
+active and library-file identities are checked independently. Native paths remain
+paired with their rows; lossless native-path tokens identify DOM rows and copy
+sources even when filenames have identical display text. Existing cached
+modification labels flow from the bridge into the profile view, survive local
+input, and clear when the authoritative library metadata becomes unavailable.
+
+The [GUI contract](../crates/inputforge-gui-dx/src/profiles.rs) contains prepared
+rows, availability, names/errors, mounted signals and app callbacks.
+[The panel](../crates/inputforge-gui-dx/src/frame/profiles/mod.rs), forms and rows
+render them and forward events. The app owns rename key/focus interpretation and
+top-bar profile-panel navigation. A retained rename remains visibly associated
+with its path after replacement while its original identity continues to reject
+submission. Snapshots and Ctrl+S keep their existing path until Part 4; no dormant
+snapshot controls or other product features were introduced.
+
+Regression coverage uses [real app bindings](../crates/inputforge-app/tests/profiles.rs),
+[real rendered form/rename/delete handlers](../crates/inputforge-gui-dx/src/frame/profiles/event_tests.rs)
+and core temporary-directory lifecycle tests. Tests cover trimmed/illegal/case/
+sanitized names, library/external namespaces, active-row filtering, every existing
+profile command, cancelled/missing copy sources, native non-UTF8 external paths,
+unchanged rename/cancelled delete, failed delivery retention, stale active/inactive
+profile identities, stale form callbacks and picker replacement/teardown. Real
+Create first lost accessible failure feedback; retained rename first disappeared
+after same-path replacement. An obsolete picker under engine contention first
+wrote feedback into a newer form. These cases have recorded red/green evidence.
+App assertions run outside Dioxus rendering so its error boundary cannot absorb a
+test failure.
+
+**Validation:** the unchanged pre-commit hook passed. The final host run of
+`cargo test --workspace --locked --offline -j 2` passed with **2,155 passed,
+0 failed and 11 existing ignored**, including 22 app profile integration cases,
+36 GUI profile/snapshot cases, core filesystem handling, and existing
+mapping/history/capture/lifecycle suites. Host IPC access was required for the
+existing single-instance socket tests; the sandbox failures were rerun and passed.
+Keyboard capture, rail/editor, all 14 sortable and all 7 instrument pointer
+JavaScript regressions passed. Diff whitespace and audit links passed; seven
+historical evidence sections retain their saved hashes. New profile modules stay
+below 200 production lines each.
+
+One independent read-only review found two identity defects: active library rows
+lost their separate on-disk profile identity, and lossy path lookup could merge
+distinct native filenames. Regression cases reproduced both before the fixes.
+Focused re-review cleared both fixes and the connected metadata preservation,
+with no outstanding Critical or Important findings. The reviewed source hashes
+match the final tested source.
+
+Native Wayland and separate Windows desktop acceptance remain manual. Use
+`dx run -p inputforge-app` and disposable profiles:
+
+1. Create blank, copy-active and copy-library profiles. Try empty, illegal,
+   case-only and duplicate names. Rename with Enter, blur and Escape; filter the
+   library and confirm the active row stays visible.
+2. Cancel the picker; choose an in-library file, then an external file for Load
+   once and Add to library. Close/reopen the panel or switch profiles while a
+   picker is open; an old result must not change the current workflow.
+3. Keep same-named library and external profiles distinct. Duplicate/reveal a
+   library row; cancel and confirm deletion, including the active-profile warning.
+   Check snapshots/Ctrl+S still behave as before. Repeat separately on Windows.
+
+Part 4 and later parts remain pending. Earlier native Apply/capture/drag evidence
+is preserved verbatim and does not establish acceptance of these profile changes.

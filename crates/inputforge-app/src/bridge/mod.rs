@@ -4,7 +4,7 @@ mod config;
 mod device_usage;
 mod devices;
 mod live;
-mod meta;
+pub(crate) mod meta;
 mod profile_metadata;
 mod settings;
 #[cfg(test)]

@@ -16,6 +16,7 @@ name = "inputforge"
 path = "src/main.rs"
 
 [dependencies]
+rfd = { workspace = true }
 inputforge-gui-dx    = { workspace = true }
 inputforge-autostart = { workspace = true }
 parking_lot          = { workspace = true }

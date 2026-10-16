@@ -8,8 +8,6 @@
 //! `selected_mapping` (the currently highlighted mapping row, cleared on
 //! profile flip or editing-mode flip).
 
-use std::path::PathBuf;
-
 use dioxus::prelude::*;
 #[cfg(test)]
 use inputforge_core::types::InputAddress;
@@ -22,10 +20,14 @@ use crate::context::MetaSnapshot;
 /// the `UndoLog` map key, and every editor key passing.
 pub(crate) use crate::snapshots::MappingKey;
 
+#[cfg(test)]
+pub use inputforge_gui_dx::PanelSlot;
+
 /// Which right-side panel is currently mounted.
 ///
 /// `None` collapses the panel column; `Devices` and `Profiles` mount the
 /// respective panel content (F12 / F13 own contents, F7 ships placeholders).
+#[cfg(not(test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(dead_code, reason = "Used by regions in Task 18+")]
 pub enum PanelSlot {
@@ -44,23 +46,6 @@ pub(crate) enum MainSurface {
     BulkMap,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) enum ProfilesPanelMode {
-    /// Default mode: render the profile library list and filter.
-    #[default]
-    Library,
-    /// Sub-mode for creating a new profile (Blank / Copy active /
-    /// Copy from library / Open existing file).
-    NewProfile,
-    /// Sub-mode reached after the OS picker resolves with a profile
-    /// path. Carries the picked path and a default library-name
-    /// suggestion derived from the file stem.
-    OpenChoice {
-        path: PathBuf,
-        suggested_name: String,
-    },
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InlineRenameDraft {
     pub id: String,
@@ -68,29 +53,11 @@ pub(crate) struct InlineRenameDraft {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ProfilesPanelState {
-    pub filter: String,
-    pub mode: ProfilesPanelMode,
-    pub open_row_menu_id: Option<String>,
-    pub profile_rename: Option<InlineRenameDraft>,
     pub snapshot_drawer_open: bool,
     pub snapshot_rename: Option<InlineRenameDraft>,
     pub pending_snapshot_delete_toast_id: Option<String>,
-}
-
-impl Default for ProfilesPanelState {
-    fn default() -> Self {
-        Self {
-            filter: String::new(),
-            mode: ProfilesPanelMode::Library,
-            open_row_menu_id: None,
-            profile_rename: None,
-            snapshot_drawer_open: false,
-            snapshot_rename: None,
-            pending_snapshot_delete_toast_id: None,
-        }
-    }
 }
 
 /// GUI-only chrome state, provided once in `app_root`.

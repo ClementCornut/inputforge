@@ -97,6 +97,8 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 ## Part 3: Profiles and File Dialogs
 
+**Status (2026-10-16):** Complete on `main`; independent review cleared after profile identity, native-path and metadata regressions were fixed. Final host workspace: 2,155 passed, 0 failed, 11 existing ignored. Native Wayland/Windows manual acceptance remains pending.
+
 **Commit:** `refactor(profiles): move profile workflows and file dialogs into app`
 
 **Files:** Create `inputforge-app/src/profiles/{mod.rs,policy.rs,dispatch.rs,dialog.rs}` as needed. Modify GUI `frame/profiles/{mod.rs,actions.rs,library.rs,new_profile.rs,new_profile_submode.rs,open_choice_submode.rs,no_profile.rs,delete_dialog.rs,projection.rs}`, profile-related `frame/view_state.rs`, and a new GUI `src/profiles.rs` contract. Add `rfd` to app dependencies and remove it from GUI when its final production caller moves. Reuse core `profile/{manager.rs,library.rs}` rather than moving persistence into GUI/app.
@@ -107,7 +109,7 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 **Tests first:** Add `inputforge-app/tests/profiles.rs` and real GUI profile-event cases alongside existing `frame/profiles/tests.rs`. Cover trimmed/illegal/duplicate/case-only names; external versus library namespaces; active row visibility under filtering; cancelled picker; in-library open versus external choice; picker completion after close/unmount/newer request; profile replacement and stale delete/rename; failed delivery preserving forms/confirmation/focus; and unchanged filesystem error handling. Keep existing core temporary-directory persistence tests.
 
-- [ ] Complete the common cycle; manually exercise create/import/load once/library rename/duplicate/delete and picker cancellation with disposable profiles.
+- [x] Complete the common automated validation, review and commit cycle. Manual acceptance remains: create/import/load once/library rename/duplicate/delete and picker cancellation with disposable profiles.
 
 ## Part 4: Snapshot Workflows and Snapshot Shortcut
 

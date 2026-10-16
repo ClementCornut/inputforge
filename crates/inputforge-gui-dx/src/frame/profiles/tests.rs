@@ -11,26 +11,19 @@ use inputforge_core::profile::Profile;
 use inputforge_core::snapshot::{SnapshotConfig, SnapshotId, SnapshotKind, create};
 use inputforge_core::state::{AppState, ProfileOrigin};
 
+use crate::context::SnapshotRowView;
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, SettingsSnapshot};
-use crate::context::{ProfileRowOrigin, ProfileRowView, SnapshotRowView};
 use crate::frame::layout::EmptyState;
 use crate::frame::profiles::ProfilesPanel;
 use crate::frame::profiles::actions::{
-    ConfirmationKind, ToastAction, create_manual_snapshot_action, profile_delete_action,
-    profile_duplicate_action, profile_open_action, profile_rename_action, profile_reveal_action,
-    snapshot_delete_action, snapshot_restore_action,
+    ConfirmationKind, ToastAction, create_manual_snapshot_action, snapshot_delete_action,
+    snapshot_restore_action,
 };
-use crate::frame::profiles::new_profile::{
-    NewProfileSource, add_external_to_library_command, create_new_profile_command,
-    open_file_load_once_command,
-};
-use crate::frame::profiles::projection::project_profile_rows;
 use crate::frame::profiles::snapshot_drawer::{
     FocusContext, FocusScope, SnapshotDrawer, classify_focus_scope, should_handle_snapshot_shortcut,
 };
-use crate::frame::view_state::{
-    MainSurface, PanelSlot, ProfilesPanelMode, ProfilesPanelState, ViewState,
-};
+use crate::frame::view_state::{MainSurface, PanelSlot, ProfilesPanelState, ViewState};
+use crate::profiles::{Intent, Mode};
 
 fn simple_profile(name: &str) -> Profile {
     let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
@@ -205,30 +198,8 @@ fn sample_snapshot_id() -> SnapshotId {
     id
 }
 
-fn sample_profile_rows(active: &str, names: &[&str]) -> Vec<ProfileRowView> {
-    names
-        .iter()
-        .map(|name| ProfileRowView {
-            id: (*name).to_owned(),
-            name: (*name).to_owned(),
-            path_label: format!("C:/Profiles/{name}.toml"),
-            is_active: *name == active,
-            origin: ProfileRowOrigin::Library,
-            mode_count: 1,
-            last_edited_label: None,
-            can_open: true,
-            can_rename: true,
-            can_duplicate: true,
-            can_reveal: true,
-            can_delete: true,
-            can_add_to_library: false,
-            can_snapshot_now: true,
-        })
-        .collect()
-}
-
 #[component]
-fn ProfilesHarnessWithMode(mode: ProfilesPanelMode) -> Element {
+fn ProfilesHarnessWithMode(mode: Mode) -> Element {
     let app_state = sample_profiles_context();
     let initial_meta = inputforge_app::bridge::prepare(&app_state, None).meta;
     let state = Arc::new(RwLock::new(app_state));
@@ -241,10 +212,26 @@ fn ProfilesHarnessWithMode(mode: ProfilesPanelMode) -> Element {
     let panel_slot = use_signal(|| PanelSlot::Profiles);
     let via_calibration = use_signal(|| false);
     let selected_mapping = use_signal(|| None);
-    let profiles_panel = use_signal(|| ProfilesPanelState {
-        mode: mode.clone(),
-        ..ProfilesPanelState::default()
+    let controller = use_hook(|| {
+        inputforge_app::profiles::Controller::new(Arc::clone(&state), commands.clone())
     });
+    let mut bindings = controller.bindings();
+    bindings.mount = Callback::new(move |view| {
+        let owner = controller.mount(view);
+        match &mode {
+            Mode::New => {
+                let _ = controller.dispatch(owner, Intent::New);
+            }
+            Mode::Open { path } => {
+                let request = controller.begin_pick(owner).unwrap();
+                controller.finish_pick(&request, Some(path.clone()));
+            }
+            Mode::Library => {}
+        }
+        owner
+    });
+    use_context_provider(|| bindings);
+    let profiles_panel = use_signal(ProfilesPanelState::default);
     let settings = use_signal(SettingsSnapshot::default);
     use_context_provider(|| AppContext {
         state,
@@ -265,7 +252,7 @@ fn ProfilesHarnessWithMode(mode: ProfilesPanelMode) -> Element {
     rsx! { ProfilesPanel {} }
 }
 
-fn render_profiles_panel_with_mode(mode: ProfilesPanelMode) -> String {
+fn render_profiles_panel_with_mode(mode: Mode) -> String {
     let mut vdom = VirtualDom::new_with_props(
         ProfilesHarnessWithMode,
         ProfilesHarnessWithModeProps { mode },
@@ -276,7 +263,7 @@ fn render_profiles_panel_with_mode(mode: ProfilesPanelMode) -> String {
 
 #[test]
 fn new_profile_submode_replaces_library_region() {
-    let html = render_profiles_panel_with_mode(ProfilesPanelMode::NewProfile);
+    let html = render_profiles_panel_with_mode(Mode::New);
 
     assert!(html.contains("profiles-panel__submode"));
     assert!(html.contains("New profile"));
@@ -291,9 +278,8 @@ fn new_profile_submode_replaces_library_region() {
 
 #[test]
 fn open_choice_submode_replaces_library_region() {
-    let mode = ProfilesPanelMode::OpenChoice {
+    let mode = Mode::Open {
         path: PathBuf::from("E:/Profiles/external.toml"),
-        suggested_name: "external".to_owned(),
     };
     let html = render_profiles_panel_with_mode(mode);
 
@@ -309,7 +295,7 @@ fn open_choice_submode_replaces_library_region() {
 
 #[test]
 fn submode_back_button_renders_with_chevron_text() {
-    let html = render_profiles_panel_with_mode(ProfilesPanelMode::NewProfile);
+    let html = render_profiles_panel_with_mode(Mode::New);
 
     assert!(html.contains("profiles-panel__submode-back"));
     assert!(html.contains("Back to library"));
@@ -317,7 +303,7 @@ fn submode_back_button_renders_with_chevron_text() {
 
 #[test]
 fn new_profile_source_radios_render_all_four_options() {
-    let html = render_profiles_panel_with_mode(ProfilesPanelMode::NewProfile);
+    let html = render_profiles_panel_with_mode(Mode::New);
 
     let radio_count = html.matches("name=\"new-profile-source\"").count();
     assert_eq!(
@@ -337,37 +323,6 @@ fn library_filter_renders_inside_library_with_sticky_class() {
     assert!(
         library_idx < filter_idx,
         "filter must render inside library region, after .profiles-panel__library opens"
-    );
-}
-
-#[test]
-fn projection_pins_active_and_sorts_inactive_alphabetically() {
-    let rows = sample_profile_rows("Bravo", &["Zulu", "Alpha", "Bravo"]);
-
-    let projected = project_profile_rows(&rows, "Bravo", "");
-
-    assert_eq!(
-        projected
-            .iter()
-            .map(|row| row.name.as_str())
-            .collect::<Vec<_>>(),
-        vec!["Bravo", "Alpha", "Zulu"]
-    );
-    assert!(projected[0].is_active);
-}
-
-#[test]
-fn active_profile_stays_visible_when_filter_does_not_match() {
-    let rows = sample_profile_rows("Bravo", &["Zulu", "Alpha", "Bravo"]);
-
-    let projected = project_profile_rows(&rows, "Bravo", "alp");
-
-    assert_eq!(
-        projected
-            .iter()
-            .map(|row| row.name.as_str())
-            .collect::<Vec<_>>(),
-        vec!["Bravo", "Alpha"]
     );
 }
 
@@ -638,54 +593,6 @@ fn no_profile_state_shows_center_explanation_and_panel_actions() {
 }
 
 #[test]
-fn profile_delete_action_dispatches_real_engine_command() {
-    let action = profile_delete_action("Alpha");
-
-    assert_eq!(
-        action.command,
-        EngineCommand::DeleteProfile {
-            name: "Alpha".to_owned()
-        }
-    );
-    assert_eq!(action.confirmation, Some(ConfirmationKind::DestructiveF4));
-}
-
-#[test]
-fn profile_row_actions_dispatch_expected_commands() {
-    let path = PathBuf::from("C:/Profiles/Alpha.toml");
-
-    assert_eq!(
-        profile_open_action(path.clone()),
-        EngineCommand::LoadProfile(path.clone())
-    );
-    assert_eq!(
-        profile_rename_action("Alpha", "Bravo"),
-        Some(EngineCommand::RenameProfile {
-            old_name: "Alpha".to_owned(),
-            new_name: "Bravo".to_owned(),
-        })
-    );
-    assert_eq!(
-        profile_duplicate_action(path.clone(), "Alpha Copy"),
-        Some(EngineCommand::DuplicateProfile {
-            source_path: path.clone(),
-            name: "Alpha Copy".to_owned(),
-        })
-    );
-    assert_eq!(
-        profile_reveal_action(path.clone()),
-        EngineCommand::RevealProfile { path }
-    );
-    assert_eq!(
-        create_manual_snapshot_action(),
-        EngineCommand::CreateSnapshot {
-            kind: SnapshotKind::Manual,
-            label: None,
-        }
-    );
-}
-
-#[test]
 fn snapshot_delete_action_dispatches_real_engine_command_and_undo_toast() {
     let id = sample_snapshot_id();
     let action = snapshot_delete_action(id);
@@ -695,158 +602,6 @@ fn snapshot_delete_action_dispatches_real_engine_command_and_undo_toast() {
         action.toast_action,
         Some(ToastAction::UndoSnapshotDelete { id })
     );
-}
-
-#[test]
-fn new_blank_profile_dispatches_create_profile() {
-    let command = create_new_profile_command(NewProfileSource::Blank, "Alpha", None, &[]).unwrap();
-
-    assert_eq!(
-        command,
-        EngineCommand::CreateProfile {
-            name: "Alpha".to_owned()
-        }
-    );
-}
-
-#[test]
-fn open_file_load_once_dispatches_external_load() {
-    let path = PathBuf::from("E:/Profiles/external.toml");
-    let command = open_file_load_once_command(path.clone()).unwrap();
-
-    assert_eq!(command, EngineCommand::LoadExternalProfileOnce(path));
-}
-
-#[test]
-fn add_external_to_library_dispatches_import_command() {
-    let path = PathBuf::from("E:/Profiles/external.toml");
-    let command = add_external_to_library_command(path.clone(), "Imported", &[]).unwrap();
-
-    assert_eq!(
-        command,
-        EngineCommand::AddExternalProfileToLibrary {
-            path,
-            name: "Imported".to_owned()
-        }
-    );
-}
-
-#[test]
-fn empty_or_whitespace_name_is_rejected_inline() {
-    use crate::frame::profiles::actions::{NewProfileValidationError, validate_new_profile_name};
-    assert_eq!(
-        validate_new_profile_name("   ", &[]).unwrap_err(),
-        NewProfileValidationError::EmptyName
-    );
-}
-
-#[test]
-fn duplicate_library_name_is_rejected_inline() {
-    use crate::frame::profiles::actions::{NewProfileValidationError, validate_new_profile_name};
-    let existing = vec!["Alpha".to_owned()];
-    assert_eq!(
-        validate_new_profile_name("Alpha", &existing).unwrap_err(),
-        NewProfileValidationError::DuplicateName
-    );
-}
-
-#[test]
-fn case_only_duplicate_rename_is_allowed() {
-    use crate::frame::profiles::actions::validate_rename;
-    let existing = vec!["Alpha".to_owned()];
-    let validated = validate_rename("Alpha", "ALPHA", &existing).unwrap();
-    assert_eq!(validated, "ALPHA");
-}
-
-/// Regression: when an external profile is active and shares its name
-/// with a library entry, `meta.profile_rows` contains both rows. The
-/// inline rename in `library.rs` keys the active rename target by
-/// `row.id` (the file path) and filters `existing_names` to library
-/// origin so the external row does NOT pollute collision checks. Locks
-/// both invariants at the data layer (the rendering integration cannot
-/// be exercised through SSR because the rename signal toggles on a
-/// click handler).
-#[test]
-fn rename_filters_external_active_profile_from_collision_namespace() {
-    use crate::frame::profiles::actions::validate_rename;
-
-    let library_default = ProfileRowView {
-        id: "C:/Profiles/Default.toml".to_owned(),
-        name: "Default".to_owned(),
-        path_label: "C:/Profiles/Default.toml".to_owned(),
-        is_active: false,
-        origin: ProfileRowOrigin::Library,
-        mode_count: 1,
-        last_edited_label: None,
-        can_open: true,
-        can_rename: true,
-        can_duplicate: true,
-        can_reveal: true,
-        can_delete: true,
-        can_add_to_library: false,
-        can_snapshot_now: false,
-    };
-    let external_default = ProfileRowView {
-        id: "D:/External/Default.toml".to_owned(),
-        name: "Default".to_owned(),
-        path_label: "D:/External/Default.toml".to_owned(),
-        is_active: true,
-        origin: ProfileRowOrigin::External,
-        mode_count: 1,
-        last_edited_label: None,
-        can_open: false,
-        can_rename: false,
-        can_duplicate: false,
-        can_reveal: true,
-        can_delete: false,
-        can_add_to_library: true,
-        can_snapshot_now: true,
-    };
-    let rows = [library_default.clone(), external_default.clone()];
-
-    // Mirrors the inline filter at `library.rs:40-44`.
-    let existing_names: Vec<String> = rows
-        .iter()
-        .filter(|r| r.origin == ProfileRowOrigin::Library)
-        .map(|r| r.name.clone())
-        .collect();
-    assert_eq!(existing_names, vec!["Default".to_owned()]);
-
-    // Renaming the library "Default" to a brand-new name must succeed
-    // even though an external profile named "Default" is also active.
-    validate_rename("Default", "Renamed", &existing_names).unwrap();
-
-    // Path-keyed rename target matches the library row only; the
-    // external row of the same name must not flag as renaming.
-    let rename_target: Option<String> = Some(library_default.id.clone());
-    assert!(
-        rename_target.as_deref() == Some(library_default.id.as_str()),
-        "library row should match the rename target by id"
-    );
-    assert!(
-        rename_target.as_deref() != Some(external_default.id.as_str()),
-        "external row must not match a library-targeted rename"
-    );
-}
-
-#[test]
-fn illegal_filename_char_is_rejected_inline() {
-    use crate::frame::profiles::actions::{NewProfileValidationError, validate_new_profile_name};
-    assert!(matches!(
-        validate_new_profile_name("bad/name", &[]).unwrap_err(),
-        NewProfileValidationError::IllegalCharacter(_)
-    ));
-}
-
-#[test]
-fn missing_external_path_is_rejected_inline() {
-    use crate::frame::profiles::actions::NewProfileValidationError;
-    use crate::frame::profiles::new_profile::open_file_load_once_command;
-    let result = open_file_load_once_command(PathBuf::new());
-    assert!(matches!(
-        result,
-        Err(NewProfileValidationError::MissingPath)
-    ));
 }
 
 #[test]

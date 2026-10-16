@@ -45,6 +45,9 @@ pub enum ProfileOrigin {
 /// Engine-projected profile library row for UI presentation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProfileLibraryRow {
+    /// Persisted identity rejects delayed actions after a same-path replacement.
+    #[serde(default)]
+    pub profile_id: Option<crate::profile::ProfileId>,
     /// Profile display name.
     pub name: String,
     /// Absolute profile path.

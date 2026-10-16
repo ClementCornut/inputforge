@@ -10,41 +10,7 @@ pub(super) fn project(s: &AppState) -> MetaSnapshot {
         .profile_path
         .as_ref()
         .map(|path| path.display().to_string());
-    let mut profile_rows = s
-        .profile_library_rows
-        .iter()
-        .map(|row| {
-            let id = row.path.display().to_string();
-            ProfileRowView {
-                id,
-                name: row.name.clone(),
-                path_label: row.path.display().to_string(),
-                is_active: row.is_active,
-                origin: ProfileRowOrigin::Library,
-                mode_count: row.mode_count,
-                last_edited_label: row
-                    .last_edited_at
-                    .map(super::time_labels::format_chrono_time_relative),
-                can_open: true,
-                can_rename: true,
-                can_duplicate: true,
-                can_reveal: true,
-                can_delete: true,
-                can_add_to_library: false,
-                can_snapshot_now: row.is_active,
-            }
-        })
-        .collect::<Vec<_>>();
-    if s.active_profile_origin == Some(CoreProfileOrigin::External)
-        && let Some(row) = active_profile_row_from_state(s, ProfileRowOrigin::External)
-    {
-        profile_rows.push(row);
-    }
-    if profile_rows.is_empty()
-        && let Some(row) = active_profile_row_from_state(s, ProfileRowOrigin::Library)
-    {
-        profile_rows.push(row);
-    }
+    let profile_rows = profile_rows(s);
     let now_for_snapshots = chrono::Utc::now();
     let snapshot_rows = s
         .active_snapshot_rows
@@ -120,4 +86,60 @@ fn active_profile_row_from_state(s: &AppState, origin: ProfileRowOrigin) -> Opti
         can_add_to_library: is_external,
         can_snapshot_now: true,
     })
+}
+
+/// Prepare profile rows without building unrelated editor projections.
+pub(crate) fn native_profile_rows(s: &AppState) -> Vec<(std::path::PathBuf, ProfileRowView)> {
+    let mut profile_rows = s
+        .profile_library_rows
+        .iter()
+        .map(|row| {
+            let id = row.path.display().to_string();
+            (
+                row.path.clone(),
+                ProfileRowView {
+                    id,
+                    name: row.name.clone(),
+                    path_label: row.path.display().to_string(),
+                    is_active: row.is_active,
+                    origin: ProfileRowOrigin::Library,
+                    mode_count: row.mode_count,
+                    last_edited_label: row
+                        .last_edited_at
+                        .map(super::time_labels::format_chrono_time_relative),
+                    can_open: true,
+                    can_rename: true,
+                    can_duplicate: true,
+                    can_reveal: true,
+                    can_delete: true,
+                    can_add_to_library: false,
+                    can_snapshot_now: row.is_active,
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    if s.active_profile_origin == Some(CoreProfileOrigin::External)
+        && let (Some(path), Some(row)) = (
+            s.profile_path.as_ref(),
+            active_profile_row_from_state(s, ProfileRowOrigin::External),
+        )
+    {
+        profile_rows.push((path.clone(), row));
+    }
+    if profile_rows.is_empty()
+        && let (Some(path), Some(row)) = (
+            s.profile_path.as_ref(),
+            active_profile_row_from_state(s, ProfileRowOrigin::Library),
+        )
+    {
+        profile_rows.push((path.clone(), row));
+    }
+    profile_rows
+}
+
+fn profile_rows(s: &AppState) -> Vec<ProfileRowView> {
+    native_profile_rows(s)
+        .into_iter()
+        .map(|(_, row)| row)
+        .collect()
 }

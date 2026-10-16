@@ -37,6 +37,10 @@ pub use inputforge_gui_dx::mapping_rail;
 pub mod mode_management;
 #[cfg(test)]
 pub use inputforge_gui_dx::mode_management;
+#[cfg(not(test))]
+pub mod profiles;
+#[cfg(test)]
+pub use inputforge_gui_dx::profiles;
 pub mod patterns;
 pub mod routing;
 #[cfg(not(test))]
@@ -69,6 +73,10 @@ pub struct EditorNavigation {
 ///
 /// # Errors
 /// Propagates render errors from the editor root.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "host supplies each extracted workflow independently"
+)]
 pub fn render_editor(
     handles: RawHandles,
     routing: routing::Bindings,
@@ -76,6 +84,7 @@ pub fn render_editor(
     capture: capture::Bindings,
     keyboard: keyboard_capture::Bindings,
     mappings: mapping_edits::Bindings,
+    profiles: profiles::Bindings,
     start_polling: Callback<bridge::Publisher>,
 ) -> Element {
     use_context_provider(|| routing);
@@ -83,6 +92,7 @@ pub fn render_editor(
     use_context_provider(|| capture);
     use_context_provider(|| keyboard);
     use_context_provider(|| mappings);
+    use_context_provider(|| profiles);
     use_context_provider(|| start_polling);
     use_context_provider(|| handles);
     app::app_root()

@@ -61,15 +61,24 @@ const PENDING_DELETE_RETENTION_DAYS: i64 = 7;
 /// Read mode count and last-edit timestamp for the profile file at `path`.
 ///
 /// Best-effort: any I/O or parse failure surfaces as a warning log and
-/// produces `(0, None)` so the projection always has a row to show.
+/// produces an empty mode count and identity so the projection always has a row to show.
 /// Used by `refresh_profile_library_rows` and never by command paths.
-fn read_profile_metadata(path: &Path) -> (u32, Option<DateTime<Utc>>) {
-    let mode_count = match Profile::load(path) {
+fn read_profile_metadata(
+    path: &Path,
+) -> (
+    u32,
+    Option<DateTime<Utc>>,
+    Option<crate::profile::ProfileId>,
+) {
+    let (mode_count, profile_id) = match Profile::load(path) {
         Ok(profile) => {
             // The mode count is bounded by profile validation elsewhere in
             // the engine; saturating to u32::MAX keeps the cast lossless
             // for any plausible mode-list size.
-            u32::try_from(profile.modes().len()).unwrap_or(u32::MAX)
+            (
+                u32::try_from(profile.modes().len()).unwrap_or(u32::MAX),
+                Some(profile.id().clone()),
+            )
         }
         Err(e) => {
             tracing::warn!(
@@ -78,7 +87,7 @@ fn read_profile_metadata(path: &Path) -> (u32, Option<DateTime<Utc>>) {
                 error = %e,
                 "engine.profile_library.load_failure"
             );
-            0
+            (0, None)
         }
     };
 
@@ -95,7 +104,7 @@ fn read_profile_metadata(path: &Path) -> (u32, Option<DateTime<Utc>>) {
         }
     };
 
-    (mode_count, last_edited_at)
+    (mode_count, last_edited_at, profile_id)
 }
 
 impl Engine {
@@ -1499,8 +1508,9 @@ impl Engine {
                 let is_active = active_path
                     .as_ref()
                     .is_some_and(|path| path == &profile.path);
-                let (mode_count, last_edited_at) = read_profile_metadata(&profile.path);
+                let (mode_count, last_edited_at, profile_id) = read_profile_metadata(&profile.path);
                 ProfileLibraryRow {
+                    profile_id,
                     name: profile.name,
                     path: profile.path,
                     origin: ProfileOrigin::Library,

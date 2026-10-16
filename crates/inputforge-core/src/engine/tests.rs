@@ -7059,3 +7059,38 @@ fn mapping_edit_barrier_confirms_prior_queued_mapping_commands() {
 
 #[path = "tests/mode_revision.rs"]
 mod mode_revision;
+
+#[test]
+fn library_row_identity_tracks_same_path_replacement() {
+    let mut harness = EngineHarness::new();
+    harness.create_and_load_profile("Alpha").unwrap();
+    let path = create_profile_in("Bravo", &harness.library_dir).unwrap();
+    let original = Profile::load(&path).unwrap();
+    harness.engine.refresh_profile_library_rows().unwrap();
+    assert_eq!(
+        harness
+            .state()
+            .profile_library_rows
+            .iter()
+            .find(|r| r.path == path)
+            .unwrap()
+            .profile_id
+            .as_ref(),
+        Some(original.id())
+    );
+    let replacement = make_profile(simple_modes(), vec![]);
+    assert_ne!(original.id(), replacement.id());
+    replacement.save(&path).unwrap();
+    harness.engine.refresh_profile_library_rows().unwrap();
+    assert_eq!(
+        harness
+            .state()
+            .profile_library_rows
+            .iter()
+            .find(|r| r.path == path)
+            .unwrap()
+            .profile_id
+            .as_ref(),
+        Some(replacement.id())
+    );
+}
