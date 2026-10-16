@@ -55,6 +55,7 @@ pub(super) fn apply(actions: &[Action], edit: &Edit) -> Option<Vec<Action>> {
             list.insert(i, action);
         }
         Edit::Rename(_) | Edit::Rebind(_) => {}
+        Edit::Field { .. } | Edit::Add { .. } | Edit::Step { .. } => return None,
     }
     Some(actions)
 }

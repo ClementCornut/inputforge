@@ -93,68 +93,6 @@ fn condition_kind(c: &Condition) -> &'static str {
     }
 }
 
-/// Build a default-shaped `Condition` for the given kind string, preserving
-/// the `input` address where applicable so a kind-switch does not lose the
-/// user's already-configured device/input.
-///
-/// When `prev_input` is `None`, the new leaf condition is seeded with
-/// `InputAddress::Unbound` so the row renders the explicit `Unbound`
-/// placeholder until the user picks an input. Previously a `Bound` sentinel
-/// (empty device + button 0) silently rendered as `Btn 1` and looked like a
-/// real binding the user had not chosen.
-fn default_condition_for_kind(kind: &str, prev_input: Option<InputAddress>) -> Condition {
-    let addr = prev_input.unwrap_or(InputAddress::Unbound);
-    match kind {
-        KIND_BUTTON_PRESSED => Condition::ButtonPressed { input: addr },
-        KIND_BUTTON_RELEASED => Condition::ButtonReleased { input: addr },
-        KIND_AXIS_IN_RANGE => Condition::AxisInRange {
-            input: addr,
-            min: -1.0,
-            max: 1.0,
-        },
-        KIND_HAT_DIRECTION => Condition::HatDirection {
-            input: addr,
-            directions: vec![],
-        },
-        KIND_ALL => Condition::All { conditions: vec![] },
-        KIND_ANY => Condition::Any { conditions: vec![] },
-        // Default `Not` wraps a ButtonPressed so the inner editor is always valid.
-        KIND_NOT => Condition::Not {
-            condition: Box::new(Condition::ButtonPressed { input: addr }),
-        },
-        // Unrecognised kind (defensive): same shape as ButtonPressed.
-        // The wildcard arm is intentional -- it provides a safe default
-        // for any future kind strings that arrive before the picker is
-        // updated, rather than panicking or producing an invalid state.
-        #[expect(
-            clippy::match_same_arms,
-            reason = "wildcard is a defensive fallback; collapsing it into the \
-                      ButtonPressed arm would obscure the intent"
-        )]
-        _ => Condition::ButtonPressed { input: addr },
-    }
-}
-
-/// Extract the `InputAddress` from any leaf condition, if present.
-///
-/// Returns `None` for both branch conditions (`All` / `Any` / `Not`) and for
-/// leaf conditions whose `input` is `Unbound`. The latter is intentional:
-/// `default_condition_for_kind` calls this to seed a new condition's input
-/// from the previous one, and propagating an `Unbound` sentinel back through
-/// would defeat the explicit `Unbound` default.
-fn condition_input(c: &Condition) -> Option<InputAddress> {
-    match c {
-        Condition::ButtonPressed { input }
-        | Condition::ButtonReleased { input }
-        | Condition::AxisInRange { input, .. }
-        | Condition::HatDirection { input, .. } => match input {
-            InputAddress::Bound { .. } => Some(input.clone()),
-            InputAddress::Unbound => None,
-        },
-        Condition::All { .. } | Condition::Any { .. } | Condition::Not { .. } => None,
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Eight hat-direction variants in display order.
 // ---------------------------------------------------------------------------
@@ -181,20 +119,11 @@ const HAT_VARIANTS: [(HatDirection, &str); 8] = [
 
 /// Wire the updated predicate and unchanged branches to the app controller.
 fn commit_condition(
-    new_condition: Condition,
+    field: crate::mapping_edits::Field,
     mapping_key: &MappingKey,
     stage_id: &StageId,
     root_actions: &[Action],
-    if_true: Vec<Action>,
-    if_false: Vec<Action>,
-) {
-    // Re-assemble the Conditional with the updated condition but unchanged branches.
-    let new_action = Action::Conditional {
-        condition: new_condition,
-        if_true,
-        if_false,
-    };
-
+) -> bool {
     let label = format_undo_label(
         UndoKind::StageEdit,
         LabelArgs {
@@ -203,13 +132,13 @@ fn commit_condition(
             ..LabelArgs::default()
         },
     );
-    super::instruments::stage_dispatch::dispatch_stage_edit(
+    super::instruments::stage_dispatch::dispatch_field(
         root_actions,
         stage_id,
-        new_action,
+        field,
         mapping_key,
         label,
-    );
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -236,14 +165,11 @@ fn PredicateInputRow(
     target: Target,
 ) -> Element {
     let ctx = use_context::<AppContext>();
-    let input_for_capture = input.clone();
     let capture = use_capture(
         target,
         CaptureFilter::Any,
         move |new_addr| {
-            if new_addr != input_for_capture {
-                on_input_change.call(new_addr);
-            }
+            on_input_change.call(new_addr);
         },
         |()| {},
     );
@@ -452,21 +378,14 @@ pub(crate) fn PredicateEditor(
     let mk_kind = mapping_key.clone();
     let sid_kind = stage_id.clone();
     let root_kind = root_actions.clone();
-    let it_kind = if_true.clone();
-    let iff_kind = if_false.clone();
-    let cond_for_kind = condition.clone();
     // FnMut: clones mk_kind / sid_kind / root_kind etc. on each call.
     let on_kind_change = move |evt: FormEvent| {
         let new_kind = evt.value();
-        let prev_input = condition_input(&cond_for_kind);
-        let new_condition = default_condition_for_kind(&new_kind, prev_input);
         commit_condition(
-            new_condition,
+            crate::mapping_edits::Field::ConditionKind(new_kind),
             &mk_kind.clone(),
             &sid_kind,
             &root_kind.clone(),
-            it_kind.clone(),
-            iff_kind.clone(),
         );
     };
 
@@ -499,31 +418,15 @@ pub(crate) fn PredicateEditor(
             let mk = mapping_key.clone();
             let sid = stage_id.clone();
             let root = root_actions.clone();
-            let it = if_true.clone();
-            let iff = if_false.clone();
-            let cond_op = condition.clone();
             rsx! {
                                         PredicateInputRow {
                                             target: capture_target.clone(),
                                             input: input_clone,
                                             on_input_change: move |new_addr: InputAddress| {
-                                                let new_condition = match &cond_op {
-                                                    Condition::ButtonPressed { .. } => {
-                                                        Condition::ButtonPressed { input: new_addr }
-                                                    }
-                                                    Condition::ButtonReleased { .. } => {
-                                                        Condition::ButtonReleased { input: new_addr }
-                                                    }
-                                                    // Defensive: this arm is only reached for the two button
-                                                    // kinds, but the match must be exhaustive.
-                                                    other => other.clone(),
-                                                };
-                                                commit_condition(new_condition,
+                                                commit_condition(crate::mapping_edits::Field::ConditionInput(new_addr),
             &mk.clone(),
             &sid,
-            &root.clone(),
-            it.clone(),
-            iff.clone());
+            &root.clone());
                                             },
                                         }
                                     }
@@ -570,38 +473,24 @@ pub(crate) fn PredicateEditor(
             let mk_in = mapping_key.clone();
             let sid_in = stage_id.clone();
             let root_in = root_actions.clone();
-            let it_in = if_true.clone();
-            let iff_in = if_false.clone();
             let addr_in = input_addr.clone();
             // Clones for the min onstep callback.
             let mk_min = mapping_key.clone();
             let sid_min = stage_id.clone();
             let root_min = root_actions.clone();
-            let it_min = if_true.clone();
-            let iff_min = if_false.clone();
-            let addr_min = input_addr.clone();
             // Clones for the max onstep callback.
             let mk_max = mapping_key.clone();
             let sid_max = stage_id.clone();
             let root_max = root_actions.clone();
-            let it_max = if_true.clone();
-            let iff_max = if_false.clone();
-            let addr_max = input_addr.clone();
             rsx! {
                                         PredicateInputRow {
                                             target: capture_target.clone(),
                                             input: addr_in,
                                             on_input_change: move |new_addr: InputAddress| {
-                                                commit_condition(Condition::AxisInRange {
-                                                        input: new_addr,
-                                                        min: *min_sig.peek(),
-                                                        max: *max_sig.peek(),
-                                                    },
+                                                commit_condition(crate::mapping_edits::Field::ConditionInput(new_addr),
             &mk_in.clone(),
             &sid_in,
-            &root_in.clone(),
-            it_in.clone(),
-            iff_in.clone());
+            &root_in.clone());
                                             },
                                         }
                                         div { class: "if-predicate__range-row",
@@ -615,23 +504,16 @@ pub(crate) fn PredicateEditor(
                                                 // oninput updates the local signal only; no dispatch (avoids
                                                 // flooding the engine channel with one entry per keystroke).
                                                 oninput: move |evt: FormEvent| {
-                                                    if let Ok(v) = evt.value().parse::<f64>() {
+                                                    if let Some(v) = consume_context::<crate::mapping_edits::Bindings>().number.call(evt.value()) {
                                                         min_sig.set(v);
                                                     }
                                                 },
                                                 // onstep dispatches immediately (one click = one dispatch).
                                                 onstep: move |v: f64| {
-                                                    min_sig.set(v);
-                                                    commit_condition(Condition::AxisInRange {
-                                                            input: addr_min.clone(),
-                                                            min: v,
-                                                            max: *max_sig.peek(),
-                                                        },
+                                                    if commit_condition(crate::mapping_edits::Field::ConditionMin(v.to_string()),
             &mk_min.clone(),
             &sid_min,
-            &root_min.clone(),
-            it_min.clone(),
-            iff_min.clone());
+            &root_min.clone()) { min_sig.set(v); }
                                                 },
                                             }
                                             label { class: "if-predicate__range-label", "max" }
@@ -642,22 +524,15 @@ pub(crate) fn PredicateEditor(
                                                 step: 0.01,
                                                 precision: 2_usize,
                                                 oninput: move |evt: FormEvent| {
-                                                    if let Ok(v) = evt.value().parse::<f64>() {
+                                                    if let Some(v) = consume_context::<crate::mapping_edits::Bindings>().number.call(evt.value()) {
                                                         max_sig.set(v);
                                                     }
                                                 },
                                                 onstep: move |v: f64| {
-                                                    max_sig.set(v);
-                                                    commit_condition(Condition::AxisInRange {
-                                                            input: addr_max.clone(),
-                                                            min: *min_sig.peek(),
-                                                            max: v,
-                                                        },
+                                                    if commit_condition(crate::mapping_edits::Field::ConditionMax(v.to_string()),
             &mk_max.clone(),
             &sid_max,
-            &root_max.clone(),
-            it_max.clone(),
-            iff_max.clone());
+            &root_max.clone()) { max_sig.set(v); }
                                                 },
                                             }
                                         }
@@ -703,23 +578,15 @@ pub(crate) fn PredicateEditor(
             let mk_in = mapping_key.clone();
             let sid_in = stage_id.clone();
             let root_in = root_actions.clone();
-            let it_in = if_true.clone();
-            let iff_in = if_false.clone();
-            let dirs_in = dirs.clone();
             rsx! {
                                         PredicateInputRow {
                                             target: capture_target.clone(),
                                             input: input_addr.clone(),
                                             on_input_change: move |new_addr: InputAddress| {
-                                                commit_condition(Condition::HatDirection {
-                                                        input: new_addr,
-                                                        directions: dirs_in.clone(),
-                                                    },
+                                                commit_condition(crate::mapping_edits::Field::ConditionInput(new_addr),
             &mk_in.clone(),
             &sid_in,
-            &root_in.clone(),
-            it_in.clone(),
-            iff_in.clone());
+            &root_in.clone());
                                             },
                                         }
                                         div { class: "if-hat-direction-grid",
@@ -728,35 +595,19 @@ pub(crate) fn PredicateEditor(
                                                     let is_checked = dirs.contains(&dir);
                                                     // Per-checkbox copies -- each loop iteration owns
                                                     // its own clones for its move closure.
-                                                    let dirs_cb = dirs.clone();
                                                     let mk_cb = mapping_key.clone();
                                                     let sid_cb = stage_id.clone();
                                                     let root_cb = root_actions.clone();
-                                                    let it_cb = if_true.clone();
-                                                    let iff_cb = if_false.clone();
-                                                    let addr_cb = input_addr.clone();
                                                     rsx! {
                                                         label { class: "if-hat-direction-grid__cell",
                                                             input {
                                                                 r#type: "checkbox",
                                                                 checked: is_checked,
                                                                 onchange: move |_| {
-                                                                    // Toggle this direction in the set.
-                                                                    let mut new_dirs = dirs_cb.clone();
-                                                                    if new_dirs.contains(&dir) {
-                                                                        new_dirs.retain(|d| *d != dir);
-                                                                    } else {
-                                                                        new_dirs.push(dir);
-                                                                    }
-                                                                    commit_condition(Condition::HatDirection {
-                                                                            input: addr_cb.clone(),
-                                                                            directions: new_dirs,
-                                                                        },
+                                                                    commit_condition(crate::mapping_edits::Field::ConditionDirection(dir),
             &mk_cb.clone(),
             &sid_cb,
-            &root_cb.clone(),
-            it_cb.clone(),
-            iff_cb.clone());
+            &root_cb.clone());
                                                                 },
                                                             }
                                                             "{label}"

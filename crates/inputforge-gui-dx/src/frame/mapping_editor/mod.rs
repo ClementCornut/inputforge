@@ -10,6 +10,7 @@
 
 #[cfg(test)]
 mod capture_events_tests;
+mod content;
 mod empty_state;
 mod engine_offline_banner;
 mod header;
@@ -24,11 +25,6 @@ mod undo_recap;
 
 pub(crate) use empty_state::EmptyState;
 use engine_offline_banner::EngineOfflineBanner;
-use header::Header;
-use inactive_hint::InactiveHint;
-use live_readout::LiveReadout;
-use pipeline::{Pipeline, StageActionsMenu};
-use undo_recap::UndoRecap;
 
 use std::collections::{HashMap, HashSet};
 
@@ -55,6 +51,7 @@ const MAPPING_EDITOR_CSS: Asset = asset!("/assets/frame/mapping_editor.css");
 pub(crate) fn MappingEditor() -> Element {
     tracing::trace!(target: "frame::render", region = "mapping_editor");
     let ctx = use_context::<AppContext>();
+    let editor = use_context::<EditorState>();
     let view = use_context::<ViewState>();
     // One shared sortable state for the entire editor. Mounted unconditionally
     // (Dioxus hook rules) so the signals exist regardless of whether a mapping
@@ -113,6 +110,9 @@ pub(crate) fn MappingEditor() -> Element {
         Stylesheet { href: MAPPING_EDITOR_CSS }
         div { class: "if-editor",
             EngineOfflineBanner {}
+            if let Some(message) = editor.error.read().as_ref() {
+                div { role: "alert", "{message}" }
+            }
             SortableLiveRegion { state: sortable_for_live }
             if let Some((mode, input)) = view_state_for_render {
                 {
@@ -130,32 +130,8 @@ pub(crate) fn MappingEditor() -> Element {
                         .selected_mapping_actions
                         .clone()
                         .unwrap_or_default();
-                    rsx! {
-                        Header {
-                            name: mapping_name,
-                            input: input.clone(),
-                            mapping_key: (mode.clone(), input.clone()),
-                            actions: actions_clone.clone(),
-                        }
-                        mapping_issues::MappingIssues { mapping_key: (mode.clone(), input.clone()) }
-                        LiveReadout {
-                            primary: input.clone(),
-                            actions: actions_clone.clone(),
-                        }
-                        Pipeline {
-                            mapping_key: (mode.clone(), input.clone()),
-                            actions: actions_clone.clone(),
-                            root_actions: actions_clone.clone(),
-                            path_prefix: vec![],
-                            depth: 0,
-                        }
-                        StageActionsMenu {
-                            mapping_key: (mode.clone(), input.clone()),
-                            root_actions: actions_clone.clone(),
-                        }
-                        InactiveHint {}
-                        UndoRecap { mapping_key: (mode, input) }
-                    }
+                    let scope_key = format!("{:?}:{mode}:{input:?}", ctx.meta.read().profile_id);
+                    rsx! { content::MappingContent { key: "{scope_key}", name: mapping_name, mapping_key: (mode, input), actions: actions_clone } }
                 }
             } else {
                 EmptyState {}
@@ -179,6 +155,7 @@ pub(crate) struct StageMenuState {
 /// Components read via `use_context::<EditorState>()`.
 #[derive(Clone, Copy)]
 pub(crate) struct EditorState {
+    pub error: Signal<Option<String>>,
     /// Prepared per-mapping history labels published by the app controller.
     pub undo_log: Signal<UndoLog>,
     /// Stage IDs that are currently expanded. Resets on selection change
@@ -205,6 +182,7 @@ pub(crate) fn use_editor_state_provider() -> EditorState {
     let undo_log: Signal<UndoLog> = use_signal(UndoLog::default);
     #[cfg(test)]
     {
+        pipeline::stage_body::instruments::stage_dispatch::use_origin();
         let ctx = use_context::<AppContext>();
         let fixture = use_hook(|| {
             try_consume_context::<crate::mapping_edits::Bindings>().unwrap_or_else(|| {
@@ -240,7 +218,9 @@ pub(crate) fn use_editor_state_provider() -> EditorState {
     let malformed_hints: Signal<HashMap<StageId, String>> = use_signal(HashMap::new);
     let malformed_summary_tags: Signal<HashMap<StageId, String>> = use_signal(HashMap::new);
 
+    let error = use_signal(|| None);
     let state = EditorState {
+        error,
         undo_log,
         expanded_stages,
         stage_menu,
@@ -256,12 +236,3 @@ mod tests;
 
 #[cfg(test)]
 pub(crate) mod test_helpers;
-
-fn mapping_editor_submit(
-    key: &MappingKey,
-    actions: &[inputforge_core::action::Action],
-    edit: crate::mapping_edits::Edit,
-    label: String,
-) -> bool {
-    pipeline::stage_body::instruments::stage_dispatch::submit(key, actions, edit, label, None, true)
-}

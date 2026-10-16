@@ -256,17 +256,9 @@ pub(crate) fn simulate_dispatch_strategy_change(
 ) -> (Vec<inputforge_core::engine::EngineCommand>, Option<String>) {
     use crate::frame::MappingKey;
     use crate::frame::mapping_editor::pipeline::stage_body::change_mode::dispatch_strategy_change;
-    use inputforge_core::action::ModeChangeStrategy;
     use inputforge_core::engine::EngineCommand;
 
     let addr = parse_primary_for_test(primary);
-    let mode_before = match &strategy_before {
-        ModeChangeStrategy::SwitchTo { mode } | ModeChangeStrategy::Temporary { mode } => {
-            mode.clone()
-        }
-    };
-    let is_hold = matches!(strategy_before, ModeChangeStrategy::Temporary { .. });
-    let hold_disabled = !addr.is_button_shaped();
     let mapping_key: MappingKey = ("Default".to_owned(), addr.clone());
     let stage_id = StageId(vec![StageIdSegment::Index(0)]);
     let root_actions = vec![Action::ChangeMode {
@@ -276,15 +268,7 @@ pub(crate) fn simulate_dispatch_strategy_change(
     let (tx, rx) = mpsc::channel::<EngineCommand>();
     let dom = dispatch_dom(state, tx);
     let label = dom.in_scope(ScopeId::APP, || {
-        dispatch_strategy_change(
-            target,
-            &mode_before,
-            is_hold,
-            hold_disabled,
-            &mapping_key,
-            &stage_id,
-            &root_actions,
-        )
+        dispatch_strategy_change(target, &mapping_key, &stage_id, &root_actions)
     });
     let commands = rx.try_iter().collect();
     (commands, label)
@@ -822,32 +806,6 @@ fn add_palette_shows_gestures_for_button_mapping_only() {
         button_html.contains("Press gesture"),
         "button palette: {button_html}"
     );
-}
-
-#[test]
-fn add_palette_seeds_gesture_thresholds_from_settings() {
-    let settings = SettingsSnapshot {
-        default_double_tap_threshold_ms: 333,
-        default_long_press_threshold_ms: 777,
-        ..SettingsSnapshot::default()
-    };
-
-    assert!(matches!(
-        super::add_palette::default_tap_gesture_from_settings(&settings),
-        Action::TapGesture {
-            threshold_ms: 333,
-            fire_single_immediately: false,
-            ..
-        }
-    ));
-    assert!(matches!(
-        super::add_palette::default_press_gesture_from_settings(&settings),
-        Action::PressGesture {
-            threshold_ms: 777,
-            fire_long_when_threshold_crossed: false,
-            ..
-        }
-    ));
 }
 
 #[test]
@@ -3171,7 +3129,7 @@ fn state_for_dispatch(
     Arc::new(RwLock::new(AppState::with_profile(Profile::new(
         "Dispatch".into(),
         vec![],
-        Modes::new(vec!["Default".into()]).unwrap(),
+        Modes::new(vec!["Default".into(), "Combat".into()]).unwrap(),
         vec![Mapping {
             input: key.1.clone(),
             mode: key.0.clone(),
@@ -3247,7 +3205,20 @@ fn dispatch_gesture_with_app(
         },
         edit: crate::mapping_edits::Edit::Replace {
             path: path.clone(),
-            action: kind.build_action(threshold, toggle, a, b),
+            action: match kind {
+                stage_body::gesture_body::GestureKind::Tap => Action::TapGesture {
+                    threshold_ms: threshold,
+                    fire_single_immediately: toggle,
+                    single_tap: a,
+                    double_tap: b,
+                },
+                stage_body::gesture_body::GestureKind::Press => Action::PressGesture {
+                    threshold_ms: threshold,
+                    fire_long_when_threshold_crossed: toggle,
+                    short_press: a,
+                    long_press: b,
+                },
+            },
         },
         label,
         group: None,

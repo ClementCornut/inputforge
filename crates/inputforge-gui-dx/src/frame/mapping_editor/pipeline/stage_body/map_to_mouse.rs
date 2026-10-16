@@ -47,11 +47,8 @@ pub(crate) fn MapToMouseBody(
     let stage_id_hold = stage_id.clone();
     let root_actions_hold = root_actions.clone();
     let on_hold = move |_| {
-        if is_output_behavior_click_noop(behavior, OutputBehavior::Hold) {
-            return;
-        }
         dispatch_mouse_change(
-            target,
+            mouse_target_value(target).to_owned(),
             OutputBehavior::Hold,
             "behavior",
             &mapping_key_hold,
@@ -64,11 +61,8 @@ pub(crate) fn MapToMouseBody(
     let stage_id_pulse = stage_id.clone();
     let root_actions_pulse = root_actions.clone();
     let on_pulse = move |_| {
-        if is_output_behavior_click_noop(behavior, OutputBehavior::Pulse) {
-            return;
-        }
         dispatch_mouse_change(
-            target,
+            mouse_target_value(target).to_owned(),
             OutputBehavior::Pulse,
             "behavior",
             &mapping_key_pulse,
@@ -81,17 +75,7 @@ pub(crate) fn MapToMouseBody(
     let stage_id_target = stage_id.clone();
     let root_actions_target = root_actions.clone();
     let on_target_change = move |evt: FormEvent| {
-        let Some(candidate) = mouse_target_from_value(&evt.value()) else {
-            tracing::warn!(
-                target: "f9::mapping_editor",
-                value = evt.value(),
-                "mouse output target change ignored: unknown target"
-            );
-            return;
-        };
-        if is_mouse_target_click_noop(target, candidate) {
-            return;
-        }
+        let candidate = evt.value();
         dispatch_mouse_change(
             candidate,
             behavior,
@@ -147,47 +131,14 @@ fn mouse_target_value(target: MouseTarget) -> &'static str {
     }
 }
 
-fn mouse_target_from_value(value: &str) -> Option<MouseTarget> {
-    match value {
-        "left_button" => Some(MouseTarget::LeftButton),
-        "right_button" => Some(MouseTarget::RightButton),
-        "middle_button" => Some(MouseTarget::MiddleButton),
-        "back_button" => Some(MouseTarget::BackButton),
-        "forward_button" => Some(MouseTarget::ForwardButton),
-        "wheel_up" => Some(MouseTarget::WheelUp),
-        "wheel_down" => Some(MouseTarget::WheelDown),
-        _ => None,
-    }
-}
-
-fn is_mouse_target_click_noop(current_target: MouseTarget, requested_target: MouseTarget) -> bool {
-    current_target == requested_target
-}
-
-fn is_output_behavior_click_noop(
-    current_behavior: OutputBehavior,
-    requested_behavior: OutputBehavior,
-) -> bool {
-    current_behavior == requested_behavior
-}
-
 fn dispatch_mouse_change(
-    new_target: MouseTarget,
+    new_target: String,
     new_behavior: OutputBehavior,
     field: &'static str,
     mapping_key: &MappingKey,
     stage_id: &StageId,
     root_actions: &[Action],
 ) {
-    let effective_behavior = if new_target.is_wheel() {
-        OutputBehavior::Pulse
-    } else {
-        new_behavior
-    };
-    let new_action = Action::MapToMouse {
-        target: new_target,
-        behavior: effective_behavior,
-    };
     let label = format_undo_label(
         UndoKind::StageEdit,
         LabelArgs {
@@ -196,40 +147,15 @@ fn dispatch_mouse_change(
             ..LabelArgs::default()
         },
     );
-    super::instruments::stage_dispatch::dispatch_stage_edit(
+    super::instruments::stage_dispatch::dispatch_field(
         root_actions,
         stage_id,
-        new_action,
+        if field == "target" {
+            crate::mapping_edits::Field::MouseTarget(new_target)
+        } else {
+            crate::mapping_edits::Field::Behavior(new_behavior)
+        },
         mapping_key,
         label,
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn map_to_mouse_target_click_noop_only_when_target_is_unchanged() {
-        assert!(is_mouse_target_click_noop(
-            MouseTarget::LeftButton,
-            MouseTarget::LeftButton
-        ));
-        assert!(!is_mouse_target_click_noop(
-            MouseTarget::LeftButton,
-            MouseTarget::RightButton
-        ));
-    }
-
-    #[test]
-    fn map_to_mouse_behavior_click_noop_only_when_behavior_is_unchanged() {
-        assert!(is_output_behavior_click_noop(
-            OutputBehavior::Hold,
-            OutputBehavior::Hold
-        ));
-        assert!(!is_output_behavior_click_noop(
-            OutputBehavior::Hold,
-            OutputBehavior::Pulse
-        ));
-    }
 }

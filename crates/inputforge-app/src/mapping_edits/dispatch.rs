@@ -20,12 +20,30 @@ fn command(key: &MappingKey, mapping: Option<&Mapping>) -> EngineCommand {
 impl Controller {
     /// Validate and deliver one edit, then record its restore snapshots.
     #[must_use]
-    pub fn dispatch(&self, mut request: Request, now: Instant) -> bool {
+    pub fn dispatch(&self, request: Request, now: Instant) -> bool {
+        self.edit(request, now, false).unwrap_or(false)
+    }
+    pub(super) fn edit(
+        &self,
+        mut request: Request,
+        now: Instant,
+        captured: bool,
+    ) -> Result<bool, String> {
+        let allows_noop = matches!(
+            request.edit,
+            inputforge_gui_dx::mapping_edits::Edit::Field { .. }
+                | inputforge_gui_dx::mapping_edits::Edit::Rename(_)
+        );
         self.reconcile();
-        let Some((key, entry)) = self.prepare(&mut request) else {
+        let Some((key, entry)) = self.prepare(&mut request, captured) else {
             self.publish();
-            return false;
+            return Err(
+                "The mapping could not be updated. Check the current mapping and try again.".into(),
+            );
         };
+        if allows_noop && entry.before == entry.after {
+            return Ok(false);
+        }
         let cmd = command(&entry.target, entry.after.as_ref());
         if self.commands.send(cmd).is_err() {
             self.end_group();
@@ -33,11 +51,15 @@ impl Controller {
                 action = "mapping_edit_delivery_failed",
                 "mapping edit dropped: receiver disconnected"
             );
-            return false;
+            return Err(
+                "The mapping could not be updated. Check the current mapping and try again.".into(),
+            );
         }
         let Some(serial) = self.fence() else {
             self.end_group();
-            return false;
+            return Err(
+                "The mapping could not be updated. Check the current mapping and try again.".into(),
+            );
         };
         {
             let state = self.state.read();
@@ -53,7 +75,7 @@ impl Controller {
             inner.history.record(key, entry, request.group, now);
         };
         self.publish();
-        true
+        Ok(true)
     }
     pub(super) fn restore(&self, key: &MappingKey, redo: bool) -> bool {
         self.reconcile();

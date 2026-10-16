@@ -25,12 +25,11 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, ActionBranch, Condition, MouseTarget, OutputBehavior};
-use inputforge_core::processing::{DeadzoneConfig, ResponseCurve};
-use inputforge_core::types::{InputAddress, KeyCombo, MergeOp, OutputAddress, OutputId, VJoyAxis};
+use inputforge_core::action::Action;
+use inputforge_core::types::KeyCombo;
 
 use crate::components::{Anchor, Icon, MenuItem, MenuItems, MenuRoot, MenuTrigger};
-use crate::context::{AppContext, SettingsSnapshot};
+use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::pipeline::path_invalidated_by_mutation;
@@ -40,161 +39,48 @@ use crate::frame::mapping_editor::undo_log::{
 use crate::keyboard_capture::Destination;
 use crate::patterns::keyboard_capture::{target, use_keyboard_capture};
 
-/// Gestures are terminal control flow on a button mapping. Profile validation
-/// (`inputforge_core::profile::validate_mapping_action_tree`) rejects nested
-/// gestures, so the palette must omit Tap/Press entries when the user is
-/// editing inside a gesture branch.
-fn path_is_inside_gesture_branch(path_prefix: &[StageIdSegment]) -> bool {
-    path_prefix.iter().any(|segment| {
-        matches!(
-            segment,
-            StageIdSegment::Branch(
-                ActionBranch::TapSingle
-                    | ActionBranch::TapDouble
-                    | ActionBranch::PressShort
-                    | ActionBranch::PressLong,
-            )
-        )
-    })
-}
 use crate::icons::{Icon as IconKind, IconSize};
-
-use inputforge_core::action::ModeChangeStrategy;
-
-// ---------------------------------------------------------------------------
-// Default-action constructors
-// ---------------------------------------------------------------------------
-
-/// Build the default-configured action for each palette entry.
-fn default_invert() -> Action {
-    Action::Invert
-}
-
-fn default_deadzone() -> Action {
-    Action::Deadzone {
-        config: DeadzoneConfig::default(),
-    }
-}
-
-fn default_response_curve() -> Action {
-    Action::ResponseCurve {
-        curve: ResponseCurve::PiecewiseLinear {
-            // Identity passthrough: two endpoints (in, out) = (-1, -1) and (1, 1).
-            points: vec![(-1.0, -1.0), (1.0, 1.0)],
-            symmetric: false,
-        },
-    }
-}
-
-fn default_map_to_vjoy() -> Action {
-    Action::MapToVJoy {
-        output: OutputAddress {
-            device: 1,
-            output: OutputId::Axis { id: VJoyAxis::X },
-        },
-    }
-}
-
-fn default_map_to_mouse() -> Action {
-    Action::MapToMouse {
-        target: MouseTarget::LeftButton,
-        behavior: OutputBehavior::Hold,
-    }
-}
-
-fn default_merge_axis() -> Action {
-    // Seed the secondary slot as `Unbound` so the row renders the explicit
-    // `Unbound` placeholder until the user picks an input. The previous
-    // sentinel `Bound { device: DeviceId(""), input: Axis { index: 0 } }`
-    // silently rendered as `X` and looked like a real binding the user had
-    // not chosen.
-    Action::MergeAxis {
-        second_input: InputAddress::Unbound,
-        operation: MergeOp::Average,
-    }
-}
-
-fn default_conditional() -> Action {
-    // Same Unbound-seed reasoning as `default_merge_axis`: a freshly added
-    // Conditional has no predicate input chosen yet.
-    Action::Conditional {
-        condition: Condition::ButtonPressed {
-            input: InputAddress::Unbound,
-        },
-        if_true: vec![],
-        if_false: Vec::new(),
-    }
-}
-
-fn default_change_mode() -> Action {
-    Action::ChangeMode {
-        strategy: ModeChangeStrategy::SwitchTo {
-            mode: String::new(),
-        },
-    }
-}
-
-pub(crate) fn default_tap_gesture_from_settings(settings: &SettingsSnapshot) -> Action {
-    Action::TapGesture {
-        threshold_ms: settings.default_double_tap_threshold_ms,
-        fire_single_immediately: false,
-        single_tap: Vec::new(),
-        double_tap: Vec::new(),
-    }
-}
-
-pub(crate) fn default_press_gesture_from_settings(settings: &SettingsSnapshot) -> Action {
-    Action::PressGesture {
-        threshold_ms: settings.default_long_press_threshold_ms,
-        fire_long_when_threshold_crossed: false,
-        short_press: Vec::new(),
-        long_press: Vec::new(),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Palette section descriptors
-// ---------------------------------------------------------------------------
+use crate::mapping_edits::StageKind;
 
 struct PaletteItem {
     label: &'static str,
-    make: fn() -> Action,
+    kind: StageKind,
 }
 
 const PROCESSING_ITEMS: &[PaletteItem] = &[
     PaletteItem {
         label: "Invert",
-        make: default_invert,
+        kind: StageKind::Invert,
     },
     PaletteItem {
         label: "Deadzone",
-        make: default_deadzone,
+        kind: StageKind::Deadzone,
     },
     PaletteItem {
         label: "Response curve",
-        make: default_response_curve,
+        kind: StageKind::ResponseCurve,
     },
 ];
 
 const OUTPUT_ITEMS: &[PaletteItem] = &[
     PaletteItem {
         label: "Map to mouse",
-        make: default_map_to_mouse,
+        kind: StageKind::Mouse,
     },
     PaletteItem {
         label: "Merge axis",
-        make: default_merge_axis,
+        kind: StageKind::MergeAxis,
     },
 ];
 
 const CONTROL_ITEMS: &[PaletteItem] = &[
     PaletteItem {
         label: "Conditional",
-        make: default_conditional,
+        kind: StageKind::Conditional,
     },
     PaletteItem {
         label: "Change mode",
-        make: default_change_mode,
+        kind: StageKind::ChangeMode,
     },
 ];
 
@@ -244,10 +130,13 @@ pub(crate) fn AddPalette(
     louder: bool,
 ) -> Element {
     let ctx = use_context::<AppContext>();
+    crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::use_origin();
     let editor = use_context::<EditorState>();
 
-    let show_gestures =
-        mapping_key.1.is_button_shaped() && !path_is_inside_gesture_branch(&path_prefix);
+    let availability = use_context::<crate::mapping_edits::Bindings>()
+        .palette
+        .call((mapping_key.clone(), path_prefix.clone()));
+    let show_gestures = availability.gestures;
 
     let key = mapping_key.clone();
     let prefix = path_prefix.clone();
@@ -256,12 +145,12 @@ pub(crate) fn AddPalette(
     let mut malformed = editor.malformed_hints;
     let mut tags = editor.malformed_summary_tags;
     let insert_len = target_len;
-    let insert_action = use_callback(move |action: Action| {
+    let insert_action = use_callback(move |kind: StageKind| {
         let mut path_segs = prefix.clone();
         path_segs.push(StageIdSegment::Index(insert_len));
         let insert_path = StageId(path_segs);
 
-        let stage_title = action_palette_label(&action);
+        let stage_title = action_palette_label(&kind);
 
         let label = format_undo_label(
             UndoKind::StageAdd,
@@ -274,15 +163,15 @@ pub(crate) fn AddPalette(
         if !super::stage_body::instruments::stage_dispatch::submit(
             &key,
             &root,
-            crate::mapping_edits::Edit::Insert {
+            crate::mapping_edits::Edit::Add {
                 path: insert_path.clone(),
-                action,
+                kind,
             },
             label,
             None,
             true,
         ) {
-            return;
+            return false;
         }
 
         let parent_path = insert_path.0[..insert_path.0.len() - 1].to_vec();
@@ -295,6 +184,7 @@ pub(crate) fn AddPalette(
         tags.write()
             .retain(|path, _| !path_invalidated_by_mutation(path, &parent_path, insert_len));
         expanded.write().insert(insert_path);
+        true
     });
 
     let mut insertion_path: Vec<_> = path_prefix
@@ -317,17 +207,14 @@ pub(crate) fn AddPalette(
             Destination::Insert(insertion_path),
         ),
         use_callback(move |combo: KeyCombo| {
-            insert_action.call(Action::MapToKeyboard {
-                key: combo,
-                behavior: OutputBehavior::Hold,
-            });
+            insert_action.call(StageKind::Keyboard(combo));
         }),
     );
     let start_keyboard_capture = move |_| keyboard_capture.start.call(());
 
-    let make_insert_handler = move |action: Action| {
+    let make_insert_handler = move |kind: StageKind| {
         let insert = insert_action;
-        move |_: MouseEvent| insert.call(action.clone())
+        move |_: MouseEvent| insert.call(kind.clone())
     };
 
     let trigger_class = if louder {
@@ -342,8 +229,6 @@ pub(crate) fn AddPalette(
         // Icon-only trigger: must carry an accessible name. WCAG 2.1 SC 4.1.2.
         Some("Add stage".to_owned())
     };
-    let settings_snapshot = ctx.settings.read().clone();
-    let session = ctx.meta.read().session.clone();
 
     let capture_hint = *keyboard_capture.hint.read();
     if *keyboard_capture.active.read() {
@@ -374,7 +259,7 @@ pub(crate) fn AddPalette(
                     for item in PROCESSING_ITEMS {
                         MenuItem {
                             class: "if-add-palette__item".to_owned(),
-                            onclick: make_insert_handler((item.make)()),
+                            onactivate: make_insert_handler(item.kind.clone()),
                             "{item.label}"
                         }
                     }
@@ -383,21 +268,21 @@ pub(crate) fn AddPalette(
                     div { class: "if-add-palette__section-title", "Output" }
                     MenuItem {
                         class: "if-add-palette__item".to_owned(),
-                        onclick: make_insert_handler(default_map_to_vjoy()),
+                        onactivate: make_insert_handler(StageKind::VirtualDevice),
                         "Map to virtual device"
                     }
                     MenuItem {
-                        disabled: !session.keyboard_supported,
+                        disabled: !availability.keyboard,
                         class: "if-add-palette__item".to_owned(),
                         onclick: start_keyboard_capture,
                         "Map to keyboard"
                     }
                     for item in OUTPUT_ITEMS {
                         MenuItem {
-                            disabled: matches!((item.make)(), Action::MapToMouse { .. })
-                                && !session.mouse_supported,
+                            disabled: matches!(item.kind.clone(), StageKind::Mouse)
+                                && !availability.mouse,
                             class: "if-add-palette__item".to_owned(),
-                            onclick: make_insert_handler((item.make)()),
+                            onactivate: make_insert_handler(item.kind.clone()),
                             "{item.label}"
                         }
                     }
@@ -407,19 +292,19 @@ pub(crate) fn AddPalette(
                     for item in CONTROL_ITEMS {
                         MenuItem {
                             class: "if-add-palette__item".to_owned(),
-                            onclick: make_insert_handler((item.make)()),
+                            onactivate: make_insert_handler(item.kind.clone()),
                             "{item.label}"
                         }
                     }
                     if show_gestures {
                         MenuItem {
                             class: "if-add-palette__item".to_owned(),
-                            onclick: make_insert_handler(default_tap_gesture_from_settings(&settings_snapshot)),
+                            onactivate: make_insert_handler(StageKind::Tap),
                             "Tap gesture"
                         }
                         MenuItem {
                             class: "if-add-palette__item".to_owned(),
-                            onclick: make_insert_handler(default_press_gesture_from_settings(&settings_snapshot)),
+                            onactivate: make_insert_handler(StageKind::Press),
                             "Press gesture"
                         }
                     }
@@ -433,19 +318,19 @@ pub(crate) fn AddPalette(
 }
 
 /// Return the palette display label for an action (used in undo label).
-fn action_palette_label(action: &Action) -> &'static str {
+fn action_palette_label(action: &StageKind) -> &'static str {
     match action {
-        Action::Invert => "Invert",
-        Action::Deadzone { .. } => "Deadzone",
-        Action::ResponseCurve { .. } => "Response curve",
-        Action::MapToVJoy { .. } => "Map to virtual device",
-        Action::MapToKeyboard { .. } => "Map to keyboard",
-        Action::MapToMouse { .. } => "Map to mouse",
-        Action::MergeAxis { .. } => "Merge axis",
-        Action::Conditional { .. } => "Conditional",
-        Action::ChangeMode { .. } => "Change mode",
-        Action::TapGesture { .. } => "Tap gesture",
-        Action::PressGesture { .. } => "Press gesture",
+        StageKind::Invert => "Invert",
+        StageKind::Deadzone => "Deadzone",
+        StageKind::ResponseCurve => "Response curve",
+        StageKind::VirtualDevice => "Map to virtual device",
+        StageKind::Keyboard(_) => "Map to keyboard",
+        StageKind::Mouse => "Map to mouse",
+        StageKind::MergeAxis => "Merge axis",
+        StageKind::Conditional => "Conditional",
+        StageKind::ChangeMode => "Change mode",
+        StageKind::Tap => "Tap gesture",
+        StageKind::Press => "Press gesture",
     }
 }
 
@@ -455,43 +340,6 @@ mod tests {
 
     fn capture_prompt_harness() -> Element {
         rsx! { KeyboardCapturePrompt { onclick: |_| {} } }
-    }
-
-    #[test]
-    fn outer_pipeline_path_is_not_inside_gesture_branch() {
-        assert!(!path_is_inside_gesture_branch(&[]));
-        assert!(!path_is_inside_gesture_branch(&[StageIdSegment::Index(0)]));
-    }
-
-    #[test]
-    fn conditional_branch_path_is_not_inside_gesture_branch() {
-        let path = [
-            StageIdSegment::Index(0),
-            StageIdSegment::Branch(ActionBranch::ConditionalTrue),
-            StageIdSegment::Index(1),
-        ];
-        assert!(!path_is_inside_gesture_branch(&path));
-    }
-
-    #[test]
-    fn tap_single_branch_path_is_inside_gesture_branch() {
-        let path = [
-            StageIdSegment::Index(0),
-            StageIdSegment::Branch(ActionBranch::TapSingle),
-        ];
-        assert!(path_is_inside_gesture_branch(&path));
-    }
-
-    #[test]
-    fn nested_conditional_inside_press_long_branch_is_inside_gesture_branch() {
-        let path = [
-            StageIdSegment::Index(0),
-            StageIdSegment::Branch(ActionBranch::PressLong),
-            StageIdSegment::Index(0),
-            StageIdSegment::Branch(ActionBranch::ConditionalFalse),
-            StageIdSegment::Index(2),
-        ];
-        assert!(path_is_inside_gesture_branch(&path));
     }
 
     #[test]

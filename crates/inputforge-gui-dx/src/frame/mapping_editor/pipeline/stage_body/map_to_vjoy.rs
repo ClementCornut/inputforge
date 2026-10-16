@@ -68,34 +68,6 @@ fn output_id_key(id: &OutputId) -> String {
 /// Parse a `Select` option value back into an [`OutputId`]. Returns `None`
 /// when the key string does not match any known pattern (should not occur
 /// under normal operation).
-fn parse_output_id(key: &str) -> Option<OutputId> {
-    if let Some(rest) = key.strip_prefix("axis:") {
-        let axis = ALL_AXES.iter().find(|&&a| axis_label(a) == rest).copied()?;
-        return Some(OutputId::Axis { id: axis });
-    }
-    if let Some(rest) = key.strip_prefix("button:") {
-        let n: u8 = rest.parse().ok()?;
-        return Some(OutputId::Button { id: n });
-    }
-    if let Some(rest) = key.strip_prefix("hat:") {
-        let n: u8 = rest.parse().ok()?;
-        return Some(OutputId::Hat { id: n });
-    }
-    None
-}
-
-/// All vJoy axes in display order.
-const ALL_AXES: [VJoyAxis; 8] = [
-    VJoyAxis::X,
-    VJoyAxis::Y,
-    VJoyAxis::Z,
-    VJoyAxis::Rx,
-    VJoyAxis::Ry,
-    VJoyAxis::Rz,
-    VJoyAxis::Slider0,
-    VJoyAxis::Slider1,
-];
-
 fn valid_output(config: &inputforge_core::types::VirtualDeviceConfig, output: &OutputId) -> bool {
     match output {
         OutputId::Axis { id } => config.axes.contains(id),
@@ -226,21 +198,8 @@ pub(crate) fn MapToVJoyBody(
     let output_cloned_dev = output.clone();
     let on_device_change = move |evt: FormEvent| {
         let new_device_str = evt.value();
-        let Ok(new_device) = new_device_str.parse::<u8>() else {
-            return;
-        };
-        if new_device == output_cloned_dev.device {
-            return;
-        }
-        let new_output = OutputAddress {
-            device: new_device,
-            output: output_cloned_dev.output.clone(),
-        };
-        let new_action = Action::MapToVJoy {
-            output: new_output.clone(),
-        };
         let before_str = format!("Device {}", output_cloned_dev.device);
-        let after_str = format!("Device {new_device}");
+        let after_str = format!("Device {new_device_str}");
         let label = format_undo_label(
             UndoKind::StageEdit,
             LabelArgs {
@@ -250,10 +209,10 @@ pub(crate) fn MapToVJoyBody(
                 ..LabelArgs::default()
             },
         );
-        super::instruments::stage_dispatch::dispatch_stage_edit(
+        super::instruments::stage_dispatch::dispatch_field(
             &root_actions_dev,
             &stage_id_dev,
-            new_action,
+            crate::mapping_edits::Field::OutputDevice(new_device_str),
             &mapping_key_dev,
             label,
         );
@@ -266,21 +225,8 @@ pub(crate) fn MapToVJoyBody(
     let output_cloned_out = output.clone();
     let on_output_change = move |evt: FormEvent| {
         let key_str = evt.value();
-        let Some(new_output_id) = parse_output_id(&key_str) else {
-            return;
-        };
-        if new_output_id == output_cloned_out.output {
-            return;
-        }
-        let new_output = OutputAddress {
-            device: output_cloned_out.device,
-            output: new_output_id.clone(),
-        };
-        let new_action = Action::MapToVJoy {
-            output: new_output.clone(),
-        };
         let before_key = output_id_key(&output_cloned_out.output);
-        let after_key = output_id_key(&new_output_id);
+        let after_key = key_str.clone();
         let label = format_undo_label(
             UndoKind::StageEdit,
             LabelArgs {
@@ -290,10 +236,10 @@ pub(crate) fn MapToVJoyBody(
                 ..LabelArgs::default()
             },
         );
-        super::instruments::stage_dispatch::dispatch_stage_edit(
+        super::instruments::stage_dispatch::dispatch_field(
             &root_actions_out,
             &stage_id_out,
-            new_action,
+            crate::mapping_edits::Field::OutputControl(key_str),
             &mapping_key_out,
             label,
         );

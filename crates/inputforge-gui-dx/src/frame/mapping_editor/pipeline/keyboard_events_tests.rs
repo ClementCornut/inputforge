@@ -25,7 +25,7 @@ use inputforge_core::{
 };
 use parking_lot::RwLock;
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     rc::Rc,
     sync::{Arc, mpsc},
 };
@@ -33,6 +33,8 @@ struct Fixture {
     state: Arc<RwLock<AppState>>,
     commands: mpsc::Sender<EngineCommand>,
     add: bool,
+    menu: Cell<bool>,
+    meta: RefCell<Option<Signal<crate::context::MetaSnapshot>>>,
     editor: RefCell<Option<EditorState>>,
 }
 fn original() -> Action {
@@ -49,6 +51,7 @@ fn harness() -> Element {
     let key = ("Default".into(), InputAddress::Unbound);
     let frame = inputforge_app::bridge::prepare(&f.state.read(), Some(&key));
     let meta = use_signal(|| frame.meta);
+    *f.meta.borrow_mut() = Some(meta);
     let config = use_signal(|| frame.config);
     let live = use_signal(LiveSnapshot::default);
     let settings = use_signal(SettingsSnapshot::default);
@@ -66,7 +69,9 @@ fn harness() -> Element {
     let editor = use_editor_state_provider();
     *f.editor.borrow_mut() = Some(editor);
     use_keyboard_capture_provider();
-    if f.add {
+    if f.menu.get() {
+        rsx! { super::stage_actions_menu::StageActionsMenu { mapping_key: key, root_actions: vec![original()] } }
+    } else if f.add {
         rsx! { AddPalette { mapping_key: key, path_prefix: vec![], target_len: 1, root_actions: vec![original()], louder: true } }
     } else {
         rsx! { StageBody { mapping_key: key, stage_id: StageId(vec![StageIdSegment::Index(0)]), action: original(), root_actions: vec![original()] } }
@@ -299,6 +304,8 @@ fn fixture(
         state: Arc::new(RwLock::new(state)),
         commands,
         add,
+        menu: Cell::new(false),
+        meta: RefCell::default(),
         editor: RefCell::new(None),
     });
     let document = Rc::new(fake_document::Document::default());
@@ -314,4 +321,114 @@ fn expect_fence(received: &mpsc::Receiver<EngineCommand>) {
         received.try_recv().unwrap(),
         EngineCommand::MappingEditBarrier { .. }
     ));
+}
+
+#[test]
+fn palette_delivery_failure_retains_the_menu_and_success_closes_it() {
+    set_event_converter(Box::new(SerializedHtmlEventConverter));
+    for failed in [true, false] {
+        let (mut dom, f, _, received) = fixture(true, failed);
+        click(&dom, "Add first stage");
+        dom.render_immediate_to_vec();
+        click(&dom, "Invert");
+        dom.render_immediate_to_vec();
+        let html = dioxus_ssr::render(&dom);
+        assert_eq!(html.contains("aria-expanded=\"true\""), failed, "{html}");
+        let editor = f.editor.borrow().unwrap();
+        assert_eq!(editor.error.peek().is_some(), failed);
+        if let Some(received) = received {
+            assert!(
+                matches!(received.try_recv().unwrap(), EngineCommand::SetMapping { actions, .. } if actions.len() == 2 && actions[1] == Action::Invert)
+            );
+        } else {
+            assert!(editor.undo_log.peek().stacks.is_empty());
+            assert!(editor.expanded_stages.peek().is_empty());
+        }
+    }
+}
+
+#[test]
+fn disabled_palette_item_keeps_menu_open_without_delivery() {
+    set_event_converter(Box::new(SerializedHtmlEventConverter));
+    let (mut dom, f, _, received) = fixture(true, false);
+    click(&dom, "Add first stage");
+    dom.render_immediate_to_vec();
+    click(&dom, "Map to mouse");
+    dom.render_immediate_to_vec();
+    assert!(dioxus_ssr::render(&dom).contains("aria-expanded=\"true\""));
+    assert_eq!(
+        received.unwrap().try_recv().unwrap_err(),
+        mpsc::TryRecvError::Empty
+    );
+    assert!(f.editor.borrow().unwrap().undo_log.peek().stacks.is_empty());
+}
+
+#[test]
+fn rendered_handler_rejects_an_identical_replacement_profile_before_rerender() {
+    set_event_converter(Box::new(SerializedHtmlEventConverter));
+    let (dom, f, _, received) = fixture(false, false);
+    let replacement = Profile::new(
+        "Fixture".into(),
+        vec![],
+        Modes::new(vec!["Default".into()]).unwrap(),
+        vec![Mapping {
+            input: InputAddress::Unbound,
+            mode: "Default".into(),
+            name: Some("Fixture".into()),
+            actions: vec![original()],
+        }],
+        vec![],
+        "Default".into(),
+    );
+    f.state.write().active_profile = Some(replacement);
+    f.meta
+        .borrow()
+        .unwrap()
+        .set(inputforge_app::bridge::prepare(&f.state.read(), None).meta);
+    click(&dom, "Pulse");
+    assert!(
+        received.unwrap().try_recv().is_err(),
+        "old rendered handler must not edit the replacement profile"
+    );
+    assert!(f.editor.borrow().unwrap().undo_log.peek().stacks.is_empty());
+}
+
+#[test]
+fn stage_menu_retains_failed_delete_and_closes_after_success() {
+    set_event_converter(Box::new(SerializedHtmlEventConverter));
+    for failed in [true, false] {
+        let (mut dom, f, _, received) = fixture(false, failed);
+        f.menu.set(true);
+        let mut editor = f.editor.borrow().unwrap();
+        let stage = StageId(vec![StageIdSegment::Index(0)]);
+        editor
+            .stage_menu
+            .set(Some(crate::frame::mapping_editor::StageMenuState {
+                stage: stage.clone(),
+                x: 1.0,
+                y: 1.0,
+            }));
+        editor.expanded_stages.write().insert(stage);
+        dom.mark_dirty(ScopeId::APP);
+        dom.render_immediate_to_vec();
+        click(&dom, "Move up");
+        dom.render_immediate_to_vec();
+        assert!(editor.stage_menu.peek().is_some());
+        if let Some(received) = &received {
+            assert_eq!(received.try_recv().unwrap_err(), mpsc::TryRecvError::Empty);
+        }
+        click(&dom, "Delete");
+        dom.render_immediate_to_vec();
+        assert_eq!(editor.stage_menu.peek().is_some(), failed);
+        assert_eq!(!editor.expanded_stages.peek().is_empty(), failed);
+        if let Some(received) = received {
+            assert!(
+                matches!(received.try_recv().unwrap(), EngineCommand::SetMapping { actions, .. } if actions.is_empty())
+            );
+        } else {
+            let html = dioxus_ssr::render(&dom);
+            assert!(html.contains("role=\"alert\""), "{html}");
+            assert!(editor.undo_log.peek().stacks.is_empty());
+        }
+    }
 }

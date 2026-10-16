@@ -169,6 +169,7 @@ pub(crate) fn Pipeline(
     /// Indent depth (0 = outer pipeline; +1 per Conditional branch hop).
     depth: u8,
 ) -> Element {
+    stage_body::instruments::stage_dispatch::use_origin();
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
     let sortable = use_context::<SortableState<StageId>>();

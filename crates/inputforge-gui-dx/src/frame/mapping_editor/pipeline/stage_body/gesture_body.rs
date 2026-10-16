@@ -15,7 +15,7 @@ use inputforge_core::action::{Action, ActionBranch};
 use crate::components::{InputSize, IntegerInput, Switch};
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::pipeline::stage_body::branches::{BranchContainer, BranchSpec};
-use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::dispatch_stage_edit;
+use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::dispatch_field;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 
 const THRESHOLD_MIN: usize = 1;
@@ -30,29 +30,6 @@ pub(crate) enum GestureKind {
 }
 
 impl GestureKind {
-    pub(crate) fn build_action(
-        self,
-        threshold_ms: u64,
-        toggle: bool,
-        branch_a: Vec<Action>,
-        branch_b: Vec<Action>,
-    ) -> Action {
-        match self {
-            Self::Tap => Action::TapGesture {
-                threshold_ms,
-                fire_single_immediately: toggle,
-                single_tap: branch_a,
-                double_tap: branch_b,
-            },
-            Self::Press => Action::PressGesture {
-                threshold_ms,
-                fire_long_when_threshold_crossed: toggle,
-                short_press: branch_a,
-                long_press: branch_b,
-            },
-        }
-    }
-
     fn stage_name(self) -> &'static str {
         match self {
             Self::Tap => "Tap gesture",
@@ -165,31 +142,24 @@ pub(crate) fn GestureBody(
         let mapping_key = mapping_key.clone();
         let stage_id = stage_id.clone();
         let root_actions = root_actions.clone();
-        let branch_a = branch_a_actions.clone();
-        let branch_b = branch_b_actions.clone();
         move |candidate: usize| {
             let current_threshold_ms = u64::try_from(threshold_signal()).unwrap_or(u64::MAX);
-            let current_toggle = toggle_signal();
             let new_threshold_ms = u64::try_from(candidate).unwrap_or(u64::MAX);
-            threshold_signal.set(candidate);
             let label = edit_label(
                 kind,
                 "threshold",
                 &format!("{current_threshold_ms} ms"),
                 &format!("{new_threshold_ms} ms"),
             );
-            dispatch_stage_edit(
+            if dispatch_field(
                 &root_actions,
                 &stage_id,
-                kind.build_action(
-                    new_threshold_ms,
-                    current_toggle,
-                    branch_a.clone(),
-                    branch_b.clone(),
-                ),
+                crate::mapping_edits::Field::GestureThreshold(candidate.to_string()),
                 &mapping_key,
                 label,
-            );
+            ) {
+                threshold_signal.set(candidate);
+            }
         }
     };
 
@@ -197,30 +167,23 @@ pub(crate) fn GestureBody(
         let mapping_key = mapping_key.clone();
         let stage_id = stage_id.clone();
         let root_actions = root_actions.clone();
-        let branch_a = branch_a_actions.clone();
-        let branch_b = branch_b_actions.clone();
         move |_: FormEvent| {
             let new_value = !toggle_signal();
-            let current_threshold_ms = u64::try_from(threshold_signal()).unwrap_or(u64::MAX);
-            toggle_signal.set(new_value);
             let label = edit_label(
                 kind,
                 kind.edit_field_label(),
                 &kind.timing_label(!new_value),
                 &kind.timing_label(new_value),
             );
-            dispatch_stage_edit(
+            if dispatch_field(
                 &root_actions,
                 &stage_id,
-                kind.build_action(
-                    current_threshold_ms,
-                    new_value,
-                    branch_a.clone(),
-                    branch_b.clone(),
-                ),
+                crate::mapping_edits::Field::GestureToggle(new_value),
                 &mapping_key,
                 label,
-            );
+            ) {
+                toggle_signal.set(new_value);
+            }
         }
     };
 

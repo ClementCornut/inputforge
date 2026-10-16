@@ -1589,3 +1589,118 @@ changes; they are not evidence that every listed workflow currently fails at run
 
 The mode slice adds shared core validation, app/controller and real-handler tests
 and mode-row polling coverage; native manual acceptance remains pending.
+
+## Remaining editor edit intents and inline commits — 2026-10-16
+
+Part 1 of the [approved plan](gui-rendering-boundary-plan.md) moves the remaining
+mapping field decisions into the existing app mapping controller. The prior
+shared-dispatch, rail, mode and native acceptance sections remain historical
+and unchanged.
+
+- The [editor preparation](../crates/inputforge-app/src/mapping_edits/editor/mod.rs)
+  resolves field, palette-add and sibling-move intents against the effective queued
+  mapping, then uses the existing prepare/dispatch/history/barrier path. Individual
+  fields preserve unrelated queued fields, optional names and child branches.
+  Insertion rechecks current keyboard/mouse availability. Gesture thresholds
+  reuse the core validator; malformed numeric/picker values
+  and stale profile/stage requests deliver nothing and create no history.
+- [Field reconstruction](../crates/inputforge-app/src/mapping_edits/editor/fields.rs),
+  [predicate operands](../crates/inputforge-app/src/mapping_edits/editor/predicate.rs)
+  and [palette defaults](../crates/inputforge-app/src/mapping_edits/editor/defaults.rs)
+  own validation and replacement/insertion decisions. Selecting the current
+  predicate kind preserves its operands. A queued wheel target remains Pulse
+  even if a previously rendered behavior control is activated afterwards.
+- The [prepared GUI contract](../crates/inputforge-gui-dx/src/mapping_edits.rs)
+  carries raw field intents, palette availability, sibling boundaries and explicit
+  inline completion outcomes. Rename no-ops compare with the effective queued
+  name after full target validation. Empty rename and cancellation also complete
+  offline; same-address rebind completes without delivery. Failed commits retain
+  their draft. Successful delivery alone does not establish
+  engine persistence.
+- [Header](../crates/inputforge-gui-dx/src/frame/mapping_editor/header.rs),
+  [rail rename](../crates/inputforge-gui-dx/src/frame/mapping_list/rename_inline.rs),
+  [palette](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/add_palette.rs),
+  [stage menu](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_actions_menu.rs)
+  and all ChangeMode, keyboard/mouse/vJoy, MergeAxis, predicate and Tap/Press field
+  handlers forward intents and retain rendering labels/signals. Rejected field
+  edits publish accessible editor feedback; rail/menu errors render an alert.
+  Capture display and field signals publish committed values only after delivery.
+- [Dispatch wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs)
+  captures mounted profile identity before delayed events. The
+  [profile/mapping content scope](../crates/inputforge-gui-dx/src/frame/mapping_editor/content.rs)
+  remounts when that identity changes and remains stable across ordinary edits.
+  Advancing metadata before rerender cannot redirect an old field handler into
+  an identical replacement profile. Header rename also retains captured optional
+  name metadata rather than treating the display fallback as a stored name.
+  Both header and rail retain the full mapping target alongside the draft text;
+  a same-key, same-name action replacement followed by a props rerender rejects
+  the old draft with feedback. Rail reuses the existing app-prepared target.
+  If initial target preparation is unavailable, the captured target remains
+  absent for that draft. The inline contract carries that optional target plus
+  the raw edit/cancel intent; the app rejects nonempty commits with feedback
+  while still allowing empty/cancel dismissal offline. No mapping is fabricated.
+- The existing anchored-menu activation gate retains a failed stage operation.
+  The only shared menu extension is an optional bool-returning
+  [activation callback](../crates/inputforge-gui-dx/src/components/menu/mod.rs) for
+  palette items; false leaves the menu open. Existing onclick consumers keep
+  their behavior, and disabled items invoke neither callback nor close.
+
+Regression evidence: the real rail commit handler first failed by closing after
+rejection; actual palette activation first failed by closing after delivery
+failure; an old rendered keyboard behavior handler first edited an identical
+replacement profile. App tests first reproduced resetting same-kind predicate
+operands and turning a queued wheel target into Hold. These now have behavioral
+regressions in [app editor tests](../crates/inputforge-app/tests/mapping_edits/editor.rs),
+[rail rename tests](../crates/inputforge-gui-dx/src/frame/mapping_list/rename_tests.rs)
+and [rendered editor tests](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/keyboard_events_tests.rs).
+Review round 1 first reproduced Old→New→Old being dropped and Old→New→New
+being rejected before acknowledgement through real inline bindings. Both now use
+the effective queued name, producing two commands/history entries and one
+command/history entry respectively. Real header/rail handlers first applied
+retained text to replacement actions after publication and rerender; they now
+reject safely. The [header draft tests](../crates/inputforge-gui-dx/src/frame/mapping_editor/capture_events_tests/rename.rs)
+and rail fixture use updating production-like props. Review round 2 also first
+reproduced an unavailable initial rail capture accepting a later empty replacement.
+The real handler now rejects it after availability returns and props rerender;
+there is no command/history and the retained text has an alert. Existing capture rearm,
+stale-prop/undo synchronization, history, lifecycle and pointer-drag coverage
+remains in the full gates.
+
+Final automated gates: the unchanged `bash .githooks/pre-commit` passed with no
+lint exclusions. `cargo test --workspace --locked --offline -j 2` passed with host
+IPC access: **2,127 passed, 0 failed, 11 existing ignored**, including **108 app
+mapping regressions** and **769 GUI library tests**. The sandbox attempt failed
+five existing single-instance IPC tests; the identical host-enabled run passed
+all of them. The keyboard-capture listener, rail/editor listener and all **14
+pointer/ghost executable cases** passed. `git diff --check`, all audit links and
+byte-for-byte preservation of the seven historical acceptance/drag sections
+passed. New production modules are at most 138 nonblank/noncomment code lines;
+existing large GUI rendering modules mostly shrink. The checkout remains on
+`main`. Part 1 is complete and independent review approved both rename findings,
+including unavailable-target handling. Later plan parts remain pending.
+
+Native Wayland and Windows acceptance remains manual; no new hardware, visual,
+WebView lifecycle or performance claim follows from the automated checks.
+Use `dx run -p inputforge-app` with a disposable profile:
+
+1. Rename named, empty-name and unnamed mappings from both header and rail.
+   Check unchanged/empty Enter or blur, Escape, exact name preservation during
+   other edits and undo/redo. Queue New then Old/New before acknowledgement;
+   completion must follow the effective name. Replace a same-key mapping while
+   a rename draft is open; after rerender, rejection must retain text and feedback.
+2. Add processing/output/control stages into outer, nested and empty branches;
+   move/delete through the stage menu and undo once. Failed delivery must retain
+   the menu and expansion state without a success announcement or navigation.
+3. Change mode strategy/target, mouse/keyboard behavior, vJoy output, MergeAxis
+   and condition operands. Queue disjoint changes quickly and verify neither
+   disappears. Switch a mouse target to wheel; it must remain Pulse.
+4. Edit Tap/Press thresholds and toggles rapidly, then undo/redo. Capture a new
+   keyboard shortcut, rearm immediately, and verify stale props do not restore
+   the old display while later external edits/undo still synchronize.
+5. Switch profile/mode/mapping during pending edits and capture. Old callbacks
+   must not edit replacement content. Repeat on Windows for separate platform
+   acceptance, and retain the earlier Stop/edit-layout/Apply/Start checklist.
+
+Curve/deadzone algorithms, general keyboard/navigation/component workflows and
+later plan parts remain deferred. Prior native Apply and drag evidence is
+preserved verbatim.

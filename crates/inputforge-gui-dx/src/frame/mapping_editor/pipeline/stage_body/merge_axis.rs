@@ -70,15 +70,6 @@ const fn op_to_str(op: MergeOp) -> &'static str {
 
 /// Parse a Select option value string back to a [`MergeOp`]. Returns `None`
 /// for unrecognised strings (should not occur under normal operation).
-fn parse_op(s: &str) -> Option<MergeOp> {
-    match s {
-        "Bidirectional" => Some(MergeOp::Bidirectional),
-        "Average" => Some(MergeOp::Average),
-        "Maximum" => Some(MergeOp::Maximum),
-        _ => None,
-    }
-}
-
 /// All [`MergeOp`] variants in display order.
 const ALL_OPS: [MergeOp; 3] = [MergeOp::Bidirectional, MergeOp::Average, MergeOp::Maximum];
 
@@ -175,13 +166,6 @@ pub(crate) fn MergeAxisBody(
             let new_label = source_label::format(&new_addr, &cfg);
             drop(cfg);
 
-            let new_action = Action::MergeAxis {
-                second_input: new_addr.clone(),
-                operation,
-            };
-            if new_addr == second_input_for_cap {
-                return;
-            }
             let label = format_undo_label(
                 UndoKind::StageEdit,
                 LabelArgs {
@@ -191,10 +175,10 @@ pub(crate) fn MergeAxisBody(
                     ..LabelArgs::default()
                 },
             );
-            super::instruments::stage_dispatch::dispatch_stage_edit(
+            super::instruments::stage_dispatch::dispatch_field(
                 &root_for_cap,
                 &stage_id_for_cap,
-                new_action,
+                crate::mapping_edits::Field::MergeInput(new_addr),
                 &key_for_cap,
                 label,
             );
@@ -208,26 +192,10 @@ pub(crate) fn MergeAxisBody(
     let key_for_op = mapping_key.clone();
     let stage_id_for_op = stage_id.clone();
     let root_for_op = root_actions.clone();
-    let second_for_op = second_input.clone();
     let on_op_change = move |evt: FormEvent| {
         let new_op_str = evt.value();
-        let Some(new_op) = parse_op(&new_op_str) else {
-            return;
-        };
-        if new_op == operation {
-            return;
-        }
-
-        // Amendment 2: name from snapshot.
-        let cfg = ctx.config.read();
-        drop(cfg);
-
-        let new_action = Action::MergeAxis {
-            second_input: second_for_op.clone(),
-            operation: new_op,
-        };
         let before_op_str = op_to_str(operation);
-        let new_op_str_ref = op_to_str(new_op);
+        let new_op_str_ref = new_op_str.as_str();
         let label = format_undo_label(
             UndoKind::StageEdit,
             LabelArgs {
@@ -237,10 +205,10 @@ pub(crate) fn MergeAxisBody(
                 ..LabelArgs::default()
             },
         );
-        super::instruments::stage_dispatch::dispatch_stage_edit(
+        super::instruments::stage_dispatch::dispatch_field(
             &root_for_op,
             &stage_id_for_op,
-            new_action,
+            crate::mapping_edits::Field::MergeOperation(new_op_str),
             &key_for_op,
             label,
         );

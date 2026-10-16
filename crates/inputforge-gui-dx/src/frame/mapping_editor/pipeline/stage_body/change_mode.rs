@@ -21,7 +21,7 @@ use crate::components::{
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::dispatch_stage_edit;
+use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::dispatch_field;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 
 /// Hint copy. Centralised so tests can grep these strings unchanged.
@@ -29,14 +29,6 @@ pub(crate) const HINT_TARGET_EMPTY: &str = "Choose a mode to switch to";
 pub(crate) const HINT_HOLD_NOT_BUTTON: &str =
     "Hold requires a button input. Pick a button on your device, or switch to Set.";
 pub(crate) const TOOLTIP_HOLD_NOT_BUTTON: &str = "Hold requires a button input.";
-
-/// Set / Hold pill activation gate. Returns `false` when the pill is
-/// `aria-disabled` or already in the active state. Both onclick handlers
-/// call this; standalone-testable so acceptance #15 (Enter on aria-disabled
-/// is a no-op) can be unit-verified without DOM event simulation.
-pub(crate) fn pill_activates(disabled: bool, was_active: bool) -> bool {
-    !disabled && !was_active
-}
 
 /// Which pill the user clicked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,38 +39,13 @@ pub(crate) enum StrategyTarget {
 
 /// Wire a Set/Hold edit and its display label to the app controller.
 ///
-/// Target preservation across Set <-> Hold falls out for free: the caller
-/// passes the same `current_mode` regardless of `target`, so flipping
-/// strategy keeps the previously selected target mode.
+/// The app preserves the effective target mode across strategy changes.
 pub(crate) fn dispatch_strategy_change(
     target: StrategyTarget,
-    current_mode: &str,
-    is_currently_hold: bool,
-    hold_disabled: bool,
     mapping_key: &MappingKey,
     stage_id: &StageId,
     root_actions: &[Action],
 ) -> Option<String> {
-    let was_active = match target {
-        StrategyTarget::Set => !is_currently_hold,
-        StrategyTarget::Hold => is_currently_hold,
-    };
-    let target_disabled = matches!(target, StrategyTarget::Hold) && hold_disabled;
-    if !pill_activates(target_disabled, was_active) {
-        return None;
-    }
-
-    let new_strategy = match target {
-        StrategyTarget::Set => ModeChangeStrategy::SwitchTo {
-            mode: current_mode.to_owned(),
-        },
-        StrategyTarget::Hold => ModeChangeStrategy::Temporary {
-            mode: current_mode.to_owned(),
-        },
-    };
-    let new_action = Action::ChangeMode {
-        strategy: new_strategy,
-    };
     let (before, after) = match target {
         StrategyTarget::Set => ("Hold", "Set"),
         StrategyTarget::Hold => ("Set", "Hold"),
@@ -92,10 +59,10 @@ pub(crate) fn dispatch_strategy_change(
             ..LabelArgs::default()
         },
     );
-    let delivered = dispatch_stage_edit(
+    let delivered = dispatch_field(
         root_actions,
         stage_id,
-        new_action,
+        crate::mapping_edits::Field::ModeHold(matches!(target, StrategyTarget::Hold)),
         mapping_key,
         label.clone(),
     );
@@ -120,20 +87,6 @@ pub(crate) fn dispatch_target_change(
             mode.as_str()
         }
     };
-    if new_mode == mode_before {
-        return None;
-    }
-    let new_strategy = match current_strategy {
-        ModeChangeStrategy::SwitchTo { .. } => ModeChangeStrategy::SwitchTo {
-            mode: new_mode.to_owned(),
-        },
-        ModeChangeStrategy::Temporary { .. } => ModeChangeStrategy::Temporary {
-            mode: new_mode.to_owned(),
-        },
-    };
-    let new_action = Action::ChangeMode {
-        strategy: new_strategy,
-    };
     let before_label = if mode_before.is_empty() {
         "<unset>"
     } else {
@@ -148,10 +101,10 @@ pub(crate) fn dispatch_target_change(
             ..LabelArgs::default()
         },
     );
-    let delivered = dispatch_stage_edit(
+    let delivered = dispatch_field(
         root_actions,
         stage_id,
-        new_action,
+        crate::mapping_edits::Field::ModeTarget(new_mode.into()),
         mapping_key,
         label.clone(),
     );
@@ -184,7 +137,7 @@ pub(crate) fn ChangeModeBody(
     let hold_disabled = !primary_is_button_shaped;
 
     // Skip the Hold pill in tab order when aria-disabled. The internal
-    // pill_activates gate already no-ops the dispatch; removing the pill
+    // app validation already no-ops the dispatch; removing the pill
     // from sequential focus prevents the user-facing impression of a
     // focusable-but-inert button. Focus via mouse and screen-reader
     // announcement still work normally.
@@ -308,22 +261,13 @@ pub(crate) fn ChangeModeBody(
     }
 
     // Pill onclick wiring. Each closure is a thin wrapper around
-    // `dispatch_strategy_change`; all business logic (gate, label, action
-    // construction, target preservation) lives in the helper.
-    let cfg_signal = ctx.config;
+    // `dispatch_strategy_change`; the app validates and reconstructs the action.
     let mapping_key_set = mapping_key.clone();
     let stage_id_set = stage_id.clone();
     let root_actions_set = root_actions.clone();
-    let mode_set = mode.clone();
     let on_set_click = move |_evt: MouseEvent| {
-        let cfg = cfg_signal.read();
-        drop(cfg);
         let _ = dispatch_strategy_change(
             StrategyTarget::Set,
-            &mode_set,
-            is_hold,
-            // The Set pill is never gated by the button-shape rule.
-            false,
             &mapping_key_set,
             &stage_id_set,
             &root_actions_set,
@@ -333,15 +277,9 @@ pub(crate) fn ChangeModeBody(
     let mapping_key_hold = mapping_key.clone();
     let stage_id_hold = stage_id.clone();
     let root_actions_hold = root_actions.clone();
-    let mode_hold = mode.clone();
     let on_hold_click = move |_evt: MouseEvent| {
-        let cfg = cfg_signal.read();
-        drop(cfg);
         let _ = dispatch_strategy_change(
             StrategyTarget::Hold,
-            &mode_hold,
-            is_hold,
-            hold_disabled,
             &mapping_key_hold,
             &stage_id_hold,
             &root_actions_hold,
@@ -356,8 +294,6 @@ pub(crate) fn ChangeModeBody(
     let root_actions_t = root_actions.clone();
     let strategy_for_t = strategy.clone();
     let on_target_change = move |evt: FormEvent| {
-        let cfg = cfg_signal.read();
-        drop(cfg);
         let _ = dispatch_target_change(
             &evt.value(),
             &strategy_for_t,
@@ -631,7 +567,7 @@ mod tests {
     #[test]
     fn disabled_hold_pill_carries_tabindex_minus_one() {
         // When primary is non-button-shaped, the Hold pill is aria-disabled
-        // and must drop out of sequential focus order. The pill_activates
+        // and must drop out of sequential focus order. The app validation
         // gate already blocks the dispatch; tabindex="-1" hides the visual
         // "live but inert" misimpression for keyboard users.
         let strategy = ModeChangeStrategy::SwitchTo {
@@ -706,26 +642,6 @@ mod tests {
         assert!(
             commands.is_empty(),
             "Enter on aria-disabled Hold pill must not commit, got {commands:?}"
-        );
-    }
-
-    #[test]
-    fn pill_activates_gate_blocks_disabled_and_active() {
-        assert!(
-            pill_activates(false, false),
-            "enabled inactive pill must activate"
-        );
-        assert!(
-            !pill_activates(true, false),
-            "disabled pill must not activate"
-        );
-        assert!(
-            !pill_activates(false, true),
-            "already-active pill must not re-activate"
-        );
-        assert!(
-            !pill_activates(true, true),
-            "selected-but-disabled pill must not activate"
         );
     }
 

@@ -15,48 +15,65 @@ use inputforge_core::types::InputAddress;
 
 use crate::components::{InputSize, TextInput};
 use crate::context::MappingSummary;
+use crate::mapping_rail::{Lookup, Scope, Target};
 
-/// Submit prepared row metadata; the app obtains and preserves current actions.
+/// Capture the app-prepared mapping once, alongside the local draft text.
+pub(super) fn capture(summary: &MappingSummary) -> Option<Target> {
+    let scope = Scope {
+        profile:
+            crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::profile(
+            ),
+        mode: summary.mode.clone(),
+    };
+    consume_context::<crate::mapping_edits::Bindings>()
+        .menu
+        .call(Lookup {
+            scope,
+            input: summary.input.clone(),
+            name: summary.name.clone(),
+            filtered: false,
+        })
+        .map(|menu| menu.target)
+}
+
+/// Submit the draft's original target; queued edits are validated by the app.
 pub(super) fn run_commit(
     raw: &str,
-    summary: &MappingSummary,
+    target: Option<&Target>,
+    state: Signal<Option<InputAddress>>,
+) -> Result<(), String> {
+    run_inline(raw, target, state, false)
+}
+fn run_inline(
+    raw: &str,
+    target: Option<&Target>,
     mut state: Signal<Option<InputAddress>>,
-) {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        // Blur (or Enter) on an empty buffer reverts without dispatch.
-        state.set(None);
-        return;
-    }
-    let new_name = trimmed.to_owned();
-    if Some(&new_name) == summary.name.as_ref() {
-        // No-op rename, no need to round-trip through the engine.
-        state.set(None);
-        return;
-    }
-    let ctx = consume_context::<crate::context::AppContext>();
-    let delivered = consume_context::<crate::mapping_edits::Bindings>()
-        .dispatch
-        .call(crate::mapping_edits::Request {
-            profile: ctx.meta.peek().profile_id.clone(),
-            before: inputforge_core::action::Mapping {
-                input: summary.input.clone(),
-                mode: summary.mode.clone(),
-                name: summary.name.clone(),
-                actions: vec![],
-            },
-            edit: crate::mapping_edits::Edit::Rename(new_name.clone()),
+    cancel: bool,
+) -> Result<(), String> {
+    let result = consume_context::<crate::mapping_edits::Bindings>()
+        .inline
+        .call(crate::mapping_edits::Inline {
+            target: target.cloned(),
+            edit: crate::mapping_edits::Edit::Rename(raw.to_owned()),
             label: format!(
-                "rename: '{}' -> '{new_name}'",
-                summary.name.as_deref().unwrap_or("")
+                "rename: '{}' -> '{}'",
+                target
+                    .and_then(|target| target.before.name.as_deref())
+                    .unwrap_or(""),
+                raw
             ),
-            group: None,
             editor: false,
+            cancel,
         });
-    if delivered {
-        tracing::info!(target: "f8::mapping_list", action = "rename", ?summary.input, mode = %summary.mode, "dispatched mapping rename");
+    if result == Ok(true)
+        && let Some(target) = target
+    {
+        tracing::info!(target: "f8::mapping_list", action = "rename", ?target.before.input, mode = %target.before.mode, "dispatched mapping rename");
     }
-    state.set(None);
+    if result.is_ok() {
+        state.set(None);
+    }
+    result.map(|_| ())
 }
 
 /// Parent-driven inline rename editor for a mapping row. The parent owns
@@ -76,12 +93,15 @@ pub(crate) fn RenameInline(
     state: Signal<Option<InputAddress>>,
 ) -> Element {
     tracing::trace!(target: "frame::render", region = "mapping_list::rename_inline");
+    crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::use_origin();
 
     let initial = summary.name.clone().unwrap_or_default();
     let mut value: Signal<String> = use_signal(|| initial);
 
-    let summary_for_kb = summary.clone();
-    let summary_for_blur = summary.clone();
+    let mut error = use_signal(|| None::<String>);
+    let target = use_hook(|| capture(&summary));
+    let target_for_kb = target.clone();
+    let target_for_cancel = target.clone();
 
     rsx! {
         div {
@@ -91,20 +111,22 @@ pub(crate) fn RenameInline(
                     Key::Enter => {
                         evt.prevent_default();
                         let raw = value.read().clone();
-                        run_commit(&raw, &summary_for_kb, state);
+                        error.set(run_commit(&raw, target_for_kb.as_ref(), state).err());
                     }
                     Key::Escape => {
                         evt.prevent_default();
-                        let mut state = state;
-                        state.set(None);
+                        error.set(run_inline(&value.peek(), target_for_cancel.as_ref(), state, true).err());
                     }
                     _ => {}
                 }
             },
             onfocusout: move |_evt: FocusEvent| {
                 let raw = value.read().clone();
-                run_commit(&raw, &summary_for_blur, state);
+                error.set(run_commit(&raw, target.as_ref(), state).err());
             },
+            if let Some(message) = error.read().as_ref() {
+                span { role: "alert", "{message}" }
+            }
             TextInput {
                 value: ReadSignal::from(value),
                 size: InputSize::Sm,

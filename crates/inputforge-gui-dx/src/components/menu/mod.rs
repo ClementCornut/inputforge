@@ -458,6 +458,8 @@ pub fn MenuItems(
 #[component]
 pub fn MenuItem(
     onclick: Option<EventHandler<MouseEvent>>,
+    /// When supplied, close only after the caller accepts activation.
+    onactivate: Option<Callback<MouseEvent, bool>>,
     #[props(default)] disabled: bool,
     #[props(default)] class: Option<String>,
     children: Element,
@@ -473,7 +475,11 @@ pub fn MenuItem(
         if disabled {
             return;
         }
-        if let Some(h) = &handler {
+        if let Some(activate) = onactivate {
+            if !activate.call(evt) {
+                return;
+            }
+        } else if let Some(h) = &handler {
             h.call(evt);
         }
         close.call(CloseReason::ItemActivated);

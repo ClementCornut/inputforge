@@ -142,9 +142,6 @@ pub(crate) fn MapToKeyboardBody(
     let root_actions_hold = root_actions.clone();
     let before_hold = before_mapping.clone();
     let on_hold = move |_| {
-        if is_output_behavior_click_noop(behavior, OutputBehavior::Hold) {
-            return;
-        }
         let new_combo = local_combo.peek().clone();
         dispatch_keyboard(
             new_combo,
@@ -162,9 +159,6 @@ pub(crate) fn MapToKeyboardBody(
     let root_actions_pulse = root_actions.clone();
     let before_pulse = before_mapping.clone();
     let on_pulse = move |_| {
-        if is_output_behavior_click_noop(behavior, OutputBehavior::Pulse) {
-            return;
-        }
         let new_combo = local_combo.peek().clone();
         dispatch_keyboard(
             new_combo,
@@ -255,10 +249,6 @@ fn commit_capture_combo(
     root_actions: &[Action],
     before: &Mapping,
 ) {
-    let old_combo = local_combo.peek().clone();
-    if new_combo == old_combo {
-        return;
-    }
     if dispatch_keyboard(
         new_combo.clone(),
         behavior,
@@ -270,13 +260,6 @@ fn commit_capture_combo(
     ) {
         local_combo.set(new_combo);
     }
-}
-
-fn is_output_behavior_click_noop(
-    current_behavior: OutputBehavior,
-    requested_behavior: OutputBehavior,
-) -> bool {
-    current_behavior == requested_behavior
 }
 
 /// Wire field values and their display label to app-owned dispatch and history.
@@ -303,10 +286,6 @@ fn dispatch_keyboard(
     } else {
         (format!("{behavior:?}"), format!("{new_behavior:?}"))
     };
-    let new_action = Action::MapToKeyboard {
-        key: new_combo,
-        behavior: new_behavior,
-    };
     let label = format_undo_label(
         UndoKind::StageEdit,
         LabelArgs {
@@ -316,10 +295,14 @@ fn dispatch_keyboard(
             ..LabelArgs::default()
         },
     );
-    super::instruments::stage_dispatch::dispatch_stage_edit(
+    super::instruments::stage_dispatch::dispatch_field(
         root_actions,
         stage_id,
-        new_action,
+        if field_label == "key" {
+            crate::mapping_edits::Field::Keyboard(new_combo)
+        } else {
+            crate::mapping_edits::Field::Behavior(new_behavior)
+        },
         mapping_key,
         label,
     )
@@ -446,17 +429,5 @@ mod tests {
             dioxus_ssr::render(&dom).contains("F11"),
             "failed dispatch must retain the saved key"
         );
-    }
-
-    #[test]
-    fn map_to_keyboard_behavior_click_noop_only_when_behavior_is_unchanged() {
-        assert!(is_output_behavior_click_noop(
-            OutputBehavior::Hold,
-            OutputBehavior::Hold
-        ));
-        assert!(!is_output_behavior_click_noop(
-            OutputBehavior::Hold,
-            OutputBehavior::Pulse
-        ));
     }
 }

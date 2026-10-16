@@ -1,6 +1,7 @@
 //! Application-owned mapping edits, restoration and editor-scoped history.
 mod batch;
 mod dispatch;
+mod editor;
 mod grouping;
 mod history;
 pub(crate) mod modes;
@@ -59,6 +60,9 @@ impl Controller {
     pub fn bindings(&self) -> Bindings {
         let install = self.clone();
         let dispatch = self.clone();
+        let inline = self.clone();
+        let edit = self.clone();
+        let palette = self.clone();
         let undo = self.clone();
         let redo = self.clone();
         let forget = self.clone();
@@ -84,6 +88,16 @@ impl Controller {
                 install.reconcile();
             }),
             dispatch: Callback::new(move |request| dispatch.dispatch(request, Instant::now())),
+            inline: Callback::new(move |request| inline.inline(request)),
+            edit: Callback::new(move |request| edit.edit(request, Instant::now(), false)),
+            palette: Callback::new(move |request| palette.palette(request)),
+            number: Callback::new(move |raw: String| editor::predicate::number(&raw)),
+            stage_menu: Callback::new(
+                move |(actions, path): (
+                    Vec<inputforge_core::action::Action>,
+                    inputforge_gui_dx::mapping_edits::StageId,
+                )| editor::menu(&actions, &path),
+            ),
             undo: Callback::new(move |key| undo.undo(&key)),
             redo: Callback::new(move |key| redo.redo(&key)),
             forget: Callback::new(move |key| {

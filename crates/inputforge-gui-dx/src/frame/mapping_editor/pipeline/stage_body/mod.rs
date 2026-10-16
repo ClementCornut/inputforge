@@ -41,6 +41,7 @@ pub(crate) fn StageBody(
     /// paths are root-relative. See Task 20 / Task 11.
     root_actions: Vec<Action>,
 ) -> Element {
+    instruments::stage_dispatch::use_origin();
     match &action {
         Action::Invert => rsx! { invert::InvertBody {} },
         Action::MapToVJoy { output } => rsx! {

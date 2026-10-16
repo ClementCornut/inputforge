@@ -10,7 +10,11 @@ use inputforge_gui_dx::{
     snapshots::MappingKey,
 };
 impl Controller {
-    pub(super) fn prepare(&self, request: &mut Request) -> Option<(MappingKey, Entry)> {
+    pub(super) fn prepare(
+        &self,
+        request: &mut Request,
+        captured: bool,
+    ) -> Option<(MappingKey, Entry)> {
         let state = self.state.read();
         if self.mode_pending(&state) {
             return None;
@@ -32,9 +36,13 @@ impl Controller {
             return None;
         }
         let actual = history::saved(&state, &key);
-        if !request.editor {
+        if !request.editor && !matches!(request.edit, Edit::Rename(_)) {
+            return None;
+        }
+        // Legacy rail dispatch only carries metadata; inline drafts carry a full target.
+        if !request.editor && !captured {
             let current = actual.as_ref()?;
-            if !matches!(request.edit, Edit::Rename(_)) || current.name != request.before.name {
+            if current.name != request.before.name {
                 return None;
             }
             request.before.actions.clone_from(&current.actions);
@@ -50,6 +58,7 @@ impl Controller {
             return None;
         }
         let mut after = effective?;
+        request.edit = super::editor::resolve(&request.edit, &after.actions, &state, &after.input)?;
         if !paths::preserves_children(&request.before.actions, &after.actions, &request.edit) {
             return None;
         }
@@ -57,12 +66,13 @@ impl Controller {
         let actions = paths::apply(&after.actions, &request.edit)?;
         let kind = match &request.edit {
             Edit::Replace { .. } => UndoKind::StageEdit,
+            Edit::Field { .. } | Edit::Add { .. } | Edit::Step { .. } => return None,
             Edit::Insert { .. } => UndoKind::StageAdd,
             Edit::Remove(_) => UndoKind::StageRemove,
             Edit::Move { .. } => UndoKind::StageReorder,
             Edit::Rename(name) => {
                 let name = name.trim();
-                if name.is_empty() || after.name.as_deref() == Some(name) {
+                if name.is_empty() {
                     return None;
                 }
                 after.name = Some(name.into());

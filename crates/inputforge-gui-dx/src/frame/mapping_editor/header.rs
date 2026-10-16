@@ -23,7 +23,7 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::Action;
+use inputforge_core::action::{Action, Mapping};
 use inputforge_core::types::{InputAddress, OutputAddress, OutputId, VJoyAxis};
 
 use crate::capture::{CaptureFilter, Target};
@@ -53,14 +53,32 @@ pub(crate) fn Header(
     actions: Vec<Action>,
 ) -> Element {
     let ctx = use_context::<AppContext>();
+    crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::use_origin();
     let _editor = use_context::<EditorState>();
 
     // Local UI state.
     let mut armed: Signal<bool> = use_signal(|| false);
-    let mut local_name: Signal<String> = use_signal(|| name.clone());
+    let saved_name = ctx
+        .config
+        .read()
+        .mappings
+        .iter()
+        .find(|m| m.input == mapping_key.1 && m.mode == mapping_key.0)
+        .and_then(|m| m.name.clone());
+    let stored_name = saved_name.clone().unwrap_or_default();
+    let mut local_name: Signal<String> = use_signal(|| stored_name.clone());
+    let target = Mapping {
+        input: mapping_key.1.clone(),
+        mode: mapping_key.0.clone(),
+        name: saved_name.clone(),
+        actions: actions.clone(),
+    };
+    // The working text and its target must survive the same rerenders.
+    let mut draft = use_signal(|| target.clone());
     let mapping_key_for_capture = mapping_key.clone();
     let actions_for_capture = actions.clone();
     let cfg_for_capture = ctx.config;
+    let name_for_capture = saved_name.clone();
 
     let capture = use_capture(
         Target {
@@ -80,12 +98,6 @@ pub(crate) fn Header(
         CaptureFilter::Any,
         move |new_addr| {
             let (_, old_addr) = mapping_key_for_capture.clone();
-            // No-op rebind: the user pressed the input that is already mapped
-            // here. Skip dispatch + undo, mirroring the rename path's same-name skip.
-            if new_addr == old_addr {
-                return;
-            }
-
             // Resolve labels before dispatch so the undo entry survives the
             // config snapshot rebuild that follows.
             let old_label = source_label::format(&old_addr, &cfg_for_capture.read());
@@ -98,19 +110,13 @@ pub(crate) fn Header(
                     ..LabelArgs::default()
                 },
             );
-            if !super::mapping_editor_submit(
+            let _ = super::pipeline::stage_body::instruments::stage_dispatch::submit_inline(
                 &mapping_key_for_capture,
                 &actions_for_capture,
+                name_for_capture.clone(),
                 crate::mapping_edits::Edit::Rebind(new_addr),
                 label,
-            ) {
-                return;
-            }
-
-            tracing::info!(
-                target: "f9::mapping_editor",
-                action = "rebind",
-                "mapping rebound"
+                false,
             );
         },
         |()| {},
@@ -139,61 +145,50 @@ pub(crate) fn Header(
 
     // ----- Display-mode handlers (h2) -----
 
-    let name_for_arm_kb = name.clone();
+    let name_for_arm_kb = stored_name.clone();
+    let target_for_arm_kb = target.clone();
     let on_h2_keydown = move |evt: KeyboardEvent| {
         if matches!(evt.key(), Key::F2) {
             evt.prevent_default();
+            draft.set(target_for_arm_kb.clone());
             local_name.set(name_for_arm_kb.clone());
             armed.set(true);
         }
     };
 
-    let name_for_arm_ctx = name.clone();
+    let name_for_arm_ctx = stored_name.clone();
     let on_h2_contextmenu = move |evt: MouseEvent| {
         evt.prevent_default();
+        draft.set(target.clone());
         local_name.set(name_for_arm_ctx.clone());
         armed.set(true);
     };
 
     // ----- Edit-mode handlers (input) -----
 
-    let mapping_key_for_blur = mapping_key.clone();
-    let actions_for_blur = actions.clone();
-    let initial_for_blur = name.clone();
     let on_input_blur = move |_| {
-        let new = local_name.peek().trim().to_owned();
-        if new.is_empty() || new == initial_for_blur {
-            // Empty (or whitespace-only) revert; same-name no-op skip.
-            local_name.set(initial_for_blur.clone());
-            armed.set(false);
-            return;
-        }
+        let new = local_name.peek().clone();
+        let before = draft.peek().clone();
         let label = format_undo_label(
             UndoKind::Rename,
             LabelArgs {
-                old_new: Some((&initial_for_blur, &new)),
+                old_new: Some((before.name.as_deref().unwrap_or_default(), &new)),
                 ..LabelArgs::default()
             },
         );
-        if !super::mapping_editor_submit(
-            &mapping_key_for_blur,
-            &actions_for_blur,
+        if !super::pipeline::stage_body::instruments::stage_dispatch::submit_inline(
+            &(before.mode, before.input),
+            &before.actions,
+            before.name,
             crate::mapping_edits::Edit::Rename(new.clone()),
             label,
+            false,
         ) {
-            armed.set(false);
             return;
         }
-        tracing::info!(
-            target: "f9::mapping_editor",
-            action = "rename",
-            new_name = %new,
-            "mapping renamed"
-        );
         armed.set(false);
     };
 
-    let initial_for_esc = name.clone();
     let on_input_keydown = move |evt: KeyboardEvent| match evt.key() {
         Key::Enter => {
             evt.prevent_default();
@@ -209,8 +204,18 @@ pub(crate) fn Header(
         }
         Key::Escape => {
             evt.prevent_default();
-            local_name.set(initial_for_esc.clone());
-            armed.set(false);
+            let before = draft.peek().clone();
+            if super::pipeline::stage_body::instruments::stage_dispatch::submit_inline(
+                &(before.mode, before.input),
+                &before.actions,
+                before.name.clone(),
+                crate::mapping_edits::Edit::Rename(local_name.peek().clone()),
+                String::new(),
+                true,
+            ) {
+                local_name.set(before.name.unwrap_or_default());
+                armed.set(false);
+            }
         }
         _ => {}
     };

@@ -2,8 +2,9 @@
 use crate::snapshots::MappingKey;
 use dioxus::prelude::*;
 use inputforge_core::{
-    action::{Action, ActionBranch, Mapping},
+    action::{Action, ActionBranch, Mapping, OutputBehavior},
     profile::ProfileId,
+    types::{HatDirection, InputAddress, KeyCombo},
 };
 use std::collections::HashMap;
 
@@ -30,11 +31,14 @@ pub enum UndoKind {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Edit {
     Replace { path: StageId, action: Action },
+    Field { path: StageId, field: Field },
+    Add { path: StageId, kind: StageKind },
+    Step { path: StageId, down: bool },
     Insert { path: StageId, action: Action },
     Remove(StageId),
     Move { from: StageId, to: StageId },
     Rename(String),
-    Rebind(inputforge_core::types::InputAddress),
+    Rebind(InputAddress),
 }
 /// One keyboard burst identity, including the selected instrument handle.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,9 +54,19 @@ pub struct Request {
     pub edit: Edit,
     pub label: String,
     pub group: Option<Group>,
-    /// Editor operations require selection. Rail rename validates captured name metadata
-    /// and obtains actions in the app; its `before.actions` may be empty.
+    /// Editor operations require selection. Legacy rail dispatch may omit actions;
+    /// inline drafts always retain the full target prepared when editing starts.
     pub editor: bool,
+}
+/// Inline intent with a target captured when the draft or capture starts.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Inline {
+    /// Missing preparation stays unavailable for the lifetime of the draft.
+    pub target: Option<crate::mapping_rail::Target>,
+    pub edit: Edit,
+    pub label: String,
+    pub editor: bool,
+    pub cancel: bool,
 }
 /// Prepared history label, without restore snapshots or mutable stack operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,10 +104,70 @@ pub struct Bindings {
     pub add: Callback<crate::mapping_rail::AddRequest, crate::mapping_rail::AddView>,
     pub install: Callback<Publication>,
     pub dispatch: Callback<Request, bool>,
+    /// Full captured target: cancel/no-op/success closes; rejection retains the draft.
+    pub inline: Callback<Inline, Result<bool, String>>,
+    /// Raw editor intent outcome; unchanged fields deliver no command.
+    pub edit: Callback<Request, Result<bool, String>>,
+    pub palette: Callback<(MappingKey, Vec<StageIdSegment>), Palette>,
+    pub number: Callback<String, Option<f64>>,
+    pub stage_menu: Callback<(Vec<Action>, StageId), Option<StageMenu>>,
     pub undo: Callback<MappingKey, bool>,
     pub redo: Callback<MappingKey, bool>,
     pub forget: Callback<MappingKey>,
     pub end_group: Callback<()>,
     pub reconcile: Callback<()>,
     pub dispose: Callback<()>,
+}
+
+/// One field change; unrelated queued fields remain intact.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Field {
+    ModeHold(bool),
+    ModeTarget(String),
+    Keyboard(KeyCombo),
+    Behavior(OutputBehavior),
+    MouseTarget(String),
+    OutputDevice(String),
+    OutputControl(String),
+    MergeInput(InputAddress),
+    MergeOperation(String),
+    ConditionKind(String),
+    ConditionInput(InputAddress),
+    ConditionMin(String),
+    ConditionMax(String),
+    ConditionDirection(HatDirection),
+    GestureThreshold(String),
+    GestureToggle(bool),
+}
+/// Palette selection; defaults are supplied by the app.
+#[derive(Debug, Clone, PartialEq)]
+pub enum StageKind {
+    Invert,
+    Deadzone,
+    ResponseCurve,
+    VirtualDevice,
+    Keyboard(KeyCombo),
+    Mouse,
+    MergeAxis,
+    Conditional,
+    ChangeMode,
+    Tap,
+    Press,
+}
+
+/// Prepared palette availability, independent of rendered labels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Palette {
+    pub gestures: bool,
+    pub keyboard: bool,
+    pub mouse: bool,
+}
+
+/// Prepared sibling boundaries for the stage menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StageMenu {
+    pub parent: Vec<StageIdSegment>,
+    pub index: usize,
+    pub up: bool,
+    pub down: bool,
 }

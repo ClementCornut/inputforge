@@ -11,3 +11,5 @@ mod rail;
 mod batch;
 
 mod modes;
+
+mod editor;

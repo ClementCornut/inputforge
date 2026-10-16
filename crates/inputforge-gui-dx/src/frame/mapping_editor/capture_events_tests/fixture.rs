@@ -40,6 +40,7 @@ pub(super) struct Fixture {
     surface: Surface,
     pub(super) controller: RefCell<Option<Controller>>,
     pub(super) editor: RefCell<Option<EditorState>>,
+    pub(super) config: RefCell<Option<Signal<crate::context::ConfigSnapshot>>>,
     invalid_path: bool,
 }
 pub(super) fn address(input: InputId) -> InputAddress {
@@ -77,6 +78,7 @@ fn harness() -> Element {
     let frame = inputforge_app::bridge::prepare(&fixture.state.read(), Some(&key));
     let meta = use_signal(|| frame.meta);
     let config = use_signal(|| frame.config);
+    *fixture.config.borrow_mut() = Some(config);
     let live = use_signal(LiveSnapshot::default);
     let settings = use_signal(SettingsSnapshot::default);
     use_context_provider(|| AppContext {
@@ -111,7 +113,7 @@ fn harness() -> Element {
                 .name
                 .clone()
                 .unwrap_or_else(|| "Untitled mapping".into());
-            rsx! { Header { name, input: primary(), mapping_key: key, actions: actions() } }
+            rsx! { Header { name, input: primary(), mapping_key: key, actions: config.read().selected_mapping_actions.clone().unwrap_or_default() } }
         }
         Surface::Predicate => {
             rsx! { super::super::pipeline::stage_body::predicate::PredicateEditor { mapping_key: key, stage_id: StageId(vec![StageIdSegment::Index(1)]), condition: Condition::ButtonPressed { input: InputAddress::Unbound }, if_true: vec![], if_false: vec![], root_actions: actions() } }
@@ -172,6 +174,7 @@ pub(super) fn fixture_with_name(
         invalid_path,
         controller: RefCell::new(None),
         editor: RefCell::new(None),
+        config: RefCell::default(),
     });
     let mut dom = VirtualDom::new(harness);
     dom.provide_root_context(Rc::clone(&fixture));
