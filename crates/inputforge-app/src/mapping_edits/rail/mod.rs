@@ -12,7 +12,8 @@ use inputforge_gui_dx::{
 
 impl Controller {
     fn valid_scope(&self, state: &AppState, scope: &Scope) -> bool {
-        !self.inner.borrow().disposed
+        !self.mode_pending(state)
+            && !self.inner.borrow().disposed
             && !state.session.offline
             && state.active_profile.as_ref().is_some_and(|p| {
                 scope.profile.as_ref() == Some(p.id()) && p.modes().contains(&scope.mode)

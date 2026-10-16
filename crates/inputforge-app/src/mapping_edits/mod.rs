@@ -3,6 +3,7 @@ mod batch;
 mod dispatch;
 mod grouping;
 mod history;
+pub(crate) mod modes;
 mod paths;
 mod prepare;
 mod rail;
@@ -32,6 +33,7 @@ pub struct Controller {
 struct State {
     history: history::History,
     batch: Option<batch::Wizard>,
+    modes: Option<modes::Pending>,
     publication: Option<Publication>,
     navigation: Option<(String, Option<MappingKey>)>,
     disposed: bool,
@@ -68,6 +70,7 @@ impl Controller {
         let add = self.clone();
         Bindings {
             batch: self.batch_bindings(),
+            modes: self.mode_bindings(),
             instance: self.owner,
             menu: Callback::new(move |lookup| menu.rail_menu(lookup)),
             rail: Callback::new(move |request| rail.rail(request)),
@@ -117,6 +120,7 @@ impl Controller {
         self.inner.borrow_mut().history.burst = None;
     }
     fn reconcile(&self) {
+        self.reconcile_modes();
         {
             let mut inner = self.inner.borrow_mut();
             if let Some(p) = inner.publication {

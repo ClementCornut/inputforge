@@ -210,17 +210,11 @@ pub(crate) fn reconcile_pure(
 ///   spuriously on the same tick.
 ///
 /// **`ModeFlipped`:** `editing_mode` changed since the last tick
-///   (detected via `last_editing_mode` shadow). Write the new value into
-///   `last_editing_mode` and clear `selected_mapping`.
+///   (detected via `last_editing_mode` shadow). Update the shadow and forward
+///   navigation reconciliation to the app.
 ///
-/// **`ModesListDrifted`:** `editing_mode` is no longer in `meta.modes`
-///   (mode deleted mid-session). Reset to `startup_mode`; if that is also
-///   missing, fall back to `modes[0]`; if `modes` is empty, leave
-///   `editing_mode` unchanged. `ModeFlipped` will clear `selected_mapping`
-///   on the subsequent effect tick when it detects the value change.
-///
-/// **`NoChange`:** no action required.
-#[allow(dead_code, reason = "Called from app_root in Task 18")]
+/// **`ModesListDrifted`:** forward reconciliation to the app, which decides
+/// the fallback and preserves navigation while a delivered mode change is pending.
 pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
     let initial_editing = meta
         .peek()
@@ -265,23 +259,12 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
                 *em.write() = next;
                 sel.set(None);
             }
-            ReconcileOutcome::ModeFlipped => {
+            ReconcileOutcome::ModeFlipped | ReconcileOutcome::ModesListDrifted => {
                 *last_editing_mode.write() = cur_mode;
-                sel.set(None);
-            }
-            ReconcileOutcome::ModesListDrifted => {
-                let fallback = if let Some(s) = m.startup_mode.as_ref() {
-                    if m.modes.iter().any(|n| n == s) {
-                        s.clone()
-                    } else {
-                        m.modes.first().cloned().unwrap_or(cur_mode)
-                    }
-                } else {
-                    m.modes.first().cloned().unwrap_or(cur_mode)
-                };
-                *em.write() = fallback;
-                // ModeFlipped clears selected_mapping on the next effect tick
-                // when it detects that editing_mode has changed.
+                drop(m);
+                if let Some(bindings) = try_consume_context::<crate::mapping_edits::Bindings>() {
+                    bindings.modes.reconcile.call(());
+                }
             }
         }
     });

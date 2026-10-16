@@ -1,4 +1,5 @@
 //! Restore snapshots, in-flight command chains and isolated session stacks.
+mod modes;
 mod rail;
 use super::grouping::Burst;
 use inputforge_core::{

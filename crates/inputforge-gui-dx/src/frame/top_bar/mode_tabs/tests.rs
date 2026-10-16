@@ -17,16 +17,7 @@
 //!   tab does not render its `TabButton` (`RenameInline` takes its slot,
 //!   does not register with the keyboard coordinator).
 //!
-//! Out of scope (deferred): event-dispatch tests for the per-tab
-//! `oncontextmenu`, Shift+F10, and Delete handlers, plus the
-//! `pending_focus` -> `TabsRoot.focus_request` round-trip. The
-//! `dioxus_ssr` test surface used here does not run event handlers,
-//! so verifying these requires a future test-infra extension (e.g.
-//! a Dioxus `VirtualDom` event-dispatch helper) before we can assert
-//! the open-state signal flips on a synthetic event. The handlers
-//! themselves are wired in `mod.rs:121-204` and reviewed at the
-//! source level; this file pins the structural contracts that the
-//! handlers anchor to (DOM ids, aria-* shape, tablist boundary).
+//! Real handlers, stale targets and failure retention are covered in `events_tests`.
 
 #![allow(
     non_snake_case,
@@ -74,7 +65,7 @@ fn provide_mode_tabs_contexts() {
 
     use_live_capture_provider();
 
-    let dt: Signal<Option<String>> = use_signal(|| None);
+    let dt = use_signal(|| None);
     use_context_provider(|| ModeDeleteSignal(dt));
     let mf: Signal<Option<String>> = use_signal(|| None);
     use_context_provider(|| ModeFocusSignal(mf));
@@ -265,4 +256,20 @@ fn mode_tabs_dom_ids_use_index_not_mode_name() {
         !html.contains("id=\"Default\""),
         "raw mode name must NOT appear as a DOM id (JS-eval safety): {html}",
     );
+}
+
+// Isolated renderer fixtures use the same app callbacks as the editor root.
+pub(super) fn provide_bindings() {
+    let ctx = use_context::<AppContext>();
+    let existing = try_consume_context::<crate::mapping_edits::Bindings>();
+    let bindings = use_hook(|| {
+        existing.unwrap_or_else(|| {
+            inputforge_app::mapping_edits::Controller::new(
+                Arc::clone(&ctx.state),
+                ctx.commands.clone(),
+            )
+            .bindings()
+        })
+    });
+    use_context_provider(|| bindings);
 }

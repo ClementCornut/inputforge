@@ -158,7 +158,9 @@ fn renderer_preserves_tick_cadence_skips_contention_and_releases_polling_on_drop
         assert!(dioxus_ssr::render(&dom).contains("Initial fixture"));
         assert!(dioxus_ssr::render(&dom).contains("Virtual controller 3"));
         assert!(dioxus_ssr::render(&dom).contains("Not detected yet"));
-        state.write().active_profile = Some(profile("Next fixture"));
+        let mut next = profile("Next fixture");
+        next.set_modes(Modes::new(vec!["Default".into(), "Prepared mode".into()]).unwrap());
+        state.write().active_profile = Some(next);
         state.write().virtual_devices[0].device_id = 4;
         state
             .write()
@@ -169,10 +171,12 @@ fn renderer_preserves_tick_cadence_skips_contention_and_releases_polling_on_drop
             .detected = Some(AxisPolarity::Unipolar);
         drive(&mut dom, 15).await;
         assert!(!dioxus_ssr::render(&dom).contains("Next fixture"));
+        assert!(!dioxus_ssr::render(&dom).contains("data-mode=\"Prepared mode\""));
         assert!(!dioxus_ssr::render(&dom).contains("Virtual controller 4"));
         assert!(!dioxus_ssr::render(&dom).contains("Detected: rests at minimum"));
         drive(&mut dom, 1).await;
         assert!(dioxus_ssr::render(&dom).contains("Next fixture"));
+        assert!(dioxus_ssr::render(&dom).contains("data-mode=\"Prepared mode\""));
         assert!(dioxus_ssr::render(&dom).contains("Virtual controller 4"));
         assert!(dioxus_ssr::render(&dom).contains("Detected: rests at minimum"));
         dom.mark_dirty(ScopeId::ROOT);
@@ -180,7 +184,10 @@ fn renderer_preserves_tick_cadence_skips_contention_and_releases_polling_on_drop
         assert_eq!(starts.get(), 1, "rerender must not install a second poller");
         let blocked_html = {
             let mut guard = state.write();
-            guard.active_profile = Some(profile("Recovered fixture"));
+            let mut recovered = profile("Recovered fixture");
+            recovered
+                .set_modes(Modes::new(vec!["Default".into(), "Recovered mode".into()]).unwrap());
+            guard.active_profile = Some(recovered);
             guard
                 .device_registry
                 .get_mut(&axis_device)
@@ -191,9 +198,11 @@ fn renderer_preserves_tick_cadence_skips_contention_and_releases_polling_on_drop
             dioxus_ssr::render(&dom)
         };
         assert!(!blocked_html.contains("Recovered fixture"));
+        assert!(!blocked_html.contains("data-mode=\"Recovered mode\""));
         assert!(!blocked_html.contains("Detected: centered"));
         drive(&mut dom, 16).await;
         assert!(dioxus_ssr::render(&dom).contains("Recovered fixture"));
+        assert!(dioxus_ssr::render(&dom).contains("data-mode=\"Recovered mode\""));
         assert!(dioxus_ssr::render(&dom).contains("Detected: centered"));
         drop(dom);
         assert_eq!(
@@ -212,6 +221,7 @@ fn renderer_preserves_tick_cadence_skips_contention_and_releases_polling_on_drop
         drive(&mut remount, 0).await;
         assert_eq!(starts.get(), 2);
         assert!(dioxus_ssr::render(&remount).contains("Recovered fixture"));
+        assert!(dioxus_ssr::render(&remount).contains("data-mode=\"Recovered mode\""));
         assert!(dioxus_ssr::render(&remount).contains("Detected: centered"));
         drop(remount);
         assert_eq!(Arc::strong_count(&state), 1);

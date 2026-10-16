@@ -10,3 +10,4 @@ use inputforge_core::{
 };
 use inputforge_gui_dx::batch_mapping::{Intent, RowKind};
 use support::*;
+mod mode_transition;

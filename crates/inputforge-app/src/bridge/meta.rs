@@ -72,6 +72,7 @@ pub(super) fn project(s: &AppState) -> MetaSnapshot {
         })
         .collect();
     MetaSnapshot {
+        mode_management: crate::mapping_edits::modes::policy::view(s),
         profile_id: s
             .active_profile
             .as_ref()

@@ -58,41 +58,6 @@ const POLL_INTERVAL: Duration = Duration::from_millis(1);
 /// pause without indefinitely keeping deleted snapshot bytes on disk.
 const PENDING_DELETE_RETENTION_DAYS: i64 = 7;
 
-/// Maximum mode-name length, measured in extended grapheme clusters
-/// (UAX #29 extended).
-///
-/// Re-exported from `crate::engine` and consumed by the GUI inline
-/// editors so a single source of truth governs both the engine's
-/// out-of-band-caller rejection and the inline UX feedback. Drift is
-/// impossible because the GUI imports this constant directly rather
-/// than mirroring it.
-pub const MAX_MODE_NAME_GRAPHEMES: usize = 64;
-
-/// Returns `Err(InvalidConfig)` if `name` is empty or exceeds the
-/// grapheme-cluster cap. Shared by `AddMode`, `RenameMode`, and
-/// `SetDefaultMode` so the three handlers enforce identical policy.
-fn validate_mode_name_for_engine(
-    name: &str,
-    empty_reason: &str,
-) -> std::result::Result<(), crate::error::EngineError> {
-    let trimmed = name.trim();
-    if trimmed.is_empty() {
-        return Err(crate::error::EngineError::InvalidConfig {
-            reason: empty_reason.to_owned(),
-        });
-    }
-    let grapheme_count =
-        unicode_segmentation::UnicodeSegmentation::graphemes(trimmed, true).count();
-    if grapheme_count > MAX_MODE_NAME_GRAPHEMES {
-        return Err(crate::error::EngineError::InvalidConfig {
-            reason: format!(
-                "mode name too long ({grapheme_count} graphemes, max {MAX_MODE_NAME_GRAPHEMES})"
-            ),
-        });
-    }
-    Ok(())
-}
-
 /// Read mode count and last-edit timestamp for the profile file at `path`.
 ///
 /// Best-effort: any I/O or parse failure surfaces as a warning log and
@@ -1010,7 +975,7 @@ impl Engine {
                 }
             }
             EngineCommand::AddMode { name } => {
-                validate_mode_name_for_engine(&name, "mode name cannot be empty")?;
+                super::validate_mode_name(&name, "mode name cannot be empty")?;
                 // Bind the read-guarded snapshot in its own scope before
                 // acquiring the write lock to avoid a non-reentrant deadlock
                 // if the rvalue temporary's drop point ever shifts.
@@ -1022,7 +987,7 @@ impl Engine {
                 };
                 let modes = profile.modes().with_appended(&name)?;
                 profile.set_modes(modes);
-                if let Some(path) = path.as_ref() {
+                let save = if let Some(path) = path.as_ref() {
                     profile.save(path).map_err(|e| {
                         tracing::error!(
                             target: "engine",
@@ -1031,8 +996,15 @@ impl Engine {
                             "failed to persist AddMode"
                         );
                         e
-                    })?;
-                }
+                    })
+                } else {
+                    Ok(())
+                };
+                state.mode_revision = state
+                    .mode_revision
+                    .checked_add(1)
+                    .expect("mode revision exhausted");
+                save?;
                 tracing::info!(target: "engine", mode = %name, "AddMode applied");
             }
             EngineCommand::RenameMode { from, to } => {
@@ -1042,8 +1014,8 @@ impl Engine {
                 // an internal detail (the name doesn't match a mode)
                 // when the policy reason (length cap) is what should
                 // surface. Symmetric validation pins the contract.
-                validate_mode_name_for_engine(&from, "source mode name cannot be empty")?;
-                validate_mode_name_for_engine(&to, "mode name cannot be empty")?;
+                super::validate_mode_name(&from, "source mode name cannot be empty")?;
+                super::validate_mode_name(&to, "mode name cannot be empty")?;
                 if from == to {
                     return Ok(());
                 }
@@ -1087,6 +1059,11 @@ impl Engine {
                 // Step 3: swap the new list in last.
                 profile.set_modes(new_modes);
 
+                state.mode_revision = state
+                    .mode_revision
+                    .checked_add(1)
+                    .expect("mode revision exhausted");
+
                 // Step 3: runtime-state cascade.
                 if state.current_mode == from {
                     to.clone_into(&mut state.current_mode);
@@ -1127,7 +1104,7 @@ impl Engine {
                 // surface as `InvalidConfig` rather than falling through
                 // to `contains` and returning `ModeNotFound` (the wrong
                 // error register for a policy violation).
-                validate_mode_name_for_engine(&name, "mode name cannot be empty")?;
+                super::validate_mode_name(&name, "mode name cannot be empty")?;
                 let path = { self.state.read().profile_path.clone() };
                 let (new_modes, startup) = {
                     let state = self.state.read();
@@ -1139,23 +1116,8 @@ impl Engine {
                         return Ok(());
                     };
 
-                    if profile.modes().first() == name {
-                        return Err(crate::error::EngineError::InvalidConfig {
-                            reason: "cannot delete first mode".to_owned(),
-                        });
-                    }
-                    if !profile.modes().contains(&name) {
-                        return Err(crate::error::EngineError::ModeNotFound { name: name.clone() });
-                    }
-
-                    let startup = profile.settings().startup_mode().to_owned();
-                    if startup == name {
-                        return Err(crate::error::EngineError::InvalidConfig {
-                            reason: format!("cannot delete startup mode '{startup}'"),
-                        });
-                    }
-
-                    (profile.modes().with_removed(&name)?, startup)
+                    let modes = super::validate_mode_deletion(profile, &name)?;
+                    (modes, profile.settings().startup_mode().to_owned())
                 };
 
                 self.release_all_held_outputs()?;
@@ -1167,6 +1129,11 @@ impl Engine {
                 };
                 profile.set_modes(new_modes);
                 let mappings_dropped = profile.remove_mappings_for_mode(&name);
+
+                state.mode_revision = state
+                    .mode_revision
+                    .checked_add(1)
+                    .expect("mode revision exhausted");
 
                 // Runtime state cascade.
                 if state.current_mode == name {
@@ -1213,7 +1180,7 @@ impl Engine {
                 );
             }
             EngineCommand::SetDefaultMode { name } => {
-                validate_mode_name_for_engine(&name, "startup mode name cannot be empty")?;
+                super::validate_mode_name(&name, "startup mode name cannot be empty")?;
                 let path = { self.state.read().profile_path.clone() };
                 let mut state = self.state.write();
                 let Some(profile) = state.active_profile.as_mut() else {

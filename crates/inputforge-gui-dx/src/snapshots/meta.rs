@@ -4,6 +4,7 @@ use std::path::PathBuf;
 /// Prepared session, profile, mode, and warning data.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MetaSnapshot {
+    pub mode_management: crate::mode_management::View,
     pub session: inputforge_core::state::SessionState,
     pub engine_status: EngineStatus,
     pub current_mode: String,

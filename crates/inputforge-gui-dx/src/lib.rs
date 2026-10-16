@@ -29,6 +29,10 @@ pub use inputforge_gui_dx::mapping_edits;
 pub mod mapping_rail;
 #[cfg(test)]
 pub use inputforge_gui_dx::mapping_rail;
+#[cfg(not(test))]
+pub mod mode_management;
+#[cfg(test)]
+pub use inputforge_gui_dx::mode_management;
 pub mod patterns;
 pub mod routing;
 #[cfg(not(test))]

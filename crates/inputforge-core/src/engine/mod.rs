@@ -24,7 +24,9 @@ mod session;
 mod tests;
 
 pub use command::EngineCommand;
-pub use run::MAX_MODE_NAME_GRAPHEMES;
+mod mode_validation;
+#[doc(inline)]
+pub use mode_validation::{MAX_MODE_NAME_GRAPHEMES, validate_mode_deletion, validate_mode_name};
 
 use std::path::PathBuf;
 use std::sync::Arc;

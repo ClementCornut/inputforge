@@ -7056,3 +7056,6 @@ fn mapping_edit_barrier_confirms_prior_queued_mapping_commands() {
         assert_eq!(mapping.name.as_deref(), Some("row"));
     }
 }
+
+#[path = "tests/mode_revision.rs"]
+mod mode_revision;

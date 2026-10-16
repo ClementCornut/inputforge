@@ -127,6 +127,7 @@ impl Controller {
     fn batch_action(&self, request: Request) {
         let delivery = {
             let state = self.state.read();
+            let mode_pending = self.mode_pending(&state);
             let mut inner = self.inner.borrow_mut();
             if inner.disposed {
                 return;
@@ -140,7 +141,8 @@ impl Controller {
                 return;
             }
             let current = Stamp::new(&state, &batch.view, batch.publication.mode.peek().clone());
-            let valid = request.generation == batch.view.generation
+            let valid = !mode_pending
+                && request.generation == batch.view.generation
                 && current == batch.stamp
                 && current.profile.is_some()
                 && !state.session.offline

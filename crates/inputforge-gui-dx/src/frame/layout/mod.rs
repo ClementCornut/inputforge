@@ -33,7 +33,7 @@ pub(crate) fn Layout() -> Element {
     let main_surface = use_memo(move || *view.main_surface.read());
     let p = *has_profile.read();
     let s = *main_surface.read();
-    let delete_target = use_signal(|| Option::<String>::None);
+    let delete_target = use_signal(|| None);
     use_context_provider(|| ModeDeleteSignal(delete_target));
     let mode_focus = use_signal(|| Option::<String>::None);
     use_context_provider(|| ModeFocusSignal(mode_focus));

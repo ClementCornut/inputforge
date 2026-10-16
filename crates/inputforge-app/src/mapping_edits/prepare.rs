@@ -12,6 +12,9 @@ use inputforge_gui_dx::{
 impl Controller {
     pub(super) fn prepare(&self, request: &mut Request) -> Option<(MappingKey, Entry)> {
         let state = self.state.read();
+        if self.mode_pending(&state) {
+            return None;
+        }
         let mut inner = self.inner.borrow_mut();
         inner.history.reconcile(&state, self.owner);
         let profile = state.active_profile.as_ref()?;
@@ -97,6 +100,9 @@ impl Controller {
     }
     pub(super) fn prepare_restore(&self, key: &MappingKey, redo: bool) -> Option<Entry> {
         let state = self.state.read();
+        if self.mode_pending(&state) {
+            return None;
+        }
         if state.session.offline {
             return None;
         }
