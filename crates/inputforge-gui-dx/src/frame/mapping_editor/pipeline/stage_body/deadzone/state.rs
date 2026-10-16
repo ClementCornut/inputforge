@@ -1,96 +1,12 @@
-// Rust guideline compliant 2026-05-03
-
-//! F11 deadzone body local state. No Signals here; pure types so the body's
-//! interaction / keyboard handlers stay unit-testable without Dioxus.
-
-use inputforge_core::processing::deadzone::DeadzoneConfig;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum HandleId {
-    Low,
-    CenterLow,
-    CenterHigh,
-    High,
-}
-
-impl HandleId {
-    pub(crate) const ALL: [HandleId; 4] = [
-        HandleId::Low,
-        HandleId::CenterLow,
-        HandleId::CenterHigh,
-        HandleId::High,
-    ];
-
-    pub(crate) const fn next(self) -> Option<HandleId> {
-        match self {
-            HandleId::Low => Some(HandleId::CenterLow),
-            HandleId::CenterLow => Some(HandleId::CenterHigh),
-            HandleId::CenterHigh => Some(HandleId::High),
-            HandleId::High => None,
-        }
-    }
-
-    pub(crate) const fn prev(self) -> Option<HandleId> {
-        match self {
-            HandleId::Low => None,
-            HandleId::CenterLow => Some(HandleId::Low),
-            HandleId::CenterHigh => Some(HandleId::CenterLow),
-            HandleId::High => Some(HandleId::CenterHigh),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct DragInProgress {
-    pub handle: HandleId,
-    /// Inclusive viewBox-x bounds derived once at drag start from the
-    /// neighbour thresholds; the candidate config is built only after
-    /// clamping the cursor X to this interval.
-    pub bounds: (f64, f64),
-}
-
+//! Prepared drawing highlights for the four deadzone handles.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct BodyState {
     pub dragging: Option<DragInProgress>,
-    pub hovered_handle: Option<HandleId>,
-    pub focused_handle: Option<HandleId>,
-    pub pre_drag_config: Option<DeadzoneConfig>,
-    /// Set on a pointer-down that lands inside the hit-radius of two
-    /// handles at once (CL and CH stacked at the same x, the default
-    /// config's most common state). The first significant pointer-move
-    /// resolves the pair to a single `dragging` based on cursor direction:
-    /// rightward picks the second handle, leftward picks the first.
-    /// Cleared on resolution OR on pointer-up without movement.
-    pub pending_split: Option<(HandleId, HandleId)>,
+    pub hovered_handle: Option<usize>,
+    pub focused_handle: Option<usize>,
+    pub pending_split: Option<(usize, usize)>,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn handle_next_chain_hits_each_id_then_none() {
-        assert_eq!(HandleId::Low.next(), Some(HandleId::CenterLow));
-        assert_eq!(HandleId::CenterLow.next(), Some(HandleId::CenterHigh));
-        assert_eq!(HandleId::CenterHigh.next(), Some(HandleId::High));
-        assert_eq!(HandleId::High.next(), None);
-    }
-
-    #[test]
-    fn handle_prev_chain_hits_each_id_then_none() {
-        assert_eq!(HandleId::High.prev(), Some(HandleId::CenterHigh));
-        assert_eq!(HandleId::CenterHigh.prev(), Some(HandleId::CenterLow));
-        assert_eq!(HandleId::CenterLow.prev(), Some(HandleId::Low));
-        assert_eq!(HandleId::Low.prev(), None);
-    }
-
-    #[test]
-    fn body_state_default_is_idle() {
-        let s = BodyState::default();
-        assert!(s.dragging.is_none());
-        assert!(s.hovered_handle.is_none());
-        assert!(s.focused_handle.is_none());
-        assert!(s.pre_drag_config.is_none());
-        assert!(s.pending_split.is_none());
-    }
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct DragInProgress {
+    pub handle: usize,
 }

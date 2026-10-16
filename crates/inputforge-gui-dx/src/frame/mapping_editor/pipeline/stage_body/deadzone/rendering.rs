@@ -8,8 +8,8 @@ use dioxus::prelude::*;
 
 use inputforge_core::processing::deadzone::DeadzoneConfig;
 
-use crate::frame::mapping_editor::pipeline::stage_body::deadzone::mutation::handle_positions;
-use crate::frame::mapping_editor::pipeline::stage_body::deadzone::state::{BodyState, HandleId};
+use super::super::instruments::geometry::handle_positions;
+use crate::frame::mapping_editor::pipeline::stage_body::deadzone::state::BodyState;
 use crate::frame::mapping_editor::pipeline::stage_body::instruments::INSTR_GLOW_STDDEV;
 
 pub(crate) fn render_plot(
@@ -146,8 +146,8 @@ fn render_hover_ring(config: &DeadzoneConfig, state: &BodyState) -> Element {
     // user reads "drag direction will pick" before they commit.
     if let Some((a, b)) = state.pending_split {
         let p = handle_positions(config);
-        let idx_a = HandleId::ALL.iter().position(|h| *h == a).unwrap();
-        let idx_b = HandleId::ALL.iter().position(|h| *h == b).unwrap();
+        let idx_a = a;
+        let idx_b = b;
         let pos_a = p[idx_a];
         let pos_b = p[idx_b];
         return rsx! {
@@ -159,7 +159,7 @@ fn render_hover_ring(config: &DeadzoneConfig, state: &BodyState) -> Element {
         return rsx! {};
     };
     let p = handle_positions(config);
-    let idx = HandleId::ALL.iter().position(|h| *h == handle).unwrap();
+    let idx = handle;
     let (cx, cy) = p[idx];
     rsx! {
         circle { class: "if-deadzone__hover-ring", cx: "{cx}", cy: "{cy}", r: "0.085", fill: "none" }
@@ -171,10 +171,7 @@ fn render_drag_halo(config: &DeadzoneConfig, state: &BodyState) -> Element {
         return rsx! {};
     };
     let p = handle_positions(config);
-    let idx = HandleId::ALL
-        .iter()
-        .position(|h| *h == drag.handle)
-        .unwrap();
+    let idx = drag.handle;
     let (cx, cy) = p[idx];
     rsx! {
         circle { class: "if-deadzone__drag-halo", cx: "{cx}", cy: "{cy}", r: "0.07" }
@@ -186,7 +183,7 @@ fn render_focus_ring(config: &DeadzoneConfig, state: &BodyState) -> Element {
         return rsx! {};
     };
     let p = handle_positions(config);
-    let idx = HandleId::ALL.iter().position(|h| *h == handle).unwrap();
+    let idx = handle;
     let (cx, cy) = p[idx];
     rsx! {
         circle { class: "if-deadzone__focus-ring", cx: "{cx}", cy: "{cy}", r: "0.105", fill: "none" }

@@ -1,109 +1,15 @@
-// Rust guideline compliant 2026-05-02
-
-//! Pure pointer-event handlers for the F10 curve editor body.
-//!
-//! These fns take and return values, never Signals. The host
-//! component projects Dioxus `PointerEvent` data to the primitives
-//! consumed here (cursor pos in viewport coords, plot rect),
-//! invokes a handler, then writes the resulting `BodyState'` and
-//! optional `ResponseCurve'` back to its signals.
-
-use inputforge_core::processing::curves::ResponseCurve;
-
+//! Response Curve interaction behavior.
 use super::mutation;
 use super::state::{BodyState, DragInProgress};
-
-/// Bounding box of the SVG plot in viewport pixel coordinates. The
-/// plot is square; `size` covers both width and height.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct PlotRect {
-    pub x: f64,
-    pub y: f64,
-    pub size: f64,
-}
-
-/// Project a viewport pixel coordinate onto the plot's `viewBox`
-/// coordinate system (`-1.05..1.05` square). The returned tuple is
-/// engine-native `(input, output)`: the SVG y-flip is applied here
-/// (output points up) so callers downstream see engine-native data.
-///
-/// Returns `None` when the plot rect is unmeasurable (`size <= 0.0`),
-/// which happens during the brief window between mount and the first
-/// `getBoundingClientRect()` capture. `(0.0, 0.0)` would be ambiguous
-/// with a real click at the plot origin, so the contract is explicit.
-#[must_use]
-pub(crate) fn screen_to_viewbox(cursor: (f64, f64), r: &PlotRect) -> Option<(f64, f64)> {
-    if r.size <= 0.0 {
-        return None;
-    }
-    let nx = (cursor.0 - r.x) / r.size; // 0..1 left-to-right
-    let ny = (cursor.1 - r.y) / r.size; // 0..1 top-to-bottom
-    let input = -1.05 + nx * 2.1;
-    // Top of plot is +output (1.05); bottom is -output (-1.05).
-    let output = 1.05 - ny * 2.1;
-    Some((input, output))
-}
-
-/// Project a viewBox `(input, output)` tuple onto viewport pixel
-/// coordinates. Inverse of `screen_to_viewbox`.
-fn viewbox_to_screen(p: (f64, f64), r: &PlotRect) -> (f64, f64) {
-    let nx = (p.0 + 1.05) / 2.1;
-    let ny = (1.05 - p.1) / 2.1;
-    (r.x + nx * r.size, r.y + ny * r.size)
-}
-
-/// Find the anchor in `anchors` whose projected position is within
-/// `radius_px` of `cursor`. Ties broken by lowest index.
-#[must_use]
-pub(crate) fn nearest_anchor(
-    cursor: (f64, f64),
-    anchors: &[(f64, f64)],
-    r: &PlotRect,
-    radius_px: f64,
-) -> Option<usize> {
-    let radius_sq = radius_px * radius_px;
-    let mut best: Option<(usize, f64)> = None;
-    for (i, a) in anchors.iter().enumerate() {
-        let p = viewbox_to_screen(*a, r);
-        let dx = p.0 - cursor.0;
-        let dy = p.1 - cursor.1;
-        let d2 = dx * dx + dy * dy;
-        if d2 <= radius_sq {
-            match best {
-                Some((_, bd)) if bd <= d2 => {}
-                _ => best = Some((i, d2)),
-            }
-        }
-    }
-    best.map(|(i, _)| i)
-}
-
-/// Hit-test radius in pixels for anchor selection and hover detection.
-///
-/// 10 px gives a comfortable tap target on both mouse and touch inputs
-/// without making adjacent anchors ambiguous at typical curve densities.
-pub(crate) const HIT_RADIUS_PX: f64 = 10.0;
-
-/// Output of every handler except `handle_pointer_up`. `next_state` always
-/// returns; `new_curve` is `Some` only when this event produced a new local
-/// curve clone the host should adopt as its working copy; `changed` is `true`
-/// when the caller must re-render or dispatch.
+use inputforge_core::processing::curves::ResponseCurve;
+use inputforge_gui_dx::instruments::Observation;
 pub(crate) type HandlerOut = (BodyState, Option<ResponseCurve>, bool);
-
-/// Handle a pointer-down event.
-///
-/// When the cursor is within [`HIT_RADIUS_PX`] of an anchor, starts a drag:
-/// records `DragInProgress` in `state.dragging` and snapshots the current
-/// curve into `state.pre_drag_curve`. Returns `(state', None, false)` in
-/// all cases (the curve itself does not change on pointer-down; changes
-/// only occur during pointer-move).
 pub(crate) fn handle_pointer_down(
     mut state: BodyState,
     curve: &ResponseCurve,
-    cursor: (f64, f64),
-    r: &PlotRect,
+    observation: &Observation,
 ) -> HandlerOut {
-    let Some(idx) = nearest_anchor(cursor, &state.cached_anchors, r, HIT_RADIUS_PX) else {
+    let Some(idx) = observation.hit.filter(|&i| i < state.cached_anchors.len()) else {
         return (state, None, false);
     };
     let bounds = mutation::adjacent_x_bounds(curve, idx);
@@ -115,45 +21,23 @@ pub(crate) fn handle_pointer_down(
     (state, None, false)
 }
 
-/// Handle a pointer-move event.
-///
-/// During a drag: projects `cursor` to viewBox coords, applies the drag to
-/// a local clone of `curve`, sets `cache_dirty`, and returns the new curve
-/// clone. Outside a drag: updates `hovered_point` only (no new curve).
 pub(crate) fn handle_pointer_move(
     mut state: BodyState,
     curve: &ResponseCurve,
-    cursor: (f64, f64),
-    r: &PlotRect,
+    observation: &Observation,
 ) -> HandlerOut {
     if let Some(drag) = state.dragging.clone() {
-        let Some(p) = screen_to_viewbox(cursor, r) else {
-            // Unmeasured rect: keep the drag alive but emit no curve update.
+        let Some(p) = observation.position else {
             return (state, None, false);
         };
         let mut local = curve.clone();
         mutation::update_point_in_curve(&mut local, drag.point_index, p, drag.bounds);
-        state.cache_dirty = true;
         return (state, Some(local), true);
     }
-    state.hovered_point = nearest_anchor(cursor, &state.cached_anchors, r, HIT_RADIUS_PX);
+    state.hovered_point = observation.hit.filter(|&i| i < state.cached_anchors.len());
     (state, None, false)
 }
 
-/// Pointer-up returns `Result<ResponseCurve, String>` so the host body can
-/// write the validator's actual error to `EditorState.malformed_hints[stage_id]`.
-///
-/// Three return shapes:
-/// - `(_, Ok(valid), true)`: drag committed; host dispatches `SetMapping`
-///   with `valid` and pushes an undo entry. `next.pre_drag_curve` is `None`.
-/// - `(_, Err(msg), false)` with `state.dragging.is_some()` on entry: drag
-///   reverted by validator. `msg` carries the engine error text. `next.pre_drag_curve`
-///   IS still populated; the host should `take()` it to restore the working
-///   curve signal, and write `msg` to `EditorState.malformed_hints[stage_id]`.
-/// - `(_, Err(""), false)` with `state.dragging.is_none()` on entry: no drag
-///   was active; the host should treat this as a no-op (e.g. stray pointerup
-///   from outside a drag). The empty error string is the sentinel; check
-///   `state.dragging` before calling to avoid relying on it.
 pub(crate) fn handle_pointer_up(
     mut state: BodyState,
     working_curve: &ResponseCurve,
@@ -162,56 +46,33 @@ pub(crate) fn handle_pointer_up(
         return (state, Err(String::new()), false);
     }
     state.dragging = None;
-    state.cache_dirty = true;
     match mutation::reconstruct_curve(working_curve) {
         Ok(valid) => {
             state.pre_drag_curve = None;
             (state, Ok(valid), true)
         }
-        Err(err) => {
-            // Validation failed. `pre_drag_curve` remains populated in the returned
-            // state so the host body can `take()` it and restore the working curve
-            // signal. The host also writes `err` into
-            // `EditorState.malformed_hints[stage_id]`.
-            (state, Err(err), false)
-        }
+        Err(err) => (state, Err(err), false),
     }
 }
 
-/// Handle a double-click event.
-///
-/// Projects `cursor` to viewBox coords and inserts a new control point there
-/// via [`mutation::add_control_point`]. Returns `(state', Some(new_curve), true)`
-/// on success, or `(state, None, false)` when the click is outside the plot
-/// bounds or the point cannot be inserted.
 pub(crate) fn handle_double_click(
-    mut state: BodyState,
+    state: BodyState,
     curve: &ResponseCurve,
-    cursor: (f64, f64),
-    r: &PlotRect,
+    observation: &Observation,
 ) -> HandlerOut {
-    let Some(p) = screen_to_viewbox(cursor, r) else {
+    let Some(p) = observation.position else {
         return (state, None, false);
     };
-    // Bounds gate: a double-click outside the plot would otherwise be
-    // clamped by `add_control_point` to a boundary anchor at (-1, ?) or
-    // (1, ?), which is surprising UX.
     if !(-1.05..=1.05).contains(&p.0) || !(-1.05..=1.05).contains(&p.1) {
         return (state, None, false);
     }
     let mut local = curve.clone();
     if mutation::add_control_point(&mut local, p) {
-        state.cache_dirty = true;
         return (state, Some(local), true);
     }
     (state, None, false)
 }
 
-/// Handle a context-menu event (right-click or long-press).
-///
-/// When `state.hovered_point` is `Some(idx)`, removes the control point at
-/// `idx` via [`mutation::remove_control_point`] and clears `hovered_point`.
-/// When no point is hovered, this is a no-op.
 pub(crate) fn handle_context_menu(mut state: BodyState, curve: &ResponseCurve) -> HandlerOut {
     let Some(idx) = state.hovered_point else {
         return (state, None, false);
@@ -219,7 +80,6 @@ pub(crate) fn handle_context_menu(mut state: BodyState, curve: &ResponseCurve) -
     let mut local = curve.clone();
     if mutation::remove_control_point(&mut local, idx) {
         state.hovered_point = None;
-        state.cache_dirty = true;
         return (state, Some(local), true);
     }
     (state, None, false)
@@ -227,13 +87,14 @@ pub(crate) fn handle_context_menu(mut state: BodyState, curve: &ResponseCurve) -
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::pointer_fixture::*;
     use super::*;
     #[expect(
         redundant_imports,
         reason = "BodyState and DragInProgress re-enter via `super::*` but the \
                   explicit import keeps the tests self-documenting per the plan spec"
     )]
-    use crate::frame::mapping_editor::pipeline::stage_body::response_curve::state::{
+    use crate::mapping_edits::instruments::response_curve::state::{
         BodyState, DragInProgress, extract_anchors,
     };
     #[expect(
@@ -243,6 +104,44 @@ mod tests {
                   per the plan spec"
     )]
     use inputforge_core::processing::curves::ResponseCurve;
+
+    fn observe(cursor: (f64, f64), r: &PlotRect, points: &[(f64, f64)]) -> Observation {
+        let hit = nearest_anchor(cursor, points, r, 10.0);
+        let centers = points.len() == 4 && [1, 2].iter().all(|&i| near(cursor, points[i], r, 10.0));
+        let split_dx = points
+            .get(1)
+            .map_or(0.0, |p| cursor.0 - viewbox_to_screen(*p, r).0);
+        Observation {
+            position: screen_to_viewbox(cursor, r),
+            hit,
+            centers,
+            split_dx,
+        }
+    }
+    fn handle_pointer_down_pixels(
+        state: BodyState,
+        value: &ResponseCurve,
+        cursor: (f64, f64),
+        r: &PlotRect,
+    ) -> HandlerOut {
+        handle_pointer_down(state, value, &observe(cursor, r, &extract_anchors(value)))
+    }
+    fn handle_pointer_move_pixels(
+        state: BodyState,
+        value: &ResponseCurve,
+        cursor: (f64, f64),
+        r: &PlotRect,
+    ) -> HandlerOut {
+        handle_pointer_move(state, value, &observe(cursor, r, &extract_anchors(value)))
+    }
+    fn handle_double_click_pixels(
+        state: BodyState,
+        value: &ResponseCurve,
+        cursor: (f64, f64),
+        r: &PlotRect,
+    ) -> HandlerOut {
+        handle_double_click(state, value, &observe(cursor, r, &extract_anchors(value)))
+    }
 
     fn seed_curve() -> ResponseCurve {
         ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false).unwrap()
@@ -258,87 +157,6 @@ mod tests {
     }
 
     #[test]
-    fn screen_to_viewbox_maps_corners() {
-        let r = rect();
-        // top-left of plot maps to (-1.05, -1.05) in viewBox; in engine
-        // coords (input axis horizontal) that's (input=-1.05, output=+1.05)
-        // because SVG-y is flipped at render time.
-        let p = screen_to_viewbox((10.0, 20.0), &r).unwrap();
-        assert!((p.0 - (-1.05)).abs() < 1e-6);
-        assert!((p.1 - 1.05).abs() < 1e-6);
-        // Center of plot maps to (0, 0).
-        let p = screen_to_viewbox((10.0 + 120.0, 20.0 + 120.0), &r).unwrap();
-        assert!(p.0.abs() < 1e-6 && p.1.abs() < 1e-6);
-    }
-
-    #[test]
-    fn screen_to_viewbox_returns_none_for_zero_rect() {
-        let r = PlotRect {
-            x: 0.0,
-            y: 0.0,
-            size: 0.0,
-        };
-        assert!(screen_to_viewbox((10.0, 20.0), &r).is_none());
-    }
-
-    #[test]
-    fn nearest_anchor_within_radius() {
-        let curve = seed_curve();
-        let anchors = extract_anchors(&curve);
-        let r = rect();
-        // Center anchor (0, 0) projects to plot center.
-        let cursor = (10.0 + 120.0 + 4.0, 20.0 + 120.0);
-        let hit = nearest_anchor(cursor, &anchors, &r, 10.0);
-        assert_eq!(hit, Some(1));
-    }
-
-    #[test]
-    fn nearest_anchor_outside_radius() {
-        let curve = seed_curve();
-        let anchors = extract_anchors(&curve);
-        let r = rect();
-        // Far from any anchor.
-        let cursor = (10.0 + 120.0 + 60.0, 20.0 + 120.0);
-        let hit = nearest_anchor(cursor, &anchors, &r, 10.0);
-        assert!(hit.is_none());
-    }
-
-    #[test]
-    fn nearest_anchor_at_bezier_junction_returns_lower_index() {
-        // Two-segment bezier: anchors[3] (seg0.end) and anchors[4] (seg1.start)
-        // coincide at (0, 0). A click at the junction must return the
-        // lower index per `nearest_anchor`'s tie-breaking rule.
-        let curve = inputforge_core::processing::curves::ResponseCurve::cubic_bezier(
-            vec![
-                inputforge_core::processing::curves::BezierSegment {
-                    start: (-1.0, -1.0),
-                    control1: (-0.5, -0.5),
-                    control2: (-0.25, -0.25),
-                    end: (0.0, 0.0),
-                },
-                inputforge_core::processing::curves::BezierSegment {
-                    start: (0.0, 0.0),
-                    control1: (0.25, 0.25),
-                    control2: (0.5, 0.5),
-                    end: (1.0, 1.0),
-                },
-            ],
-            false,
-        )
-        .unwrap();
-        let anchors = extract_anchors(&curve);
-        let r = rect();
-        // Junction (0, 0) projects to plot center.
-        let cursor = (10.0 + 120.0, 20.0 + 120.0);
-        let hit = nearest_anchor(cursor, &anchors, &r, 10.0);
-        assert_eq!(
-            hit,
-            Some(3),
-            "junction tie must return lower index (3, not 4)"
-        );
-    }
-
-    #[test]
     fn pointer_down_on_anchor_starts_drag_and_snapshots() {
         let curve = seed_curve();
         let state = BodyState {
@@ -346,7 +164,8 @@ mod tests {
             ..BodyState::default()
         };
         let cursor = (10.0 + 120.0 + 4.0, 20.0 + 120.0);
-        let (next, _new_curve, _changed) = handle_pointer_down(state, &curve, cursor, &rect());
+        let (next, _new_curve, _changed) =
+            handle_pointer_down_pixels(state, &curve, cursor, &rect());
         assert!(next.dragging.is_some());
         assert_eq!(next.dragging.as_ref().unwrap().point_index, 1);
         assert!(next.pre_drag_curve.is_some());
@@ -360,7 +179,7 @@ mod tests {
             ..BodyState::default()
         };
         let cursor = (10.0 + 120.0 + 60.0, 20.0 + 120.0);
-        let (next, new_curve, changed) = handle_pointer_down(state, &curve, cursor, &rect());
+        let (next, new_curve, changed) = handle_pointer_down_pixels(state, &curve, cursor, &rect());
         assert!(next.dragging.is_none());
         assert!(new_curve.is_none());
         assert!(!changed);
@@ -375,17 +194,17 @@ mod tests {
         };
         // Simulate drag start.
         let cursor_down = (10.0 + 120.0 + 4.0, 20.0 + 120.0);
-        let (state, _, _) = handle_pointer_down(state, &curve, cursor_down, &rect());
+        let (state, _, _) = handle_pointer_down_pixels(state, &curve, cursor_down, &rect());
         // Move down-and-right.
         let cursor_move = (10.0 + 120.0 + 30.0, 20.0 + 120.0 + 10.0);
-        let (next, new_curve, changed) = handle_pointer_move(state, &curve, cursor_move, &rect());
+        let (_next, new_curve, changed) =
+            handle_pointer_move_pixels(state, &curve, cursor_move, &rect());
         assert!(changed);
         let new_curve = new_curve.expect("drag-move yields a new local curve");
         if let ResponseCurve::PiecewiseLinear { points, .. } = new_curve {
             // Center moved away from origin.
             assert!(points[1].0 != 0.0 || points[1].1 != 0.0);
         }
-        assert!(next.cache_dirty);
     }
 
     #[test]
@@ -396,7 +215,7 @@ mod tests {
             ..BodyState::default()
         };
         let cursor = (10.0 + 120.0 + 4.0, 20.0 + 120.0);
-        let (next, new_curve, changed) = handle_pointer_move(state, &curve, cursor, &rect());
+        let (next, new_curve, changed) = handle_pointer_move_pixels(state, &curve, cursor, &rect());
         assert!(!changed);
         assert!(new_curve.is_none());
         assert_eq!(next.hovered_point, Some(1));
@@ -460,7 +279,7 @@ mod tests {
         let curve = seed_curve();
         let cursor = (10.0 + 60.0, 20.0 + 80.0); // somewhere inside the plot
         let (_next, new_curve, changed) =
-            handle_double_click(BodyState::default(), &curve, cursor, &rect());
+            handle_double_click_pixels(BodyState::default(), &curve, cursor, &rect());
         assert!(changed);
         assert!(new_curve.is_some());
     }
@@ -515,9 +334,9 @@ mod tests {
             ..BodyState::default()
         };
         let down = (10.0 + 120.0 + 4.0, 20.0 + 120.0);
-        let (state, _, _) = handle_pointer_down(state, &curve, down, &rect());
+        let (state, _, _) = handle_pointer_down_pixels(state, &curve, down, &rect());
         let mv = (10.0 + 120.0 + 24.0, 20.0 + 120.0); // +20px right, same y
-        let (_next, new_curve, _) = handle_pointer_move(state, &curve, mv, &rect());
+        let (_next, new_curve, _) = handle_pointer_move_pixels(state, &curve, mv, &rect());
         if let Some(ResponseCurve::PiecewiseLinear { points, .. }) = new_curve {
             // x should have increased; y should be ~0.
             assert!(

@@ -64,6 +64,7 @@ impl Controller {
         {
             let state = self.state.read();
             let mut inner = self.inner.borrow_mut();
+            inner.revision = inner.revision.wrapping_add(1);
             inner.history.watch(&state, &key);
             inner.history.delivered(
                 &state,
@@ -102,6 +103,7 @@ impl Controller {
         {
             let state = self.state.read();
             let mut inner = self.inner.borrow_mut();
+            inner.revision = inner.revision.wrapping_add(1);
             inner
                 .history
                 .delivered(&state, &entry.target, restore.clone(), serial, true);

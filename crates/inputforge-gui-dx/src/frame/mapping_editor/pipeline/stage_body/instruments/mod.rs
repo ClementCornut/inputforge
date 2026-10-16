@@ -12,3 +12,9 @@ pub(crate) mod stage_dispatch;
 /// glow filter. Pinned in Rust (rather than CSS) because SVG attributes do
 /// not resolve CSS custom properties.
 pub(crate) const INSTR_GLOW_STDDEV: f64 = 0.012;
+
+pub(crate) mod geometry;
+pub(crate) mod wiring;
+
+#[cfg(test)]
+mod events_tests;

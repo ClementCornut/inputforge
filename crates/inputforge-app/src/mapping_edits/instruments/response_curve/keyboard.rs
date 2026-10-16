@@ -1,25 +1,15 @@
-// Rust guideline compliant 2026-05-02
-
-//! Pure keyboard handler for the F10 curve-editor body.
-
+//! Curve keyboard edits and focus observations.
+use super::focus::{advance_focus, is_anchor_index};
 use inputforge_core::processing::curves::ResponseCurve;
 
 use super::mutation;
 use super::state::BodyState;
 
-/// Small nudge step applied by a plain arrow-key press.
-///
-/// 0.01 corresponds to 1% of the full `[-1, 1]` range per keypress, giving
-/// fine-grained positioning without requiring the mouse.
+// Plain and Shift arrows preserve the existing 1% and 10% editing steps.
 const KEY_NUDGE_STEP: f64 = 0.01;
 
-/// Large nudge step applied when Shift is held while pressing an arrow key.
-///
-/// 0.10 is 10x the small step; matches the conventional "coarse move"
-/// semantics in accessibility and creative software.
 const KEY_NUDGE_STEP_LARGE: f64 = 0.10;
 
-/// Inputs the host normalizes from a Dioxus `KeyboardEvent`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KeyInput {
     Tab,
@@ -35,11 +25,6 @@ pub(crate) enum KeyInput {
     Escape,
 }
 
-/// Arrow identity forwarded to app-owned grouping.
-///
-/// The `Arrow` prefix is kept verbatim because it mirrors the `KeyInput`
-/// variant names and the plan's literal source; the enum is small and
-/// self-contained so the repeated prefix does not cause confusion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[expect(
     clippy::enum_variant_names,
@@ -65,20 +50,13 @@ impl KeyInput {
     }
 }
 
-/// Label for a computed instrument edit; the app decides grouping.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum KeyOutcome {
     PushUndo { label: String },
 }
 
-/// Return type of [`handle_key`]: `(next_state, new_curve, undo_outcome, changed)`.
 pub(crate) type KeyHandlerOut = (BodyState, Option<ResponseCurve>, Option<KeyOutcome>, bool);
 
-/// Handle one keyboard event and return the next body state.
-///
-/// The function is pure: it takes ownership of `state`, applies the key
-/// semantics, and returns the updated state together with an optional new
-/// curve and undo hint. No Signals are touched.
 #[must_use]
 #[expect(
     clippy::too_many_lines,
@@ -94,7 +72,6 @@ pub(crate) fn handle_key(
         if state.dragging.is_some() {
             let revert = state.pre_drag_curve.take();
             state.dragging = None;
-            state.cache_dirty = true;
             return (state, revert, None, false);
         }
         return (state, None, None, false);
@@ -154,19 +131,15 @@ pub(crate) fn handle_key(
             let new_pos = (cur.0 + dx, cur.1 + dy);
             let mut local = curve.clone();
             mutation::update_point_in_curve(&mut local, idx, new_pos, bounds);
-            // Conflict 2 resolution: reconstruct_curve returns Result, not Option.
             let Ok(valid) = mutation::reconstruct_curve(&local) else {
                 return (state, None, None, false);
             };
-            state.cache_dirty = true;
             let outcome = KeyOutcome::PushUndo {
                 label: outcome_label_for_nudge,
             };
             (state, Some(valid), Some(outcome), true)
         }
         KeyInput::Enter => {
-            // Insert at midpoint between idx and its right neighbor.
-            // No-op for rightmost anchor or bezier handle.
             let local_idx = idx;
             let anchor = match state.cached_anchors.get(local_idx) {
                 Some(a) => *a,
@@ -176,8 +149,6 @@ pub(crate) fn handle_key(
                 Some(n) => *n,
                 None => return (state, None, None, false),
             };
-            // Bezier handle filter: only insert when both points are anchors
-            // (local % 4 in {0, 3} for bezier; piecewise/spline always pass).
             if !is_anchor_index(curve, local_idx) || !is_anchor_index(curve, local_idx + 1) {
                 return (state, None, None, false);
             }
@@ -189,7 +160,6 @@ pub(crate) fn handle_key(
             if !mutation::add_control_point(&mut local, mid) {
                 return (state, None, None, false);
             }
-            state.cache_dirty = true;
             (
                 state,
                 Some(local),
@@ -204,8 +174,6 @@ pub(crate) fn handle_key(
             if !mutation::remove_control_point(&mut local, idx) {
                 return (state, None, None, false);
             }
-            state.cache_dirty = true;
-            // Clamp focused index after removal.
             let new_anchors = super::state::extract_anchors(&local);
             state.focused_point = if new_anchors.is_empty() {
                 None
@@ -227,63 +195,10 @@ pub(crate) fn handle_key(
     }
 }
 
-fn is_anchor_index(curve: &ResponseCurve, idx: usize) -> bool {
-    match curve {
-        ResponseCurve::PiecewiseLinear { .. } | ResponseCurve::CubicSpline { .. } => true,
-        ResponseCurve::CubicBezier { .. } => matches!(idx % 4, 0 | 3),
-    }
-}
-
-fn advance_focus(
-    curve: &ResponseCurve,
-    anchors: &[(f64, f64)],
-    current: Option<usize>,
-    backward: bool,
-) -> Option<usize> {
-    if anchors.is_empty() {
-        return None;
-    }
-    let len = anchors.len();
-    // Short-circuit: ShiftTab from index 0 (or from no focus) releases focus
-    // to the browser rather than trapping the user at the first anchor.
-    if backward && current.is_none_or(|i| i == 0) {
-        return None;
-    }
-    let start = current.map_or(0, |i| if backward { i.saturating_sub(1) } else { i + 1 });
-    let order: Vec<usize> = if backward {
-        (0..len).rev().collect()
-    } else {
-        (0..len).collect()
-    };
-    // Filter: skip duplicate-junction points (segN.end == seg(N+1).start).
-    let visit_filter = |i: usize| -> bool {
-        if let ResponseCurve::CubicBezier { .. } = curve
-            && i.is_multiple_of(4)
-            && i > 0
-        {
-            // seg.start where i = 4*k, k > 0; coincides with prior seg.end.
-            if let Some(prev) = anchors.get(i.saturating_sub(1)).copied()
-                && let Some(here) = anchors.get(i).copied()
-                && (prev.0 - here.0).abs() < f64::EPSILON
-                && (prev.1 - here.1).abs() < f64::EPSILON
-            {
-                return false;
-            }
-        }
-        true
-    };
-    // Scan in order from `start`, skipping filtered indices.
-    order
-        .iter()
-        .skip_while(|&&i| if backward { i > start } else { i < start })
-        .find(|&&i| visit_filter(i))
-        .copied()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::mapping_editor::pipeline::stage_body::response_curve::state::{
+    use crate::mapping_edits::instruments::response_curve::state::{
         DragInProgress, extract_anchors,
     };
     #[expect(

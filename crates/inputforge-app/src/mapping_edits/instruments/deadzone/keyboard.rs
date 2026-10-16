@@ -1,15 +1,8 @@
-// Rust guideline compliant 2026-05-03
-
-//! Pure keyboard handler for F11. Driven by `KeyInput` (a normalised event
-//! shape) so the host body can route Dioxus `KeyboardEvent` through this
-//! function without coupling tests to Dioxus types.
-
+//! Deadzone keyboard behavior.
 use inputforge_core::processing::deadzone::DeadzoneConfig;
 
-use crate::frame::mapping_editor::pipeline::stage_body::deadzone::mutation::{
-    adjacent_bounds, with_handle,
-};
-use crate::frame::mapping_editor::pipeline::stage_body::deadzone::state::{BodyState, HandleId};
+use crate::mapping_edits::instruments::deadzone::mutation::{adjacent_bounds, with_handle};
+use crate::mapping_edits::instruments::deadzone::state::{BodyState, HandleId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KeyInput {
@@ -39,6 +32,7 @@ pub(crate) enum KeyOutcome {
 
 pub(crate) type KeyHandlerOut = (BodyState, Option<DeadzoneConfig>, Option<KeyOutcome>, bool);
 
+// Plain and Shift arrows preserve the existing 1% and 10% editing steps.
 const SMALL_STEP: f64 = 0.01;
 const LARGE_STEP: f64 = 0.10;
 
@@ -79,10 +73,6 @@ pub(crate) fn handle_key(
         }
         KeyInput::ArrowLeft { shift } => nudge(state, config, -step(shift)),
         KeyInput::ArrowRight { shift } => nudge(state, config, step(shift)),
-        // Up/Down arrows are silently ignored: F11 is an X-axis-only
-        // editor, so vertical nudges have no semantics. Enter and Delete
-        // also fall through here since the body has no commit / remove
-        // affordance for individual handles.
         KeyInput::ArrowUp { .. }
         | KeyInput::ArrowDown { .. }
         | KeyInput::Enter
@@ -137,7 +127,7 @@ impl KeyInput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::mapping_editor::pipeline::stage_body::deadzone::mutation::default_config;
+    use crate::mapping_edits::instruments::deadzone::mutation::default_config;
 
     fn cfg() -> DeadzoneConfig {
         DeadzoneConfig::new(-0.85, -0.15, 0.15, 0.85).expect("valid")
@@ -244,7 +234,7 @@ mod tests {
     fn escape_during_drag_reverts_to_pre_drag_config() {
         let (c, mut s) = seed();
         s.dragging = Some(
-            crate::frame::mapping_editor::pipeline::stage_body::deadzone::state::DragInProgress {
+            crate::mapping_edits::instruments::deadzone::state::DragInProgress {
                 handle: HandleId::Low,
                 bounds: adjacent_bounds(HandleId::Low, &c),
             },

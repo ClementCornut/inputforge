@@ -1,13 +1,8 @@
-// Rust guideline compliant 2026-05-03
-
-//! Pure handle-mutation helpers for F11. Each function takes a current
-//! `DeadzoneConfig` and returns either a candidate `DeadzoneConfig` or the
-//! geometry needed to render / hit-test handles.
-
+//! Deadzone threshold ordering and finite handle edits.
 use inputforge_core::error::Result;
 use inputforge_core::processing::deadzone::DeadzoneConfig;
 
-use crate::frame::mapping_editor::pipeline::stage_body::deadzone::state::HandleId;
+use crate::mapping_edits::instruments::deadzone::state::HandleId;
 
 /// Minimum strict-inequality gap enforced between adjacent thresholds.
 ///
@@ -78,6 +73,7 @@ pub(crate) fn with_handle(
 /// Return the four `(x, y)` viewBox coordinates of the four handles in
 /// `HandleId::ALL` order. Y is fixed per handle: Low/High at +/- 1.0,
 /// CenterLow/CenterHigh at 0.0.
+#[cfg(test)]
 pub(crate) fn handle_positions(config: &DeadzoneConfig) -> [(f64, f64); 4] {
     [
         (config.low(), -1.0),
@@ -88,6 +84,7 @@ pub(crate) fn handle_positions(config: &DeadzoneConfig) -> [(f64, f64); 4] {
 }
 
 /// Convenience alias for `DeadzoneConfig::default()`.
+#[cfg(test)]
 pub(crate) fn default_config() -> DeadzoneConfig {
     DeadzoneConfig::default()
 }

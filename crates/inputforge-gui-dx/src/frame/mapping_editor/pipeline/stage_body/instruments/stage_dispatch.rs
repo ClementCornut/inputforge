@@ -61,30 +61,6 @@ pub(crate) fn dispatch_stage_edit(
         true,
     )
 }
-pub(crate) fn dispatch_stage_nudge(
-    actions: &[Action],
-    path: &StageId,
-    action: Action,
-    key: &MappingKey,
-    label: String,
-    group: String,
-) -> bool {
-    submit(
-        key,
-        actions,
-        Edit::Replace {
-            path: path.clone(),
-            action,
-        },
-        label,
-        Some(Group {
-            path: path.clone(),
-            key: group,
-        }),
-        true,
-    )
-}
-
 /// Forward one raw field intent; the app owns parsing and action reconstruction.
 pub(crate) fn dispatch_field(
     actions: &[Action],

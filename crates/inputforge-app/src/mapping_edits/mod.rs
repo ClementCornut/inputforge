@@ -4,6 +4,7 @@ mod dispatch;
 mod editor;
 mod grouping;
 mod history;
+mod instruments;
 pub(crate) mod modes;
 mod paths;
 mod prepare;
@@ -33,6 +34,8 @@ pub struct Controller {
 #[derive(Debug, Default)]
 struct State {
     history: history::History,
+    instruments: std::collections::HashMap<u128, instruments::Session>,
+    revision: u64,
     batch: Option<batch::Wizard>,
     modes: Option<modes::Pending>,
     publication: Option<Publication>,
@@ -73,6 +76,7 @@ impl Controller {
         let rail = self.clone();
         let add = self.clone();
         Bindings {
+            instruments: self.instrument_bindings(),
             batch: self.batch_bindings(),
             modes: self.mode_bindings(),
             instance: self.owner,
@@ -107,6 +111,7 @@ impl Controller {
             end_group: Callback::new(move |()| group.end_group()),
             reconcile: Callback::new(move |()| reconcile.reconcile()),
             dispose: Callback::new(move |()| {
+                dispose.close_instruments();
                 *dispose.inner.borrow_mut() = State {
                     disposed: true,
                     ..State::default()

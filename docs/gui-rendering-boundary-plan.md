@@ -80,6 +80,8 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 ## Part 2: Curve and Deadzone Editor Behavior
 
+**Status (2026-10-16):** Complete on `main`; independent review cleared after focus-reconciliation fixes. Native Wayland/Windows manual acceptance remains pending.
+
 **Commit:** `refactor(instruments): move curve and deadzone behavior into app`
 
 **Files:** Create focused `inputforge-app/src/mapping_edits/instruments/` modules for curve edits, deadzone edits and interaction transitions. Modify GUI `frame/mapping_editor/pipeline/stage_body/{response_curve,deadzone}/{mod.rs,state.rs,mutation.rs,interaction.rs,keyboard.rs,toolbar.rs}` and `instruments/{bridge.rs,stage_dispatch.rs}`; keep drawing in their `rendering.rs`/`thumbnail.rs`. Add prepared instrument values/callbacks in GUI `src/mapping_edits.rs` or a small adjacent contract.
@@ -90,7 +92,8 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 **Tests first:** Move mutation/interaction/keyboard behavior tests to app modules; retain drawing tests in GUI and add real handler regressions. Cover symmetric centers/endpoints, Bezier junctions, valid add/remove/type conversion, invalid/NaN values, deadzone ordering, pointer cancel and invalid-release revert, external undo during drag, stage deletion/replacement before release, failed dispatch preserving the working draft, nudge group boundaries, and unmount/remount with no late commit. Split the current large curve mutation module while moving it.
 
-- [ ] Complete the common cycle; manually check both graphs, numeric edits, symmetry, drag cancellation and undo.
+- [x] Automated common cycle: 2,143 workspace tests passed, 0 failed, 11 existing ignored; unchanged pre-commit and required JS suites passed. Independent review cleared.
+- [ ] User acceptance: both graphs, numeric edits, symmetry, drag cancellation and undo on native Wayland and separately Windows.
 
 ## Part 3: Profiles and File Dialogs
 

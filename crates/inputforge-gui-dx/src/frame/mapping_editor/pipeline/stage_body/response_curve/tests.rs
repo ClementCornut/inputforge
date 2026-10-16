@@ -323,10 +323,8 @@ fn ToolbarHarness(props: ToolbarHarnessProps) -> Element {
     crate::frame::mapping_editor::use_editor_state_provider();
     rsx! {
         Toolbar {
-            curve: props.curve,
-            stage_id: props.stage_id,
-            root_actions: props.root_actions,
-            mapping_key: props.mapping_key,
+            view:crate::instruments::View {id:0,value:inputforge_core::action::Action::ResponseCurve{curve:props.curve},hovered:None,focused:None,dragging:None,split:false,error:None,prevent_default:false,bounds:[(-1.0,1.0);4]},
+            send:EventHandler::new(|_|{}),
         }
     }
 }

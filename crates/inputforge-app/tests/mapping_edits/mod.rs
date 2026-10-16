@@ -13,3 +13,5 @@ mod batch;
 mod modes;
 
 mod editor;
+
+mod instruments;

@@ -1442,7 +1442,7 @@ may change during extraction.
 | 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, live capture, keyboard capture, shared mapping dispatch/history, mapping rail, batch and mode workflows now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
 | 2 | **Controller editing policy — partially resolved** — [app controller policy](../crates/inputforge-app/src/controllers/policy.rs); [app axis settings](../crates/inputforge-app/src/controllers/axes.rs); [axis rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Selection, virtual-layout mutations, Apply, shared routing decisions, and advanced axis settings are app-owned. Other configuration-editing/readiness gates remain; see resolved status above. |
 | 3 | **Capture workflows — partially resolved** — [app live capture](../crates/inputforge-app/src/live_capture/mod.rs); [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs); [app keyboard capture](../crates/inputforge-app/src/keyboard_capture/mod.rs); [GUI keyboard contract](../crates/inputforge-gui-dx/src/keyboard_capture.rs) | Live and keyboard capture, physical keyboard translation, ownership, target revalidation, cancellation, interception and delivery are app-owned; live input additionally owns epoch/native confirmation. Shared stage edits/undo and rail Add/collision decisions are app-owned in the later mapping slices. |
-| 4 | **Mapping edits and undo — partially resolved** — [app controller](../crates/inputforge-app/src/mapping_edits/mod.rs); [app paths](../crates/inputforge-app/src/mapping_edits/paths.rs); [app history](../crates/inputforge-app/src/mapping_edits/history/mod.rs); [GUI callback wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs) | Shared mapping stage edits, command construction, restore snapshots, undo/redo, invalidation and nudge grouping are app-owned. Rail Add/duplicate/collision/delete/reorder workflows are app-owned. Curve/deadzone algorithms, draft/drag geometry and profile workflows remain deferred; batch mapping is app-owned in the later slice. |
+| 4 | **Mapping edits and instruments — resolved** — [app controller](../crates/inputforge-app/src/mapping_edits/mod.rs); [app paths](../crates/inputforge-app/src/mapping_edits/paths.rs); [app history](../crates/inputforge-app/src/mapping_edits/history/mod.rs); [GUI callback wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs) | Shared mapping stage edits, command construction, restore snapshots, undo/redo, invalidation and nudge grouping are app-owned. Rail Add/duplicate/collision/delete/reorder workflows are app-owned. Curve/deadzone mutation, draft/drag decisions, keyboard and numeric behavior are app-owned in Part 2; screen/viewbox geometry stays with rendering. Profile workflows remain deferred; batch mapping is app-owned in the later slice. |
 | 5 | **Batch mapping — resolved** — [app wizard](../crates/inputforge-app/src/mapping_edits/batch/mod.rs); [app dispatch](../crates/inputforge-app/src/mapping_edits/batch/dispatch.rs); [GUI rendering](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs) | Target selection/validation, collisions, reconciliation, entry generation, snapshot requests and delivery are app-owned. Core retains snapshot/persistence execution. |
 | 6 | **Profiles, snapshots, and settings; modes resolved** — [profile actions](../crates/inputforge-gui-dx/src/frame/profiles/actions.rs), line 114; [snapshot settings](../crates/inputforge-gui-dx/src/frame/settings_panel/snapshots_section.rs), line 85 | Mode CRUD, startup/activation, validation, confirmation/counts, dispatch and selection/focus decisions are app-owned. Profile/snapshot/settings CRUD, pruning and related services remain deferred. |
 | 7 | **Operating-system services and filesystem access** — [file picker](../crates/inputforge-gui-dx/src/frame/profiles/mod.rs), line 30; [clipboard](../crates/inputforge-gui-dx/src/frame/panel_slot/device_panel/mod.rs), line 239; [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Dialog invocation, clipboard writes, and other OS services remain. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
@@ -1704,3 +1704,92 @@ Use `dx run -p inputforge-app` with a disposable profile:
 Curve/deadzone algorithms, general keyboard/navigation/component workflows and
 later plan parts remain deferred. Prior native Apply and drag evidence is
 preserved verbatim.
+
+
+## Curve and deadzone editor behavior — 2026-10-16
+
+Part 2 of the [approved plan](gui-rendering-boundary-plan.md) extends the existing
+[app mapping controller](../crates/inputforge-app/src/mapping_edits/mod.rs) with
+[instrument sessions](../crates/inputforge-app/src/mapping_edits/instruments/mod.rs).
+It supersedes the historical curve/deadzone deferrals above; previous native Apply,
+capture and drag acceptance evidence remains unchanged.
+
+- App-owned [curve transitions](../crates/inputforge-app/src/mapping_edits/instruments/curve.rs),
+  [deadzone transitions](../crates/inputforge-app/src/mapping_edits/instruments/zone.rs),
+  [curve mutations](../crates/inputforge-app/src/mapping_edits/instruments/response_curve/mutation/mod.rs)
+  and keyboard/focus helpers own type conversion, symmetry, point insertion/removal,
+  constrained movement, numeric validation, focus interpretation and commit/revert
+  decisions. Curve mutation is split by point, Bezier, conversion, topology and
+  symmetry responsibilities. Core evaluation, constructors and persisted formats
+  are unchanged. App reconstruction rejects nonfinite curve points before delivery.
+- [Private sessions](../crates/inputforge-app/src/mapping_edits/instruments/session.rs)
+  capture profile/mapping/stage identity and retain working values. Each input uses
+  effective queued history, existing dispatch/acknowledgement barriers and existing
+  nudge grouping. A completed changed drag delivers one edit; unchanged clicks,
+  repeated release and cancellation deliver none. External edits/undo, queued
+  structural remove/reinsert, deleted stages and replacement profiles cancel stale
+  gestures. A stale toolbar click refreshes/rejects before it can edit replacement
+  content. Delivery failures retain the working draft with accessible feedback;
+  explicit cancellation restores the saved/effective value.
+- [GUI contracts](../crates/inputforge-gui-dx/src/instruments.rs) carry prepared
+  drawing values, highlights, numeric bounds, feedback and callbacks. The
+  [signal wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/wiring.rs)
+  publishes supplied results. [Geometry](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/geometry.rs),
+  SVG layers, curve sampling, thumbnails and live-dot rendering stay in GUI.
+  Live-axis analysis remains scheduled for Part 7. The curve and deadzone bodies
+  and toolbars forward input observations/intents instead of constructing edits.
+- The existing eval transport is now [app-owned](../crates/inputforge-app/src/mapping_edits/instruments/lifecycle.rs),
+  with an [instrument pointer asset](../crates/inputforge-app/assets/instrument_pointer.js).
+  It keeps live per-event rect measurement, outside-plot dragging and right-click
+  release semantics. Escape, blur, pointer cancellation and capture loss cancel;
+  close removes listeners synchronously and shuts down the eval receive task.
+  Per-mount IDs and element-identity checks reject old elements after remount.
+  There is no new engine poller, thread, channel, dependency or general controller.
+
+Regression evidence: the missing app contract first failed the new real-binding
+regressions. A nonfinite curve release first retained NaN; app reconstruction now
+rejects it and reverts with feedback. A valid curve with sub-step point spacing
+first panicked because clamp bounds inverted; neighboring bounds now preserve
+its current coordinate when the nominal editing gap cannot fit. A stale Reset
+first changed a replacement mapping; the event now refreshes/rejects without a
+command. An ignored vertical deadzone key first merged separate horizontal nudge
+bursts; it now ends the prior burst. These cases are in
+[app binding tests](../crates/inputforge-app/tests/mapping_edits/instruments.rs),
+alongside pointer cancel, failed-delivery retention, undo during drag, queued
+numeric edits/nudges, stacked centers, structural replacement and close/remount.
+Existing algorithm/key cases moved with their app owners; GUI geometry/drawing
+checks remain. Independent review found stale focus after type/reset/point removal;
+shared focus reconciliation now clamps every rebuilt anchor collection while
+preserving an active drag baseline. Cancellation restores values through the same
+anchor/focus path; a failed Bezier draft followed by End/Escape/nudge has its own
+red/green regression. Real-binding type/reset/context-removal then
+nudge cases first reproduced the issue and now pass. Idle hover and unrelated
+keys retain the existing nudge burst, with a dedicated red/green regression. [Actual rendered handlers](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/events_tests/mod.rs)
+exercise curve keys/type selection, numeric failure alerts, pointer observation,
+synchronous close and rejection of a queued release after unmount.
+
+Automated gates passed: unchanged `bash .githooks/pre-commit` with no new lint
+exclusions; `cargo test --workspace --locked --offline -j 2` with host IPC access:
+**2,143 passed, 0 failed, 11 existing ignored**, including **167 app library**,
+**124 app mapping** and **690 GUI library** cases. The keyboard-capture and
+rail/editor listener suites, all **14 sortable pointer/ghost cases**, and
+**7 instrument listener cases** passed. `git diff --check`, all audit links and
+byte-for-byte preservation of the seven historical acceptance/drag sections
+passed. New production modules remain below 200 code lines; the existing shared
+mapping controller stays near its earlier size. Independent review cleared after
+the focus-reconciliation fixes; no Critical/Important issues remained.
+
+Native Wayland/Windows acceptance and runtime performance remain manual. Use
+`dx run -p inputforge-app` with a disposable profile:
+
+1. Exercise curve types, symmetry, point add/remove, Bezier junctions, endpoint/
+   center constraints and arrow/Shift-arrow focus/nudges. Drag once and undo/redo
+   once; unchanged clicks and repeated release must not add history.
+2. Drag stacked deadzone centers in both directions, edit all four numeric fields
+   and steppers, reset and undo/redo. Check ordering and visual live tracking.
+3. Cancel a gesture with Escape/blur/pointer loss; undo externally during a drag.
+   Switch profile/mapping, replace/delete/collapse the stage and remount while
+   dragging. No old release may edit current content. Repeat separately on Windows.
+
+Part 3 and later parts remain pending. Earlier native Apply/drag evidence remains
+historical evidence rather than acceptance of this instrument refactor.

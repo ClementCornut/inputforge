@@ -15,6 +15,10 @@ pub mod controllers;
 mod frame;
 pub mod icons;
 #[cfg(not(test))]
+pub mod instruments;
+#[cfg(test)]
+pub use inputforge_gui_dx::instruments;
+#[cfg(not(test))]
 pub mod keyboard_capture;
 #[cfg(test)]
 pub use inputforge_gui_dx::keyboard_capture;
