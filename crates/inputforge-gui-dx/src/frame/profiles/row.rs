@@ -3,7 +3,6 @@ use crate::{
     components::{
         Badge, BadgeVariant, Icon, InputSize, MenuItem, MenuItems, MenuRoot, MenuTrigger, TextInput,
     },
-    context::AppContext,
     icons::Icon as IconKind,
     profiles::{Context, Intent, Row},
     snapshots::ProfileRowOrigin,
@@ -12,7 +11,6 @@ use dioxus::prelude::*;
 #[component]
 pub(super) fn ProfileRow(row: Row) -> Element {
     let c = use_context::<Context>().capture();
-    let ctx = use_context::<AppContext>();
     let v = c.view.read().clone();
     let r = &row.row;
     let t = row.target;
@@ -28,6 +26,7 @@ pub(super) fn ProfileRow(row: Row) -> Element {
     let reveal = t.clone();
     let duplicate = t.clone();
     let delete = t.clone();
+    let snapshot = t.clone();
     let rename = t;
     rsx! {
         article {
@@ -119,9 +118,7 @@ pub(super) fn ProfileRow(row: Row) -> Element {
                     }
                     if r.can_snapshot_now {
                         MenuItem {
-                            onclick: move |_| {
-                                let _ = ctx.commands.send(super::actions::create_manual_snapshot_action());
-                            },
+                            onactivate: move |_| c.send(Intent::Snapshot(crate::profiles::snapshots::Intent::Create(snapshot.clone()))),
                             "Snapshot now"
                         }
                     }

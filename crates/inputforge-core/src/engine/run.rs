@@ -618,6 +618,11 @@ impl Engine {
             return Ok(());
         }
         match cmd {
+            EngineCommand::Snapshot(request) => {
+                if let Some(command) = self.snapshot_command(*request) {
+                    self.handle_command(command)?;
+                }
+            }
             EngineCommand::MappingEditBarrier { owner, serial } => {
                 self.state.write().mapping_edit_barrier = Some((owner, serial));
             }

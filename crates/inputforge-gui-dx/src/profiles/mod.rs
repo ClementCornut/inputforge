@@ -1,4 +1,5 @@
 //! Prepared profile presentation and app-owned workflow callbacks.
+pub mod snapshots;
 use crate::{
     PanelSlot,
     snapshots::{MetaSnapshot, ProfileRowView},
@@ -52,6 +53,7 @@ pub struct Row {
 )]
 pub struct View {
     pub workflow: u64,
+    pub snapshots: snapshots::View,
     pub name_error: Option<String>,
     pub mode: Mode,
     pub source: Source,
@@ -70,6 +72,7 @@ pub struct View {
 /// Raw profile user input; decisions are made by the host.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Intent {
+    Snapshot(snapshots::Intent),
     New,
     Back,
     Name(String),
@@ -94,6 +97,8 @@ pub enum Intent {
 /// App callbacks scoped to a mounted profile panel.
 #[derive(Debug, Clone, Copy)]
 pub struct Bindings {
+    pub shortcut_mount: Callback<Callback<String>, u64>,
+    pub shortcut_unmount: Callback<u64>,
     pub mount: Callback<Signal<View>, u64>,
     pub dispatch: Callback<(u64, u64, Intent), bool>,
     pub reconcile: Callback<MetaSnapshot>,

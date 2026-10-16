@@ -78,6 +78,7 @@ pub(super) fn validate(
     Ok(name.into())
 }
 pub(super) fn project(state: &AppState, view: &mut View) {
+    super::snapshots::project(state, view);
     let rows = crate::bridge::meta::native_profile_rows(state);
     view.library = rows
         .iter()
@@ -90,6 +91,7 @@ pub(super) fn project(state: &AppState, view: &mut View) {
         .into_iter()
         .filter_map(|(path, mut row)| {
             row.is_active = state.profile_path.as_ref() == Some(&path);
+            row.can_snapshot_now = row.is_active && state.active_profile.is_some();
             if !row.is_active && !needle.is_empty() && !row.name.to_lowercase().contains(&needle) {
                 return None;
             }

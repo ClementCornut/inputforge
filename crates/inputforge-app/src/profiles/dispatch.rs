@@ -31,6 +31,7 @@ pub(super) fn prepare(
     intent: Intent,
 ) -> Result<Option<EngineCommand>, String> {
     let command = match intent {
+        Intent::Snapshot(intent) => return super::snapshots::prepare(view, state, intent),
         Intent::Back => {
             close(session, view);
             session.scope = Scope::from_state(state);

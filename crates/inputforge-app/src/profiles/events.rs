@@ -23,7 +23,9 @@ impl Controller {
             if c.session.borrow().as_ref().is_some_and(|s| {
                 s.owner == owner
                     && s.view.peek().workflow == workflow
-                    && (s.view.peek().rename.is_some() || s.view.peek().delete.is_some())
+                    && (s.view.peek().rename.is_some()
+                        || s.view.peek().delete.is_some()
+                        || s.view.peek().snapshots.restore.is_some())
             }) {
                 let _ = event.set_focus(true).await;
             }

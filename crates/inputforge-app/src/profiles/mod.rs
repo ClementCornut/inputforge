@@ -5,6 +5,8 @@ mod events;
 mod forms;
 mod policy;
 mod projection;
+mod shortcut;
+mod snapshots;
 use dioxus::prelude::*;
 use inputforge_core::{engine::EngineCommand, profile::ProfileId, state::AppState};
 use inputforge_gui_dx::profiles::{Bindings, Intent, View};
@@ -49,6 +51,7 @@ pub struct Controller {
     commands: mpsc::Sender<EngineCommand>,
     session: Rc<RefCell<Option<Session>>>,
     serial: Rc<RefCell<u64>>,
+    shortcut: Rc<RefCell<Option<shortcut::Session>>>,
 }
 impl Controller {
     /// Use the existing engine transport and coherent engine state.
@@ -59,6 +62,7 @@ impl Controller {
             commands,
             session: Rc::default(),
             serial: Rc::default(),
+            shortcut: Rc::default(),
         }
     }
     /// Publish a fresh panel session, invalidating a previous mount.
@@ -93,6 +97,8 @@ impl Controller {
     /// Supply the profile panel's host callbacks.
     #[must_use]
     pub fn bindings(&self) -> Bindings {
+        let shortcut = self.clone();
+        let shortcut_unmount = self.clone();
         let mount = self.clone();
         let dispatch = self.clone();
         let unmount = self.clone();
@@ -100,6 +106,8 @@ impl Controller {
         let key = self.clone();
         let focus = self.clone();
         Bindings {
+            shortcut_mount: Callback::new(move |error| shortcut.mount_shortcut(error)),
+            shortcut_unmount: Callback::new(move |owner| shortcut_unmount.unmount_shortcut(owner)),
             mount: Callback::new(move |v| mount.mount(v)),
             dispatch: Callback::new(move |(o, w, i)| dispatch.dispatch_captured(o, w, i)),
             reconcile: Callback::new(move |meta| reconcile.reconcile(&meta)),

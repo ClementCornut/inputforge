@@ -9,13 +9,13 @@ use no_profile::NoProfileBar;
 use open_choice_submode::OpenChoiceSubMode;
 use snapshot_drawer::SnapshotDrawer;
 
-pub(crate) mod actions;
 pub(crate) mod delete_dialog;
 pub(crate) mod library;
 pub(crate) mod new_profile_submode;
 pub(crate) mod no_profile;
 pub(crate) mod open_choice_submode;
 mod row;
+mod snapshot_confirm;
 pub(crate) mod snapshot_drawer;
 const PROFILES_CSS: Asset = asset!("/assets/frame/profiles.css");
 
@@ -46,13 +46,13 @@ pub(crate) fn ProfilesPanel() -> Element {
     use_context_provider(|| c);
     let c = c.capture();
     let prepared = view.read().clone();
-    let library_error = prepared
-        .error
-        .clone()
-        .filter(|_| prepared.mode == Mode::Library && prepared.delete.is_none());
+    let library_error = prepared.error.clone().filter(|_| {
+        prepared.mode == Mode::Library
+            && prepared.delete.is_none()
+            && prepared.snapshots.restore.is_none()
+    });
     let meta = ctx.meta.read();
     let has_profile = meta.profile_name.is_some();
-    let active_profile_name = meta.profile_name.clone().unwrap_or_default();
     let snapshot_count = meta.snapshot_rows.len();
     rsx! {
         Stylesheet {
@@ -102,16 +102,15 @@ pub(crate) fn ProfilesPanel() -> Element {
                 }
             }
             if has_profile {
-                SnapshotDrawer {
-                    active_profile_name,
-                    rows: meta.snapshot_rows.clone(),
-                    open: true,
-                }
+                SnapshotDrawer {}
             } else {
                 footer {
                     class: "profiles-panel__snapshot-toggle",
                     "Load a profile to view snapshots ({snapshot_count})"
                 }
+            }
+            if prepared.snapshots.restore.is_some() {
+                snapshot_confirm::SnapshotConfirm {}
             }
             if prepared.delete.is_some() {
                 delete_dialog::ProfileDeleteDialog {}
@@ -123,3 +122,6 @@ pub(crate) fn ProfilesPanel() -> Element {
 mod event_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod snapshot_events;

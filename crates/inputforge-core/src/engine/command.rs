@@ -10,6 +10,8 @@ use crate::types::{DeviceId, InputAddress};
 /// Commands sent from the GUI to the engine via an mpsc channel.
 #[derive(Debug, PartialEq)]
 pub enum EngineCommand {
+    /// Validate captured identities before any snapshot operation side effect.
+    Snapshot(Box<super::SnapshotRequest>),
     /// Acknowledge processing of preceding editor mapping commands without changing routing.
     MappingEditBarrier {
         owner: u128,

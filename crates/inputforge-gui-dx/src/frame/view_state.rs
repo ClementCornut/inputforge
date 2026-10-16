@@ -46,20 +46,6 @@ pub(crate) enum MainSurface {
     BulkMap,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct InlineRenameDraft {
-    pub id: String,
-    pub value: String,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ProfilesPanelState {
-    pub snapshot_drawer_open: bool,
-    pub snapshot_rename: Option<InlineRenameDraft>,
-    pub pending_snapshot_delete_toast_id: Option<String>,
-}
-
 /// GUI-only chrome state, provided once in `app_root`.
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code, reason = "Used in app_root context provider (Task 18)")]
@@ -73,7 +59,6 @@ pub(crate) struct ViewState {
     /// Reset to `None` on profile flip and on editing-mode flip so that
     /// stale selection state never leaks across context boundaries.
     pub selected_mapping: Signal<Option<MappingKey>>,
-    pub profiles_panel: Signal<ProfilesPanelState>,
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +182,6 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
     let panel_slot = navigation.map_or(local_panel, |navigation| navigation.panel);
     let via_calibration = navigation.map_or(local_calibration, |navigation| navigation.calibration);
     let selected_mapping: Signal<Option<MappingKey>> = use_signal(|| None);
-    let profiles_panel = use_signal(ProfilesPanelState::default);
 
     let mut last_profile_name: Signal<Option<String>> =
         use_signal(|| meta.peek().profile_name.clone());
@@ -242,7 +226,6 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
         panel_slot,
         via_calibration,
         selected_mapping,
-        profiles_panel,
     }
 }
 

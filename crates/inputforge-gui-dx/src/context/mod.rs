@@ -1,7 +1,7 @@
 //! Per-window presentation signals and transitional workflow handles.
 pub(crate) use crate::snapshots::{
     ConfigSnapshot, DevicePanelRow, DeviceUsageSummary, LiveSnapshot, MappingSummary, MetaSnapshot,
-    OutputActivitySnapshot, SettingsSnapshot, SnapshotRowView,
+    OutputActivitySnapshot, SettingsSnapshot,
 };
 use dioxus::prelude::*;
 use inputforge_core::{engine::EngineCommand, state::AppState};

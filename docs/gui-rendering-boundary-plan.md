@@ -113,9 +113,11 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 ## Part 4: Snapshot Workflows and Snapshot Shortcut
 
+**Status (2026-10-16):** Complete on `main`; independent review cleared after native-focus and queued-context safeguards were added. Native Wayland/Windows restore safety and shortcut acceptance remain manual.
+
 **Commit:** `refactor(snapshots): move snapshot actions and shortcuts into app`
 
-**Files:** Add `inputforge-app/src/profiles/snapshots.rs` and a small shortcut/listener module/asset. Modify GUI `frame/profiles/{snapshot_drawer.rs,actions.rs}`, snapshot fields in `frame/view_state.rs`, `app.rs`, the profiles contract and associated tests. Keep core `snapshot/` and engine recovery execution authoritative.
+**Files:** Add `inputforge-app/src/profiles/snapshots.rs` and a small shortcut/listener module/asset. Modify GUI `frame/profiles/{snapshot_drawer.rs,actions.rs}`, snapshot fields in `frame/view_state.rs`, `app.rs`, the profiles contract and associated tests. A narrow core captured-snapshot request and pre-operation identity guard cover queued profile switches while delegating to existing snapshot/recovery handlers. Keep core `snapshot/` and engine recovery execution authoritative.
 
 **Boundary:** App owns manual snapshot, restore/delete policy and available existing snapshot actions, active-profile/snapshot revalidation, confirmation decisions, drawer transitions and Ctrl+S interpretation/listener lifecycle. GUI renders prepared rows/availability/dialog state and wires callbacks. Preserve declared destructive confirmation semantics with existing confirmation primitives; do not treat dormant rename/pin/undo contracts as permission to add new controls.
 
@@ -123,7 +125,9 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 **Tests first:** Add `inputforge-app/tests/snapshots.rs`, real drawer-handler cases and an executable listener test. Cover no active profile, protected session-start rows, missing/replaced snapshot and profile, restore confirmation, cancellation, failed send without closure/success, and core restore failure warnings. Exercise Ctrl+S outside versus inside text inputs/rename/menu/dialog/OS-picker return, repeat behavior and keyboard-capture interception; verify one listener, synchronous teardown and fresh remount.
 
-- [ ] Complete the common cycle; manually check restore safety and recovery using a disposable profile.
+- [x] Automated gates: 2,167 workspace tests passed, 0 failed, 11 existing ignored; unchanged pre-commit and all five required JavaScript suites passed.
+- [x] Independent review cleared; single Part 4 commit checkpoint.
+- [ ] User acceptance: restore safety/recovery, drawer actions, focus/capture and Ctrl+S on native Wayland and separately Windows.
 
 ## Part 5: Settings and Prune Confirmation
 

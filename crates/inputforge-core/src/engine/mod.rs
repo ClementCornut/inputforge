@@ -20,10 +20,13 @@ mod output_handler;
 mod output_state;
 mod run;
 mod session;
+mod snapshots;
 #[cfg(test)]
 mod tests;
 
 pub use command::EngineCommand;
+#[doc(inline)]
+pub use snapshots::{SnapshotAction, SnapshotRequest};
 mod mode_validation;
 #[doc(inline)]
 pub use mode_validation::{MAX_MODE_NAME_GRAPHEMES, validate_mode_deletion, validate_mode_name};

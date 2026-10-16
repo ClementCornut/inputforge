@@ -1445,9 +1445,9 @@ may change during extraction.
 | 3 | **Capture workflows — partially resolved** — [app live capture](../crates/inputforge-app/src/live_capture/mod.rs); [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs); [app keyboard capture](../crates/inputforge-app/src/keyboard_capture/mod.rs); [GUI keyboard contract](../crates/inputforge-gui-dx/src/keyboard_capture.rs) | Live and keyboard capture, physical keyboard translation, ownership, target revalidation, cancellation, interception and delivery are app-owned; live input additionally owns epoch/native confirmation. Shared stage edits/undo and rail Add/collision decisions are app-owned in the later mapping slices. |
 | 4 | **Mapping edits and instruments — resolved** — [app controller](../crates/inputforge-app/src/mapping_edits/mod.rs); [app paths](../crates/inputforge-app/src/mapping_edits/paths.rs); [app history](../crates/inputforge-app/src/mapping_edits/history/mod.rs); [GUI callback wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs) | Shared mapping stage edits, command construction, restore snapshots, undo/redo, invalidation and nudge grouping are app-owned. Rail Add/duplicate/collision/delete/reorder workflows are app-owned. Curve/deadzone mutation, draft/drag decisions, keyboard and numeric behavior are app-owned in Part 2; screen/viewbox geometry stays with rendering. Profile workflows are app-owned in Part 3; batch mapping is app-owned in the later slice. |
 | 5 | **Batch mapping — resolved** — [app wizard](../crates/inputforge-app/src/mapping_edits/batch/mod.rs); [app dispatch](../crates/inputforge-app/src/mapping_edits/batch/dispatch.rs); [GUI rendering](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs) | Target selection/validation, collisions, reconciliation, entry generation, snapshot requests and delivery are app-owned. Core retains snapshot/persistence execution. |
-| 6 | **Snapshots and settings; profiles and modes resolved** — [app profiles](../crates/inputforge-app/src/profiles/mod.rs); [snapshot settings](../crates/inputforge-gui-dx/src/frame/settings_panel/snapshots_section.rs), line 85 | Mode CRUD, startup/activation, validation, confirmation/counts, dispatch and selection/focus decisions are app-owned. Profile workflows, name/collision policy, captured identities, file dialogs, confirmation and failed-delivery retention are app-owned. Snapshot/settings CRUD and pruning remain deferred. |
+| 6 | **Settings; snapshots, profiles and modes resolved** — [app profiles](../crates/inputforge-app/src/profiles/mod.rs); [snapshot settings](../crates/inputforge-gui-dx/src/frame/settings_panel/snapshots_section.rs), line 85 | Mode CRUD, startup/activation, validation, confirmation/counts, dispatch and selection/focus decisions are app-owned. Profile workflows, name/collision policy, captured identities, file dialogs, confirmation and failed-delivery retention are app-owned. Snapshot actions, current identity checks, drawer state and restore confirmation are app-owned in Part 4. Settings validation and pruning remain deferred. |
 | 7 | **Operating-system services and filesystem access** — [app file picker](../crates/inputforge-app/src/profiles/dialog.rs); [clipboard](../crates/inputforge-gui-dx/src/frame/panel_slot/device_panel/mod.rs), line 239; [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Native profile dialog invocation and obsolete-result rejection are app-owned; clipboard writes and other OS services remain. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
-| 8 | **Event handling and UI state transitions** — [snapshot shortcut](../crates/inputforge-gui-dx/src/frame/profiles/snapshot_drawer.rs), line 306; [navigation reconciliation](../crates/inputforge-gui-dx/src/frame/view_state.rs), line 244; [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs), line 163 | Document listeners, shortcut interpretation, focus navigation, click-away behavior, drag/drop decisions, draft commits, and selection reconciliation. This includes reusable component behavior under the strict rendering-only boundary. |
+| 8 | **Event handling and UI state transitions** — [app snapshot shortcut](../crates/inputforge-app/src/profiles/shortcut/mod.rs); [navigation reconciliation](../crates/inputforge-gui-dx/src/frame/view_state.rs), line 244; [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs), line 163 | Snapshot Ctrl+S and its listener lifecycle are app-owned in Part 4. Other document listeners, shortcut interpretation, focus navigation, click-away behavior, drag/drop decisions, draft commits, and selection reconciliation. This includes reusable component behavior under the strict rendering-only boundary. |
 | 9 | **Live readout analysis** — [analyzer](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/analyzer.rs), line 146; [activity timer](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/mod.rs), line 100 | Pipeline interpretation, activity calculations, and expiry scheduling. Supply a completed readout model to the renderer. |
 | 10 | **Notifications** — [toast queue](../crates/inputforge-gui-dx/src/toast/queue.rs), line 26; [toast timer and handlers](../crates/inputforge-gui-dx/src/toast/viewport.rs), line 27 | Warning delivery, notification expiry, pause/resume, dismissal, and undo actions. The GUI should display the current notifications and wire supplied callbacks. |
 
@@ -1829,7 +1829,7 @@ sources even when filenames have identical display text. Existing cached
 modification labels flow from the bridge into the profile view, survive local
 input, and clear when the authoritative library metadata becomes unavailable.
 
-The [GUI contract](../crates/inputforge-gui-dx/src/profiles.rs) contains prepared
+The [GUI contract](../crates/inputforge-gui-dx/src/profiles/mod.rs) contains prepared
 rows, availability, names/errors, mounted signals and app callbacks.
 [The panel](../crates/inputforge-gui-dx/src/frame/profiles/mod.rs), forms and rows
 render them and forward events. The app owns rename key/focus interpretation and
@@ -1884,3 +1884,85 @@ Native Wayland and separate Windows desktop acceptance remain manual. Use
 
 Part 4 and later parts remain pending. Earlier native Apply/capture/drag evidence
 is preserved verbatim and does not establish acceptance of these profile changes.
+
+
+## Part 4 — Snapshot workflows and shortcut — 2026-10-16
+
+The [app snapshot policy](../crates/inputforge-app/src/profiles/snapshots.rs)
+now owns manual creation, restore/delete validation, protected session-start
+availability, drawer transitions and destructive restore confirmation. It reuses
+the existing profile controller and captured native-path/profile identity; each
+row also captures the complete engine-projected snapshot identity. Missing or
+replaced snapshots/profiles reject retained callbacks. Active-profile menu
+availability follows current profile identity even while the library frame is old.
+
+The [prepared contract](../crates/inputforge-gui-dx/src/profiles/snapshots.rs)
+provides rows, availability and confirmation state. The [drawer](../crates/inputforge-gui-dx/src/frame/profiles/snapshot_drawer.rs),
+active-profile menu and [confirmation renderer](../crates/inputforge-gui-dx/src/frame/profiles/snapshot_confirm.rs)
+forward app callbacks. Restore now honors its previously declared destructive
+confirmation through the existing dialog primitive. Cancellation never sends a
+restore; failed delivery keeps the confirmation and accessible error. Delivered
+requests never announce successful persistence or restore. A [narrow core execution guard](../crates/inputforge-core/src/engine/snapshots.rs)
+checks captured profile ID/native path and snapshot row before any operation side
+effect. This rejects a snapshot from A queued behind a load of B before B receives
+manual/recovery creation, pruning, restore or deletion. It delegates accepted
+requests to the existing core recovery, restore/rollback, filesystem and warning
+handlers; the operation implementations remain unchanged. The shared mapping
+barrier/acknowledgement is untouched. Dormant snapshot rename/pin/undo controls were not introduced;
+superseded GUI action contracts, mirrored focus-policy tests and unused snapshot
+chrome fields were removed.
+
+The [root shortcut owner](../crates/inputforge-app/src/profiles/shortcut/mod.rs)
+and [browser listener](../crates/inputforge-app/assets/snapshot_shortcut.js)
+own Ctrl+S interpretation, current-profile generations and synchronous removal.
+The listener installs after physical keyboard interception; editable/rename,
+menu/dialog, repeated/intercepted/composing keys and stale native-picker-return
+focus are suppressed. The existing bridge updates profile generations and rejects
+queued events from obsolete contexts. Unmount removes listeners synchronously;
+fresh mounts have separate owners. Errors use the existing accessible warning
+queue. No extra engine poller, thread, channel, dependency or X11 path was added.
+
+Regression evidence covers [real app bindings and root lifecycle](../crates/inputforge-app/tests/snapshots.rs),
+[real drawer handlers](../crates/inputforge-gui-dx/src/frame/profiles/snapshot_events.rs)
+and an [executable listener fixture](../crates/inputforge-app/tests/snapshots/listener.mjs)
+that runs alongside the production capture interceptor. Missing-contract tests,
+destructive confirmation bypass, missing listener and stale active-row availability
+were observed failing before their respective implementation. The [core request regressions](../crates/inputforge-core/src/engine/snapshot_request_tests.rs)
+cover queued loads followed by every snapshot operation, failed queued loads,
+replacement/removal/changed rows, accepted operations and restore-failure warnings.
+Real app drawer and root tests verify captured guarded payloads even before a
+queued profile switch reaches the state frame. Separate executable regressions
+cover ordinary element blur and modifier-then-Ctrl+S after native picker return.
+Existing restore/rollback, profile/native-path, capture, history and drag
+regressions remain covered by the workspace gate.
+
+Automated verification:
+
+- `cargo test --workspace --locked --offline -j 2`: **2,167 passed, 0 failed,
+  11 existing ignored** on the host, including local IPC tests. The initial
+  sandbox run denied the five existing single-instance socket tests; host
+  verification included them without exclusions.
+- Unchanged `bash .githooks/pre-commit` passed, including format and strict
+  all-target Clippy. Keyboard-capture, rail/editor, sortable drag (14), instrument
+  pointer (7) and snapshot shortcut JavaScript checks passed.
+- Audit links, seven historical acceptance/drag hashes, touched production-module
+  sizes and `git diff --check` were checked. Independent review cleared after
+  native-return modifier handling and queued-profile execution guards were fixed
+  regression-first. All new production modules stay below the 200-code-line
+  baseline; existing engine orchestration/dispatch gained only the narrow wiring.
+
+Manual acceptance remains with a disposable profile using `dx run -p inputforge-app`
+on native Wayland and separately Windows:
+
+1. Create through Ctrl+S, drawer + and the active-profile menu; toggle the drawer,
+   delete a manual snapshot and confirm session-start deletion stays disabled.
+2. Restore opens confirmation. Cancel/Escape sends nothing; confirm restores and
+   preserves the pre-restore recovery snapshot. Exercise a failed restore and
+   verify warning feedback without false success.
+3. Check editable/rename/menu/dialog focus, held Ctrl+S, armed keyboard capture,
+   OS-picker cancellation/refocus and close/reopen. Each ordinary keypress should
+   create one snapshot and obsolete mounts must remain inactive.
+
+Native desktop/hardware/visual acceptance and performance are unverified. Part 5
+and later parts remain pending. The seven historical acceptance/drag sections
+are preserved verbatim and do not establish acceptance of this snapshot refactor.

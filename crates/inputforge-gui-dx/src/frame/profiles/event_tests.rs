@@ -45,7 +45,12 @@ fn root() -> Element {
     use_context_provider(|| view);
     rsx! { super::new_profile_submode::NewProfileSubMode {} }
 }
-fn listeners(dom: &VirtualDom, node: &VNode, name: &str, ids: &mut Vec<dioxus::core::ElementId>) {
+pub(super) fn listeners(
+    dom: &VirtualDom,
+    node: &VNode,
+    name: &str,
+    ids: &mut Vec<dioxus::core::ElementId>,
+) {
     use dioxus::core::DynamicNode;
     for (i, attrs) in node.dynamic_attrs.iter().enumerate() {
         if attrs

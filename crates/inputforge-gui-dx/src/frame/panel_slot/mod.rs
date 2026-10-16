@@ -97,7 +97,6 @@ mod tests {
         let panel_slot = use_signal(|| props.slot);
         let via_calibration = use_signal(|| props.via_calibration);
         let selected_mapping = use_signal(|| None);
-        let profiles_panel = use_signal(crate::frame::view_state::ProfilesPanelState::default);
         let state = Arc::new(RwLock::new(AppState::new()));
         let (commands, _rx) = mpsc::channel();
         let settings = use_signal(SettingsSnapshot::default);
@@ -111,7 +110,6 @@ mod tests {
             panel_slot,
             via_calibration,
             selected_mapping,
-            profiles_panel,
         });
         use_context_provider(|| AppContext {
             state,

@@ -5,25 +5,18 @@ use dioxus::prelude::*;
 use dioxus_ssr::render;
 use parking_lot::RwLock;
 
-use inputforge_core::engine::EngineCommand;
 use inputforge_core::mode::Modes;
 use inputforge_core::profile::Profile;
 use inputforge_core::snapshot::{SnapshotConfig, SnapshotId, SnapshotKind, create};
 use inputforge_core::state::{AppState, ProfileOrigin};
 
-use crate::context::SnapshotRowView;
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, SettingsSnapshot};
 use crate::frame::layout::EmptyState;
 use crate::frame::profiles::ProfilesPanel;
-use crate::frame::profiles::actions::{
-    ConfirmationKind, ToastAction, create_manual_snapshot_action, snapshot_delete_action,
-    snapshot_restore_action,
-};
-use crate::frame::profiles::snapshot_drawer::{
-    FocusContext, FocusScope, SnapshotDrawer, classify_focus_scope, should_handle_snapshot_shortcut,
-};
-use crate::frame::view_state::{MainSurface, PanelSlot, ProfilesPanelState, ViewState};
+use crate::frame::profiles::snapshot_drawer::SnapshotDrawer;
+use crate::frame::view_state::{MainSurface, PanelSlot, ViewState};
 use crate::profiles::{Intent, Mode};
+use crate::snapshots::SnapshotRowView;
 
 fn simple_profile(name: &str) -> Profile {
     let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
@@ -58,7 +51,6 @@ fn ProfilesHarness() -> Element {
     let panel_slot = use_signal(|| PanelSlot::Profiles);
     let via_calibration = use_signal(|| false);
     let selected_mapping = use_signal(|| None);
-    let profiles_panel = use_signal(ProfilesPanelState::default);
     let settings = use_signal(SettingsSnapshot::default);
     use_context_provider(|| AppContext {
         state,
@@ -74,7 +66,6 @@ fn ProfilesHarness() -> Element {
         panel_slot,
         via_calibration,
         selected_mapping,
-        profiles_panel,
     });
     rsx! { ProfilesPanel {} }
 }
@@ -125,7 +116,17 @@ fn sample_session_start_row() -> SnapshotRowView {
 
 #[component]
 fn SnapshotDrawerHarness(rows: Vec<SnapshotRowView>, open: bool) -> Element {
-    let app_state = sample_profiles_context();
+    let mut app_state = sample_profiles_context();
+    app_state.active_snapshot_rows = rows
+        .iter()
+        .map(|r| inputforge_core::state::ActiveSnapshotRow {
+            id: r.id,
+            kind: r.kind,
+            label: r.label.clone(),
+            taken_at: chrono::Utc::now(),
+            pinned: r.pinned,
+        })
+        .collect();
     let initial_meta = inputforge_app::bridge::prepare(&app_state, None).meta;
     let state = Arc::new(RwLock::new(app_state));
     let (commands, _rx) = mpsc::channel();
@@ -137,8 +138,27 @@ fn SnapshotDrawerHarness(rows: Vec<SnapshotRowView>, open: bool) -> Element {
     let panel_slot = use_signal(|| PanelSlot::Profiles);
     let via_calibration = use_signal(|| false);
     let selected_mapping = use_signal(|| None);
-    let profiles_panel = use_signal(ProfilesPanelState::default);
     let settings = use_signal(SettingsSnapshot::default);
+    let controller = use_hook(|| {
+        inputforge_app::profiles::Controller::new(Arc::clone(&state), commands.clone())
+    });
+    let mut view = use_signal(crate::profiles::View::default);
+    let owner = use_hook(|| {
+        let owner = controller.mount(view);
+        let mut prepared = view.peek().clone();
+        prepared.snapshots.open = open;
+        for (prepared, row) in prepared.snapshots.rows.iter_mut().zip(rows) {
+            prepared.row = row;
+        }
+        view.set(prepared);
+        owner
+    });
+    use_context_provider(|| crate::profiles::Context {
+        view,
+        owner,
+        workflow: 0,
+        bindings: controller.bindings(),
+    });
     use_context_provider(|| AppContext {
         state,
         commands,
@@ -153,15 +173,10 @@ fn SnapshotDrawerHarness(rows: Vec<SnapshotRowView>, open: bool) -> Element {
         panel_slot,
         via_calibration,
         selected_mapping,
-        profiles_panel,
     });
 
     rsx! {
-        SnapshotDrawer {
-            active_profile_name: "Default".to_owned(),
-            rows,
-            open,
-        }
+        SnapshotDrawer {}
     }
 }
 
@@ -231,7 +246,6 @@ fn ProfilesHarnessWithMode(mode: Mode) -> Element {
         owner
     });
     use_context_provider(|| bindings);
-    let profiles_panel = use_signal(ProfilesPanelState::default);
     let settings = use_signal(SettingsSnapshot::default);
     use_context_provider(|| AppContext {
         state,
@@ -247,7 +261,6 @@ fn ProfilesHarnessWithMode(mode: Mode) -> Element {
         panel_slot,
         via_calibration,
         selected_mapping,
-        profiles_panel,
     });
     rsx! { ProfilesPanel {} }
 }
@@ -593,18 +606,6 @@ fn no_profile_state_shows_center_explanation_and_panel_actions() {
 }
 
 #[test]
-fn snapshot_delete_action_dispatches_real_engine_command_and_undo_toast() {
-    let id = sample_snapshot_id();
-    let action = snapshot_delete_action(id);
-
-    assert_eq!(action.command, EngineCommand::DeleteSnapshot { id });
-    assert_eq!(
-        action.toast_action,
-        Some(ToastAction::UndoSnapshotDelete { id })
-    );
-}
-
-#[test]
 fn snapshot_drawer_renders_empty_state_when_no_snapshots() {
     // Opening the drawer with zero snapshots must not reveal a blank
     // cap of --if-drawer-size. The empty-state placeholder explains
@@ -751,181 +752,6 @@ fn drawer_header_uses_sibling_toggle_and_snapshot_now_button() {
     // the toggle button (the toggle is now a raw <button>, not a
     // wrapping Button).
     assert!(!html.contains("<button class=\"snapshot-drawer__toggle\"><button"));
-}
-
-#[test]
-fn ctrl_s_is_suppressed_inside_editable_or_modal_context() {
-    assert!(!should_handle_snapshot_shortcut(FocusScope::TextInput));
-    assert!(!should_handle_snapshot_shortcut(FocusScope::InlineRename));
-    assert!(!should_handle_snapshot_shortcut(FocusScope::Menu));
-    assert!(!should_handle_snapshot_shortcut(FocusScope::Dialog));
-    assert!(!should_handle_snapshot_shortcut(FocusScope::OsPickerReturn));
-    assert!(should_handle_snapshot_shortcut(FocusScope::Panel));
-}
-
-#[test]
-fn ctrl_s_dispatches_create_manual_snapshot_when_focus_is_panel() {
-    // The window-level keydown listener routes Ctrl+S through
-    // `should_handle_snapshot_shortcut(scope)`; on the allow path it sends
-    // exactly the command produced by `create_manual_snapshot_action()`.
-    // Locking that command shape here protects the listener from a silent
-    // drift where the action helper grows new fields or a different
-    // `SnapshotKind` variant.
-    assert_eq!(
-        create_manual_snapshot_action(),
-        EngineCommand::CreateSnapshot {
-            kind: SnapshotKind::Manual,
-            label: None,
-        },
-    );
-}
-
-#[test]
-#[expect(
-    clippy::too_many_lines,
-    reason = "exhaustive table-driven test, each row encodes one focus-context \
-              shape and asserts the resulting FocusScope; splitting it would \
-              hide the precedence pattern"
-)]
-fn focus_scope_detection_classifies_dom_elements() {
-    // Pure-Rust dispatch table that mirrors the JS-side classification
-    // performed inside the keydown listener. Each row encodes the
-    // observable inputs (tag, content-editable flag, ancestor matches)
-    // and asserts the resulting `FocusScope`. Precedence: dialog beats
-    // menu beats inline-rename beats text-input beats panel.
-    let cases: &[(FocusContext<'_>, FocusScope)] = &[
-        (
-            FocusContext {
-                tag: "BUTTON",
-                is_content_editable: false,
-                in_inline_rename: false,
-                in_menu: false,
-                in_dialog: false,
-            },
-            FocusScope::Panel,
-        ),
-        (
-            FocusContext {
-                tag: "INPUT",
-                is_content_editable: false,
-                in_inline_rename: false,
-                in_menu: false,
-                in_dialog: false,
-            },
-            FocusScope::TextInput,
-        ),
-        (
-            FocusContext {
-                tag: "TEXTAREA",
-                is_content_editable: false,
-                in_inline_rename: false,
-                in_menu: false,
-                in_dialog: false,
-            },
-            FocusScope::TextInput,
-        ),
-        (
-            FocusContext {
-                tag: "DIV",
-                is_content_editable: true,
-                in_inline_rename: false,
-                in_menu: false,
-                in_dialog: false,
-            },
-            FocusScope::TextInput,
-        ),
-        (
-            FocusContext {
-                tag: "INPUT",
-                is_content_editable: false,
-                in_inline_rename: true,
-                in_menu: false,
-                in_dialog: false,
-            },
-            FocusScope::InlineRename,
-        ),
-        (
-            FocusContext {
-                tag: "BUTTON",
-                is_content_editable: false,
-                in_inline_rename: false,
-                in_menu: true,
-                in_dialog: false,
-            },
-            FocusScope::Menu,
-        ),
-        (
-            FocusContext {
-                tag: "INPUT",
-                is_content_editable: false,
-                in_inline_rename: false,
-                in_menu: false,
-                in_dialog: true,
-            },
-            FocusScope::Dialog,
-        ),
-        // Dialog wins over menu / inline rename / text input.
-        (
-            FocusContext {
-                tag: "INPUT",
-                is_content_editable: true,
-                in_inline_rename: true,
-                in_menu: true,
-                in_dialog: true,
-            },
-            FocusScope::Dialog,
-        ),
-        // Menu wins over inline rename + text input.
-        (
-            FocusContext {
-                tag: "INPUT",
-                is_content_editable: false,
-                in_inline_rename: true,
-                in_menu: true,
-                in_dialog: false,
-            },
-            FocusScope::Menu,
-        ),
-        // Lowercase tag still classifies as text input (case-insensitive).
-        (
-            FocusContext {
-                tag: "input",
-                is_content_editable: false,
-                in_inline_rename: false,
-                in_menu: false,
-                in_dialog: false,
-            },
-            FocusScope::TextInput,
-        ),
-    ];
-
-    for (ctx, expected) in cases {
-        let actual = classify_focus_scope(*ctx);
-        assert_eq!(
-            actual, *expected,
-            "classify_focus_scope({ctx:?}) = {actual:?}, expected {expected:?}",
-        );
-    }
-}
-
-#[test]
-fn snapshot_restore_uses_f4_confirmation() {
-    let id = sample_snapshot_id();
-    let action = snapshot_restore_action(id);
-
-    assert_eq!(action.confirmation, Some(ConfirmationKind::DestructiveF4));
-    assert_eq!(action.command, EngineCommand::RestoreSnapshot { id });
-}
-
-#[test]
-fn undo_toast_dispatches_undo_snapshot_delete() {
-    let id = sample_snapshot_id();
-    let toast_action = ToastAction::UndoSnapshotDelete { id };
-
-    assert_eq!(
-        toast_action.command(),
-        EngineCommand::UndoSnapshotDelete { id }
-    );
 }
 
 #[test]

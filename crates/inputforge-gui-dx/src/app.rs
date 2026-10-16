@@ -78,13 +78,12 @@ pub(crate) fn app_root() -> Element {
     let start_polling = use_context::<Callback<Publisher>>();
     use_hook(|| start_polling.call(Publisher::new(ctx.clone(), view, routing, controllers)));
 
-    // F13: window-level Ctrl+S handler that dispatches the manual snapshot
-    // command when focus is outside editable or modal UI. Installed at the
-    // app root so the shortcut is live on every screen, gated server-side
-    // (Rust) on a focus-scope tuple computed in JS from
-    // `document.activeElement`. See
-    // `frame::profiles::snapshot_drawer::install_snapshot_shortcut_listener`.
-    frame::install_snapshot_shortcut_listener(ctx.commands.clone());
+    let snapshot_bindings = use_context::<crate::profiles::Bindings>();
+    let snapshot_feedback = use_callback(move |message: String| {
+        toast_queue.push(crate::toast::ToastLevel::Warning, message);
+    });
+    let shortcut_owner = use_hook(|| snapshot_bindings.shortcut_mount.call(snapshot_feedback));
+    use_drop(move || snapshot_bindings.shortcut_unmount.call(shortcut_owner));
 
     app_root_view()
 }

@@ -8,6 +8,7 @@ impl Controller {
         self.project(owner, None);
     }
     pub(super) fn reconcile(&self, meta: &MetaSnapshot) {
+        self.reconcile_shortcut();
         let owner = self.session.borrow().as_ref().map(|s| s.owner);
         if let Some(owner) = owner {
             self.project(owner, Some(meta));

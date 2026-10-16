@@ -11,32 +11,7 @@ pub(super) fn project(s: &AppState) -> MetaSnapshot {
         .as_ref()
         .map(|path| path.display().to_string());
     let profile_rows = profile_rows(s);
-    let now_for_snapshots = chrono::Utc::now();
-    let snapshot_rows = s
-        .active_snapshot_rows
-        .iter()
-        .map(|row| SnapshotRowView {
-            id: row.id,
-            kind: row.kind,
-            kind_label: match row.kind {
-                inputforge_core::snapshot::SnapshotKind::AutoSessionStart => "Session start",
-                inputforge_core::snapshot::SnapshotKind::AutoBeforeRestore => "Before restore",
-                // The user-visible surface that creates this kind is the
-                // "Batch map" tab; "bulk map" is engine vocabulary. Match
-                // the label to the surface so the kind badge does not
-                // stutter against the snapshot's own label which already
-                // says "Before batch map".
-                inputforge_core::snapshot::SnapshotKind::AutoBeforeBulkMap => "Before batch map",
-                inputforge_core::snapshot::SnapshotKind::Manual => "Manual",
-            }
-            .to_owned(),
-            label: row.label.clone(),
-            time_relative: format_relative_at(row.taken_at, now_for_snapshots),
-            time_absolute: format_absolute_time(row.taken_at),
-            sort_key: row.taken_at.timestamp_millis(),
-            pinned: row.pinned,
-        })
-        .collect();
+    let snapshot_rows = snapshot_rows(s);
     MetaSnapshot {
         mode_management: crate::mapping_edits::modes::policy::view(s),
         profile_id: s
@@ -141,5 +116,34 @@ fn profile_rows(s: &AppState) -> Vec<ProfileRowView> {
     native_profile_rows(s)
         .into_iter()
         .map(|(_, row)| row)
+        .collect()
+}
+
+/// Prepare snapshot labels and times without filesystem access.
+pub(crate) fn snapshot_rows(s: &AppState) -> Vec<SnapshotRowView> {
+    let now_for_snapshots = chrono::Utc::now();
+    s.active_snapshot_rows
+        .iter()
+        .map(|row| SnapshotRowView {
+            id: row.id,
+            kind: row.kind,
+            kind_label: match row.kind {
+                inputforge_core::snapshot::SnapshotKind::AutoSessionStart => "Session start",
+                inputforge_core::snapshot::SnapshotKind::AutoBeforeRestore => "Before restore",
+                // The user-visible surface that creates this kind is the
+                // "Batch map" tab; "bulk map" is engine vocabulary. Match
+                // the label to the surface so the kind badge does not
+                // stutter against the snapshot's own label which already
+                // says "Before batch map".
+                inputforge_core::snapshot::SnapshotKind::AutoBeforeBulkMap => "Before batch map",
+                inputforge_core::snapshot::SnapshotKind::Manual => "Manual",
+            }
+            .to_owned(),
+            label: row.label.clone(),
+            time_relative: format_relative_at(row.taken_at, now_for_snapshots),
+            time_absolute: format_absolute_time(row.taken_at),
+            sort_key: row.taken_at.timestamp_millis(),
+            pinned: row.pinned,
+        })
         .collect()
 }
