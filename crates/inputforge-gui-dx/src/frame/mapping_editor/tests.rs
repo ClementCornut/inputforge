@@ -149,6 +149,7 @@ fn live_snapshot_with_axes(axes: Vec<(f64, AxisPolarity)>) -> LiveSnapshot {
         }],
         output_values: vec![],
         output_activity: vec![],
+        ..LiveSnapshot::default()
     }
 }
 
@@ -177,6 +178,7 @@ fn live_snapshot_with_axes_and_outputs(
             hats: vec![],
         }],
         output_activity: vec![],
+        ..LiveSnapshot::default()
     }
 }
 
@@ -465,6 +467,7 @@ fn render_with_pipeline_and_engine(
             hats: vec![],
         }],
         output_activity: vec![],
+        ..LiveSnapshot::default()
     };
 
     for (addr, polarity, value) in axes {
@@ -553,7 +556,10 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     use_context_provider(|| raw.clone());
 
     let selection: crate::frame::MappingKey = ("Default".to_owned(), addr.clone());
-    let snap = inputforge_app::bridge::prepare(&raw.state.read(), Some(&selection)).config;
+    raw.state.write().engine_status = runtime_engine_status;
+    let frame =
+        super::test_frame::prepare(&mut raw.state.write(), &selection, initial_live.as_deref());
+    let snap = frame.config;
     let meta = use_signal(|| MetaSnapshot {
         engine_status: runtime_engine_status,
         profile_name: Some("P".to_owned()),
@@ -563,7 +569,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
         ..MetaSnapshot::default()
     });
     let config = use_signal(|| snap);
-    let live = use_signal(|| initial_live.as_deref().cloned().unwrap_or_default());
+    let live = use_signal(|| frame.live);
     let ctx = AppContext {
         state: Arc::clone(&raw.state),
         commands: raw.commands.clone(),
@@ -702,6 +708,7 @@ fn LiveReadoutExpandHarness(props: LiveReadoutExpandHarnessProps) -> Element {
 
     let selection: crate::frame::MappingKey = ("Default".to_owned(), primary.clone());
     let snap = inputforge_app::bridge::prepare(&raw.state.read(), Some(&selection)).config;
+    raw.state.write().engine_status = EngineStatus::Running;
     let live_snapshot = inputforge_app::bridge::prepare(&raw.state.read(), Some(&selection)).live;
     let meta = use_signal(|| MetaSnapshot {
         engine_status: EngineStatus::Running,
@@ -721,10 +728,18 @@ fn LiveReadoutExpandHarness(props: LiveReadoutExpandHarnessProps) -> Element {
     };
     use_context_provider(|| ctx);
 
-    let injected_expand_state = use_signal(|| expand_state);
+    let bindings = use_hook(|| {
+        inputforge_app::mapping_edits::Controller::new(Arc::clone(&raw.state), raw.commands.clone())
+            .bindings()
+    });
+    use_context_provider(|| bindings);
+    let injected_expand_state = use_signal(|| super::live_readout::ExpandState {
+        key: live.peek().readout.as_ref().map(|r| r.key.clone()),
+        ..expand_state
+    });
     rsx! {
         super::live_readout::LiveReadoutTest {
-            primary,
+            mapping_key:("Default".into(),primary),
             actions,
             expand_state: injected_expand_state,
         }
@@ -1294,6 +1309,7 @@ fn editor_live_readout_button_mapping_uses_binary_in_and_out_rows() {
             hats: vec![],
         }],
         output_activity: vec![],
+        ..LiveSnapshot::default()
     };
     let mut vdom = harness_with_live(state, primary.clone(), live);
     vdom.rebuild_in_place();
@@ -1324,6 +1340,7 @@ fn editor_live_readout_button_mapping_uses_binary_in_and_out_rows() {
             hats: vec![],
         }],
         output_activity: vec![],
+        ..LiveSnapshot::default()
     };
     let mut vdom = harness_with_live(state, primary, live);
     vdom.rebuild_in_place();
@@ -1372,6 +1389,7 @@ fn editor_live_readout_tap_gesture_vjoy_button_uses_latched_activity() {
             owner,
             value: OutputActivityValue::Button(true),
         }],
+        ..LiveSnapshot::default()
     };
     let mut vdom = harness_with_live(state, primary, live);
     vdom.rebuild_in_place();
@@ -1419,6 +1437,7 @@ fn editor_live_readout_tap_gesture_mouse_button_uses_latched_activity() {
             owner,
             value: OutputActivityValue::Mouse(true),
         }],
+        ..LiveSnapshot::default()
     };
     let mut vdom = harness_with_live(state, primary, live);
     vdom.rebuild_in_place();
@@ -1466,6 +1485,7 @@ fn editor_live_readout_tap_gesture_keyboard_uses_latched_activity() {
             owner,
             value: OutputActivityValue::Keyboard(true),
         }],
+        ..LiveSnapshot::default()
     };
     let mut vdom = harness_with_live(state, primary, live);
     vdom.rebuild_in_place();
@@ -1516,6 +1536,7 @@ fn editor_live_readout_expired_tap_gesture_activity_returns_idle() {
             hats: vec![],
         }],
         output_activity: vec![],
+        ..LiveSnapshot::default()
     };
     let mut vdom = harness_with_live(state, primary, live);
     vdom.rebuild_in_place();
@@ -1551,6 +1572,7 @@ fn editor_live_readout_hat_mapping_uses_compass_rows() {
             hats: vec![HatDirection::NW],
         }],
         output_activity: vec![],
+        ..LiveSnapshot::default()
     };
     let mut vdom = harness_with_live(state, primary, live);
     vdom.rebuild_in_place();
@@ -1599,6 +1621,7 @@ fn editor_live_readout_output_button_freezes_binary_state_when_engine_stopped() 
             hats: vec![],
         }],
         output_activity: vec![],
+        ..LiveSnapshot::default()
     };
     let mut vdom = harness_with_live_and_status(state, primary, live, EngineStatus::Stopped);
     vdom.rebuild_in_place();
@@ -2261,6 +2284,7 @@ fn editor_live_readout_per_output_expand_renders_chain_block() {
     let actions = expand_toggle_fixture_actions();
     let expand_state = super::live_readout::ExpandState {
         per_output: vec![true],
+        ..super::live_readout::ExpandState::default()
     };
     let mut vdom = harness_with_expand(state, primary, actions, expand_state);
     vdom.rebuild_in_place();

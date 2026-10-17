@@ -5,12 +5,12 @@ use inputforge_core::types::{AxisPolarity, HatDirection};
 use crate::context::AppContext;
 use crate::frame::mapping_list::source_label;
 
-use super::analyzer::{LiveReadoutModel, PredicateDescriptor, PredicateKind};
 use super::predicate::render_hat_glyphs;
 use super::value_helpers::{
     AxisDisplay, ReadoutDisplay, format_percentage, hat_direction_label, hat_glyph_for,
     read_input_display,
 };
+use crate::readouts::{LiveReadoutModel, PredicateDescriptor, PredicateKind};
 
 const READOUT_SECTION_CLASS: &str = "if-editor__readout-section";
 const READOUT_SECTION_LABEL_CLASS: &str = "if-editor__readout-section-label";

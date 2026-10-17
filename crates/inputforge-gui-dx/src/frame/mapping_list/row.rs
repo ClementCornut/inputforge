@@ -7,16 +7,11 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::types::{
-    HatDirection, InputAddress, InputId, OutputAddress, OutputId, VJoyAxis,
-};
+use inputforge_core::types::{InputAddress, OutputAddress, OutputId, VJoyAxis};
 
 use crate::components::sortable::{SortableHandle, SortableState};
 use crate::components::{Chip, ChipVariant};
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MappingSummary};
-use crate::frame::mapping_editor::live_readout::{
-    read_axis_display, read_button_pressed, read_hat_direction,
-};
 use crate::frame::mapping_list::group::{GroupKind, group_of};
 use crate::frame::mapping_list::source_label;
 use crate::frame::view_state::ViewState;
@@ -40,27 +35,10 @@ pub(crate) fn group_to_u32(group: GroupKind) -> u32 {
 /// are binary: `1.0` when pressed / off-center, else `0.0`. Returns
 /// `0.0` for `Unbound` or when the device or input index is missing
 /// from the snapshot.
-fn live_intensity_for(addr: &InputAddress, live: &LiveSnapshot, cfg: &ConfigSnapshot) -> f64 {
-    match addr {
-        InputAddress::Unbound => 0.0,
-        InputAddress::Bound { input, .. } => match input {
-            InputId::Axis { .. } => read_axis_display(addr, live, cfg)
-                .value
-                .abs()
-                .clamp(0.0, 1.0),
-            InputId::Button { .. } => {
-                if read_button_pressed(addr, live, cfg) {
-                    1.0
-                } else {
-                    0.0
-                }
-            }
-            InputId::Hat { .. } => match read_hat_direction(addr, live, cfg) {
-                HatDirection::Center => 0.0,
-                _ => 1.0,
-            },
-        },
-    }
+fn live_intensity_for(addr: &InputAddress, live: &LiveSnapshot, _cfg: &ConfigSnapshot) -> f64 {
+    live.input_readouts
+        .get(addr)
+        .map_or(0.0, |value| value.intensity)
 }
 
 fn compact_output_label(output: &OutputAddress) -> String {

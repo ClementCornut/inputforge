@@ -1,6 +1,6 @@
 # GUI rendering boundary audit
 
-Date: 2026-10-12. Latest implementation update: 2026-10-16.
+Date: 2026-10-12. Latest implementation update: 2026-10-17.
 
 ## Scope and conclusion
 
@@ -19,7 +19,7 @@ Requirements:
 The original audit was read-only. The status below now also records the first
 implemented routing, polling, controller-workflow, advanced-axis, live-capture,
 keyboard-capture, shared mapping-dispatch/history, mapping-rail, batch-mapping, mode-management,
-editor-instrument and profile-workflow extractions;
+editor-instrument, profile-workflow and live-readout extractions;
 the remaining findings are still open.
 
 ## Resolved routing controls — 2026-10-12
@@ -1440,7 +1440,7 @@ may change during extraction.
 
 | # | Area and evidence | App-owned responsibility |
 | --- | --- | --- |
-| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, live capture, keyboard capture, shared mapping dispatch/history, mapping rail, batch and mode workflows now use app-owned handlers. Device inspector actions are app-owned in Part 6. The GUI per-window context no longer carries a production command sender; remaining raw state reads and the transitional host handles close in the deferred slices. |
+| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, live capture, keyboard capture, shared mapping dispatch/history, mapping rail, batch and mode workflows now use app-owned handlers. Device inspector actions are app-owned in Part 6. The GUI per-window context no longer carries production engine state or a command sender after Part 7; transitional host handles close in Part 13. |
 | 2 | **Controller editing policy — partially resolved** — [app controller policy](../crates/inputforge-app/src/controllers/policy.rs); [app axis settings](../crates/inputforge-app/src/controllers/axes.rs); [axis rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Selection, virtual-layout mutations, Apply, shared routing decisions, and advanced axis settings are app-owned. Device inspector selection, alias drafts and guarded removal are app-owned in Part 6. Other configuration-editing/readiness gates remain; see resolved status above. |
 | 3 | **Capture workflows — partially resolved** — [app live capture](../crates/inputforge-app/src/live_capture/mod.rs); [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs); [app keyboard capture](../crates/inputforge-app/src/keyboard_capture/mod.rs); [GUI keyboard contract](../crates/inputforge-gui-dx/src/keyboard_capture.rs) | Live and keyboard capture, physical keyboard translation, ownership, target revalidation, cancellation, interception and delivery are app-owned; live input additionally owns epoch/native confirmation. Shared stage edits/undo and rail Add/collision decisions are app-owned in the later mapping slices. |
 | 4 | **Mapping edits and instruments — resolved** — [app controller](../crates/inputforge-app/src/mapping_edits/mod.rs); [app paths](../crates/inputforge-app/src/mapping_edits/paths.rs); [app history](../crates/inputforge-app/src/mapping_edits/history/mod.rs); [GUI callback wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs) | Shared mapping stage edits, command construction, restore snapshots, undo/redo, invalidation and nudge grouping are app-owned. Rail Add/duplicate/collision/delete/reorder workflows are app-owned. Curve/deadzone mutation, draft/drag decisions, keyboard and numeric behavior are app-owned in Part 2; screen/viewbox geometry stays with rendering. Profile workflows are app-owned in Part 3; batch mapping is app-owned in the later slice. |
@@ -1448,7 +1448,7 @@ may change during extraction.
 | 6 | **Settings, snapshots, profiles and modes — resolved** — [app settings](../crates/inputforge-app/src/settings/mod.rs); [settings policy](../crates/inputforge-app/src/settings/policy.rs); [app profiles](../crates/inputforge-app/src/profiles/mod.rs) | Mode CRUD, startup/activation, validation, confirmation/counts, dispatch and selection/focus decisions are app-owned. Profile workflows, name/collision policy, captured identities, file dialogs, confirmation and failed-delivery retention are app-owned. Snapshot actions, current identity checks, drawer state and restore confirmation are app-owned in Part 4. Settings validation, pending-value reconciliation, prune confirmation and guarded dispatch are app-owned in Part 5. Core retains persistence, native startup services and pruning execution. |
 | 7 | **Operating-system services and filesystem access** — [app file picker](../crates/inputforge-app/src/profiles/dialog.rs); [app clipboard](../crates/inputforge-app/src/controllers/inspector/clipboard.rs); [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Native profile dialog invocation and obsolete-result rejection are app-owned. Part 6 moves clipboard invocation, native owner lifetime and write feedback to the app, with the resolved Linux Wayland feature enabled. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
 | 8 | **Event handling and UI state transitions** — [app snapshot shortcut](../crates/inputforge-app/src/profiles/shortcut/mod.rs); [navigation reconciliation](../crates/inputforge-gui-dx/src/frame/view_state.rs), line 244; [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs), line 163 | Snapshot Ctrl+S and its listener lifecycle are app-owned in Part 4. Part 6 owns device-ledger selection and inspector draft/key/removal/copy decisions. Other document listeners, shortcut interpretation, focus navigation, click-away behavior, drag/drop decisions, draft commits, and selection reconciliation. This includes reusable component behavior under the strict rendering-only boundary. |
-| 9 | **Live readout analysis** — [analyzer](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/analyzer.rs), line 146; [activity timer](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/mod.rs), line 100 | Pipeline interpretation, activity calculations, and expiry scheduling. Supply a completed readout model to the renderer. |
+| 9 | **Live readout analysis — resolved in Part 7** — [app analysis](../crates/inputforge-app/src/bridge/readout/analyze.rs); [app deadlines](../crates/inputforge-app/src/bridge/readout/activity.rs); [renderer](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/mod.rs) | The existing app bridge prepares typed input/output values, merge/conditional/gesture chains, predicates, exact output ownership/polarity/activity and instrument tracking values. App callbacks own expansion/reset decisions. Preview expiry advances on the same 16 ms tick, including contended engine reads; the GUI renders completed values without engine access or per-render timers. |
 | 10 | **Notifications** — [toast queue](../crates/inputforge-gui-dx/src/toast/queue.rs), line 26; [toast timer and handlers](../crates/inputforge-gui-dx/src/toast/viewport.rs), line 27 | Warning delivery, notification expiry, pause/resume, dismissal, and undo actions. The GUI should display the current notifications and wire supplied callbacks. |
 
 ## Native Wayland clipboard — build gap resolved in Part 6
@@ -2075,3 +2075,89 @@ Native hardware/compositor/Windows acceptance, desktop focus and runtime perform
 remain unverified. Live readout analysis, notification scheduling, remaining
 navigation/component policies and final raw-handle removal remain Parts 7–13.
 Prior Apply and drag acceptance evidence is preserved verbatim.
+
+
+## Prepared live readouts and activity expiry — 2026-10-17
+
+Part 7 resolves finding **#9**. [App analysis](../crates/inputforge-app/src/bridge/readout/analyze.rs),
+[bounded traversal](../crates/inputforge-app/src/bridge/readout/walk.rs),
+[predicates](../crates/inputforge-app/src/bridge/readout/predicates.rs) and
+[terminal ownership](../crates/inputforge-app/src/bridge/readout/terminal.rs) prepare
+selected-mapping input/output rows, nested conditional/gesture paths, independent
+sibling/stacked merge chains and polarity. The existing branch-local merge-preview
+semantics and depth cap remain. Core evaluation still owns scalar processing;
+[prepared instrument values](../crates/inputforge-app/src/bridge/readout/mod.rs)
+retain top-level, bound-axis and connected-device gates. No processing algorithm
+or persisted format changed.
+
+[Typed input display and rail intensity](../crates/inputforge-app/src/bridge/readout/inputs.rs)
+are prepared with the existing coherent physical sample, including the mapping
+rail and bulk-map consumers. Missing button/hat references keep their binary/hat
+readout types; unbound previews stay neutral without reaching the core's Bound
+primary invariant. Logical axis indexes remain independent of sparse native codes.
+The [GUI contract](../crates/inputforge-gui-dx/src/readouts/mod.rs) carries completed
+values. Labels, percentage formatting, bars/SVG geometry and stage drawing remain
+rendering; the GUI per-window context has no production engine state/sender.
+The transitional host `RawHandles` contract remains for Part 13.
+
+[App activity deadlines](../crates/inputforge-app/src/bridge/readout/activity.rs)
+replace the readout's recursive GUI timers. The first observation fixes the 150 ms
+latch deadline; identical subsequent observations do not renew that latch. A
+separate last-sample freshness deadline prevents long-observed transient activity
+from sticking when engine reads become contended. The existing immediate/16 ms
+nonblocking bridge advances both and publishes only changed prepared readouts on
+contended ticks, without repeating capture/history reconciliation or reading the
+engine again. Only the base selected readout is cached for expiry. Profile/path,
+selection, actions and session-generation changes clear prior held state. Selection
+changes during contended reads explicitly clear the published readout; renderers
+also require the full mode/input key, so identical actions on the same input in
+different modes cannot inherit a prior mode's pulse.
+[App expansion callbacks](../crates/inputforge-app/src/mapping_edits/readouts.rs)
+reset on prepared identity/output-count changes and reject obsolete toggle keys;
+per-mount renderer signals hold the resulting expansion state.
+
+### Part 7 verification
+
+[Real app regressions](../crates/inputforge-app/tests/readouts.rs) compare instrument
+and nested merge values with core evaluation, exercise exact branch ownership,
+sparse native axes, disconnected/missing/unbound input and identity replacement.
+Moved analyzer/walker/polarity tests preserve nested conditional/gesture traversal,
+sibling/stacked merge isolation, predicates and depth limits.
+[Bridge deadline cases](../crates/inputforge-app/src/bridge/readout/tests.rs) cover
+unchanged observations, disappearance without new input, first and long-observed
+activity during contended reads, selection reset and profile replacement.
+[Real renderer events](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/events_tests.rs)
+exercise chevron callbacks, live merge refresh while the engine write guard is
+held, equal-output-count identity resets, and clean production remounts.
+Missing prepared contracts, missing input type fallback, unbound preview panics
+and stale long-observed activity were observed failing before their fixes.
+Existing instrument fixtures now seed the real app projection rather than split
+raw snapshots. The unchanged `bash .githooks/pre-commit` passed (format and strict
+all-target Clippy). Final `cargo test --workspace --locked --offline -j 2` with
+host IPC access passed: **2,192 passed,0 failed,11 existing ignored** across30
+suites. All five executable JavaScript suites passed: keyboard capture, mapping
+rail/editor, sortable drag(14), instrument pointer(7), and snapshot shortcut.
+All234 audit/plan links, seven saved historical evidence hashes, new production
+module sizes(under200 code lines) and `git diff --check` passed. One independent
+read-only review verified all48 frozen raw paths and cleared the complete change
+after its stale-selection finding was fixed regression-first. The fix's real
+sampler, publication and renderer cases cover mode switches with identical input/
+actions and contended deselect/reselect; obsolete readouts cannot revive.
+
+### Part 7 manual acceptance and remaining scope
+
+Use `dx run -p inputforge-app` with disposable profiles on native Wayland and
+separately Windows. Move axes/buttons/hats and check IN rows, rail/bulk-map readouts,
+curve/deadzone dots, predicates, stacked/nested merge previews and keyboard/mouse/
+vJoy OUT values. Expand outputs, switch mappings/profiles/actions, disconnect and
+reconnect sparse native controls, and check reset/fallback behavior. Fire short
+single/double/long gesture outputs; pulses must clear without another input event.
+Check Stop/edit/Apply/Start, capture, queued edits and undo/redo, then close/reopen
+the editor with outputs expanded. Native hardware/compositor/Windows acceptance,
+desktop focus and runtime performance remain unverified. Notification scheduling,
+remaining navigation/component policy and final host-handle removal remain Parts
+8–13. Prior Apply and drag evidence remains unchanged.
+
+The user authorized automatic sequential continuation on 2026-10-17: each remaining
+part still uses a fresh implementation subagent and one commit, reports its summary,
+and then proceeds to the next part. Only material decision blockers stop execution.

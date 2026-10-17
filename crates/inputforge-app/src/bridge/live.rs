@@ -99,6 +99,7 @@ pub(super) fn project_at(s: &AppState, cfg: &ConfigSnapshot, now: Instant) -> Li
         device_inputs,
         output_values,
         output_activity,
+        ..LiveSnapshot::default()
     }
 }
 

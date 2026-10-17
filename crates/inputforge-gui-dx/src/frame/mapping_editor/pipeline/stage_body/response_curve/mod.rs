@@ -32,18 +32,7 @@ pub(crate) fn ResponseCurveBody(
     let Action::ResponseCurve { curve } = &snapshot.value else {
         return rsx! {};
     };
-    let live_actions = ctx
-        .config
-        .read()
-        .selected_mapping_actions
-        .clone()
-        .unwrap_or(root_actions);
-    let live_value = instruments::live_axis::compute_live_axis_value(
-        &stage_id,
-        &mapping_key.1,
-        &ctx,
-        &live_actions,
-    );
+    let live_value = instruments::live_axis::value(&stage_id, &mapping_key, &ctx);
     let dragging_attr = snapshot.dragging.is_some().to_string();
     let hovered_attr = snapshot.hovered.is_some().to_string();
     let on_key = move |evt: KeyboardEvent| {

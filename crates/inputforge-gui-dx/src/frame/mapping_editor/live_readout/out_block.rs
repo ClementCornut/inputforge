@@ -9,44 +9,28 @@ use std::rc::Rc;
 use dioxus::prelude::*;
 
 use inputforge_core::action::OutputBehavior;
-use inputforge_core::state::OutputActivityValue;
 use inputforge_core::types::OutputId;
 
 use crate::components::Icon;
-use crate::context::AppContext;
 use crate::icons::{Icon as IconKind, IconSize};
 
-use super::analyzer::{LiveReadoutModel, OutputDescriptor, OutputDestination};
 use super::in_block::{ButtonReadoutRow, HatReadoutRow, ReadoutRow};
-use super::value_helpers::{
-    ReadoutDisplay, format_key_combo, format_output_label, read_output_typed_display,
-};
+use super::value_helpers::{ReadoutDisplay, format_key_combo, format_output_label};
+use crate::readouts::{LiveReadoutModel, OutputDescriptor, OutputDestination};
 
 const READOUT_SECTION_CLASS: &str = "if-editor__readout-section";
 const READOUT_SECTION_LABEL_CLASS: &str = "if-editor__readout-section-label";
 const READOUT_GROUP_CLASS: &str = "if-editor__readout-group";
 
-/// Per-readout expand state for output chains.
-///
-/// `per_output` is index-aligned with `LiveReadoutModel::outputs`.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct ExpandState {
-    pub per_output: Vec<bool>,
-}
-
-impl ExpandState {
-    /// Return whether the output at `idx` is currently expanded.
-    pub(super) fn is_expanded(&self, idx: usize) -> bool {
-        self.per_output.get(idx).copied().unwrap_or(false)
-    }
-}
-
+use crate::readouts::{ExpandState, Expansion, Key};
 /// High-level OUT side of the live readout.
 #[component]
 pub(super) fn OutBlock(
     model: LiveReadoutModel,
     expand_state: Signal<ExpandState>,
     engine_running: bool,
+    values: Vec<ReadoutDisplay>,
+    readout_key: Key,
 ) -> Element {
     if model.outputs.is_empty() {
         return rsx! {};
@@ -67,6 +51,8 @@ pub(super) fn OutBlock(
                         has_multiple_outputs,
                         expand_state,
                         engine_running,
+                        display:values[idx],
+                        readout_key:readout_key.clone(),
                     }
                 }
             }
@@ -82,8 +68,10 @@ pub(super) fn OutRow(
     has_multiple_outputs: bool,
     expand_state: Signal<ExpandState>,
     engine_running: bool,
+    display: ReadoutDisplay,
+    readout_key: Key,
 ) -> Element {
-    let ctx = use_context::<AppContext>();
+    let bindings = use_context::<crate::mapping_edits::Bindings>().readouts;
     let frozen = !engine_running || !descriptor.is_active;
     let has_chain = !descriptor.chain.is_empty();
     let expanded = expand_state.read().is_expanded(idx);
@@ -94,16 +82,8 @@ pub(super) fn OutRow(
     let value_cell = match &descriptor.destination {
         OutputDestination::VJoy(out) => match out.output {
             OutputId::Axis { .. } => {
-                let live = ctx.live.read();
-                let cfg = ctx.config.read();
                 let tag = format_output_label(out);
-                let ReadoutDisplay::Axis(display) = read_output_typed_display(
-                    out,
-                    &live,
-                    &cfg,
-                    descriptor.polarity,
-                    descriptor.activity,
-                ) else {
+                let ReadoutDisplay::Axis(display) = display else {
                     unreachable!("axis output should produce axis readout display");
                 };
 
@@ -117,16 +97,8 @@ pub(super) fn OutRow(
                 }
             }
             OutputId::Button { .. } => {
-                let live = ctx.live.read();
-                let cfg = ctx.config.read();
                 let tag = format_output_label(out);
-                let ReadoutDisplay::Button { pressed } = read_output_typed_display(
-                    out,
-                    &live,
-                    &cfg,
-                    descriptor.polarity,
-                    descriptor.activity,
-                ) else {
+                let ReadoutDisplay::Button { pressed } = display else {
                     unreachable!("button output should produce button readout display");
                 };
 
@@ -140,16 +112,8 @@ pub(super) fn OutRow(
                 }
             }
             OutputId::Hat { .. } => {
-                let live = ctx.live.read();
-                let cfg = ctx.config.read();
                 let tag = format_output_label(out);
-                let ReadoutDisplay::Hat { direction } = read_output_typed_display(
-                    out,
-                    &live,
-                    &cfg,
-                    descriptor.polarity,
-                    descriptor.activity,
-                ) else {
+                let ReadoutDisplay::Hat { direction } = display else {
                     unreachable!("hat output should produce hat readout display");
                 };
 
@@ -163,19 +127,10 @@ pub(super) fn OutRow(
                 }
             }
         },
-        OutputDestination::Keyboard {
-            key,
-            behavior,
-            pressed,
-        } => {
+        OutputDestination::Keyboard { key, behavior, .. } => {
             let combo_text = format_key_combo(key);
             let tag = format!("Keyboard - {}", format_behavior(*behavior));
-            let key_live = engine_running
-                && descriptor.is_active
-                && match descriptor.activity {
-                    Some(OutputActivityValue::Keyboard(active)) => active,
-                    _ => *pressed,
-                };
+            let key_live = matches!(display, ReadoutDisplay::Button { pressed: true });
             let row_class = keyboard_row_class(frozen);
             let chip_class = keyboard_chip_class(key_live);
             let label = row_label.clone();
@@ -192,16 +147,9 @@ pub(super) fn OutRow(
             }
         }
         OutputDestination::Mouse {
-            target,
-            behavior,
-            active,
+            target, behavior, ..
         } => {
-            let is_live = engine_running
-                && descriptor.is_active
-                && match descriptor.activity {
-                    Some(OutputActivityValue::Mouse(active)) => active,
-                    _ => *active,
-                };
+            let is_live = matches!(display, ReadoutDisplay::Button { pressed: true });
             let tag = if target.is_wheel() {
                 target.label().to_owned()
             } else {
@@ -212,7 +160,7 @@ pub(super) fn OutRow(
                 ButtonReadoutRow {
                     label: row_label.clone(),
                     tag,
-                    pressed: if target.is_wheel() { false } else { is_live },
+                    pressed:is_live,
                     frozen,
                 }
             }
@@ -220,10 +168,15 @@ pub(super) fn OutRow(
     };
 
     let chevron = if has_chain {
+        let outputs = expand_state.peek().per_output.len();
         let onclick = move |_| {
-            expand_state.with_mut(|s| {
-                toggle_output_expanded(s, idx);
+            let next = bindings.expand.call(Expansion {
+                state: expand_state.peek().clone(),
+                key: readout_key.clone(),
+                outputs,
+                toggle: Some(idx),
             });
+            expand_state.set(next);
         };
         rsx! {
             button {
@@ -264,13 +217,6 @@ pub(super) fn DividerStrip() -> Element {
     rsx! {
         div { class: "if-editor__readout-divider" }
     }
-}
-
-fn toggle_output_expanded(state: &mut ExpandState, idx: usize) {
-    if state.per_output.len() <= idx {
-        state.per_output.resize(idx + 1, false);
-    }
-    state.per_output[idx] = !state.per_output[idx];
 }
 
 fn output_row_label(index: usize, has_multiple_outputs: bool) -> String {
@@ -375,25 +321,11 @@ mod tests {
     fn expand_state_applies_per_output_state() {
         let state = ExpandState {
             per_output: vec![false, true],
+            ..ExpandState::default()
         };
 
         assert!(!state.is_expanded(0));
         assert!(state.is_expanded(1));
-        assert!(!state.is_expanded(2));
-    }
-
-    #[test]
-    fn toggle_output_expanded_resizes_and_flips_one_index() {
-        let mut state = ExpandState::default();
-
-        toggle_output_expanded(&mut state, 2);
-
-        assert_eq!(state.per_output, vec![false, false, true]);
-        assert!(state.is_expanded(2));
-
-        toggle_output_expanded(&mut state, 2);
-
-        assert_eq!(state.per_output, vec![false, false, false]);
         assert!(!state.is_expanded(2));
     }
 

@@ -8,6 +8,11 @@ use inputforge_core::{
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LiveSnapshot {
     pub capture_epoch: CaptureEpoch,
+    pub input_readouts: std::collections::HashMap<
+        inputforge_core::types::InputAddress,
+        crate::readouts::InputReadout,
+    >,
+    pub readout: Option<crate::readouts::Readout>,
     pub device_inputs: Vec<DeviceInputValues>,
     pub output_values: Vec<VjoyOutputValues>,
     pub output_activity: Vec<OutputActivitySnapshot>,

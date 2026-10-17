@@ -1,9 +1,9 @@
 use dioxus::prelude::*;
 
 use crate::bridge::Publisher;
-use crate::context::{
-    AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
-};
+#[cfg(test)]
+use crate::context::RawHandles;
+use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
 use crate::frame;
 use crate::frame::use_editor_state_provider;
 use crate::patterns::keyboard_capture::use_keyboard_capture_provider;
@@ -13,6 +13,7 @@ use crate::toast::{ToastQueue, ToastState, ToastViewport, install_warnings_bridg
 
 /// Assemble editor presentation contexts and render the frame layout.
 pub(crate) fn app_root() -> Element {
+    #[cfg(test)]
     let raw = use_context::<RawHandles>();
     let bindings = use_context::<crate::routing::Bindings>();
     let routing_view = use_signal(crate::routing::View::default);
@@ -38,6 +39,7 @@ pub(crate) fn app_root() -> Element {
     let settings = use_signal(SettingsSnapshot::default);
 
     let ctx = AppContext {
+        #[cfg(test)]
         state: std::sync::Arc::clone(&raw.state),
         #[cfg(test)]
         commands: raw.commands.clone(),
@@ -115,8 +117,9 @@ mod tests {
 
     use inputforge_core::state::AppState;
 
+    use crate::context::RawHandles;
     use crate::context::{
-        AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
+        AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot,
     };
     use crate::frame;
     use crate::toast::{ToastQueue, ToastState};

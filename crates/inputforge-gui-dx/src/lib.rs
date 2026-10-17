@@ -6,6 +6,10 @@ pub mod batch_mapping;
 pub use inputforge_gui_dx::batch_mapping;
 pub mod bridge;
 #[cfg(not(test))]
+pub mod readouts;
+#[cfg(test)]
+pub use inputforge_gui_dx::readouts;
+#[cfg(not(test))]
 pub mod capture;
 #[cfg(test)]
 pub use inputforge_gui_dx::capture;

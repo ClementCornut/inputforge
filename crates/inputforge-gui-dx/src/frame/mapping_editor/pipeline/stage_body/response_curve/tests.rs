@@ -432,9 +432,7 @@ fn body_omits_live_dot_for_nested_stage() {
 #[test]
 fn body_renders_live_dot_for_top_level_stage_with_connected_device() {
     fn h() -> Element {
-        use crate::context::{
-            AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
-        };
+        use crate::context::{AppContext, RawHandles, SettingsSnapshot};
         use crate::frame::mapping_editor::pipeline::stage_body::response_curve::ResponseCurveBody;
         use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
         use inputforge_core::action::Action;
@@ -476,15 +474,35 @@ fn body_renders_live_dot_for_top_level_stage_with_connected_device() {
             },
         );
 
+        let curve =
+            ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false)
+                .unwrap();
+        state.active_profile = Some(inputforge_core::profile::Profile::new(
+            "P".into(),
+            vec![],
+            inputforge_core::mode::Modes::new(vec!["Default".into()]).unwrap(),
+            vec![inputforge_core::action::Mapping {
+                input: addr.clone(),
+                mode: "Default".into(),
+                name: None,
+                actions: vec![Action::ResponseCurve {
+                    curve: curve.clone(),
+                }],
+            }],
+            vec![],
+            "Default".into(),
+        ));
+        let frame =
+            inputforge_app::bridge::prepare(&state, Some(&("Default".into(), addr.clone())));
         let (cmd_tx, _rx) = mpsc::channel();
         let raw = RawHandles {
             state: Arc::new(RwLock::new(state)),
             commands: cmd_tx,
         };
         use_context_provider(|| raw.clone());
-        let meta = use_signal(MetaSnapshot::default);
-        let config = use_signal(ConfigSnapshot::default);
-        let live = use_signal(LiveSnapshot::default);
+        let meta = use_signal(|| frame.meta);
+        let config = use_signal(|| frame.config);
+        let live = use_signal(|| frame.live);
         let settings = use_signal(SettingsSnapshot::default);
         let ctx = AppContext {
             state: Arc::clone(&raw.state),
@@ -498,9 +516,6 @@ fn body_renders_live_dot_for_top_level_stage_with_connected_device() {
         crate::patterns::live_capture::use_live_capture_provider();
         crate::frame::mapping_editor::use_editor_state_provider();
 
-        let curve =
-            ResponseCurve::piecewise_linear(vec![(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)], false)
-                .unwrap();
         // Top-level stage: exactly one Index segment.
         let stage_id = StageId(vec![StageIdSegment::Index(0)]);
         let root_actions = vec![Action::ResponseCurve {

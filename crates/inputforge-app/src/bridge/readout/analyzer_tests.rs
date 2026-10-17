@@ -1,698 +1,18 @@
-// Rust guideline compliant 2026-05-03
-
-use std::collections::HashSet;
-
-use inputforge_core::action::{
-    Action, ActionBranch, Condition, MouseTarget, OutputBehavior, branch_actions,
+//! Characterization tests moved with app-owned analysis.
+use super::{analyze::analyze, walk::MAX_NESTED_ACTION_DEPTH};
+use inputforge_core::{
+    action::{Action, ActionBranch, Condition, MouseTarget, OutputBehavior},
+    pipeline::{OutputDestination as ActivityDestination, OutputOwner},
+    state::AppState,
+    types::{AxisPolarity, HatDirection, InputAddress, KeyCombo, MergeOp, OutputAddress},
 };
-use inputforge_core::pipeline::{
-    ActionPathSegment, BranchStep, InputCache, OutputDestination as ActivityDestination,
-    OutputOwner, button_pressed_from_value, evaluate_actions_through_path, evaluate_condition,
+use inputforge_gui_dx::{
+    readouts::{
+        Branch, ChainStep, LiveReadoutModel, OutputDescriptor, OutputDestination,
+        PredicateDescriptor, PredicateKind,
+    },
+    snapshots::ConfigSnapshot,
 };
-use inputforge_core::state::{AppState, OutputActivityValue};
-use inputforge_core::types::{
-    AxisPolarity, HatDirection, InputAddress, KeyCombo, MergeOp, OutputAddress,
-};
-
-use crate::context::{ConfigSnapshot, OutputActivitySnapshot};
-
-/// Maximum action nesting analyzed for live readout.
-///
-/// This is high enough for editor built pipelines while bounding future
-/// recursive walks through nested conditionals.
-pub(super) const MAX_NESTED_ACTION_DEPTH: usize = 32;
-
-/// Complete live readout analysis result.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub(super) struct LiveReadoutModel {
-    /// Inputs shown at the head of the pipeline.
-    pub pipeline_inputs: Vec<InputAddress>,
-    /// Conditions evaluated while shaping output rows.
-    pub predicates: Vec<PredicateDescriptor>,
-    /// Output rows derived from terminal mapping actions.
-    pub outputs: Vec<OutputDescriptor>,
-}
-
-/// Output row with its action chain.
-#[derive(Debug, Clone, PartialEq)]
-pub(super) struct OutputDescriptor {
-    /// Target reached by the analyzed pipeline.
-    pub destination: OutputDestination,
-    /// Merge and conditional steps that affect this output.
-    pub chain: Vec<ChainStep>,
-    /// Whether the current action path can produce this output.
-    pub is_active: bool,
-    /// Polarity used when rendering the final output value.
-    pub polarity: AxisPolarity,
-    /// Recent runtime output activity for this exact action path.
-    pub activity: Option<OutputActivityValue>,
-}
-
-/// Destination kind for output rows.
-#[derive(Debug, Clone, PartialEq)]
-pub(super) enum OutputDestination {
-    /// vJoy axis, button, or hat output.
-    VJoy(OutputAddress),
-    /// Keyboard key combination output.
-    Keyboard {
-        /// Key combination emitted by the pipeline.
-        key: KeyCombo,
-        /// Whether the keyboard output holds or pulses.
-        behavior: OutputBehavior,
-        /// Whether the current pipeline value would press the key.
-        pressed: bool,
-    },
-    /// Mouse button or wheel output.
-    Mouse {
-        /// Mouse target emitted by the pipeline.
-        target: MouseTarget,
-        /// Whether the mouse output holds or pulses.
-        behavior: OutputBehavior,
-        /// Whether the current pipeline value would activate the target.
-        active: bool,
-    },
-}
-
-/// Transformation step shown in an output chain.
-#[derive(Debug, Clone, PartialEq)]
-pub(super) enum ChainStep {
-    /// Merge applied to the primary pipeline value.
-    Merge {
-        /// Operation selected by the merge stage.
-        operation: MergeOp,
-        /// Secondary input consumed by this merge.
-        secondary_input: InputAddress,
-        /// Secondary value before display domain conversion.
-        encoded_value: f64,
-        /// Output polarity after applying this merge.
-        polarity_at_step: AxisPolarity,
-    },
-    /// Conditional branch taken or skipped during analysis.
-    Conditional {
-        /// User visible condition summary.
-        condition_label: String,
-        /// Result of evaluating the condition.
-        evaluated: bool,
-        /// Branch selected by the condition outcome.
-        branch: Branch,
-    },
-}
-
-/// Branch selected by a conditional.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Branch {
-    /// The true branch of a condition.
-    IfTrue,
-    /// The false branch of a condition.
-    IfFalse,
-    /// A gesture outcome branch; runtime gesture telemetry is not sampled here.
-    Gesture(ActionBranch),
-}
-
-/// Predicate row shown beside conditional output state.
-#[derive(Debug, Clone, PartialEq)]
-pub(super) struct PredicateDescriptor {
-    /// Predicate behavior used for dedup and display.
-    pub kind: PredicateKind,
-    /// Inputs read while evaluating this predicate.
-    pub inputs: Vec<InputAddress>,
-    /// Current evaluated state.
-    pub state: bool,
-    /// User visible predicate summary.
-    pub label: String,
-}
-
-/// Predicate variants captured by the analyzer.
-#[derive(Debug, Clone, PartialEq)]
-pub(super) enum PredicateKind {
-    /// Button must be currently pressed.
-    ButtonPressed,
-    /// Button must be currently released.
-    ButtonReleased,
-    /// Axis must fall inside the inclusive range.
-    AxisInRange {
-        /// Inclusive lower bound.
-        min: f64,
-        /// Inclusive upper bound.
-        max: f64,
-    },
-    /// Hat must match one of these directions.
-    HatDirection {
-        /// Accepted hat directions.
-        directions: Vec<HatDirection>,
-    },
-}
-
-pub(super) fn analyze(
-    actions: &[Action],
-    primary: &InputAddress,
-    state: &AppState,
-    cfg: &ConfigSnapshot,
-    output_activity: &[OutputActivitySnapshot],
-) -> LiveReadoutModel {
-    let mut model = LiveReadoutModel {
-        pipeline_inputs: vec![primary.clone()],
-        predicates: Vec::new(),
-        outputs: Vec::new(),
-    };
-    let context = AnalysisContext {
-        top_level: actions,
-        primary,
-        state,
-        cfg,
-        profile_id: active_profile_id(state),
-        mode: cfg
-            .selected_mapping_key
-            .as_ref()
-            .map_or_else(|| state.current_mode.clone(), |(mode, _)| mode.clone()),
-        output_activity,
-    };
-    let mut chain_stack = Vec::new();
-    let mut branch_path = Vec::new();
-    let mut action_path = Vec::new();
-    let mut predicate_keys = HashSet::new();
-    walk(
-        &context,
-        actions,
-        &mut model,
-        &mut chain_stack,
-        &mut branch_path,
-        &mut action_path,
-        &mut predicate_keys,
-        0,
-    );
-    model
-}
-
-fn active_profile_id(state: &AppState) -> String {
-    state.profile_path.as_ref().map_or_else(
-        || "memory-profile".to_owned(),
-        |path| path.display().to_string(),
-    )
-}
-
-struct AnalysisContext<'a> {
-    top_level: &'a [Action],
-    primary: &'a InputAddress,
-    state: &'a AppState,
-    cfg: &'a ConfigSnapshot,
-    profile_id: String,
-    mode: String,
-    output_activity: &'a [OutputActivitySnapshot],
-}
-
-impl AnalysisContext<'_> {
-    fn compute_merge_step_data(
-        &self,
-        branch_path: &[BranchStep],
-        chain_stack: &[ChainStep],
-        local_idx: usize,
-        second_input: &InputAddress,
-        operation: MergeOp,
-    ) -> (f64, AxisPolarity) {
-        let actions = self.flatten_actions_to_merge(branch_path, local_idx);
-        let input_value =
-            evaluate_actions_through_path(&actions, self.state, self.primary, &[], actions.len());
-        let encoded_value = super::value_helpers::axis_f64(&input_value);
-        let primary_polarity = chain_stack
-            .iter()
-            .rev()
-            .find_map(|step| match step {
-                ChainStep::Merge {
-                    polarity_at_step, ..
-                } => Some(*polarity_at_step),
-                ChainStep::Conditional { .. } => None,
-            })
-            .unwrap_or_else(|| self.state.input_cache.get_axis(self.primary).1);
-        let secondary_polarity = self.state.input_cache.get_axis(second_input).1;
-        let polarity_at_step = super::value_helpers::merge_output_polarity(
-            operation,
-            primary_polarity,
-            secondary_polarity,
-        );
-
-        (encoded_value, polarity_at_step)
-    }
-
-    fn flatten_actions_to_merge(
-        &self,
-        branch_path: &[BranchStep],
-        local_idx: usize,
-    ) -> Vec<Action> {
-        let mut flattened = Vec::new();
-        let mut current = self.top_level;
-
-        for step in branch_path {
-            let BranchStep::Branch { index, branch } = *step;
-            append_non_branch_actions(&current[..index], &mut flattened);
-            let action = &current[index];
-            if let Some(actions) = branch_actions(action, branch) {
-                current = actions;
-            } else {
-                panic!(
-                    "branch path target at index {index} must support {branch:?}, got {action:?}"
-                );
-            }
-        }
-
-        append_non_branch_actions(&current[..=local_idx], &mut flattened);
-        flattened
-    }
-
-    fn keyboard_pressed(&self, branch_path: &[BranchStep], local_idx: usize) -> bool {
-        let projected = evaluate_actions_through_path(
-            self.top_level,
-            self.state,
-            self.primary,
-            branch_path,
-            local_idx,
-        );
-        button_pressed_from_value(super::value_helpers::axis_f64(&projected))
-    }
-
-    fn output_activity(
-        &self,
-        action_path: &[ActionPathSegment],
-        destination: ActivityDestination,
-        behavior: OutputBehavior,
-    ) -> Option<OutputActivityValue> {
-        let owner = OutputOwner {
-            profile: self.profile_id.clone(),
-            mode: self.mode.clone(),
-            input: self.primary.clone(),
-            action_path: action_path.to_vec(),
-            destination,
-            behavior,
-        };
-        self.output_activity
-            .iter()
-            .find(|entry| entry.owner == owner)
-            .map(|entry| entry.value)
-    }
-}
-
-fn append_non_branch_actions(actions: &[Action], out: &mut Vec<Action>) {
-    out.extend(
-        actions
-            .iter()
-            .filter(|action| {
-                !matches!(
-                    action,
-                    Action::Conditional { .. }
-                        | Action::TapGesture { .. }
-                        | Action::PressGesture { .. }
-                )
-            })
-            .cloned(),
-    );
-}
-
-fn compute_is_active(chain: &[ChainStep]) -> bool {
-    chain.iter().all(|step| match step {
-        ChainStep::Merge { .. } => true,
-        ChainStep::Conditional {
-            evaluated, branch, ..
-        } => match branch {
-            Branch::IfTrue => *evaluated,
-            Branch::IfFalse => !*evaluated,
-            Branch::Gesture(_) => false,
-        },
-    })
-}
-
-fn terminal_polarity(
-    chain: &[ChainStep],
-    primary: &InputAddress,
-    state: &AppState,
-) -> AxisPolarity {
-    chain
-        .iter()
-        .rev()
-        .find_map(|step| match step {
-            ChainStep::Merge {
-                polarity_at_step, ..
-            } => Some(*polarity_at_step),
-            ChainStep::Conditional { .. } => None,
-        })
-        .unwrap_or_else(|| state.input_cache.get_axis(primary).1)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct PredicateDedupKey {
-    input: InputAddress,
-    kind: PredicateKindDedupKey,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum PredicateKindDedupKey {
-    ButtonPressed,
-    ButtonReleased,
-    AxisInRange { min_bits: u64, max_bits: u64 },
-    HatDirection { directions: Vec<u8> },
-}
-
-impl PredicateDedupKey {
-    fn new(input: &InputAddress, kind: &PredicateKind) -> Self {
-        Self {
-            input: input.clone(),
-            kind: PredicateKindDedupKey::from(kind),
-        }
-    }
-}
-
-impl From<&PredicateKind> for PredicateKindDedupKey {
-    fn from(kind: &PredicateKind) -> Self {
-        match kind {
-            PredicateKind::ButtonPressed => Self::ButtonPressed,
-            PredicateKind::ButtonReleased => Self::ButtonReleased,
-            PredicateKind::AxisInRange { min, max } => Self::AxisInRange {
-                min_bits: normalized_float_bits(*min),
-                max_bits: normalized_float_bits(*max),
-            },
-            PredicateKind::HatDirection { directions } => Self::HatDirection {
-                directions: canonical_hat_direction_keys(directions),
-            },
-        }
-    }
-}
-
-fn normalized_float_bits(value: f64) -> u64 {
-    if value == 0.0 {
-        0.0f64.to_bits()
-    } else {
-        value.to_bits()
-    }
-}
-
-fn canonical_hat_direction_keys(directions: &[HatDirection]) -> Vec<u8> {
-    let mut keys: Vec<_> = directions.iter().copied().map(hat_direction_key).collect();
-    keys.sort_unstable();
-    keys.dedup();
-    keys
-}
-
-fn hat_direction_key(direction: HatDirection) -> u8 {
-    match direction {
-        HatDirection::Center => 0,
-        HatDirection::N => 1,
-        HatDirection::NE => 2,
-        HatDirection::E => 3,
-        HatDirection::SE => 4,
-        HatDirection::S => 5,
-        HatDirection::SW => 6,
-        HatDirection::W => 7,
-        HatDirection::NW => 8,
-    }
-}
-
-fn collect_condition_predicates(
-    context: &AnalysisContext<'_>,
-    condition: &Condition,
-    model: &mut LiveReadoutModel,
-    predicate_keys: &mut HashSet<PredicateDedupKey>,
-) {
-    match condition {
-        Condition::ButtonPressed { input } => emit_predicate(
-            context,
-            model,
-            predicate_keys,
-            input,
-            PredicateKind::ButtonPressed,
-        ),
-        Condition::ButtonReleased { input } => emit_predicate(
-            context,
-            model,
-            predicate_keys,
-            input,
-            PredicateKind::ButtonReleased,
-        ),
-        Condition::AxisInRange { input, min, max } => emit_predicate(
-            context,
-            model,
-            predicate_keys,
-            input,
-            PredicateKind::AxisInRange {
-                min: *min,
-                max: *max,
-            },
-        ),
-        Condition::HatDirection { input, directions } => emit_predicate(
-            context,
-            model,
-            predicate_keys,
-            input,
-            PredicateKind::HatDirection {
-                directions: directions.clone(),
-            },
-        ),
-        Condition::All { conditions } | Condition::Any { conditions } => {
-            for condition in conditions {
-                collect_condition_predicates(context, condition, model, predicate_keys);
-            }
-        }
-        Condition::Not { condition } => {
-            collect_condition_predicates(context, condition, model, predicate_keys);
-        }
-    }
-}
-
-fn emit_predicate(
-    context: &AnalysisContext<'_>,
-    model: &mut LiveReadoutModel,
-    predicate_keys: &mut HashSet<PredicateDedupKey>,
-    input: &InputAddress,
-    kind: PredicateKind,
-) {
-    if !predicate_keys.insert(PredicateDedupKey::new(input, &kind)) {
-        return;
-    }
-
-    model.predicates.push(PredicateDescriptor {
-        inputs: vec![input.clone()],
-        state: super::predicate::evaluate_leaf_state(input, &kind, &context.state.input_cache),
-        label: super::predicate::format_predicate_chip_label(input, context.cfg),
-        kind,
-    });
-}
-
-#[expect(
-    clippy::too_many_lines,
-    reason = "Recursive analyzer keeps branch traversal state together for readability."
-)]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Recursive analyzer carries independent traversal stacks explicitly."
-)]
-fn walk(
-    context: &AnalysisContext<'_>,
-    actions: &[Action],
-    model: &mut LiveReadoutModel,
-    chain_stack: &mut Vec<ChainStep>,
-    branch_path: &mut Vec<BranchStep>,
-    action_path: &mut Vec<ActionPathSegment>,
-    predicate_keys: &mut HashSet<PredicateDedupKey>,
-    depth: usize,
-) {
-    let stack_baseline = chain_stack.len();
-    let action_path_baseline = action_path.len();
-    if depth > MAX_NESTED_ACTION_DEPTH {
-        chain_stack.truncate(stack_baseline);
-        action_path.truncate(action_path_baseline);
-        return;
-    }
-
-    for (i, action) in actions.iter().enumerate() {
-        action_path.push(ActionPathSegment::Index(i));
-        match action {
-            Action::MergeAxis {
-                second_input,
-                operation,
-            } => {
-                model.pipeline_inputs.push(second_input.clone());
-                let (encoded_value, polarity_at_step) = context.compute_merge_step_data(
-                    branch_path,
-                    chain_stack,
-                    i,
-                    second_input,
-                    *operation,
-                );
-                chain_stack.push(ChainStep::Merge {
-                    operation: *operation,
-                    secondary_input: second_input.clone(),
-                    encoded_value,
-                    polarity_at_step,
-                });
-            }
-            Action::MapToVJoy { output } => {
-                let activity = context.output_activity(
-                    action_path,
-                    ActivityDestination::VJoy(output.clone()),
-                    OutputBehavior::Hold,
-                );
-                let is_active = compute_is_active(chain_stack) || activity.is_some();
-                let polarity = terminal_polarity(chain_stack, context.primary, context.state);
-                model.outputs.push(OutputDescriptor {
-                    destination: OutputDestination::VJoy(output.clone()),
-                    chain: chain_stack.clone(),
-                    is_active,
-                    polarity,
-                    activity,
-                });
-            }
-            Action::MapToKeyboard { key, behavior } => {
-                let activity = context.output_activity(
-                    action_path,
-                    ActivityDestination::Keyboard(key.clone()),
-                    *behavior,
-                );
-                let pressed = match activity {
-                    Some(OutputActivityValue::Keyboard(active)) => active,
-                    _ => context.keyboard_pressed(branch_path, i),
-                };
-                model.outputs.push(OutputDescriptor {
-                    destination: OutputDestination::Keyboard {
-                        key: key.clone(),
-                        behavior: *behavior,
-                        pressed,
-                    },
-                    chain: chain_stack.clone(),
-                    is_active: compute_is_active(chain_stack) || activity.is_some(),
-                    polarity: AxisPolarity::Bipolar,
-                    activity,
-                });
-            }
-            Action::MapToMouse { target, behavior } => {
-                let behavior = if target.is_wheel() {
-                    OutputBehavior::Pulse
-                } else {
-                    *behavior
-                };
-                let activity = context.output_activity(
-                    action_path,
-                    ActivityDestination::Mouse(*target),
-                    behavior,
-                );
-                let active = match activity {
-                    Some(OutputActivityValue::Mouse(active)) => active,
-                    _ => context.keyboard_pressed(branch_path, i),
-                };
-                model.outputs.push(OutputDescriptor {
-                    destination: OutputDestination::Mouse {
-                        target: *target,
-                        behavior,
-                        active,
-                    },
-                    chain: chain_stack.clone(),
-                    is_active: compute_is_active(chain_stack) || activity.is_some(),
-                    polarity: AxisPolarity::Bipolar,
-                    activity,
-                });
-            }
-            Action::Conditional {
-                condition,
-                if_true,
-                if_false,
-            } => {
-                collect_condition_predicates(context, condition, model, predicate_keys);
-                let condition_label =
-                    super::predicate::format_condition_label(condition, context.cfg);
-                let evaluated = evaluate_condition(condition, &context.state.input_cache);
-
-                branch_path.push(BranchStep::Branch {
-                    index: i,
-                    branch: ActionBranch::ConditionalTrue,
-                });
-                action_path.push(ActionPathSegment::Branch(ActionBranch::ConditionalTrue));
-                chain_stack.push(ChainStep::Conditional {
-                    condition_label: condition_label.clone(),
-                    evaluated,
-                    branch: Branch::IfTrue,
-                });
-                walk(
-                    context,
-                    if_true,
-                    model,
-                    chain_stack,
-                    branch_path,
-                    action_path,
-                    predicate_keys,
-                    depth + 1,
-                );
-                chain_stack.pop();
-                action_path.pop();
-                branch_path.pop();
-
-                branch_path.push(BranchStep::Branch {
-                    index: i,
-                    branch: ActionBranch::ConditionalFalse,
-                });
-                action_path.push(ActionPathSegment::Branch(ActionBranch::ConditionalFalse));
-                chain_stack.push(ChainStep::Conditional {
-                    condition_label,
-                    evaluated,
-                    branch: Branch::IfFalse,
-                });
-                walk(
-                    context,
-                    if_false,
-                    model,
-                    chain_stack,
-                    branch_path,
-                    action_path,
-                    predicate_keys,
-                    depth + 1,
-                );
-                chain_stack.pop();
-                action_path.pop();
-                branch_path.pop();
-            }
-            Action::TapGesture { .. } | Action::PressGesture { .. } => {
-                for &branch in gesture_branches_for(action) {
-                    let Some(actions) = branch_actions(action, branch) else {
-                        continue;
-                    };
-                    branch_path.push(BranchStep::Branch { index: i, branch });
-                    action_path.push(ActionPathSegment::Branch(branch));
-                    chain_stack.push(ChainStep::Conditional {
-                        condition_label: branch.label().to_owned(),
-                        evaluated: false,
-                        branch: Branch::Gesture(branch),
-                    });
-                    walk(
-                        context,
-                        actions,
-                        model,
-                        chain_stack,
-                        branch_path,
-                        action_path,
-                        predicate_keys,
-                        depth + 1,
-                    );
-                    chain_stack.pop();
-                    action_path.pop();
-                    branch_path.pop();
-                }
-            }
-            Action::ResponseCurve { .. }
-            | Action::Deadzone { .. }
-            | Action::Invert
-            | Action::ChangeMode { .. } => {}
-        }
-        action_path.pop();
-    }
-
-    chain_stack.truncate(stack_baseline);
-    action_path.truncate(action_path_baseline);
-}
-
-fn gesture_branches_for(action: &Action) -> &'static [ActionBranch] {
-    match action {
-        Action::TapGesture { .. } => &[ActionBranch::TapSingle, ActionBranch::TapDouble],
-        Action::PressGesture { .. } => &[ActionBranch::PressShort, ActionBranch::PressLong],
-        _ => &[],
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -714,6 +34,17 @@ mod tests {
             input: InputId::Axis { index: 1 },
         };
         let output = OutputDescriptor {
+            owner: OutputOwner {
+                profile: "memory-profile".into(),
+                mode: "Default".into(),
+                input: InputAddress::Unbound,
+                action_path: vec![],
+                destination: ActivityDestination::VJoy(OutputAddress {
+                    device: 1,
+                    output: OutputId::Axis { id: VJoyAxis::X },
+                }),
+                behavior: OutputBehavior::Hold,
+            },
             destination: OutputDestination::VJoy(OutputAddress {
                 device: 1,
                 output: OutputId::Axis { id: VJoyAxis::X },
@@ -721,7 +52,7 @@ mod tests {
             chain: vec![ChainStep::Merge {
                 operation: MergeOp::Average,
                 secondary_input: secondary_input.clone(),
-                encoded_value: 0.25,
+                display_value: 0.25,
                 polarity_at_step: AxisPolarity::Bipolar,
             }],
             is_active: true,
@@ -737,7 +68,7 @@ mod tests {
             ChainStep::Merge {
                 operation: MergeOp::Average,
                 secondary_input,
-                encoded_value: 0.25,
+                display_value: 0.25,
                 polarity_at_step: AxisPolarity::Bipolar,
             }
         );
@@ -801,7 +132,6 @@ mod walker_tests {
             primary,
             &AppState::new(),
             &ConfigSnapshot::default(),
-            &[],
         )
     }
 
@@ -810,11 +140,14 @@ mod walker_tests {
         primary: &InputAddress,
         state: &AppState,
     ) -> LiveReadoutModel {
-        analyze(actions, primary, state, &ConfigSnapshot::default(), &[])
+        analyze(actions, primary, state, &ConfigSnapshot::default())
     }
 
     fn condition_label(condition: &Condition) -> String {
-        super::super::predicate::format_condition_label(condition, &ConfigSnapshot::default())
+        inputforge_gui_dx::readouts::labels::format_condition_label(
+            condition,
+            &ConfigSnapshot::default(),
+        )
     }
 
     fn conditional_action(condition: Condition) -> Action {
@@ -897,11 +230,12 @@ mod walker_tests {
         assert_eq!(
             model.outputs,
             vec![OutputDescriptor {
+                owner: model.outputs[0].owner.clone(),
                 destination: OutputDestination::VJoy(output),
                 chain: vec![ChainStep::Merge {
                     operation: MergeOp::Average,
                     secondary_input: second,
-                    encoded_value: 0.375,
+                    display_value: 0.375,
                     polarity_at_step: AxisPolarity::Bipolar,
                 }],
                 is_active: true,
@@ -945,13 +279,13 @@ mod walker_tests {
             ChainStep::Merge {
                 operation: MergeOp::Average,
                 secondary_input: second,
-                encoded_value: 0.4,
+                display_value: 0.4,
                 polarity_at_step: AxisPolarity::Bipolar,
             },
             ChainStep::Merge {
                 operation: MergeOp::Average,
                 secondary_input: third,
-                encoded_value: 0.0,
+                display_value: 0.0,
                 polarity_at_step: AxisPolarity::Bipolar,
             },
         ];
@@ -1002,12 +336,12 @@ mod walker_tests {
         let pre_split_step = ChainStep::Merge {
             operation: MergeOp::Average,
             secondary_input: pre_split,
-            encoded_value: 0.4,
+            display_value: 0.4,
             polarity_at_step: AxisPolarity::Bipolar,
         };
         let condition_step = ChainStep::Conditional {
             condition_label: condition_label(&condition()),
-            evaluated: false,
+            active: false,
             branch: Branch::IfTrue,
         };
         assert_eq!(model.outputs.len(), 3);
@@ -1019,7 +353,7 @@ mod walker_tests {
                 ChainStep::Merge {
                     operation: MergeOp::Average,
                     secondary_input: nested,
-                    encoded_value: 0.0,
+                    display_value: 0.0,
                     polarity_at_step: AxisPolarity::Bipolar,
                 },
             ]
@@ -1030,7 +364,7 @@ mod walker_tests {
                 pre_split_step.clone(),
                 ChainStep::Conditional {
                     condition_label: condition_label(&condition()),
-                    evaluated: false,
+                    active: true,
                     branch: Branch::IfFalse,
                 },
             ]
@@ -1072,7 +406,7 @@ mod walker_tests {
             vec![ChainStep::Merge {
                 operation: MergeOp::Average,
                 secondary_input: later,
-                encoded_value: -0.5,
+                display_value: -0.5,
                 polarity_at_step: AxisPolarity::Bipolar,
             }]
         );
@@ -1108,13 +442,13 @@ mod walker_tests {
                 ChainStep::Merge {
                     operation: MergeOp::Average,
                     secondary_input: second,
-                    encoded_value: 0.0,
+                    display_value: 0.5,
                     polarity_at_step: AxisPolarity::Unipolar,
                 },
                 ChainStep::Merge {
                     operation: MergeOp::Average,
                     secondary_input: third,
-                    encoded_value: 0.2,
+                    display_value: 0.2,
                     polarity_at_step: AxisPolarity::Bipolar,
                 },
             ]
@@ -1141,6 +475,7 @@ mod walker_tests {
         assert_eq!(
             model.outputs[0],
             OutputDescriptor {
+                owner: model.outputs[0].owner.clone(),
                 destination: OutputDestination::VJoy(first),
                 chain: Vec::new(),
                 is_active: true,
@@ -1151,6 +486,7 @@ mod walker_tests {
         assert_eq!(
             model.outputs[1],
             OutputDescriptor {
+                owner: model.outputs[1].owner.clone(),
                 destination: OutputDestination::VJoy(second),
                 chain: Vec::new(),
                 is_active: true,
@@ -1174,6 +510,7 @@ mod walker_tests {
         assert_eq!(
             model.outputs,
             vec![OutputDescriptor {
+                owner: model.outputs[0].owner.clone(),
                 destination: OutputDestination::Keyboard {
                     key,
                     behavior: OutputBehavior::Hold,
@@ -1228,10 +565,11 @@ mod walker_tests {
             model.outputs,
             vec![
                 OutputDescriptor {
+                    owner: model.outputs[0].owner.clone(),
                     destination: OutputDestination::VJoy(true_output),
                     chain: vec![ChainStep::Conditional {
                         condition_label: condition_label.clone(),
-                        evaluated: false,
+                        active: false,
                         branch: Branch::IfTrue,
                     }],
                     is_active: false,
@@ -1239,10 +577,11 @@ mod walker_tests {
                     activity: None,
                 },
                 OutputDescriptor {
+                    owner: model.outputs[1].owner.clone(),
                     destination: OutputDestination::VJoy(false_output),
                     chain: vec![ChainStep::Conditional {
                         condition_label,
-                        evaluated: false,
+                        active: true,
                         branch: Branch::IfFalse,
                     }],
                     is_active: true,
@@ -1285,10 +624,11 @@ mod walker_tests {
         assert_eq!(
             model.outputs[0],
             OutputDescriptor {
+                owner: model.outputs[0].owner.clone(),
                 destination: OutputDestination::VJoy(single_output),
                 chain: vec![ChainStep::Conditional {
                     condition_label: "Single tap".to_owned(),
-                    evaluated: false,
+                    active: false,
                     branch: Branch::Gesture(ActionBranch::TapSingle),
                 }],
                 is_active: false,
@@ -1299,17 +639,18 @@ mod walker_tests {
         assert_eq!(
             model.outputs[1],
             OutputDescriptor {
+                owner: model.outputs[1].owner.clone(),
                 destination: OutputDestination::VJoy(double_output),
                 chain: vec![
                     ChainStep::Conditional {
                         condition_label: "Double tap".to_owned(),
-                        evaluated: false,
+                        active: false,
                         branch: Branch::Gesture(ActionBranch::TapDouble),
                     },
                     ChainStep::Merge {
                         operation: MergeOp::Average,
                         secondary_input: secondary.clone(),
-                        encoded_value: 0.5,
+                        display_value: 0.5,
                         polarity_at_step: AxisPolarity::Bipolar,
                     },
                 ],
@@ -1340,7 +681,7 @@ mod walker_tests {
                 kind: PredicateKind::ButtonPressed,
                 inputs: vec![watched.clone()],
                 state: true,
-                label: super::super::predicate::format_predicate_chip_label(
+                label: inputforge_gui_dx::readouts::labels::format_predicate_chip_label(
                     &watched,
                     &ConfigSnapshot::default()
                 ),
@@ -1632,10 +973,11 @@ mod walker_tests {
             model.outputs,
             vec![
                 OutputDescriptor {
+                    owner: model.outputs[0].owner.clone(),
                     destination: OutputDestination::VJoy(true_output),
                     chain: vec![ChainStep::Conditional {
                         condition_label: condition_label.clone(),
-                        evaluated: true,
+                        active: true,
                         branch: Branch::IfTrue,
                     }],
                     is_active: true,
@@ -1643,10 +985,11 @@ mod walker_tests {
                     activity: None,
                 },
                 OutputDescriptor {
+                    owner: model.outputs[1].owner.clone(),
                     destination: OutputDestination::VJoy(false_output),
                     chain: vec![ChainStep::Conditional {
                         condition_label,
-                        evaluated: true,
+                        active: false,
                         branch: Branch::IfFalse,
                     }],
                     is_active: false,
@@ -1726,6 +1069,7 @@ mod walker_tests {
         assert_eq!(
             model.outputs,
             vec![OutputDescriptor {
+                owner: model.outputs[0].owner.clone(),
                 destination: OutputDestination::VJoy(output),
                 chain: Vec::new(),
                 is_active: true,
@@ -1763,16 +1107,17 @@ mod walker_tests {
         assert_eq!(
             model.outputs,
             vec![OutputDescriptor {
+                owner: model.outputs[0].owner.clone(),
                 destination: OutputDestination::VJoy(output),
                 chain: vec![
                     ChainStep::Conditional {
                         condition_label: outer_label,
-                        evaluated: true,
+                        active: true,
                         branch: Branch::IfTrue,
                     },
                     ChainStep::Conditional {
                         condition_label: inner_label,
-                        evaluated: true,
+                        active: true,
                         branch: Branch::IfTrue,
                     },
                 ],
@@ -1809,10 +1154,11 @@ mod walker_tests {
         assert_eq!(
             model.outputs,
             vec![OutputDescriptor {
+                owner: model.outputs[0].owner.clone(),
                 destination: OutputDestination::VJoy(output),
                 chain: vec![ChainStep::Conditional {
                     condition_label,
-                    evaluated: true,
+                    active: true,
                     branch: Branch::IfTrue,
                 }],
                 is_active: true,

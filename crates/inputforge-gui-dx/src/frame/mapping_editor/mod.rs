@@ -232,6 +232,8 @@ pub(crate) fn use_editor_state_provider() -> EditorState {
 }
 
 #[cfg(test)]
+pub(crate) mod test_frame;
+#[cfg(test)]
 mod tests;
 
 #[cfg(test)]

@@ -96,6 +96,7 @@ pub struct Publication {
 #[derive(Debug, Clone, Copy)]
 pub struct Bindings {
     pub instruments: crate::instruments::Bindings,
+    pub readouts: crate::readouts::Bindings,
     pub batch: crate::batch_mapping::Bindings,
     pub modes: crate::mode_management::Bindings,
     /// Unique mounted-controller identity for isolated listener wiring.

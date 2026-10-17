@@ -9,6 +9,7 @@ pub(crate) mod modes;
 mod paths;
 mod prepare;
 mod rail;
+mod readouts;
 use dioxus::prelude::{Callback, ReadableExt, WritableExt};
 use inputforge_core::{engine::EngineCommand, state::AppState};
 use inputforge_gui_dx::{
@@ -77,6 +78,9 @@ impl Controller {
         let add = self.clone();
         Bindings {
             instruments: self.instrument_bindings(),
+            readouts: inputforge_gui_dx::readouts::Bindings {
+                expand: Callback::new(readouts::expand),
+            },
             batch: self.batch_bindings(),
             modes: self.mode_bindings(),
             instance: self.owner,

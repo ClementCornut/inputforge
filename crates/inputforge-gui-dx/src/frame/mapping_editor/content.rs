@@ -19,7 +19,7 @@ pub(super) fn MappingContent(
     rsx! {
         Header { name, input: mapping_key.1.clone(), mapping_key: mapping_key.clone(), actions: actions.clone() }
         MappingIssues { mapping_key: mapping_key.clone() }
-        LiveReadout { primary: mapping_key.1.clone(), actions: actions.clone() }
+        LiveReadout { mapping_key: mapping_key.clone(), actions: actions.clone() }
         Pipeline { mapping_key: mapping_key.clone(), actions: actions.clone(), root_actions: actions.clone(), path_prefix: vec![], depth: 0 }
         StageActionsMenu { mapping_key: mapping_key.clone(), root_actions: actions }
         InactiveHint {}

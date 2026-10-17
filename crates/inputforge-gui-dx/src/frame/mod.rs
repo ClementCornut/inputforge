@@ -3,7 +3,7 @@
 mod bulk_map;
 mod layout;
 mod mapping_editor;
-mod mapping_list;
+pub(crate) mod mapping_list;
 mod panel_slot;
 mod profiles;
 mod settings_panel;

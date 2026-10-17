@@ -1,6 +1,6 @@
 # GUI Rendering Boundary Implementation Plan
 
-> **For agentic workers:** Use superpowers:subagent-driven-development after user approval. Each numbered part has a fresh implementation subagent, one commit, and a human checkpoint. Steps use checkbox syntax for tracking.
+> **For agentic workers:** Use superpowers:subagent-driven-development after user approval. Each numbered part has a fresh implementation subagent, one commit, and a commit summary. Steps use checkbox syntax for tracking.
 
 **Goal:** Finish the rendering-only boundary in `inputforge-gui-dx` while preserving existing editor behavior, persistence, accessibility and native lifecycle guarantees.
 
@@ -16,7 +16,7 @@
 
 - Planning approval is required before implementation. This file is the only planning change; do not include it in an extra standalone commit.
 - One numbered part = one implementation subagent = one commit containing tests, implementation, caller updates and audit evidence. Work sequentially because contracts and fixtures overlap.
-- After every commit, stop with the hash, scope, verification, remaining limitations and a short manual checklist. Wait for the user's go-ahead before starting the next part. Fix review findings before that part's commit.
+- After every commit, report the hash, scope, verification, remaining limitations and a short manual checklist, then automatically dispatch the next part sequentially. The user authorized this continuation on 2026-10-17; only a material decision blocker stops progress. Fix review findings before that part's commit.
 - Recheck the working tree and current code before every dispatch. Preserve unrelated work. Stage exact owned paths only; never force-add ignored files. No push, merge or deployment.
 - All workers are told they share the checkout, must not revert others' changes, and own only the files/responsibility assigned for their part.
 - Work in this requested checkout on `main`, as explicitly requested by the user after plan approval. Do not create or switch branches or worktrees. Preserve unrelated edits if they appear.
@@ -58,7 +58,7 @@ For every part:
 - [ ] Run unchanged `bash .githooks/pre-commit`, `cargo test --workspace --locked --offline -j 2`, and `git diff --check` before the commit. Obtain host permissions if existing IPC tests are blocked by sandbox socket restrictions; do not silently exclude them or relax lints.
 - [ ] Run `node crates/inputforge-app/tests/keyboard_capture/listener.mjs crates/inputforge-app/assets/keyboard_capture_listener.js`, `node crates/inputforge-gui-dx/tests/mapping_rail_listener.mjs`, and `node crates/inputforge-gui-dx/tests/sortable_drag.mjs`. Update paths together if ownership moves a script.
 - [ ] Check audit links, prior evidence preservation and touched production-module sizes. Review the complete diff, including deleted/untracked files and manifest changes.
-- [ ] Commit the exact owned paths using the scoped message below, then return the checkpoint and stop. Historical test totals are not current expectations.
+- [ ] Commit the exact owned paths using the scoped message below, then return the checkpoint so the next fresh implementation subagent can begin. Historical test totals are not current expectations.
 
 No native hardware tests, desktop acceptance or performance claims follow from automated checks. Provide manual steps using `dx run -p inputforge-app`; the user performs native Wayland and separate Windows acceptance.
 
@@ -167,6 +167,8 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 ## Part 7: Prepared Live Readouts and Activity Expiry
 
+**Status (2026-10-17):** Complete on `main`; independent review cleared after the contended selection/reset finding was addressed regression-first. Final host workspace:2,192 passed,0 failed,11 existing ignored; unchanged strict precommit and all five JS suites passed. Native Wayland/Windows acceptance remains manual. User authorized automatic sequential continuation after commit summaries.
+
 **Commit:** `refactor(readouts): prepare live analysis and activity in app`
 
 **Files:** Add focused `inputforge-app/src/bridge/readout/` modules and tests. Move analysis behavior from GUI `frame/mapping_editor/live_readout/{analyzer.rs,value_helpers.rs}` and stage live evaluation from `pipeline/stage_body/instruments/live_axis.rs`; modify GUI `live_readout/{mod.rs,in_block.rs,out_block.rs,out_chain.rs,predicate.rs}` and `snapshots/{config.rs,live.rs}` to consume prepared values.
@@ -177,7 +179,8 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 **Tests first:** Move analyzer/walker and latch behavior tests; add paused-time bridge/renderer cases for nested branches, stacked/sibling merges, depth limits, disconnected/unbound/sparse controls, unchanged activity not extending expiry, expiry without new input/under contention, profile/mapping/action-path replacement, selection/expansion reset, and no duplicate schedules after remount. Compare actual values with existing core evaluation fixtures.
 
-- [ ] Complete the common cycle; manually check live dots, predicate/merge rows and short output pulses.
+- [x] Common automated validation, independent review and single-commit cycle complete.
+- [ ] User acceptance: live dots, predicate/merge rows, mode/profile resets and short output pulses on native Wayland and separately Windows.
 
 ## Part 8: Notifications and Warning Delivery
 

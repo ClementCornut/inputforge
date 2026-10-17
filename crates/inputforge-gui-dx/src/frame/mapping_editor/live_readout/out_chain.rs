@@ -7,14 +7,13 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::processing::into_natural_domain;
 use inputforge_core::types::{AxisPolarity, MergeOp};
 
 use crate::context::AppContext;
 use crate::frame::mapping_list::source_label;
 
-use super::analyzer::{Branch, ChainStep, OutputDescriptor};
 use super::value_helpers::{AxisDisplay, format_percentage};
+use crate::readouts::{Branch, ChainStep, OutputDescriptor};
 
 /// Indented chain block for one output descriptor.
 ///
@@ -46,14 +45,14 @@ fn ChainRow(step: ChainStep, index_in_chain: usize) -> Element {
         ChainStep::Merge {
             operation,
             secondary_input,
-            encoded_value,
+            display_value,
             polarity_at_step,
         } => {
             let cfg = ctx.config.read();
             let merge_n = index_in_chain + 1;
             let partner_label = source_label::format(&secondary_input, &cfg);
             let display = AxisDisplay {
-                value: into_natural_domain(encoded_value, polarity_at_step),
+                value: display_value,
                 polarity: polarity_at_step,
             };
             let pct = format_percentage(&display);
@@ -78,10 +77,9 @@ fn ChainRow(step: ChainStep, index_in_chain: usize) -> Element {
         }
         ChainStep::Conditional {
             condition_label,
-            evaluated,
+            active,
             branch,
         } => {
-            let active = conditional_active(evaluated, branch);
             let step_label = branch_step_label(branch);
             let outcome = if active {
                 "active branch"
@@ -100,14 +98,6 @@ fn ChainRow(step: ChainStep, index_in_chain: usize) -> Element {
                 }
             }
         }
-    }
-}
-
-fn conditional_active(evaluated: bool, branch: Branch) -> bool {
-    match branch {
-        Branch::IfTrue => evaluated,
-        Branch::IfFalse => !evaluated,
-        Branch::Gesture(_) => false,
     }
 }
 
@@ -170,22 +160,6 @@ fn conditional_outcome_class(active: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn conditional_active_matches_branch_outcome() {
-        assert!(conditional_active(true, Branch::IfTrue));
-        assert!(conditional_active(false, Branch::IfFalse));
-        assert!(!conditional_active(false, Branch::IfTrue));
-        assert!(!conditional_active(true, Branch::IfFalse));
-    }
-
-    #[test]
-    fn gesture_branch_is_never_active_without_runtime_telemetry() {
-        let branch = Branch::Gesture(inputforge_core::action::ActionBranch::TapSingle);
-
-        assert!(!conditional_active(false, branch));
-        assert!(!conditional_active(true, branch));
-    }
 
     #[test]
     fn branch_step_label_distinguishes_gestures_from_conditions() {

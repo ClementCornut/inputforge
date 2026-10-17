@@ -1,7 +1,7 @@
 //! Per-window presentation signals and transitional workflow handles.
 pub(crate) use crate::snapshots::{
     ConfigSnapshot, DevicePanelRow, DeviceUsageSummary, LiveSnapshot, MappingSummary, MetaSnapshot,
-    OutputActivitySnapshot, SettingsSnapshot,
+    SettingsSnapshot,
 };
 use dioxus::prelude::*;
 use inputforge_core::{engine::EngineCommand, state::AppState};
@@ -19,6 +19,7 @@ pub struct RawHandles {
 /// Assembled inside `app_root` (signals must be created within the runtime).
 #[derive(Clone, Debug)]
 pub(crate) struct AppContext {
+    #[cfg(test)]
     pub state: Arc<RwLock<AppState>>,
     #[cfg(test)]
     pub commands: mpsc::Sender<EngineCommand>,
@@ -30,5 +31,5 @@ pub(crate) struct AppContext {
 
 #[cfg(test)]
 pub(crate) use crate::snapshots::{
-    DeviceCoverage, DeviceInputValues, GlyphFlags, VjoyOutputValues,
+    DeviceCoverage, DeviceInputValues, GlyphFlags, OutputActivitySnapshot, VjoyOutputValues,
 };

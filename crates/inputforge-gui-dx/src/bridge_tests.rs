@@ -156,3 +156,48 @@ fn unchanged_frames_do_not_wake_any_snapshot_subscriber() {
         "unchanged axis rows must not wake subscribers"
     );
 }
+#[test]
+fn deadline_reset_clears_the_published_readout_once_and_does_not_revive_on_reselection() {
+    use inputforge_core::{action::Mapping, mode::Modes, profile::Profile, types::InputAddress};
+    let handle = Rc::new(RefCell::new(None));
+    let renders = Rc::new(Cell::new(0));
+    let mut dom = VirtualDom::new_with_props(
+        harness,
+        Props {
+            publisher: Rc::clone(&handle),
+            renders: Rc::clone(&renders),
+        },
+    );
+    dom.rebuild_in_place();
+    let publisher = handle.borrow().clone().unwrap();
+    let key = ("Default".to_owned(), InputAddress::Unbound);
+    let state = AppState::with_profile(Profile::new(
+        "P".into(),
+        vec![],
+        Modes::new(vec!["Default".into()]).unwrap(),
+        vec![Mapping {
+            input: key.1.clone(),
+            mode: key.0.clone(),
+            name: None,
+            actions: vec![],
+        }],
+        vec![],
+        "Default".into(),
+    ));
+    let frame = inputforge_app::bridge::prepare(&state, Some(&key));
+    dom.in_runtime(|| publisher.publish(frame));
+    dom.render_immediate_to_vec();
+    assert!(publisher.context.live.peek().readout.is_some());
+    dom.in_runtime(|| publisher.publish_readout(None));
+    dom.render_immediate_to_vec();
+    assert!(publisher.context.live.peek().readout.is_none());
+    let after = renders.get();
+    dom.in_runtime(|| {
+        publisher.publish_readout(None);
+        let mut selection = publisher.selection;
+        selection.set(Some(key));
+    });
+    dom.render_immediate_to_vec();
+    assert!(publisher.context.live.peek().readout.is_none());
+    assert_eq!(renders.get(), after);
+}

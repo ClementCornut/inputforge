@@ -6,6 +6,7 @@ pub(crate) mod devices;
 mod live;
 pub(crate) mod meta;
 mod profile_metadata;
+mod readout;
 pub(crate) mod settings;
 #[cfg(test)]
 mod tests;
@@ -46,6 +47,14 @@ pub fn spawn_polling_task(
                 publisher.publish(frame);
                 publisher.reconcile_history();
                 capture.deliver();
+            } else if let Some(live) = poller.readout.expire(
+                publisher.selected_mapping().as_ref(),
+                tokio::time::Instant::now().into_std(),
+            ) {
+                publisher.publish_readout(match live {
+                    readout::Change::Clear => None,
+                    readout::Change::Value(value) => Some(*value),
+                });
             }
         }
     });
@@ -59,6 +68,7 @@ struct Poller {
     state: Arc<RwLock<AppState>>,
     metadata: profile_metadata::Cache,
     capture: crate::live_capture::Controller,
+    readout: readout::Activity,
 }
 impl Poller {
     fn new(state: Arc<RwLock<AppState>>, capture: crate::live_capture::Controller) -> Self {
@@ -66,6 +76,7 @@ impl Poller {
             state,
             metadata: profile_metadata::Cache::default(),
             capture,
+            readout: readout::Activity::default(),
         }
     }
     fn sample(
@@ -80,20 +91,26 @@ impl Poller {
             prepare_at(&state, selection, now)
         };
         self.metadata.complete(&mut frame.meta, now, read_metadata);
-        Some(frame)
+        Some(self.readout.sample(frame, now))
     }
 }
 
 /// Prepare a coherent editor frame without performing filesystem I/O.
 #[must_use]
 pub fn prepare(state: &AppState, selection: Option<&MappingKey>) -> Frame {
-    prepare_at(state, selection, Instant::now())
+    let mut frame = prepare_at(state, selection, Instant::now());
+    if let Some(readout) = frame.live.readout.as_mut() {
+        readout::overlay(readout, &frame.live.output_activity);
+    }
+    frame
 }
 fn prepare_at(state: &AppState, selection: Option<&MappingKey>, now: Instant) -> Frame {
     let config = config::project(state, selection);
+    let mut live = live::project_at(state, &config, now);
+    readout::project(state, &config, &mut live);
     Frame {
         meta: meta::project(state),
-        live: live::project_at(state, &config, now),
+        live,
         settings: settings::project(state),
         routing: crate::routing_policy::view(state),
         controllers: crate::controllers::view(state, &config.device_panel_rows),

@@ -1,147 +1,15 @@
-// Rust guideline compliant 2026-05-03
-
-//! Label formatting and leaf-state evaluation for conditional predicates.
-//!
-//! Composite condition evaluation stays in `inputforge_core::pipeline`.
-//! This module renders human labels and snapshots per-leaf truth for the
-//! live readout predicate chip section.
-
-use inputforge_core::action::Condition;
-use inputforge_core::pipeline::InputCache;
-use inputforge_core::types::{HatDirection, InputAddress};
-
-use crate::context::ConfigSnapshot;
-use crate::frame::mapping_list::source_label;
-
-use super::analyzer::PredicateKind;
-
-/// Render a condition as a single human label suitable for COND rows.
-pub(super) fn format_condition_label(condition: &Condition, cfg: &ConfigSnapshot) -> String {
-    match condition {
-        Condition::ButtonPressed { input } => {
-            format!("{} pressed", source_label::format(input, cfg))
-        }
-        Condition::ButtonReleased { input } => {
-            format!("{} released", source_label::format(input, cfg))
-        }
-        Condition::AxisInRange { input, min, max } => {
-            format!(
-                "{} in [{:.2}..{:.2}]",
-                source_label::format(input, cfg),
-                min,
-                max
-            )
-        }
-        Condition::HatDirection { input, directions } => {
-            let glyphs = render_hat_glyphs(directions);
-            format!("{} hat {glyphs}", source_label::format(input, cfg))
-        }
-        Condition::All { conditions } => {
-            if conditions.is_empty() {
-                "true".to_owned()
-            } else {
-                conditions
-                    .iter()
-                    .map(|condition| format_nested_condition_label(condition, cfg))
-                    .collect::<Vec<_>>()
-                    .join(" AND ")
-            }
-        }
-        Condition::Any { conditions } => {
-            if conditions.is_empty() {
-                "false".to_owned()
-            } else {
-                conditions
-                    .iter()
-                    .map(|condition| format_nested_condition_label(condition, cfg))
-                    .collect::<Vec<_>>()
-                    .join(" OR ")
-            }
-        }
-        Condition::Not { condition } => {
-            format!("NOT {}", format_nested_condition_label(condition, cfg))
-        }
-    }
-}
-
-fn format_nested_condition_label(condition: &Condition, cfg: &ConfigSnapshot) -> String {
-    let label = format_condition_label(condition, cfg);
-    if needs_nested_parentheses(condition) {
-        format!("({label})")
-    } else {
-        label
-    }
-}
-
-fn needs_nested_parentheses(condition: &Condition) -> bool {
-    match condition {
-        Condition::All { conditions } | Condition::Any { conditions } => !conditions.is_empty(),
-        Condition::Not { .. } => true,
-        Condition::ButtonPressed { .. }
-        | Condition::ButtonReleased { .. }
-        | Condition::AxisInRange { .. }
-        | Condition::HatDirection { .. } => false,
-    }
-}
-
-/// Source label for an IN-block predicate chip.
-pub(super) fn format_predicate_chip_label(input: &InputAddress, cfg: &ConfigSnapshot) -> String {
-    source_label::format(input, cfg)
-}
-
-/// Per-leaf state snapshot used by IN-block predicate chip rendering.
-pub(super) fn evaluate_leaf_state(
-    input: &InputAddress,
-    kind: &PredicateKind,
-    cache: &dyn InputCache,
-) -> bool {
-    use inputforge_core::pipeline::evaluate_condition;
-
-    let synthetic = match kind {
-        PredicateKind::ButtonPressed => Condition::ButtonPressed {
-            input: input.clone(),
-        },
-        PredicateKind::ButtonReleased => Condition::ButtonReleased {
-            input: input.clone(),
-        },
-        PredicateKind::AxisInRange { min, max } => Condition::AxisInRange {
-            input: input.clone(),
-            min: *min,
-            max: *max,
-        },
-        PredicateKind::HatDirection { directions } => Condition::HatDirection {
-            input: input.clone(),
-            directions: directions.clone(),
-        },
-    };
-    evaluate_condition(&synthetic, cache)
-}
-
-/// Render hat directions in canonical compass order.
-pub(super) fn render_hat_glyphs(directions: &[HatDirection]) -> String {
-    const ORDER: &[(HatDirection, char)] = &[
-        (HatDirection::N, '\u{2191}'),
-        (HatDirection::NE, '\u{2197}'),
-        (HatDirection::E, '\u{2192}'),
-        (HatDirection::SE, '\u{2198}'),
-        (HatDirection::S, '\u{2193}'),
-        (HatDirection::SW, '\u{2199}'),
-        (HatDirection::W, '\u{2190}'),
-        (HatDirection::NW, '\u{2196}'),
-        (HatDirection::Center, '\u{00b7}'),
-    ];
-
-    ORDER
-        .iter()
-        .filter(|(direction, _)| directions.contains(direction))
-        .map(|(_, glyph)| *glyph)
-        .collect()
-}
-
+//! Renderer label formatting for prepared readout rows.
+pub(super) use crate::readouts::labels::render_hat_glyphs;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use inputforge_core::types::{AxisPolarity, AxisValue, DeviceId, InputId, InputValue};
+    use crate::{
+        context::ConfigSnapshot,
+        readouts::labels::{format_condition_label, format_predicate_chip_label},
+    };
+    use inputforge_core::action::Condition;
+    use inputforge_core::types::{DeviceId, InputId};
+    use inputforge_core::types::{HatDirection, InputAddress};
 
     fn cfg() -> ConfigSnapshot {
         ConfigSnapshot::default()
@@ -308,27 +176,5 @@ mod tests {
         let label = format_predicate_chip_label(&button(3), &cfg());
 
         assert_ne!(label.len(), 0);
-    }
-
-    #[test]
-    fn evaluate_leaf_state_uses_input_cache() {
-        let watched = axis(1);
-        let mut state = inputforge_core::state::AppState::new();
-        state.input_cache.update(
-            &watched,
-            &InputValue::Axis {
-                value: AxisValue::new(0.5),
-                polarity: AxisPolarity::Bipolar,
-            },
-        );
-
-        assert!(evaluate_leaf_state(
-            &watched,
-            &PredicateKind::AxisInRange {
-                min: 0.25,
-                max: 0.75
-            },
-            &state.input_cache,
-        ));
     }
 }

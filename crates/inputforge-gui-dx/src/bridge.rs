@@ -48,6 +48,13 @@ impl Publisher {
             bindings.reconcile.call(());
         }
     }
+    /// Publish deadline-only changes when the engine read is contended.
+    pub fn publish_readout(&self, readout: Option<crate::readouts::Readout>) {
+        let mut live = self.context.live;
+        if live.peek().readout != readout {
+            live.with_mut(|live| live.readout = readout);
+        }
+    }
     /// Publish changed fields without waking unchanged subscribers.
     pub fn publish(&self, frame: Frame) {
         if let Some(bindings) = self.profiles {
