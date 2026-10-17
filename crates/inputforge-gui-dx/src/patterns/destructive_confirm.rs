@@ -25,8 +25,7 @@ use crate::components::{
 )]
 #[derive(Clone, PartialEq, Props)]
 pub struct DestructiveConfirmDialogProps {
-    /// Controlled open state. The component flips this to `false` on every
-    /// resolution path (Cancel/Confirm) and fires the matching callback.
+    /// Controlled open state. Closes only after the chosen callback accepts the resolution.
     pub open: Signal<bool>,
 
     /// Title, defaults to "Confirm".
@@ -50,8 +49,8 @@ pub struct DestructiveConfirmDialogProps {
     /// "Delete") so the affirmative button names the action.
     pub confirm_label: String,
 
-    pub oncancel: EventHandler<()>,
-    pub onconfirm: EventHandler<()>,
+    pub oncancel: Callback<(), bool>,
+    pub onconfirm: Callback<(), bool>,
 
     #[props(default)]
     pub class: Option<String>,
@@ -63,21 +62,17 @@ pub fn DestructiveConfirmDialog(props: DestructiveConfirmDialogProps) -> Element
     let cancel_label = props.cancel_label.as_deref().unwrap_or("Cancel");
     let confirm_label = props.confirm_label;
 
-    let mut open = props.open;
+    let open = props.open;
+    let resolve = crate::components::behavior().overlays.resolve;
     let cancel = props.oncancel;
     let confirm = props.onconfirm;
 
-    let onclose = move |()| {
-        open.set(false);
-        cancel.call(());
-    };
+    let onclose = cancel;
     let on_cancel_click = move |_| {
-        open.set(false);
-        cancel.call(());
+        resolve.call((open, cancel));
     };
     let on_confirm_click = move |_| {
-        open.set(false);
-        confirm.call(());
+        resolve.call((open, confirm));
     };
 
     rsx! {
@@ -121,8 +116,8 @@ mod tests {
                 title: Some("Test title".to_owned()),
                 description: rsx! { "Test body" },
                 confirm_label: "Reduce".to_owned(),
-                oncancel: move |()| {},
-                onconfirm: move |()| {},
+                oncancel: move |()| true,
+                onconfirm: move |()| true,
             }
         }
     }

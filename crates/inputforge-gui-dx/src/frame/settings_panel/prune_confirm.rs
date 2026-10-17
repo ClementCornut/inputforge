@@ -21,7 +21,7 @@ pub(crate) fn PruneConfirmDialog() -> Element {
         return rsx! {};
     };
     rsx! {
-        DialogRoot {open, close_on_backdrop_click: false, onclose:move|()|{let _=c.send(Intent::Cancel);},
+        DialogRoot {open, close_on_backdrop_click: false, onclose:move|()|c.send(Intent::Cancel),
             DialogTitle {"Reduce snapshot buffer to {pending.candidate_max}?"}
             DialogDescription {"{pending.will_remove} unpinned snapshots will be deleted from {pending.profile_name}. Pinned snapshots are kept."}
             DialogBody {if let Some(error)=view.error {div {role:"alert","{error}"}}}

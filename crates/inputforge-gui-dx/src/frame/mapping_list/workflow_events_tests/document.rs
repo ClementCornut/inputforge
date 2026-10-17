@@ -93,7 +93,13 @@ impl Document {
         self.scripts
             .borrow()
             .iter()
-            .filter(|s| s.contains("delete window[") && !s.contains("window.addEventListener"))
+            .filter(|s| {
+                s.contains("delete window[")
+                    && !s.contains("window.addEventListener")
+                    && (s.contains("if-rail-keyboard-")
+                        || s.contains("if-editor-keyboard-")
+                        || s.contains("if-rail-add-"))
+            })
             .count()
     }
 }

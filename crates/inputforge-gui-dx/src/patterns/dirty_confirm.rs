@@ -25,8 +25,7 @@ use crate::components::{
 )]
 #[derive(Clone, PartialEq, Props)]
 pub struct DirtyConfirmDialogProps {
-    /// Controlled open state. The component flips this to `false` on every
-    /// resolution path (Cancel/Discard/Save) and fires the matching callback.
+    /// Controlled open state. Closes only after the chosen callback accepts the resolution.
     pub open: Signal<bool>,
 
     /// Title, defaults to "Unsaved Changes".
@@ -41,9 +40,9 @@ pub struct DirtyConfirmDialogProps {
     #[props(default)]
     pub save_label: Option<String>,
 
-    pub oncancel: EventHandler<()>,
-    pub ondiscard: EventHandler<()>,
-    pub onsave: EventHandler<()>,
+    pub oncancel: Callback<(), bool>,
+    pub ondiscard: Callback<(), bool>,
+    pub onsave: Callback<(), bool>,
 
     #[props(default)]
     pub class: Option<String>,
@@ -58,26 +57,21 @@ pub fn DirtyConfirmDialog(props: DirtyConfirmDialogProps) -> Element {
         .unwrap_or("You have unsaved changes. What would you like to do?");
     let save_label = props.save_label.as_deref().unwrap_or("Save");
 
-    let mut open = props.open;
+    let open = props.open;
+    let resolve = crate::components::behavior().overlays.resolve;
     let cancel = props.oncancel;
     let discard = props.ondiscard;
     let save = props.onsave;
 
-    let onclose = move |()| {
-        open.set(false);
-        cancel.call(());
-    };
+    let onclose = cancel;
     let on_cancel_click = move |_| {
-        open.set(false);
-        cancel.call(());
+        resolve.call((open, cancel));
     };
     let on_discard_click = move |_| {
-        open.set(false);
-        discard.call(());
+        resolve.call((open, discard));
     };
     let on_save_click = move |_| {
-        open.set(false);
-        save.call(());
+        resolve.call((open, save));
     };
 
     rsx! {

@@ -1447,7 +1447,7 @@ may change during extraction.
 | 5 | **Batch mapping — resolved** — [app wizard](../crates/inputforge-app/src/mapping_edits/batch/mod.rs); [app dispatch](../crates/inputforge-app/src/mapping_edits/batch/dispatch.rs); [GUI rendering](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs) | Target selection/validation, collisions, reconciliation, entry generation, snapshot requests and delivery are app-owned. Core retains snapshot/persistence execution. |
 | 6 | **Settings, snapshots, profiles and modes — resolved** — [app settings](../crates/inputforge-app/src/settings/mod.rs); [settings policy](../crates/inputforge-app/src/settings/policy.rs); [app profiles](../crates/inputforge-app/src/profiles/mod.rs) | Mode CRUD, startup/activation, validation, confirmation/counts, dispatch and selection/focus decisions are app-owned. Profile workflows, name/collision policy, captured identities, file dialogs, confirmation and failed-delivery retention are app-owned. Snapshot actions, current identity checks, drawer state and restore confirmation are app-owned in Part 4. Settings validation, pending-value reconciliation, prune confirmation and guarded dispatch are app-owned in Part 5. Core retains persistence, native startup services and pruning execution. |
 | 7 | **Operating-system services and filesystem access** — [app file picker](../crates/inputforge-app/src/profiles/dialog.rs); [app clipboard](../crates/inputforge-app/src/controllers/inspector/clipboard.rs); [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Native profile dialog invocation and obsolete-result rejection are app-owned. Part 6 moves clipboard invocation, native owner lifetime and write feedback to the app, with the resolved Linux Wayland feature enabled. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
-| 8 | **Event handling and UI state transitions — partially resolved** — [app navigation](../crates/inputforge-app/src/navigation/mod.rs); [navigation rendering](../crates/inputforge-gui-dx/src/frame/view_state.rs); [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs) | Snapshot Ctrl+S is app-owned in Part 4; device-inspector interactions in Part 6. Part 9 moves editor surfaces/panels, stable-profile/selection reconciliation, filtering, expansion invalidation and rail/editor shortcut interpretation and listener lifecycle into the app. Reusable form/tab behavior, overlay/dismissal and sortable interactions remain in Parts 10–12. |
+| 8 | **Event handling and UI state transitions — partially resolved** — [app navigation](../crates/inputforge-app/src/navigation/mod.rs); [navigation rendering](../crates/inputforge-gui-dx/src/frame/view_state.rs); [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs) | Snapshot Ctrl+S is app-owned in Part 4; device-inspector interactions in Part 6. Part 9 moves editor surfaces/panels, stable-profile/selection reconciliation, filtering, expansion invalidation and rail/editor shortcut interpretation and listener lifecycle into the app. Part 10 moves reusable form/tab behavior and Part 11 moves shared overlay/dismissal behavior and document listener ownership into app bindings. Sortable interaction remains in Part 12. |
 | 9 | **Live readout analysis — resolved in Part 7** — [app analysis](../crates/inputforge-app/src/bridge/readout/analyze.rs); [app deadlines](../crates/inputforge-app/src/bridge/readout/activity.rs); [renderer](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/mod.rs) | The existing app bridge prepares typed input/output values, merge/conditional/gesture chains, predicates, exact output ownership/polarity/activity and instrument tracking values. App callbacks own expansion/reset decisions. Preview expiry advances on the same 16 ms tick, including contended engine reads; the GUI renders completed values without engine access or per-render timers. |
 | 10 | **Notifications — resolved in Part 8** — [app notification owner](../crates/inputforge-app/src/notifications/mod.rs); [queue deadlines](../crates/inputforge-app/src/notifications/state.rs); [warning tail](../crates/inputforge-app/src/notifications/warnings.rs); [renderer](../crates/inputforge-gui-dx/src/toast/viewport.rs) | The app owns deduplication, capacity/order, warning delivery, expiry, independent hover/focus pauses and dismissal/Escape. The existing bridge advances deadlines even during engine read contention. GUI contracts expose prepared visible values and supplied callbacks; inline workflow errors remain independent. Existing notification interactions are preserved; dormant undo controls are not added. |
 
@@ -2397,3 +2397,81 @@ Enter/blur once, Escape, external/undo changes during drafts and failed-edit
 refocus retry. Check inline text navigation, curve/mode tab arrows/Home/End,
 disabled tabs, add/rename focus, gallery controls and assistive-technology labels.
 Native focus/compositor, accessibility, hardware and performance remain unverified.
+
+## Menus, dialogs and dismissal behavior — 2026-10-18
+
+Part 11 moves reusable overlay interpretation and native document ownership into
+focused [app UI modules](../crates/inputforge-app/src/ui/overlays/mod.rs), supplied
+through the existing engine-independent [controls provider](../crates/inputforge-app/src/ui/mod.rs).
+Desktop hosting, demos/gallery and canonical renderer fixtures share the same
+[overlay contracts](../crates/inputforge-gui-dx/src/overlays.rs); the GUI has no
+production dependency on the app or duplicate default behavior.
+
+- [Menu behavior](../crates/inputforge-app/src/ui/overlays/menu.rs) owns trigger
+  toggles, dismissal reasons, keyboard interpretation and focus requests. The
+  [focus script](../crates/inputforge-app/assets/menu_focus.js) wraps traversal,
+  skips native and ARIA-disabled items, and safely ignores removed targets.
+  Arrows/Home/End prevent page scrolling and propagation. Native Enter/Space
+  remains button activation. Escape returns trigger focus; Tab preserves native
+  traversal. Existing domain activation gates still run before closure: rejected
+  actions retain their menu and accessible workflow feedback. Closed/disabled
+  trigger-menu items reject stale synthetic activations.
+- [Dialog behavior](../crates/inputforge-app/src/ui/overlays/dialog.rs) owns
+  visibility, current dismissible/backdrop policy and cancellation. The native
+  cancel listener prevents browser closure until the owning workflow accepts
+  dismissal. [Destructive](../crates/inputforge-gui-dx/src/patterns/destructive_confirm.rs)
+  and [dirty](../crates/inputforge-gui-dx/src/patterns/dirty_confirm.rs) confirmation
+  patterns invoke bool-returning workflow callbacks before changing visibility;
+  false retains the dialog, and closed dialogs cannot submit again. Production
+  profile, restore, prune and mode cancellation returns the existing workflow
+  result. Command delivery is not presented as persistence completion.
+- [Click-away ownership](../crates/inputforge-app/src/ui/overlays/listener.rs)
+  includes composed-path/nested/excluded-target classification, synchronous
+  exactly-once disposal, request replacement and obsolete receiver rejection.
+  Inspection also found the existing add-pad Escape transport in GUI AddInline.
+  Its [app hook](../crates/inputforge-app/src/ui/overlays/escape.rs) and
+  [script](../crates/inputforge-app/assets/rail_add_escape.js) preserve the filter
+  exclusion and live-capture precedence. No extra engine listener, poller, thread
+  or channel was introduced. The existing large add-pad markup was split into a
+  bounded [rendering leaf](../crates/inputforge-gui-dx/src/frame/mapping_list/add_inline_rendering.rs).
+- GUI [menus](../crates/inputforge-gui-dx/src/components/menu/mod.rs),
+  [dialog markup](../crates/inputforge-gui-dx/src/components/dialog.rs) and
+  [click-away wrapper](../crates/inputforge-gui-dx/src/components/click_away_listener.rs)
+  retain signals, IDs, native event forwarding, attributes and rendering.
+  Placement geometry and the stable outer [portal anchor](../crates/inputforge-gui-dx/src/components/portal.rs)
+  are unchanged. [Drawer](../crates/inputforge-gui-dx/src/components/drawer.rs) is
+  CSS/ARIA rendering only; its snapshot transition policy already moved in Part 4.
+
+Regression-first real-handler failures reproduced premature confirmation closure,
+menu arrow scrolling, stale closed-item activation and repeated closed-dialog Save.
+Missing app focus/add-pad script and binding contracts were observed before their
+extraction. [Real app/provider renderer tests](../crates/inputforge-gui-dx/tests/overlays.rs)
+cover failure retention, action ordering, disabled/closed gates, native activation,
+Tab/Escape focus, all dismissal/backdrop combinations, accessible ID relationships,
+capture precedence, synchronous cleanup and obsolete owners across remount.
+[Executable production scripts](../crates/inputforge-gui-dx/tests/overlays_listener.mjs)
+cover disabled/removed DOM focus targets, nested/excluded/shadow click paths and
+exactly-once listener cleanup/remount. Existing [portal lifecycle tests](../crates/inputforge-gui-dx/tests/portal_lifecycle.rs)
+retain stable reopening anchors. Existing profile/mode/settings/snapshot/capture,
+history, native-address and bridge lifecycle regressions remain in the full gate.
+Fixtures now publish controlled-dialog readiness before simulating Escape and
+account for the additional native cancel listener separately from keyboard owners;
+no workflow-result or failed-delivery expectation was weakened.
+
+Final automated checkpoint: **2,225 passed, 0 failed, 11 existing ignored** across
+37 workspace suites. The unchanged strict pre-commit hook and all six existing
+JavaScript suites plus the new overlay listener suite passed. Documentation links,
+seven preserved historical evidence hashes and bounded production-module sizes
+were checked. The default sandbox reproduced five existing single-instance IPC
+permission failures; the complete host-enabled gate passed without exclusions.
+
+Manual acceptance: run `dx run -p inputforge-app` on native Wayland and separately
+Windows. Check profile/mode/stage menus with pointer/right-click/Shift+F10,
+arrows/Home/End, disabled items, Enter/Space, Escape focus return and Tab traversal.
+Check rejected menu actions and delete/restore/prune confirmations, Cancel/Escape,
+backdrop policy, click-away exclusions and removed focus targets. Close/reopen
+panels and menus; check add-pad live capture versus filter Escape and dirty/
+destructive gallery dialogs. Native compositor focus, assistive technology,
+hardware and performance acceptance remain unverified. Part 12 retains sortable
+interaction; Part 13 removes transitional handles and performs the final ownership
+inspection. Historical native Apply, capture and drag evidence above is unchanged.

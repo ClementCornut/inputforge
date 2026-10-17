@@ -1,7 +1,7 @@
 //! Stage menu wiring for app-owned remove and relative-move intents.
 use super::stage::stage_title_for;
 use crate::{
-    components::{AnchoredMenu, CloseReason, MenuAnchor, MenuItem},
+    components::{AnchoredMenu, MenuAnchor, MenuItem},
     frame::{
         MappingKey,
         mapping_editor::{
@@ -10,6 +10,7 @@ use crate::{
         },
     },
     mapping_edits::{Bindings, Edit},
+    overlays::CloseReason,
 };
 use dioxus::prelude::*;
 use inputforge_core::action::Action;

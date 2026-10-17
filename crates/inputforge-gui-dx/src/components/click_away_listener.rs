@@ -1,7 +1,6 @@
 //! `ClickAwayListener`: fires a callback when a `mousedown` lands
 //! outside a target element. Behaviour primitive only — renders
-//! nothing of its own, just installs and tears down a document-level
-//! event listener tied to the component lifecycle.
+//! nothing of its own; app bindings own the document listener lifecycle.
 //!
 //! Mirrors MUI's `ClickAwayListener`
 //! (`mui-material/src/ClickAwayListener/ClickAwayListener.tsx`):
@@ -12,11 +11,7 @@
 //! click reaches its target, so the same gesture closes the overlay
 //! and activates the outside element.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use dioxus::prelude::*;
-
-static LISTENER_ID: AtomicU64 = AtomicU64::new(0);
 
 /// Fires `on_click_away` when a `mousedown` lands outside the
 /// element identified by `target_id`. If `exclude_id` is provided,
@@ -26,8 +21,7 @@ static LISTENER_ID: AtomicU64 = AtomicU64::new(0);
 /// `mousedown` would otherwise produce.
 ///
 /// Renders nothing of its own; returns `{children}` directly. The
-/// listener is installed on mount via `document::eval` and removed
-/// on unmount via `use_drop`.
+/// app-supplied hook installs the listener and disposes it synchronously on unmount.
 #[component]
 pub fn ClickAwayListener(
     target_id: String,
@@ -35,58 +29,7 @@ pub fn ClickAwayListener(
     on_click_away: EventHandler<()>,
     children: Element,
 ) -> Element {
-    let listener_id =
-        use_hook(|| format!("__if_caw_{}", LISTENER_ID.fetch_add(1, Ordering::Relaxed)));
-    let id_for_mount = listener_id.clone();
-    let id_for_drop = listener_id.clone();
-    let target_for_mount = target_id.clone();
-    let exclude_for_mount = exclude_id.clone();
-
-    use_effect(move || {
-        let listener_id = id_for_mount.clone();
-        let target_id = target_for_mount.clone();
-        let exclude_id = exclude_for_mount.clone();
-        let cb = on_click_away;
-        spawn(async move {
-            let exclude_js = exclude_id
-                .as_ref()
-                .map_or_else(|| "null".to_owned(), |s| format!("'{s}'"));
-            let mut handle = document::eval(&format!(
-                "const handler = (event) => {{\n\
-                   const target = document.getElementById('{target_id}');\n\
-                   if (!target) return;\n\
-                   const path = event.composedPath ? event.composedPath() : null;\n\
-                   const insideTarget = path ? path.includes(target) : target.contains(event.target);\n\
-                   if (insideTarget) return;\n\
-                   const excludeId = {exclude_js};\n\
-                   if (excludeId) {{\n\
-                     const exc = document.getElementById(excludeId);\n\
-                     const insideExc = exc && (path ? path.includes(exc) : exc.contains(event.target));\n\
-                     if (insideExc) return;\n\
-                   }}\n\
-                   dioxus.send('away');\n\
-                 }};\n\
-                 window['{listener_id}'] = handler;\n\
-                 document.addEventListener('mousedown', handler);"
-            ));
-            while handle.recv::<String>().await.is_ok() {
-                cb.call(());
-            }
-        });
-    });
-
-    use_drop(move || {
-        let id = id_for_drop.clone();
-        spawn(async move {
-            let _ = document::eval(&format!(
-                "const h = window['{id}'];\n\
-                 if (h) {{\n\
-                   document.removeEventListener('mousedown', h);\n\
-                   delete window['{id}'];\n\
-                 }}"
-            ));
-        });
-    });
+    (super::behavior().overlays.click_away)(target_id, exclude_id, on_click_away);
 
     rsx! { {children} }
 }

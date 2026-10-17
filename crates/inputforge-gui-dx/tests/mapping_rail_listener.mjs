@@ -3,9 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 const rail = readFileSync('crates/inputforge-app/assets/rail_shortcuts.js', 'utf8');
-const add = readFileSync('crates/inputforge-gui-dx/src/frame/mapping_list/add_inline.rs', 'utf8');
+const escape = readFileSync('crates/inputforge-app/assets/rail_add_escape.js', 'utf8');
 const keyboard = rail;
-const escape = add.match(/r"([\s\S]*?)"/)[1].replaceAll('{{', '{').replaceAll('}}', '}');
 const handlers = new Set();
 const window = {
   addEventListener(kind, fn, capture) { assert.equal(kind, 'keydown'); assert.equal(capture, true); handlers.add(fn); },

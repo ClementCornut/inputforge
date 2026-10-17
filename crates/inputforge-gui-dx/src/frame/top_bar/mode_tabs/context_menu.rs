@@ -1,7 +1,8 @@
 //! Mode menu rendering, anchor mechanics and app callback wiring.
 use crate::{
-    components::{AnchoredMenu, CloseReason, MenuAnchor, MenuItem},
+    components::{AnchoredMenu, MenuAnchor, MenuItem},
     mode_management::{Operation, Request, Row, Scope, Transition},
+    overlays::CloseReason,
 };
 use dioxus::prelude::*;
 #[derive(Debug, Clone, Copy, PartialEq)]

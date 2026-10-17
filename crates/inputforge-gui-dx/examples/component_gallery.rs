@@ -116,7 +116,7 @@ fn gallery_root() -> Element {
 
                         DialogRoot {
                             open: basic_open,
-                            onclose: move |()| {},
+                            onclose: move |()| true,
                             DialogTitle { "Basic dialog" }
                             DialogDescription { "ESC dismisses; backdrop click does not." }
                             DialogBody {}
@@ -131,7 +131,7 @@ fn gallery_root() -> Element {
 
                         DialogRoot {
                             open: non_dismiss_open,
-                            onclose: move |()| {},
+                            onclose: move |()| true,
                             dismissible: false,
                             DialogTitle { "Non-dismissible dialog" }
                             DialogDescription {
@@ -149,7 +149,7 @@ fn gallery_root() -> Element {
 
                         DialogRoot {
                             open: backdrop_open,
-                            onclose: move |()| {},
+                            onclose: move |()| true,
                             close_on_backdrop_click: true,
                             DialogTitle { "Close-on-backdrop dialog" }
                             DialogDescription { "Click outside the panel to close." }
@@ -165,7 +165,7 @@ fn gallery_root() -> Element {
 
                         DialogRoot {
                             open: scroll_open,
-                            onclose: move |()| {},
+                            onclose: move |()| true,
                             DialogTitle { "Scrollable body" }
                             DialogDescription { "Long content scrolls inside the body region." }
                             DialogBody {
@@ -221,9 +221,9 @@ fn gallery_root() -> Element {
 
                         DirtyConfirmDialog {
                             open: dirty_a_open,
-                            oncancel:  move |()| dirty_a_outcome.set("cancel".to_owned()),
-                            ondiscard: move |()| dirty_a_outcome.set("discard".to_owned()),
-                            onsave:    move |()| dirty_a_outcome.set("save".to_owned()),
+                            oncancel:  move |()| { dirty_a_outcome.set("cancel".to_owned()); true },
+                            ondiscard: move |()| { dirty_a_outcome.set("discard".to_owned()); true },
+                            onsave:    move |()| { dirty_a_outcome.set("save".to_owned()); true },
                         }
 
                         DirtyConfirmDialog {
@@ -233,9 +233,9 @@ fn gallery_root() -> Element {
                                 "Profile X has unsaved mappings. Saving applies them now.".to_owned()
                             ),
                             save_label: Some("Save & Switch".to_owned()),
-                            oncancel:  move |()| dirty_b_outcome.set("cancel".to_owned()),
-                            ondiscard: move |()| dirty_b_outcome.set("discard".to_owned()),
-                            onsave:    move |()| dirty_b_outcome.set("save".to_owned()),
+                            oncancel:  move |()| { dirty_b_outcome.set("cancel".to_owned()); true },
+                            ondiscard: move |()| { dirty_b_outcome.set("discard".to_owned()); true },
+                            onsave:    move |()| { dirty_b_outcome.set("save".to_owned()); true },
                         }
                     }
 

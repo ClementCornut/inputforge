@@ -16,7 +16,7 @@ pub(super) fn SnapshotConfirm() -> Element {
         }
     });
     rsx! {
-        DialogRoot {open,onclose:move|()|{let _=c.send(Intent::Snapshot(snapshots::Intent::Cancel));},
+        DialogRoot {open,onclose:move|()|c.send(Intent::Snapshot(snapshots::Intent::Cancel)),
             DialogTitle {"Restore snapshot?"}
             DialogBody {
                 "This replaces the current profile contents. A recovery snapshot is created before restoring."

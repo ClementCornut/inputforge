@@ -1,14 +1,16 @@
-//! Shared, engine-independent behavior for form and tab rendering.
+//! Shared, engine-independent behavior for controls and overlay rendering.
 mod draft;
 mod inputs;
 mod integer;
+mod overlays;
 mod tabs;
 use dioxus::prelude::*;
 use inputforge_gui_dx::controls::Bindings;
-/// Construct the real form/tab callbacks for an editor, gallery or fixture.
+/// Construct the real control and overlay callbacks for an editor, gallery or fixture.
 #[must_use]
 pub fn bindings() -> Bindings {
     Bindings {
+        overlays: overlays::bindings(),
         number: inputs::use_number,
         integer: integer::use_integer,
         text_key: Callback::new(

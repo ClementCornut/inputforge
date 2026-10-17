@@ -52,7 +52,8 @@ fn actual_demo_shortcut_feedback_expires_and_teardown_remount_does_not_duplicate
                 1
             );
             drop(dom);
-            assert_eq!(document.cleanups(), 2);
+            // Snapshot shortcut, add-pad Escape and controlled-dialog cancel each dispose once.
+            assert_eq!(document.cleanups(), 3);
             assert_eq!(document.shutdowns(), 1);
             assert_eq!(Arc::strong_count(&state), 1);
             tokio::time::advance(Duration::from_secs(20)).await;
@@ -69,7 +70,7 @@ fn actual_demo_shortcut_feedback_expires_and_teardown_remount_does_not_duplicate
             drive(&mut fresh, 8).await;
             assert!(!dioxus_ssr::render(&fresh).contains("if-toast__message"));
             drop(fresh);
-            assert_eq!(document.cleanups(), 4);
+            assert_eq!(document.cleanups(), 6);
             assert_eq!(document.shutdowns(), 2);
             assert_eq!(Arc::strong_count(&state), 1);
         });

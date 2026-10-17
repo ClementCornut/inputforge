@@ -32,7 +32,7 @@ pub(crate) fn ModeDeleteDialog() -> Element {
     let mappings_label = count_label(mappings, "mapping", "mappings");
     let cancel = use_callback(move |()| {
         let Some(t) = target.peek().clone() else {
-            return;
+            return true;
         };
         match bindings.dispatch.call(Request {
             scope: t.scope,
@@ -44,9 +44,13 @@ pub(crate) fn ModeDeleteDialog() -> Element {
                 }
                 target.set(None);
                 error.set(None);
+                true
             }
-            Err(e) => error.set(Some(e)),
-            _ => {}
+            Err(e) => {
+                error.set(Some(e));
+                false
+            }
+            _ => false,
         }
     });
     rsx! {
@@ -59,7 +63,7 @@ pub(crate) fn ModeDeleteDialog() -> Element {
             crate::components::DialogFooter {
                 crate::components::Button {variant:crate::components::ButtonVariant::Ghost,
                     onmounted:move |evt:MountedEvent| {spawn(async move {let _=evt.data().set_focus(true).await;});},
-                    onclick:move |_| cancel.call(()),"Cancel"
+                    onclick:move |_| { let _ = cancel.call(()); },"Cancel"
                 }
                 crate::components::Button {variant:crate::components::ButtonVariant::Secondary,
                     onclick:move |_| {

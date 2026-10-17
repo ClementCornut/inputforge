@@ -20,7 +20,7 @@ pub(crate) fn ProfileDeleteDialog() -> Element {
         DialogRoot {
             open,
             onclose: move |()| {
-                let _ = c.send(Intent::CancelDelete);
+                c.send(Intent::CancelDelete)
             },
             DialogTitle {
                 "Delete profile"

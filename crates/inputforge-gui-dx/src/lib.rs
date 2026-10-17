@@ -19,6 +19,10 @@ pub use inputforge_gui_dx::readouts;
 pub mod capture;
 #[cfg(test)]
 pub use inputforge_gui_dx::capture;
+#[cfg(not(test))]
+pub mod overlays;
+#[cfg(test)]
+pub use inputforge_gui_dx::overlays;
 pub mod components;
 #[cfg(not(test))]
 pub mod controls;

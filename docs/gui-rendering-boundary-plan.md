@@ -234,6 +234,8 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 ## Part 11: Menus, Dialogs and Dismissal Behavior
 
+**Status (2026-10-18):** Implemented on `main`; final host workspace: 2,225 passed, 0 failed, 11 existing ignored across 37 suites. Strict pre-commit, six existing JS suites and the new overlay listener suite pass. Native Wayland/Windows acceptance remains manual.
+
 **Commit:** `refactor(overlays): move menu and dialog behavior into app`
 
 **Files:** Add focused app `ui/overlays.rs`/listener modules; modify GUI `components/{menu/mod.rs,menu/focus_walker.rs,dialog.rs,click_away_listener.rs,drawer.rs}`, `patterns/{destructive_confirm.rs,dirty_confirm.rs}`, affected consumers, `tests/portal_lifecycle.rs` and gallery fixtures. Leave `components/portal.rs` placement mechanics in GUI unless its own audit finds a behavioral decision.
@@ -244,7 +246,8 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 **Tests first:** Add app overlay transitions and real-handler/listener lifecycle cases for arrows/Home/End, disabled items, Enter/Space/Escape/Tab, right-click/Shift+F10, nested/excluded click-away targets, backdrop/dismissible combinations, failed action retaining overlay, removed focus target, stable portal anchoring and exactly-once listener cleanup/remount. Preserve accessible relationships and keyboard-only focus return.
 
-- [ ] Complete the common cycle; manually check menus/dialogs across Profiles, Modes, Settings and the editor.
+- [x] Regression-first common cycle: app overlay hooks and real-handler/listener tests, failure-aware activation/dismissal, bounded render leaves and caller/gallery updates. Inspection also moved the existing add-pad Escape transport into the app while preserving capture/filter precedence. Drawer and stable portal anchoring remain pure rendering. Independent review is recorded in the owning checkpoint.
+- [ ] User acceptance: menus/dialogs across Profiles, Modes, Settings and the editor on native Wayland and separately Windows.
 
 ## Part 12: Shared Sortable Interaction
 

@@ -174,6 +174,8 @@ fn cancel_and_escape_dismiss_prune_without_sending_or_failure_feedback() {
         dom.render_immediate_to_vec();
         event(&dom, "blur", 2, SerializedFocusData {});
         dom.render_immediate_to_vec();
+        // Publish the controlled dialog-open effect before delivering native dismissal.
+        dom.render_immediate_to_vec();
         if escape {
             event(&dom, "cancel", 0, SerializedCancelData {});
         } else {

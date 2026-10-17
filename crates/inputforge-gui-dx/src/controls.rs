@@ -1,9 +1,10 @@
-//! App-supplied behavior for reusable form and tab renderers.
+//! App-supplied behavior for reusable controls and overlay renderers.
 use crate::components::{IntegerInputError, TabsOrientation};
 use dioxus::prelude::*;
 /// Engine-independent hooks and event callbacks installed by the host.
 #[derive(Clone, Copy, Debug)]
 pub struct Bindings {
+    pub overlays: crate::overlays::Bindings,
     pub number: fn(&NumberProps) -> NumberView,
     pub integer: fn(&IntegerProps) -> InputView,
     pub text_key: Callback<(KeyboardEvent, bool, Option<EventHandler<KeyboardEvent>>)>,

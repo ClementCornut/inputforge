@@ -18,6 +18,7 @@
 )]
 
 mod add_inline;
+mod add_inline_rendering;
 mod empty;
 mod filter;
 mod group;
@@ -667,6 +668,7 @@ pub(crate) fn DeleteDialogMount(delete_target: Signal<Option<Target>>) -> Elemen
             onclose: move |()| {
                 let mut dt = delete_target;
                 dt.set(None);
+                true
             },
             crate::components::DialogTitle { "Delete mapping" }
             crate::components::DialogBody {

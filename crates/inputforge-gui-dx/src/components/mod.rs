@@ -46,9 +46,7 @@ pub use icon_button::IconButton;
 pub use integer_input::{IntegerInput, IntegerInputError};
 pub use label::Label;
 pub use layout::{Cluster, Inset, Stack};
-pub use menu::{
-    Anchor, AnchoredMenu, CloseReason, MenuAnchor, MenuItem, MenuItems, MenuRoot, MenuTrigger,
-};
+pub use menu::{Anchor, AnchoredMenu, MenuAnchor, MenuItem, MenuItems, MenuRoot, MenuTrigger};
 pub use number_input::NumberInput;
 pub use portal::Portal;
 pub use segmented_control::{SegmentedControl, SegmentedControlOption};
