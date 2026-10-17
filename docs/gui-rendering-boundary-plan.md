@@ -149,9 +149,11 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 ## Part 6: Device Inspector and Native Clipboard
 
+**Status (2026-10-17):** Complete on `main`; independent read-only review cleared with no Critical/Important findings. Native Wayland/Windows acceptance remains manual.
+
 **Commit:** `refactor(devices): move inspector workflows and clipboard into app`
 
-**Files:** Extend `inputforge-app/src/controllers/` with a focused device-inspector module and clipboard service; extend GUI `src/controllers.rs`. Modify GUI `frame/panel_slot/device_panel/{mod.rs,inspector.rs}`, its selection/draft tests, both crate manifests, workspace `Cargo.toml` and `Cargo.lock` only if feature resolution changes.
+**Files:** Extend `inputforge-app/src/controllers/` with a focused device-inspector module and clipboard service; extend GUI `src/controllers/{mod.rs,inspector.rs}` (moving the former `controllers.rs` to satisfy the existing module-layout lint). Modify GUI `frame/panel_slot/device_panel/{mod.rs,inspector.rs}`, its selection/draft tests, both crate manifests, workspace `Cargo.toml` and `Cargo.lock` only if feature resolution changes.
 
 **Boundary:** App owns initial/changed device selection, alias draft commit/cancel, removal guards and dispatch, report-copy invocation and feedback. Pure report display formatting may stay in GUI; pass the current device identity and rendered report text to the app callback. Move `arboard` ownership to the app and enable the installed dependency's native Wayland path (`wayland-data-control`) for Linux; keep platform differences at this service. Inspect installed source/features first and test error/clipboard-lifetime behavior; do not add an X11 fallback command.
 
@@ -159,7 +161,9 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 **Tests first:** Add app/controller device cases and real inspector handlers. Cover connected-first fallback, removed selection, stale/recreated device/profile, alias trim/no-op/cancel, failed save retaining the draft, disconnected-only removal with primary/nested secondary references, reference changes before click, clipboard success/failure and exactly one write. Verify the resolved Linux Wayland feature with Cargo; native compositor acceptance remains separate.
 
-- [ ] Complete the common cycle; manually copy/paste on native Wayland with no XWayland clipboard dependency and separately on Windows, and repeat Stop/edit/Apply/Start.
+- [x] Automated gates: 2,186 workspace tests passed, 0 failed, 11 existing ignored; unchanged pre-commit, all five JavaScript suites, resolved Linux Wayland feature, audit links and seven historical evidence hashes passed.
+- [x] Independent read-only review cleared; single Part 6 commit checkpoint.
+- [ ] User acceptance: native copy/paste without an XWayland clipboard dependency, separately Windows, alias/removal workflows and Stop/edit/Apply/Start.
 
 ## Part 7: Prepared Live Readouts and Activity Expiry
 

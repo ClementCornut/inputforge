@@ -39,6 +39,7 @@ pub(crate) fn app_root() -> Element {
 
     let ctx = AppContext {
         state: std::sync::Arc::clone(&raw.state),
+        #[cfg(test)]
         commands: raw.commands.clone(),
         settings,
         meta,

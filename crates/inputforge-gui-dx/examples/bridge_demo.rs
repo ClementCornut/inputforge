@@ -80,9 +80,9 @@ fn demo_root() -> dioxus::prelude::Element {
         dioxus::prelude::Callback::new(move |publisher: inputforge_gui_dx::bridge::Publisher| {
             publisher.publish(frame.clone());
         });
-    let controllers = inputforge_gui_dx::controllers::Bindings {
-        dispatch: dioxus::prelude::Callback::new(|_| None),
-    };
+    let controllers = dioxus::prelude::use_hook(|| {
+        inputforge_app::controllers::bindings(Arc::clone(&state), commands.clone())
+    });
     let capture = dioxus::prelude::use_hook(|| {
         inputforge_app::live_capture::Controller::new(Arc::clone(&state), commands.clone())
     });

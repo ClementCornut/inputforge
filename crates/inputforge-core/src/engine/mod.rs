@@ -13,6 +13,9 @@ mod cleanup;
 mod command;
 mod controller_bindings;
 mod dependencies;
+mod devices;
+#[doc(inline)]
+pub use devices::{DeviceAction, DeviceRequest, DeviceTarget};
 pub(crate) mod gestures;
 mod input_updates;
 mod mapping_availability;

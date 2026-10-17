@@ -16,6 +16,7 @@ name = "inputforge"
 path = "src/main.rs"
 
 [dependencies]
+arboard = { workspace = true }
 rfd = { workspace = true }
 inputforge-gui-dx    = { workspace = true }
 inputforge-autostart = { workspace = true }
@@ -42,6 +43,7 @@ inputforge-core = {
 windows               = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+arboard = { workspace = true, features = ["wayland-data-control"] }
 tray-icon = { workspace = true, features = ["ksni"] }
 zbus = { workspace = true }
 glib = { workspace = true }

@@ -20,6 +20,7 @@ pub struct RawHandles {
 #[derive(Clone, Debug)]
 pub(crate) struct AppContext {
     pub state: Arc<RwLock<AppState>>,
+    #[cfg(test)]
     pub commands: mpsc::Sender<EngineCommand>,
     pub settings: Signal<SettingsSnapshot>,
     pub meta: Signal<MetaSnapshot>,

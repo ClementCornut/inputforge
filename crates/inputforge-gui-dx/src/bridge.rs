@@ -17,6 +17,7 @@ pub struct Publisher {
     mappings: Option<crate::mapping_edits::Bindings>,
     profiles: Option<crate::profiles::Bindings>,
     settings: Option<crate::settings::Bindings>,
+    inspector: Option<crate::controllers::inspector::Bindings>,
 }
 impl Publisher {
     pub(crate) fn new(
@@ -33,6 +34,7 @@ impl Publisher {
             mappings: try_consume_context::<crate::mapping_edits::Bindings>(),
             profiles: try_consume_context::<crate::profiles::Bindings>(),
             settings: try_consume_context::<crate::settings::Bindings>(),
+            inspector: try_consume_context::<crate::controllers::Bindings>().map(|b| b.inspector),
         }
     }
     /// Read the selected mapping without subscribing the caller.
@@ -52,6 +54,9 @@ impl Publisher {
             bindings.reconcile.call(frame.meta.clone());
         }
         if let Some(bindings) = self.settings {
+            bindings.reconcile.call(());
+        }
+        if let Some(bindings) = self.inspector {
             bindings.reconcile.call(());
         }
         self.routing.publish(frame.routing);

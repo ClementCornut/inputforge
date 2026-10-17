@@ -7100,3 +7100,6 @@ mod snapshot_requests;
 
 #[path = "settings_request_tests.rs"]
 mod settings_request_tests;
+
+#[path = "device_request_tests.rs"]
+mod device_request_tests;

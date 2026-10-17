@@ -1,6 +1,7 @@
 //! Shared controller editing and command delivery for Windows and Linux.
 mod axes;
 mod edit;
+pub mod inspector;
 mod policy;
 // Preserve the core virtual-device identity range (1..=16).
 const MAX_SLOTS: u8 = 16;
@@ -35,7 +36,9 @@ pub fn resolve(state: &AppState, action: Action) -> Result<Option<EngineCommand>
 /// Create editor-scoped callbacks for controller operations.
 #[must_use]
 pub fn bindings(state: Arc<RwLock<AppState>>, commands: mpsc::Sender<EngineCommand>) -> Bindings {
+    let inspector = inspector::Controller::new(Arc::clone(&state), commands.clone());
     Bindings {
+        inspector: inspector.bindings(),
         dispatch: Callback::new(move |action| match dispatch(action, &state, &commands) {
             Ok(()) => None,
             Err(error) => {

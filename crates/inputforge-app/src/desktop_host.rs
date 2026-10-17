@@ -101,8 +101,9 @@ fn desktop_root() -> Element {
             capture_for_polling.clone(),
         );
     });
-    let controllers =
-        inputforge_app::controllers::bindings(Arc::clone(&handles.state), handles.commands.clone());
+    let controllers = use_hook(|| {
+        inputforge_app::controllers::bindings(Arc::clone(&handles.state), handles.commands.clone())
+    });
     let keyboard =
         use_hook(|| inputforge_app::keyboard_capture::Controller::new(Arc::clone(&handles.state)));
     let mappings = use_hook(|| {

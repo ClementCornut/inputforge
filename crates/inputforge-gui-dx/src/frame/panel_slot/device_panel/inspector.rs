@@ -1,98 +1,35 @@
-//! Selected controller details and editable display name.
-use super::{
-    AppContext, DevicePanelRow, UsageBlock, alias_draft_after_escape, build_device_report,
-    build_set_device_alias_command, copy_device_report_to_clipboard,
+//! Render prepared device fields and forward observations to the app.
+use super::{DevicePanelRow, UsageBlock, build_device_report};
+use crate::{
+    components::{Button, ButtonSize, ButtonVariant},
+    controllers::inspector::{Context, Intent, View},
 };
-use crate::components::{Button, ButtonSize, ButtonVariant};
 use dioxus::prelude::*;
-
 #[component]
-pub(super) fn DeviceInspector(
-    row: DevicePanelRow,
-    mut draft_alias: Signal<String>,
-    mut save_error: Signal<Option<String>>,
-) -> Element {
-    let ctx = use_context::<AppContext>();
-    let persisted_alias = row.alias.clone();
-    let draft_value = draft_alias.read().clone();
-    let dirty = draft_value.trim() != persisted_alias;
+pub(super) fn DeviceInspector(row: DevicePanelRow, view: View, context: Context) -> Element {
+    let draft_value = view.draft.clone();
     let report = build_device_report(&row);
-    let error = save_error.read().clone();
-    let save_device = row.device_id.clone();
-    let mut draft_alias_for_input = draft_alias;
-    let draft_alias_for_save = draft_alias;
-    let mut draft_alias_for_keydown = draft_alias;
-    let mut save_error_for_save = save_error;
-    let mut save_error_for_keydown = save_error;
-    let mut save_error_for_copy = save_error;
-    let commands = ctx.commands.clone();
-    let commands_for_remove = commands.clone();
-    let remove_device = row.device_id.clone();
-    let mut save_error_for_remove = save_error;
-    let removal_reason = if ctx.meta.read().profile_name.is_none() {
-        Some("Load a profile to remove a device.")
-    } else if row.connected {
-        Some("Disconnect this device before removing it.")
-    } else if row.usage.primary_mappings > 0 || row.usage.secondary_mappings > 0 {
-        Some("Remove this device's mapping references first.")
-    } else {
-        None
+    let oninput = move |event: FormEvent| {
+        let _ = context.send(Intent::Input(event.value()));
+    };
+    let save_click = move |_| {
+        let _ = context.send(Intent::Save);
     };
     let remove_click = move |_| {
-        if let Err(error) = commands_for_remove.send(
-            inputforge_core::engine::EngineCommand::RemoveDeviceFromProfile {
-                device: remove_device.clone(),
-            },
-        ) {
-            save_error_for_remove.set(Some(error.to_string()));
-        } else {
-            save_error_for_remove.set(None);
-        }
-    };
-    let commands_for_keydown = commands.clone();
-    let save_device_for_keydown = save_device.clone();
-    let persisted_alias_for_keydown = persisted_alias.clone();
-    let report_for_copy = report.clone();
-    let oninput = move |event: FormEvent| draft_alias_for_input.set(event.value());
-    let save_click = move |_| {
-        let command =
-            build_set_device_alias_command(save_device.clone(), &draft_alias_for_save.read());
-        if let Err(error) = commands.send(command) {
-            save_error_for_save.set(Some(error.to_string()));
-        } else {
-            save_error_for_save.set(None);
-        }
-    };
-    let onkeydown = move |event: KeyboardEvent| match event.key() {
-        Key::Enter => {
-            event.prevent_default();
-            let draft_value = draft_alias_for_keydown.read().clone();
-            if draft_value.trim() == persisted_alias_for_keydown {
-                return;
-            }
-            let command =
-                build_set_device_alias_command(save_device_for_keydown.clone(), &draft_value);
-            if let Err(error) = commands_for_keydown.send(command) {
-                save_error_for_keydown.set(Some(error.to_string()));
-            } else {
-                save_error_for_keydown.set(None);
-            }
-        }
-        Key::Escape => {
-            event.prevent_default();
-            draft_alias_for_keydown.set(alias_draft_after_escape(&persisted_alias_for_keydown));
-            save_error_for_keydown.set(None);
-        }
-        _ => {}
+        let _ = context.send(Intent::Remove);
     };
     let copy_click = move |_| {
-        if let Err(error) = copy_device_report_to_clipboard(&report_for_copy) {
-            save_error_for_copy.set(Some(format!("Copy failed: {error}")));
-        } else {
-            save_error_for_copy.set(None);
+        let _ = context.send(Intent::Copy(report.clone()));
+    };
+    let onkeydown = move |event: KeyboardEvent| {
+        if context
+            .bindings
+            .key
+            .call((context.owner, context.workflow, event.key().to_string()))
+        {
+            event.prevent_default();
         }
     };
-
     rsx! {
         section { class: "if-device-panel__inspector", "aria-label": "Selected device details",
             div { class: "if-device-inspector__field",
@@ -108,14 +45,14 @@ pub(super) fn DeviceInspector(
                     Button {
                         size: ButtonSize::Sm,
                         class: "if-device-inspector__save",
-                        disabled: !dirty,
+                        disabled: !view.can_save,
                         onclick: save_click,
                         "Save"
                     }
                 }
             }
-            if let Some(error) = error {
-                div { class: "if-device-inspector__error", "{error}" }
+            if let Some(error) = &view.error {
+                div { role: "alert", class: "if-device-inspector__error", "{error}" }
             }
             div { class: "if-device-inspector__meta",
                 span { class: "if-device-inspector__meta-label", "Hardware" }
@@ -132,12 +69,12 @@ pub(super) fn DeviceInspector(
                 Button {
                     size: ButtonSize::Sm, variant: ButtonVariant::Danger,
                     class: "if-device-inspector__remove",
-                    disabled: removal_reason.is_some(),
+                    disabled: view.removal_reason.is_some(),
                     onclick: remove_click,
                     "Remove from profile"
                 }
                 p { class: "if-device-inspector__removal-hint",
-                    if let Some(reason) = removal_reason { "{reason}" }
+                    if let Some(reason) = &view.removal_reason { "{reason}" }
                     else { "Hidden in this profile until reconnected." }
                 }
             }

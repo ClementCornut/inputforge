@@ -169,7 +169,7 @@ findings **#1** and **#2** are resolved:
   `SessionState::requires_output_reconfiguration()` still owns exact configurable
   versus compatible fixed-layout comparison. No parallel GUI validation rules
   were introduced.
-- [GUI controller contract](../crates/inputforge-gui-dx/src/controllers.rs),
+- [GUI controller contract](../crates/inputforge-gui-dx/src/controllers/mod.rs),
   [selection rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/controller_session.rs),
   and [layout rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/virtual_config.rs)
   retain prepared values, signals, markup, and callback wiring. These controller
@@ -278,7 +278,7 @@ The advanced axis settings portions of findings **#1** and **#2** are resolved:
   select live session bindings first and saved profile bindings only for devices
   absent from the live table. Rows resolve persisted detection/override choices
   by native axis code, independently of logical display indices.
-- The existing [controller contract](../crates/inputforge-gui-dx/src/controllers.rs)
+- The existing [controller contract](../crates/inputforge-gui-dx/src/controllers/mod.rs)
   now carries axis rows and raw select-value/redetection intents. Each intent
   includes device identity, logical index, and native code. The existing app
   dispatcher rechecks the current table and refuses obsolete identities, removed
@@ -1440,40 +1440,36 @@ may change during extraction.
 
 | # | Area and evidence | App-owned responsibility |
 | --- | --- | --- |
-| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, live capture, keyboard capture, shared mapping dispatch/history, mapping rail, batch and mode workflows now use app-owned handlers. Other GUI workflow handlers still receive raw engine state and a command sender; extract those with their respective workflows. |
-| 2 | **Controller editing policy — partially resolved** — [app controller policy](../crates/inputforge-app/src/controllers/policy.rs); [app axis settings](../crates/inputforge-app/src/controllers/axes.rs); [axis rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Selection, virtual-layout mutations, Apply, shared routing decisions, and advanced axis settings are app-owned. Other configuration-editing/readiness gates remain; see resolved status above. |
+| 1 | **Engine access — partially resolved** — [render entry point](../crates/inputforge-gui-dx/src/lib.rs); [app polling bridge](../crates/inputforge-app/src/bridge/mod.rs); [GUI publication](../crates/inputforge-gui-dx/src/bridge.rs) | Polling and snapshot preparation are app-owned. Controller selection/layout/Apply, advanced axis settings, live capture, keyboard capture, shared mapping dispatch/history, mapping rail, batch and mode workflows now use app-owned handlers. Device inspector actions are app-owned in Part 6. The GUI per-window context no longer carries a production command sender; remaining raw state reads and the transitional host handles close in the deferred slices. |
+| 2 | **Controller editing policy — partially resolved** — [app controller policy](../crates/inputforge-app/src/controllers/policy.rs); [app axis settings](../crates/inputforge-app/src/controllers/axes.rs); [axis rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Selection, virtual-layout mutations, Apply, shared routing decisions, and advanced axis settings are app-owned. Device inspector selection, alias drafts and guarded removal are app-owned in Part 6. Other configuration-editing/readiness gates remain; see resolved status above. |
 | 3 | **Capture workflows — partially resolved** — [app live capture](../crates/inputforge-app/src/live_capture/mod.rs); [GUI capture contract](../crates/inputforge-gui-dx/src/capture.rs); [app keyboard capture](../crates/inputforge-app/src/keyboard_capture/mod.rs); [GUI keyboard contract](../crates/inputforge-gui-dx/src/keyboard_capture.rs) | Live and keyboard capture, physical keyboard translation, ownership, target revalidation, cancellation, interception and delivery are app-owned; live input additionally owns epoch/native confirmation. Shared stage edits/undo and rail Add/collision decisions are app-owned in the later mapping slices. |
 | 4 | **Mapping edits and instruments — resolved** — [app controller](../crates/inputforge-app/src/mapping_edits/mod.rs); [app paths](../crates/inputforge-app/src/mapping_edits/paths.rs); [app history](../crates/inputforge-app/src/mapping_edits/history/mod.rs); [GUI callback wiring](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/stage_dispatch.rs) | Shared mapping stage edits, command construction, restore snapshots, undo/redo, invalidation and nudge grouping are app-owned. Rail Add/duplicate/collision/delete/reorder workflows are app-owned. Curve/deadzone mutation, draft/drag decisions, keyboard and numeric behavior are app-owned in Part 2; screen/viewbox geometry stays with rendering. Profile workflows are app-owned in Part 3; batch mapping is app-owned in the later slice. |
 | 5 | **Batch mapping — resolved** — [app wizard](../crates/inputforge-app/src/mapping_edits/batch/mod.rs); [app dispatch](../crates/inputforge-app/src/mapping_edits/batch/dispatch.rs); [GUI rendering](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs) | Target selection/validation, collisions, reconciliation, entry generation, snapshot requests and delivery are app-owned. Core retains snapshot/persistence execution. |
 | 6 | **Settings, snapshots, profiles and modes — resolved** — [app settings](../crates/inputforge-app/src/settings/mod.rs); [settings policy](../crates/inputforge-app/src/settings/policy.rs); [app profiles](../crates/inputforge-app/src/profiles/mod.rs) | Mode CRUD, startup/activation, validation, confirmation/counts, dispatch and selection/focus decisions are app-owned. Profile workflows, name/collision policy, captured identities, file dialogs, confirmation and failed-delivery retention are app-owned. Snapshot actions, current identity checks, drawer state and restore confirmation are app-owned in Part 4. Settings validation, pending-value reconciliation, prune confirmation and guarded dispatch are app-owned in Part 5. Core retains persistence, native startup services and pruning execution. |
-| 7 | **Operating-system services and filesystem access** — [app file picker](../crates/inputforge-app/src/profiles/dialog.rs); [clipboard](../crates/inputforge-gui-dx/src/frame/panel_slot/device_panel/mod.rs), line 239; [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Native profile dialog invocation and obsolete-result rejection are app-owned; clipboard writes and other OS services remain. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
-| 8 | **Event handling and UI state transitions** — [app snapshot shortcut](../crates/inputforge-app/src/profiles/shortcut/mod.rs); [navigation reconciliation](../crates/inputforge-gui-dx/src/frame/view_state.rs), line 244; [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs), line 163 | Snapshot Ctrl+S and its listener lifecycle are app-owned in Part 4. Other document listeners, shortcut interpretation, focus navigation, click-away behavior, drag/drop decisions, draft commits, and selection reconciliation. This includes reusable component behavior under the strict rendering-only boundary. |
+| 7 | **Operating-system services and filesystem access** — [app file picker](../crates/inputforge-app/src/profiles/dialog.rs); [app clipboard](../crates/inputforge-app/src/controllers/inspector/clipboard.rs); [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Native profile dialog invocation and obsolete-result rejection are app-owned. Part 6 moves clipboard invocation, native owner lifetime and write feedback to the app, with the resolved Linux Wayland feature enabled. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
+| 8 | **Event handling and UI state transitions** — [app snapshot shortcut](../crates/inputforge-app/src/profiles/shortcut/mod.rs); [navigation reconciliation](../crates/inputforge-gui-dx/src/frame/view_state.rs), line 244; [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs), line 163 | Snapshot Ctrl+S and its listener lifecycle are app-owned in Part 4. Part 6 owns device-ledger selection and inspector draft/key/removal/copy decisions. Other document listeners, shortcut interpretation, focus navigation, click-away behavior, drag/drop decisions, draft commits, and selection reconciliation. This includes reusable component behavior under the strict rendering-only boundary. |
 | 9 | **Live readout analysis** — [analyzer](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/analyzer.rs), line 146; [activity timer](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/mod.rs), line 100 | Pipeline interpretation, activity calculations, and expiry scheduling. Supply a completed readout model to the renderer. |
 | 10 | **Notifications** — [toast queue](../crates/inputforge-gui-dx/src/toast/queue.rs), line 26; [toast timer and handlers](../crates/inputforge-gui-dx/src/toast/viewport.rs), line 27 | Warning delivery, notification expiry, pause/resume, dismissal, and undo actions. The GUI should display the current notifications and wire supplied callbacks. |
 
-## Concrete Wayland parity gap
+## Native Wayland clipboard — build gap resolved in Part 6
 
-Clipboard support currently uses `arboard` with its Wayland feature disabled.
-The audit checked the app's resolved Cargo features and the installed dependency
-source: this configuration selects its X11 backend. Copying a device report
-therefore requires X11 clipboard access.
+The [app manifest](../crates/inputforge-app/Cargo.toml) enables the installed
+`arboard` 3.6.1 `wayland-data-control` feature on Linux. The [GUI manifest](../crates/inputforge-gui-dx/Cargo.toml)
+no longer depends on `arboard`. The [app clipboard owner](../crates/inputforge-app/src/controllers/inspector/clipboard.rs)
+retains its initialized native handle across copy actions and panel unmounts;
+initialization/write failures reach accessible inspector feedback without retrying
+the write or claiming success.
 
-Evidence:
-
-- [Workspace dependency configuration](../Cargo.toml), line 95, specifies
-  `arboard` 3.6.1 with `default-features = false` and no Wayland feature.
-- [GUI dependency configuration](../crates/inputforge-gui-dx/Cargo.toml)
-  inherits that dependency without enabling Wayland support.
-- The device-report copy handler constructs `arboard::Clipboard` directly.
-- `cargo tree --locked --offline -p inputforge-app -e features -i arboard`
-  showed no enabled Wayland feature.
-- Installed `arboard` 3.6.1 gates its Wayland backend behind
-  `wayland-data-control`; without that feature, its Linux constructor selects
-  the X11 backend.
-
-An app-owned clipboard service needs a Wayland-capable path. This does not
-require direct X11 code. Enabling a dependency feature alone does not establish
-compositor compatibility; native Wayland acceptance remains necessary.
+`cargo tree --locked --offline -p inputforge-app -e features -i arboard`
+resolves `wayland-data-control` and `wl-clipboard-rs`. Installed source confirms
+that `arboard` selects the Wayland data-control backend when available. Its
+Wayland provider serves offered data through the dependency's existing background
+implementation; the app adds no polling task, thread or channel. Upstream
+transitive X11 support remains; the app adds no direct X11 API or fallback command.
+The previously disabled Wayland feature was a build configuration gap, and this
+feature resolution closes that gap. It does not establish compositor compatibility
+or independence from XWayland in a live desktop session. Native acceptance remains
+manual on Wayland and separately Windows.
 
 ## Shared Windows and Linux architecture
 
@@ -1992,3 +1988,90 @@ The settings portion of findings **#1**, **#2**, **#6** and workflow-local **#8*
 Use `dx run -p inputforge-app` on native Wayland, then separately Windows. With disposable profiles, verify buffer edits through Enter/blur, invalid values and unchanged commits; toggle skip/startup/start-minimized rapidly and edit both gesture thresholds. Relaunch and check persisted settings and actual startup/tray behavior. Create enough unpinned snapshots plus pinned snapshots to require pruning: Cancel/Escape must not prune; Confirm must keep pinned snapshots and remove only the excess. Change profile or snapshot count while confirmation is open and verify rejection; confirm queued profile changes cannot prune the replacement profile. Reopen Settings and ensure no duplicate actions or obsolete callbacks. Verify backend warnings remain visible on failure.
 
 Reusable numeric/tab behavior (Part 10), general overlay/listener policy (Part 11), notification scheduling (Part 8) and final raw-handle removal (Part 13) remain deferred. Native hardware/compositor/Windows acceptance, desktop focus and runtime performance were not verified by automated tests. Prior Apply and drag acceptance evidence is preserved verbatim.
+
+
+## Part 6 — Device inspector and native clipboard — 2026-10-17
+
+The inspector portion of findings **#1**, **#2**, **#7** and workflow-local **#8**
+now belongs to the [app inspector](../crates/inputforge-app/src/controllers/inspector/mod.rs).
+Its [policy](../crates/inputforge-app/src/controllers/inspector/policy.rs) chooses
+the first connected device, falls back to remembered devices, reconciles removed
+selections and prepares Save/removal availability. [Captured dispatch](../crates/inputforge-app/src/controllers/inspector/dispatch.rs)
+owns alias input, trimmed/no-op/empty commits, Enter/Escape, cancellation, removal
+and report-copy invocation/error feedback. Raw drafts remain after rejected
+validation, delivery or persistence; delivery does not announce a successful save
+or removal. Ordinary typing keeps native keyboard behavior even when Enter fails.
+
+The [prepared GUI contract](../crates/inputforge-gui-dx/src/controllers/inspector.rs)
+contains rows, selection, draft, availability, accessible feedback and mounted
+callbacks. [Ledger rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/device_panel/mod.rs)
+and [inspector rendering](../crates/inputforge-gui-dx/src/frame/panel_slot/device_panel/inspector.rs)
+forward observations; [plain-text report formatting](../crates/inputforge-gui-dx/src/frame/panel_slot/device_panel/formatting.rs)
+remains pure rendering. No migrated handler reads engine state, constructs an
+engine command or invokes the clipboard. The existing controller contract moved
+to `controllers/mod.rs` to satisfy the unchanged module-layout lint. Existing
+selection/layout/Apply and sparse-axis bindings retain their behavior.
+
+The [core device guard](../crates/inputforge-core/src/engine/devices.rs) captures
+stable profile ID, lossless native profile path, native device metadata and serial.
+Mounted owners and observed row generations reject obsolete callbacks, including
+same-ID native replacements and queued profile changes. Retained alias drafts
+never adopt a replacement device. A fresh explicit selection resets the draft.
+App removal rechecks current connection and primary/nested secondary references;
+core execution retains its existing backend-connection and dependency validation.
+A failed alias settings save now restores the prior in-memory aliases before
+returning the existing error. Core warnings remain the persistence-failure signal;
+no extra acknowledgement replaces the mapping barrier.
+
+The existing bridge reconciles through nonblocking reads and publishes only changed
+inspector values. Empty frames do not advance workflow generations. Mount/unmount
+ownership rejects obsolete callbacks; the editor retains the clipboard handle
+while the panel is closed. The Linux feature and installed-source evidence are
+recorded above. No new application poller, timer, thread, channel, generic workflow
+framework, direct X11 path, persisted format or processing algorithm was introduced.
+
+### Part 6 verification
+
+[App binding regressions](../crates/inputforge-app/tests/devices.rs) exercise
+connected/remembered fallback, removed selection, native/profile replacement,
+trimmed/empty/no-op aliases, cancellation, failed-delivery retention, fresh versus
+obsolete row callbacks, ordinary keys and failed Enter. Private native-I/O boundary
+cases exercise actual copy dispatch exactly once, lock release, failure feedback
+and owner retention/reuse. [Real GUI event cases](../crates/inputforge-gui-dx/src/frame/panel_slot/device_panel/event_tests.rs)
+exercise Save, Enter and Escape with accessible failure feedback. [Core guard cases](../crates/inputforge-core/src/engine/device_request_tests.rs)
+exercise queued profile loads, replaced/missing devices, new nested references,
+connection drift, accepted persistence and failed-save rollback. Missing app/core
+contracts, an inaccessible real GUI error, stale ledger selection, repeated empty
+publication and failed alias-save mutation were observed failing before fixes.
+
+The unchanged `bash .githooks/pre-commit` passed (format and strict all-target
+Clippy). `cargo test --workspace --locked --offline -j 2` passed with host IPC
+access: **2,186 passed, 0 failed, 11 existing ignored**, including all single-instance
+socket tests. All five executable JavaScript suites passed: keyboard capture,
+mapping rail/editor, sortable drag (14), instrument pointer (7) and snapshot
+shortcut. Resolved Linux Cargo features include `wayland-data-control` and
+`wl-clipboard-rs`. Audit/plan links, seven saved historical evidence hashes,
+production-module sizes and `git diff --check` passed. New production modules stay
+below 200 code lines; larger pre-existing modules received only narrow integration
+changes. One independent read-only review verified all 34 frozen path hashes and
+cleared the complete connected change with no Critical or Important findings.
+
+### Part 6 manual acceptance and remaining scope
+
+Use `dx run -p inputforge-app` with disposable profiles on native Wayland and
+separately Windows. Select connected and remembered devices, disconnect/remove the
+selected device and verify fallback. Save aliases with Save/Enter, try trimmed,
+empty and unchanged names, then Escape an unsaved draft. Switch profiles or replace
+the native device while a draft remains; old actions must reject until reselected.
+Try removal while connected and while primary/nested conditional/merge references
+exist, then remove an unused disconnected device. Copy the report once, close and
+reopen the panel and paste into a separate native application; repeat on native
+Wayland without an XWayland clipboard dependency and separately Windows. Exercise
+clipboard denial/unavailability and backend-save failure for visible feedback and
+retained drafts. Repeat Stop/edit/Apply/Start with sparse native controls and
+retained outputs to check unchanged controller behavior.
+
+Native hardware/compositor/Windows acceptance, desktop focus and runtime performance
+remain unverified. Live readout analysis, notification scheduling, remaining
+navigation/component policies and final raw-handle removal remain Parts 7–13.
+Prior Apply and drag acceptance evidence is preserved verbatim.

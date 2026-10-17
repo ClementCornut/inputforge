@@ -10,6 +10,8 @@ use crate::types::{DeviceId, InputAddress};
 /// Commands sent from the GUI to the engine via an mpsc channel.
 #[derive(Debug, PartialEq)]
 pub enum EngineCommand {
+    /// Validate captured profile and native device identity before inspector mutation.
+    Device(Box<super::DeviceRequest>),
     /// Validate captured identities before any snapshot operation side effect.
     Snapshot(Box<super::SnapshotRequest>),
     /// Apply a settings delta and acknowledge its execution independently of mapping edits.

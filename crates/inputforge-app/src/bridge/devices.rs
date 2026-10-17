@@ -4,7 +4,7 @@ use inputforge_core::state::AppState;
 use inputforge_core::types::DeviceId;
 use inputforge_gui_dx::snapshots::DevicePanelRow;
 use std::collections::{HashMap, HashSet};
-pub(super) fn build_device_panel_rows(s: &AppState) -> Vec<DevicePanelRow> {
+pub(crate) fn build_device_panel_rows(s: &AppState) -> Vec<DevicePanelRow> {
     let mut rows = Vec::new();
     let mut live_ids = HashSet::new();
 

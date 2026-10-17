@@ -2,7 +2,7 @@
 mod actions;
 mod config;
 mod device_usage;
-mod devices;
+pub(crate) mod devices;
 mod live;
 pub(crate) mod meta;
 mod profile_metadata;

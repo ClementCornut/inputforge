@@ -1,95 +1,65 @@
-use dioxus::prelude::*;
-use inputforge_core::engine::EngineCommand;
-use inputforge_core::types::DeviceId;
-
+//! Device ledger and prepared inspector rendering.
 use crate::components::{Badge, BadgeVariant};
-use crate::context::{AppContext, DevicePanelRow};
+use crate::context::DevicePanelRow;
+#[cfg(test)]
+use crate::controllers::inspector::Bindings;
+use crate::controllers::inspector::{Context, Intent, View};
+use dioxus::prelude::*;
+#[cfg(test)]
+use inputforge_core::types::DeviceId;
+mod formatting;
 mod inspector;
+use formatting::{build_device_report, usage_count_items};
 use inspector::DeviceInspector;
-
 #[component]
 pub(super) fn DevicePanel() -> Element {
-    let ctx = use_context::<AppContext>();
-    let rows = use_memo(move || ctx.config.read().device_panel_rows.clone());
-    let initial_selected = select_initial_device(&rows.read());
-    let initial_alias = {
-        let current_rows = rows.read();
-        initial_selected
-            .as_ref()
-            .and_then(|id| current_rows.iter().find(|row| &row.device_id == id))
-            .map(alias_draft_for_selected_row)
-            .unwrap_or_default()
-    };
-    let mut selected = use_signal(|| initial_selected.clone());
-    let mut draft_alias = use_signal(|| initial_alias);
-    let mut save_error = use_signal(|| None::<String>);
-
-    use_effect(move || {
-        let current_rows = rows.read();
-        if selected
-            .read()
-            .as_ref()
-            .is_some_and(|id| current_rows.iter().any(|row| &row.device_id == id))
-        {
-            return;
-        }
-        let next = select_initial_device(&current_rows);
-        if *selected.peek() != next {
-            draft_alias.set(
-                next.as_ref()
-                    .and_then(|id| current_rows.iter().find(|row| &row.device_id == id))
-                    .map(alias_draft_for_selected_row)
-                    .unwrap_or_default(),
-            );
-            save_error.set(None);
-            selected.set(next);
-        }
-    });
-
-    let current_rows = rows.read();
-    if current_rows.is_empty() {
+    let c = mount_context();
+    let current = c.view.read().clone();
+    if current.rows.is_empty() {
         return rsx! {
             div { class: "if-device-panel if-device-panel--empty",
                 div { class: "if-device-panel__empty-title", "No devices known" }
-                div { class: "if-device-panel__empty-copy", "Connect a controller, wheel, pedals, or other input device to populate this panel." }
+                div { class: "if-device-panel__empty-copy",
+                    "Connect a controller, wheel, pedals, or other input device to populate this panel."
+                }
             }
         };
     }
-
-    let selected_id = selected
-        .read()
-        .clone()
-        .or_else(|| select_initial_device(&current_rows));
-    let selected_row = selected_id
-        .as_ref()
-        .and_then(|id| current_rows.iter().find(|row| &row.device_id == id))
-        .cloned()
-        .unwrap_or_else(|| current_rows[0].clone());
-
     rsx! {
         div { class: "if-device-panel",
             div { class: "if-device-panel__ledger", role: "list",
-                for row in current_rows.iter().cloned() {
+                for row in current.rows.iter().cloned() {
                     DeviceLedgerRow {
-                        row: row.clone(),
-                        selected: row.device_id == selected_row.device_id,
-                        onselect: move |row: DevicePanelRow| {
-                            draft_alias.set(alias_draft_for_selected_row(&row));
-                            save_error.set(None);
-                            selected.set(Some(row.device_id.clone()));
-                        },
+                        selected: current.selected.as_ref().is_some_and(|s| s.device_id == row.device_id),
+                        row,
+                        onselect: move |row: DevicePanelRow| { let _ = c.send(Intent::Select(row.device_id)); },
                     }
                 }
             }
-            DeviceInspector {
-                row: selected_row,
-                draft_alias,
-                save_error,
+            if let Some(row) = current.selected.clone() {
+                DeviceInspector { row, view: current.clone(), context: c }
             }
         }
     }
 }
 
+fn mount_context() -> Context {
+    #[cfg(not(test))]
+    let bindings = use_context::<crate::controllers::Bindings>().inspector;
+    #[cfg(test)]
+    let bindings = try_consume_context::<Bindings>().unwrap_or_else(test_support::bindings);
+    let view = use_signal(View::default);
+    let owner = use_hook(|| bindings.mount.call(view));
+    use_drop(move || bindings.unmount.call(owner));
+    Context {
+        view,
+        owner,
+        workflow: view.read().workflow,
+        bindings,
+    }
+}
+#[cfg(test)]
+mod test_support;
 #[component]
 fn DeviceLedgerRow(
     row: DevicePanelRow,
@@ -136,121 +106,6 @@ fn DeviceLedgerRow(
     }
 }
 
-pub(super) fn select_initial_device(rows: &[DevicePanelRow]) -> Option<DeviceId> {
-    rows.iter()
-        .find(|row| row.connected)
-        .or_else(|| rows.first())
-        .map(|row| row.device_id.clone())
-}
-
-pub(super) fn alias_draft_for_selected_row(row: &DevicePanelRow) -> String {
-    row.alias.clone()
-}
-
-fn alias_draft_after_escape(persisted_alias: &str) -> String {
-    persisted_alias.to_owned()
-}
-
-fn build_set_device_alias_command(device: DeviceId, alias: &str) -> EngineCommand {
-    let alias = alias.trim().to_owned();
-    EngineCommand::SetDeviceAlias {
-        device,
-        alias: if alias.is_empty() { None } else { Some(alias) },
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct UsageCountItem {
-    label: String,
-    complete: bool,
-}
-
-fn usage_count_items(usage: &crate::context::DeviceUsageSummary) -> Vec<UsageCountItem> {
-    let mut labels = Vec::new();
-    if usage.axes.total > 0 {
-        labels.push(UsageCountItem {
-            label: format!("Axes {}/{}", usage.axes.mapped, usage.axes.total),
-            complete: usage.axes.mapped == usage.axes.total,
-        });
-    }
-    if usage.buttons.total > 0 {
-        labels.push(UsageCountItem {
-            label: format!("Buttons {}/{}", usage.buttons.mapped, usage.buttons.total),
-            complete: usage.buttons.mapped == usage.buttons.total,
-        });
-    }
-    if usage.hats.total > 0 {
-        labels.push(UsageCountItem {
-            label: format!("Hats {}/{}", usage.hats.mapped, usage.hats.total),
-            complete: usage.hats.mapped == usage.hats.total,
-        });
-    }
-    labels
-}
-
-fn usage_report_lines(usage: &crate::context::DeviceUsageSummary) -> Vec<String> {
-    let mut lines = Vec::new();
-    if usage.axes.total > 0 {
-        lines.push(format!(
-            "Axes: {}/{} mapped",
-            usage.axes.mapped, usage.axes.total
-        ));
-    }
-    if usage.buttons.total > 0 {
-        lines.push(format!(
-            "Buttons: {}/{} mapped",
-            usage.buttons.mapped, usage.buttons.total
-        ));
-    }
-    if usage.hats.total > 0 {
-        lines.push(format!(
-            "Hats: {}/{} mapped",
-            usage.hats.mapped, usage.hats.total
-        ));
-    }
-    lines
-}
-
-pub(super) fn build_device_report(row: &DevicePanelRow) -> String {
-    let diagnostics = &row.diagnostics;
-    let mut lines = vec![
-        format!("Display name: {}", row.display_name),
-        format!("Hardware name: {}", row.hardware_name),
-    ];
-    lines.extend(usage_report_lines(&row.usage));
-    lines.extend([
-        format!("Device ID: {}", row.device_id.0),
-        format!(
-            "Product version: {}",
-            format_optional_u16(diagnostics.product_version)
-        ),
-        format!(
-            "Firmware version: {}",
-            format_optional_u16(diagnostics.firmware_version)
-        ),
-    ]);
-    lines.join("\n")
-}
-
-fn format_optional_u16(value: Option<u16>) -> String {
-    value.map_or_else(|| "unavailable".to_owned(), |value| value.to_string())
-}
-
-fn copy_device_report_to_clipboard(report: &str) -> anyhow::Result<()> {
-    copy_device_report_to_clipboard_with(report, |text| {
-        let mut clipboard = arboard::Clipboard::new()?;
-        clipboard.set_text(text)?;
-        Ok(())
-    })
-}
-
-fn copy_device_report_to_clipboard_with(
-    report: &str,
-    write_text: impl FnOnce(String) -> anyhow::Result<()>,
-) -> anyhow::Result<()> {
-    write_text(report.to_owned())
-}
-
 #[component]
 fn UsageBlock(row: DevicePanelRow) -> Element {
     rsx! {
@@ -270,6 +125,7 @@ fn UsageBlock(row: DevicePanelRow) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::AppContext;
 
     use std::sync::{Arc, mpsc};
 
@@ -319,6 +175,25 @@ mod tests {
             live,
         });
 
+        let prepared = View {
+            rows: props.rows.clone(),
+            selected: props.rows.first().cloned(),
+            draft: props
+                .rows
+                .first()
+                .map_or_else(String::new, |r| r.alias.clone()),
+            ..Default::default()
+        };
+        use_context_provider(|| Bindings {
+            mount: Callback::new(move |mut v: Signal<View>| {
+                v.set(prepared.clone());
+                1
+            }),
+            dispatch: Callback::new(|_| true),
+            key: Callback::new(|_| false),
+            reconcile: Callback::new(|()| {}),
+            unmount: Callback::new(|_| {}),
+        });
         rsx! { DevicePanel {} }
     }
 
@@ -374,29 +249,6 @@ mod tests {
         let mut vdom = VirtualDom::new_with_props(TestHarness, TestHarnessProps { rows });
         vdom.rebuild_in_place();
         render(&vdom)
-    }
-
-    #[test]
-    fn select_initial_device_prefers_first_connected() {
-        let rows = vec![
-            panel_row("old", "Old Pedals", false),
-            panel_row("live", "Wheel", true),
-        ];
-
-        assert_eq!(
-            select_initial_device(&rows),
-            Some(DeviceId("live".to_owned()))
-        );
-    }
-
-    #[test]
-    fn select_initial_device_uses_first_remembered_when_none_connected() {
-        let rows = vec![panel_row("old", "Old Pedals", false)];
-
-        assert_eq!(
-            select_initial_device(&rows),
-            Some(DeviceId("old".to_owned()))
-        );
     }
 
     #[test]
@@ -464,39 +316,6 @@ mod tests {
                 ("Hats 0/1".to_owned(), false),
             ]
         );
-    }
-
-    #[test]
-    fn device_alias_command_trims_and_clears_empty_names() {
-        let empty = build_set_device_alias_command(DeviceId("dev-1".to_owned()), "   ");
-        let named = build_set_device_alias_command(DeviceId("dev-1".to_owned()), "  Rig Pedals  ");
-
-        assert!(matches!(
-            empty,
-            EngineCommand::SetDeviceAlias { alias: None, .. }
-        ));
-        assert!(matches!(
-            named,
-            EngineCommand::SetDeviceAlias {
-                alias: Some(alias),
-                ..
-            } if alias == "Rig Pedals"
-        ));
-    }
-
-    #[test]
-    fn alias_draft_comes_from_current_selection() {
-        let first = panel_row_with_alias("wheel", "Wheel Base", "Rig Wheel", true);
-        let second = panel_row_with_alias("pedals", "Pedals", "", true);
-
-        assert_eq!(alias_draft_for_selected_row(&first), "Rig Wheel");
-        assert_eq!(alias_draft_for_selected_row(&second), "");
-    }
-
-    #[test]
-    fn escape_reverts_alias_draft_to_persisted_alias() {
-        assert_eq!(alias_draft_after_escape("Rig Pedals"), "Rig Pedals");
-        assert_eq!(alias_draft_after_escape(""), "");
     }
 
     #[test]
@@ -573,75 +392,6 @@ mod tests {
         assert!(html.contains("if-badge--neutral"));
         assert!(html.contains(">Disconnected<"));
         assert!(!html.contains("if-badge--success"));
-    }
-
-    #[test]
-    fn remove_device_button_is_enabled_only_for_disconnected_unused_devices() {
-        use scraper::{Html, Selector};
-
-        for (connected, primary, secondary, disabled) in [
-            (false, 0, 0, false),
-            (true, 0, 0, true),
-            (false, 1, 0, true),
-            (false, 0, 1, true),
-        ] {
-            let mut row = panel_row("old", "Old Stick", connected);
-            row.usage.primary_mappings = primary;
-            row.usage.secondary_mappings = secondary;
-            let html = render_device_panel(vec![row]);
-            let document = Html::parse_fragment(&html);
-            let selector = Selector::parse("button.if-device-inspector__remove").unwrap();
-            let button = document.select(&selector).next().expect("remove action");
-            assert_eq!(button.value().attr("disabled").is_some(), disabled);
-        }
-    }
-
-    #[test]
-    fn removing_selected_row_resets_inspector_alias_to_remaining_device() {
-        let old = panel_row_with_alias("old", "Old Stick", "Old Alias", false);
-        let next = panel_row_with_alias("next", "Next Stick", "Next Alias", false);
-        let mut dom = VirtualDom::new_with_props(
-            TestHarness,
-            TestHarnessProps {
-                rows: vec![old, next.clone()],
-            },
-        );
-        dom.rebuild_in_place();
-        dom.render_immediate(&mut dioxus::core::NoOpMutations);
-        dom.in_scope(ScopeId::APP, || {
-            let mut ctx = consume_context::<AppContext>();
-            ctx.config.write().device_panel_rows = vec![next];
-        });
-        dom.render_immediate(&mut dioxus::core::NoOpMutations);
-        dom.render_immediate(&mut dioxus::core::NoOpMutations);
-
-        let html = render(&dom);
-        assert!(html.contains("value=\"Next Alias\""));
-        assert!(!html.contains("Old Alias"));
-        assert!(html.contains("aria-pressed=\"true\""));
-    }
-
-    #[test]
-    fn remove_device_button_is_disabled_without_a_profile() {
-        use scraper::{Html, Selector};
-
-        let mut dom = VirtualDom::new_with_props(
-            TestHarness,
-            TestHarnessProps {
-                rows: vec![panel_row("old", "Old Stick", false)],
-            },
-        );
-        dom.rebuild_in_place();
-        dom.in_scope(ScopeId::APP, || {
-            let mut ctx = consume_context::<AppContext>();
-            ctx.meta.write().profile_name = None;
-        });
-        dom.render_immediate(&mut dioxus::core::NoOpMutations);
-        let html = render(&dom);
-        let document = Html::parse_fragment(&html);
-        let selector = Selector::parse("button.if-device-inspector__remove").unwrap();
-        let button = document.select(&selector).next().expect("remove action");
-        assert!(button.value().attr("disabled").is_some());
     }
 
     #[test]
@@ -850,26 +600,7 @@ mod tests {
         assert!(html.contains("Disconnected"));
         assert!(html.contains("Axes 0/4"));
     }
-
-    #[test]
-    fn copy_device_report_helper_forwards_report_text() {
-        let row = panel_row("dev-1", "Wheel Base", true);
-        let report = build_device_report(&row);
-        let mut copied = None::<String>;
-
-        copy_device_report_to_clipboard_with(&report, |text| {
-            copied = Some(text);
-            Ok(())
-        })
-        .expect("copy helper succeeds");
-
-        let copied = copied.expect("copied text");
-        assert!(copied.contains("Display name: Wheel Base"));
-        assert!(copied.contains("Hardware name: SDL Wheel"));
-        assert!(!copied.contains("Instance path"));
-        assert!(!copied.contains("Connection:"));
-        assert!(!copied.contains("VID:"));
-        assert!(!copied.contains("PID:"));
-        assert!(!copied.contains("Serial:"));
-    }
 }
+
+#[cfg(test)]
+mod event_tests;

@@ -1,10 +1,14 @@
 //! Prepared controller rendering data and app-owned event callbacks.
 use dioxus::prelude::*;
 #[cfg(not(test))]
+pub mod inspector;
+#[cfg(not(test))]
 use inputforge_core::{
     output::traits::ControllerCapabilities,
     types::{AxisPolarity, DeviceId, VJoyAxis, VirtualDeviceConfig},
 };
+#[cfg(test)]
+pub use inputforge_gui_dx::controllers::inspector;
 
 #[cfg(test)]
 pub use inputforge_gui_dx::controllers::{Action, AxisRow, Bindings, Selection, View};
@@ -114,6 +118,8 @@ pub struct View {
 pub struct Bindings {
     /// Deliver an operation and return prepared error feedback, or clear it on success.
     pub dispatch: Callback<Action, Option<String>>,
+    /// Mounted device inspector workflows and native clipboard callback.
+    pub inspector: inspector::Bindings,
 }
 
 #[derive(Clone, Copy, Debug)]

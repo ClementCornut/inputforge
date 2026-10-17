@@ -618,6 +618,7 @@ impl Engine {
             return Ok(());
         }
         match cmd {
+            EngineCommand::Device(request) => self.handle_device(*request),
             EngineCommand::Settings(request) => {
                 self.handle_settings(*request);
             }
@@ -924,8 +925,12 @@ impl Engine {
                 );
             }
             EngineCommand::SetDeviceAlias { device, alias } => {
+                let previous = self.settings.device_aliases.clone();
                 self.settings.set_device_alias(device.clone(), alias);
-                self.settings.save_to(&self.settings_path)?;
+                if let Err(error) = self.settings.save_to(&self.settings_path) {
+                    self.settings.device_aliases = previous;
+                    return Err(error);
+                }
                 self.state
                     .write()
                     .device_aliases
