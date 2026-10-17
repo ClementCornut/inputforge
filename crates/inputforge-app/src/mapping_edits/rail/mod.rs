@@ -24,7 +24,7 @@ impl Controller {
                 .publication
                 .is_none_or(|p| *p.mode.peek() == scope.mode)
     }
-    fn current_target(&self, state: &AppState, target: &Target) -> Option<Mapping> {
+    pub(super) fn current_target(&self, state: &AppState, target: &Target) -> Option<Mapping> {
         if !self.valid_scope(state, &target.scope) || target.before.mode != target.scope.mode {
             return None;
         }

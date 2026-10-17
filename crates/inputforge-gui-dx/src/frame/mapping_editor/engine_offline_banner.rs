@@ -127,13 +127,14 @@ mod tests {
         let live = use_signal(LiveSnapshot::default);
         let settings = use_signal(SettingsSnapshot::default);
         let (commands, _) = mpsc::channel();
-        use_context_provider(|| AppContext {
-            state: Arc::new(RwLock::new(state)),
-            commands,
-            meta,
-            config,
-            live,
-            settings,
+        use_context_provider(|| {
+            crate::test_support::provide_engine(Arc::new(RwLock::new(state)), commands);
+            AppContext {
+                settings,
+                meta,
+                config,
+                live,
+            }
         });
         rsx! { EngineOfflineBanner {} }
     }
@@ -175,13 +176,14 @@ mod tests {
         let live = use_signal(LiveSnapshot::default);
         let settings = use_signal(SettingsSnapshot::default);
         let (commands, _) = mpsc::channel();
-        use_context_provider(|| AppContext {
-            state: Arc::new(RwLock::new(state)),
-            commands,
-            meta,
-            config,
-            live,
-            settings,
+        use_context_provider(|| {
+            crate::test_support::provide_engine(Arc::new(RwLock::new(state)), commands);
+            AppContext {
+                settings,
+                meta,
+                config,
+                live,
+            }
         });
         rsx! { EngineOfflineBanner {} }
     }

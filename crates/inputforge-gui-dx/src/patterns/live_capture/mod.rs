@@ -32,8 +32,11 @@ pub fn use_live_capture_provider() -> LiveCapture {
     let bindings = use_context::<Bindings>();
     #[cfg(test)]
     let bindings = try_use_context::<Bindings>().unwrap_or_else(|| {
-        let ctx = use_context::<crate::context::AppContext>();
-        inputforge_app::live_capture::Controller::new(ctx.state, ctx.commands).bindings()
+        inputforge_app::live_capture::Controller::new(
+            crate::test_support::engine().state,
+            crate::test_support::engine().commands,
+        )
+        .bindings()
     });
     use_context_provider(|| bindings);
     let active = use_signal(|| false);

@@ -39,6 +39,8 @@ pub mod icons;
 #[cfg(not(test))]
 pub mod instruments;
 #[cfg(test)]
+mod test_support;
+#[cfg(test)]
 pub use inputforge_gui_dx::instruments;
 #[cfg(not(test))]
 pub mod keyboard_capture;
@@ -85,7 +87,6 @@ pub use frame::view_state::PanelSlot;
 pub use toast::ToastViewport;
 pub use toast::{ToastLevel, ToastQueue};
 
-pub use context::RawHandles;
 use dioxus::prelude::*;
 
 /// Host-owned presentation state shared with the editor's panel controls.
@@ -98,7 +99,7 @@ pub struct EditorNavigation {
 /// Render the editor inside a host-provided Dioxus scope.
 /// The host owns desktop configuration, lifecycle and external events.
 /// `start_polling` receives the GUI publication handle once per mounted scope.
-/// Engine handles remain transitional inputs for workflows awaiting extraction.
+/// Inputs are prepared rendering contracts and application-owned callbacks.
 ///
 /// # Errors
 /// Propagates render errors from the editor root.
@@ -107,7 +108,6 @@ pub struct EditorNavigation {
     reason = "host supplies each extracted workflow independently"
 )]
 pub fn render_editor(
-    handles: RawHandles,
     routing: routing::Bindings,
     controllers: controllers::Bindings,
     capture: capture::Bindings,
@@ -129,6 +129,5 @@ pub fn render_editor(
     use_context_provider(|| notifications);
     use_context_provider(|| controls);
     use_context_provider(|| start_polling);
-    use_context_provider(|| handles);
     app::app_root()
 }

@@ -36,11 +36,11 @@ pub(crate) fn use_view_state_provider(meta: Signal<MetaSnapshot>) -> ViewState {
     {
         let bindings = use_hook(|| {
             try_consume_context::<crate::mapping_edits::Bindings>().or_else(|| {
-                let ctx = try_consume_context::<crate::context::AppContext>()?;
+                let fixture = try_consume_context::<crate::test_support::Fixture>()?;
                 Some(
                     inputforge_app::mapping_edits::Controller::new(
-                        std::sync::Arc::clone(&ctx.state),
-                        ctx.commands.clone(),
+                        std::sync::Arc::clone(&fixture.state),
+                        fixture.commands.clone(),
                     )
                     .bindings(),
                 )

@@ -9,6 +9,7 @@ mod rail_keys;
 mod reconcile;
 use super::Controller;
 use dioxus::prelude::*;
+pub(crate) use filter::active as filter_active;
 use inputforge_core::profile::ProfileId;
 use inputforge_gui_dx::{
     PanelSlot,
@@ -148,6 +149,7 @@ fn filter_rows(
         None => 3,
     });
     inputforge_gui_dx::navigation::FilterView {
+        filtered: filter::active(&r.query, device.as_ref()),
         total,
         rows,
         chips,

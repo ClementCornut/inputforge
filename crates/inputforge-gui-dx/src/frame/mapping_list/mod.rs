@@ -45,7 +45,7 @@ use crate::frame::mapping_list::group::{GroupKind, group_of};
 use crate::frame::mapping_list::row::{Row, group_to_u32};
 use crate::{
     mapping_edits::Bindings,
-    mapping_rail::{Group, Lookup, Menu, Move, Operation, Outcome, Request, Scope, Target},
+    mapping_rail::{Group, Lookup, Menu, Operation, Request, Scope, Target},
 };
 
 use crate::frame::view_state::{MappingKey, ViewState};
@@ -86,6 +86,20 @@ pub(crate) fn MappingList() -> Element {
     // this rail retains prepared app targets and callback wiring.
     let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
 
+    let publication = crate::mapping_edits::ui::Rail {
+        filter: crate::mapping_edits::ui::Filter {
+            query: filter_query,
+            device: selected_device,
+        },
+        prepared: use_signal(|| None),
+        menu: menu_open,
+        rename: renaming,
+        duplicate: pending_duplicate,
+        delete: delete_target,
+        error: feedback,
+        live: sortable.live_announcement,
+    };
+    use_context_provider(|| publication);
     let navigation = bindings.navigation;
     let projection = use_memo(move || {
         navigation.filter.call(crate::navigation::FilterRequest {
@@ -145,7 +159,7 @@ pub(crate) fn MappingList() -> Element {
         (snapshot.0, snapshot.1.clone())
     };
     let query = filter_query.read().clone();
-    let query_empty = query.trim().is_empty();
+    let filter_active = projection.read().filtered;
     let device_selected = selected_device.read().is_some();
 
     if total == 0 {
@@ -164,7 +178,7 @@ pub(crate) fn MappingList() -> Element {
         };
     }
 
-    if (!query_empty || device_selected) && rows.is_empty() {
+    if filter_active && rows.is_empty() {
         let selected_device_label = selected_device.read().as_ref().and_then(|selected| {
             device_chips_memo
                 .read()
@@ -203,8 +217,6 @@ pub(crate) fn MappingList() -> Element {
         };
     }
 
-    let live_writer_for_drop = sortable.live_announcement;
-    let filter_active = !query.trim().is_empty() || device_selected;
     let drag_context = format!(
         "profile:{:?};mode:{}",
         ctx.meta.read().profile_id,
@@ -212,9 +224,22 @@ pub(crate) fn MappingList() -> Element {
     );
     let ctx_drag = ctx.clone();
     let on_drag_start = Callback::new(move |summary: MappingSummary| {
-        let mut drag_target = drag_target;
-        let filtered = !filter_query.peek().trim().is_empty() || selected_device.peek().is_some();
-        drag_target.set(prepare_menu(&ctx_drag, &summary, filtered));
+        bindings
+            .ui
+            .drag
+            .call(crate::mapping_edits::ui::DragRequest {
+                publication: drag_target,
+                filter: publication.filter,
+                lookup: Lookup {
+                    scope: Scope {
+                        profile: ctx_drag.meta.peek().profile_id.clone(),
+                        mode: summary.mode,
+                    },
+                    input: summary.input,
+                    name: summary.name,
+                    filtered: filter_active,
+                },
+            });
     });
     let group_iter = GroupKind::ordered().into_iter().filter_map(|group| {
         let group_rows: Vec<MappingSummary> = rows
@@ -229,33 +254,7 @@ pub(crate) fn MappingList() -> Element {
         let group_len = group_rows.len();
 
         let drop_handler = EventHandler::new(move |gap_index: usize| {
-            let mut drag_target = drag_target;
-            let source = drag_target.peek().clone();
-            drag_target.set(None);
-            let Some(menu) = source else {
-                return;
-            };
-            let filtered =
-                !filter_query.peek().trim().is_empty() || selected_device.peek().is_some();
-            let target_group = match group {
-                GroupKind::Axes => Group::Axes,
-                GroupKind::Buttons => Group::Buttons,
-                GroupKind::Hats => Group::Hats,
-            };
-            run_rail(
-                &bindings,
-                Request {
-                    target: menu.target,
-                    operation: Operation::Reorder {
-                        movement: Move::Gap(gap_index),
-                        order: menu.order,
-                        group: target_group,
-                        filtered,
-                    },
-                },
-                feedback,
-                live_writer_for_drop,
-            );
+            bindings.ui.rail.call((publication,crate::mapping_edits::ui::RailEvent::Drop {drag:drag_target,group:match group {GroupKind::Axes=>Group::Axes,GroupKind::Buttons=>Group::Buttons,GroupKind::Hats=>Group::Hats},gap:gap_index}));
         });
 
         // Pre-render the row+gap pairs into a Vec so the rsx! `for` loop
@@ -289,7 +288,6 @@ pub(crate) fn MappingList() -> Element {
                 }
                 for (i, row, is_active) in row_items {
                     {
-                        let mut menu_setter = menu_open;
                         rsx! {
                             Row {
                                 key: "{row.input:?}-{row.mode}",
@@ -299,9 +297,9 @@ pub(crate) fn MappingList() -> Element {
                                 sortable,
                                 filter_active,
                                 on_drag_start: Some(on_drag_start),
-                                on_open_menu: move |(input, x, y): (InputAddress, f64, f64)| {
-                                    menu_setter.set(Some((input, x, y)));
-                                },
+                                on_open_menu: {let lookup=Lookup {scope:Scope {profile:ctx.meta.peek().profile_id.clone(),mode:row.mode.clone()},input:row.input.clone(),name:row.name.clone(),filtered:filter_active}; move |(_input,x,y):(InputAddress,f64,f64)| {
+                                    bindings.ui.rail.call((publication,crate::mapping_edits::ui::RailEvent::Open {lookup:lookup.clone(),x,y}));
+                                }},
                             }
                             SortableGap {
                                 state: sortable,
@@ -334,16 +332,7 @@ pub(crate) fn MappingList() -> Element {
                     pending_duplicate: pending_duplicate,
                 }
             }
-            ContextMenuMount {
-                menu_open: menu_open,
-                renaming: renaming,
-                delete_target: delete_target,
-                pending_duplicate: pending_duplicate,
-                filter_query: filter_query,
-                selected_device,
-                feedback,
-                live_announcement: sortable.live_announcement,
-            }
+            ContextMenuMount {filtered:projection.read().filtered}
             DeleteDialogMount { delete_target: delete_target }
             // sr-only live region. Mounted once at the rail root so AT
             // users hear every reorder action (drag-drop, context menu
@@ -432,39 +421,12 @@ fn FilterInput(
     unused_qualifications,
     reason = "Dioxus 0.7 RSX macro emits redundant qualifications on event listeners."
 )]
-fn ContextMenuMount(
-    menu_open: Signal<Option<(InputAddress, f64, f64)>>,
-    renaming: Signal<Option<InputAddress>>,
-    delete_target: Signal<Option<Target>>,
-    pending_duplicate: Signal<Option<Target>>,
-    filter_query: Signal<String>,
-    selected_device: Signal<Option<DeviceId>>,
-    feedback: Signal<Option<String>>,
-    live_announcement: Signal<String>,
-) -> Element {
-    let ctx = use_context::<AppContext>();
-    let view = use_context::<ViewState>();
-
-    let Some((target_input, anchor_x, anchor_y)) = menu_open.read().clone() else {
+fn ContextMenuMount(filtered: bool) -> Element {
+    let publication = use_context::<crate::mapping_edits::ui::Rail>();
+    let Some((_target_input, anchor_x, anchor_y)) = publication.menu.read().clone() else {
         return rsx! {};
     };
-    let mode_now = view.editing_mode.read().clone();
-    let cfg = ctx.config.read();
-    let target = cfg
-        .mappings
-        .iter()
-        .find(|m| m.input == target_input && m.mode == mode_now)
-        .cloned();
-    drop(cfg);
-    let Some(target) = target else {
-        let mut menu_open = menu_open;
-        menu_open.set(None);
-        return rsx! {};
-    };
-
-    let filtered = !filter_query.read().trim().is_empty() || selected_device.read().is_some();
-    let _ = ctx.meta.read();
-    let Some(menu) = prepare_menu(&ctx, &target, filtered) else {
+    let Some(menu) = publication.prepared.read().clone() else {
         return rsx! {};
     };
     let bindings = use_context::<Bindings>();
@@ -478,135 +440,39 @@ fn ContextMenuMount(
         ""
     };
 
-    let mut menu_open_writer = menu_open;
-    let close = move |_| menu_open_writer.set(None);
-
-    let target_for_rename = target.input.clone();
+    let close = move |_| {
+        bindings
+            .ui
+            .rail
+            .call((publication, crate::mapping_edits::ui::RailEvent::Close));
+    };
+    let target_for_rename = menu.target.clone();
     let target_for_dup = menu.target.clone();
-    let target_for_dup_to = menu.target.clone();
     let target_for_delete = menu.target.clone();
+    let target_for_dup_to = menu.target.clone();
     let menu_up = menu.clone();
-    let menu_down = menu.clone();
-
+    let menu_down = menu;
     rsx! {
-        div { class: "if-row-menu-backdrop", onclick: close }
-        div {
-            class: "if-row-menu",
-            role: "menu",
-            style: "position: fixed; left: {anchor_x}px; top: {anchor_y}px;",
-            button {
-                r#type: "button",
-                role: "menuitem",
-                class: "if-row-menu__item",
-                onclick: move |_| {
-                    let mut renaming = renaming;
-                    renaming.set(Some(target_for_rename.clone()));
-                    let mut menu_open = menu_open;
-                    menu_open.set(None);
-                },
-                "Rename"
-            }
-            button {
-                r#type: "button",
-                role: "menuitem",
-                class: "if-row-menu__item",
-                onclick: move |_| {
-                    // Just set pending_duplicate; AddInline observes the
-                    // rising edge, pre-fills the name with `<source.name>
-                    // (copy)`, stashes the source for actions-resolution
-                    // at commit, and arms LiveCapture itself.
-                    let mut pd = pending_duplicate;
-                    pd.set(Some(target_for_dup.clone()));
-                    tracing::info!(
-                        target: "f8::mapping_list",
-                        action = "duplicate_arm",
-                        ?target_for_dup.before.input,
-                        mode = %target_for_dup.before.mode,
-                        "duplicate flow armed; awaiting fresh capture",
-                    );
-                    let mut menu_open = menu_open;
-                    menu_open.set(None);
-                },
-                "Duplicate"
-            }
-            div {
-                class: "if-row-menu__item if-row-menu__item--submenu-host",
-                "aria-disabled": "{dup_to_mode_disabled}",
-                "Duplicate to mode\u{2026}"
+        div {class:"if-row-menu-backdrop",onclick:close}
+        div {class:"if-row-menu",role:"menu",style:"position: fixed; left: {anchor_x}px; top: {anchor_y}px;",
+            button {r#type:"button",role:"menuitem",class:"if-row-menu__item",onclick:move |_| {bindings.ui.rail.call((publication,crate::mapping_edits::ui::RailEvent::Rename(target_for_rename.clone())));},"Rename"}
+            button {r#type:"button",role:"menuitem",class:"if-row-menu__item",onclick:move |_| {bindings.ui.rail.call((publication,crate::mapping_edits::ui::RailEvent::Duplicate(target_for_dup.clone())));},"Duplicate"}
+            div {class:"if-row-menu__item if-row-menu__item--submenu-host","aria-disabled":"{dup_to_mode_disabled}","Duplicate to mode…"
                 if !dup_to_mode_disabled {
-                    div {
-                        class: "if-row-menu__submenu",
-                        role: "menu",
+                    div {class:"if-row-menu__submenu",role:"menu",
                         for target_mode in other_modes.iter().cloned() {
-                            {
-                                let target_mode_clone = target_mode.clone();
-                                let target_for_each = target_for_dup_to.clone();
-                                let mut menu_open_each = menu_open;
-                                rsx! {
-                                    button {
-                                        key: "{target_mode}",
-                                        r#type: "button",
-                                        role: "menuitem",
-                                        class: "if-row-menu__item",
-                                        onclick: move |_| {
-                                            if run_rail(&bindings, Request { target: target_for_each.clone(), operation: Operation::Duplicate(target_mode_clone.clone()) }, feedback, live_announcement) {
-                                                menu_open_each.set(None);
-                                            }
-                                        },
-                                        "{target_mode}"
-                                    }
-                                }
-                            }
+                            {let target=target_for_dup_to.clone();let mode=target_mode.clone();rsx!{
+                                button {key:"{target_mode}",r#type:"button",role:"menuitem",class:"if-row-menu__item",onclick:move |_| {bindings.ui.rail.call((publication,crate::mapping_edits::ui::RailEvent::MenuDispatch(Request {target:target.clone(),operation:Operation::Duplicate(mode.clone())})));},"{target_mode}"}
+                            }}
                         }
                     }
                 }
             }
-            button {
-                r#type: "button",
-                role: "menuitem",
-                class: "if-row-menu__item",
-                "aria-disabled": "{move_up_disabled}",
-                title: if move_up_disabled { move_disabled_reason } else { "" },
-                onclick: move |_| {
-                    if move_up_disabled {
-                        return;
-                    }
-                    if run_rail(&bindings, Request { target: menu_up.target.clone(), operation: Operation::Reorder { movement: Move::Up, order: menu_up.order.clone(), group: menu_up.group, filtered: !filter_query.peek().trim().is_empty() || selected_device.peek().is_some() } }, feedback, live_announcement) {
-                        let mut menu_open = menu_open;
-                        menu_open.set(None);
-                    }
-                },
-                "Move up"
-            }
-            button {
-                r#type: "button",
-                role: "menuitem",
-                class: "if-row-menu__item",
-                "aria-disabled": "{move_down_disabled}",
-                title: if move_down_disabled { move_disabled_reason } else { "" },
-                onclick: move |_| {
-                    if move_down_disabled {
-                        return;
-                    }
-                    if run_rail(&bindings, Request { target: menu_down.target.clone(), operation: Operation::Reorder { movement: Move::Down, order: menu_down.order.clone(), group: menu_down.group, filtered: !filter_query.peek().trim().is_empty() || selected_device.peek().is_some() } }, feedback, live_announcement) {
-                        let mut menu_open = menu_open;
-                        menu_open.set(None);
-                    }
-                },
-                "Move down"
-            }
-            button {
-                r#type: "button",
-                role: "menuitem",
-                class: "if-row-menu__item if-row-menu__item--danger",
-                onclick: move |_| {
-                    let mut delete_target = delete_target;
-                    delete_target.set(Some(target_for_delete.clone()));
-                    let mut menu_open = menu_open;
-                    menu_open.set(None);
-                },
-                "Delete"
-            }
+            button {r#type:"button",role:"menuitem",class:"if-row-menu__item","aria-disabled":"{move_up_disabled}",title:if move_up_disabled {move_disabled_reason}else{""},
+                onclick:move |_| {bindings.ui.rail.call((publication,crate::mapping_edits::ui::RailEvent::Step {menu:menu_up.clone(),down:false}));},"Move up"}
+            button {r#type:"button",role:"menuitem",class:"if-row-menu__item","aria-disabled":"{move_down_disabled}",title:if move_down_disabled {move_disabled_reason}else{""},
+                onclick:move |_| {bindings.ui.rail.call((publication,crate::mapping_edits::ui::RailEvent::Step {menu:menu_down.clone(),down:true}));},"Move down"}
+            button {r#type:"button",role:"menuitem",class:"if-row-menu__item if-row-menu__item--danger",onclick:move |_| {bindings.ui.rail.call((publication,crate::mapping_edits::ui::RailEvent::BeginDelete(target_for_delete.clone())));},"Delete"}
         }
     }
 }
@@ -630,18 +496,13 @@ pub(crate) fn DeleteDialogMount(delete_target: Signal<Option<Target>>) -> Elemen
         .as_ref()
         .and_then(|t| t.before.name.clone())
         .unwrap_or_else(|| "(unnamed)".to_owned());
-    let target_clone = delete_target.read().clone();
     let bindings = use_context::<Bindings>();
-    let mut feedback = use_signal(|| None::<String>);
+    let feedback = use_signal(|| None::<String>);
 
     rsx! {
         crate::components::DialogRoot {
             open: dialog_open,
-            onclose: move |()| {
-                let mut dt = delete_target;
-                dt.set(None);
-                true
-            },
+            onclose: move |()| bindings.ui.delete.call(crate::mapping_edits::ui::DeleteRequest {target:delete_target,error:feedback,confirm:false}),
             crate::components::DialogTitle { "Delete mapping" }
             crate::components::DialogBody {
                 "Delete '{display_name}'?"
@@ -655,23 +516,12 @@ pub(crate) fn DeleteDialogMount(delete_target: Signal<Option<Target>>) -> Elemen
                             let _ = evt.data().set_focus(true).await;
                         });
                     },
-                    onclick: move |_| {
-                        let mut dt = delete_target;
-                        dt.set(None);
-                    },
+                    onclick:move |_| {bindings.ui.delete.call(crate::mapping_edits::ui::DeleteRequest {target:delete_target,error:feedback,confirm:false});},
                     "Cancel"
                 }
                 crate::components::Button {
                     variant: crate::components::ButtonVariant::Danger,
-                    onclick: move |_| {
-                        if let Some(target) = &target_clone {
-                            match bindings.rail.call(Request { target: target.clone(), operation: Operation::Delete }) {
-                                Outcome::Delivered => { let mut dt = delete_target; dt.set(None); feedback.set(None); },
-                                Outcome::Rejected(error) => feedback.set(Some(error)),
-                                _ => {},
-                            }
-                        }
-                    },
+                    onclick:move |_| {bindings.ui.delete.call(crate::mapping_edits::ui::DeleteRequest {target:delete_target,error:feedback,confirm:true});},
                     "Delete"
                 }
             }
@@ -704,27 +554,16 @@ fn prepare_menu(ctx: &AppContext, summary: &MappingSummary, filtered: bool) -> O
 fn run_rail(
     bindings: &Bindings,
     request: Request,
-    mut feedback: Signal<Option<String>>,
-    mut live: Signal<String>,
+    feedback: Signal<Option<String>>,
+    live: Signal<String>,
 ) -> bool {
-    match bindings.rail.call(request) {
-        Outcome::Moved { index, len, group } => {
-            live.set(
-                consume_context::<crate::controls::Bindings>()
-                    .rail_announcement
-                    .call((index, len, group)),
-            );
-            feedback.set(None);
-            true
-        }
-        Outcome::Delivered | Outcome::Opened => {
-            feedback.set(None);
-            true
-        }
-        Outcome::Rejected(error) => {
-            feedback.set(Some(error));
-            false
-        }
-        Outcome::NoOp => false,
-    }
+    let publication = consume_context::<crate::mapping_edits::ui::Rail>();
+    bindings.ui.rail.call((
+        crate::mapping_edits::ui::Rail {
+            error: feedback,
+            live,
+            ..publication
+        },
+        crate::mapping_edits::ui::RailEvent::Dispatch(request),
+    ))
 }

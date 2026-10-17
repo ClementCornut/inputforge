@@ -40,13 +40,14 @@ fn root() -> Element {
     let config = use_signal(ConfigSnapshot::default);
     let live = use_signal(LiveSnapshot::default);
     let settings = use_signal(|| frame.settings);
-    use_context_provider(|| AppContext {
-        state,
-        commands,
-        settings,
-        meta,
-        config,
-        live,
+    use_context_provider(|| {
+        crate::test_support::provide_engine(state, commands);
+        AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     });
     inputforge_app::notifications::use_provider();
     rsx! {super::SettingsPanel{}}

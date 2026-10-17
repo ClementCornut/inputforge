@@ -13,16 +13,13 @@ categories.workspace   = true
 [dependencies]
 inputforge-core      = { workspace = true }
 dioxus               = { workspace = true, features = ["desktop"] }
-tokio                = { workspace = true }
-parking_lot          = { workspace = true }
 tracing              = { workspace = true }
 serde                = { workspace = true }
 serde_json           = { workspace = true }
-anyhow               = { workspace = true }
-unicode-segmentation = { workspace = true }
-chrono               = { workspace = true }
 
 [dev-dependencies]
+parking_lot = { workspace = true }
+chrono = { workspace = true }
 # Unit fixtures share normal renderer types with app-owned projections.
 inputforge-gui-dx = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }

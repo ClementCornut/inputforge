@@ -2,6 +2,7 @@
 
 //! SSR tests for the F9 mapping editor.
 
+use crate::test_support::Fixture;
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
@@ -20,7 +21,7 @@ use inputforge_core::types::{
 };
 
 use crate::context::{
-    AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, OutputActivitySnapshot, RawHandles,
+    AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, OutputActivitySnapshot,
     SettingsSnapshot,
 };
 use crate::frame::mapping_editor::{EditorState, MappingEditor, use_editor_state_provider};
@@ -548,7 +549,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     let runtime_engine_status = engine_status.unwrap_or(EngineStatus::Running);
 
     let (cmd_tx, _) = mpsc::channel();
-    let raw = RawHandles {
+    let raw = Fixture {
         state,
         commands: cmd_tx,
     };
@@ -569,13 +570,14 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     });
     let config = use_signal(|| snap);
     let live = use_signal(|| frame.live);
-    let ctx = AppContext {
-        state: Arc::clone(&raw.state),
-        commands: raw.commands.clone(),
-        settings: use_signal(SettingsSnapshot::default),
-        meta,
-        config,
-        live,
+    let ctx = {
+        crate::test_support::provide_engine(Arc::clone(&raw.state), raw.commands.clone());
+        AppContext {
+            settings: use_signal(SettingsSnapshot::default),
+            meta,
+            config,
+            live,
+        }
     };
     use_context_provider(|| ctx);
 
@@ -698,7 +700,7 @@ fn LiveReadoutExpandHarness(props: LiveReadoutExpandHarnessProps) -> Element {
     } = props;
 
     let (cmd_tx, _) = mpsc::channel();
-    let raw = RawHandles {
+    let raw = Fixture {
         state,
         commands: cmd_tx,
     };
@@ -716,13 +718,14 @@ fn LiveReadoutExpandHarness(props: LiveReadoutExpandHarnessProps) -> Element {
     });
     let config = use_signal(|| snap);
     let live = use_signal(|| live_snapshot);
-    let ctx = AppContext {
-        state: Arc::clone(&raw.state),
-        commands: raw.commands.clone(),
-        settings: use_signal(SettingsSnapshot::default),
-        meta,
-        config,
-        live,
+    let ctx = {
+        crate::test_support::provide_engine(Arc::clone(&raw.state), raw.commands.clone());
+        AppContext {
+            settings: use_signal(SettingsSnapshot::default),
+            meta,
+            config,
+            live,
+        }
     };
     use_context_provider(|| ctx);
 
@@ -837,7 +840,7 @@ fn expand_toggle_fixture_two_outputs() -> (AppState, InputAddress) {
 /// state branch is taken on first render.
 fn harness() -> Element {
     let (cmd_tx, _cmd_rx) = mpsc::channel();
-    let raw = RawHandles {
+    let raw = Fixture {
         state: Arc::new(RwLock::new(AppState::new())),
         commands: cmd_tx,
     };
@@ -846,13 +849,14 @@ fn harness() -> Element {
     let meta = use_signal(MetaSnapshot::default);
     let config = use_signal(ConfigSnapshot::default);
     let live = use_signal(LiveSnapshot::default);
-    let ctx = AppContext {
-        state: Arc::clone(&raw.state),
-        commands: raw.commands.clone(),
-        settings: use_signal(SettingsSnapshot::default),
-        meta,
-        config,
-        live,
+    let ctx = {
+        crate::test_support::provide_engine(Arc::clone(&raw.state), raw.commands.clone());
+        AppContext {
+            settings: use_signal(SettingsSnapshot::default),
+            meta,
+            config,
+            live,
+        }
     };
     use_context_provider(|| ctx);
 
@@ -925,13 +929,14 @@ fn editor_state_provider_mounts_and_reads_via_use_context() {
     fn Root() -> Element {
         // Provide AppContext stub that use_live_capture_provider requires.
         let (cmd_tx, _cmd_rx) = mpsc::channel();
-        let ctx = AppContext {
-            state: Arc::new(RwLock::new(AppState::new())),
-            commands: cmd_tx,
-            settings: use_signal(SettingsSnapshot::default),
-            meta: use_signal(MetaSnapshot::default),
-            config: use_signal(ConfigSnapshot::default),
-            live: use_signal(LiveSnapshot::default),
+        let ctx = {
+            crate::test_support::provide_engine(Arc::new(RwLock::new(AppState::new())), cmd_tx);
+            AppContext {
+                settings: use_signal(SettingsSnapshot::default),
+                meta: use_signal(MetaSnapshot::default),
+                config: use_signal(ConfigSnapshot::default),
+                live: use_signal(LiveSnapshot::default),
+            }
         };
         use_context_provider(|| ctx);
 
@@ -961,7 +966,7 @@ fn stopped_routing_keeps_input_monitoring_available() {
     )]
     fn h() -> Element {
         let (cmd_tx, _) = mpsc::channel();
-        let raw = RawHandles {
+        let raw = Fixture {
             state: Arc::new(RwLock::new(AppState::new())),
             commands: cmd_tx,
         };
@@ -975,13 +980,14 @@ fn stopped_routing_keeps_input_monitoring_available() {
         });
         let config = use_signal(ConfigSnapshot::default);
         let live = use_signal(LiveSnapshot::default);
-        let ctx = AppContext {
-            state: Arc::clone(&raw.state),
-            commands: raw.commands.clone(),
-            settings: use_signal(SettingsSnapshot::default),
-            meta,
-            config,
-            live,
+        let ctx = {
+            crate::test_support::provide_engine(Arc::clone(&raw.state), raw.commands.clone());
+            AppContext {
+                settings: use_signal(SettingsSnapshot::default),
+                meta,
+                config,
+                live,
+            }
         };
         use_context_provider(|| ctx);
         let view = use_view_state_provider(meta);
@@ -1108,7 +1114,7 @@ fn editor_undo_recap_shows_label_and_kbd_hint() {
         let HarnessProps { state, addr, .. } = props;
 
         let (cmd_tx, _) = mpsc::channel();
-        let raw = RawHandles {
+        let raw = Fixture {
             state,
             commands: cmd_tx,
         };
@@ -1126,13 +1132,14 @@ fn editor_undo_recap_shows_label_and_kbd_hint() {
         });
         let config = use_signal(|| snap);
         let live = use_signal(LiveSnapshot::default);
-        let ctx = AppContext {
-            state: Arc::clone(&raw.state),
-            commands: raw.commands.clone(),
-            settings: use_signal(SettingsSnapshot::default),
-            meta,
-            config,
-            live,
+        let ctx = {
+            crate::test_support::provide_engine(Arc::clone(&raw.state), raw.commands.clone());
+            AppContext {
+                settings: use_signal(SettingsSnapshot::default),
+                meta,
+                config,
+                live,
+            }
         };
         use_context_provider(|| ctx);
 

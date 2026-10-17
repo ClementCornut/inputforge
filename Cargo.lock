@@ -2832,7 +2832,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ulid",
- "unicode-segmentation",
 ]
 
 [[package]]

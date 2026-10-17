@@ -111,13 +111,14 @@ mod tests {
             via_calibration,
             selected_mapping,
         });
-        use_context_provider(|| AppContext {
-            state,
-            commands,
-            settings,
-            meta,
-            config,
-            live,
+        use_context_provider(|| {
+            crate::test_support::provide_engine(state, commands);
+            AppContext {
+                settings,
+                meta,
+                config,
+                live,
+            }
         });
 
         rsx! { PanelSlot {} }

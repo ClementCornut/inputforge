@@ -80,13 +80,14 @@ fn harness() -> Element {
     *fixture.config.borrow_mut() = Some(config);
     let live = use_signal(LiveSnapshot::default);
     let settings = use_signal(SettingsSnapshot::default);
-    use_context_provider(|| AppContext {
-        state: Arc::clone(&fixture.state),
-        commands: fixture.commands.clone(),
-        meta,
-        config,
-        live,
-        settings,
+    use_context_provider(|| {
+        crate::test_support::provide_engine(Arc::clone(&fixture.state), fixture.commands.clone());
+        AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     });
     let mut view = crate::frame::use_view_state_provider(meta);
     use_hook(|| view.selected_mapping.set(Some(key.clone())));

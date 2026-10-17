@@ -217,12 +217,12 @@ pub(crate) fn MapToKeyboardBody(
 // Private helpers
 // ---------------------------------------------------------------------------
 
-fn use_combo_sync(combo: &KeyCombo, capturing: bool, mut local_combo: Signal<KeyCombo>) {
-    let mut previous = use_signal(|| combo.clone());
-    if !capturing && *previous.peek() != *combo {
-        previous.set(combo.clone());
-        local_combo.set(combo.clone());
-    }
+fn use_combo_sync(combo: &KeyCombo, capturing: bool, local_combo: Signal<KeyCombo>) {
+    let previous = use_signal(|| combo.clone());
+    consume_context::<crate::mapping_edits::Bindings>()
+        .ui
+        .combo_sync
+        .call((combo.clone(), capturing, previous, local_combo));
 }
 
 fn format_key_combo(combo: &KeyCombo) -> String {
@@ -320,6 +320,16 @@ mod tests {
 
         type Controls = Rc<RefCell<Option<(Signal<KeyCombo>, Signal<KeyCombo>)>>>;
         fn harness() -> Element {
+            let (commands, _) = std::sync::mpsc::channel();
+            let controller = use_hook(|| {
+                inputforge_app::mapping_edits::Controller::new(
+                    std::sync::Arc::new(parking_lot::RwLock::new(
+                        inputforge_core::state::AppState::new(),
+                    )),
+                    commands,
+                )
+            });
+            use_context_provider(|| controller.bindings());
             let incoming = use_signal(|| KeyCombo {
                 key: PhysicalKey::F11,
                 modifiers: Vec::new(),
@@ -396,13 +406,14 @@ mod tests {
                 std::sync::mpsc::channel::<inputforge_core::engine::EngineCommand>();
             drop(receiver);
             let meta = use_signal(|| frame.meta);
-            let ctx = AppContext {
-                state,
-                commands,
-                meta,
-                config: use_signal(|| frame.config),
-                live: use_signal(crate::context::LiveSnapshot::default),
-                settings: use_signal(crate::context::SettingsSnapshot::default),
+            let ctx = {
+                crate::test_support::provide_engine(state, commands);
+                AppContext {
+                    settings: use_signal(crate::context::SettingsSnapshot::default),
+                    meta,
+                    config: use_signal(|| frame.config),
+                    live: use_signal(crate::context::LiveSnapshot::default),
+                }
             };
             use_context_provider(|| ctx);
             let mut view = crate::frame::use_view_state_provider(meta);

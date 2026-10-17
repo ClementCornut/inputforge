@@ -36,44 +36,23 @@ pub(super) fn capture(summary: &MappingSummary) -> Option<Target> {
         .map(|menu| menu.target)
 }
 
-/// Submit the draft's original target; queued edits are validated by the app.
+/// Exercise the same app-owned commit callback from isolated unit fixtures.
+#[cfg(test)]
 pub(super) fn run_commit(
     raw: &str,
     target: Option<&Target>,
     state: Signal<Option<InputAddress>>,
 ) -> Result<(), String> {
-    run_inline(raw, target, state, false)
-}
-fn run_inline(
-    raw: &str,
-    target: Option<&Target>,
-    mut state: Signal<Option<InputAddress>>,
-    cancel: bool,
-) -> Result<(), String> {
-    let result = consume_context::<crate::mapping_edits::Bindings>()
-        .inline
-        .call(crate::mapping_edits::Inline {
-            target: target.cloned(),
-            edit: crate::mapping_edits::Edit::Rename(raw.to_owned()),
-            label: format!(
-                "rename: '{}' -> '{}'",
-                target
-                    .and_then(|target| target.before.name.as_deref())
-                    .unwrap_or(""),
-                raw
-            ),
-            editor: false,
-            cancel,
-        });
-    if result == Ok(true)
-        && let Some(target) = target
-    {
-        tracing::info!(target: "f8::mapping_list", action = "rename", ?target.before.input, mode = %target.before.mode, "dispatched mapping rename");
-    }
-    if result.is_ok() {
-        state.set(None);
-    }
-    result.map(|_| ())
+    let publication = crate::mapping_edits::ui::Rename {
+        value: Signal::new(raw.to_owned()),
+        error: Signal::new(None),
+        open: state,
+        target: target.cloned(),
+    };
+    consume_context::<crate::mapping_edits::Bindings>()
+        .ui
+        .rename
+        .call((publication, crate::mapping_edits::ui::RenameEvent::Commit))
 }
 
 /// Parent-driven inline rename editor for a mapping row. The parent owns
@@ -96,34 +75,25 @@ pub(crate) fn RenameInline(
     crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::use_origin();
 
     let initial = summary.name.clone().unwrap_or_default();
-    let mut value: Signal<String> = use_signal(|| initial);
+    let value: Signal<String> = use_signal(|| initial);
 
-    let mut error = use_signal(|| None::<String>);
+    let error = use_signal(|| None::<String>);
     let target = use_hook(|| capture(&summary));
-    let target_for_kb = target.clone();
-    let target_for_cancel = target.clone();
+    let publication = crate::mapping_edits::ui::Rename {
+        value,
+        error,
+        open: state,
+        target,
+    };
+    let ui = use_context::<crate::mapping_edits::Bindings>().ui;
+    let key_publication = publication.clone();
+    let blur_publication = publication.clone();
 
     rsx! {
         div {
             class: "if-row__rename-wrapper",
-            onkeydown: move |evt: KeyboardEvent| {
-                match evt.key() {
-                    Key::Enter => {
-                        evt.prevent_default();
-                        let raw = value.read().clone();
-                        error.set(run_commit(&raw, target_for_kb.as_ref(), state).err());
-                    }
-                    Key::Escape => {
-                        evt.prevent_default();
-                        error.set(run_inline(&value.peek(), target_for_cancel.as_ref(), state, true).err());
-                    }
-                    _ => {}
-                }
-            },
-            onfocusout: move |_evt: FocusEvent| {
-                let raw = value.read().clone();
-                error.set(run_commit(&raw, target.as_ref(), state).err());
-            },
+            onkeydown:move |evt| {let _=ui.rename.call((key_publication.clone(),crate::mapping_edits::ui::RenameEvent::Key(evt)));},
+            onfocusout:move |_| {let _=ui.rename.call((blur_publication.clone(),crate::mapping_edits::ui::RenameEvent::Commit));},
             if let Some(message) = error.read().as_ref() {
                 span { role: "alert", "{message}" }
             }
@@ -137,7 +107,7 @@ pub(crate) fn RenameInline(
                     });
                 },
                 oninput: move |evt: FormEvent| {
-                    value.set(evt.value());
+                    let _=ui.rename.call((publication.clone(),crate::mapping_edits::ui::RenameEvent::Input(evt.value())));
                 },
             }
         }

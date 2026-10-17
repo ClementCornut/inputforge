@@ -1,8 +1,6 @@
 use dioxus::prelude::*;
 
 use crate::bridge::Publisher;
-#[cfg(test)]
-use crate::context::RawHandles;
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
 use crate::frame;
 use crate::frame::use_editor_state_provider;
@@ -13,8 +11,6 @@ use crate::toast::ToastViewport;
 
 /// Assemble editor presentation contexts and render the frame layout.
 pub(crate) fn app_root() -> Element {
-    #[cfg(test)]
-    let raw = use_context::<RawHandles>();
     let bindings = use_context::<crate::routing::Bindings>();
     let routing_view = use_signal(crate::routing::View::default);
     let routing = crate::routing::Context {
@@ -39,10 +35,6 @@ pub(crate) fn app_root() -> Element {
     let settings = use_signal(SettingsSnapshot::default);
 
     let ctx = AppContext {
-        #[cfg(test)]
-        state: std::sync::Arc::clone(&raw.state),
-        #[cfg(test)]
-        commands: raw.commands.clone(),
         settings,
         meta,
         config,
@@ -110,15 +102,15 @@ mod tests {
 
     use inputforge_core::state::AppState;
 
-    use crate::context::RawHandles;
     use crate::context::{
         AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot,
     };
     use crate::frame;
+    use crate::test_support::Fixture;
 
     /// Test harness: provides every context that `app_root_view` reads
     /// (`AppContext`, `ViewState`, `ToastQueue`, plus the upstream
-    /// `RawHandles` for symmetry with the runtime
+    /// `Fixture` for symmetry with the runtime
     /// path), then renders the **same** `app_root_view()` that `app_root`
     /// renders at runtime. This makes the rsx tree at the application
     /// root single-source-of-truth: a regression that changes
@@ -133,7 +125,7 @@ mod tests {
         crate::controllers::provide_fixture(crate::controllers::View::default());
         // --- minimal stubs for context providers ---
         let (cmd_tx, _cmd_rx) = mpsc::channel();
-        let raw = RawHandles {
+        let raw = Fixture {
             state: Arc::new(RwLock::new(AppState::new())),
             commands: cmd_tx,
         };
@@ -142,13 +134,14 @@ mod tests {
         let config = use_signal(ConfigSnapshot::default);
         let live = use_signal(LiveSnapshot::default);
         let settings = use_signal(SettingsSnapshot::default);
-        let ctx = AppContext {
-            state: Arc::clone(&raw.state),
-            commands: raw.commands.clone(),
-            settings,
-            meta,
-            config,
-            live,
+        let ctx = {
+            crate::test_support::provide_engine(Arc::clone(&raw.state), raw.commands.clone());
+            AppContext {
+                settings,
+                meta,
+                config,
+                live,
+            }
         };
         use_context_provider(|| ctx.clone());
 

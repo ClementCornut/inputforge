@@ -207,3 +207,32 @@ fn stale_menu_move_observes_a_new_device_filter_before_rerender() {
     click(&dom, "Move up");
     assert_eq!(rx.try_recv().unwrap_err(), TryRecvError::Empty);
 }
+
+#[test]
+fn an_open_menu_never_retargets_a_replaced_mapping_after_a_new_frame() {
+    let (mut dom, f, rx) = mount();
+    menu(&mut dom, "First");
+    f.state
+        .write()
+        .active_profile
+        .as_mut()
+        .unwrap()
+        .set_mapping(
+            &address(0),
+            "Default",
+            Some("First".into()),
+            vec![inputforge_core::action::Action::MapToMouse {
+                target: inputforge_core::action::MouseTarget::LeftButton,
+                behavior: inputforge_core::action::OutputBehavior::Hold,
+            }],
+        );
+    let next = inputforge_app::bridge::prepare(&f.state.read(), None).config;
+    dom.in_runtime(|| f.config.borrow().unwrap().set(next));
+    dom.render_immediate_to_vec();
+    click(&dom, "Other");
+    dom.render_immediate_to_vec();
+    assert!(
+        rx.try_recv().is_err(),
+        "old menu must not target replacement mapping"
+    );
+}

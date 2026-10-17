@@ -27,13 +27,14 @@ fn root() -> Element {
     let config = use_signal(|| prepared.config);
     let live = use_signal(|| prepared.live);
     let settings = use_signal(|| prepared.settings);
-    let ctx = AppContext {
-        state: Arc::clone(&f.state),
-        commands: f.commands.clone(),
-        meta,
-        config,
-        live,
-        settings,
+    let ctx = {
+        crate::test_support::provide_engine(Arc::clone(&f.state), f.commands.clone());
+        AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     };
     use_context_provider(|| ctx.clone());
     let mut view = crate::frame::use_view_state_provider(meta);

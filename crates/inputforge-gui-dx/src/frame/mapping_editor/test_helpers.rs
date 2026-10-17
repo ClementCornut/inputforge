@@ -11,6 +11,7 @@
 //! only accepts function pointers, so a capturing closure cannot be used
 //! directly here. To pass per-test inputs, build them inside the function.
 
+use crate::test_support::Fixture;
 use dioxus::prelude::*;
 use dioxus_ssr::render;
 
@@ -56,15 +57,13 @@ pub(crate) fn mount_stage_body_test(body_fn: fn() -> Element) -> String {
 }
 
 fn build_and_provide_app_context() {
-    use crate::context::{
-        ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
-    };
+    use crate::context::{ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
     use inputforge_core::state::AppState;
     use parking_lot::RwLock;
     use std::sync::{Arc, mpsc};
 
     let (cmd_tx, _rx) = mpsc::channel();
-    let raw = RawHandles {
+    let raw = Fixture {
         state: Arc::new(RwLock::new(AppState::new())),
         commands: cmd_tx,
     };
@@ -73,13 +72,14 @@ fn build_and_provide_app_context() {
     let config = use_signal(ConfigSnapshot::default);
     let live = use_signal(LiveSnapshot::default);
     let settings = use_signal(SettingsSnapshot::default);
-    let ctx = AppContext {
-        state: Arc::clone(&raw.state),
-        commands: raw.commands.clone(),
-        settings,
-        meta,
-        config,
-        live,
+    let ctx = {
+        crate::test_support::provide_engine(Arc::clone(&raw.state), raw.commands.clone());
+        AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     };
     use_context_provider(|| ctx);
 }

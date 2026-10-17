@@ -68,13 +68,6 @@ fn output_id_key(id: &OutputId) -> String {
 /// Parse a `Select` option value back into an [`OutputId`]. Returns `None`
 /// when the key string does not match any known pattern (should not occur
 /// under normal operation).
-fn valid_output(config: &inputforge_core::types::VirtualDeviceConfig, output: &OutputId) -> bool {
-    match output {
-        OutputId::Axis { id } => config.axes.contains(id),
-        OutputId::Button { id } => *id > 0 && *id <= config.button_count,
-        OutputId::Hat { id } => *id > 0 && *id <= config.hat_count,
-    }
-}
 fn available_outputs(config: &inputforge_core::types::VirtualDeviceConfig) -> Vec<OutputId> {
     config
         .axes
@@ -112,18 +105,18 @@ pub(crate) fn MapToVJoyBody(
         .virtual_devices
         .iter()
         .find(|v| v.device_id == output.device);
-    let output_valid = device_cfg.is_some_and(|v| valid_output(v, &output.output));
-    let mut malformed = editor.malformed_hints;
-    if output_valid {
-        malformed.write().remove(&stage_id);
-    } else {
-        let msg = if device_cfg.is_none() {
-            format!("Device {} not configured", output.device)
-        } else {
-            "Output not available on this device".to_owned()
-        };
-        malformed.write().insert(stage_id.clone(), msg);
-    }
+    use_context::<crate::mapping_edits::Bindings>()
+        .ui
+        .stage_hint
+        .call(crate::mapping_edits::hints::Request {
+            path: stage_id.clone(),
+            input: crate::mapping_edits::hints::Input::Vjoy(
+                output.clone(),
+                cfg.virtual_devices.clone(),
+            ),
+            hints: editor.malformed_hints,
+            tags: None,
+        });
 
     // --- Build device picker options ---
     // Each option is ("N", "Virtual device N") so the value is the device_id
@@ -271,7 +264,7 @@ pub(crate) fn MapToVJoyBody(
 mod linux_numbering_tests {
     use super::*;
     #[test]
-    fn picker_offers_first_and_last_one_based_controls_and_rejects_zero() {
+    fn picker_offers_first_and_last_one_based_controls() {
         let config = inputforge_core::types::VirtualDeviceConfig {
             device_id: 1,
             axes: vec![],
@@ -286,9 +279,5 @@ mod linux_numbering_tests {
                 OutputId::Hat { id: 1 }
             ]
         );
-        assert!(!valid_output(&config, &OutputId::Button { id: 0 }));
-        assert!(valid_output(&config, &OutputId::Button { id: 2 }));
-        assert!(!valid_output(&config, &OutputId::Hat { id: 0 }));
-        assert!(valid_output(&config, &OutputId::Hat { id: 1 }));
     }
 }

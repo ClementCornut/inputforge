@@ -5,29 +5,18 @@ use crate::{
     context::AppContext,
     frame::view_state::ViewState,
     mapping_edits::Bindings,
-    mapping_rail::{AddIntent, AddRequest, AddView, Phase, Scope, Target as RailTarget},
+    mapping_rail::{AddIntent, AddView, Scope, Target as RailTarget},
     patterns::live_capture::{LiveCapture, use_capture},
 };
 use dioxus::prelude::*;
 
 pub(super) fn submit(
-    mut state: Signal<AddView>,
-    mut name: Signal<String>,
+    state: Signal<AddView>,
+    name: Signal<String>,
     bindings: &Bindings,
     intent: AddIntent,
 ) -> bool {
-    let next = bindings.add.call(AddRequest {
-        view: state.peek().clone(),
-        intent,
-    });
-    let capturing = next.phase == Phase::Capturing;
-    if next.phase == Phase::Resting {
-        name.set(String::new());
-    }
-    if *state.peek() != next {
-        state.set(next);
-    }
-    capturing
+    bindings.ui.add_state.call((state, name, intent))
 }
 pub(super) fn commit(state: Signal<AddView>, name: Signal<String>, bindings: &Bindings) {
     let raw = name.peek().clone();
@@ -43,7 +32,7 @@ pub(crate) fn AddInline(
     let cap = use_context::<LiveCapture>();
     let bindings = use_context::<Bindings>();
     let state = use_signal(AddView::default);
-    let mut name = use_signal(String::new);
+    let name = use_signal(String::new);
     let capture = use_capture(
         Target {
             profile: ctx.meta.read().profile_id.clone(),
@@ -61,34 +50,37 @@ pub(crate) fn AddInline(
             submit(state, name, &bindings, AddIntent::CaptureCancelled);
         },
     );
+    let publication = crate::mapping_edits::ui::Add {
+        state,
+        name,
+        capture,
+    };
     let ctx_start = ctx.clone();
-    let begin = use_callback(move |source: Option<RailTarget>| {
-        let scope = Scope {
-            profile: ctx_start.meta.peek().profile_id.clone(),
-            mode: view.editing_mode.peek().clone(),
-        };
-        if let Some(source) = &source {
-            name.set(format!(
-                "{} (copy)",
-                source.before.name.as_deref().unwrap_or("(unnamed)")
-            ));
-        }
-        if submit(state, name, &bindings, AddIntent::Start { scope, source }) {
-            capture.start.call(());
-        }
+    let begin = use_callback(move |source| {
+        bindings.ui.add.call((
+            publication,
+            crate::mapping_edits::ui::AddEvent::Begin {
+                scope: Scope {
+                    profile: ctx_start.meta.peek().profile_id.clone(),
+                    mode: view.editing_mode.peek().clone(),
+                },
+                source,
+            },
+        ));
     });
+    let ctx_observe = ctx.clone();
     let observe = move || {
-        let mut pending = pending_duplicate;
-        let source = pending.peek().clone();
-        if source.is_some() {
-            pending.set(None);
-            begin.call(source);
-        }
-        let mut force = force_expanded;
-        if *force.peek() {
-            force.set(false);
-            begin.call(None);
-        }
+        bindings.ui.add.call((
+            publication,
+            crate::mapping_edits::ui::AddEvent::Observe {
+                scope: Scope {
+                    profile: ctx_observe.meta.peek().profile_id.clone(),
+                    mode: view.editing_mode.peek().clone(),
+                },
+                pending: pending_duplicate,
+                expanded: force_expanded,
+            },
+        ));
     };
     use_hook(observe);
     use_effect(move || {
@@ -101,10 +93,10 @@ pub(crate) fn AddInline(
         let _ = ctx.meta.read();
         let _ = view.editing_mode.read();
         let _ = state.read();
-        submit(state, name, &bindings, AddIntent::Reconcile);
-        if state.peek().phase == Phase::Resting && *capture.listening.peek() {
-            capture.cancel.call(());
-        }
+        bindings
+            .ui
+            .add
+            .call((publication, crate::mapping_edits::ui::AddEvent::Reconcile));
     });
     let dismiss = use_callback(move |()| {
         submit(state, name, &bindings, AddIntent::Cancel);

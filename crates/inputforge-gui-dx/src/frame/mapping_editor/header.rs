@@ -54,10 +54,10 @@ pub(crate) fn Header(
 ) -> Element {
     let ctx = use_context::<AppContext>();
     crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::use_origin();
-    let _editor = use_context::<EditorState>();
+    let editor = use_context::<EditorState>();
 
     // Local UI state.
-    let mut armed: Signal<bool> = use_signal(|| false);
+    let armed: Signal<bool> = use_signal(|| false);
     let saved_name = ctx
         .config
         .read()
@@ -66,7 +66,7 @@ pub(crate) fn Header(
         .find(|m| m.input == mapping_key.1 && m.mode == mapping_key.0)
         .and_then(|m| m.name.clone());
     let stored_name = saved_name.clone().unwrap_or_default();
-    let mut local_name: Signal<String> = use_signal(|| stored_name.clone());
+    let local_name: Signal<String> = use_signal(|| stored_name.clone());
     let target = Mapping {
         input: mapping_key.1.clone(),
         mode: mapping_key.0.clone(),
@@ -74,7 +74,7 @@ pub(crate) fn Header(
         actions: actions.clone(),
     };
     // The working text and its target must survive the same rerenders.
-    let mut draft = use_signal(|| target.clone());
+    let draft = use_signal(|| target.clone());
     let mapping_key_for_capture = mapping_key.clone();
     let actions_for_capture = actions.clone();
     let cfg_for_capture = ctx.config;
@@ -143,86 +143,29 @@ pub(crate) fn Header(
     let composite_class = rebind_composite_class(&input, false);
     let listening_class = rebind_composite_class(&input, true);
 
-    // ----- Display-mode handlers (h2) -----
-
-    let name_for_arm_kb = stored_name.clone();
-    let target_for_arm_kb = target.clone();
-    let on_h2_keydown = move |evt: KeyboardEvent| {
-        if matches!(evt.key(), Key::F2) {
-            evt.prevent_default();
-            draft.set(target_for_arm_kb.clone());
-            local_name.set(name_for_arm_kb.clone());
-            armed.set(true);
-        }
+    let ui = use_context::<crate::mapping_edits::Bindings>().ui;
+    let publication = crate::mapping_edits::ui::Header {
+        armed,
+        value: local_name,
+        draft,
+        error: editor.error,
     };
-
-    let name_for_arm_ctx = stored_name.clone();
-    let on_h2_contextmenu = move |evt: MouseEvent| {
-        evt.prevent_default();
-        draft.set(target.clone());
-        local_name.set(name_for_arm_ctx.clone());
-        armed.set(true);
-    };
-
-    // ----- Edit-mode handlers (input) -----
-
-    let on_input_blur = move |_| {
-        let new = local_name.peek().clone();
-        let before = draft.peek().clone();
-        let label = format_undo_label(
-            UndoKind::Rename,
-            LabelArgs {
-                old_new: Some((before.name.as_deref().unwrap_or_default(), &new)),
-                ..LabelArgs::default()
-            },
-        );
-        if !super::pipeline::stage_body::instruments::stage_dispatch::submit_inline(
-            &(before.mode, before.input),
-            &before.actions,
-            before.name,
-            crate::mapping_edits::Edit::Rename(new.clone()),
-            label,
-            false,
-        ) {
-            return;
-        }
-        armed.set(false);
-    };
-
-    let on_input_keydown = move |evt: KeyboardEvent| match evt.key() {
-        Key::Enter => {
-            evt.prevent_default();
-            // Trigger blur on the active input to commit via the canonical
-            // path (`onblur` handler). `document::eval` is fire and forget;
-            // `let _` suppresses the unused-result lint without blocking.
-            let _ = document::eval(
-                r"
-                const el = document.activeElement;
-                if (el && el instanceof HTMLInputElement) { el.blur(); }
-                ",
-            );
-        }
-        Key::Escape => {
-            evt.prevent_default();
-            let before = draft.peek().clone();
-            if super::pipeline::stage_body::instruments::stage_dispatch::submit_inline(
-                &(before.mode, before.input),
-                &before.actions,
-                before.name.clone(),
-                crate::mapping_edits::Edit::Rename(local_name.peek().clone()),
-                String::new(),
-                true,
-            ) {
-                local_name.set(before.name.unwrap_or_default());
-                armed.set(false);
-            }
-        }
-        _ => {}
-    };
-
-    let on_input_input = move |evt: FormEvent| {
-        local_name.set(evt.value());
-    };
+    let profile = super::pipeline::stage_body::instruments::stage_dispatch::profile();
+    let send = use_callback(move |event| {
+        ui.header.call(crate::mapping_edits::ui::HeaderRequest {
+            publication,
+            profile: profile.clone(),
+            target: target.clone(),
+            event,
+        });
+    });
+    let on_h2_keydown = move |evt| send.call(crate::mapping_edits::ui::HeaderEvent::ArmKey(evt));
+    let on_h2_contextmenu =
+        move |evt| send.call(crate::mapping_edits::ui::HeaderEvent::ArmMouse(evt));
+    let on_input_keydown = move |evt| send.call(crate::mapping_edits::ui::HeaderEvent::Key(evt));
+    let on_input_blur = move |_| send.call(crate::mapping_edits::ui::HeaderEvent::Blur);
+    let on_input_input =
+        move |evt: FormEvent| send.call(crate::mapping_edits::ui::HeaderEvent::Input(evt.value()));
 
     let on_rebind = move |_: MouseEvent| capture.start.call(());
     let on_cancel_rebind = move |_: MouseEvent| capture.cancel.call(());

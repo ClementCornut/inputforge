@@ -22,13 +22,14 @@ impl PartialEq for Props {
 fn harness(props: Props) -> Element {
     let Props { publisher, renders } = props;
     let (commands, _) = mpsc::channel();
-    let context = AppContext {
-        state: Arc::new(RwLock::new(AppState::new())),
-        commands,
-        meta: use_signal(MetaSnapshot::default),
-        config: use_signal(ConfigSnapshot::default),
-        live: use_signal(LiveSnapshot::default),
-        settings: use_signal(SettingsSnapshot::default),
+    let context = {
+        crate::test_support::provide_engine(Arc::new(RwLock::new(AppState::new())), commands);
+        AppContext {
+            settings: use_signal(SettingsSnapshot::default),
+            meta: use_signal(MetaSnapshot::default),
+            config: use_signal(ConfigSnapshot::default),
+            live: use_signal(LiveSnapshot::default),
+        }
     };
     let view = frame::use_view_state_provider(context.meta);
     let routing = Context {

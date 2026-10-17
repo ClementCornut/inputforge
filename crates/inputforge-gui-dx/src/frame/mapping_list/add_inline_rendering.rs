@@ -1,5 +1,5 @@
 //! Add-pad markup, labels and existing workflow callback wiring.
-use super::add_inline::{commit, submit};
+use super::add_inline::submit;
 use crate::{
     capture::Capture,
     components::{
@@ -81,7 +81,7 @@ fn captured(
     phase: Phase,
     config: &ConfigSnapshot,
     state: Signal<AddView>,
-    mut name: Signal<String>,
+    name: Signal<String>,
     bindings: &Bindings,
     capture: Capture,
 ) -> Element {
@@ -109,21 +109,10 @@ fn captured(
             (String::new(), CAPTURE_PROMPT.to_owned(), "")
         };
 
-    let addr_for_enter = captured_addr.clone();
-    let addr_for_btn = captured_addr;
     rsx! {
         div {
             class: "if-add-inline if-add-inline--pad",
-            onkeydown: move |evt: KeyboardEvent| {
-                // Enter commits when an input has been captured.
-                // Esc is handled by the document-level listener.
-                if evt.key() == Key::Enter
-                    && addr_for_enter.is_some()
-                {
-                    evt.prevent_default();
-                    commit(state, name, &bindings);
-                }
-            },
+            onkeydown:move |evt| bindings.ui.add.call((crate::mapping_edits::ui::Add {state,name,capture},crate::mapping_edits::ui::AddEvent::Key(evt))),
             div { class: "if-add-inline__readout",
                 if is_capturing {
                     span { "aria-label": "Listening for input",
@@ -148,7 +137,7 @@ fn captured(
                     size: ButtonSize::Sm,
                     disabled: is_capturing,
                     onclick: move |_| {
-                        if submit(state, name, &bindings, AddIntent::Refresh) { capture.start.call(()); }
+                        bindings.ui.add.call((crate::mapping_edits::ui::Add {state,name,capture},crate::mapping_edits::ui::AddEvent::Intent(AddIntent::Refresh)));
                     },
                 }
             }
@@ -156,15 +145,14 @@ fn captured(
                 value: ReadSignal::from(name),
                 size: InputSize::Sm,
                 placeholder: "Mapping name".to_owned(),
-                oninput: move |evt: FormEvent| name.set(evt.value()),
+                oninput: move |evt: FormEvent| bindings.ui.add.call((crate::mapping_edits::ui::Add {state,name,capture},crate::mapping_edits::ui::AddEvent::Input(evt.value()))),
             }
             div { class: "if-add-inline__actions",
                 Button {
                     variant: ButtonVariant::Ghost,
                     size: ButtonSize::Sm,
                     onclick: move |_| {
-                        capture.cancel.call(());
-                        submit(state, name, &bindings, AddIntent::Cancel);
+                        bindings.ui.add.call((crate::mapping_edits::ui::Add {state,name,capture},crate::mapping_edits::ui::AddEvent::Cancel));
                     },
                     "Cancel"
                 }
@@ -173,9 +161,7 @@ fn captured(
                     size: ButtonSize::Sm,
                     disabled: is_capturing,
                     onclick: move |_| {
-                        if addr_for_btn.is_some() {
-                            commit(state, name, &bindings);
-                        }
+                        bindings.ui.add.call((crate::mapping_edits::ui::Add {state,name,capture},crate::mapping_edits::ui::AddEvent::Commit));
                     },
                     "Add"
                 }

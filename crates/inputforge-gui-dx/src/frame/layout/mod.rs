@@ -10,9 +10,7 @@ const LAYOUT_CSS: Asset = asset!("/assets/frame/layout.css");
 
 use crate::context::AppContext;
 use crate::frame::panel_slot::PanelSlot as PanelSlotComponent;
-use crate::frame::top_bar::{
-    ModeDeleteDialog, ModeDeleteSignal, ModeFocusSignal, ModeTabs, TopBar,
-};
+use crate::frame::top_bar::{ModeDeleteDialog, ModeTabs, TopBar};
 use crate::frame::view_state::{MainSurface, ViewState};
 
 pub(crate) use empty_state::EmptyState;
@@ -35,9 +33,8 @@ pub(crate) fn Layout() -> Element {
     let p = *has_profile.read();
     let s = *main_surface.read();
     let delete_target = use_signal(|| None);
-    use_context_provider(|| ModeDeleteSignal(delete_target));
     let mode_focus = use_signal(|| Option::<String>::None);
-    use_context_provider(|| ModeFocusSignal(mode_focus));
+    crate::frame::top_bar::mode_tabs::provide_publication(delete_target, mode_focus);
 
     rsx! {
         div { class: "if-layout",
@@ -115,24 +112,28 @@ mod tests {
             Vec::new(),
             "Default".to_owned(),
         );
-        let ctx = AppContext {
-            state: Arc::new(RwLock::new(AppState::with_profile(profile))),
-            commands: tx,
-            settings: use_signal(SettingsSnapshot::default),
-            meta: use_signal(|| MetaSnapshot {
-                profile_name: Some("T".to_owned()),
-                startup_mode: Some("Default".to_owned()),
-                modes: vec!["Default".to_owned()],
-                ..MetaSnapshot::default()
-            }),
-            config: use_signal(ConfigSnapshot::default),
-            live: use_signal(LiveSnapshot::default),
+        let ctx = {
+            crate::test_support::provide_engine(
+                Arc::new(RwLock::new(AppState::with_profile(profile))),
+                tx,
+            );
+            AppContext {
+                settings: use_signal(SettingsSnapshot::default),
+                meta: use_signal(|| MetaSnapshot {
+                    profile_name: Some("T".to_owned()),
+                    startup_mode: Some("Default".to_owned()),
+                    modes: vec!["Default".to_owned()],
+                    ..MetaSnapshot::default()
+                }),
+                config: use_signal(ConfigSnapshot::default),
+                live: use_signal(LiveSnapshot::default),
+            }
         };
         use_context_provider(|| ctx.clone());
         let controller = use_hook(|| {
             inputforge_app::mapping_edits::Controller::new(
-                Arc::clone(&ctx.state),
-                ctx.commands.clone(),
+                Arc::clone(&crate::test_support::engine().state),
+                crate::test_support::engine().commands.clone(),
             )
         });
         let bindings = use_hook(|| controller.bindings());

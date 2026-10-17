@@ -34,13 +34,14 @@ fn root() -> Element {
     let config = use_signal(|| frame.config);
     let live = use_signal(|| frame.live);
     let settings = use_signal(|| frame.settings);
-    use_context_provider(|| crate::context::AppContext {
-        state,
-        commands,
-        settings,
-        meta,
-        config,
-        live,
+    use_context_provider(|| {
+        crate::test_support::provide_engine(state, commands);
+        crate::context::AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     });
     rsx! {super::DevicePanel{}}
 }

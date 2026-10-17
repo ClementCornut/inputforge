@@ -124,11 +124,13 @@ pub(crate) fn Row(
     };
     let summary_for_ctx = summary.clone();
     let on_open_menu_inner = on_open_menu;
-    let oncontextmenu = move |evt: MouseEvent| {
-        evt.prevent_default();
-        evt.stop_propagation();
-        let coords = evt.client_coordinates();
-        on_open_menu_inner.call((summary_for_ctx.input.clone(), coords.x, coords.y));
+    let ui = use_context::<crate::mapping_edits::Bindings>().ui;
+    let oncontextmenu = move |evt| {
+        ui.row_menu.call(crate::mapping_edits::ui::RowMenuRequest {
+            input: summary_for_ctx.input.clone(),
+            event: evt,
+            send: on_open_menu_inner,
+        });
     };
 
     // Render the prepared group-local source position.

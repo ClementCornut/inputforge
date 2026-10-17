@@ -7,6 +7,7 @@
 //!   `mod tests` block in `pipeline/mod.rs`)
 //! - SSR rendering tests for `Pipeline` and `Stage` (Task 20)
 
+use crate::test_support::Fixture;
 use std::sync::{Arc, mpsc};
 
 use dioxus::prelude::*;
@@ -27,9 +28,7 @@ use inputforge_core::types::{
 use std::collections::HashMap;
 
 use crate::components::sortable::use_sortable_state;
-use crate::context::{
-    AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
-};
+use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
 use crate::frame::mapping_editor::{MappingEditor, use_editor_state_provider};
 use crate::frame::view_state::use_view_state_provider;
 use crate::patterns::keyboard_capture::use_keyboard_capture_provider;
@@ -386,7 +385,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     } = props;
 
     let (cmd_tx, _) = mpsc::channel();
-    let raw = RawHandles {
+    let raw = Fixture {
         state,
         commands: cmd_tx,
     };
@@ -414,13 +413,14 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     });
     let config = use_signal(|| snap);
     let live = use_signal(LiveSnapshot::default);
-    let ctx = AppContext {
-        state: Arc::clone(&raw.state),
-        commands: raw.commands.clone(),
-        settings: use_signal(SettingsSnapshot::default),
-        meta,
-        config,
-        live,
+    let ctx = {
+        crate::test_support::provide_engine(Arc::clone(&raw.state), raw.commands.clone());
+        AppContext {
+            settings: use_signal(SettingsSnapshot::default),
+            meta,
+            config,
+            live,
+        }
     };
     use_context_provider(|| ctx);
 
@@ -491,13 +491,14 @@ fn render_stage_body_with_addr(action: Action, addr: InputAddress) -> String {
 fn KeyboardPropSyncHarness() -> Element {
     let (cmd_tx, _) = mpsc::channel();
     let state = Arc::new(RwLock::new(AppState::new()));
-    let ctx = AppContext {
-        state,
-        commands: cmd_tx,
-        settings: use_signal(SettingsSnapshot::default),
-        meta: use_signal(MetaSnapshot::default),
-        config: use_signal(ConfigSnapshot::default),
-        live: use_signal(LiveSnapshot::default),
+    let ctx = {
+        crate::test_support::provide_engine(state, cmd_tx);
+        AppContext {
+            settings: use_signal(SettingsSnapshot::default),
+            meta: use_signal(MetaSnapshot::default),
+            config: use_signal(ConfigSnapshot::default),
+            live: use_signal(LiveSnapshot::default),
+        }
     };
     use_context_provider(|| ctx);
     use_keyboard_capture_provider();
@@ -536,13 +537,14 @@ fn KeyboardPropSyncHarness() -> Element {
 fn PredicateHookOrderHarness() -> Element {
     let (cmd_tx, _) = mpsc::channel();
     let state = Arc::new(RwLock::new(AppState::new()));
-    let ctx = AppContext {
-        state,
-        commands: cmd_tx,
-        settings: use_signal(SettingsSnapshot::default),
-        meta: use_signal(MetaSnapshot::default),
-        config: use_signal(ConfigSnapshot::default),
-        live: use_signal(LiveSnapshot::default),
+    let ctx = {
+        crate::test_support::provide_engine(state, cmd_tx);
+        AppContext {
+            settings: use_signal(SettingsSnapshot::default),
+            meta: use_signal(MetaSnapshot::default),
+            config: use_signal(ConfigSnapshot::default),
+            live: use_signal(LiveSnapshot::default),
+        }
     };
     use_context_provider(|| ctx);
     use_live_capture_provider();
@@ -3154,13 +3156,14 @@ fn dispatch_dom(
         };
         let frame = inputforge_app::bridge::prepare(&state.read(), Some(&key));
         let meta = use_signal(|| frame.meta);
-        let ctx = AppContext {
-            state,
-            commands,
-            meta,
-            config: use_signal(|| frame.config),
-            live: use_signal(LiveSnapshot::default),
-            settings: use_signal(SettingsSnapshot::default),
+        let ctx = {
+            crate::test_support::provide_engine(state, commands);
+            AppContext {
+                settings: use_signal(SettingsSnapshot::default),
+                meta,
+                config: use_signal(|| frame.config),
+                live: use_signal(LiveSnapshot::default),
+            }
         };
         use_context_provider(|| ctx);
         let mut view = use_view_state_provider(meta);

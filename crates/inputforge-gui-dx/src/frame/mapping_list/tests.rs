@@ -32,13 +32,14 @@ fn provide_minimal_contexts() {
     );
     let shared = Arc::new(RwLock::new(AppState::with_profile(profile)));
     let prepared = inputforge_app::bridge::prepare(&shared.read(), None);
-    let ctx = AppContext {
-        state: shared,
-        commands: cmd_tx,
-        settings: use_signal(SettingsSnapshot::default),
-        meta: use_signal(|| prepared.meta),
-        config: use_signal(ConfigSnapshot::default),
-        live: use_signal(LiveSnapshot::default),
+    let ctx = {
+        crate::test_support::provide_engine(shared, cmd_tx);
+        AppContext {
+            settings: use_signal(SettingsSnapshot::default),
+            meta: use_signal(|| prepared.meta),
+            config: use_signal(ConfigSnapshot::default),
+            live: use_signal(LiveSnapshot::default),
+        }
     };
     use_context_provider(|| ctx.clone());
 
@@ -1088,7 +1089,8 @@ fn duplicate_click_arms_live_capture() {
     fn TestComponent() -> Element {
         provide_minimal_contexts();
         let ctx = use_context::<AppContext>();
-        ctx.state
+        crate::test_support::engine()
+            .state
             .write()
             .active_profile
             .as_mut()
@@ -1460,9 +1462,8 @@ fn mode_tabs_active_tab_renders_canonical_if_tab_active_class() {
         // normally; provide local stubs so ModeTabs can mount in
         // isolation.
         let dt = use_signal(|| None);
-        use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeDeleteSignal(dt));
         let mf: Signal<Option<String>> = use_signal(|| None);
-        use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeFocusSignal(mf));
+        crate::frame::top_bar::mode_tabs::provide_publication(dt, mf);
         use_hook(move || {
             cfg_signal.set(inputforge_app::bridge::prepare(&state, None).config);
             meta_signal.set(inputforge_app::bridge::prepare(&state, None).meta);
@@ -1519,9 +1520,8 @@ fn mode_tabs_add_button_lives_outside_tablist() {
         let mut cfg_signal = ctx_app.config;
         let mut meta_signal = ctx_app.meta;
         let dt = use_signal(|| None);
-        use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeDeleteSignal(dt));
         let mf: Signal<Option<String>> = use_signal(|| None);
-        use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeFocusSignal(mf));
+        crate::frame::top_bar::mode_tabs::provide_publication(dt, mf);
         use_hook(move || {
             cfg_signal.set(inputforge_app::bridge::prepare(&state, None).config);
             meta_signal.set(inputforge_app::bridge::prepare(&state, None).meta);
@@ -1584,9 +1584,8 @@ fn mode_tabs_running_pip_uses_canonical_class() {
         let mut cfg_signal = ctx_app.config;
         let mut meta_signal = ctx_app.meta;
         let dt = use_signal(|| None);
-        use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeDeleteSignal(dt));
         let mf: Signal<Option<String>> = use_signal(|| None);
-        use_context_provider(|| crate::frame::top_bar::mode_tabs::ModeFocusSignal(mf));
+        crate::frame::top_bar::mode_tabs::provide_publication(dt, mf);
         use_hook(move || {
             cfg_signal.set(inputforge_app::bridge::prepare(&state, None).config);
             meta_signal.set(inputforge_app::bridge::prepare(&state, None).meta);

@@ -1,4 +1,6 @@
 //! Prepared mode rendering values and app workflow callbacks.
+#[path = "mode_management_ui.rs"]
+pub mod ui;
 use dioxus::prelude::Callback;
 use inputforge_core::profile::ProfileId;
 /// Rendered profile and editing navigation captured when a workflow opens.
@@ -81,4 +83,6 @@ pub enum Transition {
 pub struct Bindings {
     pub dispatch: Callback<Request, Result<Transition, String>>,
     pub reconcile: Callback<()>,
+    pub ui: Callback<ui::Request, bool>,
+    pub delete: Callback<ui::DeleteRequest, bool>,
 }

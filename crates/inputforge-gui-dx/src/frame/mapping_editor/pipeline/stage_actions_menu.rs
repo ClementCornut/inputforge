@@ -17,7 +17,7 @@ use inputforge_core::action::Action;
 
 #[component]
 pub(crate) fn StageActionsMenu(mapping_key: MappingKey, root_actions: Vec<Action>) -> Element {
-    let mut editor = use_context::<EditorState>();
+    let editor = use_context::<EditorState>();
     crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::use_origin();
     let bindings = use_context::<Bindings>();
     let activation = use_signal(|| false);
@@ -85,7 +85,7 @@ pub(crate) fn StageActionsMenu(mapping_key: MappingKey, root_actions: Vec<Action
             open: Some(MenuAnchor { x: menu.x, y: menu.y }),
             class: "if-stage-menu".to_owned(),
             on_close: move |reason: CloseReason| {
-                if reason != CloseReason::ItemActivated || *activation.peek() { editor.stage_menu.set(None); }
+                bindings.ui.stage_close.call((editor.stage_menu,activation,reason));
             },
             MenuItem { disabled: !up, onclick: activate(Some(false)), "Move up" }
             MenuItem { disabled: !down, onclick: activate(Some(true)), "Move down" }

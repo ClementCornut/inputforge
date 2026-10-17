@@ -95,10 +95,6 @@ fn editor() -> Element {
         inputforge_app::settings::Controller::new(Arc::clone(&fixture.state), commands.clone())
     });
     let editor = inputforge_gui_dx::render_editor(
-        inputforge_gui_dx::RawHandles {
-            state: Arc::clone(&fixture.state),
-            commands: (commands).clone(),
-        },
         inputforge_gui_dx::routing::Bindings {
             dispatch: Callback::new(|_| {}),
         },

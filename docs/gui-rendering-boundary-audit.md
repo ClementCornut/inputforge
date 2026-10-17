@@ -4,8 +4,12 @@ Date: 2026-10-12. Latest implementation update: 2026-10-18.
 
 ## Scope and conclusion
 
-The GUI still owns substantial application behavior. The tray extraction is
-complete, but the rest does not meet the rendering-only boundary.
+The final implementation removes engine access from the renderer and completes
+application ownership of workflows and native interaction policy. The final
+verification/ownership register below is authoritative for current source;
+earlier dated sections retain their historical scope and acceptance evidence.
+Native Wayland, separate Windows, hardware, accessibility and performance
+acceptance remain distinct from automated ownership and regression checks.
 
 Requirements:
 
@@ -16,11 +20,11 @@ Requirements:
 - Do not introduce direct X11 APIs, commands, or workarounds in project code.
   Transitive dependencies may retain X11 support.
 
-The original audit was read-only. The status below now also records the first
-implemented routing, polling, controller-workflow, advanced-axis, live-capture,
-keyboard-capture, shared mapping-dispatch/history, mapping-rail, batch-mapping, mode-management,
-editor-instrument, profile-workflow and live-readout extractions;
-the remaining findings are still open.
+The original audit was read-only. The subsequent implementation sections record
+incremental migration and their actual acceptance limits. The final register
+covers every production GUI module and browser asset and records the final
+independent architecture review; historical open-finding prose is superseded
+only by that register, without rewriting dated acceptance reports.
 
 ## Resolved routing controls — 2026-10-12
 
@@ -2542,3 +2546,104 @@ during/after a drag, keyboard capture/overlay precedence and screen-reader annou
 Native compositor, assistive technology, hardware and performance acceptance remain
 unverified. Part 13 retains transitional host-handle removal and the final ownership
 inspection; earlier native Apply, capture and drag evidence remains unchanged.
+
+## Final rendering boundary closure — 2026-10-18
+
+The final part removes `RawHandles`, `AppContext.state`, `AppContext.commands`
+and every state/sender argument to `render_editor`. The desktop host, demo,
+controller-feedback, live-capture and real bridge fixtures now supply prepared
+contracts and app callbacks only. The private unit-fixture engine setup lives in
+`#[cfg(test)]` support, outside `AppContext`; it is absent from production and
+cannot be supplied through the renderer API. No compatibility dispatch path remains.
+
+The [complete production ownership register](gui-rendering-boundary-ownership.md)
+enumerates **189 loaded GUI modules**, inline browser rendering mechanics and
+all GUI browser assets. Production GUI source has no engine state/command type,
+engine read/write, direct filesystem/clipboard/dialog service, timer, listener
+installation or workflow scheduler. Dioxus rendering support and core value types
+remain. Direct GUI `tokio`, `parking_lot`, `chrono` and `anyhow` production
+requirements are gone; fixture requirements are dev-only. Unused direct
+`unicode-segmentation` was removed. The app uses its existing `serde_json`
+dependency for escaped DOM identifiers in app-owned mode event handling.
+
+**Explicit closure adjustment:** The current-source inspection found residual
+mode inline/menu/confirmation key and draft/open/error/focus decisions, editor
+header and rail rename key handling, add-pad capture coordination, rail
+menu/drop/confirmation completion, keyboard draft synchronization, raw filter-to-reorder gates and stage
+validation hints in GUI closures. They now use small
+[existing app mapping-controller modules](../crates/inputforge-app/src/mapping_edits/ui/mod.rs)
+and [mode-controller callbacks](../crates/inputforge-app/src/mapping_edits/modes/ui.rs).
+This corrects the earlier slices' incomplete boundary; it adds no workflow,
+controller, generic service framework, engine poller, thread or channel.
+
+The real rail-menu regression reproduced a stale menu targeting a replacement
+mapping after a fresh config frame. The app now captures the complete prepared
+menu target at opening and revalidates it at delivery. New parent-callback/child-
+scope teardown regressions also reproduced writes to disposed presentation
+signals; app callbacks now reject obsolete publications before mutation or
+command dispatch. Existing controller identity, core queue/profile guards,
+write barriers, capture ownership and history remain authoritative.
+
+The final independent review identified the narrower inline-draft lifetime
+(ModeTabs remains mounted) and raw filter interpretation as remaining gaps. The
+new [raw-filter callback regressions](../crates/inputforge-app/tests/rail_filter_ui.rs)
+cover whitespace-only, text and device filters plus changes between menu/drag
+preparation and delivery. The app prepares visual filter state and reads raw
+current publications when opening or delivering rail actions. The GUI forwards
+observations and renders that prepared state. The split-lifetime mode regression
+retains the parent publication while destroying only its Draft child; obsolete
+input and drag callbacks reject disposed destinations before publication.
+
+| Original finding | Current source ownership and evidence |
+| --- | --- |
+| #1 Engine access | Removed from public renderer/context and all hosts/fixtures; the [real no-handles integration](../crates/inputforge-gui-dx/tests/editor_bridge.rs) covers assembled lifecycle and equality suppression. |
+| #2 Controller/configuration policy | Existing app routing/controllers/settings/navigation/mode callbacks own validation and transitions; GUI consumes their values. |
+| #3 Capture | Existing app live/keyboard controllers and instrument callbacks own interpretation, identity, completion and cleanup. |
+| #4 Editor/mapping behavior | Existing app mapping controller owns edits, history, header/rail drafts, stage validation and navigation; real handler/capture/history regressions remain. |
+| #5 Batch mapping | App-owned wizard/dispatch and capability reconciliation remain on the single bridge tick. |
+| #6 Profiles/snapshots/settings | App workflows and core guarded commands remain authoritative for queue ordering, stable identities, persistence and failure feedback. |
+| #7 OS/filesystem services | App native dialogs, clipboard/Wayland service and metadata cache; core persistence. No direct GUI service use. |
+| #8 Event handling/state transitions | App workflow, navigation, control, overlay, sortable and final mapping/mode callbacks own policy. GUI retains the rendering mechanics explicitly classified in the register. |
+| #9 Readout analysis | App coherent preparation/expiry; GUI reads the completed model and draws it. Draft-curve dot/path evaluation is SVG geometry, not live pipeline evaluation. |
+| #10 Notifications | App state/deadline/warning delivery; GUI renders prepared lists and forwards observations. Desktop/demo use the existing bridge, gallery uses its isolated app preview driver. |
+
+The comments-only former sortable script and interaction paths remain unloaded
+historical location notices, preserving prior links. They are not compatibility
+implementations. All seven saved historical acceptance section hashes remain
+required to match; no prior native Apply, capture, drag or ghost acceptance is
+rewritten by this closure.
+
+Final full-workspace, strict pre-commit, seven JavaScript suites, link/hash/module
+checks and independent current-state/whole-series architecture review are recorded
+in the final verification checkpoint below after completion. Source ownership is
+separate from native acceptance: run `dx run -p inputforge-app` on native Wayland
+and separately Windows, then exercise Stop/edit/Apply/Start; header/rail and mode
+rename Enter/blur/Escape; profiles/pickers, snapshots/restore/Ctrl+S, settings/prune,
+device alias/removal/copy; live dots/pulses and notifications; keyboard capture,
+focus/tabs, menus/dialogs; nested/empty pipeline and rail drag/ghost/scroll/undo;
+and shutdown/remount while a capture, picker, menu or gesture is active. The
+historical detailed native drag checklist still applies. Physical hardware,
+compositor/clipboard, assistive-technology, visual and performance acceptance
+remain pending and are not implied by automated tests.
+
+### Final automated verification
+
+- Final host `cargo test --workspace --locked --offline -j 2`: **2,237 passed,
+  0 failed, 10 existing ignored**, across 42 result blocks. Host IPC access is
+  required by the existing single-instance socket tests; no tests were excluded.
+- Unchanged `bash .githooks/pre-commit` passed: formatting and all-target strict
+  Clippy. All seven JavaScript suites passed, including 19 sortable pointer/ghost cases.
+- The [real renderer integration](../crates/inputforge-gui-dx/tests/editor_bridge.rs)
+  mounts without handles and verifies assembled equality/cadence/contention/lifecycle.
+  [Mode UI](../crates/inputforge-app/tests/mode_ui.rs) and
+  [child publication lifecycle](../crates/inputforge-app/tests/renderer_ui_lifecycle.rs)
+  regressions exercise actual app callbacks; the real rail-handler suite covers
+  captured-menu replacement. Full capture/history/mode/batch/drag coverage remains.
+- All **492** local audit/plan/ownership links, seven saved historical section
+  hashes, focused module sizes and `git diff --check` passed. New focused modules
+  remain within 200 noncomment production lines; larger existing render leaves
+  shrink, with only two wiring lines added to each of two legacy orchestrators.
+- One independent reviewer cleared Part13 spec/quality and the final whole-series
+  current architecture: **SPEC PASS / QUALITY SHIP** after the scoped regression-first
+  corrections above. All ten findings are resolved within the explicit rendering
+  mechanics; no implementation part remains. Native acceptance limits above remain.

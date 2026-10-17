@@ -57,10 +57,6 @@ fn editor(props: EditorProps) -> Element {
         inputforge_app::settings::Controller::new(Arc::clone(&props.state), commands.clone())
     });
     render_editor(
-        inputforge_gui_dx::RawHandles {
-            state: Arc::clone(&props.state),
-            commands: (commands).clone(),
-        },
         Bindings {
             dispatch: Callback::new(|_| {}),
         },
@@ -168,6 +164,13 @@ fn renderer_preserves_tick_cadence_skips_contention_and_releases_polling_on_drop
         assert!(dioxus_ssr::render(&dom).contains("Initial fixture"));
         assert!(dioxus_ssr::render(&dom).contains("Virtual controller 3"));
         assert!(dioxus_ssr::render(&dom).contains("Not detected yet"));
+        tokio::time::advance(Duration::from_millis(16)).await;
+        let unchanged = dom.render_immediate_to_vec();
+        assert!(
+            unchanged.edits.is_empty(),
+            "unchanged assembled contracts must not rewrite the DOM: {:?}",
+            unchanged.edits
+        );
         let mut next = profile("Next fixture");
         next.set_modes(Modes::new(vec!["Default".into(), "Prepared mode".into()]).unwrap());
         state.write().active_profile = Some(next);

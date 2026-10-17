@@ -33,22 +33,26 @@ pub(super) fn provide(state: AppState) -> (AppContext, mpsc::Receiver<EngineComm
     // resolved `device_display_names` map without each test having to
     // build it by hand.
     let initial_config = inputforge_app::bridge::prepare(&state, None).config;
-    let ctx = AppContext {
-        state: Arc::new(RwLock::new(state)),
-        commands: tx,
-        settings: use_signal(SettingsSnapshot::default),
-        meta: use_signal(|| MetaSnapshot {
-            profile_name: Some("T".to_owned()),
-            startup_mode: Some("Default".to_owned()),
-            modes: vec!["Default".to_owned()],
-            ..MetaSnapshot::default()
-        }),
-        config: use_signal(|| initial_config),
-        live: use_signal(LiveSnapshot::default),
+    let ctx = {
+        crate::test_support::provide_engine(Arc::new(RwLock::new(state)), tx);
+        AppContext {
+            settings: use_signal(SettingsSnapshot::default),
+            meta: use_signal(|| MetaSnapshot {
+                profile_name: Some("T".to_owned()),
+                startup_mode: Some("Default".to_owned()),
+                modes: vec!["Default".to_owned()],
+                ..MetaSnapshot::default()
+            }),
+            config: use_signal(|| initial_config),
+            live: use_signal(LiveSnapshot::default),
+        }
     };
     use_context_provider(|| ctx.clone());
     let controller = use_hook(|| {
-        inputforge_app::mapping_edits::Controller::new(Arc::clone(&ctx.state), ctx.commands.clone())
+        inputforge_app::mapping_edits::Controller::new(
+            Arc::clone(&crate::test_support::engine().state),
+            crate::test_support::engine().commands.clone(),
+        )
     });
     let bindings = use_hook(|| controller.bindings());
     use_context_provider(|| bindings);

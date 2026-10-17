@@ -27,21 +27,21 @@ fn root() -> Element {
     let config = use_signal(|| frame.config);
     let live = use_signal(LiveSnapshot::default);
     let settings = use_signal(SettingsSnapshot::default);
-    use_context_provider(|| AppContext {
-        state: Arc::clone(&f.state),
-        commands: f.tx.clone(),
-        meta,
-        config,
-        live,
-        settings,
+    use_context_provider(|| {
+        crate::test_support::provide_engine(Arc::clone(&f.state), f.tx.clone());
+        AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     });
     let view = crate::frame::use_view_state_provider(meta);
     use_context_provider(|| view);
     crate::frame::mapping_editor::use_editor_state_provider();
     let target = use_signal(|| None);
     let focus = use_signal(|| None);
-    use_context_provider(|| super::super::ModeDeleteSignal(target));
-    use_context_provider(|| super::super::ModeFocusSignal(focus));
+    crate::frame::top_bar::mode_tabs::provide_publication(target, focus);
     *f.view.borrow_mut() = Some(view);
     *f.focus.borrow_mut() = Some(focus);
     *f.meta.borrow_mut() = Some(meta);

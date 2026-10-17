@@ -50,15 +50,6 @@ use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, forma
 use crate::frame::mapping_list::source_label;
 use crate::patterns::live_capture::{CAPTURE_PROMPT, rebind_composite_class, use_capture};
 
-/// Malformed-hint message shown when the [`MergeAxisBody`] secondary input
-/// is [`InputAddress::Unbound`].
-///
-/// Surfaced by [`MergeAxisBody`] as the highest-priority hint for the
-/// stage. Pre-empts the existing "Secondary input must differ from primary"
-/// hint because no other validation is meaningful when no secondary input
-/// is bound yet.
-const HINT_MERGE_UNBOUND: &str = "Bind a secondary input to complete this merge";
-
 /// Convert a [`MergeOp`] to its stable string key used as the Select value.
 const fn op_to_str(op: MergeOp) -> &'static str {
     match op {
@@ -99,32 +90,18 @@ pub(crate) fn MergeAxisBody(
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
 
-    // Task 9 + Amendment 1: malformed-hint write / clear on every render.
-    // Priority: Unbound > secondary-equals-primary. Written during the
-    // render phase (matching `MapToVJoyBody` / `MapToKeyboardBody`) so SSR
-    // observes the hint and the user sees the guidance the same frame the
-    // condition becomes invalid.
-    //
-    // REACTIVE-LOOP CONCERN (Task 40): both branches call malformed.write(),
-    // marking the Signal dirty. No loop forms because the write value is
-    // derived from the `second_input` and `mapping_key.1` props, neither of
-    // which originates from malformed_hints. A read-then-compare guard
-    // would be more explicit but is not required for correctness here.
-    {
-        let mut malformed = editor.malformed_hints;
-        if second_input.is_unbound() {
-            malformed
-                .write()
-                .insert(stage_id.clone(), HINT_MERGE_UNBOUND.to_owned());
-        } else if second_input == mapping_key.1 {
-            malformed.write().insert(
-                stage_id.clone(),
-                "Secondary input must differ from primary".to_owned(),
-            );
-        } else {
-            malformed.write().remove(&stage_id);
-        }
-    }
+    use_context::<crate::mapping_edits::Bindings>()
+        .ui
+        .stage_hint
+        .call(crate::mapping_edits::hints::Request {
+            path: stage_id.clone(),
+            input: crate::mapping_edits::hints::Input::Merge(
+                second_input.clone(),
+                mapping_key.1.clone(),
+            ),
+            hints: editor.malformed_hints,
+            tags: None,
+        });
 
     // --- Capture-and-commit for secondary input ---
     // On app capture completion, dispatch SetMapping with

@@ -125,10 +125,6 @@ fn desktop_root() -> Element {
         )
     });
     inputforge_gui_dx::render_editor(
-        inputforge_gui_dx::RawHandles {
-            state: handles.state,
-            commands: handles.commands,
-        },
         routing,
         controllers,
         capture.bindings(),

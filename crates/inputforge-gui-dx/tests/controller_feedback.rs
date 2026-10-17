@@ -42,10 +42,6 @@ fn editor() -> Element {
         inputforge_app::settings::Controller::new(Arc::clone(&state), commands.clone())
     });
     render_editor(
-        inputforge_gui_dx::RawHandles {
-            state: Arc::clone(&state),
-            commands: (commands).clone(),
-        },
         routing::Bindings {
             dispatch: Callback::new(|_| {}),
         },

@@ -10,6 +10,11 @@ use inputforge_gui_dx::labels as source_label;
 use inputforge_gui_dx::snapshots::{ConfigSnapshot, MappingSummary};
 
 use inputforge_gui_dx::navigation::DeviceChip;
+/// Whether raw filter observations restrict rail ordering.
+pub(crate) fn active(query: &str, device: Option<&DeviceId>) -> bool {
+    !query.trim().is_empty() || device.is_some()
+}
+
 /// Returns `true` if `row` survives the current filter `query`.
 ///
 /// - Empty query (or whitespace-only) -> always `true`.

@@ -105,7 +105,7 @@ fn route(
             else {
                 return;
             };
-            let filtered = !p.query.peek().trim().is_empty() || p.device.peek().is_some();
+            let filtered = super::filter_active(&p.query.peek(), p.device.peek().as_ref());
             let menu = c.rail_menu(Lookup {
                 scope: Scope {
                     profile: p.meta.peek().profile_id.clone(),

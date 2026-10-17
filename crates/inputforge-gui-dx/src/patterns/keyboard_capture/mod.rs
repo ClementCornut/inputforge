@@ -9,8 +9,8 @@ pub fn use_keyboard_capture_provider() {
     let bindings = use_context::<Bindings>();
     #[cfg(test)]
     let bindings = try_use_context::<Bindings>().unwrap_or_else(|| {
-        let ctx = use_context::<crate::context::AppContext>();
-        inputforge_app::keyboard_capture::Controller::new(ctx.state).bindings()
+        inputforge_app::keyboard_capture::Controller::new(crate::test_support::engine().state)
+            .bindings()
     });
     use_context_provider(|| bindings);
     #[cfg(not(test))]

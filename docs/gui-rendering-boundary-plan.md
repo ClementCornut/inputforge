@@ -51,14 +51,14 @@ New workflow contracts follow the current `Bindings`/`View` and captured request
 
 For every part:
 
-- [ ] Read the assigned code and enumerate current call sites with Cartog before edits; report a material scope change before proceeding.
-- [ ] Add behavioral regressions through the real app bindings and real GUI handlers. Run the focused cases; record expected failures before implementation where applicable.
-- [ ] Move behavior and its tests, wire every caller/fixture, remove superseded GUI behavior, and simplify only within that responsibility.
-- [ ] Run the focused tests and relevant existing lifecycle/capture/history/drag regressions.
-- [ ] Run unchanged `bash .githooks/pre-commit`, `cargo test --workspace --locked --offline -j 2`, and `git diff --check` before the commit. Obtain host permissions if existing IPC tests are blocked by sandbox socket restrictions; do not silently exclude them or relax lints.
-- [ ] Run `node crates/inputforge-app/tests/keyboard_capture/listener.mjs crates/inputforge-app/assets/keyboard_capture_listener.js`, `node crates/inputforge-gui-dx/tests/mapping_rail_listener.mjs`, and `node crates/inputforge-gui-dx/tests/sortable_drag.mjs`. Update paths together if ownership moves a script.
-- [ ] Check audit links, prior evidence preservation and touched production-module sizes. Review the complete diff, including deleted/untracked files and manifest changes.
-- [ ] Commit the exact owned paths using the scoped message below, then return the checkpoint so the next fresh implementation subagent can begin. Historical test totals are not current expectations.
+- [x] Read the assigned code and enumerate current call sites with Cartog before edits; report a material scope change before proceeding.
+- [x] Add behavioral regressions through the real app bindings and real GUI handlers. Run the focused cases; record expected failures before implementation where applicable.
+- [x] Move behavior and its tests, wire every caller/fixture, remove superseded GUI behavior, and simplify only within that responsibility.
+- [x] Run the focused tests and relevant existing lifecycle/capture/history/drag regressions.
+- [x] Run unchanged `bash .githooks/pre-commit`, `cargo test --workspace --locked --offline -j 2`, and `git diff --check` before the commit. Obtain host permissions if existing IPC tests are blocked by sandbox socket restrictions; do not silently exclude them or relax lints.
+- [x] Run `node crates/inputforge-app/tests/keyboard_capture/listener.mjs crates/inputforge-app/assets/keyboard_capture_listener.js`, `node crates/inputforge-gui-dx/tests/mapping_rail_listener.mjs`, and `node crates/inputforge-gui-dx/tests/sortable_drag.mjs`. Update paths together if ownership moves a script.
+- [x] Check audit links, prior evidence preservation and touched production-module sizes. Review the complete diff, including deleted/untracked files and manifest changes.
+- [x] Commit the exact owned paths using the scoped message below, then return the checkpoint so the next fresh implementation subagent can begin. Historical test totals are not current expectations.
 
 No native hardware tests, desktop acceptance or performance claims follow from automated checks. Provide manual steps using `dx run -p inputforge-app`; the user performs native Wayland and separate Windows acceptance.
 
@@ -267,6 +267,12 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 ## Part 13: Remove Transitional Engine Access and Close the Audit
 
+**Status (2026-10-18):** Complete on `main`; final host workspace **2,237 passed, 0 failed, 10 existing ignored** across 42 result blocks. Unchanged strict pre-commit, all seven JavaScript suites, 492 local links, seven historical hashes and source-size checks passed. One independent reviewer cleared Part13 spec/quality and whole-series/current-state architecture after regression-first corrections: **SPEC PASS / QUALITY SHIP**. All 13 source parts are complete; native/manual/performance acceptance remains pending.
+
+**Scope adjustment (2026-10-18):** The final ownership inspection found residual mode inline/menu/confirmation key and presentation transitions, editor header and rail rename keys, add-pad capture coordination, rail menu/drop/confirmation transitions, keyboard draft synchronization, raw filter-to-reorder gates and stage validation hints. These existing flows are completed through the existing app mapping/mode controller in this final part, regression-first against the real handler fixtures. This is required for findings #2/#4/#8 closure; it adds no product workflow, controller framework or scheduler. Remaining result-to-signal publication, SVG plot evaluation of a prepared tracking input against the displayed draft, formatting, measured placement and execution of supplied focus targets are rendering mechanics. Earlier dated acceptance records remain historical evidence.
+
+**Review corrections:** Final review exposed a retained input writing a disposed inline Draft while its parent ModeTabs publication remained alive, and GUI closures interpreting raw filter state into reorder permission. Real callback regressions reproduce both. Existing app callbacks now reject the narrower disposed draft, interpret current query/device publications, and provide prepared visual filter state. The same independent seat cleared these scoped corrections and the complete current architecture.
+
 **Commit:** `refactor(gui): remove transitional engine handles from renderer`
 
 **Files:** Modify GUI `src/{lib.rs,app.rs,context/mod.rs,bridge.rs}` and its README, app `src/{desktop_host.rs,bridge/mod.rs}`, every `render_editor` caller/example/integration fixture, both crate manifests as justified by actual remaining uses, this plan and `docs/gui-rendering-boundary-audit.md`.
@@ -279,8 +285,8 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 **Closure check:** Inspect all production GUI modules and browser assets for engine reads/commands, processing/workflow policy, direct OS/filesystem services, listeners, state-transition decisions and scheduling. Classify remaining geometry/formatting/portal behavior explicitly; do not mark #8 complete while reusable component policy remains. Any undiscovered substantive responsibility needs a reported plan adjustment rather than being hidden in this cleanup commit.
 
-- [ ] Complete the common cycle and full ownership review. Mark each audit finding resolved only with its evidence; preserve native/manual/performance limitations and historical acceptance text.
-- [ ] Final checkpoint: report all 13 hashes, actual checks, native acceptance still pending and the resulting Git state. Stop without pushing or merging.
+- [x] Complete the common cycle and full ownership review. Mark each audit finding resolved only with its evidence; preserve native/manual/performance limitations and historical acceptance text.
+- [x] Final checkpoint: report all 13 hashes, actual checks, native acceptance still pending and the resulting Git state. Stop without pushing or merging.
 
 ## Audit Coverage
 

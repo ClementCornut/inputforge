@@ -6,6 +6,7 @@
 //! wrapper, driven by `VirtualDom::new_with_props(Component, Props)`.
 //! Free fns and tuple props are NOT supported by Dioxus 0.7's
 //! `new_with_props` API.
+use crate::test_support::Fixture;
 use dioxus::prelude::*;
 use dioxus_ssr::render;
 use inputforge_core::processing::curves::ResponseCurve;
@@ -295,14 +296,14 @@ struct ToolbarHarnessProps {
 #[component]
 fn ToolbarHarness(props: ToolbarHarnessProps) -> Element {
     use crate::context::{
-        AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, RawHandles, SettingsSnapshot,
+        AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot,
     };
     use crate::frame::mapping_editor::pipeline::stage_body::response_curve::toolbar::Toolbar;
     use inputforge_core::state::AppState;
     use parking_lot::RwLock;
     use std::sync::{Arc, mpsc};
     let (cmd_tx, _rx) = mpsc::channel();
-    let raw = RawHandles {
+    let raw = Fixture {
         state: Arc::new(RwLock::new(AppState::new())),
         commands: cmd_tx,
     };
@@ -311,13 +312,14 @@ fn ToolbarHarness(props: ToolbarHarnessProps) -> Element {
     let config = use_signal(ConfigSnapshot::default);
     let live = use_signal(LiveSnapshot::default);
     let settings = use_signal(SettingsSnapshot::default);
-    let ctx = AppContext {
-        state: Arc::clone(&raw.state),
-        commands: raw.commands.clone(),
-        settings,
-        meta,
-        config,
-        live,
+    let ctx = {
+        crate::test_support::provide_engine(Arc::clone(&raw.state), raw.commands.clone());
+        AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     };
     use_context_provider(|| ctx);
     crate::frame::mapping_editor::use_editor_state_provider();
@@ -432,7 +434,7 @@ fn body_omits_live_dot_for_nested_stage() {
 #[test]
 fn body_renders_live_dot_for_top_level_stage_with_connected_device() {
     fn h() -> Element {
-        use crate::context::{AppContext, RawHandles, SettingsSnapshot};
+        use crate::context::{AppContext, SettingsSnapshot};
         use crate::frame::mapping_editor::pipeline::stage_body::response_curve::ResponseCurveBody;
         use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
         use inputforge_core::action::Action;
@@ -495,7 +497,7 @@ fn body_renders_live_dot_for_top_level_stage_with_connected_device() {
         let frame =
             inputforge_app::bridge::prepare(&state, Some(&("Default".into(), addr.clone())));
         let (cmd_tx, _rx) = mpsc::channel();
-        let raw = RawHandles {
+        let raw = Fixture {
             state: Arc::new(RwLock::new(state)),
             commands: cmd_tx,
         };
@@ -504,13 +506,14 @@ fn body_renders_live_dot_for_top_level_stage_with_connected_device() {
         let config = use_signal(|| frame.config);
         let live = use_signal(|| frame.live);
         let settings = use_signal(SettingsSnapshot::default);
-        let ctx = AppContext {
-            state: Arc::clone(&raw.state),
-            commands: raw.commands.clone(),
-            settings,
-            meta,
-            config,
-            live,
+        let ctx = {
+            crate::test_support::provide_engine(Arc::clone(&raw.state), raw.commands.clone());
+            AppContext {
+                settings,
+                meta,
+                config,
+                live,
+            }
         };
         use_context_provider(|| ctx);
         crate::patterns::live_capture::use_live_capture_provider();

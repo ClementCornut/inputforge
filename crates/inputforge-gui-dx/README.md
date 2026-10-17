@@ -149,12 +149,14 @@ The startup callback runs once per mounted editor scope. The app owns the single
 16 ms polling task and prepares `snapshots::Frame`; GUI publication updates only
 changed signals. Profile-file metadata is cached in the app and read after
 releasing the engine lock. The seeded demo reuses app projection code and
-publishes a fixed frame once, without a polling loop.
+uses the same single app-owned bridge and deadline driver as the desktop host.
 
 Routing eligibility, Start/Stop/Retry/Refresh dispatch, and review navigation
 belong to the app's shared `routing` module. GUI controls consume its prepared
-model. Controller configuration editing and other audited workflows still
-remain in this crate; see the [boundary audit](../../docs/gui-rendering-boundary-audit.md).
+model. Every renderer input is a prepared value, presentation signal or app callback;
+`render_editor` accepts no engine state or command sender. Controller, mapping,
+profile, capture, navigation, notification and reusable interaction behavior
+belongs to the app; see the [boundary audit](../../docs/gui-rendering-boundary-audit.md).
 It has no direct muda, GTK timer or Windows API dependency.
 
 The app configures hidden startup before constructing the window and dispatches

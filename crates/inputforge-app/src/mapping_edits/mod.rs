@@ -12,6 +12,7 @@ mod paths;
 mod prepare;
 mod rail;
 mod readouts;
+mod ui;
 use dioxus::prelude::{Callback, ReadableExt, WritableExt};
 use inputforge_core::{engine::EngineCommand, state::AppState};
 use inputforge_gui_dx::{
@@ -80,6 +81,7 @@ impl Controller {
         let rail = self.clone();
         let add = self.clone();
         Bindings {
+            ui: self.ui_bindings(),
             navigation: self.navigation_bindings(),
             instruments: self.instrument_bindings(),
             readouts: inputforge_gui_dx::readouts::Bindings {

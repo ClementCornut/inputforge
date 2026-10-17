@@ -55,13 +55,14 @@ fn harness() -> Element {
     let config = use_signal(|| frame.config);
     let live = use_signal(LiveSnapshot::default);
     let settings = use_signal(SettingsSnapshot::default);
-    use_context_provider(|| AppContext {
-        state: Arc::clone(&f.state),
-        commands: f.commands.clone(),
-        meta,
-        config,
-        live,
-        settings,
+    use_context_provider(|| {
+        crate::test_support::provide_engine(Arc::clone(&f.state), f.commands.clone());
+        AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     });
     let mut view = crate::frame::use_view_state_provider(meta);
     use_hook(|| view.selected_mapping.set(Some(key.clone())));

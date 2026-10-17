@@ -166,13 +166,14 @@ mod tests {
         let config = use_signal(|| config);
         let live = use_signal(LiveSnapshot::default);
 
-        use_context_provider(|| AppContext {
-            state,
-            commands,
-            settings,
-            meta,
-            config,
-            live,
+        use_context_provider(|| {
+            crate::test_support::provide_engine(state, commands);
+            AppContext {
+                settings,
+                meta,
+                config,
+                live,
+            }
         });
 
         let prepared = View {

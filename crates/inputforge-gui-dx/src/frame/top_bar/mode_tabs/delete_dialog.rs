@@ -1,25 +1,20 @@
 //! Shell-level mode confirmation rendering and focus callback wiring.
-use crate::mode_management::{Operation, Request, Target, Transition};
+use crate::mode_management::ui::{DeleteRequest, Shell};
 use dioxus::prelude::*;
-#[derive(Clone, Copy)]
-pub(crate) struct ModeDeleteSignal(pub Signal<Option<Target>>);
-#[derive(Clone, Copy)]
-pub(crate) struct ModeFocusSignal(pub Signal<Option<String>>);
 fn count_label(count: usize, singular: &'static str, plural: &'static str) -> &'static str {
     if count == 1 { singular } else { plural }
 }
 #[component]
 pub(crate) fn ModeDeleteDialog() -> Element {
-    let mut target = use_context::<ModeDeleteSignal>().0;
-    let mut focus = use_context::<ModeFocusSignal>().0;
+    let shell = use_context::<Shell>();
+    let target = shell.delete;
     let bindings = use_context::<crate::mapping_edits::Bindings>().modes;
-    let mut error = use_signal(|| None::<String>);
+    let error = use_signal(|| None::<String>);
     let mut open = use_signal(|| false);
     use_effect(move || {
         let want = target.read().is_some();
         if *open.peek() != want {
             open.set(want);
-            error.set(None);
         }
     });
     let current = target.read().clone();
@@ -31,27 +26,11 @@ pub(crate) fn ModeDeleteDialog() -> Element {
     let modes_label = count_label(modes, "mode", "modes");
     let mappings_label = count_label(mappings, "mapping", "mappings");
     let cancel = use_callback(move |()| {
-        let Some(t) = target.peek().clone() else {
-            return true;
-        };
-        match bindings.dispatch.call(Request {
-            scope: t.scope,
-            operation: Operation::Cancel(Some(t.name)),
-        }) {
-            Ok(Transition::Close(f)) => {
-                if let Some(n) = f {
-                    focus.set(Some(n));
-                }
-                target.set(None);
-                error.set(None);
-                true
-            }
-            Err(e) => {
-                error.set(Some(e));
-                false
-            }
-            _ => false,
-        }
+        bindings.delete.call(DeleteRequest {
+            shell,
+            error,
+            confirm: false,
+        })
     });
     rsx! {
         crate::components::DialogRoot {open,onclose:move |()| cancel.call(()),
@@ -67,11 +46,7 @@ pub(crate) fn ModeDeleteDialog() -> Element {
                 }
                 crate::components::Button {variant:crate::components::ButtonVariant::Secondary,
                     onclick:move |_| {
-                        let Some(t)=target.peek().clone() else{return};
-                        match bindings.dispatch.call(Request {scope:t.scope.clone(),operation:Operation::Delete(t)}) {
-                            Ok(Transition::Close(f))=>{if let Some(n)=f{focus.set(Some(n));}target.set(None);error.set(None);}
-                            Err(e)=>error.set(Some(e)),_=>{},
-                        }
+                        bindings.delete.call(DeleteRequest {shell,error,confirm:true});
                     },"Confirm"
                 }
             }

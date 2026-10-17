@@ -10,10 +10,13 @@ use crate::{
     components::{TabButton, TabsList, TabsRoot},
     context::AppContext,
     frame::view_state::ViewState,
-    mode_management::{Operation, Request, Scope, Transition},
+    mode_management::{
+        Scope,
+        ui::{Event as UiEvent, Publication, Request},
+    },
 };
-use context_menu::{AnchorRect, MenuTarget};
-pub(crate) use delete_dialog::{ModeDeleteDialog, ModeDeleteSignal, ModeFocusSignal};
+
+pub(crate) use delete_dialog::ModeDeleteDialog;
 use dioxus::prelude::*;
 #[component]
 #[allow(
@@ -32,23 +35,27 @@ pub(crate) fn ModeTabs() -> Element {
         profile: ctx.meta.read().profile_id.clone(),
         editing: view.editing_mode.read().clone(),
     };
-    let mut adding = use_signal(|| None::<Scope>);
-    let mut renaming = use_signal(|| None::<(Scope, String)>);
-    let mut menu = use_signal(|| None::<MenuTarget>);
-    let mut error = use_signal(|| None::<String>);
-    let mut delete_target = use_context::<ModeDeleteSignal>().0;
-    let mut focus = use_context::<ModeFocusSignal>().0;
+    let shell = use_context::<crate::mode_management::ui::Shell>();
+    let publication = Publication {
+        adding: use_signal(|| None),
+        renaming: use_signal(|| None),
+        menu: use_signal(|| None),
+        error: use_signal(|| None),
+        delete: shell.delete,
+        focus: shell.focus,
+    };
+    let adding = publication.adding;
+    let renaming = publication.renaming;
+    let menu = publication.menu;
+    let error = publication.error;
+    let focus = publication.focus;
     let select_scope = scope.clone();
     let add_scope = scope.clone();
     rsx! {
         div { class:"if-mode-tabs-outer",
             TabsRoot {
                 value:view.editing_mode,
-                onchange:move |name:String| {
-                    match bindings.dispatch.call(Request {scope:select_scope.clone(),operation:Operation::Select(name)}) {
-                        Ok(_) => error.set(None), Err(e) => error.set(Some(e)),
-                    }
-                },
+                onchange:move |name:String| {bindings.ui.call(Request {publication,scope:select_scope.clone(),event:UiEvent::Select(name)});},
                 focus_request:focus,
                 TabsList { class:"if-mode-tabs-wrap".to_owned(),aria_label:"Editing mode".to_owned(),
                     for (index,row) in model.rows.iter().enumerate() {
@@ -62,62 +69,31 @@ pub(crate) fn ModeTabs() -> Element {
                             let key_id = tab_id.clone();
                             let open = menu.read().as_ref().is_some_and(|m| m.name == name);
                             if let Some((rename_scope,from)) = renaming.read().as_ref().filter(|(_,n)| n == &name) {
-                                rsx! { rename_inline::RenameInline { key:"{name}",from:from.clone(),scope:rename_scope.clone(),state:renaming,pending_focus:focus } }
+                                rsx! { rename_inline::RenameInline { key:"{name}",from:from.clone(),scope:rename_scope.clone(),publication } }
                             } else {
                                 rsx! { TabButton {
                                     key:"{name}",id:name.clone(),label:name.clone(),dom_id:tab_id,title:name.clone(),data_mode:name.clone(),
                                     running:row.running,running_sr_label:"Engine running".to_owned(),aria_haspopup:"menu".to_owned(),aria_expanded:open,
                                     aria_controls:open.then(|| format!("mode-tab-menu-{index}")),
-                                    oncontextmenu:move |evt:MouseEvent| {
-                                        evt.prevent_default();evt.stop_propagation();
-                                        let p = evt.client_coordinates();
-                                        menu.set(Some(MenuTarget {scope:mouse_scope.clone(),name:mouse_name.clone(),anchor:AnchorRect {left:p.x,bottom:p.y}}));
-                                    },
-                                    onkeydown:move |evt:KeyboardEvent| {
-                                        if evt.key() == Key::Delete {
-                                            evt.prevent_default();evt.stop_propagation();
-                                            match bindings.dispatch.call(Request {scope:key_scope.clone(),operation:Operation::BeginDelete(key_name.clone())}) {
-                                                Ok(Transition::Delete(target)) => {delete_target.set(Some(target));error.set(None);}
-                                                Err(e) => error.set(Some(e)), _ => {},
-                                            }
-                                        } else if evt.key() == Key::F10 && evt.modifiers().shift() {
-                                            evt.prevent_default();evt.stop_propagation();
-                                            let id = key_id.clone();let name = key_name.clone();let scope = key_scope.clone();
-                                            spawn(async move {
-                                                let mut handle = document::eval(&format!("var el = document.getElementById('{id}'); if (!el) {{ dioxus.send([0,0]); return; }} var r = el.getBoundingClientRect(); dioxus.send([r.left,r.bottom]);"));
-                                                if let Ok([left,bottom]) = handle.recv::<[f64;2]>().await {menu.set(Some(MenuTarget {scope,name,anchor:AnchorRect {left,bottom}}));}
-                                            });
-                                        }
-                                    },
+                                    oncontextmenu:move |evt| {bindings.ui.call(Request {publication,scope:mouse_scope.clone(),event:UiEvent::Context(mouse_name.clone(),evt)});},
+                                    onkeydown:move |evt| {bindings.ui.call(Request {publication,scope:key_scope.clone(),event:UiEvent::Key {name:key_name.clone(),dom_id:key_id.clone(),event:evt}});},
                                 } }
                             }
                         }
                     }
                 }
                 if let Some(scope) = adding.read().clone() {
-                    add_inline::AddInline {scope,open:adding,pending_focus:focus}
+                    add_inline::AddInline {scope,publication}
                 } else {
                     button {r#type:"button",class:"if-mode-tab--add",disabled:!model.can_add,"aria-label":"Add mode",
-                        onclick:move |_| {
-                            match bindings.dispatch.call(Request {scope:add_scope.clone(),operation:Operation::BeginAdd}) {
-                                Ok(Transition::Add) => {adding.set(Some(add_scope.clone()));error.set(None);}
-                                Err(e) => error.set(Some(e)), _=>{},
-                            }
+                        onclick:move |_| {bindings.ui.call(Request {publication,scope:add_scope.clone(),event:UiEvent::BeginAdd});
                         },"+"
                     }
                 }
                 if let Some(target) = menu.read().clone() {
                     if let Some((index,row)) = model.rows.iter().enumerate().find(|(_,r)| r.name == target.name) {
                         context_menu::ModeTabContextMenu {
-                            target,tab_idx:index,row:row.clone(),open:menu,
-                            on_transition:move |(scope,transition):(Scope,Transition)| {
-                                match transition {
-                                    Transition::Rename(name) => renaming.set(Some((scope,name))),
-                                    Transition::Delete(target) => delete_target.set(Some(target)),
-                                    Transition::Close(Some(name)) => focus.set(Some(name)),
-                                    _=>{},
-                                }
-                            },
+                            target,tab_idx:index,row:row.clone(),publication,
                         }
                     }
                 }
@@ -125,4 +101,12 @@ pub(crate) fn ModeTabs() -> Element {
             if let Some(message) = error.read().as_ref() { span {role:"alert",class:"if-mode-tab__error","{message}"} }
         }
     }
+}
+
+/// Allocate only the shell's mode presentation destinations.
+pub(crate) fn provide_publication(
+    delete: Signal<Option<crate::mode_management::Target>>,
+    focus: Signal<Option<String>>,
+) {
+    use_context_provider(|| crate::mode_management::ui::Shell { delete, focus });
 }

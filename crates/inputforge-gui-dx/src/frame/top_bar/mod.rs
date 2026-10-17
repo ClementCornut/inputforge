@@ -7,7 +7,7 @@ mod tools_cluster;
 use dioxus::prelude::*;
 
 use engine_pill::EnginePill;
-pub(crate) use mode_tabs::{ModeDeleteDialog, ModeDeleteSignal, ModeFocusSignal, ModeTabs};
+pub(crate) use mode_tabs::{ModeDeleteDialog, ModeTabs};
 use primary_nav::PrimaryNav;
 use profile_name::ProfileName;
 use tools_cluster::ToolsCluster;

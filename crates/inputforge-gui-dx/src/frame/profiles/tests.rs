@@ -52,13 +52,14 @@ fn ProfilesHarness() -> Element {
     let via_calibration = use_signal(|| false);
     let selected_mapping = use_signal(|| None);
     let settings = use_signal(SettingsSnapshot::default);
-    use_context_provider(|| AppContext {
-        state,
-        commands,
-        settings,
-        meta,
-        config,
-        live,
+    use_context_provider(|| {
+        crate::test_support::provide_engine(state, commands);
+        AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     });
     use_context_provider(|| ViewState {
         main_surface,
@@ -159,13 +160,14 @@ fn SnapshotDrawerHarness(rows: Vec<SnapshotRowView>, open: bool) -> Element {
         workflow: 0,
         bindings: controller.bindings(),
     });
-    use_context_provider(|| AppContext {
-        state,
-        commands,
-        settings,
-        meta,
-        config,
-        live,
+    use_context_provider(|| {
+        crate::test_support::provide_engine(state, commands);
+        AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     });
     use_context_provider(|| ViewState {
         main_surface,
@@ -247,13 +249,14 @@ fn ProfilesHarnessWithMode(mode: Mode) -> Element {
     });
     use_context_provider(|| bindings);
     let settings = use_signal(SettingsSnapshot::default);
-    use_context_provider(|| AppContext {
-        state,
-        commands,
-        settings,
-        meta,
-        config,
-        live,
+    use_context_provider(|| {
+        crate::test_support::provide_engine(state, commands);
+        AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     });
     use_context_provider(|| ViewState {
         main_surface,

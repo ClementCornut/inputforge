@@ -37,7 +37,7 @@ use inputforge_core::state::AppState;
 use inputforge_core::types::{DeviceId, InputAddress, InputId};
 
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
-use crate::frame::top_bar::mode_tabs::{ModeDeleteSignal, ModeFocusSignal, ModeTabs};
+use crate::frame::top_bar::mode_tabs::ModeTabs;
 use crate::patterns::live_capture::use_live_capture_provider;
 
 /// Mirror of `mapping_list::tests::provide_minimal_contexts` plus the
@@ -46,13 +46,14 @@ use crate::patterns::live_capture::use_live_capture_provider;
 /// in isolation).
 fn provide_mode_tabs_contexts() {
     let (cmd_tx, _cmd_rx) = mpsc::channel();
-    let ctx = AppContext {
-        state: Arc::new(RwLock::new(AppState::new())),
-        commands: cmd_tx,
-        settings: use_signal(SettingsSnapshot::default),
-        meta: use_signal(MetaSnapshot::default),
-        config: use_signal(ConfigSnapshot::default),
-        live: use_signal(LiveSnapshot::default),
+    let ctx = {
+        crate::test_support::provide_engine(Arc::new(RwLock::new(AppState::new())), cmd_tx);
+        AppContext {
+            settings: use_signal(SettingsSnapshot::default),
+            meta: use_signal(MetaSnapshot::default),
+            config: use_signal(ConfigSnapshot::default),
+            live: use_signal(LiveSnapshot::default),
+        }
     };
     use_context_provider(|| ctx.clone());
 
@@ -64,9 +65,8 @@ fn provide_mode_tabs_contexts() {
     use_live_capture_provider();
 
     let dt = use_signal(|| None);
-    use_context_provider(|| ModeDeleteSignal(dt));
     let mf: Signal<Option<String>> = use_signal(|| None);
-    use_context_provider(|| ModeFocusSignal(mf));
+    crate::frame::top_bar::mode_tabs::provide_publication(dt, mf);
 }
 
 /// Build an `AppState` with the supplied flat modes and a single bound mapping
@@ -258,13 +258,12 @@ fn mode_tabs_dom_ids_use_index_not_mode_name() {
 
 // Isolated renderer fixtures use the same app callbacks as the editor root.
 pub(super) fn provide_bindings() {
-    let ctx = use_context::<AppContext>();
     let existing = try_consume_context::<crate::mapping_edits::Bindings>();
     let bindings = use_hook(|| {
         existing.unwrap_or_else(|| {
             inputforge_app::mapping_edits::Controller::new(
-                Arc::clone(&ctx.state),
-                ctx.commands.clone(),
+                Arc::clone(&crate::test_support::engine().state),
+                crate::test_support::engine().commands.clone(),
             )
             .bindings()
         })

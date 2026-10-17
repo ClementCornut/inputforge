@@ -23,9 +23,12 @@ const PROFILES_CSS: Asset = asset!("/assets/frame/profiles.css");
 pub(crate) fn use_bindings() -> Bindings {
     #[cfg(test)]
     if try_consume_context::<Bindings>().is_none() {
-        let ctx = use_context::<AppContext>();
-        let controller =
-            use_hook(|| inputforge_app::profiles::Controller::new(ctx.state, ctx.commands));
+        let controller = use_hook(|| {
+            inputforge_app::profiles::Controller::new(
+                crate::test_support::engine().state,
+                crate::test_support::engine().commands,
+            )
+        });
         return controller.bindings();
     }
     use_context::<Bindings>()

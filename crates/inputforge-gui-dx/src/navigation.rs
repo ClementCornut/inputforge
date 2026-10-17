@@ -52,6 +52,7 @@ pub struct FilterRequest {
 /// Prepared rail rows and device filters.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FilterView {
+    pub filtered: bool,
     pub total: usize,
     pub rows: Vec<crate::snapshots::MappingSummary>,
     pub chips: Vec<DeviceChip>,

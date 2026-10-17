@@ -101,10 +101,6 @@ fn demo_root() -> dioxus::prelude::Element {
         inputforge_app::settings::Controller::new(Arc::clone(&state), commands.clone())
     });
     inputforge_gui_dx::render_editor(
-        inputforge_gui_dx::RawHandles {
-            state: Arc::clone(&state),
-            commands: (commands).clone(),
-        },
         routing,
         controllers,
         capture.bindings(),

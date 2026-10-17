@@ -25,9 +25,10 @@ use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispa
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 
 /// Hint copy. Centralised so tests can grep these strings unchanged.
-pub(crate) const HINT_TARGET_EMPTY: &str = "Choose a mode to switch to";
-pub(crate) const HINT_HOLD_NOT_BUTTON: &str =
-    "Hold requires a button input. Pick a button on your device, or switch to Set.";
+#[cfg(test)]
+use crate::mapping_edits::hints::{
+    HOLD_NOT_BUTTON as HINT_HOLD_NOT_BUTTON, TARGET_EMPTY as HINT_TARGET_EMPTY,
+};
 pub(crate) const TOOLTIP_HOLD_NOT_BUTTON: &str = "Hold requires a button input.";
 
 /// Which pill the user clicked.
@@ -133,99 +134,25 @@ pub(crate) fn ChangeModeBody(
     let is_hold = matches!(strategy, ModeChangeStrategy::Temporary { .. });
     let is_set = !is_hold;
 
-    let primary_is_button_shaped = mapping_key.1.is_button_shaped();
-    let hold_disabled = !primary_is_button_shaped;
-
-    // Skip the Hold pill in tab order when aria-disabled. The internal
-    // app validation already no-ops the dispatch; removing the pill
-    // from sequential focus prevents the user-facing impression of a
-    // focusable-but-inert button. Focus via mouse and screen-reader
-    // announcement still work normally.
-    let hold_tabindex = if hold_disabled { "-1" } else { "0" };
-
     let ctx = use_context::<AppContext>();
     let editor = use_context::<EditorState>();
-    let modes: Vec<String> = ctx.meta.read().modes.clone();
-
-    // Hint priority computation (render-phase write, same convention as
-    // MergeAxisBody / MapToVJoyBody so SSR observes the hint the same frame).
-    let target_in_modes = !mode.is_empty() && modes.iter().any(|m| m == &mode);
-    let target_orphaned = !mode.is_empty() && !target_in_modes;
-    let combined = target_orphaned && is_hold && hold_disabled;
-
-    // One owned String per render. Combines the orphan + hold-disabled
-    // failure modes so the user can recover both errors in a single edit
-    // pass instead of fixing one and bouncing back to the next.
-    //
-    // The summary tag is the compact (<= 24 chars) variant rendered in the
-    // collapsed-header summary slot. The body banner uses the full prose;
-    // see the `malformed_summary_tags` field on `EditorState`.
-    let (dynamic_hint, dynamic_tag): (Option<String>, Option<String>) = if mode.is_empty() {
-        (
-            Some(HINT_TARGET_EMPTY.to_owned()),
-            Some("Set target mode".to_owned()),
-        )
-    } else if combined {
-        // Combined priority 2 + 3 hint. The spec defines priorities as
-        // mutually exclusive, but in practice an orphan target paired with
-        // a non-button primary surfaces both failures at once; emitting one
-        // banner that names both lets the user recover in a single edit
-        // pass instead of fixing one and bouncing back to the other.
-        (
-            Some(format!(
-                r#"Mode "{mode}" no longer exists. Hold also requires a button input. Pick a button on your device, then a current mode."#
-            )),
-            Some("Mode missing".to_owned()),
-        )
-    } else if target_orphaned {
-        (
-            Some(format!(
-                r#"Mode "{mode}" no longer exists. Pick a current mode."#
-            )),
-            Some("Mode missing".to_owned()),
-        )
-    } else if is_hold && hold_disabled {
-        (
-            Some(HINT_HOLD_NOT_BUTTON.to_owned()),
-            Some("Needs button".to_owned()),
-        )
-    } else {
-        (None, None)
-    };
-
-    // REACTIVE-LOOP CONCERN (Task 40): dynamic_hint and dynamic_tag are
-    // derived from `mode`, `modes`, `is_hold`, and `hold_disabled`. None
-    // of those originate from `malformed_hints` or `malformed_summary_tags`,
-    // so no read-write cycle forms. The read-then-compare guards skip the
-    // dirty-write on steady-state renders.
-    {
-        let mut malformed = editor.malformed_hints;
-        let current = malformed.read().get(&stage_id).cloned();
-        if current.as_deref() != dynamic_hint.as_deref() {
-            match dynamic_hint.as_ref() {
-                Some(s) => {
-                    malformed.write().insert(stage_id.clone(), s.clone());
-                }
-                None => {
-                    malformed.write().remove(&stage_id);
-                }
-            }
-        }
-    }
-    {
-        let mut tags = editor.malformed_summary_tags;
-        let current = tags.read().get(&stage_id).cloned();
-        if current.as_deref() != dynamic_tag.as_deref() {
-            match dynamic_tag.as_ref() {
-                Some(t) => {
-                    tags.write().insert(stage_id.clone(), t.clone());
-                }
-                None => {
-                    tags.write().remove(&stage_id);
-                }
-            }
-        }
-    }
+    let modes = ctx.meta.read().modes.clone();
+    let prepared = use_context::<crate::mapping_edits::Bindings>()
+        .ui
+        .stage_hint
+        .call(crate::mapping_edits::hints::Request {
+            path: stage_id.clone(),
+            input: crate::mapping_edits::hints::Input::Mode(
+                strategy.clone(),
+                mapping_key.1.clone(),
+                modes.clone(),
+            ),
+            hints: editor.malformed_hints,
+            tags: Some(editor.malformed_summary_tags),
+        });
+    let hold_disabled = prepared.hold_disabled;
+    let target_orphaned = prepared.target_orphaned;
+    let hold_tabindex = if hold_disabled { "-1" } else { "0" };
 
     let mut target_options: Vec<SelectOption> = modes
         .iter()

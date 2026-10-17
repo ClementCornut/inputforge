@@ -33,13 +33,14 @@ fn root() -> Element {
     let config = use_signal(ConfigSnapshot::default);
     let live = use_signal(LiveSnapshot::default);
     let settings = use_signal(SettingsSnapshot::default);
-    use_context_provider(|| AppContext {
-        state,
-        commands,
-        settings,
-        meta,
-        config,
-        live,
+    use_context_provider(|| {
+        crate::test_support::provide_engine(state, commands);
+        AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     });
     let view = crate::frame::use_view_state_provider(meta);
     use_context_provider(|| view);
@@ -152,13 +153,14 @@ fn row_root() -> Element {
     let config = use_signal(|| frame.config);
     let live = use_signal(LiveSnapshot::default);
     let settings = use_signal(SettingsSnapshot::default);
-    use_context_provider(|| AppContext {
-        state: Arc::clone(&f.state),
-        commands: f.commands.clone(),
-        meta,
-        config,
-        live,
-        settings,
+    use_context_provider(|| {
+        crate::test_support::provide_engine(Arc::clone(&f.state), f.commands.clone());
+        AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     });
     rsx! {super::ProfilesPanel {}}
 }

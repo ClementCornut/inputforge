@@ -2,6 +2,9 @@
 mod dispatch;
 mod edit;
 pub(crate) mod policy;
+mod ui;
+mod ui_draft;
+mod ui_menu;
 use super::Controller;
 use dioxus::prelude::{Callback, ReadableExt, WritableExt};
 use inputforge_core::profile::ProfileId;
@@ -25,9 +28,13 @@ impl Controller {
     }
 
     pub(super) fn mode_bindings(&self) -> Bindings {
+        let ui = self.clone();
+        let delete = self.clone();
         let dispatch = self.clone();
         let reconcile = self.clone();
         Bindings {
+            delete: Callback::new(move |request| delete.mode_delete(request)),
+            ui: Callback::new(move |request| ui.mode_ui(request)),
             dispatch: Callback::new(move |r| dispatch.mode_action(r)),
             reconcile: Callback::new(move |()| {
                 reconcile.reconcile();

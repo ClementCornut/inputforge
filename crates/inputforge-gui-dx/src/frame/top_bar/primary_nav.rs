@@ -91,18 +91,22 @@ mod tests {
             Vec::new(),
             "Default".to_owned(),
         );
-        let ctx = AppContext {
-            state: Arc::new(RwLock::new(AppState::with_profile(profile))),
-            commands: tx,
-            settings: use_signal(SettingsSnapshot::default),
-            meta: use_signal(|| MetaSnapshot {
-                profile_name: Some("T".to_owned()),
-                startup_mode: Some("Default".to_owned()),
-                modes: vec!["Default".to_owned()],
-                ..MetaSnapshot::default()
-            }),
-            config: use_signal(ConfigSnapshot::default),
-            live: use_signal(LiveSnapshot::default),
+        let ctx = {
+            crate::test_support::provide_engine(
+                Arc::new(RwLock::new(AppState::with_profile(profile))),
+                tx,
+            );
+            AppContext {
+                settings: use_signal(SettingsSnapshot::default),
+                meta: use_signal(|| MetaSnapshot {
+                    profile_name: Some("T".to_owned()),
+                    startup_mode: Some("Default".to_owned()),
+                    modes: vec!["Default".to_owned()],
+                    ..MetaSnapshot::default()
+                }),
+                config: use_signal(ConfigSnapshot::default),
+                live: use_signal(LiveSnapshot::default),
+            }
         };
         use_context_provider(|| ctx.clone());
         let mut view = crate::frame::use_view_state_provider(ctx.meta);

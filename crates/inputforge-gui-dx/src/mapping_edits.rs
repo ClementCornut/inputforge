@@ -1,4 +1,8 @@
 //! Prepared mapping edit intents, history labels and app callbacks.
+#[path = "mapping_hints.rs"]
+pub mod hints;
+#[path = "mapping_ui.rs"]
+pub mod ui;
 use crate::snapshots::MappingKey;
 use dioxus::prelude::*;
 use inputforge_core::{
@@ -119,6 +123,7 @@ pub struct Publication {
 /// App-owned mapping and history operations.
 #[derive(Debug, Clone, Copy)]
 pub struct Bindings {
+    pub ui: ui::Bindings,
     pub navigation: crate::navigation::Bindings,
     pub instruments: crate::instruments::Bindings,
     pub readouts: crate::readouts::Bindings,

@@ -163,8 +163,8 @@ pub(crate) fn use_editor_state_provider() -> EditorState {
         let fixture = use_hook(|| {
             try_consume_context::<crate::mapping_edits::Bindings>().unwrap_or_else(|| {
                 inputforge_app::mapping_edits::Controller::new(
-                    std::sync::Arc::clone(&ctx.state),
-                    ctx.commands.clone(),
+                    std::sync::Arc::clone(&crate::test_support::engine().state),
+                    crate::test_support::engine().commands.clone(),
                 )
                 .bindings()
             })

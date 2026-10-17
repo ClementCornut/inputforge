@@ -87,13 +87,14 @@ fn root() -> Element {
     let settings = use_signal(Default::default);
     let meta = use_signal(|| frame.meta);
     let config = use_signal(|| frame.config);
-    use_context_provider(|| AppContext {
-        state: Arc::clone(&f.state),
-        commands: tx,
-        settings,
-        meta,
-        config,
-        live,
+    use_context_provider(|| {
+        crate::test_support::provide_engine(Arc::clone(&f.state), tx);
+        AppContext {
+            settings,
+            meta,
+            config,
+            live,
+        }
     });
     let Some(prepared) = live.read().readout.clone() else {
         return rsx! {};
