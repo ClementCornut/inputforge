@@ -19,7 +19,6 @@ use crate::components::sortable::use_sortable_state;
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, SettingsSnapshot};
 use crate::frame::mapping_list::MappingList;
 use crate::patterns::live_capture::use_live_capture_provider;
-use crate::toast::{ToastQueue, ToastState};
 
 #[test]
 fn mapping_list_keyboard_bridge_ignores_editable_targets() {
@@ -67,8 +66,7 @@ fn provide_minimal_contexts() {
     let view = crate::frame::use_view_state_provider(ctx.meta);
     use_context_provider(|| view);
 
-    let toast_state = use_signal(ToastState::default);
-    use_context_provider(|| ToastQueue { state: toast_state });
+    inputforge_app::notifications::use_provider();
 
     crate::frame::mapping_editor::use_editor_state_provider();
     use_live_capture_provider();

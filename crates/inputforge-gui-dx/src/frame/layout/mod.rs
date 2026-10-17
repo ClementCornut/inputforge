@@ -138,8 +138,7 @@ mod tests {
         use_context_provider(|| bindings);
         crate::routing::provide_fixture(crate::routing::View::default());
         crate::controllers::provide_fixture(crate::controllers::View::default());
-        let toasts = use_signal(crate::toast::ToastState::default);
-        use_context_provider(|| crate::toast::ToastQueue { state: toasts });
+        inputforge_app::notifications::use_provider();
         let mut view = crate::frame::use_view_state_provider(ctx.meta);
         view.main_surface.set(MainSurface::BulkMap);
         use_context_provider(|| view);

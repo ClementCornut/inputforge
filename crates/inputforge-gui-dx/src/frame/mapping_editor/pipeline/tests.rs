@@ -34,7 +34,6 @@ use crate::frame::mapping_editor::{MappingEditor, use_editor_state_provider};
 use crate::frame::view_state::use_view_state_provider;
 use crate::patterns::keyboard_capture::use_keyboard_capture_provider;
 use crate::patterns::live_capture::use_live_capture_provider;
-use crate::toast::{ToastQueue, ToastState};
 
 use super::super::undo_log::{StageId, StageIdSegment, UndoKind, UndoLog};
 use super::{at_path, stage_body};
@@ -443,8 +442,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     if !pre_malformed_hints.is_empty() {
         *editor.malformed_hints.clone().write() = pre_malformed_hints;
     }
-    let toast_state = use_signal(ToastState::default);
-    use_context_provider(|| ToastQueue { state: toast_state });
+    inputforge_app::notifications::use_provider();
     if let Some(capture) = hints_capture.as_ref() {
         *capture.write() = editor.malformed_hints.read().clone();
     }

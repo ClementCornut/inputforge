@@ -1,11 +1,9 @@
-use std::time::{Duration, Instant};
-
 use dioxus::prelude::*;
 
 use crate::components::Icon;
 use crate::icons::{Icon as IconKind, IconSize};
-use crate::toast::queue::ToastQueue;
 use crate::toast::state::{Toast, ToastLevel};
+use crate::toast::{Interaction, ToastQueue};
 
 /// Renders the toast queue. Single fixed-positioned `.if-toast-stack`
 /// container anchored at top-right; toasts render in chronological
@@ -18,26 +16,11 @@ use crate::toast::state::{Toast, ToastLevel};
 /// chronological and the ARIA delivery per-level without splitting
 /// the visible stack.
 ///
-/// Tick mechanism: a `use_signal(Instant::now)` Signal is updated every 250 ms
-/// by a tokio interval; reading it in the body produces the per-tick re-render
-/// that drives expiration GC. 250 ms is far coarser than per-frame and an
-/// order of magnitude finer than the CSS fade-out duration, so cost is
-/// negligible.
 #[component]
 pub fn ToastViewport() -> Element {
     let queue = use_context::<ToastQueue>();
 
-    let mut now_signal = use_signal(Instant::now);
-    use_future(move || async move {
-        let mut t = tokio::time::interval(Duration::from_millis(250));
-        loop {
-            t.tick().await;
-            now_signal.set(Instant::now());
-        }
-    });
-
-    let now = *now_signal.read();
-    let toasts = queue.visible(now);
+    let toasts = queue.visible.read().clone();
 
     rsx! {
         div {
@@ -71,16 +54,14 @@ fn ToastItem(toast: Toast) -> Element {
     let count = toast.count;
     let message = toast.message.clone();
 
-    let onmouseenter = move |_| queue.pause(id);
-    let onmouseleave = move |_| queue.resume(id);
-    let onfocusin = move |_| queue.pause(id);
-    let onfocusout = move |_| queue.resume(id);
+    let onmouseenter = move |_| queue.event.call((id, Interaction::Hover(true)));
+    let onmouseleave = move |_| queue.event.call((id, Interaction::Hover(false)));
+    let onfocusin = move |_| queue.event.call((id, Interaction::Focus(true)));
+    let onfocusout = move |_| queue.event.call((id, Interaction::Focus(false)));
     let onkeydown = move |e: KeyboardEvent| {
-        if e.key() == Key::Escape {
-            queue.dismiss(id);
-        }
+        queue.event.call((id, Interaction::Key(e.key())));
     };
-    let onclick = move |_| queue.dismiss(id);
+    let onclick = move |_| queue.event.call((id, Interaction::Dismiss));
 
     rsx! {
         div {

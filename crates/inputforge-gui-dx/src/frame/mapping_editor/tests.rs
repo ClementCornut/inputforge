@@ -26,7 +26,6 @@ use crate::context::{
 use crate::frame::mapping_editor::{EditorState, MappingEditor, use_editor_state_provider};
 use crate::frame::view_state::use_view_state_provider;
 use crate::patterns::live_capture::use_live_capture_provider;
-use crate::toast::{ToastQueue, ToastState};
 
 // ---------------------------------------------------------------------------
 // Shared test harness helpers
@@ -588,8 +587,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
     use_context_provider(|| view);
     use_live_capture_provider();
     use_editor_state_provider();
-    let toast_state = use_signal(ToastState::default);
-    use_context_provider(|| ToastQueue { state: toast_state });
+    inputforge_app::notifications::use_provider();
     crate::routing::provide_fixture(crate::routing::View::default());
     rsx! { MappingEditor {} }
 }
@@ -862,8 +860,7 @@ fn harness() -> Element {
     use_context_provider(|| view);
     use_live_capture_provider();
     use_editor_state_provider();
-    let toast_state = use_signal(ToastState::default);
-    use_context_provider(|| ToastQueue { state: toast_state });
+    inputforge_app::notifications::use_provider();
 
     crate::routing::provide_fixture(crate::routing::View::default());
     rsx! { MappingEditor {} }
@@ -991,8 +988,7 @@ fn stopped_routing_keeps_input_monitoring_available() {
         use_context_provider(|| view);
         use_live_capture_provider();
         use_editor_state_provider();
-        let toast_state = use_signal(ToastState::default);
-        use_context_provider(|| ToastQueue { state: toast_state });
+        inputforge_app::notifications::use_provider();
         crate::routing::provide_fixture(crate::routing::View::default());
         rsx! { MappingEditor {} }
     }
@@ -1164,8 +1160,7 @@ fn editor_undo_recap_shows_label_and_kbd_hint() {
                 label: "rename: 'X' -> 'Yaw'".into(),
             });
 
-        let toast_state = use_signal(ToastState::default);
-        use_context_provider(|| ToastQueue { state: toast_state });
+        inputforge_app::notifications::use_provider();
         crate::routing::provide_fixture(crate::routing::View::default());
         rsx! { MappingEditor {} }
     }

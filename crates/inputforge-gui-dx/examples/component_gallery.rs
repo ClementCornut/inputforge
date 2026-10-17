@@ -21,7 +21,7 @@ use inputforge_gui_dx::components::{
 use inputforge_gui_dx::icons::{Icon as IconKind, IconSize};
 use inputforge_gui_dx::patterns::DirtyConfirmDialog;
 use inputforge_gui_dx::theme::ThemeProvider;
-use inputforge_gui_dx::{ToastLevel, ToastQueue, ToastState, ToastViewport};
+use inputforge_gui_dx::{ToastLevel, ToastViewport};
 
 fn main() {
     let _ = tracing_subscriber::fmt()
@@ -40,11 +40,7 @@ fn main() {
     reason = "dirty_a_*/dirty_b_* pairs mirror the two-dialog demo layout"
 )]
 fn gallery_root() -> Element {
-    // F4 toast infrastructure: install the queue context so any descendant
-    // can `use_context::<ToastQueue>()` and push notifications.
-    let toast_state = use_signal(ToastState::default);
-    let toast_queue = ToastQueue { state: toast_state };
-    use_context_provider(|| toast_queue);
+    let toast_queue = inputforge_app::notifications::use_preview();
 
     // Interactive demo state for NumberInput steppers, each non-disabled
     // demo wires its own signal so they're independently steppable.

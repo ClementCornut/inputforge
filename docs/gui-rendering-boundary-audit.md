@@ -1449,7 +1449,7 @@ may change during extraction.
 | 7 | **Operating-system services and filesystem access** — [app file picker](../crates/inputforge-app/src/profiles/dialog.rs); [app clipboard](../crates/inputforge-app/src/controllers/inspector/clipboard.rs); [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Native profile dialog invocation and obsolete-result rejection are app-owned. Part 6 moves clipboard invocation, native owner lifetime and write feedback to the app, with the resolved Linux Wayland feature enabled. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
 | 8 | **Event handling and UI state transitions** — [app snapshot shortcut](../crates/inputforge-app/src/profiles/shortcut/mod.rs); [navigation reconciliation](../crates/inputforge-gui-dx/src/frame/view_state.rs), line 244; [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs), line 163 | Snapshot Ctrl+S and its listener lifecycle are app-owned in Part 4. Part 6 owns device-ledger selection and inspector draft/key/removal/copy decisions. Other document listeners, shortcut interpretation, focus navigation, click-away behavior, drag/drop decisions, draft commits, and selection reconciliation. This includes reusable component behavior under the strict rendering-only boundary. |
 | 9 | **Live readout analysis — resolved in Part 7** — [app analysis](../crates/inputforge-app/src/bridge/readout/analyze.rs); [app deadlines](../crates/inputforge-app/src/bridge/readout/activity.rs); [renderer](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/mod.rs) | The existing app bridge prepares typed input/output values, merge/conditional/gesture chains, predicates, exact output ownership/polarity/activity and instrument tracking values. App callbacks own expansion/reset decisions. Preview expiry advances on the same 16 ms tick, including contended engine reads; the GUI renders completed values without engine access or per-render timers. |
-| 10 | **Notifications** — [toast queue](../crates/inputforge-gui-dx/src/toast/queue.rs), line 26; [toast timer and handlers](../crates/inputforge-gui-dx/src/toast/viewport.rs), line 27 | Warning delivery, notification expiry, pause/resume, dismissal, and undo actions. The GUI should display the current notifications and wire supplied callbacks. |
+| 10 | **Notifications — resolved in Part 8** — [app notification owner](../crates/inputforge-app/src/notifications/mod.rs); [queue deadlines](../crates/inputforge-app/src/notifications/state.rs); [warning tail](../crates/inputforge-app/src/notifications/warnings.rs); [renderer](../crates/inputforge-gui-dx/src/toast/viewport.rs) | The app owns deduplication, capacity/order, warning delivery, expiry, independent hover/focus pauses and dismissal/Escape. The existing bridge advances deadlines even during engine read contention. GUI contracts expose prepared visible values and supplied callbacks; inline workflow errors remain independent. Existing notification interactions are preserved; dormant undo controls are not added. |
 
 ## Native Wayland clipboard — build gap resolved in Part 6
 
@@ -2161,3 +2161,96 @@ remaining navigation/component policy and final host-handle removal remain Parts
 The user authorized automatic sequential continuation on 2026-10-17: each remaining
 part still uses a fresh implementation subagent and one commit, reports its summary,
 and then proceeds to the next part. Only material decision blockers stop execution.
+
+
+## Notifications and warning delivery — 2026-10-17
+
+Part 8 resolves finding **#10**. The [app notification owner](../crates/inputforge-app/src/notifications/mod.rs)
+installs isolated mounted state and callback delivery; the [bounded queue](../crates/inputforge-app/src/notifications/state.rs)
+owns latest-only `(level, message)` coalescing, five visible entries in insertion
+order, FIFO overflow, eight effective seconds, expiry, independent hover/focus
+pause accounting and Escape/dismiss. Expired duplicates receive fresh identities;
+coalescing resets the lifetime while retaining an active hover/focus pause.
+Obsolete IDs and disposed owners cannot change the current list. The app
+[warning tail](../crates/inputforge-app/src/notifications/warnings.rs) baselines the
+first coherent snapshot on each mount, delivers later appends once, handles
+truncation/sliding tails and same-length replacement, and rebaselines resets.
+Historic warnings remain available in engine metadata without replaying on remount.
+
+The [existing app bridge](../crates/inputforge-app/src/bridge/mod.rs) advances
+notification deadlines on its immediate/16 ms tick, including contended engine
+reads. It installs no extra production poller, task, channel or thread and does not
+repeat capture/history work for expiry. The [GUI contract](../crates/inputforge-gui-dx/src/toast/queue.rs)
+contains visible values and supplied callbacks; [notification rendering](../crates/inputforge-gui-dx/src/toast/viewport.rs)
+retains chronological markup, formatting, polite status delivery, assertive alert
+roles and event wiring. Queue mutation, wall-clock tests, warning effects and the
+GUI interval are removed. Bulk-map request notices and snapshot-shortcut feedback
+use the same app-owned delivery; profile/snapshot/settings/editor inline feedback
+is independent of notification expiry. Delivery never becomes a persistence-success
+claim, and no dormant undo action is introduced.
+
+The standalone [component gallery](../crates/inputforge-gui-dx/examples/component_gallery.rs)
+uses the app's [preview deadline hook](../crates/inputforge-app/src/notifications/preview.rs),
+sharing the production state/deadline calculations. Only that isolated gallery
+scope installs a cancellable sleep to its next deadline; changing the deadline
+replaces that sleep and teardown cancels it. The production editor uses only its
+existing bridge. All hosts and fixtures now install the app callbacks atomically.
+The app dev dependencies enable existing core/autostart mock features to exercise
+a real delivered command and deterministic core persistence failure; no runtime
+dependency, package version, native service or persisted format changes.
+
+### Part 8 regression and verification evidence
+
+[App callback regressions](../crates/inputforge-app/tests/notifications.rs) and
+[injected-time state cases](../crates/inputforge-app/src/notifications/tests.rs)
+cover latest-only/expired duplicates, chronological FIFO overflow, level isolation,
+coalescing lifetime resets, interleaved hover/focus and duplicate resume/dismiss,
+warning truncation/reset/replacement and no duplicate delivery. The missing app
+contract was observed failing before implementation. [Actual viewport events](../crates/inputforge-gui-dx/tests/notifications.rs)
+exercise hover/focus/Escape/click dismissal, preserved status/alert markup, preview
+expiry/coalescing and teardown/fresh remount. An initial preview test exposed that
+`use_future` does not subscribe/restart on deadline changes; the app now replaces
+one deadline sleep from an effect, with no interval or polling loop.
+
+The [production bridge lifecycle case](../crates/inputforge-gui-dx/tests/editor_bridge/notifications.rs)
+verifies expiry while the engine writer is held, no warning replay/duplicate
+polling and released handles on disposal/remount. A [real settings request](../crates/inputforge-app/tests/notifications/backend.rs)
+is accepted before core save failure: its warning arrives once, the confirmed
+setting rolls back and inline failure feedback remains after toast expiry.
+Equal visible lists do not wake subscribers. Native focus, accessibility software,
+Wayland/Windows acceptance and runtime performance remain manual.
+
+Independent review identified one host omission: the bridge demo still published
+only one static frame, leaving notification deadlines undriven after the GUI
+interval moved. The [actual demo host](../crates/inputforge-gui-dx/examples/bridge_demo.rs)
+now starts the same app bridge/capture owner as the editor, with no additional
+scheduler. Its [paused-time regression](../crates/inputforge-gui-dx/examples/bridge_demo/notifications.rs)
+failed at eight seconds before the fix, then passed through the real snapshot
+shortcut listener/feedback, expiry, pending-close, cleanup and fresh remount. The
+GUI manifest includes this example test in normal workspace validation.
+
+Final host `cargo test --workspace --locked --offline -j 2` passed: **2,193
+passed, 0 failed, 11 existing ignored** across 33 result blocks, including the
+actual demo-host regression. The unchanged strict pre-commit hook (format and
+all-target Clippy), all five current executable JavaScript suites, 251 local
+audit/plan links, seven historical acceptance hashes, touched module sizes and
+`git diff --check` passed. One independent read-only review verified the frozen
+complete change, raised the demo deadline-driver finding above, then cleared its
+regression-first fix in scoped re-review: Spec PASS / Quality SHIP. No hook,
+lint or test exclusions changed.
+
+### Part 8 manual acceptance and remaining scope
+
+Use `dx run -p inputforge-app` with disposable profiles on native Wayland and
+separately Windows. Trigger warnings and request feedback; verify chronological
+order, latest-only count badges, five-entry overflow and eight effective seconds.
+Hover, focus via Tab, move the pointer out while focus remains, then move focus
+out: expiry resumes only after both sources leave. Repeat coalescing while paused,
+Escape and close-button dismissal. Reopen the editor and verify historic warnings
+do not replay. Trigger a disposable settings/profile save failure and confirm the
+backend warning plus persistent inline feedback, with no false completion claim.
+Check the standalone component gallery's expiry and close/reopen cleanup.
+
+Remaining refactor scope is Parts 9–13: navigation/shortcuts, form/tab policies,
+overlays, sortable interaction and final raw-handle removal/audit closure. Prior
+Apply, live-capture and native drag acceptance evidence is preserved verbatim.

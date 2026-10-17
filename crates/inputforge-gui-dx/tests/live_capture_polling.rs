@@ -114,6 +114,7 @@ fn editor() -> Element {
         .bindings(),
         profiles.bindings(),
         settings.bindings(),
+        inputforge_app::notifications::bindings(),
         start,
     );
     rsx! { {editor} CaptureProbe {} }

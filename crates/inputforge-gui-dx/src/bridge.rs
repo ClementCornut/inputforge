@@ -18,6 +18,7 @@ pub struct Publisher {
     profiles: Option<crate::profiles::Bindings>,
     settings: Option<crate::settings::Bindings>,
     inspector: Option<crate::controllers::inspector::Bindings>,
+    notifications: Option<crate::toast::ToastQueue>,
 }
 impl Publisher {
     pub(crate) fn new(
@@ -27,6 +28,7 @@ impl Publisher {
         controllers: crate::controllers::Context,
     ) -> Self {
         Self {
+            notifications: try_consume_context::<crate::toast::ToastQueue>(),
             context,
             selection: view.selected_mapping,
             routing,
@@ -46,6 +48,12 @@ impl Publisher {
     pub fn reconcile_history(&self) {
         if let Some(bindings) = self.mappings {
             bindings.reconcile.call(());
+        }
+    }
+    /// Advance app notification deadlines on the existing tick, including contention.
+    pub fn advance_notifications(&self, warnings: Option<Vec<String>>, now: std::time::Instant) {
+        if let Some(notifications) = self.notifications {
+            notifications.tick.call((warnings, now));
         }
     }
     /// Publish deadline-only changes when the engine read is contended.

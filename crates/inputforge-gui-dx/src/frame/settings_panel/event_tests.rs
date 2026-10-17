@@ -48,8 +48,7 @@ fn root() -> Element {
         config,
         live,
     });
-    let ts = use_signal(crate::toast::ToastState::default);
-    use_context_provider(|| crate::toast::ToastQueue { state: ts });
+    inputforge_app::notifications::use_provider();
     rsx! {super::SettingsPanel{}}
 }
 fn listeners(dom: &VirtualDom, node: &VNode, name: &str, ids: &mut Vec<dioxus::core::ElementId>) {

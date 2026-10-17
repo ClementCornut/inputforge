@@ -35,3 +35,7 @@ ulid               = { workspace = true }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "bridge_demo"
+test = true

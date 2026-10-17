@@ -39,7 +39,6 @@ use inputforge_core::types::{DeviceId, InputAddress, InputId};
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
 use crate::frame::top_bar::mode_tabs::{ModeDeleteSignal, ModeFocusSignal, ModeTabs};
 use crate::patterns::live_capture::use_live_capture_provider;
-use crate::toast::{ToastQueue, ToastState};
 
 /// Mirror of `mapping_list::tests::provide_minimal_contexts` plus the
 /// `ModeDeleteSignal` that `ModeTabs` consumes (provided shell-side by
@@ -60,8 +59,7 @@ fn provide_mode_tabs_contexts() {
     let view = crate::frame::use_view_state_provider(ctx.meta);
     use_context_provider(|| view);
 
-    let toast_state = use_signal(ToastState::default);
-    use_context_provider(|| ToastQueue { state: toast_state });
+    inputforge_app::notifications::use_provider();
 
     use_live_capture_provider();
 

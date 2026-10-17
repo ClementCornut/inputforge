@@ -1,7 +1,6 @@
 use crate::{
     context::AppContext,
     frame::view_state::{MainSurface, ViewState},
-    toast::{ToastQueue, ToastState},
 };
 use dioxus::{
     core::{AttributeValue, DynamicNode, ElementId, TemplateNode},
@@ -19,7 +18,7 @@ pub(super) struct Fixture {
     pub state: Arc<RwLock<AppState>>,
     commands: mpsc::Sender<EngineCommand>,
     pub view: RefCell<Option<ViewState>>,
-    pub toasts: RefCell<Option<Signal<ToastState>>>,
+    pub toasts: RefCell<Option<Signal<Vec<crate::toast::Toast>>>>,
 }
 fn root() -> Element {
     let f = use_context::<Rc<Fixture>>();
@@ -46,8 +45,7 @@ fn root() -> Element {
     let bindings = use_hook(|| controller.bindings());
     use_context_provider(|| bindings);
     crate::frame::mapping_editor::use_editor_state_provider();
-    let toasts = use_signal(ToastState::default);
-    use_context_provider(|| ToastQueue { state: toasts });
+    let toasts = inputforge_app::notifications::use_provider().visible;
     *f.view.borrow_mut() = Some(view);
     *f.toasts.borrow_mut() = Some(toasts);
     rsx! { super::super::BulkMapPanel {} }

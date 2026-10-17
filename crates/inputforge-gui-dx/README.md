@@ -200,8 +200,9 @@ tree with stub contexts.
 
 ### `ToastQueue`
 
-Global toast queue installed via `use_context_provider` in `app_root`. Producers
-reach it with:
+App-owned notification callbacks publish a prepared visible list, installed in
+`app_root`. The existing app bridge advances deadlines and warning delivery; the
+GUI renders values and forwards events. Producers reach the callback contract with:
 
 ```rust
 use inputforge_gui_dx::{ToastLevel, ToastQueue};
@@ -213,11 +214,11 @@ toasts.push(ToastLevel::Warning, "HidHide unavailable");
 - **Levels:** `Info`, `Success`, `Warning`, `Error`. Info/Success render in
   `role="status" aria-live="polite"`; Warning/Error in
   `role="alert" aria-live="assertive"`.
-- **Dedupe:** identical `(level, message)` against any non-dismissed toast
+- **Dedupe:** identical `(level, message)` against the latest visible toast
   increments its count (`×N` badge) and resets the auto-dismiss timer.
 - **Cap:** at most 5 visible toasts; FIFO drain of the oldest non-dismissed
   entry on overflow.
-- **Auto-dismiss:** 8 s. Hover or focus on a toast pauses the timer; ESC while
+- **Auto-dismiss:** 8 s. Hover and focus independently pause the timer; ESC while
   focused dismisses; click × dismisses.
 
 ### Dialog primitive

@@ -50,6 +50,8 @@ glib = { workspace = true }
 inputforge-core = { workspace = true, features = ["evdev-input", "uinput-output"] }
 
 [dev-dependencies]
+inputforge-core = { workspace = true, features = ["test-util"] }
+inputforge-autostart = { workspace = true, features = ["mock"] }
 tokio = { workspace = true, features = ["test-util"] }
 serde_json = { workspace = true }
 ulid = { workspace = true }

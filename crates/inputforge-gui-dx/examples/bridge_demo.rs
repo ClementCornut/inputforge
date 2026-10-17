@@ -75,17 +75,22 @@ fn demo_root() -> dioxus::prelude::Element {
     let routing = Bindings {
         dispatch: dioxus::prelude::Callback::new(|_| {}),
     };
-    let frame = inputforge_app::bridge::prepare(&state.read(), None);
-    let publish =
-        dioxus::prelude::Callback::new(move |publisher: inputforge_gui_dx::bridge::Publisher| {
-            publisher.publish(frame.clone());
-        });
     let controllers = dioxus::prelude::use_hook(|| {
         inputforge_app::controllers::bindings(Arc::clone(&state), commands.clone())
     });
     let capture = dioxus::prelude::use_hook(|| {
         inputforge_app::live_capture::Controller::new(Arc::clone(&state), commands.clone())
     });
+    let polling_state = Arc::clone(&state);
+    let polling_capture = capture.clone();
+    let start_polling =
+        dioxus::prelude::Callback::new(move |publisher: inputforge_gui_dx::bridge::Publisher| {
+            inputforge_app::bridge::spawn_polling_task(
+                Arc::clone(&polling_state),
+                publisher,
+                polling_capture.clone(),
+            );
+        });
     let keyboard = dioxus::prelude::use_hook(|| {
         inputforge_app::keyboard_capture::Controller::new(Arc::clone(&state))
     });
@@ -110,6 +115,14 @@ fn demo_root() -> dioxus::prelude::Element {
         .bindings(),
         profiles.bindings(),
         settings.bindings(),
-        publish,
+        inputforge_app::notifications::bindings(),
+        start_polling,
     )
 }
+
+#[cfg(test)]
+#[path = "bridge_demo/notifications.rs"]
+mod notification_tests;
+#[cfg(test)]
+#[path = "../../inputforge-app/tests/snapshots/document.rs"]
+mod snapshot_document;

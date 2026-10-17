@@ -9,7 +9,7 @@ use crate::frame::use_editor_state_provider;
 use crate::patterns::keyboard_capture::use_keyboard_capture_provider;
 use crate::patterns::live_capture::use_live_capture_provider;
 use crate::theme::ThemeProvider;
-use crate::toast::{ToastQueue, ToastState, ToastViewport, install_warnings_bridge};
+use crate::toast::ToastViewport;
 
 /// Assemble editor presentation contexts and render the frame layout.
 pub(crate) fn app_root() -> Element {
@@ -53,12 +53,11 @@ pub(crate) fn app_root() -> Element {
     let view = frame::use_view_state_provider(ctx.meta);
     use_context_provider(|| view);
 
-    // F4: ToastQueue context, Signal lives in app_root's scope, mirroring the
-    // F1 AppContext pattern. Calling Signal::new() outside a hook leaks per
-    // dioxus-signals/src/signal.rs:30-52, so use_signal is mandatory here.
-    let toast_state = use_signal(ToastState::default);
-    let toast_queue = ToastQueue { state: toast_state };
+    let toast_bindings = use_context::<crate::toast::Bindings>();
+    let visible = use_signal(Vec::new);
+    let toast_queue = use_hook(|| toast_bindings.mount.call(visible));
     use_context_provider(|| toast_queue);
+    use_drop(move || toast_queue.dispose.call(()));
 
     // F8: live-capture primitive. Single instance, sibling of ToastQueue.
     // Provider self-installs the context.
@@ -70,12 +69,6 @@ pub(crate) fn app_root() -> Element {
 
     // F9: editor-internal state. Single instance, sibling of LiveCapture.
     use_editor_state_provider();
-
-    // F4: warnings bridge, reads ctx.meta, pushes new tail entries as
-    // Warning toasts. last_seen initializes from peek() so first run is a
-    // no-op even if warnings accumulated before mount.
-    let last_seen = use_signal(|| ctx.meta.peek().warnings.len());
-    use_effect(install_warnings_bridge(ctx.clone(), toast_queue, last_seen));
 
     // Start the app-owned bridge once after its GUI signals are initialized.
     let start_polling = use_context::<Callback<Publisher>>();
@@ -122,7 +115,6 @@ mod tests {
         AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot,
     };
     use crate::frame;
-    use crate::toast::{ToastQueue, ToastState};
 
     /// Test harness: provides every context that `app_root_view` reads
     /// (`AppContext`, `ViewState`, `ToastQueue`, plus the upstream
@@ -165,8 +157,7 @@ mod tests {
 
         // ToastViewport (rendered by app_root_view) reads ToastQueue;
         // provide it with an empty toast state.
-        let toast_state = use_signal(ToastState::default);
-        use_context_provider(|| ToastQueue { state: toast_state });
+        inputforge_app::notifications::use_provider();
 
         // F8: mirror the runtime path's live-capture provider install so
         // any consumer that lands inside `app_root_view` and reads the

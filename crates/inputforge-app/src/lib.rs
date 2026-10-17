@@ -12,3 +12,5 @@ pub mod mapping_edits;
 pub mod profiles;
 
 pub mod settings;
+
+pub mod notifications;

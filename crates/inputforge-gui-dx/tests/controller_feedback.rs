@@ -58,6 +58,7 @@ fn editor() -> Element {
         .bindings(),
         profiles.bindings(),
         settings.bindings(),
+        inputforge_app::notifications::bindings(),
         Callback::new(move |publisher: inputforge_gui_dx::bridge::Publisher| {
             publisher.publish(frame.clone());
         }),

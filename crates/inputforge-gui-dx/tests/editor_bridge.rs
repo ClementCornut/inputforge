@@ -76,6 +76,7 @@ fn editor(props: EditorProps) -> Element {
         .bindings(),
         profiles.bindings(),
         settings.bindings(),
+        inputforge_app::notifications::bindings(),
         start,
     )
 }
@@ -238,3 +239,6 @@ fn renderer_preserves_tick_cadence_skips_contention_and_releases_polling_on_drop
 
 #[path = "editor_bridge/batch.rs"]
 mod batch;
+
+#[path = "editor_bridge/notifications.rs"]
+mod notifications;

@@ -8,7 +8,6 @@ use super::super::{
 use crate::{
     context::{AppContext, LiveSnapshot, SettingsSnapshot},
     patterns::live_capture::use_live_capture_provider,
-    toast::{ToastQueue, ToastState},
 };
 use dioxus::prelude::*;
 use inputforge_app::live_capture::Controller;
@@ -94,8 +93,7 @@ fn harness() -> Element {
     use_context_provider(|| view);
     let editor = super::super::use_editor_state_provider();
     *fixture.editor.borrow_mut() = Some(editor);
-    let toast = use_signal(ToastState::default);
-    use_context_provider(|| ToastQueue { state: toast });
+    inputforge_app::notifications::use_provider();
     use_live_capture_provider();
     let sortable = crate::components::sortable::use_sortable_state::<StageId>();
     use_context_provider(|| sortable);

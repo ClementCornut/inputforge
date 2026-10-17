@@ -184,6 +184,8 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 ## Part 8: Notifications and Warning Delivery
 
+**Status (2026-10-17):** Complete on `main`; independent review cleared after fixing the bridge-demo deadline driver. Native Wayland/Windows acceptance remains manual.
+
 **Commit:** `refactor(notifications): move toast behavior and scheduling into app`
 
 **Files:** Add `inputforge-app/src/notifications/{mod.rs,state.rs}` and focused tests; modify GUI `toast/{mod.rs,state.rs,queue.rs,viewport.rs,warnings_bridge.rs}`, `app.rs`, current toast producer call sites and host/gallery fixtures. Keep rendered notification values/callback contracts in GUI, with app-owned queue state.
@@ -194,7 +196,9 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 **Tests first:** Move state/queue behavior tests and replace wall-clock sleeps with injected/paused time. Cover latest-only dedupe, expired duplicates, FIFO cap, interleaved hover/focus pause, resume/dismiss idempotence, warning list truncation/reset/remount, backend failures after delivered requests, stale action targets, no duplicate warning delivery, and no notifications/timer updates after disposal. Preserve rendered ARIA roles and callback delivery tests.
 
-- [ ] Complete the common cycle; manually check warning delivery, keyboard dismissal and paused expiry.
+- [x] Automated gates: 2,193 workspace tests passed, 0 failed, 11 existing ignored; unchanged strict pre-commit, all five JavaScript suites, 251 local audit/plan links and seven historical evidence hashes passed.
+- [x] Independent review cleared after the actual demo-host expiry regression and fix; single Part 8 commit checkpoint.
+- [ ] User acceptance: warning delivery, chronological coalescing/overflow, keyboard dismissal, paused expiry, persistent inline feedback and gallery/demo teardown on native Wayland and separately Windows.
 
 ## Part 9: Editor Navigation and Remaining Shortcuts
 

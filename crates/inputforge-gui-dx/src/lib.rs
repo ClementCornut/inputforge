@@ -57,12 +57,15 @@ pub mod snapshots;
 #[cfg(test)]
 pub use inputforge_gui_dx::snapshots;
 pub mod theme;
+#[cfg(not(test))]
 pub mod toast;
+#[cfg(test)]
+pub use inputforge_gui_dx::toast;
 
 pub use frame::view_state::PanelSlot;
 #[doc(hidden)]
 pub use toast::ToastViewport;
-pub use toast::{ToastLevel, ToastQueue, ToastState};
+pub use toast::{ToastLevel, ToastQueue};
 
 pub use context::RawHandles;
 use dioxus::prelude::*;
@@ -94,6 +97,7 @@ pub fn render_editor(
     mappings: mapping_edits::Bindings,
     profiles: profiles::Bindings,
     settings: settings::Bindings,
+    notifications: toast::Bindings,
     start_polling: Callback<bridge::Publisher>,
 ) -> Element {
     use_context_provider(|| routing);
@@ -103,6 +107,7 @@ pub fn render_editor(
     use_context_provider(|| mappings);
     use_context_provider(|| profiles);
     use_context_provider(|| settings);
+    use_context_provider(|| notifications);
     use_context_provider(|| start_polling);
     use_context_provider(|| handles);
     app::app_root()

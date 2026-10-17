@@ -44,17 +44,24 @@ pub fn spawn_polling_task(
                 tokio::time::Instant::now().into_std(),
                 modified,
             ) {
+                publisher.advance_notifications(
+                    Some(frame.meta.warnings.clone()),
+                    tokio::time::Instant::now().into_std(),
+                );
                 publisher.publish(frame);
                 publisher.reconcile_history();
                 capture.deliver();
-            } else if let Some(live) = poller.readout.expire(
-                publisher.selected_mapping().as_ref(),
-                tokio::time::Instant::now().into_std(),
-            ) {
-                publisher.publish_readout(match live {
-                    readout::Change::Clear => None,
-                    readout::Change::Value(value) => Some(*value),
-                });
+            } else {
+                publisher.advance_notifications(None, tokio::time::Instant::now().into_std());
+                if let Some(live) = poller.readout.expire(
+                    publisher.selected_mapping().as_ref(),
+                    tokio::time::Instant::now().into_std(),
+                ) {
+                    publisher.publish_readout(match live {
+                        readout::Change::Clear => None,
+                        readout::Change::Value(value) => Some(*value),
+                    });
+                }
             }
         }
     });

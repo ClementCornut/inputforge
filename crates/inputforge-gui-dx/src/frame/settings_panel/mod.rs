@@ -76,7 +76,6 @@ mod tests {
     use crate::context::{
         AppContext, ConfigSnapshot, LiveSnapshot, MetaSnapshot, SettingsSnapshot,
     };
-    use crate::toast::{ToastQueue, ToastState};
 
     use super::SettingsPanel;
 
@@ -98,8 +97,7 @@ mod tests {
             live,
         });
 
-        let toast_state = use_signal(ToastState::default);
-        use_context_provider(|| ToastQueue { state: toast_state });
+        inputforge_app::notifications::use_provider();
 
         rsx! { SettingsPanel {} }
     }
@@ -186,8 +184,7 @@ mod tests {
             live,
         });
 
-        let toast_state = use_signal(ToastState::default);
-        use_context_provider(|| ToastQueue { state: toast_state });
+        inputforge_app::notifications::use_provider();
 
         rsx! { SettingsPanel {} }
     }

@@ -25,7 +25,6 @@ use inputforge_core::types::{
 use crate::context::{AppContext, LiveSnapshot, MetaSnapshot, SettingsSnapshot};
 use crate::frame::bulk_map::BulkMapPanel;
 use crate::patterns::live_capture::use_live_capture_provider;
-use crate::toast::{ToastQueue, ToastState};
 
 pub(super) fn provide(state: AppState) -> (AppContext, mpsc::Receiver<EngineCommand>) {
     let (tx, rx) = mpsc::channel();
@@ -55,8 +54,7 @@ pub(super) fn provide(state: AppState) -> (AppContext, mpsc::Receiver<EngineComm
     use_context_provider(|| bindings);
     let view = crate::frame::use_view_state_provider(ctx.meta);
     use_context_provider(|| view);
-    let toast_state = use_signal(ToastState::default);
-    use_context_provider(|| ToastQueue { state: toast_state });
+    inputforge_app::notifications::use_provider();
     use_live_capture_provider();
     (ctx, rx)
 }

@@ -1,62 +1,35 @@
-//! Signal wrapper over `ToastState`. Constructed by the parent scope via
-//! `use_signal(ToastState::default)`, then placed in context.
-//!
-//! Producers reach the queue with `use_context::<ToastQueue>().push(level, msg)`.
-//! The viewport reads via `queue.visible(now)`.
-
+//! App-supplied notification callbacks and prepared visible values.
+use super::{Toast, ToastLevel};
+use dioxus::prelude::*;
 use std::time::Instant;
 
-use dioxus::prelude::*;
-
-use crate::toast::state::{Toast, ToastLevel, ToastState, is_expired};
-
-/// `Signal<ToastState>` wrapper. `Copy` (Signals are `Copy` in Dioxus 0.7),
-/// so `ToastQueue` is freely passed by value into closures and contexts.
-///
-/// `state` is `pub` (rather than `pub(crate)`) so external example binaries
-/// (Cargo `examples/`) and downstream crates can construct a queue. Producers
-/// MUST initialize the inner Signal via `use_signal(ToastState::default)` from
-/// inside a Dioxus runtime, `Signal::new()` outside a hook leaks per
-/// `dioxus-signals/src/signal.rs:30-52`. Production wiring lives in `app_root`.
-#[derive(Debug, Clone, Copy)]
-pub struct ToastQueue {
-    pub state: Signal<ToastState>,
+/// Raw notification observations interpreted by the application.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Interaction {
+    Hover(bool),
+    Focus(bool),
+    Key(Key),
+    Dismiss,
 }
 
+/// Rendering context with application-owned production and interaction callbacks.
+#[derive(Clone, Copy, Debug)]
+pub struct ToastQueue {
+    pub visible: Signal<Vec<Toast>>,
+    pub push: Callback<(ToastLevel, String)>,
+    pub event: Callback<(u64, Interaction)>,
+    pub tick: Callback<(Option<Vec<String>>, Instant)>,
+    pub dispose: Callback<()>,
+}
 impl ToastQueue {
+    /// Forward an existing workflow notification to the application.
     pub fn push(&self, level: ToastLevel, message: impl Into<String>) {
-        // `Signal<T>` is `Copy`; rebinding to a `mut` local gives us the
-        // `&mut self` that `WritableExt::write` requires without forcing the
-        // method receiver to `&mut self` (Copy semantics, no aliasing risk).
-        let mut state = self.state;
-        state.write().push(level, message);
+        self.push.call((level, message.into()));
     }
+}
 
-    pub fn dismiss(&self, id: u64) {
-        let mut state = self.state;
-        state.write().dismiss(id);
-    }
-
-    pub fn pause(&self, id: u64) {
-        let mut state = self.state;
-        state.write().pause(id);
-    }
-
-    pub fn resume(&self, id: u64) {
-        let mut state = self.state;
-        state.write().resume(id);
-    }
-
-    /// Snapshot of non-expired toasts at `now`. Used by `ToastViewport` on
-    /// each tick. Cloning is cheap (toasts are short and bounded by
-    /// `TOAST_MAX_VISIBLE` plus a few in-flight dismissed entries fading out).
-    pub(crate) fn visible(&self, now: Instant) -> Vec<Toast> {
-        self.state
-            .read()
-            .toasts
-            .iter()
-            .filter(|t| !is_expired(t, now))
-            .cloned()
-            .collect()
-    }
+/// Install one editor-owned notification context into prepared rendering signals.
+#[derive(Clone, Copy, Debug)]
+pub struct Bindings {
+    pub mount: Callback<Signal<Vec<Toast>>, ToastQueue>,
 }

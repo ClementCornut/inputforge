@@ -136,6 +136,7 @@ fn desktop_root() -> Element {
         mappings.bindings(),
         profiles.bindings(),
         settings.bindings(),
+        inputforge_app::notifications::bindings(),
         start_polling,
     )
 }
