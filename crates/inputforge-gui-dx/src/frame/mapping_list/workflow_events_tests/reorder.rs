@@ -112,7 +112,7 @@ fn keyboard_listener_delivers_selected_reorder_through_app_bindings() {
         let (mut dom, f, rx) = fixture::mount_with_document(Rc::<document::Document>::clone(&document));
         let mut view = f.view.borrow().unwrap(); view.selected_mapping.set(Some(("Default".into(), address(1))));
         for _ in 0..4 { tokio::task::yield_now().await; dom.render_immediate_to_vec(); }
-        document.keyboard("ArrowUp", 1);
+        document.keyboard("ArrowUp", 1,&format!("{:?}:Default",f.state.read().active_profile.as_ref().map(inputforge_core::profile::Profile::id)));
         for _ in 0..4 { tokio::task::yield_now().await; dom.render_immediate_to_vec(); }
         assert!(matches!(rx.try_recv().unwrap(), EngineCommand::ReorderMapping { input, target_index_in_group: 0, .. } if input == address(1)));
         assert!(dioxus_ssr::render(&dom).contains("Mapping moved to position 1 of 3 in buttons."));

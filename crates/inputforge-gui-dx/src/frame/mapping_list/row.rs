@@ -14,7 +14,6 @@ use crate::components::{Chip, ChipVariant};
 use crate::context::{AppContext, ConfigSnapshot, LiveSnapshot, MappingSummary};
 use crate::frame::mapping_list::group::{GroupKind, group_of};
 use crate::frame::mapping_list::source_label;
-use crate::frame::view_state::ViewState;
 
 /// Stable u32 mapping for `GroupKind`. The sortable primitive's
 /// validator is `fn(&u32, &u32) -> bool`; the consumer's group
@@ -84,7 +83,6 @@ pub(crate) fn Row(
 ) -> Element {
     tracing::trace!(target: "frame::render", region = "mapping_list::row");
     let ctx = use_context::<AppContext>();
-    let view = use_context::<ViewState>();
     let drag_context = format!(
         "profile:{:?};mode:{}",
         ctx.meta.read().profile_id,
@@ -112,13 +110,17 @@ pub(crate) fn Row(
 
     let (device_label, input_label) = source_label::split_label(&summary.input, &ctx.config.read());
 
-    let mut sel = view.selected_mapping;
+    let navigation = use_context::<crate::mapping_edits::Bindings>().navigation;
+    let profile = ctx.meta.read().profile_id.clone();
     let summary_for_click = summary.clone();
     let onclick = move |_| {
-        sel.set(Some((
-            summary_for_click.mode.clone(),
-            summary_for_click.input.clone(),
-        )));
+        navigation.dispatch.call(crate::navigation::Intent::Select {
+            profile: profile.clone(),
+            key: (
+                summary_for_click.mode.clone(),
+                summary_for_click.input.clone(),
+            ),
+        });
     };
     let summary_for_ctx = summary.clone();
     let on_open_menu_inner = on_open_menu;

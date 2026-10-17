@@ -2,7 +2,7 @@
 use crate::{
     components::{Button, ButtonSize, ButtonVariant},
     context::AppContext,
-    frame::{MappingKey, ViewState, view_state::PanelSlot},
+    frame::{MappingKey, view_state::PanelSlot},
 };
 use dioxus::prelude::*;
 use inputforge_core::state::{InputIssueKind, MappingIssueReason, OutputIssueKind};
@@ -10,7 +10,7 @@ use inputforge_core::state::{InputIssueKind, MappingIssueReason, OutputIssueKind
 #[component]
 pub(super) fn MappingIssues(mapping_key: MappingKey) -> Element {
     let ctx = use_context::<AppContext>();
-    let view = try_use_context::<ViewState>();
+    let navigation = try_use_context::<crate::mapping_edits::Bindings>().map(|b| b.navigation);
     let meta = ctx.meta.read();
     let config = ctx.config.read();
     rsx! {
@@ -24,9 +24,9 @@ pub(super) fn MappingIssues(mapping_key: MappingKey) -> Element {
                         }
                     }
                     if show_devices(&issue.reason) {
-                        if let Some(mut view) = view {
+                        if let Some(navigation) = navigation {
                             Button { size: ButtonSize::Sm, variant: ButtonVariant::Secondary,
-                                onclick: move |_| { view.via_calibration.set(false); view.panel_slot.set(PanelSlot::Devices); }, "Open Devices"
+                                onclick: move |_| { navigation.dispatch.call(crate::navigation::Intent::OpenPanel(PanelSlot::Devices)); }, "Open Devices"
                             }
                         }
                     }

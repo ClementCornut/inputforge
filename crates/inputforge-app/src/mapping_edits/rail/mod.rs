@@ -1,7 +1,7 @@
 //! App-owned forward rail workflows, sharing editor history and navigation.
 mod add;
 mod dispatch;
-mod reorder;
+pub(super) mod reorder;
 use super::{Controller, history};
 use dioxus::prelude::{ReadableExt, WritableExt};
 use inputforge_core::{action::Mapping, state::AppState};

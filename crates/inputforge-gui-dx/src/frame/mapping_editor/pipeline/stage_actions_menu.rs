@@ -1,5 +1,5 @@
 //! Stage menu wiring for app-owned remove and relative-move intents.
-use super::{path_invalidated_by_mutation, stage::stage_title_for};
+use super::stage::stage_title_for;
 use crate::{
     components::{AnchoredMenu, CloseReason, MenuAnchor, MenuItem},
     frame::{
@@ -38,7 +38,6 @@ pub(crate) fn StageActionsMenu(mapping_key: MappingKey, root_actions: Vec<Action
         let key = mapping_key.clone();
         let root = root_actions.clone();
         let path = menu.stage.clone();
-        let parent = prepared.parent.clone();
         let mut activation = activation;
         move |_: MouseEvent| {
             let (edit, kind, destination, field_index) = match direction {
@@ -78,25 +77,6 @@ pub(crate) fn StageActionsMenu(mapping_key: MappingKey, root_actions: Vec<Action
                 &key, &root, edit, label, None, true,
             );
             activation.set(delivered);
-            if delivered {
-                let invalidate = if direction == Some(false) {
-                    index.saturating_sub(1)
-                } else {
-                    index
-                };
-                editor
-                    .expanded_stages
-                    .write()
-                    .retain(|p| !path_invalidated_by_mutation(p, &parent, invalidate));
-                editor
-                    .malformed_hints
-                    .write()
-                    .retain(|p, _| !path_invalidated_by_mutation(p, &parent, invalidate));
-                editor
-                    .malformed_summary_tags
-                    .write()
-                    .retain(|p, _| !path_invalidated_by_mutation(p, &parent, invalidate));
-            }
         }
     };
     rsx! {

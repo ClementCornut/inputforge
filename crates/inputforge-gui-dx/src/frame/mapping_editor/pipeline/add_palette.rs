@@ -31,8 +31,6 @@ use inputforge_core::types::KeyCombo;
 use crate::components::{Anchor, Icon, MenuItem, MenuItems, MenuRoot, MenuTrigger};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
-use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::path_invalidated_by_mutation;
 use crate::frame::mapping_editor::undo_log::{
     LabelArgs, StageId, StageIdSegment, UndoKind, format_undo_label,
 };
@@ -131,7 +129,6 @@ pub(crate) fn AddPalette(
 ) -> Element {
     let ctx = use_context::<AppContext>();
     crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::use_origin();
-    let editor = use_context::<EditorState>();
 
     let availability = use_context::<crate::mapping_edits::Bindings>()
         .palette
@@ -141,9 +138,6 @@ pub(crate) fn AddPalette(
     let key = mapping_key.clone();
     let prefix = path_prefix.clone();
     let root = root_actions.clone();
-    let mut expanded = editor.expanded_stages;
-    let mut malformed = editor.malformed_hints;
-    let mut tags = editor.malformed_summary_tags;
     let insert_len = target_len;
     let insert_action = use_callback(move |kind: StageKind| {
         let mut path_segs = prefix.clone();
@@ -174,16 +168,6 @@ pub(crate) fn AddPalette(
             return false;
         }
 
-        let parent_path = insert_path.0[..insert_path.0.len() - 1].to_vec();
-        expanded
-            .write()
-            .retain(|path| !path_invalidated_by_mutation(path, &parent_path, insert_len));
-        malformed
-            .write()
-            .retain(|path, _| !path_invalidated_by_mutation(path, &parent_path, insert_len));
-        tags.write()
-            .retain(|path, _| !path_invalidated_by_mutation(path, &parent_path, insert_len));
-        expanded.write().insert(insert_path);
         true
     });
 

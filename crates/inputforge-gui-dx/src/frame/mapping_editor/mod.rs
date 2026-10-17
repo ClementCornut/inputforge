@@ -70,37 +70,19 @@ pub(crate) fn MappingEditor() -> Element {
     // guards against re-installation on subsequent renders.
     keyboard::use_kb_listener();
 
-    // Task 34 (AC #27): revert to empty state when the selected mapping has
-    // been deleted externally (e.g. from the rail or via an external edit).
-    //
-    // This MUST run inside a `use_effect` and NOT during render. Mutating a
-    // signal during render causes Dioxus to schedule an immediate re-render,
-    // creating an infinite loop. The effect runs after the DOM commit, so the
-    // write is batched into the next frame rather than into the current one.
-    //
-    // The key used here is `ctx.config` (reads `mappings`), which changes
-    // whenever the external snapshot is updated. Dioxus effects re-fire when
-    // any signal they read inside changes; `sel.peek()` is used so the effect
-    // does NOT re-fire merely because we cleared the selection ourselves.
-    let cfg_for_stale = ctx.config;
-    let mut sel = view.selected_mapping;
-    use_effect(move || {
-        // Reading `cfg_for_stale` subscribes this effect to config changes.
-        let snap = cfg_for_stale.read();
-        // `peek` does NOT subscribe; prevents a self-triggered re-run after
-        // we call `sel.set(None)` below.
-        let current = sel.peek().clone();
-        if let Some((mode, input)) = current {
-            let resolved = snap
-                .mappings
-                .iter()
-                .any(|m| m.input == input && m.mode == mode);
-            if !resolved {
-                sel.set(None);
-            }
-        }
-    });
-
+    let actions_context = format!(
+        "{:?}",
+        ctx.config
+            .read()
+            .selected_mapping_actions
+            .as_deref()
+            .unwrap_or_default()
+    );
+    let context = format!(
+        "{:?}:{:?}",
+        ctx.meta.read().profile_id,
+        view.selected_mapping.read().as_ref()
+    );
     let view_state_for_render: Option<MappingKey> = view.selected_mapping.read().clone();
 
     // Hoist the stylesheet and offline banner above the if/else split so
@@ -108,7 +90,7 @@ pub(crate) fn MappingEditor() -> Element {
     // duplication from compounding as Tasks 16-19 add more sections.
     rsx! {
         Stylesheet { href: MAPPING_EDITOR_CSS }
-        div { class: "if-editor",
+        div { class: "if-editor", "data-navigation-context":context,"data-navigation-actions":actions_context,
             EngineOfflineBanner {}
             if let Some(message) = editor.error.read().as_ref() {
                 div { role: "alert", "{message}" }
@@ -140,14 +122,7 @@ pub(crate) fn MappingEditor() -> Element {
     }
 }
 
-/// Right-click stage menu state.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct StageMenuState {
-    pub stage: StageId,
-    /// page-space anchor coordinates
-    pub x: f64,
-    pub y: f64,
-}
+pub(crate) use crate::navigation::StageMenu as StageMenuState;
 
 /// Editor-internal context, parallel to `LiveCapture` and `ToastQueue`.
 ///
@@ -201,6 +176,7 @@ pub(crate) fn use_editor_state_provider() -> EditorState {
     let bindings = use_context::<crate::mapping_edits::Bindings>();
     let view = use_context::<ViewState>();
     use_hook(|| {
+        bindings.navigation.install.call(view);
         bindings.install.call(crate::mapping_edits::Publication {
             history: undo_log,
             mode: view.editing_mode,
@@ -227,6 +203,7 @@ pub(crate) fn use_editor_state_provider() -> EditorState {
         malformed_hints,
         malformed_summary_tags,
     };
+    use_hook(|| bindings.navigation.install_editor.call(state.publication()));
     use_context_provider(|| state);
     state
 }
@@ -238,3 +215,16 @@ mod tests;
 
 #[cfg(test)]
 pub(crate) mod test_helpers;
+
+impl EditorState {
+    pub(crate) fn publication(self) -> crate::navigation::EditorPublication {
+        crate::navigation::EditorPublication {
+            expanded: self.expanded_stages,
+            menu: self.stage_menu,
+            hints: self.malformed_hints,
+            tags: self.malformed_summary_tags,
+            error: self.error,
+            focus: Callback::new(|selector: String| crate::frame::focus(&selector)),
+        }
+    }
+}

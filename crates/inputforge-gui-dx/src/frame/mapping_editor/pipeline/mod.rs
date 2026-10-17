@@ -68,6 +68,7 @@ pub(super) fn format_stage_id(id: &StageId) -> String {
 /// caches (which collapses ancestors and unrelated siblings), retain only
 /// the paths that survived the index shift. This is what keeps the parent
 /// `Conditional` expanded after adding a stage to one of its branches.
+#[cfg(test)]
 pub(super) fn path_invalidated_by_mutation(
     stage_id: &StageId,
     parent_path: &[StageIdSegment],
@@ -95,7 +96,6 @@ use inputforge_core::action::{Action, ActionBranch, branch_actions};
 use crate::components::sortable::{SortableGap, SortableState};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
-use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::pipeline::dnd::{
     gap_to_post_remove_slot, validate_pipeline_drop,
 };
@@ -171,9 +171,8 @@ pub(crate) fn Pipeline(
 ) -> Element {
     stage_body::instruments::stage_dispatch::use_origin();
     let ctx = use_context::<AppContext>();
-    let editor = use_context::<EditorState>();
     let sortable = use_context::<SortableState<StageId>>();
-    let profile_name = ctx.meta.read().profile_name.clone();
+    let profile_id = ctx.meta.read().profile_id.clone();
     let drag_context = format!(
         "profile:{:?};mapping:{mapping_key:?};actions:{root_actions:?}",
         ctx.meta.read().profile_id
@@ -186,9 +185,6 @@ pub(crate) fn Pipeline(
 
     // Build the per-pipeline drop handler. Each SortableGap below
     // clones this `EventHandler` (which is `Copy`) into its props.
-    let mut expanded_stages = editor.expanded_stages;
-    let mut malformed_hints = editor.malformed_hints;
-    let mut malformed_summary_tags = editor.malformed_summary_tags;
     let drag_from_for_drop = sortable.drag_from;
     let drag_group_for_drop = sortable.drag_group;
     let mut live_writer = sortable.live_announcement;
@@ -221,7 +217,6 @@ pub(crate) fn Pipeline(
 
         // Convert the gap's pre-remove slot index to a post-remove
         // insertion index. See `gap_to_post_remove_slot` for the math.
-        let same_branch = src_parent_path == parent_path_for_drop;
         let post_remove_to = gap_to_post_remove_slot(
             &src_parent_path,
             &parent_path_for_drop,
@@ -259,35 +254,6 @@ pub(crate) fn Pipeline(
             return;
         }
 
-        // Drag-reorder shifts indices in the source branch (from
-        // src_local_index) and in the target branch (from
-        // post_remove_to). When src and target share a parent, the
-        // affected range is [min(src, to), ...]. Invalidate only paths
-        // in those affected ranges; ancestors and unrelated branches
-        // keep their expanded state, so the parent Conditional / outer
-        // pipeline does not collapse on a drop.
-        let src_parent_segs = src_parent_path.0.clone();
-        let tgt_parent_segs = parent_path_for_drop.0.clone();
-        let invalidate_src_from = if same_branch {
-            src_local_index.min(post_remove_to)
-        } else {
-            src_local_index
-        };
-        let invalidate_tgt_from = if same_branch {
-            src_local_index.min(post_remove_to)
-        } else {
-            post_remove_to
-        };
-        let invalidated = |p: &StageId| {
-            path_invalidated_by_mutation(p, &src_parent_segs, invalidate_src_from)
-                || path_invalidated_by_mutation(p, &tgt_parent_segs, invalidate_tgt_from)
-        };
-        expanded_stages.write().retain(|p| !invalidated(p));
-        malformed_hints.write().retain(|p, _| !invalidated(p));
-        malformed_summary_tags
-            .write()
-            .retain(|p, _| !invalidated(p));
-
         // AT live-region announcement.
         live_writer.set(format!(
             "Stage moved from position {} to {}",
@@ -297,7 +263,7 @@ pub(crate) fn Pipeline(
     });
 
     if actions.is_empty() {
-        let add_palette_key = format!("{profile_name:?}:{mapping_key:?}:{path_prefix:?}:0");
+        let add_palette_key = format!("{profile_id:?}:{mapping_key:?}:{path_prefix:?}:0");
         // Empty pipeline (e.g. an empty `if_false` branch). One gap
         // (gap_index 0) sits as a sibling of `AddPalette` so the user
         // can drop a stage from another pipeline into the empty branch.
@@ -331,7 +297,7 @@ pub(crate) fn Pipeline(
     let key_for_iter = mapping_key.clone();
     let root_for_iter = root_actions.clone();
     let actions_len = actions.len();
-    let add_palette_key = format!("{profile_name:?}:{mapping_key:?}:{path_prefix:?}:{actions_len}");
+    let add_palette_key = format!("{profile_id:?}:{mapping_key:?}:{path_prefix:?}:{actions_len}");
     let parent_path_for_gaps = parent_pipeline_path.clone();
 
     rsx! {

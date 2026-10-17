@@ -21,10 +21,9 @@ mod add_inline;
 mod empty;
 mod filter;
 mod group;
-mod keyboard;
 mod rename_inline;
 mod row;
-pub(crate) mod source_label;
+pub(crate) use crate::labels as source_label;
 
 #[cfg(test)]
 mod tests;
@@ -40,11 +39,8 @@ use crate::components::{Chip, ChipVariant, InputSize, TextInput};
 use crate::context::{AppContext, MappingSummary};
 use crate::frame::mapping_list::add_inline::AddInline;
 use crate::frame::mapping_list::empty::{EmptyZeroFilterResults, EmptyZeroMappings};
-use crate::frame::mapping_list::filter::{
-    DeviceChip, device_chips_for_mode, matches_device_filter, matches_filter,
-};
+use crate::frame::mapping_list::filter::DeviceChip;
 use crate::frame::mapping_list::group::{GroupKind, group_of};
-use crate::frame::mapping_list::keyboard::{Intent, Key, State, handle_key};
 use crate::frame::mapping_list::row::{Row, group_to_u32};
 use crate::{
     mapping_edits::Bindings,
@@ -81,37 +77,6 @@ use crate::patterns::live_capture::LiveCapture;
 )]
 const MAPPING_LIST_CSS: Asset = asset!("/assets/frame/mapping_list.css");
 
-fn mapping_list_keyboard_script() -> &'static str {
-    r#"const h = (ev) => {
-       if (window.__ifSortableDrag) return;
-       if (document.querySelector('[role="menu"]')) return;
-       const editableSelector = 'input, textarea, select, [contenteditable], [role="textbox"]';
-       const active = document.activeElement;
-       if (active && active.closest(editableSelector)) return;
-       const rawTarget = ev.target;
-       const target = rawTarget instanceof Element ? rawTarget : rawTarget?.parentElement;
-       if (target && target.closest(editableSelector)) return;
-       const meta = ev.metaKey ? 1 : 0;
-       const ctrl = ev.ctrlKey ? 1 : 0;
-       const alt  = ev.altKey  ? 1 : 0;
-       dioxus.send([ev.key, meta, ctrl, alt]);
-     };
-     window['__key__']?.();
-     window.addEventListener('keydown', h, true);
-     window['__key__'] = () => window.removeEventListener('keydown', h, true);
-     (async () => {
-       while (true) {
-         const msg = await dioxus.recv();
-         if (msg === '__shutdown__') {
-           window.removeEventListener('keydown', h, true);
-           dioxus.send(['__ack__', 0, 0, 0]);
-           return;
-         }
-       }
-     })();
-     "#
-}
-
 #[component]
 #[allow(
     unused_qualifications,
@@ -141,192 +106,60 @@ pub(crate) fn MappingList() -> Element {
     // this rail retains prepared app targets and callback wiring.
     let sortable = use_sortable_state::<u32>();
 
-    // Single memo computes filtered, grouped rows AND total in-mode count.
+    let navigation = bindings.navigation;
+    let projection = use_memo(move || {
+        navigation.filter.call(crate::navigation::FilterRequest {
+            config: ctx.config.read().clone(),
+            mode: editing.read().clone(),
+            query: filter_query.read().clone(),
+            device: selected_device.read().clone(),
+        })
+    });
     let view_state_memo = use_memo(move || {
-        let cfg = ctx.config.read();
-        let mode_now = editing.read().clone();
-        let query = filter_query.read().clone();
-        let selected = selected_device.read().clone();
-        let mut total: usize = 0;
-        let mut filtered: Vec<MappingSummary> = Vec::new();
-        for m in cfg.mappings.iter().filter(|m| m.mode == mode_now) {
-            total += 1;
-            if matches_filter(m, &query, &cfg) && matches_device_filter(m, selected.as_ref()) {
-                filtered.push(m.clone());
-            }
-        }
-        (total, filtered)
+        let p = projection.read();
+        (p.total, p.rows.clone())
     });
-
-    let device_chips_memo = use_memo(move || {
-        let cfg = ctx.config.read();
-        let mode_now = editing.read().clone();
-        device_chips_for_mode(&cfg.mappings, &mode_now, &cfg)
-    });
-
+    let device_chips_memo = use_memo(move || projection.read().chips.clone());
     use_effect(move || {
-        let chips = device_chips_memo.read();
-        let selected = selected_device.read().clone();
-        if let Some(device) = selected
-            && !chips.iter().any(|chip| chip.id == device)
-        {
-            let mut selected_device = selected_device;
-            selected_device.set(None);
+        let p = projection.read();
+        let mut device = selected_device;
+        if *device.peek() != p.device {
+            device.set(p.device.clone());
         }
     });
 
-    // Document-scoped keyboard listener, mirrors Task 8's
-    // `document::eval` + `window.addEventListener` pattern. Keydown
-    // events are routed through the pure `keyboard::handle_key`
-    // dispatcher; the resulting `Intent` is translated into signal
-    // writes / focus calls. When `LiveCapture.active == true` the
-    // listener early-returns so Phase C's Esc listener wins.
-    let kb_listener_mounted: Signal<bool> = use_signal(|| false);
-    let mut kb_listener: Signal<Option<(document::Eval, String)>> = use_signal(|| None);
-    use_drop(move || {
-        let listener = kb_listener.peek().clone();
-        if let Some((handle, key)) = listener {
-            let _ = document::eval(&format!("window['{key}']?.(); delete window['{key}'];"));
-            let _ = handle.send("__shutdown__");
-        }
-    });
-
-    // Stable `(mode, input)` projection of the visible filtered rows.
-    // Recomputed when `view_state_memo` changes; consumed inside the
-    // listener loop to drive Up/Down navigation through `handle_key`.
     let nav_rows_memo = use_memo(move || {
-        let snapshot = view_state_memo.read();
-        snapshot
+        view_state_memo
+            .read()
             .1
             .iter()
             .map(|r| (r.mode.clone(), r.input.clone()))
             .collect::<Vec<MappingKey>>()
     });
-
-    let cap_for_kb = use_context::<LiveCapture>();
-    let mut filter_query_writer = filter_query;
-    let mut sel_writer = view.selected_mapping;
-    // Clone context handles needed inside the spawned listener so the
-    // FnMut effect closure can re-fire without moving `ctx`.
-    let ctx_for_kb = ctx.clone();
-
-    use_effect(move || {
-        let mut mounted = kb_listener_mounted;
-        if *mounted.peek() {
-            return; // already mounted, no re-install on render.
-        }
-        mounted.set(true);
-        let ctx_kb = ctx_for_kb.clone();
-
-        spawn(async move {
-            // The keydown listener is installed in CAPTURE phase at window
-            // level (third arg `true`), so it fires before any element-level
-            // handler regardless of focus. That is intentional for the rail
-            // shortcuts (Up/Down to nav rows, Cmd+F to focus filter, Esc to
-            // clear filter, Enter to focus the editor) but conflicts with
-            // editable controls and any open menu surface, which own their
-            // own key handling. The script's early returns defer to those
-            // elements without stopPropagation, so their element-level
-            // onkeydown handlers are unaffected.
-            let key = format!(
-                "if-rail-keyboard-{}-{}",
-                bindings.instance,
-                dioxus::core::current_scope_id().0
-            );
-            let mut handle =
-                document::eval(&mapping_list_keyboard_script().replace("__key__", &key));
-            kb_listener.set(Some((handle, key)));
-
-            loop {
-                let Ok((key_str, meta, ctrl, alt)) = handle.recv::<(String, u8, u8, u8)>().await
-                else {
-                    break;
-                };
-                // Coordinate with Phase C, if capture is armed, defer to it.
-                if *cap_for_kb.active.read() {
-                    continue;
-                }
-                let key = match key_str.as_str() {
-                    "ArrowUp" if alt == 1 => Key::AltArrowUp,
-                    "ArrowDown" if alt == 1 => Key::AltArrowDown,
-                    "ArrowUp" => Key::ArrowUp,
-                    "ArrowDown" => Key::ArrowDown,
-                    "Enter" => Key::Enter,
-                    "Escape" => Key::Escape,
-                    "f" | "F" if meta == 1 || ctrl == 1 => Key::FilterShortcut,
-                    _ => continue,
-                };
-                let nav_rows = nav_rows_memo.read().clone();
-                let visible_pairs: Vec<&MappingKey> = nav_rows.iter().collect();
-                let sel_snapshot = sel_writer.peek().clone();
-                let sel_view: Option<(&str, &InputAddress)> =
-                    sel_snapshot.as_ref().map(|(m, i)| (m.as_str(), i));
-                let state = State {
-                    visible_rows: &visible_pairs,
-                    selected: sel_view,
-                    capture_armed: *cap_for_kb.active.read(),
-                    filter_focused: *filter_focused.read(),
-                    filter_query_empty: filter_query_writer.peek().trim().is_empty(),
-                };
-                match handle_key(key, state) {
-                    Intent::Select((m, i)) => sel_writer.set(Some((m, i))),
-                    Intent::FocusEditor => {
-                        spawn(async move {
-                            let mut h2 = document::eval(
-                                "var el = document.querySelector('[data-editor-focus]'); \
-                                 if (el) el.focus(); dioxus.send(true);",
-                            );
-                            let _ = h2.recv::<bool>().await;
-                        });
-                    }
-                    Intent::FocusFilter => {
-                        spawn(async move {
-                            let mut h2 = document::eval(
-                                "var el = document.querySelector('.if-rail__filter input'); \
-                                 if (el) el.focus(); dioxus.send(true);",
-                            );
-                            let _ = h2.recv::<bool>().await;
-                        });
-                    }
-                    Intent::ClearFilter => filter_query_writer.set(String::new()),
-                    Intent::ReorderSelected { mode, input, dir } => {
-                        let summary = ctx_kb
-                            .config
-                            .peek()
-                            .mappings
-                            .iter()
-                            .find(|m| m.mode == mode && m.input == input)
-                            .cloned();
-                        if let Some(summary) = summary {
-                            let filtered = !filter_query_writer.peek().trim().is_empty()
-                                || selected_device.peek().is_some();
-                            if let Some(menu) = prepare_menu(&ctx_kb, &summary, filtered) {
-                                run_rail(
-                                    &bindings,
-                                    Request {
-                                        target: menu.target,
-                                        operation: Operation::Reorder {
-                                            movement: dir,
-                                            order: menu.order,
-                                            group: menu.group,
-                                            filtered,
-                                        },
-                                    },
-                                    feedback,
-                                    sortable.live_announcement,
-                                );
-                            }
-                        }
-                    }
-                    Intent::NoOp => {}
-                }
-            }
-
-            let mut mounted = kb_listener_mounted;
-            mounted.set(false);
-        });
+    let capture = use_context::<LiveCapture>();
+    let keyboard = use_hook(|| {
+        bindings
+            .navigation
+            .rail
+            .call(crate::navigation::RailPublication {
+                query: filter_query,
+                focused: filter_focused,
+                device: selected_device,
+                rows: nav_rows_memo,
+                config: ctx.config,
+                meta: ctx.meta,
+                capture: capture.active,
+                feedback,
+                announcement: sortable.live_announcement,
+                focus: Callback::new(|selector: String| crate::frame::focus(&selector)),
+            })
     });
-
+    use_drop(move || keyboard.close.call(()));
+    let navigation_context = format!(
+        "{:?}:{}",
+        ctx.meta.read().profile_id,
+        view.editing_mode.read()
+    );
     let (total, rows) = {
         let snapshot = view_state_memo.read();
         (snapshot.0, snapshot.1.clone())
@@ -339,7 +172,7 @@ pub(crate) fn MappingList() -> Element {
         return rsx! {
             Stylesheet { href: MAPPING_LIST_CSS }
             if let Some(error) = feedback.read().as_ref() { div { role: "alert", "{error}" } }
-            div { class: "if-rail",
+            div { class: "if-rail", "data-navigation-context":navigation_context.clone(),
                 EmptyZeroMappings {}
                 div { class: "if-rail__add-sticky",
                     AddInline {
@@ -362,23 +195,21 @@ pub(crate) fn MappingList() -> Element {
         return rsx! {
             Stylesheet { href: MAPPING_LIST_CSS }
             if let Some(error) = feedback.read().as_ref() { div { role: "alert", "{error}" } }
-            div { class: "if-rail",
-                FilterInput { value: filter_query, focused: filter_focused }
+            div { class: "if-rail", "data-navigation-context":navigation_context.clone(),
+                FilterInput { value: filter_query, focused: filter_focused, events:keyboard }
                 DeviceFilterRow {
                     chips: device_chips_memo.read().clone(),
-                    selected: selected_device,
+                    selected: selected_device, events:keyboard,
                 }
                 EmptyZeroFilterResults {
                     query: query.clone(),
                     device_label: selected_device_label,
                     on_clear_text: move |()| {
-                        let mut q = filter_query;
-                        q.set(String::new());
+                        keyboard.query.call(String::new());
                     },
                     on_clear_device: device_selected.then(|| {
                         EventHandler::new(move |()| {
-                            let mut selected_device = selected_device;
-                            selected_device.set(None);
+                            keyboard.device.call(None);
                         })
                     }),
                 }
@@ -515,11 +346,11 @@ pub(crate) fn MappingList() -> Element {
     rsx! {
         Stylesheet { href: MAPPING_LIST_CSS }
         if let Some(error) = feedback.read().as_ref() { div { role: "alert", "{error}" } }
-        div { class: "if-rail",
-            FilterInput { value: filter_query, focused: filter_focused }
+        div { class: "if-rail", "data-navigation-context":navigation_context.clone(),
+            FilterInput { value: filter_query, focused: filter_focused, events:keyboard }
             DeviceFilterRow {
                 chips: device_chips_memo.read().clone(),
-                selected: selected_device,
+                selected: selected_device, events:keyboard,
             }
             div { class: "if-rail__scroll",
                 { group_iter }
@@ -555,7 +386,11 @@ pub(crate) fn MappingList() -> Element {
     unused_qualifications,
     reason = "Dioxus 0.7 RSX macro emits redundant qualifications on event listeners."
 )]
-fn DeviceFilterRow(chips: Vec<DeviceChip>, selected: Signal<Option<DeviceId>>) -> Element {
+fn DeviceFilterRow(
+    chips: Vec<DeviceChip>,
+    selected: Signal<Option<DeviceId>>,
+    events: crate::navigation::Listener,
+) -> Element {
     if chips.is_empty() {
         return rsx! {};
     }
@@ -576,12 +411,7 @@ fn DeviceFilterRow(chips: Vec<DeviceChip>, selected: Signal<Option<DeviceId>>) -
                             "aria-pressed": if active { "true" } else { "false" },
                             title: "{label}",
                             onclick: move |_| {
-                                let mut selected = selected;
-                                if selected.peek().as_ref() == Some(&id) {
-                                    selected.set(None);
-                                } else {
-                                    selected.set(Some(id.clone()));
-                                }
+                                events.device.call(Some(id.clone()));
                             },
                             Chip {
                                 variant: ChipVariant::Outline,
@@ -600,8 +430,11 @@ fn DeviceFilterRow(chips: Vec<DeviceChip>, selected: Signal<Option<DeviceId>>) -
     unused_qualifications,
     reason = "Dioxus 0.7 RSX macro emits redundant qualifications on event listeners."
 )]
-fn FilterInput(value: Signal<String>, focused: Signal<bool>) -> Element {
-    let mut value = value;
+fn FilterInput(
+    value: Signal<String>,
+    focused: Signal<bool>,
+    events: crate::navigation::Listener,
+) -> Element {
     let mut focused = focused;
     rsx! {
         div {
@@ -613,7 +446,7 @@ fn FilterInput(value: Signal<String>, focused: Signal<bool>) -> Element {
                 size: InputSize::Sm,
                 placeholder: "Filter mappings\u{2026}".to_owned(),
                 oninput: move |evt: FormEvent| {
-                    value.set(evt.value());
+                    events.query.call(evt.value());
                 },
             }
         }

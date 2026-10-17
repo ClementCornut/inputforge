@@ -7,18 +7,6 @@ use crate::frame::view_state::{PanelSlot, ViewState};
 
 use logic::{Tool, tool_active};
 
-/// Decide the next `PanelSlot` when a tools-cluster button is clicked.
-/// `target` is the slot the button represents; `target_active` is whether
-/// the button is currently lit. Active button closes the slot; inactive
-/// button opens the target.
-pub(crate) fn next_slot(target: PanelSlot, target_active: bool) -> PanelSlot {
-    if target_active {
-        PanelSlot::None
-    } else {
-        target
-    }
-}
-
 #[component]
 pub(crate) fn ToolsCluster() -> Element {
     tracing::trace!(target: "frame::render", region = "tools_cluster");
@@ -33,8 +21,7 @@ pub(crate) fn ToolsCluster() -> Element {
     let v = *via_calib.read();
     let p = *has_profile.read();
 
-    let mut panel = view.panel_slot;
-    let mut via = view.via_calibration;
+    let navigation = use_context::<crate::mapping_edits::Bindings>().navigation;
 
     // Capture per-button activeness so each click handler can decide
     // whether to toggle off (set panel_slot=None) or switch to the
@@ -52,15 +39,7 @@ pub(crate) fn ToolsCluster() -> Element {
                 active: devices_active,
                 disabled: !p,
                 disabled_reason: "Load a profile to inspect connected devices.",
-                onclick: move |_| {
-                    // via_calibration is sticky-while-Devices-open per spec;
-                    // closing the panel leaves it as-is for the next open.
-                    let next = next_slot(PanelSlot::Devices, devices_active);
-                    panel.set(next);
-                    if !devices_active {
-                        via.set(false);
-                    }
-                },
+                onclick: move |_| navigation.dispatch.call(crate::navigation::Intent::TogglePanel(PanelSlot::Devices)),
             }
             ToolButton {
                 label: "Profiles",
@@ -69,26 +48,14 @@ pub(crate) fn ToolsCluster() -> Element {
                 // Profiles is never disabled, the panel itself is the
                 // discovery surface, so it must remain reachable.
                 disabled_reason: "",
-                onclick: move |_| {
-                    let next = next_slot(PanelSlot::Profiles, profiles_active);
-                    panel.set(next);
-                    if !profiles_active {
-                        via.set(false);
-                    }
-                },
+                onclick: move |_| navigation.dispatch.call(crate::navigation::Intent::TogglePanel(PanelSlot::Profiles)),
             }
             ToolButton {
                 label: "Settings",
                 active: settings_active,
                 disabled: false,
                 disabled_reason: "",
-                onclick: move |_| {
-                    let next = next_slot(PanelSlot::Settings, settings_active);
-                    panel.set(next);
-                    if !settings_active {
-                        via.set(false);
-                    }
-                },
+                onclick: move |_| navigation.dispatch.call(crate::navigation::Intent::TogglePanel(PanelSlot::Settings)),
             }
         }
     }
@@ -117,20 +84,5 @@ fn ToolButton(
             onclick,
             "{label}"
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn next_slot_active_button_closes() {
-        assert_eq!(next_slot(PanelSlot::Settings, true), PanelSlot::None);
-    }
-
-    #[test]
-    fn next_slot_inactive_button_opens_target() {
-        assert_eq!(next_slot(PanelSlot::Settings, false), PanelSlot::Settings);
     }
 }

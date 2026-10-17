@@ -31,6 +31,7 @@ pub(crate) fn Layout() -> Element {
     let view = use_context::<ViewState>();
     let has_profile = use_memo(move || ctx.meta.read().profile_name.is_some());
     let main_surface = use_memo(move || *view.main_surface.read());
+    let profile_scope = format!("{:?}", ctx.meta.read().profile_id);
     let p = *has_profile.read();
     let s = *main_surface.read();
     let delete_target = use_signal(|| None);
@@ -47,7 +48,7 @@ pub(crate) fn Layout() -> Element {
                 div { class: "if-layout__main",
                     div { class: "if-layout__surface",
                         match s {
-                            MainSurface::Mappings => rsx! { MappingWorkspace {} },
+                            MainSurface::Mappings => rsx! { MappingWorkspace {key:"{profile_scope}"} },
                             MainSurface::BulkMap => rsx! { BulkMapWorkspace {} },
                         }
                     }

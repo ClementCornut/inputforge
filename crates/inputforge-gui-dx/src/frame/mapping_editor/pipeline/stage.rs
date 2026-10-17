@@ -18,10 +18,10 @@ use inputforge_core::types::{InputAddress, KeyCombo, OutputAddress, OutputId, VJ
 use crate::components::sortable::{SortableHandle, SortableState};
 use crate::context::ConfigSnapshot;
 use crate::frame::MappingKey;
+use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::pipeline::stage_body;
 use crate::frame::mapping_editor::pipeline::stage_header::StageHeader;
 use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
-use crate::frame::mapping_editor::{EditorState, StageMenuState};
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -181,21 +181,21 @@ pub(crate) fn Stage(
     };
     let body_id = format!("if-stage-body-{}", super::format_stage_id(&stage_id));
 
-    // Context-menu handler: writes cursor coordinates + target stage id into
-    // `EditorState::stage_menu`.
-    let oncontextmenu = {
-        let stage_id = stage_id.clone();
-        let mut stage_menu = editor.stage_menu;
-        move |evt: MouseEvent| {
-            evt.prevent_default();
-            evt.stop_propagation();
-            let coords = evt.client_coordinates();
-            stage_menu.set(Some(StageMenuState {
-                stage: stage_id.clone(),
-                x: coords.x,
-                y: coords.y,
-            }));
-        }
+    let stage_callback = use_context::<crate::mapping_edits::Bindings>()
+        .navigation
+        .stage;
+    let profile = ctx.meta.read().profile_id.clone();
+    let context_key = mapping_key.clone();
+    let context_path = stage_id.clone();
+    let context_actions = root_actions.clone();
+    let oncontextmenu = move |event: MouseEvent| {
+        stage_callback.call(crate::navigation::StageRequest {
+            profile: profile.clone(),
+            actions: context_actions.clone(),
+            key: context_key.clone(),
+            path: context_path.clone(),
+            intent: crate::navigation::StageIntent::Menu(event),
+        });
     };
 
     rsx! {
@@ -212,6 +212,8 @@ pub(crate) fn Stage(
                 group_len,
             }
             StageHeader {
+                actions:root_actions.clone(),
+                mapping_key:mapping_key.clone(),
                 stage_id: stage_id.clone(),
                 title,
                 summary,

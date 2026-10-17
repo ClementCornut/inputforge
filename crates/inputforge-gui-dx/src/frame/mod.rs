@@ -28,3 +28,9 @@ pub(crate) use settings_panel::SettingsPanel;
     reason = "Forward-exported for Task 3+ consumers (ConfigSnapshot, UndoLog, EditorState)."
 )]
 pub(crate) use view_state::{MappingKey, PanelSlot, ViewState, use_view_state_provider};
+
+pub(crate) fn focus(selector: &str) {
+    let selector = serde_json::to_string(selector).expect("DOM selector is serializable");
+    let _ =
+        dioxus::prelude::document::eval(&format!("document.querySelector({selector})?.focus();"));
+}

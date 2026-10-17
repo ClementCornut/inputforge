@@ -6,6 +6,8 @@ mod grouping;
 mod history;
 mod instruments;
 pub(crate) mod modes;
+#[path = "../navigation/mod.rs"]
+mod navigation;
 mod paths;
 mod prepare;
 mod rail;
@@ -35,6 +37,7 @@ pub struct Controller {
 #[derive(Debug, Default)]
 struct State {
     history: history::History,
+    chrome: navigation::State,
     instruments: std::collections::HashMap<u128, instruments::Session>,
     revision: u64,
     batch: Option<batch::Wizard>,
@@ -77,6 +80,7 @@ impl Controller {
         let rail = self.clone();
         let add = self.clone();
         Bindings {
+            navigation: self.navigation_bindings(),
             instruments: self.instrument_bindings(),
             readouts: inputforge_gui_dx::readouts::Bindings {
                 expand: Callback::new(readouts::expand),
@@ -143,6 +147,7 @@ impl Controller {
         self.inner.borrow_mut().history.burst = None;
     }
     fn reconcile(&self) {
+        self.reconcile_navigation();
         self.reconcile_modes();
         {
             let mut inner = self.inner.borrow_mut();

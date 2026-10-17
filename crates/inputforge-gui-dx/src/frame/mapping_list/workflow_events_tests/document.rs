@@ -67,7 +67,7 @@ impl Document {
             .filter(|script| script.contains("__ifSortableStart ??="))
             .count()
     }
-    pub(super) fn keyboard(&self, key: &str, alt: u8) {
+    pub(super) fn keyboard(&self, key: &str, alt: u8, context: &str) {
         let index = self
             .scripts
             .borrow()
@@ -77,7 +77,7 @@ impl Document {
             .unwrap();
         self.listeners.borrow()[index]
             .borrow_mut()
-            .push(serde_json::json!([key, 0, 0, alt]));
+            .push(serde_json::json!([key, 0, 0, alt, context]));
     }
     pub(super) fn installs(&self) -> usize {
         self.listeners.borrow().len()

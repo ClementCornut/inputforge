@@ -75,6 +75,7 @@ impl Controller {
             );
             inner.history.record(key, entry, request.group, now);
         };
+        self.invalidate_editor(&request.edit);
         self.publish();
         Ok(true)
     }

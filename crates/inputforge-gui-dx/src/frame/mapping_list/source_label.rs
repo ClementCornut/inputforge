@@ -35,7 +35,8 @@ fn axis_label(index: u8) -> Cow<'static, str> {
 /// - Missing device: `"<DeviceId> · <input-label>"`. Caller's CSS may
 ///   italicize via `.if-row__source--unknown` to flag the gap.
 /// - `Unbound`: returns the literal `"Unbound"` placeholder (no separator).
-pub(crate) fn format(addr: &InputAddress, cfg: &ConfigSnapshot) -> String {
+#[must_use]
+pub fn format(addr: &InputAddress, cfg: &ConfigSnapshot) -> String {
     match addr {
         InputAddress::Unbound => UNBOUND_PLACEHOLDER.to_owned(),
         InputAddress::Bound { .. } => {
@@ -52,7 +53,8 @@ pub(crate) fn format(addr: &InputAddress, cfg: &ConfigSnapshot) -> String {
 ///
 /// For `Unbound` returns `("", "Unbound")` so the device cell collapses and
 /// the input cell carries the placeholder.
-pub(crate) fn split_label(addr: &InputAddress, cfg: &ConfigSnapshot) -> (String, String) {
+#[must_use]
+pub fn split_label(addr: &InputAddress, cfg: &ConfigSnapshot) -> (String, String) {
     let (device, input) = match addr {
         InputAddress::Bound { device, input } => (device, input),
         InputAddress::Unbound => return (String::new(), UNBOUND_PLACEHOLDER.to_owned()),

@@ -1,6 +1,6 @@
 # GUI rendering boundary audit
 
-Date: 2026-10-12. Latest implementation update: 2026-10-17.
+Date: 2026-10-12. Latest implementation update: 2026-10-18.
 
 ## Scope and conclusion
 
@@ -1447,7 +1447,7 @@ may change during extraction.
 | 5 | **Batch mapping — resolved** — [app wizard](../crates/inputforge-app/src/mapping_edits/batch/mod.rs); [app dispatch](../crates/inputforge-app/src/mapping_edits/batch/dispatch.rs); [GUI rendering](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs) | Target selection/validation, collisions, reconciliation, entry generation, snapshot requests and delivery are app-owned. Core retains snapshot/persistence execution. |
 | 6 | **Settings, snapshots, profiles and modes — resolved** — [app settings](../crates/inputforge-app/src/settings/mod.rs); [settings policy](../crates/inputforge-app/src/settings/policy.rs); [app profiles](../crates/inputforge-app/src/profiles/mod.rs) | Mode CRUD, startup/activation, validation, confirmation/counts, dispatch and selection/focus decisions are app-owned. Profile workflows, name/collision policy, captured identities, file dialogs, confirmation and failed-delivery retention are app-owned. Snapshot actions, current identity checks, drawer state and restore confirmation are app-owned in Part 4. Settings validation, pending-value reconciliation, prune confirmation and guarded dispatch are app-owned in Part 5. Core retains persistence, native startup services and pruning execution. |
 | 7 | **Operating-system services and filesystem access** — [app file picker](../crates/inputforge-app/src/profiles/dialog.rs); [app clipboard](../crates/inputforge-app/src/controllers/inspector/clipboard.rs); [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Native profile dialog invocation and obsolete-result rejection are app-owned. Part 6 moves clipboard invocation, native owner lifetime and write feedback to the app, with the resolved Linux Wayland feature enabled. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
-| 8 | **Event handling and UI state transitions** — [app snapshot shortcut](../crates/inputforge-app/src/profiles/shortcut/mod.rs); [navigation reconciliation](../crates/inputforge-gui-dx/src/frame/view_state.rs), line 244; [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs), line 163 | Snapshot Ctrl+S and its listener lifecycle are app-owned in Part 4. Part 6 owns device-ledger selection and inspector draft/key/removal/copy decisions. Other document listeners, shortcut interpretation, focus navigation, click-away behavior, drag/drop decisions, draft commits, and selection reconciliation. This includes reusable component behavior under the strict rendering-only boundary. |
+| 8 | **Event handling and UI state transitions — partially resolved** — [app navigation](../crates/inputforge-app/src/navigation/mod.rs); [navigation rendering](../crates/inputforge-gui-dx/src/frame/view_state.rs); [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs) | Snapshot Ctrl+S is app-owned in Part 4; device-inspector interactions in Part 6. Part 9 moves editor surfaces/panels, stable-profile/selection reconciliation, filtering, expansion invalidation and rail/editor shortcut interpretation and listener lifecycle into the app. Reusable form/tab behavior, overlay/dismissal and sortable interactions remain in Parts 10–12. |
 | 9 | **Live readout analysis — resolved in Part 7** — [app analysis](../crates/inputforge-app/src/bridge/readout/analyze.rs); [app deadlines](../crates/inputforge-app/src/bridge/readout/activity.rs); [renderer](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/mod.rs) | The existing app bridge prepares typed input/output values, merge/conditional/gesture chains, predicates, exact output ownership/polarity/activity and instrument tracking values. App callbacks own expansion/reset decisions. Preview expiry advances on the same 16 ms tick, including contended engine reads; the GUI renders completed values without engine access or per-render timers. |
 | 10 | **Notifications — resolved in Part 8** — [app notification owner](../crates/inputforge-app/src/notifications/mod.rs); [queue deadlines](../crates/inputforge-app/src/notifications/state.rs); [warning tail](../crates/inputforge-app/src/notifications/warnings.rs); [renderer](../crates/inputforge-gui-dx/src/toast/viewport.rs) | The app owns deduplication, capacity/order, warning delivery, expiry, independent hover/focus pauses and dismissal/Escape. The existing bridge advances deadlines even during engine read contention. GUI contracts expose prepared visible values and supplied callbacks; inline workflow errors remain independent. Existing notification interactions are preserved; dormant undo controls are not added. |
 
@@ -2254,3 +2254,79 @@ Check the standalone component gallery's expiry and close/reopen cleanup.
 Remaining refactor scope is Parts 9–13: navigation/shortcuts, form/tab policies,
 overlays, sortable interaction and final raw-handle removal/audit closure. Prior
 Apply, live-capture and native drag acceptance evidence is preserved verbatim.
+
+## Editor navigation and remaining shortcuts — 2026-10-18
+
+Part 9 moves editor navigation and shortcut policy into the existing mapping
+controller's [navigation modules](../crates/inputforge-app/src/navigation/mod.rs).
+The [GUI contract](../crates/inputforge-gui-dx/src/navigation.rs) supplies rendering
+signals and app callbacks. [View-state wiring](../crates/inputforge-gui-dx/src/frame/view_state.rs)
+allocates those signals and forwards reconciliation; it no longer compares
+profile display names or chooses fallback modes.
+
+- [Reconciliation](../crates/inputforge-app/src/navigation/reconcile.rs) uses the
+  actual native profile identity, effective queued mappings and the existing
+  pending-mode guards. Different profiles with equal names reset authoring
+  selection and expansion; renaming the same profile retains them. Deleted modes
+  use the existing app fallback, and pending mode delivery survives old frames.
+- App callbacks own primary surfaces, live panel toggles, profile-panel entry,
+  rail row selection, filter/device transitions, stage expansion/context-menu
+  entry and selection/structural-edit invalidation. Captured row and stage events
+  cannot act on an identically named replacement profile. Successful insertions
+  expand the inserted stage; index shifts preserve ancestors and other branches.
+  Failure still retains editor drafts and expansion without success navigation.
+- [Filter projection](../crates/inputforge-app/src/navigation/filter.rs) preserves
+  source/name matching, aliases and disambiguated device labels. The app flattens
+  visible rows in AXES/BUTTONS/HATS order, preserving order within each group, so
+  keyboard traversal follows the displayed groups even when source mappings are
+  interleaved. GUI source-label formatting and group headings remain drawing.
+- [Rail listener handling](../crates/inputforge-app/src/navigation/rail.rs) and
+  [editor listener handling](../crates/inputforge-app/src/navigation/editor.rs)
+  own interpretation, mounted cleanup and app-selected focus targets. Undo/redo
+  use the existing history; Alt+Up/Down now use the existing guarded relative
+  stage edit, including nested paths, and Shift+F10 opens the actual stage menu.
+  Focus execution stays in the renderer. Closed or obsolete listener payloads
+  cannot dispatch edits or request focus.
+- The production scripts defer to input/modal/menu focus, the existing capture
+  interceptor and pointer drags. Ctrl+F remains available from editor chrome;
+  Escape inside a nonempty rail filter clears text while the capture pad defers
+  to that field. Input Ctrl+Z stays native; existing editor redo conventions stay.
+- Stable profile identities key the mapping workspace and add-palette scope.
+  Profile replacement remounts drafts/listeners, while same-profile renames do
+  not invalidate active authoring. Host/tray Review remains on its existing
+  app-owned navigation; the no-profile Devices gate and placeholder empty-state
+  product scope remain unchanged. No additional poller, thread or channel exists.
+
+Regression evidence: app-contract RED checks preceded implementation; the
+interleaved-group regression failed with source-order keyboard rows before the
+stable grouping fix. App binding and real document-transport tests exercise
+same-name replacement, same-profile rename, live panel toggles, pending modes,
+missing mapping/mode, expansion/menu/hint reset, stale row/stage callbacks,
+nested stage command delivery/barriers and obsolete/closed focus requests.
+Existing GUI events still cover failed delivery, retained drafts, actual rail
+reorder, capture display and batch completion. Executed JavaScript covers real
+production listener bodies, capture interception, input/modal/menu scopes,
+filter Escape, pointer-drag deferral and isolated teardown/remount.
+
+The independent review identified two stale-frame races. Regression-first fixes
+bind positional stage events to the rendered action tree, rejecting old positions
+both before engine execution and before DOM publication. Pointer stage headers
+use the same captured-tree guard; undo/redo retain their existing queue semantics.
+Row selection now requires the current editing mode and effective mapping, so a
+retained old-mode row cannot override navigation during a queued mode rename.
+
+Final host workspace gate: **2,196 passed, 0 failed, 11 existing ignored** across
+34 suites. The unchanged strict pre-commit hook and all six JavaScript suites
+passed, as did 258 local links, seven preserved historical evidence hashes and
+new-module size checks. Independent review and scoped re-review cleared the
+regression-first stale-event fixes: Spec PASS / Quality SHIP. The approved plan
+records the completed automated checkpoint. Earlier native Apply/capture/drag evidence
+above remains unchanged. Parts 10–12 still own reusable forms/tabs, overlays and
+sortable primitives; Part 13 closes transitional host handles.
+
+Manual acceptance remains: on native Wayland and separately Windows, use keyboard
+navigation/filter/Escape, switch mapping and batch surfaces, toggle panels, rename
+and switch equal-name profiles during drafts and capture, reorder nested stages,
+open the stage menu with Shift+F10, undo/redo, and close/reopen the editor. Check
+focus, draft cancellation and listener cleanup. Native desktop focus/compositor,
+assistive technology, hardware and runtime performance are unverified.

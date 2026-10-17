@@ -17,12 +17,13 @@
 
 use dioxus::prelude::*;
 
-use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::undo_log::StageId;
 
 #[component]
 pub(crate) fn StageHeader(
     stage_id: StageId,
+    mapping_key: crate::snapshots::MappingKey,
+    actions: Vec<inputforge_core::action::Action>,
     title: String,
     summary: String,
     expanded: bool,
@@ -46,16 +47,22 @@ pub(crate) fn StageHeader(
     #[props(default)]
     aria_label_override: Option<String>,
 ) -> Element {
-    let editor = use_context::<EditorState>();
-    let mut expanded_set = editor.expanded_stages;
+    let ctx = use_context::<crate::context::AppContext>();
+    let profile = ctx.meta.read().profile_id.clone();
+    let stage = use_context::<crate::mapping_edits::Bindings>()
+        .navigation
+        .stage;
     let stage_id_for_click = stage_id.clone();
     let controls_id = format!("if-stage-body-{}", super::format_stage_id(&stage_id));
 
     let onclick = move |_evt: MouseEvent| {
-        let mut set = expanded_set.write();
-        if !set.insert(stage_id_for_click.clone()) {
-            set.remove(&stage_id_for_click);
-        }
+        stage.call(crate::navigation::StageRequest {
+            profile: profile.clone(),
+            actions: actions.clone(),
+            key: mapping_key.clone(),
+            path: stage_id_for_click.clone(),
+            intent: crate::navigation::StageIntent::Toggle,
+        });
     };
 
     // Apply the error-tint modifier class when the stage body reported a

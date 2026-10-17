@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::context::AppContext;
-use crate::frame::view_state::{MainSurface, PanelSlot, ViewState};
+use crate::frame::view_state::{MainSurface, ViewState};
 
 #[component]
 pub(crate) fn PrimaryNav() -> Element {
@@ -14,8 +14,7 @@ pub(crate) fn PrimaryNav() -> Element {
     let p = *has_profile.read();
     let s = *surface.read();
 
-    let mut main_surface = view.main_surface;
-    let mut panel_slot = view.panel_slot;
+    let navigation = use_context::<crate::mapping_edits::Bindings>().navigation;
 
     rsx! {
         nav { class: "if-primary-nav", "aria-label": "Primary workspace",
@@ -24,7 +23,7 @@ pub(crate) fn PrimaryNav() -> Element {
                 active: s == MainSurface::Mappings,
                 disabled: false,
                 disabled_reason: "",
-                onclick: move |_| main_surface.set(MainSurface::Mappings),
+                onclick: move |_| navigation.dispatch.call(crate::navigation::Intent::Surface(MainSurface::Mappings)),
             }
             PrimaryNavButton {
                 label: "Batch map",
@@ -32,8 +31,7 @@ pub(crate) fn PrimaryNav() -> Element {
                 disabled: !p,
                 disabled_reason: "Load a profile to batch map a device.",
                 onclick: move |_| {
-                    main_surface.set(MainSurface::BulkMap);
-                    panel_slot.set(PanelSlot::None);
+                    navigation.dispatch.call(crate::navigation::Intent::Surface(MainSurface::BulkMap));
                 },
             }
         }

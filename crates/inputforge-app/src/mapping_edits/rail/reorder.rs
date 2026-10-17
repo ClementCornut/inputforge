@@ -7,7 +7,7 @@ use inputforge_core::{
 };
 use inputforge_gui_dx::mapping_rail::{Group, Move, Outcome, Scope};
 
-pub(super) fn group(input: &InputAddress) -> Option<Group> {
+pub(in crate::mapping_edits) fn group(input: &InputAddress) -> Option<Group> {
     input.input_id().map(|input| match input {
         InputId::Axis { .. } => Group::Axes,
         InputId::Button { .. } => Group::Buttons,

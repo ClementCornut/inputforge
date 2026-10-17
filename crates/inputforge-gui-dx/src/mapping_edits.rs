@@ -95,6 +95,7 @@ pub struct Publication {
 /// App-owned mapping and history operations.
 #[derive(Debug, Clone, Copy)]
 pub struct Bindings {
+    pub navigation: crate::navigation::Bindings,
     pub instruments: crate::instruments::Bindings,
     pub readouts: crate::readouts::Bindings,
     pub batch: crate::batch_mapping::Bindings,

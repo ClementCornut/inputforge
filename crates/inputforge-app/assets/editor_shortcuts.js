@@ -1,0 +1,21 @@
+const key='__LISTENER_KEY__';
+let closed=false;
+const h=ev=>{
+ if(closed||ev.defaultPrevented||window.__ifSortableDrag||document.querySelector('dialog[open], [role="dialog"], [role="menu"]'))return;
+ const el=document.activeElement;
+ const editor=el?.closest('.if-editor');if(!editor)return;
+ const input=el.closest('input, textarea, select, [contenteditable], [role="textbox"]');
+ const stage=el.closest('.if-stage[data-stage-id]');
+ const ctrl=Boolean(ev.ctrlKey||ev.metaKey);
+ const undo=ctrl&&!ev.altKey&&!ev.shiftKey&&ev.key.toLowerCase()==='z'&&!input;
+ const redo=ctrl&&!ev.altKey&&((ev.shiftKey&&ev.key.toLowerCase()==='z')||(!ev.shiftKey&&ev.key.toLowerCase()==='y'));
+ const step=!input&&stage&&!ctrl&&!ev.shiftKey&&ev.altKey&&['ArrowUp','ArrowDown'].includes(ev.key);
+ const menu=!input&&stage&&!ctrl&&!ev.altKey&&ev.shiftKey&&ev.key==='F10';
+ if(!undo&&!redo&&!step&&!menu)return;
+ ev.preventDefault();
+ const rect=stage?.getBoundingClientRect();
+ dioxus.send([ev.key,ctrl?1:0,ev.shiftKey?1:0,ev.altKey?1:0,input?'Input':stage?'Stage':'Editor',stage?.dataset.stageId??'',rect?.left??0,rect?.bottom??0,editor.dataset.navigationContext??'',editor.dataset.navigationActions??'']);
+};
+window[key]?.();window.addEventListener('keydown',h,true);
+const close=()=>{closed=true;window.removeEventListener('keydown',h,true)};window[key]=close;
+(async()=>{while(await dioxus.recv()!=='__shutdown__'){}close();})();

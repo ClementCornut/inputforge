@@ -1,5 +1,11 @@
 //! Dioxus editor rendering for `InputForge`. Desktop hosting belongs to the app.
 mod app;
+#[path = "frame/mapping_list/source_label.rs"]
+pub mod labels;
+#[cfg(not(test))]
+pub mod navigation;
+#[cfg(test)]
+pub use inputforge_gui_dx::navigation;
 #[cfg(not(test))]
 pub mod batch_mapping;
 #[cfg(test)]

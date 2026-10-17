@@ -212,7 +212,9 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 **Tests first:** Add app navigation transitions and real DOM/listener cases. Cover same-name different profiles, pending mode mutation through old frames, missing selected mapping/mode, active-panel toggle, input/modal/capture focus scopes, nested stage shortcuts, Escape precedence, pointer-drag keyboard deferral, teardown/remount, and disposed/obsolete focus requests. Preserve the existing no-profile Devices gate; do not bundle its product redesign.
 
-- [ ] Complete the common cycle; manually check keyboard-only navigation and profile switching during active drafts/capture.
+**Status:** Complete on `main` — 2026-10-18. Final workspace gate: **2,196 passed, 0 failed, 11 existing ignored** across 34 suites. The unchanged strict pre-commit hook, all six executable JavaScript suites, 258 local links, seven historical evidence hashes and new-module size checks passed. Independent review found two stale-event defects; regression-first fixes and same-seat re-review cleared both (Spec PASS / Quality SHIP). Native keyboard/focus, drafts/capture, Wayland/Windows and performance acceptance remain manual.
+
+- [x] Complete the automated common cycle and independent review; hand off keyboard-only navigation and profile switching during drafts/capture for native manual acceptance.
 
 ## Part 10: Form and Tab Component Behavior
 

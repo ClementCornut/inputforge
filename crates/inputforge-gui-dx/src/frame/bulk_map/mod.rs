@@ -24,10 +24,12 @@ pub(crate) fn BulkMapPanel() -> Element {
     let callbacks = mappings.batch;
     let model = use_signal(View::default);
     let toast = use_context::<ToastQueue>();
-    let mut surface = navigation.main_surface;
     let applied = Callback::new(move |count| {
         toast.push(ToastLevel::Success, format!("Requested {count} mappings"));
-        surface.set(MainSurface::Mappings);
+        mappings
+            .navigation
+            .dispatch
+            .call(crate::navigation::Intent::Surface(MainSurface::Mappings));
     });
     let owner = use_hook(|| {
         callbacks.install.call(Publication {
