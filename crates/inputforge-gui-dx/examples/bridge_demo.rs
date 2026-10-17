@@ -92,6 +92,9 @@ fn demo_root() -> dioxus::prelude::Element {
     let profiles = dioxus::prelude::use_hook(|| {
         inputforge_app::profiles::Controller::new(Arc::clone(&state), commands.clone())
     });
+    let settings = dioxus::prelude::use_hook(|| {
+        inputforge_app::settings::Controller::new(Arc::clone(&state), commands.clone())
+    });
     inputforge_gui_dx::render_editor(
         inputforge_gui_dx::RawHandles {
             state: Arc::clone(&state),
@@ -106,6 +109,7 @@ fn demo_root() -> dioxus::prelude::Element {
         })
         .bindings(),
         profiles.bindings(),
+        settings.bindings(),
         publish,
     )
 }

@@ -20,7 +20,10 @@ mod output_handler;
 mod output_state;
 mod run;
 mod session;
+mod settings;
 mod snapshots;
+#[doc(inline)]
+pub use settings::{PruneGuard, SettingsChange, SettingsRequest};
 #[cfg(test)]
 mod tests;
 

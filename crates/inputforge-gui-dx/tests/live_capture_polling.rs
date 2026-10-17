@@ -91,6 +91,9 @@ fn editor() -> Element {
     let profiles = use_hook(|| {
         inputforge_app::profiles::Controller::new(Arc::clone(&fixture.state), commands.clone())
     });
+    let settings = use_hook(|| {
+        inputforge_app::settings::Controller::new(Arc::clone(&fixture.state), commands.clone())
+    });
     let editor = inputforge_gui_dx::render_editor(
         inputforge_gui_dx::RawHandles {
             state: Arc::clone(&fixture.state),
@@ -110,6 +113,7 @@ fn editor() -> Element {
         })
         .bindings(),
         profiles.bindings(),
+        settings.bindings(),
         start,
     );
     rsx! { {editor} CaptureProbe {} }

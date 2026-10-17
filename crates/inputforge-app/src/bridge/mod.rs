@@ -6,7 +6,7 @@ mod devices;
 mod live;
 pub(crate) mod meta;
 mod profile_metadata;
-mod settings;
+pub(crate) mod settings;
 #[cfg(test)]
 mod tests;
 mod time_labels;

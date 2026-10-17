@@ -17,6 +17,21 @@ pub struct SnapshotConfig {
     pub skip_if_unchanged: bool,
 }
 
+impl SnapshotConfig {
+    /// Validate the supported rolling buffer size before saving settings.
+    ///
+    /// # Errors
+    /// Returns an invalid configuration error outside the inclusive 1–100 range.
+    pub fn validate(&self) -> crate::error::Result<()> {
+        if !(1..=100).contains(&self.max_count) {
+            return Err(crate::error::EngineError::InvalidConfig {
+                reason: "Snapshot buffer size must be between 1 and 100".into(),
+            });
+        }
+        Ok(())
+    }
+}
+
 impl Default for SnapshotConfig {
     fn default() -> Self {
         Self {

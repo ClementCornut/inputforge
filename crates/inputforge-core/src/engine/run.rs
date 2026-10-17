@@ -618,6 +618,9 @@ impl Engine {
             return Ok(());
         }
         match cmd {
+            EngineCommand::Settings(request) => {
+                self.handle_settings(*request);
+            }
             EngineCommand::Snapshot(request) => {
                 if let Some(command) = self.snapshot_command(*request) {
                     self.handle_command(command)?;
@@ -860,6 +863,7 @@ impl Engine {
                 }
             }
             EngineCommand::SetSnapshotConfig { config } => {
+                config.validate()?;
                 // Step 1: capture the prior config for rollback on save failure.
                 let old_config = self.settings.snapshot.clone();
 

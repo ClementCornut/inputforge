@@ -44,6 +44,10 @@ pub use inputforge_gui_dx::profiles;
 pub mod patterns;
 pub mod routing;
 #[cfg(not(test))]
+pub mod settings;
+#[cfg(test)]
+pub use inputforge_gui_dx::settings;
+#[cfg(not(test))]
 pub mod snapshots;
 // Unit tests use the same value types as app-backed fixture preparation.
 #[cfg(test)]
@@ -85,6 +89,7 @@ pub fn render_editor(
     keyboard: keyboard_capture::Bindings,
     mappings: mapping_edits::Bindings,
     profiles: profiles::Bindings,
+    settings: settings::Bindings,
     start_polling: Callback<bridge::Publisher>,
 ) -> Element {
     use_context_provider(|| routing);
@@ -93,6 +98,7 @@ pub fn render_editor(
     use_context_provider(|| keyboard);
     use_context_provider(|| mappings);
     use_context_provider(|| profiles);
+    use_context_provider(|| settings);
     use_context_provider(|| start_polling);
     use_context_provider(|| handles);
     app::app_root()

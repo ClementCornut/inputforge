@@ -117,6 +117,12 @@ fn desktop_root() -> Element {
             handles.commands.clone(),
         )
     });
+    let settings = use_hook(|| {
+        inputforge_app::settings::Controller::new(
+            Arc::clone(&handles.state),
+            handles.commands.clone(),
+        )
+    });
     inputforge_gui_dx::render_editor(
         inputforge_gui_dx::RawHandles {
             state: handles.state,
@@ -128,6 +134,7 @@ fn desktop_root() -> Element {
         keyboard.bindings(),
         mappings.bindings(),
         profiles.bindings(),
+        settings.bindings(),
         start_polling,
     )
 }

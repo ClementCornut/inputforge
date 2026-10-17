@@ -12,6 +12,8 @@ use crate::types::{DeviceId, InputAddress};
 pub enum EngineCommand {
     /// Validate captured identities before any snapshot operation side effect.
     Snapshot(Box<super::SnapshotRequest>),
+    /// Apply a settings delta and acknowledge its execution independently of mapping edits.
+    Settings(Box<super::SettingsRequest>),
     /// Acknowledge processing of preceding editor mapping commands without changing routing.
     MappingEditBarrier {
         owner: u128,

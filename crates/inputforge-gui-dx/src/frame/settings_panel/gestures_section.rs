@@ -1,105 +1,27 @@
-//! Gesture default thresholds section.
-
-// Rust guideline compliant 2026-05-14
-
-use std::sync::mpsc::Sender;
-
+//! Gesture defaults render prepared values and forward commits.
+use super::{field_row::SettingsFieldRow, section::SettingsSection};
+use crate::{
+    components::{InputSize, IntegerInput},
+    settings::Intent,
+};
 use dioxus::prelude::*;
-
-use inputforge_core::engine::EngineCommand;
-
-use crate::components::{InputSize, IntegerInput};
-use crate::context::AppContext;
-use crate::frame::settings_panel::field_row::SettingsFieldRow;
-use crate::frame::settings_panel::section::SettingsSection;
-
 const DOUBLE_TAP_THRESHOLD_ID: &str = "settings-double-tap-threshold";
 const LONG_PRESS_THRESHOLD_ID: &str = "settings-long-press-threshold";
-
-/// Inclusive lower bound shared with gesture threshold validation.
-const THRESHOLD_MIN_MS: usize = 1;
-
-/// Inclusive upper bound shared with gesture threshold validation.
-const THRESHOLD_MAX_MS: usize = 10_000;
-
-pub(super) fn dispatch_default_double_tap_threshold(tx: &Sender<EngineCommand>, threshold_ms: u64) {
-    if let Err(e) = tx.send(EngineCommand::SetDefaultDoubleTapThreshold { threshold_ms }) {
-        tracing::warn!(
-            target: "gestures_section",
-            %e,
-            "Failed to dispatch SetDefaultDoubleTapThreshold"
-        );
-    }
-}
-
-pub(super) fn dispatch_default_long_press_threshold(tx: &Sender<EngineCommand>, threshold_ms: u64) {
-    if let Err(e) = tx.send(EngineCommand::SetDefaultLongPressThreshold { threshold_ms }) {
-        tracing::warn!(
-            target: "gestures_section",
-            %e,
-            "Failed to dispatch SetDefaultLongPressThreshold"
-        );
-    }
-}
-
-fn commit_threshold_if_changed(
-    tx: &Sender<EngineCommand>,
-    current_threshold_ms: u64,
-    candidate: usize,
-    dispatch: fn(&Sender<EngineCommand>, u64),
-) -> bool {
-    let threshold_ms = u64::try_from(candidate).unwrap_or(THRESHOLD_MAX_MS as u64);
-    if threshold_ms == current_threshold_ms {
-        return false;
-    }
-    dispatch(tx, threshold_ms);
-    true
-}
-
 #[component]
 pub(crate) fn GesturesSection() -> Element {
-    let ctx = use_context::<AppContext>();
-    let commands = ctx.commands.clone();
-    let (double_tap_threshold_ms, long_press_threshold_ms) = {
-        let settings = ctx.settings.read();
-        (
-            settings.default_double_tap_threshold_ms,
-            settings.default_long_press_threshold_ms,
-        )
+    let c = super::context();
+    let double_tap_value = use_memo(move || {
+        usize::try_from(c.view.read().values.default_double_tap_threshold_ms).unwrap_or(10_000)
+    });
+    let long_press_value = use_memo(move || {
+        usize::try_from(c.view.read().values.default_long_press_threshold_ms).unwrap_or(10_000)
+    });
+    let on_double_tap_commit = move |v| {
+        let _ = c.send(Intent::DoubleTap(v));
     };
-
-    let mut double_tap_value = use_signal(|| threshold_to_usize(double_tap_threshold_ms));
-    use_effect(use_reactive!(|double_tap_threshold_ms| {
-        double_tap_value.set(threshold_to_usize(double_tap_threshold_ms));
-    }));
-
-    let mut long_press_value = use_signal(|| threshold_to_usize(long_press_threshold_ms));
-    use_effect(use_reactive!(|long_press_threshold_ms| {
-        long_press_value.set(threshold_to_usize(long_press_threshold_ms));
-    }));
-
-    let commands_for_double_tap = commands.clone();
-    let on_double_tap_commit = move |value: usize| {
-        double_tap_value.set(value);
-        commit_threshold_if_changed(
-            &commands_for_double_tap,
-            double_tap_threshold_ms,
-            value,
-            dispatch_default_double_tap_threshold,
-        );
+    let on_long_press_commit = move |v| {
+        let _ = c.send(Intent::LongPress(v));
     };
-
-    let commands_for_long_press = commands.clone();
-    let on_long_press_commit = move |value: usize| {
-        long_press_value.set(value);
-        commit_threshold_if_changed(
-            &commands_for_long_press,
-            long_press_threshold_ms,
-            value,
-            dispatch_default_long_press_threshold,
-        );
-    };
-
     rsx! {
         SettingsSection {
             children: rsx! {
@@ -111,10 +33,11 @@ pub(crate) fn GesturesSection() -> Element {
                         IntegerInput {
                             id: Some(DOUBLE_TAP_THRESHOLD_ID.to_owned()),
                             value: double_tap_value,
-                            min: THRESHOLD_MIN_MS,
-                            max: THRESHOLD_MAX_MS,
+                            min: 1,
+                            max: 10_000,
                             size: InputSize::Sm,
                             oncommit: on_double_tap_commit,
+                            oninvalid: move |error| { let _ = c.send(Intent::InvalidGesture(error)); },
                         }
                     },
                 }
@@ -126,20 +49,17 @@ pub(crate) fn GesturesSection() -> Element {
                         IntegerInput {
                             id: Some(LONG_PRESS_THRESHOLD_ID.to_owned()),
                             value: long_press_value,
-                            min: THRESHOLD_MIN_MS,
-                            max: THRESHOLD_MAX_MS,
+                            min: 1,
+                            max: 10_000,
                             size: InputSize::Sm,
                             oncommit: on_long_press_commit,
+                            oninvalid: move |error| { let _ = c.send(Intent::InvalidGesture(error)); },
                         }
                     },
                 }
             },
         }
     }
-}
-
-fn threshold_to_usize(threshold_ms: u64) -> usize {
-    usize::try_from(threshold_ms).unwrap_or(THRESHOLD_MAX_MS)
 }
 
 #[cfg(test)]
@@ -152,7 +72,6 @@ mod tests {
     use dioxus_ssr::render;
     use parking_lot::RwLock;
 
-    use inputforge_core::engine::EngineCommand;
     use inputforge_core::state::AppState;
 
     use crate::context::{
@@ -209,60 +128,5 @@ mod tests {
             "missing long-press label: {html}"
         );
         assert!(html.contains("725"), "missing long-press value: {html}");
-    }
-
-    #[test]
-    fn dispatch_default_double_tap_threshold_sends_command() {
-        let (tx, rx) = mpsc::channel();
-
-        super::dispatch_default_double_tap_threshold(&tx, 375);
-
-        assert_eq!(
-            rx.recv().expect("command should be sent"),
-            EngineCommand::SetDefaultDoubleTapThreshold { threshold_ms: 375 }
-        );
-    }
-
-    #[test]
-    fn dispatch_default_long_press_threshold_sends_command() {
-        let (tx, rx) = mpsc::channel();
-
-        super::dispatch_default_long_press_threshold(&tx, 850);
-
-        assert_eq!(
-            rx.recv().expect("command should be sent"),
-            EngineCommand::SetDefaultLongPressThreshold { threshold_ms: 850 }
-        );
-    }
-
-    #[test]
-    fn unchanged_threshold_commit_is_noop() {
-        let (tx, rx) = mpsc::channel();
-
-        assert!(!super::commit_threshold_if_changed(
-            &tx,
-            500,
-            500,
-            super::dispatch_default_double_tap_threshold,
-        ));
-
-        rx.try_recv().unwrap_err();
-    }
-
-    #[test]
-    fn changed_threshold_commit_dispatches() {
-        let (tx, rx) = mpsc::channel();
-
-        assert!(super::commit_threshold_if_changed(
-            &tx,
-            500,
-            650,
-            super::dispatch_default_long_press_threshold,
-        ));
-
-        assert_eq!(
-            rx.recv().expect("command should be sent"),
-            EngineCommand::SetDefaultLongPressThreshold { threshold_ms: 650 }
-        );
     }
 }

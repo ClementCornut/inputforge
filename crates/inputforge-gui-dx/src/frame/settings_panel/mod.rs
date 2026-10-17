@@ -18,15 +18,50 @@ const SETTINGS_PANEL_CSS: Asset = asset!("/assets/frame/settings_panel.css");
 #[component]
 pub(crate) fn SettingsPanel() -> Element {
     tracing::trace!(target: "frame::render", region = "settings_panel");
+    let c = mount_context();
+    use_context_provider(|| c);
+    let error = c.view.read().error.clone();
     rsx! {
         Stylesheet { href: SETTINGS_PANEL_CSS }
         div { class: "if-settings-panel",
+            if let Some(error) = error { div { role: "alert", "{error}" } }
             StartupSection {}
             GesturesSection {}
             SnapshotsSection {}
+            prune_confirm::PruneConfirmDialog {}
         }
     }
 }
+
+fn mount_context() -> crate::settings::Context {
+    #[cfg(test)]
+    let bindings = if let Some(bindings) = try_consume_context::<crate::settings::Bindings>() {
+        bindings
+    } else {
+        test_support::bindings()
+    };
+    #[cfg(not(test))]
+    let bindings = use_context::<crate::settings::Bindings>();
+    let view = use_signal(crate::settings::View::default);
+    let owner = use_hook(|| bindings.mount.call(view));
+    use_drop(move || bindings.unmount.call(owner));
+    crate::settings::Context {
+        view,
+        owner,
+        workflow: view.read().workflow,
+        bindings,
+    }
+}
+fn context() -> crate::settings::Context {
+    #[cfg(test)]
+    let mut c = try_consume_context::<crate::settings::Context>().unwrap_or_else(mount_context);
+    #[cfg(not(test))]
+    let mut c = use_context::<crate::settings::Context>();
+    c.workflow = c.view.read().workflow;
+    c
+}
+#[cfg(test)]
+mod test_support;
 
 #[cfg(test)]
 mod tests {
@@ -201,3 +236,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod event_tests;

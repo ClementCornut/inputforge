@@ -7097,3 +7097,6 @@ fn library_row_identity_tracks_same_path_replacement() {
 
 #[path = "snapshot_request_tests.rs"]
 mod snapshot_requests;
+
+#[path = "settings_request_tests.rs"]
+mod settings_request_tests;

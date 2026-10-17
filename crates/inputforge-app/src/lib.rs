@@ -10,3 +10,5 @@ pub mod keyboard_capture;
 
 pub mod mapping_edits;
 pub mod profiles;
+
+pub mod settings;

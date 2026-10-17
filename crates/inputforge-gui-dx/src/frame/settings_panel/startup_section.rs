@@ -1,74 +1,20 @@
-//! Startup preferences section (F16). Two independent switches above
-//! `SnapshotsSection`. Follows the polled-into-local-Signal pattern from
-//! `snapshots_section.rs:67-79` and `:124-136` to avoid the double-click
-//! race within a single polling tick.
-
-use std::sync::mpsc::Sender;
-
+//! Startup settings render app-prepared switches.
+use super::{field_row::SettingsFieldRow, section::SettingsSection};
+use crate::{components::Switch, settings::Intent};
 use dioxus::prelude::*;
-
-use inputforge_core::engine::EngineCommand;
-
-use crate::components::Switch;
-use crate::context::AppContext;
-use crate::frame::settings_panel::field_row::SettingsFieldRow;
-use crate::frame::settings_panel::section::SettingsSection;
-
 const LAUNCH_AT_STARTUP_ID: &str = "if-settings-startup-launch-at-startup";
 const START_MINIMIZED_ID: &str = "if-settings-startup-start-minimized";
-
-/// Dispatches `SetAutostart` to the engine. Extracted so tests can call the
-/// helper directly with a real `mpsc::channel` and verify the right
-/// `EngineCommand` variant was sent. Returning unit (errors are logged) keeps
-/// the call-site closure body trivial.
-pub(super) fn dispatch_set_autostart(tx: &Sender<EngineCommand>, enabled: bool) {
-    if let Err(e) = tx.send(EngineCommand::SetAutostart { enabled }) {
-        tracing::warn!(target: "startup_section", %e, "Failed to dispatch SetAutostart");
-    }
-}
-
-/// Dispatches `SetStartMinimizedToTray` to the engine. See
-/// `dispatch_set_autostart` for the rationale behind the helper split.
-pub(super) fn dispatch_set_start_minimized_to_tray(tx: &Sender<EngineCommand>, enabled: bool) {
-    if let Err(e) = tx.send(EngineCommand::SetStartMinimizedToTray { enabled }) {
-        tracing::warn!(target: "startup_section", %e, "Failed to dispatch SetStartMinimizedToTray");
-    }
-}
-
 #[component]
 pub(crate) fn StartupSection() -> Element {
-    let ctx = use_context::<AppContext>();
-    let settings = ctx.settings;
-    let commands = ctx.commands.clone();
-
-    let polled = settings.read().startup.clone();
-    let polled_launch = polled.launch_at_startup;
-    let polled_start_min = polled.start_minimized_to_tray;
-
-    let mut launch_local = use_signal(|| polled_launch);
-    use_effect(use_reactive!(|polled_launch| {
-        launch_local.set(polled_launch);
-    }));
-
-    let mut start_min_local = use_signal(|| polled_start_min);
-    use_effect(use_reactive!(|polled_start_min| {
-        start_min_local.set(polled_start_min);
-    }));
-
-    let commands_for_launch = commands.clone();
-    let on_launch_change = move |_evt: FormEvent| {
-        let new_value = !launch_local();
-        launch_local.set(new_value);
-        dispatch_set_autostart(&commands_for_launch, new_value);
+    let c = super::context();
+    let launch = use_memo(move || c.view.read().values.startup.launch_at_startup);
+    let minimized = use_memo(move || c.view.read().values.startup.start_minimized_to_tray);
+    let on_launch_change = move |_| {
+        let _ = c.send(Intent::Autostart);
     };
-
-    let commands_for_start_min = commands.clone();
-    let on_start_min_change = move |_evt: FormEvent| {
-        let new_value = !start_min_local();
-        start_min_local.set(new_value);
-        dispatch_set_start_minimized_to_tray(&commands_for_start_min, new_value);
+    let on_start_min_change = move |_| {
+        let _ = c.send(Intent::Minimized);
     };
-
     rsx! {
         SettingsSection {
             children: rsx! {
@@ -79,7 +25,7 @@ pub(crate) fn StartupSection() -> Element {
                     control: rsx! {
                         Switch {
                             id: Some(LAUNCH_AT_STARTUP_ID.to_owned()),
-                            checked: launch_local,
+                            checked: launch,
                             onchange: on_launch_change,
                         }
                     },
@@ -91,7 +37,7 @@ pub(crate) fn StartupSection() -> Element {
                     control: rsx! {
                         Switch {
                             id: Some(START_MINIMIZED_ID.to_owned()),
-                            checked: start_min_local,
+                            checked: minimized,
                             onchange: on_start_min_change,
                         }
                     },
@@ -111,7 +57,6 @@ mod tests {
     use dioxus_ssr::render;
     use parking_lot::RwLock;
 
-    use inputforge_core::engine::EngineCommand;
     use inputforge_core::settings::StartupSettings;
     use inputforge_core::state::AppState;
 
@@ -229,53 +174,5 @@ mod tests {
             1,
             "expected exactly 1 bare `checked` for launch-only render: {html}"
         );
-    }
-
-    #[test]
-    fn dispatch_set_autostart_sends_set_autostart_with_true() {
-        let (tx, rx) = mpsc::channel();
-        super::dispatch_set_autostart(&tx, true);
-        match rx.try_recv().expect("expected a command on the channel") {
-            EngineCommand::SetAutostart { enabled } => {
-                assert!(enabled, "expected enabled=true, got false");
-            }
-            other => panic!("expected SetAutostart, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn dispatch_set_autostart_sends_set_autostart_with_false() {
-        let (tx, rx) = mpsc::channel();
-        super::dispatch_set_autostart(&tx, false);
-        match rx.try_recv().expect("expected a command on the channel") {
-            EngineCommand::SetAutostart { enabled } => {
-                assert!(!enabled, "expected enabled=false, got true");
-            }
-            other => panic!("expected SetAutostart, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn dispatch_set_start_minimized_to_tray_sends_correct_variant_with_true() {
-        let (tx, rx) = mpsc::channel();
-        super::dispatch_set_start_minimized_to_tray(&tx, true);
-        match rx.try_recv().expect("expected a command on the channel") {
-            EngineCommand::SetStartMinimizedToTray { enabled } => {
-                assert!(enabled, "expected enabled=true, got false");
-            }
-            other => panic!("expected SetStartMinimizedToTray, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn dispatch_set_start_minimized_to_tray_sends_correct_variant_with_false() {
-        let (tx, rx) = mpsc::channel();
-        super::dispatch_set_start_minimized_to_tray(&tx, false);
-        match rx.try_recv().expect("expected a command on the channel") {
-            EngineCommand::SetStartMinimizedToTray { enabled } => {
-                assert!(!enabled, "expected enabled=false, got true");
-            }
-            other => panic!("expected SetStartMinimizedToTray, got {other:?}"),
-        }
     }
 }

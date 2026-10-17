@@ -7,12 +7,16 @@ use crate::components::text_input::InputSize;
 /// validation message and blocks the dispatch on the `Err` branch.
 ///
 /// Locale-aware parsing is out of scope; "1,000" is not accepted.
+#[cfg(not(test))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IntegerInputError {
     Empty,
     NotANumber,
     OutOfRange { min: usize, max: usize },
 }
+
+#[cfg(test)]
+pub use inputforge_gui_dx::components::IntegerInputError;
 
 /// Parse `raw` as `usize` and confirm it lies in `[min, max]`.
 ///

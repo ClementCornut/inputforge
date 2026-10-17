@@ -131,6 +131,8 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 ## Part 5: Settings and Prune Confirmation
 
+**Status (2026-10-17):** Complete on `main`; independent read-only review cleared with no actionable Critical/Important findings. Native Wayland/Windows acceptance remains manual.
+
 **Commit:** `refactor(settings): move settings validation and pruning into app`
 
 **Files:** Add `inputforge-app/src/settings/{mod.rs,policy.rs,dispatch.rs}` as needed and GUI `src/settings.rs` contract. Modify GUI `frame/settings_panel/{snapshots_section.rs,startup_section.rs,gestures_section.rs,prune_confirm.rs,mod.rs}` and the settings bridge projection. Reuse `SnapshotConfig`, gesture validators and existing autostart engine commands/services.
@@ -141,7 +143,9 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 **Tests first:** Add `inputforge-app/tests/settings.rs` plus real settings/prune handlers. Cover 0/1/100/101, malformed text, unchanged commits, pinned exclusions, changed counts/profile during confirmation, rapid toggles before polling, cross-field updates without lost values, failed send retaining state/feedback, cancelled prune, and backend save/prune failures without false success. Keep autostart and start-minimized behavior unchanged.
 
-- [ ] Complete the common cycle; manually verify saved settings after relaunch and pruning only in a disposable profile.
+- [x] Automated gates: 2,176 workspace tests passed, 0 failed, 11 existing ignored; unchanged pre-commit, all five required JavaScript suites, audit links and seven historical evidence hashes passed.
+- [x] Independent review cleared; single Part 5 commit checkpoint.
+- [ ] User acceptance: saved settings after relaunch, startup/tray switches and pruning only in disposable profiles on native Wayland and separately Windows.
 
 ## Part 6: Device Inspector and Native Clipboard
 

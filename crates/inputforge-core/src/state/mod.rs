@@ -92,6 +92,8 @@ pub struct ActiveSnapshotRow {
 pub struct AppState {
     /// Latest processed mapping fence, scoped to its editor controller lifetime.
     pub mapping_edit_barrier: Option<(u128, u64)>,
+    /// Latest completed app settings request, scoped to its mounted owner.
+    pub settings_ack: Option<(u128, u64)>,
     /// Mode-list mutation generation rejects workflows captured before name reuse.
     pub mode_revision: u64,
     pub session: SessionState,
@@ -146,6 +148,7 @@ impl AppState {
     pub fn new() -> Self {
         Self {
             mapping_edit_barrier: None,
+            settings_ack: None,
             mode_revision: 0,
             session: SessionState::default(),
             devices: Vec::new(),
@@ -196,6 +199,7 @@ impl AppState {
         }
         Self {
             mapping_edit_barrier: None,
+            settings_ack: None,
             mode_revision: 0,
             session: SessionState::default(),
             devices: Vec::new(),

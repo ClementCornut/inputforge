@@ -38,6 +38,9 @@ fn editor() -> Element {
     let profiles = use_hook(|| {
         inputforge_app::profiles::Controller::new(Arc::clone(&state), commands.clone())
     });
+    let settings = use_hook(|| {
+        inputforge_app::settings::Controller::new(Arc::clone(&state), commands.clone())
+    });
     render_editor(
         inputforge_gui_dx::RawHandles {
             state: Arc::clone(&state),
@@ -54,6 +57,7 @@ fn editor() -> Element {
         })
         .bindings(),
         profiles.bindings(),
+        settings.bindings(),
         Callback::new(move |publisher: inputforge_gui_dx::bridge::Publisher| {
             publisher.publish(frame.clone());
         }),

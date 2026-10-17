@@ -8,7 +8,7 @@ use inputforge_gui_dx::snapshots::SettingsSnapshot;
 /// counts unpinned entries in `state.active_snapshot_rows` (refreshed
 /// by the engine after every snapshot-mutating command). No filesystem
 /// IO is performed; this runs on every polling tick.
-pub(super) fn project(state: &AppState) -> SettingsSnapshot {
+pub(crate) fn project(state: &AppState) -> SettingsSnapshot {
     let snapshot = state.snapshot_config.clone();
     let unpinned_snapshot_count = state
         .active_snapshot_rows
