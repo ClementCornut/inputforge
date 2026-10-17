@@ -58,7 +58,8 @@ pub(crate) fn MappingEditor() -> Element {
     // is selected. Provided as context so Stage components can read it without
     // prop-drilling through Pipeline. The live region is rendered once inside
     // the editor shell for AT a11y.
-    let sortable: SortableState<StageId> = use_sortable_state::<StageId>();
+    let sortable: SortableState<StageId> =
+        use_sortable_state::<StageId>(crate::components::behavior().pipeline_sortable);
     // SortableState is `Copy` regardless of `G` (every field is a
     // `Signal`, which is `Copy` unconditionally), so the bundle is
     // freely shared with the live-region mount and the context.

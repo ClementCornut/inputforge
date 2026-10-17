@@ -30,13 +30,37 @@ pub enum UndoKind {
 /// A rendered edit requested against a saved mapping.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Edit {
-    Replace { path: StageId, action: Action },
-    Field { path: StageId, field: Field },
-    Add { path: StageId, kind: StageKind },
-    Step { path: StageId, down: bool },
-    Insert { path: StageId, action: Action },
+    Replace {
+        path: StageId,
+        action: Action,
+    },
+    Field {
+        path: StageId,
+        field: Field,
+    },
+    Add {
+        path: StageId,
+        kind: StageKind,
+    },
+    Step {
+        path: StageId,
+        down: bool,
+    },
+    Insert {
+        path: StageId,
+        action: Action,
+    },
     Remove(StageId),
-    Move { from: StageId, to: StageId },
+    Move {
+        from: StageId,
+        to: StageId,
+    },
+    /// Pointer destination captured before source removal, including nested branch identity.
+    MoveGap {
+        from: StageId,
+        parent: StageId,
+        gap: usize,
+    },
     Rename(String),
     Rebind(InputAddress),
 }

@@ -5,7 +5,7 @@ use super::{
 };
 use dioxus::prelude::*;
 use inputforge_gui_dx::{
-    mapping_rail::{Group, Lookup, Operation, Outcome, Request, Scope},
+    mapping_rail::{Lookup, Operation, Outcome, Request, Scope},
     navigation::{Listener, RailPublication},
 };
 use std::{cell::Cell, rc::Rc};
@@ -127,17 +127,8 @@ fn route(
                     },
                 }) {
                     Outcome::Moved { index, len, group } => {
-                        let group = match group {
-                            Group::Axes => "axes",
-                            Group::Buttons => "buttons",
-                            Group::Hats => "hats",
-                        };
-                        p.announcement.set(format!(
-                            "Mapping moved to position {} of {} in {}.",
-                            index + 1,
-                            len,
-                            group
-                        ));
+                        p.announcement
+                            .set(crate::ui::sortable::rail_announcement((index, len, group)));
                         p.feedback.set(None);
                     }
                     Outcome::Rejected(error) => p.feedback.set(Some(error)),

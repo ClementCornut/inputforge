@@ -17,10 +17,10 @@
 //!   rows + leading + trailing per group
 //! * `SortableLiveRegion` -- visually-hidden `aria-live="polite"` mount
 //!
-//! Pointer capture keeps wheel scrolling available. Browser geometry extends
+//! App-owned pointer capture keeps wheel scrolling available. Browser geometry extends
 //! each gap's hit target to the neighboring card midpoints without overlays.
 //! Edge scrolling runs only during a gesture; cancellation and unmount release
-//! capture, listeners and the animation frame. Rust retains drop validation.
+//! capture, listeners and the animation frame. App callbacks retain drop validation.
 //!
 //! CSS lives in `/assets/components/sortable.css` and is mounted
 //! alongside the rest of the design-system stylesheets in
@@ -33,7 +33,6 @@
 
 mod gap;
 mod handle;
-mod interaction;
 mod live_region;
 mod state;
 

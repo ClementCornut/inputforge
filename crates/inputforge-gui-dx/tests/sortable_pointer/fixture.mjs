@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import vm from 'node:vm';
-const path = 'crates/inputforge-gui-dx/assets/components/sortable_drag.js';
+const path = 'crates/inputforge-app/assets/sortable_drag.js';
 const script = existsSync(path) ? readFileSync(path, 'utf8') : '';
-const handle = readFileSync('crates/inputforge-gui-dx/src/components/sortable/handle.rs', 'utf8');
-const clickScript = JSON.parse(handle.match(/"onclick":\s*("(?:\\.|[^"])*")/)?.[1] ?? '""').replaceAll('{{', '{').replaceAll('}}', '}');
 class ClassList extends Set { contains(x) { return this.has(x); } remove(x) { this.delete(x); } }
 class Surface {
   listeners = new Map();
@@ -126,10 +124,11 @@ export function fixture(height = 300) {
     },
     move(x, y, id = 1) { view.emit('pointermove', event(x, y, id)); },
     up(x, y) { view.emit('pointerup', event(x, y)); },
-    click() { const e = event(100, 35); vm.runInContext(`(function(event) { ${clickScript} }).call(source, clickEvent);`, Object.assign(context, { source, clickEvent: e })); return e; },
+    click() { const e = event(100, 35); view.__ifSortableClick({...e,currentTarget:source, preventDefault(){e.preventDefault();}}); return e; },
     wheel(amount) { const e = event(100, 130); e.deltaY = amount; view.emit('wheel', e); if (!e.defaultPrevented) pane.scrollTop += amount; return e; },
     lastOver() { return events.filter(e => e[0] === 'dragover').at(-1)?.[1]; },
     drops() { return events.filter(e => e[0] === 'drop').map(e => e[1]); },
+    key(key, altKey = false) { const e = {...event(0,0),key,altKey}; view.emit("keydown",e); return e; },
     cancel(reason = 'escape') {
       if (reason === 'removed') { source.isConnected = false; frame(32); }
       else if (reason === 'escape') view.emit('keydown', { ...event(0, 0), key: 'Escape' });

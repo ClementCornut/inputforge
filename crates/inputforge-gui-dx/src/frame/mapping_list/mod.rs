@@ -48,27 +48,6 @@ use crate::{
     mapping_rail::{Group, Lookup, Menu, Move, Operation, Outcome, Request, Scope, Target},
 };
 
-/// Format the AT live-region phrase for a successful reorder. Shared
-/// between the keyboard handler, the context menu items, and the row's
-/// drop handler so all three reorder paths produce identical
-/// announcements (per the F8-impeccable critique pass).
-pub(crate) fn format_reorder_announcement(
-    new_subpos: usize,
-    group_len: usize,
-    group: GroupKind,
-) -> String {
-    let phrase = match group {
-        GroupKind::Axes => "axes",
-        GroupKind::Buttons => "buttons",
-        GroupKind::Hats => "hats",
-    };
-    format!(
-        "Mapping moved to position {} of {} in {}.",
-        new_subpos + 1,
-        group_len,
-        phrase
-    )
-}
 use crate::frame::view_state::{MappingKey, ViewState};
 use crate::patterns::live_capture::LiveCapture;
 
@@ -105,7 +84,7 @@ pub(crate) fn MappingList() -> Element {
     // indicator, and the AT live-region content. The primitive's
     // pointer transport forwards source/gap events and owns scroll geometry;
     // this rail retains prepared app targets and callback wiring.
-    let sortable = use_sortable_state::<u32>();
+    let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
 
     let navigation = bindings.navigation;
     let projection = use_memo(move || {
@@ -295,11 +274,6 @@ pub(crate) fn MappingList() -> Element {
             })
             .collect();
 
-        // Bind the validator with an explicit type so Dioxus's prop
-        // SuperInto accepts it as `Option<fn(&u32, &u32) -> bool>` (the
-        // unique closure type wouldn't coerce through the macro's
-        // generated trait bound).
-        let rail_validator: Option<fn(&u32, &u32) -> bool> = Some(|s, t| s == t);
         Some(rsx! {
             div { class: "if-rail__group", "data-sortable-group": "{sortable.drag_from.id():?}", "data-sortable-context": "{drag_context}",
                 div { class: "if-rail__group-header",
@@ -311,7 +285,6 @@ pub(crate) fn MappingList() -> Element {
                     state: sortable,
                     gap_index: 0_usize,
                     group: group_id,
-                    validate_drop: rail_validator,
                     on_drop: drop_handler,
                 }
                 for (i, row, is_active) in row_items {
@@ -334,8 +307,7 @@ pub(crate) fn MappingList() -> Element {
                                 state: sortable,
                                 gap_index: i + 1,
                                 group: group_id,
-                                validate_drop: rail_validator,
-                                on_drop: drop_handler,
+                                            on_drop: drop_handler,
                             }
                         }
                     }
@@ -376,7 +348,7 @@ pub(crate) fn MappingList() -> Element {
             // sr-only live region. Mounted once at the rail root so AT
             // users hear every reorder action (drag-drop, context menu
             // Move up/down, keyboard Alt+Arrow). The text is overwritten
-            // at each dispatch site via `format_reorder_announcement`.
+            // at each dispatch site through app-supplied announcements.
             SortableLiveRegion { state: sortable }
         }
     }
@@ -737,12 +709,11 @@ fn run_rail(
 ) -> bool {
     match bindings.rail.call(request) {
         Outcome::Moved { index, len, group } => {
-            let group = match group {
-                Group::Axes => GroupKind::Axes,
-                Group::Buttons => GroupKind::Buttons,
-                Group::Hats => GroupKind::Hats,
-            };
-            live.set(format_reorder_announcement(index, len, group));
+            live.set(
+                consume_context::<crate::controls::Bindings>()
+                    .rail_announcement
+                    .call((index, len, group)),
+            );
             feedback.set(None);
             true
         }

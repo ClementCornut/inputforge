@@ -128,3 +128,31 @@ test('expanded card previews retain their canvas drawing', () => {
   assert.deepEqual(ghost.querySelectorAll('canvas')[0].draws, [[canvas, 0, 0]]);
   f.cancel(); f.assertClean();
 });
+
+test('reusing the mounted handle identity cancels before delivery', () => {
+  const f = fixture(); f.source.dataset.sortableHandle = 'first'; f.down(); f.move(100, 180);
+  f.source.dataset.sortableHandle = 'replacement'; f.up(100, 180);
+  assert.deepEqual(f.drops(), []); f.assertClean();
+});
+test('replacing a source group cancels even when the handle context remains unchanged', () => {
+  const f = fixture(); f.down(); f.move(100, 180);
+  f.group.dataset.sortableContext = 'replacement-profile-mode-tree'; f.frame(16);
+  assert.deepEqual(f.drops(), []); f.assertClean();
+});
+test('a second gesture cancels the old owner and delivers only once', () => {
+  const f = fixture(); f.down(); f.move(100, 180); f.down(); f.move(100, 180);
+  f.up(100, 180); f.up(100, 180);
+  assert.deepEqual(f.drops(), ['gap-2']); f.assertClean();
+});
+
+test('keyboard reorder cancels the pointer gesture without consuming the keyboard action', () => {
+  const f = fixture(); f.down(); f.move(100,180);
+  const e = f.key('ArrowDown', true);
+  assert.equal(e.defaultPrevented,false); f.assertClean();
+  f.up(100,180); assert.deepEqual(f.drops(),[]);
+});
+test('moving a mounted source into a different owner cancels before the next frame', () => {
+  const f = fixture(); f.down(); f.move(100,180);
+  f.group.dataset.sortableGroup = 'replacement-owner'; f.frame(16);
+  assert.deepEqual(f.drops(),[]); f.assertClean();
+});

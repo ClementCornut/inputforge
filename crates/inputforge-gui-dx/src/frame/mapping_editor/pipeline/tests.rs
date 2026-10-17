@@ -548,7 +548,7 @@ fn PredicateHookOrderHarness() -> Element {
     use_live_capture_provider();
     use_keyboard_capture_provider();
     use_editor_state_provider();
-    let sortable = use_sortable_state::<StageId>();
+    let sortable = use_sortable_state::<StageId>(crate::components::behavior().pipeline_sortable);
     use_context_provider(|| sortable);
 
     let mut use_axis = use_signal(|| false);

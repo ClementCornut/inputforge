@@ -16,6 +16,7 @@
 )]
 
 mod add_palette;
+#[cfg(test)]
 pub(crate) mod dnd;
 mod stage;
 mod stage_actions_menu;
@@ -96,13 +97,8 @@ use inputforge_core::action::{Action, ActionBranch, branch_actions};
 use crate::components::sortable::{SortableGap, SortableState};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
-use crate::frame::mapping_editor::pipeline::dnd::{
-    gap_to_post_remove_slot, validate_pipeline_drop,
-};
 use crate::frame::mapping_editor::pipeline::stage::stage_title_for;
-use crate::frame::mapping_editor::undo_log::{
-    LabelArgs, StageId, StageIdSegment, UndoKind, format_undo_label,
-};
+use crate::frame::mapping_editor::undo_log::{StageId, StageIdSegment};
 
 /// Read the action at `path` in `actions`. Returns `None` when the
 /// path does not resolve (out-of-range index, missing branch, etc.).
@@ -138,14 +134,7 @@ pub(crate) fn at_path<'a>(actions: &'a [Action], path: &StageId) -> Option<&'a A
 /// use it (NOT `actions`) for `replace_at_path` / `insert_at_path` /
 /// `remove_at_path` because `StageId` paths are root-relative.
 ///
-/// Pipeline owns the drag-drop dispatch closure. Each `SortableGap` in
-/// this pipeline shares one `EventHandler<usize>` (built once per
-/// render, threaded into every gap as a `Copy` handle). The closure
-/// reads source state (`drag_from`, `drag_group`) from the shared
-/// `SortableState`, converts the `gap_index` to a post-remove insertion
-/// slot, mutates the action tree via `remove_at_path` + `insert_at_
-/// path`, dispatches `EngineCommand::SetMapping`, and pushes a
-/// `StageReorder` undo entry.
+/// Shared app callbacks interpret gaps and retain final mapping identity/history validation.
 #[component]
 #[allow(
     clippy::too_many_lines,
@@ -183,83 +172,32 @@ pub(crate) fn Pipeline(
     // pipeline shares this group discriminator.
     let parent_pipeline_path = StageId(path_prefix.clone());
 
-    // Build the per-pipeline drop handler. Each SortableGap below
-    // clones this `EventHandler` (which is `Copy`) into its props.
-    let drag_from_for_drop = sortable.drag_from;
-    let drag_group_for_drop = sortable.drag_group;
-    let mut live_writer = sortable.live_announcement;
-    let parent_path_for_drop = parent_pipeline_path.clone();
-    let mapping_key_for_drop = mapping_key.clone();
-    let root_for_drop = root_actions.clone();
-
-    // Bind the validator with an explicit type so Dioxus's prop SuperInto
-    // accepts it as `Option<fn(&StageId, &StageId) -> bool>` (the
-    // fn-item type of `validate_pipeline_drop` is unique and wouldn't
-    // coerce through the macro's generated trait bound).
-    let pipeline_validator: Option<fn(&StageId, &StageId) -> bool> = Some(validate_pipeline_drop);
-
+    let target_parent = parent_pipeline_path.clone();
+    let root_for_title = root_actions.clone();
+    let drop_bindings = crate::components::behavior();
+    let key_for_drop = mapping_key.clone();
+    let actions_for_drop = root_actions.clone();
     let drop_handler = EventHandler::new(move |gap_index: usize| {
-        // `drag_from` holds the source's group-local index; still
-        // populated when the closure runs (the gap clears it after we
-        // return).
-        let Some(src_local_index) = *drag_from_for_drop.peek() else {
-            return;
-        };
-        // `drag_group` holds the source's parent pipeline path.
-        let Some(src_parent_path) = drag_group_for_drop.peek().clone() else {
-            return;
-        };
-
-        // Reconstruct the source's full StageId.
-        let mut src_segs = src_parent_path.0.clone();
-        src_segs.push(StageIdSegment::Index(src_local_index));
-        let src_id = StageId(src_segs);
-
-        // Convert the gap's pre-remove slot index to a post-remove
-        // insertion index. See `gap_to_post_remove_slot` for the math.
-        let post_remove_to = gap_to_post_remove_slot(
-            &src_parent_path,
-            &parent_path_for_drop,
-            src_local_index,
-            gap_index,
-        );
-
-        // Reconstruct the target's full StageId in the post-remove tree.
-        let mut tgt_segs = parent_path_for_drop.0.clone();
-        tgt_segs.push(StageIdSegment::Index(post_remove_to));
-        let tgt_id = StageId(tgt_segs);
-
-        // Friendly stage name for the undo label, looked up before the
-        // mutation so the original tree resolves.
-        let stage_name = at_path(&root_for_drop, &src_id).map_or("stage", stage_title_for);
-        let label = format_undo_label(
-            UndoKind::StageReorder,
-            LabelArgs {
-                stage_name: Some(stage_name),
-                from_to: Some((src_local_index, post_remove_to)),
-                ..LabelArgs::default()
-            },
-        );
-        if !stage_body::instruments::stage_dispatch::submit(
-            &mapping_key_for_drop,
-            &root_for_drop,
-            crate::mapping_edits::Edit::Move {
-                from: src_id,
-                to: tgt_id,
-            },
-            label,
-            None,
-            true,
-        ) {
-            return;
-        }
-
-        // AT live-region announcement.
-        live_writer.set(format!(
-            "Stage moved from position {} to {}",
-            src_local_index + 1,
-            post_remove_to + 1
-        ));
+        let key = key_for_drop.clone();
+        let actions = actions_for_drop.clone();
+        let root_for_title = root_for_title.clone();
+        drop_bindings
+            .pipeline_drop
+            .call(crate::sortable::PipelineDrop {
+                state: sortable,
+                parent: target_parent.clone(),
+                gap: gap_index,
+                title: Callback::new(move |path| {
+                    at_path(&root_for_title, &path)
+                        .map_or("stage", stage_title_for)
+                        .to_owned()
+                }),
+                submit: Callback::new(move |(edit, label)| {
+                    stage_body::instruments::stage_dispatch::submit(
+                        &key, &actions, edit, label, None, true,
+                    )
+                }),
+            });
     });
 
     if actions.is_empty() {
@@ -276,7 +214,6 @@ pub(crate) fn Pipeline(
                     state: sortable,
                     gap_index: 0_usize,
                     group: parent_pipeline_path.clone(),
-                    validate_drop: pipeline_validator,
                     on_drop: drop_handler,
                 }
                 li { class: "if-pipeline__add-end",
@@ -307,7 +244,6 @@ pub(crate) fn Pipeline(
                 state: sortable,
                 gap_index: 0_usize,
                 group: parent_path_for_gaps.clone(),
-                validate_drop: pipeline_validator,
                 on_drop: drop_handler,
             }
             for (i, action) in actions.iter().enumerate() {
@@ -330,7 +266,6 @@ pub(crate) fn Pipeline(
                             state: sortable,
                             gap_index: i + 1,
                             group: parent_path_for_gaps.clone(),
-                            validate_drop: pipeline_validator,
                             on_drop: drop_handler,
                         }
                     }

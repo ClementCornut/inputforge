@@ -23,6 +23,10 @@ pub use inputforge_gui_dx::capture;
 pub mod overlays;
 #[cfg(test)]
 pub use inputforge_gui_dx::overlays;
+#[cfg(not(test))]
+pub mod sortable;
+#[cfg(test)]
+pub use inputforge_gui_dx::sortable;
 pub mod components;
 #[cfg(not(test))]
 pub mod controls;

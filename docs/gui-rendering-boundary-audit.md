@@ -1447,7 +1447,7 @@ may change during extraction.
 | 5 | **Batch mapping — resolved** — [app wizard](../crates/inputforge-app/src/mapping_edits/batch/mod.rs); [app dispatch](../crates/inputforge-app/src/mapping_edits/batch/dispatch.rs); [GUI rendering](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs) | Target selection/validation, collisions, reconciliation, entry generation, snapshot requests and delivery are app-owned. Core retains snapshot/persistence execution. |
 | 6 | **Settings, snapshots, profiles and modes — resolved** — [app settings](../crates/inputforge-app/src/settings/mod.rs); [settings policy](../crates/inputforge-app/src/settings/policy.rs); [app profiles](../crates/inputforge-app/src/profiles/mod.rs) | Mode CRUD, startup/activation, validation, confirmation/counts, dispatch and selection/focus decisions are app-owned. Profile workflows, name/collision policy, captured identities, file dialogs, confirmation and failed-delivery retention are app-owned. Snapshot actions, current identity checks, drawer state and restore confirmation are app-owned in Part 4. Settings validation, pending-value reconciliation, prune confirmation and guarded dispatch are app-owned in Part 5. Core retains persistence, native startup services and pruning execution. |
 | 7 | **Operating-system services and filesystem access** — [app file picker](../crates/inputforge-app/src/profiles/dialog.rs); [app clipboard](../crates/inputforge-app/src/controllers/inspector/clipboard.rs); [cached file metadata](../crates/inputforge-app/src/bridge/profile_metadata.rs) | Native profile dialog invocation and obsolete-result rejection are app-owned. Part 6 moves clipboard invocation, native owner lifetime and write feedback to the app, with the resolved Linux Wayland feature enabled. Polling profile metadata is now app-owned, cached, and read after releasing the engine lock. Other filesystem-service ownership remains open. |
-| 8 | **Event handling and UI state transitions — partially resolved** — [app navigation](../crates/inputforge-app/src/navigation/mod.rs); [navigation rendering](../crates/inputforge-gui-dx/src/frame/view_state.rs); [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs) | Snapshot Ctrl+S is app-owned in Part 4; device-inspector interactions in Part 6. Part 9 moves editor surfaces/panels, stable-profile/selection reconciliation, filtering, expansion invalidation and rail/editor shortcut interpretation and listener lifecycle into the app. Part 10 moves reusable form/tab behavior and Part 11 moves shared overlay/dismissal behavior and document listener ownership into app bindings. Sortable interaction remains in Part 12. |
+| 8 | **Event handling and UI state transitions — resolved through Part 12** — [app navigation](../crates/inputforge-app/src/navigation/mod.rs); [navigation rendering](../crates/inputforge-gui-dx/src/frame/view_state.rs); [sortable drop handler](../crates/inputforge-gui-dx/src/components/sortable/gap.rs) | Snapshot Ctrl+S is app-owned in Part 4; device-inspector interactions in Part 6. Part 9 moves editor surfaces/panels, stable-profile/selection reconciliation, filtering, expansion invalidation and rail/editor shortcut interpretation and listener lifecycle into the app. Part 10 moves reusable form/tab behavior and Part 11 moves shared overlay/dismissal behavior and document listener ownership into app bindings. Part 12 moves shared sortable gesture policy, mounted cleanup, browser transport and announcements into app bindings; GUI retains rendering and callback wiring. |
 | 9 | **Live readout analysis — resolved in Part 7** — [app analysis](../crates/inputforge-app/src/bridge/readout/analyze.rs); [app deadlines](../crates/inputforge-app/src/bridge/readout/activity.rs); [renderer](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/mod.rs) | The existing app bridge prepares typed input/output values, merge/conditional/gesture chains, predicates, exact output ownership/polarity/activity and instrument tracking values. App callbacks own expansion/reset decisions. Preview expiry advances on the same 16 ms tick, including contended engine reads; the GUI renders completed values without engine access or per-render timers. |
 | 10 | **Notifications — resolved in Part 8** — [app notification owner](../crates/inputforge-app/src/notifications/mod.rs); [queue deadlines](../crates/inputforge-app/src/notifications/state.rs); [warning tail](../crates/inputforge-app/src/notifications/warnings.rs); [renderer](../crates/inputforge-gui-dx/src/toast/viewport.rs) | The app owns deduplication, capacity/order, warning delivery, expiry, independent hover/focus pauses and dismissal/Escape. The existing bridge advances deadlines even during engine read contention. GUI contracts expose prepared visible values and supplied callbacks; inline workflow errors remain independent. Existing notification interactions are preserved; dormant undo controls are not added. |
 
@@ -2475,3 +2475,70 @@ destructive gallery dialogs. Native compositor focus, assistive technology,
 hardware and performance acceptance remain unverified. Part 12 retains sortable
 interaction; Part 13 removes transitional handles and performs the final ownership
 inspection. Historical native Apply, capture and drag evidence above is unchanged.
+
+## Shared sortable interaction — Part 12 — 2026-10-18
+
+[App sortable hooks](../crates/inputforge-app/src/ui/sortable/mod.rs) now own shared
+gesture publications, source identity, mounted cancellation, gap eligibility,
+adjacent/no-op suppression and successful reorder announcements. The existing
+[controls provider](../crates/inputforge-app/src/ui/mod.rs) supplies typed rail and
+pipeline hooks through the [prepared contract](../crates/inputforge-gui-dx/src/sortable.rs).
+The [GUI primitive](../crates/inputforge-gui-dx/src/components/sortable/mod.rs) retains
+markup, observed values and callback wiring; the live region renders the app's text.
+Both rail groups/cards and nested/empty pipeline groups use the same app callbacks.
+The gallery, desktop, bridge demo and canonical fixtures inherit these hooks from
+their existing app UI provider, without a production GUI-to-app dependency.
+
+The proven [pointer transport](../crates/inputforge-app/assets/sortable_drag.js) moved
+to app ownership with its measured card halves/gaps, wheel/edge scrolling, four-pixel
+threshold, viewport-fixed ghost offset/appearance, inert/sanitized clone and canvas
+copy unchanged. Animation frames exist only for active gesture geometry/scrolling.
+Escape, blur, capture loss, source removal, source/owner replacement and mounted
+cleanup release resources; reorder/menu keyboard gestures cancel the pointer path
+without consuming the key. Native shortcut listeners retain their existing active-
+drag, capture, editable and overlay gates. Release-click suppression is app-owned.
+The old GUI script and interaction source paths contain comments-only location
+notices, excluded from the module graph and runtime loading. They preserve the links
+inside byte-preserved historical evidence; they contain no compatibility behavior.
+
+[Pipeline interpretation](../crates/inputforge-app/src/ui/sortable/pipeline.rs) now
+validates the full source stage rather than its parent, allowing an unrelated root
+stage to enter an empty nested branch while rejecting actual ancestor cycles.
+`MoveGap` retains the destination's pre-removal branch identity so an earlier source
+cannot redirect a drop when its removal shifts the target ancestor. The existing
+[final mapping dispatcher](../crates/inputforge-app/src/mapping_edits/paths.rs) checks
+this intent again, then delivers one command/barrier and one undo entry. The legacy
+`Move` cycle guard remains intact. Failed identity/queue validation produces no
+success announcement or history/navigation changes. The unused handle group-length
+prop and its redundant traversal/allocation were removed within this slice.
+
+Regression-first checks exposed reused handle/owner/context acceptance, pointer versus
+keyboard cancellation, retained source state after context replacement, root-to-empty-
+branch rejection and a shifted nested destination. Their red cases preceded the
+corresponding fixes. Ten new real app callback/controller tests cover no-op/foreign
+gaps, obsolete owners, replacement profile/action tree, nested branch delivery,
+true cycle rejection, exactly-once command/history and undo. Existing real rail
+handlers, mounted cleanup/remount and keyboard regressions remain. The original six
+small adjacent-helper tests are covered by the actual gap handlers instead.
+
+Automated checkpoint: **2,229 passed, 0 failed, 10 existing ignored** across 39
+workspace result blocks. The unchanged strict pre-commit hook and all seven executable
+JavaScript suites passed, including **19 sortable pointer/ghost cases**. Workspace
+execution used host IPC permissions for the existing single-instance socket tests;
+no tests were excluded. Audit links, seven historical acceptance-section hashes,
+diff integrity and focused production-module sizes were checked. The removed
+ignored sortable-hook example accounts for one fewer ignored doctest. Independent
+review is recorded in the part's implementation report before committing.
+
+Manual acceptance: run `dx run -p inputforge-app` on native Wayland and separately
+Windows, and repeat the earlier full pointer/ghost/scroll checklists. Drag unequal
+cards through upper/lower halves, gaps, first/last and adjacent positions; check
+cross-group rejection, nested and empty branches, wheel/edge scroll with a stationary
+pointer and exactly one reorder/undo. Check ghost grab offset, expanded canvas
+appearance, release-click suppression and ordinary grip clicks. Cancel with Escape,
+blur and capture loss; remove/replace the source, switch profile/mode/action tree,
+close/remount the editor, and confirm no late drop. Check Alt+Up/Down and menu gestures
+during/after a drag, keyboard capture/overlay precedence and screen-reader announcements.
+Native compositor, assistive technology, hardware and performance acceptance remain
+unverified. Part 13 retains transitional host-handle removal and the final ownership
+inspection; earlier native Apply, capture and drag evidence remains unchanged.

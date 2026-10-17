@@ -265,7 +265,7 @@ fn row_renders_name_and_source_line() {
             first_vjoy_output: None,
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state::<u32>();
+        let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
         rsx! {
             Row {
                 summary: summary,
@@ -315,7 +315,7 @@ fn row_omits_unnamed_placeholder_when_not_renaming() {
             first_vjoy_output: None,
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state::<u32>();
+        let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
         rsx! {
             Row {
                 summary: summary,
@@ -370,7 +370,7 @@ fn row_renders_compact_vjoy_output_badge() {
             }),
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state::<u32>();
+        let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
         rsx! {
             Row {
                 summary: summary,
@@ -424,7 +424,7 @@ fn row_active_class_when_selected() {
             first_vjoy_output: None,
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state::<u32>();
+        let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
         rsx! {
             Row {
                 summary: summary,
@@ -474,7 +474,7 @@ fn row_glyphs_render_for_merge_and_conditional() {
             first_vjoy_output: None,
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state::<u32>();
+        let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
         rsx! {
             Row {
                 summary: summary,
@@ -533,7 +533,7 @@ fn row_qualifier_chips_render_with_tooltip_titles() {
             first_vjoy_output: None,
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state::<u32>();
+        let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
         rsx! {
             Row {
                 summary: summary,
@@ -617,7 +617,7 @@ fn row_swaps_in_rename_inline_when_renaming_matches_input() {
             first_vjoy_output: None,
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| Some(summary.input.clone()));
-        let sortable = use_sortable_state::<u32>();
+        let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
         rsx! {
             Row {
                 summary: summary,
@@ -675,7 +675,7 @@ fn row_renders_resting_when_renaming_is_none() {
             first_vjoy_output: None,
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state::<u32>();
+        let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
         rsx! {
             Row {
                 summary: summary,
@@ -2002,7 +2002,7 @@ fn row_input_identity_test_component(input: inputforge_core::types::InputId) -> 
         first_vjoy_output: None,
     };
     let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-    let sortable = use_sortable_state::<u32>();
+    let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
     rsx! {
         Row {
             summary: summary,
@@ -2066,7 +2066,7 @@ fn qualifier_chips_render_as_chip_outline_with_glyph_class() {
             first_vjoy_output: None,
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state::<u32>();
+        let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
         rsx! {
             Row {
                 summary: summary,
@@ -2334,7 +2334,7 @@ fn row_output_chip_replaces_legacy_output_badge() {
             }),
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state::<u32>();
+        let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
         rsx! {
             Row {
                 summary: summary,
@@ -2433,7 +2433,7 @@ fn row_output_chip_absent_when_no_vjoy() {
             first_vjoy_output: None,
         };
         let renaming: Signal<Option<InputAddress>> = use_signal(|| None);
-        let sortable = use_sortable_state::<u32>();
+        let sortable = use_sortable_state::<u32>(crate::components::behavior().rail_sortable);
         rsx! {
             Row {
                 summary: summary,

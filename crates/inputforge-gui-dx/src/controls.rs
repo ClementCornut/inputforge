@@ -4,6 +4,10 @@ use dioxus::prelude::*;
 /// Engine-independent hooks and event callbacks installed by the host.
 #[derive(Clone, Copy, Debug)]
 pub struct Bindings {
+    pub rail_sortable: crate::sortable::Bindings<u32>,
+    pub pipeline_sortable: crate::sortable::Bindings<crate::mapping_edits::StageId>,
+    pub rail_announcement: Callback<(usize, usize, crate::mapping_rail::Group), String>,
+    pub pipeline_drop: Callback<crate::sortable::PipelineDrop>,
     pub overlays: crate::overlays::Bindings,
     pub number: fn(&NumberProps) -> NumberView,
     pub integer: fn(&IntegerProps) -> InputView,

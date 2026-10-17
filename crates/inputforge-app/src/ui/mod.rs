@@ -3,6 +3,7 @@ mod draft;
 mod inputs;
 mod integer;
 mod overlays;
+pub mod sortable;
 mod tabs;
 use dioxus::prelude::*;
 use inputforge_gui_dx::controls::Bindings;
@@ -10,6 +11,10 @@ use inputforge_gui_dx::controls::Bindings;
 #[must_use]
 pub fn bindings() -> Bindings {
     Bindings {
+        rail_sortable: sortable::rail(),
+        pipeline_sortable: sortable::pipeline(),
+        rail_announcement: Callback::new(sortable::rail_announcement),
+        pipeline_drop: Callback::new(sortable::drop_pipeline),
         overlays: overlays::bindings(),
         number: inputs::use_number,
         integer: integer::use_integer,

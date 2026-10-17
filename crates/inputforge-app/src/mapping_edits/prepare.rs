@@ -69,7 +69,7 @@ impl Controller {
             Edit::Field { .. } | Edit::Add { .. } | Edit::Step { .. } => return None,
             Edit::Insert { .. } => UndoKind::StageAdd,
             Edit::Remove(_) => UndoKind::StageRemove,
-            Edit::Move { .. } => UndoKind::StageReorder,
+            Edit::Move { .. } | Edit::MoveGap { .. } => UndoKind::StageReorder,
             Edit::Rename(name) => {
                 let name = name.trim();
                 if name.is_empty() {

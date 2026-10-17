@@ -17,7 +17,7 @@ use super::state::SortableState;
 /// required because `SortableState<G>` carries the live-announcement
 /// signal together with the group-typed DnD signals. Callers pass the
 /// same `SortableState<G>` instance they created with
-/// `use_sortable_state::<G>()`.
+/// the app-supplied sortable hook.
 #[component]
 pub fn SortableLiveRegion<G: 'static + Clone + PartialEq>(state: SortableState<G>) -> Element {
     let text = state.live_announcement.read().clone();

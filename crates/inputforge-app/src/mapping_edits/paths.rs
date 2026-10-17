@@ -54,6 +54,17 @@ pub(super) fn apply(actions: &[Action], edit: &Edit) -> Option<Vec<Action>> {
             }
             list.insert(i, action);
         }
+        Edit::MoveGap { from, parent, gap } => {
+            let target = crate::ui::sortable::gap_destination(from, parent, *gap)?;
+            let (list, index) = branch(&mut actions, &from.0)?;
+            list.get(index)?;
+            let action = list.remove(index);
+            let (list, index) = branch(&mut actions, &target.0)?;
+            if index > list.len() {
+                return None;
+            }
+            list.insert(index, action);
+        }
         Edit::Rename(_) | Edit::Rebind(_) => {}
         Edit::Field { .. } | Edit::Add { .. } | Edit::Step { .. } => return None,
     }

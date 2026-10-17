@@ -46,6 +46,12 @@ impl Controller {
                 changes.push(from.clone());
                 changes.push(to.clone());
             }
+            Edit::MoveGap { from, parent, gap } => {
+                changes.push(from.clone());
+                let mut target = parent.clone();
+                target.0.push(StageIdSegment::Index(*gap));
+                changes.push(target);
+            }
             _ => return,
         }
         if p.expanded.try_peek().is_err() {

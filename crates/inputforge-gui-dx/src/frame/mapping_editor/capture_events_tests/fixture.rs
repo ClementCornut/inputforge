@@ -95,7 +95,9 @@ fn harness() -> Element {
     *fixture.editor.borrow_mut() = Some(editor);
     inputforge_app::notifications::use_provider();
     use_live_capture_provider();
-    let sortable = crate::components::sortable::use_sortable_state::<StageId>();
+    let sortable = crate::components::sortable::use_sortable_state::<StageId>(
+        crate::components::behavior().pipeline_sortable,
+    );
     use_context_provider(|| sortable);
     match fixture.surface {
         Surface::Add => rsx! { crate::frame::mapping_list::MappingList {} },

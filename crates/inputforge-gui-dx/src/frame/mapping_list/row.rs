@@ -131,26 +131,17 @@ pub(crate) fn Row(
         on_open_menu_inner.call((summary_for_ctx.input.clone(), coords.x, coords.y));
     };
 
-    // Compute this row's group + group-local index + group_len from the
-    // active config. Used by the drag-source modifier and threaded into
-    // `SortableHandle` for live-region announcements.
+    // Render the prepared group-local source position.
     let group_kind = group_of(&summary.input);
     let group_id = group_to_u32(group_kind);
-    let (subgroup_idx, group_len) = {
-        let cfg = ctx.config.read();
-        let group_inputs: Vec<&InputAddress> = cfg
-            .mappings
-            .iter()
-            .filter(|m| m.mode == summary.mode && group_of(&m.input) == group_kind)
-            .map(|m| &m.input)
-            .collect();
-        let len = group_inputs.len();
-        let pos = group_inputs
-            .iter()
-            .position(|i| **i == summary.input)
-            .unwrap_or(0);
-        (pos, len)
-    };
+    let subgroup_idx = ctx
+        .config
+        .read()
+        .mappings
+        .iter()
+        .filter(|m| m.mode == summary.mode && group_of(&m.input) == group_kind)
+        .position(|m| m.input == summary.input)
+        .unwrap_or(0);
 
     // `if-sortable--dragging` dims this row while it is the active drag
     // source. Drop-target painting lives on the inter-row gaps, not on
@@ -203,7 +194,6 @@ pub(crate) fn Row(
                 index: subgroup_idx,
                 group: group_id,
                 context: drag_context,
-                group_len,
                 draggable: !filter_active,
             }
             if is_renaming {

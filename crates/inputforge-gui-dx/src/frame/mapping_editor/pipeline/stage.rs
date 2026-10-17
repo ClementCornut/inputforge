@@ -9,9 +9,7 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{
-    Action, Condition, ModeChangeStrategy, OutputBehavior, branch_actions,
-};
+use inputforge_core::action::{Action, Condition, ModeChangeStrategy, OutputBehavior};
 use inputforge_core::processing::ResponseCurve;
 use inputforge_core::types::{InputAddress, KeyCombo, OutputAddress, OutputId, VJoyAxis};
 
@@ -37,41 +35,6 @@ fn local_index_of(stage_id: &StageId) -> usize {
         Some(StageIdSegment::Index(i)) => *i,
         _ => 0,
     }
-}
-
-/// Walk `root_actions` to the slice addressed by `parent_pipeline_path` and
-/// return its length. Returns the length of `root_actions` itself when
-/// `parent_pipeline_path` is empty (the stage lives in the outer pipeline).
-///
-/// Returns `0` on an invalid path so callers degrade gracefully rather than
-/// panic. The validator in `validate_pipeline_drop` prevents mis-directed
-/// drops in the common case, so this fallback is a last resort only.
-fn parent_pipeline_len(root_actions: &[Action], parent_pipeline_path: &StageId) -> usize {
-    if parent_pipeline_path.0.is_empty() {
-        return root_actions.len();
-    }
-    // The parent_pipeline_path segments describe the path from root down to the
-    // branch that contains this stage. The path always ends with a branch
-    // segment, not an Index, because Pipeline strips the
-    // terminal Index when constructing path_prefix.
-    let mut cursor: &[Action] = root_actions;
-    let mut last_action: Option<&Action> = None;
-    for seg in &parent_pipeline_path.0 {
-        match seg {
-            StageIdSegment::Index(i) => {
-                let Some(a) = cursor.get(*i) else { return 0 };
-                last_action = Some(a);
-            }
-            StageIdSegment::Branch(branch) => {
-                let Some(action) = last_action else { return 0 };
-                let Some(actions) = branch_actions(action, *branch) else {
-                    return 0;
-                };
-                cursor = actions;
-            }
-        }
-    }
-    cursor.len()
 }
 
 // ---------------------------------------------------------------------------
@@ -126,10 +89,8 @@ pub(crate) fn Stage(
         | Action::PressGesture { .. } => "is-control",
     };
 
-    // Derive the group-local index and parent pipeline length for the sortable
-    // primitive. Both are O(n) but bounded by pipeline depth, not total stages.
+    // Positional source observations for the app-owned sortable gesture.
     let local_index = local_index_of(&stage_id);
-    let group_len = parent_pipeline_len(&root_actions, &parent_pipeline_path);
 
     // Drag-source modifier. The sortable group discriminator is the full
     // parent_pipeline_path, so group comparison is by StageId equality
@@ -209,7 +170,6 @@ pub(crate) fn Stage(
                 index: local_index,
                 group: parent_pipeline_path.clone(),
                 context: drag_context,
-                group_len,
             }
             StageHeader {
                 actions:root_actions.clone(),

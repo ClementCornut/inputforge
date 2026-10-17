@@ -261,7 +261,9 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 **Tests first:** Keep and run the executable pointer/ghost suite before changes; add failing ownership/cleanup cases where needed and move state-transition tests. Cover unequal card halves/gaps, first/last and adjacent no-op gaps, cross-group rejection, stationary target updates during wheel/edge scrolling, release-click suppression, Escape/blur/capture loss, source removal/reuse, profile/mode/action-tree replacement, shutdown/remount, ghost sanitization and exactly-once dispatch/undo.
 
-- [ ] Complete the common cycle; manually repeat the audit's full pointer/ghost/scroll checklist on Wayland and separately Windows.
+**Status (2026-10-18):** Implemented on `main`; full host workspace: **2,229 passed, 0 failed, 10 existing ignored** across 39 result blocks. Strict pre-commit and all seven JS suites passed, including 19 sortable pointer/ghost cases. App hooks own gesture/gap/lifecycle policy, transport and announcements; raw `MoveGap` intents retain pre-removal nested branch identity and final mapping guards. Independent review is recorded in the part report before committing. Native Wayland/Windows pointer, ghost, scroll, keyboard and assistive-technology acceptance remains manual.
+
+- [x] Complete the automated common cycle; hand off the audit's full native pointer/ghost/scroll checklist on Wayland and separately Windows.
 
 ## Part 13: Remove Transitional Engine Access and Close the Audit
 
