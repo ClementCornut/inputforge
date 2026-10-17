@@ -84,6 +84,16 @@ pub(crate) fn merge_class(base: &str, variant: &str, caller: Option<&str>) -> St
     out
 }
 
+/// Resolve the host behavior; unit fixtures install the canonical app implementation.
+pub(crate) fn behavior() -> crate::controls::Bindings {
+    use dioxus::prelude::use_context;
+    #[cfg(test)]
+    use dioxus::prelude::{try_consume_context, use_context_provider};
+    #[cfg(test)]
+    use_context_provider(|| try_consume_context().unwrap_or_else(inputforge_app::ui::bindings));
+    use_context()
+}
+
 #[cfg(test)]
 mod tests {
     use super::merge_class;

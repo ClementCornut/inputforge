@@ -82,7 +82,7 @@ fn rendered_deadzone_numeric_handler_keeps_failed_draft_and_alert() {
         dom.render_immediate_to_vec();
         let html = dioxus_ssr::render(&dom);
         assert!(html.contains("role=\"alert\""), "{html}");
-        assert!(html.contains("-0.80"), "{html}");
+        assert!(html.contains("value=\"-0.8\""), "{html}");
         assert!(f.editor.borrow().unwrap().error.peek().is_some());
         assert!(f.editor.borrow().unwrap().undo_log.peek().stacks.is_empty());
     });

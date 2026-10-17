@@ -77,6 +77,7 @@ fn editor(props: EditorProps) -> Element {
         profiles.bindings(),
         settings.bindings(),
         inputforge_app::notifications::bindings(),
+        inputforge_app::ui::bindings(),
         start,
     )
 }

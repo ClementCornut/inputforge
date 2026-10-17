@@ -40,11 +40,8 @@ pub fn SegmentedControlOption(
             "0".to_owned()
         }
     });
-    let click_handler = move |evt: MouseEvent| {
-        if !disabled && let Some(handler) = &onclick {
-            handler.call(evt);
-        }
-    };
+    let behavior = super::behavior();
+    let click_handler = move |evt| behavior.segmented_click.call((evt, disabled, onclick));
 
     if let Some(strategy) = data_strategy {
         rsx! {

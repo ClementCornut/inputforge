@@ -20,6 +20,10 @@ pub mod capture;
 #[cfg(test)]
 pub use inputforge_gui_dx::capture;
 pub mod components;
+#[cfg(not(test))]
+pub mod controls;
+#[cfg(test)]
+pub use inputforge_gui_dx::controls;
 mod context;
 pub mod controllers;
 mod frame;
@@ -104,6 +108,7 @@ pub fn render_editor(
     profiles: profiles::Bindings,
     settings: settings::Bindings,
     notifications: toast::Bindings,
+    controls: controls::Bindings,
     start_polling: Callback<bridge::Publisher>,
 ) -> Element {
     use_context_provider(|| routing);
@@ -114,6 +119,7 @@ pub fn render_editor(
     use_context_provider(|| profiles);
     use_context_provider(|| settings);
     use_context_provider(|| notifications);
+    use_context_provider(|| controls);
     use_context_provider(|| start_polling);
     use_context_provider(|| handles);
     app::app_root()

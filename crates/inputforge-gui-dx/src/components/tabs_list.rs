@@ -1,18 +1,5 @@
-//! Tablist primitive. Owns the `role="tablist"` wrapper, the canonical
-//! `if-tabs` class shape (+ `if-tabs--disabled` when the cluster is
-//! disabled), the `aria-orientation` + optional `aria-label`, and the
-//! roving-tabindex keyboard coordinator.
-//!
-//! `TabsList` consumes the `TabsContext` published by `TabsRoot`. The
-//! coordinator walks the context's `registry` (populated by mounted
-//! `TabButton`s) to compute the next active id on Arrow / Home / End,
-//! calls `onchange`, and moves focus to the new tab's `MountedData`
-//! ref via `set_focus(true)`. Disabled registry entries are skipped.
-//!
-//! `TabsList` also watches the optional `focus_request` signal: when a
-//! caller sets it to `Some(id)`, the watcher locates the matching ref
-//! in the registry, focuses it, then clears the signal so subsequent
-//! requests fire reliably.
+//! Tablist markup, rendering references and execution of app-selected focus targets.
+//! Keyboard events and mounted availability observations go to the host callbacks.
 
 use std::rc::Rc;
 
@@ -23,20 +10,15 @@ use super::tabs_root::TabsContext;
 
 /// Tablist orientation. Horizontal honors `ArrowLeft` / `ArrowRight`;
 /// vertical honors `ArrowUp` / `ArrowDown`. Home / End apply in both.
+#[cfg(not(test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TabsOrientation {
     Horizontal,
     Vertical,
 }
 
-impl TabsOrientation {
-    fn aria_value(self) -> &'static str {
-        match self {
-            TabsOrientation::Horizontal => "horizontal",
-            TabsOrientation::Vertical => "vertical",
-        }
-    }
-}
+#[cfg(test)]
+pub use inputforge_gui_dx::components::TabsOrientation;
 
 #[component]
 pub fn TabsList(
@@ -47,26 +29,23 @@ pub fn TabsList(
 ) -> Element {
     let ctx = use_context::<TabsContext>();
 
-    // Always-call hook: Dioxus, like React, requires hook invocations in
-    // identical order across renders. Hoist the optional channel and
-    // registry to locals so the `use_effect` registers unconditionally;
-    // the body is gated on the focus_request being `Some` and carrying
-    // a target id. Callers that pass `Some(...)` must keep that signal
-    // set for the lifetime of the render tree.
-    let focus_req = ctx.focus_request;
     let registry = ctx.registry;
     use_effect(move || {
-        let Some(mut req) = focus_req else {
-            return;
-        };
-        let Some(target_id) = req.read().clone() else {
-            return;
-        };
-        let entries = registry.read();
-        if let Some(entry) = entries.iter().find(|e| e.id == target_id) {
+        let request = ctx.focus_request.and_then(|r| r.read().clone());
+        let _active = ctx.value.read();
+        let _disabled = ctx.disabled.read();
+        let _pending = ctx.behavior.pending.read().clone();
+        let entries = registry.read().clone();
+        let result = ctx.behavior.focus.call((request, tab_states(&entries)));
+        if result.consumed
+            && let Some(mut request) = ctx.focus_request
+        {
+            request.set(None);
+        }
+        if let Some(target) = result.target
+            && let Some(entry) = entries.iter().find(|e| e.id == target)
+        {
             let node = Rc::clone(&entry.mounted);
-            drop(entries);
-            req.set(None);
             spawn(async move {
                 let _ = node.set_focus(true).await;
             });
@@ -75,66 +54,21 @@ pub fn TabsList(
 
     let combined = merge_class(
         "if-tabs",
-        if ctx.disabled {
+        if (ctx.disabled)() {
             "if-tabs--disabled"
         } else {
             ""
         },
         class.as_deref(),
     );
-    let orientation_str = orientation.aria_value();
-    let cluster_disabled = ctx.disabled;
-
-    let onkeydown = move |evt: KeyboardEvent| {
-        if cluster_disabled {
-            return;
-        }
-        let entries: Vec<_> = ctx.registry.read().clone();
-        let len = entries.len();
-        if len == 0 {
-            return;
-        }
-        let current = ctx.value.read().clone();
-        let cur_idx = entries.iter().position(|e| e.id == current).unwrap_or(0);
-        let key = evt.key();
-        let (start_idx, step): (usize, isize) = match key {
-            Key::ArrowRight if orientation == TabsOrientation::Horizontal => {
-                ((cur_idx + 1) % len, 1)
-            }
-            Key::ArrowLeft if orientation == TabsOrientation::Horizontal => {
-                ((cur_idx + len - 1) % len, -1)
-            }
-            Key::ArrowDown if orientation == TabsOrientation::Vertical => ((cur_idx + 1) % len, 1),
-            Key::ArrowUp if orientation == TabsOrientation::Vertical => {
-                ((cur_idx + len - 1) % len, -1)
-            }
-            Key::Home => (0, 1),
-            Key::End => (len - 1, -1),
-            _ => return,
-        };
-        // Walk past disabled entries, bounded by len so we never loop
-        // forever even if every tab is disabled.
-        let mut target = start_idx;
-        for _ in 0..len {
-            if !entries[target].disabled {
-                break;
-            }
-            target = if step > 0 {
-                (target + 1) % len
-            } else {
-                (target + len - 1) % len
-            };
-        }
-        if entries[target].disabled {
-            return;
-        }
-        evt.prevent_default();
-        let target_entry = &entries[target];
-        ctx.onchange.call(target_entry.id.clone());
-        let node = Rc::clone(&target_entry.mounted);
-        spawn(async move {
-            let _ = node.set_focus(true).await;
-        });
+    let orientation_str = match orientation {
+        TabsOrientation::Horizontal => "horizontal",
+        TabsOrientation::Vertical => "vertical",
+    };
+    let onkeydown = move |evt| {
+        ctx.behavior
+            .key
+            .call((evt, tab_states(&ctx.registry.read()), orientation));
     };
 
     rsx! {
@@ -147,6 +81,16 @@ pub fn TabsList(
             {children}
         }
     }
+}
+
+fn tab_states(entries: &[super::tabs_root::TabRegistryEntry]) -> Vec<crate::controls::TabState> {
+    entries
+        .iter()
+        .map(|entry| crate::controls::TabState {
+            id: entry.id.clone(),
+            disabled: entry.disabled,
+        })
+        .collect()
 }
 
 #[cfg(test)]

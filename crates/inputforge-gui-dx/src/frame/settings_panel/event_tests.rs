@@ -205,7 +205,10 @@ fn invalid_gesture_threshold_keeps_raw_value_and_shows_feedback() {
         dom.render_immediate_to_vec();
         let html = dioxus_ssr::render(&dom);
         assert!(html.contains("role=\"alert\""), "{html}");
-        // SSR renders the committed value attribute, not the browser's raw value property.
+        assert!(
+            html.contains("value=\"0\""),
+            "raw draft must remain visible: {html}"
+        );
         // A second blur must still validate the untouched raw draft after another error.
         event(
             &dom,

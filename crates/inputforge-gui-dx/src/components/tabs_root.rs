@@ -1,6 +1,5 @@
-//! Headless tabs root primitive. Owns the active value, the optional
-//! imperative-focus channel, and the registry of mounted `TabButton`
-//! refs. Renders no DOM of its own (`{children}` only); siblings like a
+//! Headless tabs rendering context. Holds the active value, optional
+//! imperative-focus channel, app callbacks and mounted `TabButton` refs. Renders no DOM of its own (`{children}` only); siblings like a
 //! trailing `+` affordance ride alongside `TabsList` under the same
 //! parent.
 //!
@@ -25,13 +24,13 @@ pub(crate) struct TabRegistryEntry {
 }
 
 /// Context published by `TabsRoot`. Consumed by `TabsList` (keyboard
-/// coordinator + `focus_request` watcher) and `TabButton` (renders
-/// aria-selected, registers its mount ref, calls `onchange` on click).
+/// observations + `focus_request` watcher) and `TabButton` (renders
+/// aria-selected, registers its mount ref and forwards clicks to the app).
 #[derive(Clone, Copy)]
 pub(crate) struct TabsContext {
     pub value: ReadSignal<String>,
-    pub onchange: EventHandler<String>,
-    pub disabled: bool,
+    pub disabled: ReadSignal<bool>,
+    pub behavior: crate::controls::TabsView,
     /// Caller-owned signal: setting it to `Some(id)` asks `TabsList` to
     /// move focus to that tab. `TabsList` clears the signal once it has
     /// focused (or skipped) the request, so it is safe to set repeatedly.
@@ -73,11 +72,20 @@ pub fn TabsRoot(
     disabled: bool,
     children: Element,
 ) -> Element {
+    let mut disabled_value = use_signal(|| disabled);
+    if *disabled_value.peek() != disabled {
+        disabled_value.set(disabled);
+    }
+    let behavior = (super::behavior().tabs)(crate::controls::TabsProps {
+        value,
+        disabled: disabled_value.into(),
+        onchange,
+    });
     let registry = use_signal(Vec::<TabRegistryEntry>::new);
     let ctx = TabsContext {
         value,
-        onchange,
-        disabled,
+        disabled: disabled_value.into(),
+        behavior,
         focus_request,
         registry,
     };

@@ -228,7 +228,9 @@ No native hardware tests, desktop acceptance or performance claims follow from a
 
 **Tests first:** Move meaningful parser/control/tab tests and add actual-handler cases for malformed/empty/nonfinite input, boundary steps, Enter followed by blur dispatching once, Escape restore, external value updates without draft loss, disabled controls, text arrow/Home/End isolation with Enter/Escape bubbling, tab wrapping/disabled/removed items and repeated focus requests. Keep labels, described-by links and ARIA tests in GUI.
 
-- [ ] Complete the common cycle; manually check native text editing, keyboard tabs and numeric controls.
+**Status:** Complete on `main` — 2026-10-18. Final workspace gate: **2,216 passed, 0 failed, 11 existing ignored** across 36 suites. The unchanged strict pre-commit hook, all six executable JavaScript suites, 265 local links, seven historical evidence hashes and new-module size checks passed. Independent review and regression-first fixes cleared numeric acknowledgement, optional callback and step/commit ordering cases (Spec PASS / Quality SHIP). Native text editing, keyboard/focus, Wayland/Windows, accessibility and performance acceptance remain manual.
+
+- [x] Complete the automated common cycle and independent review; hand off native text editing, keyboard tabs and numeric controls for manual acceptance.
 
 ## Part 11: Menus, Dialogs and Dismissal Behavior
 

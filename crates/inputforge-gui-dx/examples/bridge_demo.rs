@@ -116,6 +116,7 @@ fn demo_root() -> dioxus::prelude::Element {
         profiles.bindings(),
         settings.bindings(),
         inputforge_app::notifications::bindings(),
+        inputforge_app::ui::bindings(),
         start_polling,
     )
 }

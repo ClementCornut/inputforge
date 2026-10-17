@@ -40,6 +40,7 @@ fn main() {
     reason = "dirty_a_*/dirty_b_* pairs mirror the two-dialog demo layout"
 )]
 fn gallery_root() -> Element {
+    inputforge_app::ui::use_provider();
     let toast_queue = inputforge_app::notifications::use_preview();
 
     // Interactive demo state for NumberInput steppers, each non-disabled

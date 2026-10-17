@@ -4,10 +4,10 @@
 //! per-tab ARIA + data-attribute surface `mode_tabs` needs.
 //!
 //! Reads the `TabsContext` published by `TabsRoot`: derives
-//! `aria-selected` from `value`, fires `onchange` on click, registers
+//! `aria-selected` from `value`, forwards clicks to app callbacks, registers
 //! its `MountedData` ref in the shared registry on mount and removes
 //! it on unmount via `use_drop`. The registry order is mount order,
-//! which is what `TabsList`'s keyboard coordinator walks.
+//! which is sent to the app's keyboard coordinator.
 //!
 //! Per-tab `onkeydown` and `oncontextmenu` props are intentionally
 //! exposed: consumers like `mode_tabs` that bind Shift+F10, Delete, or a
@@ -71,7 +71,7 @@ pub fn TabButton(
 ) -> Element {
     let ctx = use_context::<TabsContext>();
     let is_active = *ctx.value.read() == id;
-    let is_disabled = disabled || ctx.disabled;
+    let is_disabled = disabled || (ctx.disabled)();
 
     let dom_id_resolved = dom_id.clone().unwrap_or_else(|| format!("tab-{id}"));
     let variant_class = if is_active { "if-tab--active" } else { "" };
@@ -112,11 +112,8 @@ pub fn TabButton(
     }));
 
     let id_for_click = id.clone();
-    let click_handler = move |_: MouseEvent| {
-        if !is_disabled {
-            ctx.onchange.call(id_for_click.clone());
-        }
-    };
+    let click_handler =
+        move |_: MouseEvent| ctx.behavior.click.call((id_for_click.clone(), is_disabled));
 
     let onkeydown_user = onkeydown;
     let key_handler = move |evt: KeyboardEvent| {

@@ -2330,3 +2330,70 @@ and switch equal-name profiles during drafts and capture, reorder nested stages,
 open the stage menu with Shift+F10, undo/redo, and close/reopen the editor. Check
 focus, draft cancellation and listener cleanup. Native desktop focus/compositor,
 assistive technology, hardware and runtime performance are unverified.
+
+## Reusable form and tab behavior — 2026-10-18
+
+Part 10 moves reusable control policy to the app's engine-independent
+[UI behavior modules](../crates/inputforge-app/src/ui/mod.rs). The
+[renderer contract](../crates/inputforge-gui-dx/src/controls.rs) supplies raw text,
+prepared focus instructions and application handlers. Desktop hosting, the seeded
+editor demo, the component gallery and direct fixtures use these same callbacks;
+the GUI has no production dependency on the app or fallback behavior implementation.
+
+- [Numeric inputs](../crates/inputforge-app/src/ui/inputs.rs) and
+  [integer inputs](../crates/inputforge-app/src/ui/integer.rs) own parsing,
+  finite bounds, stepper values, Enter/blur commit deduplication, Escape restore,
+  invalid feedback and raw draft synchronization. Typing survives unrelated
+  external value updates. Failed delivery retains the draft; refocus permits
+  retry without retyping. Enter followed by new input does not suppress that
+  new edit's blur. Integer errors can be revalidated on later blur without
+  duplicating Enter's immediately following blur.
+- Text arrow/Home/End propagation and segmented-option disabled dispatch belong
+  to app callbacks. Native-only Select, Slider, Checkbox and Switch forwarding
+  remains unchanged. The renderer retains formatting, native attributes, labels,
+  described-by links, ARIA and indeterminate drawing state.
+- [Tab behavior](../crates/inputforge-app/src/ui/tabs.rs) owns orientation-aware
+  wrapping, disabled-item policy, activation and focus-target selection.
+  Keyboard focus waits for the accepted active value; failed activation cannot
+  optimistically move focus. Explicit focus consumes pending keyboard focus,
+  accepts repeated requests and skips disabled targets. The GUI retains mounted
+  references and performs the supplied focus instruction. Root disabled changes
+  now reach existing descendants instead of preserving a mount-time snapshot.
+
+Regression-first evidence includes a missing app callback contract and actual
+renderer failures for nonfinite dispatch, raw draft loss and disabled controls.
+Focused follow-up regressions caught duplicate explicit/keyboard focus, impossible
+finite bounds, the missing refocus observation and a new edit arriving between
+Enter and blur. Existing parser tests moved to the app. The
+[real renderer handlers](../crates/inputforge-gui-dx/tests/controls.rs) cover
+numeric commit/cancel/step rules, disabled gates, text propagation and tab
+traversal; [app tab tests](../crates/inputforge-app/tests/ui_tabs.rs) cover
+acknowledged focus, repeated requests, removed targets and bounded empty or
+all-disabled traversal. Independent review also identified same-value commits
+leaving dirty numeric drafts behind; two actual-handler regressions reproduced
+the stale text surviving later external updates. Same-value commits now clear
+the dirty marker synchronously from the already-published value while retaining
+consumer validation, including controls without an `oncommit` consumer. Steppers
+replace older typed text only after their value is published; failed steps retain
+the draft and newer typing supersedes a pending step. No extra poller or effect
+loop was introduced.
+Existing settings, instrument, profile, mode, capture,
+history and listener regressions remain part of the workspace gate.
+
+Final automated checkpoint: **2,216 passed, 0 failed, 11 existing ignored**
+across 36 workspace suites. The unchanged strict pre-commit hook and all six
+JavaScript suites passed, together with 265 local links, seven preserved
+historical evidence hashes and production-module size checks. Independent
+review and the same-seat regression-fix reviews cleared all findings
+(Spec PASS / Quality SHIP). Product and test source stayed frozen for the final
+review and full gate.
+Parts 11–12 retain general overlays/dismissal and sortable interaction; Part 13
+removes transitional host handles and closes the audit. Earlier native Apply,
+live-capture and drag evidence above remains unchanged.
+
+Manual acceptance: use `dx run -p inputforge-app` on native Wayland and separately
+Windows. Check settings/gesture/deadzone typing, steppers, invalid errors,
+Enter/blur once, Escape, external/undo changes during drafts and failed-edit
+refocus retry. Check inline text navigation, curve/mode tab arrows/Home/End,
+disabled tabs, add/rename focus, gallery controls and assistive-technology labels.
+Native focus/compositor, accessibility, hardware and performance remain unverified.
