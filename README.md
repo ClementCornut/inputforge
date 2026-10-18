@@ -2,6 +2,11 @@
 
 Remap physical joystick, pedal, and throttle inputs to virtual devices.
 
+## Architecture
+
+See the [core, app and GUI interaction schema](docs/architecture.md) for runtime
+flow, crate dependencies and responsibility boundaries.
+
 ## Development prerequisites
 
 - GNU Make, available as `make` on your PATH on Linux or Windows.

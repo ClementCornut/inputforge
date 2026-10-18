@@ -1,5 +1,11 @@
 # InputForge: agent notes
 
+## Architecture orientation
+
+Read the [core, app and GUI interaction schema](docs/architecture.md) before
+changing layer boundaries. It describes runtime flow, crate dependencies and
+which layer owns rendering, workflows and engine operations.
+
 ## Debugging the Dioxus GUI via Chrome DevTools Protocol
 
 Launch the Dioxus GUI with:
