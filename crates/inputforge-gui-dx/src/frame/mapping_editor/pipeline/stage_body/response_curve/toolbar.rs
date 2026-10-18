@@ -1,9 +1,6 @@
 //! Curve toolbar rendering and supplied intent callbacks.
 use crate::{
-    components::{
-        Button, ButtonSize, ButtonVariant, Switch,
-        tabs::{TabItem, Tabs},
-    },
+    components::{Button, ButtonSize, ButtonVariant, Switch, TabItem, Tabs},
     instruments::{Event, View},
 };
 use dioxus::prelude::*;

@@ -4,7 +4,7 @@
 //! with empty value reverts; blur with non-empty value commits.
 //!
 //! `TextInput` only forwards `oninput` / `onmounted` / `class` to its
-//! inner `<input>` (see `components::text_input`). To attach `onkeydown`
+//! inner `<input>` (see `components::TextInput`). To attach `onkeydown`
 //! and `onfocusout`, this component wraps the input in a `<div>` and
 //! relies on event bubbling, same shape F7's `mode_tabs::rename_inline`
 //! uses.

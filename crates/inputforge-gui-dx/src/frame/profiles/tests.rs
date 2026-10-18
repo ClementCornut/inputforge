@@ -585,7 +585,7 @@ fn panel_slot_css_keeps_chrome_only_consumers_own_padding() {
 
 #[test]
 fn drawer_css_collapses_persistent_and_uses_motion_tokens() {
-    let css = include_str!("../../../assets/components/drawer.css");
+    let css = include_str!("../../../assets/components/layout/drawer.css");
 
     // Persistent variant collapses the docked wrapper on the cross-axis
     // when closed and animates with the cockpit-brisk container tokens

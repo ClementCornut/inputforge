@@ -210,7 +210,7 @@
 }
 
 /* DnD chrome (drag handle, dragging dim, drop-target bar) lives in the
-   reusable sortable primitive at `assets/components/sortable.css`. The
+   reusable sortable primitive at `assets/components/interaction/sortable.css`. The
    gutter is dropped: SortableHandle absolute-positions over the source
    line at left: 4px and floats on hover instead of sitting in a
    reserved gutter. The consumer applies the primitive's modifier

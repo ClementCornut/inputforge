@@ -408,7 +408,7 @@
  * an always-visible toggle bar above. The bar stays put so the count
  * and "Snapshot now" action remain accessible when the drawer body is
  * collapsed; the Drawer body slides up/down via the wrapper's max-height
- * collapse defined in components/drawer.css.
+ * collapse defined in components/layout/drawer.css.
  *
  * --if-drawer-size sets the open-state height (read by the Drawer's
  * persistent transition). Viewport-relative on purpose: the snapshot-

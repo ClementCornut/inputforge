@@ -1,67 +1,91 @@
-//! Re-exports for the F2 component primitives.
+//! Reusable design-system primitives for the `InputForge` renderer.
+//!
+//! Import primitives from this module; sortable composition lives in [`sortable`].
 
-pub mod badge;
-pub mod button;
-pub mod card;
-pub mod checkbox;
-pub mod chip;
-pub mod click_away_listener;
-pub mod dialog;
-pub mod drawer;
-pub mod field;
-pub mod icon;
-pub mod icon_button;
-pub mod integer_input;
-pub mod label;
-pub mod layout;
-pub mod menu;
-pub mod number_input;
-pub mod portal;
-pub mod segmented_control;
-pub mod select;
-pub mod separator;
-pub mod slider;
-pub mod sortable;
-pub mod spinner;
-pub mod status_bar;
-pub mod switch;
-pub mod tab_button;
-pub mod tabs;
-pub mod tabs_list;
-pub mod tabs_root;
-pub mod text_input;
-pub mod tooltip;
+mod actions;
+mod feedback;
+mod inputs;
+mod interaction;
+mod layout;
+mod navigation;
+mod overlays;
 
-pub use badge::{Badge, BadgeVariant};
-pub use button::{Button, ButtonSize, ButtonVariant};
-pub use card::{Card, CardPadding};
-pub use checkbox::Checkbox;
-pub use chip::{Chip, ChipVariant};
-pub use click_away_listener::ClickAwayListener;
-pub use dialog::{DialogBody, DialogDescription, DialogFooter, DialogRoot, DialogTitle};
-pub use drawer::{Drawer, DrawerAnchor, DrawerVariant};
-pub use field::Field;
-pub use icon::Icon;
-pub use icon_button::IconButton;
-pub use integer_input::{IntegerInput, IntegerInputError};
-pub use label::Label;
-pub use layout::{Cluster, Inset, Stack};
-pub use menu::{Anchor, AnchoredMenu, MenuAnchor, MenuItem, MenuItems, MenuRoot, MenuTrigger};
-pub use number_input::NumberInput;
-pub use portal::Portal;
-pub use segmented_control::{SegmentedControl, SegmentedControlOption};
-pub use select::{Select, SelectOption};
-pub use separator::{Separator, SeparatorOrientation};
-pub use slider::Slider;
-pub use spinner::{Spinner, SpinnerSize};
-pub use status_bar::StatusBar;
-pub use switch::Switch;
-pub use tab_button::TabButton;
-pub use tabs::{TabItem, Tabs};
-pub use tabs_list::{TabsList, TabsOrientation};
-pub use tabs_root::TabsRoot;
-pub use text_input::{InputSize, TextInput};
-pub use tooltip::{Tooltip, TooltipPlacement};
+#[doc(inline)]
+pub use actions::button::{Button, ButtonProps, ButtonSize, ButtonVariant};
+#[doc(inline)]
+pub use actions::icon_button::{IconButton, IconButtonProps};
+
+#[doc(inline)]
+pub use inputs::checkbox::{Checkbox, CheckboxProps};
+#[doc(inline)]
+pub use inputs::integer_input::{IntegerInput, IntegerInputError, IntegerInputProps};
+#[doc(inline)]
+pub use inputs::number_input::{NumberInput, NumberInputProps};
+#[doc(inline)]
+pub use inputs::segmented_control::{
+    SegmentedControl, SegmentedControlOption, SegmentedControlOptionProps, SegmentedControlProps,
+};
+#[doc(inline)]
+pub use inputs::select::{Select, SelectOption, SelectProps};
+#[doc(inline)]
+pub use inputs::slider::{Slider, SliderProps};
+#[doc(inline)]
+pub use inputs::switch::{Switch, SwitchProps};
+#[doc(inline)]
+pub use inputs::text_input::{InputSize, TextInput, TextInputProps};
+
+#[doc(inline)]
+pub use layout::card::{Card, CardPadding, CardProps};
+#[doc(inline)]
+pub use layout::drawer::{Drawer, DrawerAnchor, DrawerProps, DrawerVariant};
+#[doc(inline)]
+pub use layout::field::{Field, FieldProps};
+#[doc(inline)]
+pub use layout::label::{Label, LabelProps};
+#[doc(inline)]
+pub use layout::separator::{Separator, SeparatorOrientation, SeparatorProps};
+#[doc(inline)]
+pub use layout::spacing::{Cluster, ClusterProps, Inset, InsetProps, Stack, StackProps};
+
+#[doc(inline)]
+pub use navigation::menu::{
+    Anchor, AnchoredMenu, AnchoredMenuProps, MenuAnchor, MenuItem, MenuItemProps, MenuItems,
+    MenuItemsProps, MenuRoot, MenuRootProps, MenuTrigger, MenuTriggerProps,
+};
+#[doc(inline)]
+pub use navigation::tab_button::{TabButton, TabButtonProps};
+#[doc(inline)]
+pub use navigation::tabs::{TabItem, Tabs, TabsProps};
+#[doc(inline)]
+pub use navigation::tabs_list::{TabsList, TabsListProps, TabsOrientation};
+#[doc(inline)]
+pub use navigation::tabs_root::{TabsRoot, TabsRootProps};
+
+#[doc(inline)]
+pub use feedback::badge::{Badge, BadgeProps, BadgeVariant};
+#[doc(inline)]
+pub use feedback::chip::{Chip, ChipProps, ChipVariant};
+#[doc(inline)]
+pub use feedback::icon::{Icon, IconProps};
+#[doc(inline)]
+pub use feedback::spinner::{Spinner, SpinnerProps, SpinnerSize};
+#[doc(inline)]
+pub use feedback::status_bar::{StatusBar, StatusBarProps};
+#[doc(inline)]
+pub use feedback::tooltip::{Tooltip, TooltipPlacement, TooltipProps};
+
+#[doc(inline)]
+pub use overlays::click_away_listener::{ClickAwayListener, ClickAwayListenerProps};
+#[doc(inline)]
+pub use overlays::dialog::{
+    DialogBody, DialogBodyProps, DialogDescription, DialogDescriptionProps, DialogFooter,
+    DialogFooterProps, DialogRoot, DialogRootProps, DialogTitle, DialogTitleProps,
+};
+#[doc(inline)]
+pub use overlays::portal::{Portal, PortalProps};
+
+#[doc(inline)]
+pub use interaction::sortable;
 
 /// Joins a base class, a variant class, and an optional caller class.
 /// Used by every primitive to honor the `class: Option<String>` prop.

@@ -41,46 +41,53 @@ No production fallback, compatibility engine context, sender or mutable state in
 | [src/batch_mapping.rs](../crates/inputforge-gui-dx/src/batch_mapping.rs) | Prepared value, signal and callback contract; no engine or service access |
 | [src/bridge.rs](../crates/inputforge-gui-dx/src/bridge.rs) | Root contract installation, prepared signal allocation or equality-gated publication |
 | [src/capture.rs](../crates/inputforge-gui-dx/src/capture.rs) | Prepared value, signal and callback contract; no engine or service access |
-| [src/components/badge.rs](../crates/inputforge-gui-dx/src/components/badge.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/button.rs](../crates/inputforge-gui-dx/src/components/button.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/card.rs](../crates/inputforge-gui-dx/src/components/card.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/checkbox.rs](../crates/inputforge-gui-dx/src/components/checkbox.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/chip.rs](../crates/inputforge-gui-dx/src/components/chip.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/click_away_listener.rs](../crates/inputforge-gui-dx/src/components/click_away_listener.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/dialog.rs](../crates/inputforge-gui-dx/src/components/dialog.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/drawer.rs](../crates/inputforge-gui-dx/src/components/drawer.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/field.rs](../crates/inputforge-gui-dx/src/components/field.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/icon.rs](../crates/inputforge-gui-dx/src/components/icon.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/icon_button.rs](../crates/inputforge-gui-dx/src/components/icon_button.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/integer_input.rs](../crates/inputforge-gui-dx/src/components/integer_input.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/label.rs](../crates/inputforge-gui-dx/src/components/label.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/layout.rs](../crates/inputforge-gui-dx/src/components/layout.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/menu/anchored.rs](../crates/inputforge-gui-dx/src/components/menu/anchored.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/menu/items.rs](../crates/inputforge-gui-dx/src/components/menu/items.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/menu/mod.rs](../crates/inputforge-gui-dx/src/components/menu/mod.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/menu/placement.rs](../crates/inputforge-gui-dx/src/components/menu/placement.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/menu/root.rs](../crates/inputforge-gui-dx/src/components/menu/root.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/actions/button.rs](../crates/inputforge-gui-dx/src/components/actions/button.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/actions/icon_button.rs](../crates/inputforge-gui-dx/src/components/actions/icon_button.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/actions/mod.rs](../crates/inputforge-gui-dx/src/components/actions/mod.rs) | Design-system module organization and internal visibility |
+| [src/components/feedback/badge.rs](../crates/inputforge-gui-dx/src/components/feedback/badge.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/feedback/chip.rs](../crates/inputforge-gui-dx/src/components/feedback/chip.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/feedback/icon.rs](../crates/inputforge-gui-dx/src/components/feedback/icon.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/feedback/mod.rs](../crates/inputforge-gui-dx/src/components/feedback/mod.rs) | Design-system module organization and internal visibility |
+| [src/components/feedback/spinner.rs](../crates/inputforge-gui-dx/src/components/feedback/spinner.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/feedback/status_bar.rs](../crates/inputforge-gui-dx/src/components/feedback/status_bar.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/feedback/tooltip.rs](../crates/inputforge-gui-dx/src/components/feedback/tooltip.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/inputs/checkbox.rs](../crates/inputforge-gui-dx/src/components/inputs/checkbox.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/inputs/integer_input.rs](../crates/inputforge-gui-dx/src/components/inputs/integer_input.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/inputs/mod.rs](../crates/inputforge-gui-dx/src/components/inputs/mod.rs) | Design-system module organization and internal visibility |
+| [src/components/inputs/number_input.rs](../crates/inputforge-gui-dx/src/components/inputs/number_input.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/inputs/segmented_control.rs](../crates/inputforge-gui-dx/src/components/inputs/segmented_control.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/inputs/select.rs](../crates/inputforge-gui-dx/src/components/inputs/select.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/inputs/slider.rs](../crates/inputforge-gui-dx/src/components/inputs/slider.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/inputs/switch.rs](../crates/inputforge-gui-dx/src/components/inputs/switch.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/inputs/text_input.rs](../crates/inputforge-gui-dx/src/components/inputs/text_input.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/interaction/mod.rs](../crates/inputforge-gui-dx/src/components/interaction/mod.rs) | Design-system module organization and internal visibility |
+| [src/components/interaction/sortable/gap.rs](../crates/inputforge-gui-dx/src/components/interaction/sortable/gap.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/interaction/sortable/handle.rs](../crates/inputforge-gui-dx/src/components/interaction/sortable/handle.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/interaction/sortable/live_region.rs](../crates/inputforge-gui-dx/src/components/interaction/sortable/live_region.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/interaction/sortable/mod.rs](../crates/inputforge-gui-dx/src/components/interaction/sortable/mod.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/interaction/sortable/state.rs](../crates/inputforge-gui-dx/src/components/interaction/sortable/state.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/layout/card.rs](../crates/inputforge-gui-dx/src/components/layout/card.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/layout/drawer.rs](../crates/inputforge-gui-dx/src/components/layout/drawer.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/layout/field.rs](../crates/inputforge-gui-dx/src/components/layout/field.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/layout/label.rs](../crates/inputforge-gui-dx/src/components/layout/label.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/layout/mod.rs](../crates/inputforge-gui-dx/src/components/layout/mod.rs) | Design-system module organization and internal visibility |
+| [src/components/layout/separator.rs](../crates/inputforge-gui-dx/src/components/layout/separator.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/layout/spacing.rs](../crates/inputforge-gui-dx/src/components/layout/spacing.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/mod.rs](../crates/inputforge-gui-dx/src/components/mod.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/number_input.rs](../crates/inputforge-gui-dx/src/components/number_input.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/portal.rs](../crates/inputforge-gui-dx/src/components/portal.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/segmented_control.rs](../crates/inputforge-gui-dx/src/components/segmented_control.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/select.rs](../crates/inputforge-gui-dx/src/components/select.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/separator.rs](../crates/inputforge-gui-dx/src/components/separator.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/slider.rs](../crates/inputforge-gui-dx/src/components/slider.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/sortable/gap.rs](../crates/inputforge-gui-dx/src/components/sortable/gap.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/sortable/handle.rs](../crates/inputforge-gui-dx/src/components/sortable/handle.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/sortable/live_region.rs](../crates/inputforge-gui-dx/src/components/sortable/live_region.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/sortable/mod.rs](../crates/inputforge-gui-dx/src/components/sortable/mod.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/sortable/state.rs](../crates/inputforge-gui-dx/src/components/sortable/state.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/spinner.rs](../crates/inputforge-gui-dx/src/components/spinner.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/status_bar.rs](../crates/inputforge-gui-dx/src/components/status_bar.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/switch.rs](../crates/inputforge-gui-dx/src/components/switch.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/tab_button.rs](../crates/inputforge-gui-dx/src/components/tab_button.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/tabs.rs](../crates/inputforge-gui-dx/src/components/tabs.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/tabs_list.rs](../crates/inputforge-gui-dx/src/components/tabs_list.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/tabs_root.rs](../crates/inputforge-gui-dx/src/components/tabs_root.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/text_input.rs](../crates/inputforge-gui-dx/src/components/text_input.rs) | Markup, mounted references, placement and supplied interaction callbacks |
-| [src/components/tooltip.rs](../crates/inputforge-gui-dx/src/components/tooltip.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/navigation/menu/anchored.rs](../crates/inputforge-gui-dx/src/components/navigation/menu/anchored.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/navigation/menu/items.rs](../crates/inputforge-gui-dx/src/components/navigation/menu/items.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/navigation/menu/mod.rs](../crates/inputforge-gui-dx/src/components/navigation/menu/mod.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/navigation/menu/placement.rs](../crates/inputforge-gui-dx/src/components/navigation/menu/placement.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/navigation/menu/root.rs](../crates/inputforge-gui-dx/src/components/navigation/menu/root.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/navigation/mod.rs](../crates/inputforge-gui-dx/src/components/navigation/mod.rs) | Design-system module organization and internal visibility |
+| [src/components/navigation/tab_button.rs](../crates/inputforge-gui-dx/src/components/navigation/tab_button.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/navigation/tabs.rs](../crates/inputforge-gui-dx/src/components/navigation/tabs.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/navigation/tabs_list.rs](../crates/inputforge-gui-dx/src/components/navigation/tabs_list.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/navigation/tabs_root.rs](../crates/inputforge-gui-dx/src/components/navigation/tabs_root.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/overlays/click_away_listener.rs](../crates/inputforge-gui-dx/src/components/overlays/click_away_listener.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/overlays/dialog.rs](../crates/inputforge-gui-dx/src/components/overlays/dialog.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/overlays/mod.rs](../crates/inputforge-gui-dx/src/components/overlays/mod.rs) | Design-system module organization and internal visibility |
+| [src/components/overlays/portal.rs](../crates/inputforge-gui-dx/src/components/overlays/portal.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/context/mod.rs](../crates/inputforge-gui-dx/src/context/mod.rs) | Root contract installation, prepared signal allocation or equality-gated publication |
 | [src/controllers/inspector.rs](../crates/inputforge-gui-dx/src/controllers/inspector.rs) | Root contract installation, prepared signal allocation or equality-gated publication |
 | [src/controllers/mod.rs](../crates/inputforge-gui-dx/src/controllers/mod.rs) | Root contract installation, prepared signal allocation or equality-gated publication |
@@ -232,7 +239,7 @@ The only `.js` path remaining under GUI assets is
 [the former sortable location](../crates/inputforge-gui-dx/assets/components/sortable_drag.js).
 It is comments-only, is never loaded, and points to
 [the app-owned transport](../crates/inputforge-app/assets/sortable_drag.js).
-[The former interaction source](../crates/inputforge-gui-dx/src/components/sortable/interaction.rs)
+[The former interaction source](../crates/inputforge-gui-dx/src/components/interaction/sortable/interaction.rs)
 is likewise an unloaded comments-only historical location notice. These two files preserve
 byte-unchanged historical evidence links; they are not dormant runtime implementations.
 No production GUI inline script installs event listeners, deadlines, timers or animation loops.

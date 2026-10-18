@@ -430,7 +430,7 @@
 
 /* Orphaned mode option in the target Select dropdown (hint priority 2).
    Uses --color-error-hover (the brighter ramp step) to match the badge
-   precedent at assets/components/badge.css:20; the canonical
+   precedent at assets/components/feedback/badge.css:20; the canonical
    --color-error fails AA on the bg-elevated/UA-owned <option> surface. */
 .if-select__option--orphan {
   color: var(--color-error-hover);
@@ -1269,7 +1269,7 @@
    primitive. */
 
 /* The MenuRoot wrapper carries `if-add-palette if-menu--block`; the
-   if-menu--block modifier (defined in components/menu.css) flips
+   if-menu--block modifier (defined in components/navigation/menu.css) flips
    .if-menu from inline-flex to block so the trigger row fills its
    parent column. No additional positioning rule is needed here. */
 

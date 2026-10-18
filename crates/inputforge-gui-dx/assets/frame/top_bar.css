@@ -350,7 +350,7 @@
 }
 
 /* Mode tabs strip. The canonical .if-tab / .if-tab--active visuals come
-   from assets/components/tabs.css (3px primary bottom-underline on
+   from assets/components/navigation/tabs.css (3px primary bottom-underline on
    active, no fill); the wrapper class below adds bar-specific layout
    (40px height inheritance, scroll-x at narrow viewports, ellipsis
    truncation per tab, Webkit scrollbar styling). The .if-tabs base

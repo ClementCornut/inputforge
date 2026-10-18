@@ -60,7 +60,7 @@
        per DESIGN.md M5 ("motion confirms causality, never performs");
        the fade alone signals causality. Floating overlays inside the
        slot now portal to document.body via the `Portal` helper
-       (see `components/portal.rs`), so they would be safe even with
+       (see `components/overlays/portal.rs`), so they would be safe even with
        a transformed slot, but defense in depth is cheap here. */
     from { opacity: 0; }
     to   { opacity: 1; }
