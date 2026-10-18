@@ -85,18 +85,28 @@ fn failed_create_keeps_text_and_renders_alert_through_real_handlers() {
     dom.rebuild_in_place();
     let mut ids = vec![];
     listeners(&dom, dom.base_scope().root_node(), "input", &mut ids);
-    dom.runtime().handle_event(
-        "input",
-        Event::new(
-            Rc::new(PlatformEventData::new(Box::new(SerializedFormData::new(
-                "Retain this profile".into(),
-                vec![],
-            )))) as Rc<dyn std::any::Any>,
-            false,
-        ),
-        ids[0],
+    for raw in ["R", "Retain", "Retain this profile"] {
+        dom.runtime().handle_event(
+            "input",
+            Event::new(
+                Rc::new(PlatformEventData::new(Box::new(SerializedFormData::new(
+                    raw.into(),
+                    vec![],
+                )))) as Rc<dyn std::any::Any>,
+                false,
+            ),
+            ids[0],
+        );
+    }
+    let mutations = dom.render_immediate_to_vec();
+    assert!(
+        !mutations.edits.iter().any(|edit| matches!(
+            edit,
+            dioxus::core::Mutation::SetAttribute { name: "value", .. }
+        )),
+        "profile typing echoed old native text: {:?}",
+        mutations.edits
     );
-    dom.render_immediate_to_vec();
     let mut ids = vec![];
     listeners(&dom, dom.base_scope().root_node(), "click", &mut ids);
     dom.runtime().handle_event(

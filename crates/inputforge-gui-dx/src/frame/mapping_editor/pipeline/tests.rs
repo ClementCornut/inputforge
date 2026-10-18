@@ -1642,7 +1642,7 @@ fn predicate_editor_preserves_hook_order_when_kind_changes() {
     vdom.render_immediate(&mut dioxus::core::NoOpMutations);
     let second_html = render(&vdom);
     assert!(
-        second_html.contains("AxisInRange"),
+        second_html.contains(">Axis in range<"),
         "second render must show updated predicate kind: {second_html}"
     );
     assert!(
@@ -1814,23 +1814,24 @@ fn predicate_editor_renders_kind_picker_with_seven_options() {
         vec![StageId(vec![StageIdSegment::Index(0)])],
         &["Default"],
     );
-    // All 7 kind names must appear in the kind-picker select options.
-    assert!(
-        html.contains("ButtonPressed"),
-        "ButtonPressed missing: {html}"
-    );
-    assert!(
-        html.contains("ButtonReleased"),
-        "ButtonReleased missing: {html}"
-    );
-    assert!(html.contains("AxisInRange"), "AxisInRange missing: {html}");
-    assert!(
-        html.contains("HatDirection"),
-        "HatDirection missing: {html}"
-    );
-    assert!(html.contains(">All<"), "All option missing: {html}");
-    assert!(html.contains(">Any<"), "Any option missing: {html}");
-    assert!(html.contains(">Not<"), "Not option missing: {html}");
+    for (value, label) in [
+        ("ButtonPressed", "Button pressed"),
+        ("ButtonReleased", "Button released"),
+        ("AxisInRange", "Axis in range"),
+        ("HatDirection", "Hat direction"),
+        ("All", "All"),
+        ("Any", "Any"),
+        ("Not", "Not"),
+    ] {
+        assert!(
+            html.contains(&format!("value=\"{value}\"")),
+            "missing stable value: {html}"
+        );
+        assert!(
+            html.contains(&format!(">{label}<")),
+            "missing readable label: {html}"
+        );
+    }
 }
 
 #[test]

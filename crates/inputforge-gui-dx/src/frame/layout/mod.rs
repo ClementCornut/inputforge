@@ -41,18 +41,18 @@ pub(crate) fn Layout() -> Element {
             Stylesheet { href: LAYOUT_CSS }
             TopBar {}
             ModeDeleteDialog {}
-            if p {
-                div { class: "if-layout__main",
-                    div { class: "if-layout__surface",
+            div { class: "if-layout__main",
+                div { class: "if-layout__surface",
+                    if p {
                         match s {
                             MainSurface::Mappings => rsx! { MappingWorkspace {key:"{profile_scope}"} },
                             MainSurface::BulkMap => rsx! { BulkMapWorkspace {} },
                         }
+                    } else {
+                        EmptyState {}
                     }
-                    PanelSlotComponent {}
                 }
-            } else {
-                EmptyState {}
+                PanelSlotComponent {}
             }
         }
     }
@@ -83,6 +83,11 @@ fn BulkMapWorkspace() -> Element {
         }
     }
 }
+
+#[cfg(test)]
+mod acceptance_tests;
+#[cfg(test)]
+mod library_tests;
 
 #[cfg(test)]
 mod tests {

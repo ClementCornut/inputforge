@@ -5,6 +5,7 @@ mod integer;
 mod overlays;
 pub mod sortable;
 mod tabs;
+mod text;
 use dioxus::prelude::*;
 use inputforge_gui_dx::controls::Bindings;
 /// Construct the real control and overlay callbacks for an editor, gallery or fixture.
@@ -18,6 +19,7 @@ pub fn bindings() -> Bindings {
         overlays: overlays::bindings(),
         number: inputs::use_number,
         integer: integer::use_integer,
+        text: text::use_text,
         text_key: Callback::new(
             |(event, disabled, handler): (
                 KeyboardEvent,

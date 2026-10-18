@@ -166,7 +166,6 @@ No production fallback, compatibility engine context, sender or mutable state in
 | [src/frame/profiles/library.rs](../crates/inputforge-gui-dx/src/frame/profiles/library.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/profiles/mod.rs](../crates/inputforge-gui-dx/src/frame/profiles/mod.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/profiles/new_profile_submode.rs](../crates/inputforge-gui-dx/src/frame/profiles/new_profile_submode.rs) | Prepared frame markup, labels/geometry and callback/result publication |
-| [src/frame/profiles/no_profile.rs](../crates/inputforge-gui-dx/src/frame/profiles/no_profile.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/profiles/open_choice_submode.rs](../crates/inputforge-gui-dx/src/frame/profiles/open_choice_submode.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/profiles/row.rs](../crates/inputforge-gui-dx/src/frame/profiles/row.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/profiles/snapshot_confirm.rs](../crates/inputforge-gui-dx/src/frame/profiles/snapshot_confirm.rs) | Prepared frame markup, labels/geometry and callback/result publication |
@@ -251,3 +250,12 @@ claim native Wayland/Windows, physical-device/compositor, assistive-technology, 
 latency or performance acceptance. Follow the final audit's manual checklist and retained
 historical acceptance reports. Existing transitive platform support is distinct from a
 direct GUI/app X11 dependency; no direct X11 API, command or workaround was introduced.
+
+The 2026-10-18 native acceptance follow-up keeps these ownership assignments:
+shared browser text acknowledgement/reset policy lives in
+[`inputforge-app/src/ui/text.rs`](../crates/inputforge-app/src/ui/text.rs), while
+GUI inputs render browser-owned initial values and forward events. Empty-workspace
+profile entry and native picker lifecycle remain in
+[`inputforge-app/src/profiles/entry.rs`](../crates/inputforge-app/src/profiles/entry.rs)
+and its dialog controller. Eager batch CSS remains theme rendering, and instrument
+history refresh observes existing application publications without a new poller.

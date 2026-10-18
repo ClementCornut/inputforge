@@ -271,25 +271,25 @@ pub(crate) fn PredicateEditor(
     let kind_options: Vec<SelectOption> = vec![
         SelectOption {
             value: KIND_BUTTON_PRESSED.to_owned(),
-            label: KIND_BUTTON_PRESSED.to_owned(),
+            label: "Button pressed".to_owned(),
             disabled: false,
             class: None,
         },
         SelectOption {
             value: KIND_BUTTON_RELEASED.to_owned(),
-            label: KIND_BUTTON_RELEASED.to_owned(),
+            label: "Button released".to_owned(),
             disabled: false,
             class: None,
         },
         SelectOption {
             value: KIND_AXIS_IN_RANGE.to_owned(),
-            label: KIND_AXIS_IN_RANGE.to_owned(),
+            label: "Axis in range".to_owned(),
             disabled: false,
             class: None,
         },
         SelectOption {
             value: KIND_HAT_DIRECTION.to_owned(),
-            label: KIND_HAT_DIRECTION.to_owned(),
+            label: "Hat direction".to_owned(),
             disabled: false,
             class: None,
         },

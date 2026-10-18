@@ -49,6 +49,7 @@ const TOAST_CSS: Asset = asset!("/assets/toast/toast.css");
 
 const RESPONSE_CURVE_CSS: Asset = asset!("/assets/frame/response_curve.css");
 const DEADZONE_CSS: Asset = asset!("/assets/frame/deadzone.css");
+const BULK_MAP_CSS: Asset = asset!("/assets/frame/bulk_map.css");
 
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
@@ -108,6 +109,8 @@ pub fn ThemeProvider(children: Element) -> Element {
         // Frame stylesheets (editor panels, curve editor, etc.).
         Stylesheet { href: RESPONSE_CURVE_CSS }
         Stylesheet { href: DEADZONE_CSS }
+        // Load before the first batch visit to avoid an unstyled workspace.
+        Stylesheet { href: BULK_MAP_CSS }
 
         // Toast overlay, last so its z-index cascade wins.
         Stylesheet { href: TOAST_CSS }

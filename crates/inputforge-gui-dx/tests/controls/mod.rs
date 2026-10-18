@@ -12,6 +12,7 @@ pub(super) struct Log {
     pub invalid: Vec<IntegerInputError>,
     pub segments: usize,
     pub text_keys: usize,
+    pub text_inputs: Vec<String>,
     pub tabs: Vec<String>,
 }
 #[derive(Clone, Copy)]
@@ -21,11 +22,22 @@ pub(super) struct Values {
     pub disabled: Signal<bool>,
     pub show_c: Signal<bool>,
     pub commit_enabled: Signal<bool>,
+    pub text: Signal<String>,
+    pub acknowledge_text: Signal<bool>,
+    pub other_text_context: Signal<bool>,
 }
 #[derive(Clone, Props)]
 struct Props {
     log: Rc<RefCell<Log>>,
     values: Rc<RefCell<Option<Values>>>,
+    scripts: Rc<RefCell<Vec<String>>>,
+}
+struct Document(Rc<RefCell<Vec<String>>>);
+impl document::Document for Document {
+    fn eval(&self, js: String) -> document::Eval {
+        self.0.borrow_mut().push(js);
+        document::Document::eval(&document::NoOpDocument, String::new())
+    }
 }
 impl PartialEq for Props {
     fn eq(&self, other: &Self) -> bool {
@@ -33,6 +45,9 @@ impl PartialEq for Props {
     }
 }
 fn root(props: Props) -> Element {
+    use_context_provider(|| {
+        Rc::new(Document(Rc::clone(&props.scripts))) as Rc<dyn document::Document>
+    });
     inputforge_app::ui::use_provider();
     let mut number = use_signal(|| 0.5);
     let integer = use_signal(|| 2);
@@ -40,13 +55,19 @@ fn root(props: Props) -> Element {
     let show_c = use_signal(|| true);
     let commit_enabled = use_signal(|| true);
     let mut tab = use_signal(|| "a".to_owned());
-    let text = use_signal(String::new);
+    let mut text = use_signal(String::new);
+    let acknowledge_text = use_signal(|| true);
+    let other_text_context = use_signal(|| false);
+    let other_text = use_signal(|| "Next profile".to_owned());
     *props.values.borrow_mut() = Some(Values {
         number,
         integer,
         disabled,
         show_c,
         commit_enabled,
+        text,
+        acknowledge_text,
+        other_text_context,
     });
     let logs = props.log;
     let n = Rc::clone(&logs);
@@ -55,6 +76,7 @@ fn root(props: Props) -> Element {
     let inv = Rc::clone(&logs);
     let seg = Rc::clone(&logs);
     let t = Rc::clone(&logs);
+    let text_log = Rc::clone(&logs);
     let number_commit = use_callback(move |v| n.borrow_mut().numbers.push(v));
     let integer_commit = use_callback(move |v| i.borrow_mut().integers.push(v));
     rsx! {
@@ -63,7 +85,7 @@ fn root(props: Props) -> Element {
                 oncommit: commit_enabled().then_some(number_commit), onstep: move |v| { s.borrow_mut().steps.push(v); if !commit_enabled() { number.set(v); } } }
         }
         IntegerInput { value: integer, min: 1, max: 10, disabled: disabled(), oncommit: commit_enabled().then_some(integer_commit), oninvalid: move |e| inv.borrow_mut().invalid.push(e) }
-        TextInput { value: text, aria_describedby: "text-error".to_owned(), onkeydown: move |_| t.borrow_mut().text_keys += 1 }
+        TextInput { value: if other_text_context() { other_text } else { text }, aria_describedby: "text-error".to_owned(), oninput: move |event: FormEvent| { text_log.borrow_mut().text_inputs.push(event.value()); if acknowledge_text() { text.set(event.value()); } }, onkeydown: move |_| t.borrow_mut().text_keys += 1 }
         span { id: "text-error", "Error" }
         SegmentedControlOption { value: "one".to_owned(), selected: false, disabled: disabled(), onclick: move |_| seg.borrow_mut().segments += 1, "One" }
         TabsRoot { value: tab, disabled: disabled(), onchange: move |id: String| { logs.borrow_mut().tabs.push(id.clone()); tab.set(id); },
@@ -79,17 +101,20 @@ pub(super) struct Fixture {
     pub dom: VirtualDom,
     pub log: Rc<RefCell<Log>>,
     values: Rc<RefCell<Option<Values>>>,
+    scripts: Rc<RefCell<Vec<String>>>,
 }
 impl Fixture {
     pub(super) fn new() -> Self {
         set_event_converter(Box::new(dioxus::html::SerializedHtmlEventConverter));
         let log = Rc::new(RefCell::new(Log::default()));
         let values = Rc::new(RefCell::new(None));
+        let scripts = Rc::new(RefCell::new(Vec::new()));
         let mut dom = VirtualDom::new_with_props(
             root,
             Props {
                 log: Rc::clone(&log),
                 values: Rc::clone(&values),
+                scripts: Rc::clone(&scripts),
             },
         );
         dom.rebuild_in_place();
@@ -98,7 +123,12 @@ impl Fixture {
             event(&dom, "mounted", index, ());
         }
         dom.render_immediate_to_vec();
-        Self { dom, log, values }
+        Self {
+            dom,
+            log,
+            values,
+            scripts,
+        }
     }
     pub(super) fn values(&self) -> Values {
         self.values.borrow().unwrap()
@@ -110,6 +140,14 @@ impl Fixture {
     }
     pub(super) fn html(&self) -> String {
         dioxus_ssr::render(&self.dom)
+    }
+    pub(super) fn text_resets(&self) -> Vec<String> {
+        self.scripts
+            .borrow()
+            .iter()
+            .filter(|s| s.contains("data-if-text-owner"))
+            .cloned()
+            .collect()
     }
 }
 fn listeners(dom: &VirtualDom, node: &VNode, name: &str, ids: &mut Vec<dioxus::core::ElementId>) {

@@ -104,6 +104,41 @@ fn rejected_alias_save_retains_draft_and_accessible_error() {
     assert!(html.contains(" New alias "), "{html}");
 }
 #[test]
+fn rapid_alias_input_does_not_echo_values_and_keeps_failed_exact_draft() {
+    set_event_converter(Box::new(dioxus::html::SerializedHtmlEventConverter));
+    let mut dom = VirtualDom::new(root);
+    dom.rebuild_in_place();
+    dom.render_immediate_to_vec();
+    for raw in ["D", "Dev", "Device été 🕹"] {
+        event(
+            &dom,
+            "input",
+            0,
+            SerializedFormData::new(raw.into(), vec![]),
+        );
+    }
+    let mutations = dom.render_immediate_to_vec();
+    assert!(
+        !mutations.edits.iter().any(|edit| matches!(
+            edit,
+            dioxus::core::Mutation::SetAttribute { name: "value", .. }
+        )),
+        "alias typing echoed an old native draft: {:?}",
+        mutations.edits
+    );
+    event(&dom, "click", 1, SerializedMouseData::default());
+    dom.render_immediate_to_vec();
+    let html = dioxus_ssr::render(&dom);
+    assert!(
+        html.contains("Device été 🕹"),
+        "failed save lost text: {html}"
+    );
+    assert!(
+        html.contains("role=\"alert\""),
+        "failed save hid feedback: {html}"
+    );
+}
+#[test]
 fn enter_failure_retains_draft_and_escape_cancels_through_real_handlers() {
     set_event_converter(Box::new(dioxus::html::SerializedHtmlEventConverter));
     let mut dom = VirtualDom::new(root);

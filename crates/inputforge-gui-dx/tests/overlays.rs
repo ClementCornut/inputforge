@@ -11,6 +11,8 @@ mod document;
 mod escape;
 #[path = "overlays/lifecycle.rs"]
 mod lifecycle;
+#[path = "overlays/shortcuts.rs"]
+mod shortcuts;
 use controls::{event, key};
 use dioxus::prelude::*;
 use inputforge_gui_dx::{

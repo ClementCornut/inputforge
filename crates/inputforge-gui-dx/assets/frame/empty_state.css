@@ -1,7 +1,4 @@
-/* EmptyState mounts as a sibling of `.if-layout__main` in the no-profile
-   branch (NOT inside `__main`). Under the outer flex column, it gets
-   `flex: 1 1 auto` to fill the row that `__main` would have occupied
-   when a profile is loaded.
+/* EmptyState fills the workspace surface beside any open side panel.
 
    Cockpit-readout treatment: a small mono eyebrow (system-status idiom),
    a display-scale headline, a hairline rule (instrument-panel detail),
@@ -52,4 +49,12 @@
     font-size: var(--text-base);
     color: var(--color-text-muted);
     max-width: 36ch;
+}
+
+
+.if-empty-state__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-2);
 }

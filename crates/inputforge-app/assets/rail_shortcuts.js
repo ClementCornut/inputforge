@@ -1,6 +1,6 @@
 const h = (ev) => {
        if (window.__ifSortableDrag) return;
-       if (ev.defaultPrevented || document.querySelector('dialog[open], [role="menu"], [role="dialog"]')) return;
+       if (ev.defaultPrevented || document.querySelector('dialog[open], [role="menu"]:not([aria-hidden="true"]), [role="dialog"]')) return;
        const editableSelector = 'input, textarea, select, [contenteditable], [role="textbox"]';
        const active = document.activeElement;
        if (active?.closest('.if-editor') && !((ev.ctrlKey || ev.metaKey) && ['f','F'].includes(ev.key))) return;

@@ -15,3 +15,7 @@ pub(crate) fn use_kb_listener() {
         }
     });
 }
+
+#[cfg(test)]
+#[path = "keyboard_tests.rs"]
+mod tests;

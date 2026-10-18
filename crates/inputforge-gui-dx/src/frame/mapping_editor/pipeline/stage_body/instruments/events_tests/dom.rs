@@ -40,7 +40,7 @@ fn element(dom: &VirtualDom, node: &VNode, label: &str) -> Option<ElementId> {
                 current = &children[usize::from(*offset)];
             }
         }
-        let static_label = matches!(current,TemplateNode::Element{attrs,..} if attrs.iter().any(|a|matches!(a,TemplateAttribute::Static{name,value,..} if (*name=="aria-label" || *name=="id") && *value==label)));
+        let static_label = matches!(current,TemplateNode::Element{attrs,..} if attrs.iter().any(|a|matches!(a,TemplateAttribute::Static{name,value,..} if (*name=="aria-label" || *name=="id" || *name=="class") && *value==label)));
         if static_label || node.dynamic_attrs[index].iter().any(|a|matches!(&a.value,AttributeValue::Text(value) if (a.name=="aria-label" || a.name=="id") && value==label)) || (matches!(current,TemplateNode::Element{tag:"button",..}) && text(node,current,label,dom)) {return node.mounted_dynamic_attribute(index,dom);}
     }
     node.dynamic_nodes

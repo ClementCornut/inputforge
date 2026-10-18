@@ -18,9 +18,7 @@ pub(crate) fn EngineOfflineBanner() -> Element {
     let message = if let Some(failure) = &output_failure {
         Some(super::mapping_issue_copy::output_failure_message(failure))
     } else if meta.session.offline {
-        Some(meta.session.error.clone().unwrap_or_else(|| {
-            "Engine offline. Reopen InputForge to restore input monitoring.".to_owned()
-        }))
+        Some("Input monitoring stopped. Reopen InputForge to reconnect your devices.".to_owned())
     } else if pending {
         Some("Apply controller changes in Devices before starting routing.".to_owned())
     } else {
@@ -46,13 +44,9 @@ pub(crate) fn EngineOfflineBanner() -> Element {
             div { class: "if-editor__offline-text", "{message}" }
             if output_failure.is_some() {
                 if meta.session.output_failures.iter().any(|failure| !failure.cleanup.is_empty()) {
-                    div { class: "if-editor__offline-text", "Cleanup also failed. Review the technical details before retrying." }
+                    div { class: "if-editor__offline-text", "Cleanup also failed. Restart InputForge before trying again." }
                 }
-                details { summary { "Technical details" }
-                    for failure in &meta.session.output_failures {
-                        code { "{failure.output} {failure.phase} ({failure.category:?}): {super::mapping_issue_copy::technical_details(failure)}" }
-                    }
-                }
+
             }
             if let Some(action) = routing_view.recovery {
                 button { r#type: "button", class: "if-editor__offline-action",
@@ -98,7 +92,11 @@ mod tests {
         let mut state = AppState::new();
         state.engine_status = EngineStatus::Running;
         state.session.offline = props.offline;
-        state.session.error = Some("Controller permission denied".to_owned());
+        state.session.error = Some(if props.offline {
+            "Engine panicked: raw backend payload".to_owned()
+        } else {
+            "Controller permission denied".to_owned()
+        });
         let mut snapshot = ConfigSnapshot::default();
         if props.pending {
             use inputforge_core::{
@@ -200,7 +198,11 @@ mod tests {
             );
             dom.rebuild_in_place();
             let html = dioxus_ssr::render(&dom);
-            assert!(html.contains("Controller permission denied"));
+            assert_eq!(html.contains("Controller permission denied"), !offline);
+            assert!(!html.contains("raw backend payload"));
+            if offline {
+                assert!(html.contains("Reopen InputForge"));
+            }
             assert_eq!(html.contains("Refresh devices"), !offline);
             assert!(!html.contains("Outputs frozen"));
         }
@@ -223,16 +225,16 @@ mod tests {
     }
 
     #[test]
-    fn empty_profile_prefers_typed_output_guidance_with_retry_and_cleanup_details() {
+    fn empty_profile_keeps_actionable_output_guidance_without_diagnostic_payloads() {
         let mut dom = VirtualDom::new(injection_harness);
         dom.rebuild_in_place();
         let html = dioxus_ssr::render(&dom);
         assert!(html.contains("Mouse output could not be verified"));
         assert!(html.contains("Cleanup also failed"));
-        assert!(html.contains("Technical details"));
-        assert!(html.contains("native verification detail"));
-        assert!(html.contains("native cleanup detail"));
-        assert!(html.contains("secondary native detail"));
+        assert!(!html.contains("Technical details"));
+        assert!(!html.contains("native verification detail"));
+        assert!(!html.contains("native cleanup detail"));
+        assert!(!html.contains("secondary native detail"));
         assert!(!html.contains("opaque combined backend error"));
         assert!(html.contains(">Retry<"));
     }

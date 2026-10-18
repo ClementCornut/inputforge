@@ -4,6 +4,122 @@ mod fixture;
 use dioxus::prelude::*;
 use fixture::{Fixture, event, form, key};
 #[test]
+fn rapid_text_events_keep_exact_drafts_without_echoing_values_to_the_webview() {
+    let mut f = Fixture::new();
+    for raw in ["P", "Pr", "Profile é", "Profile été 🕹"] {
+        form(&f.dom, 2, raw);
+    }
+    assert_eq!(&*f.values().text.peek(), "Profile été 🕹");
+    let mutations = f.dom.render_immediate_to_vec();
+    assert!(
+        !mutations.edits.iter().any(|edit| matches!(
+            edit,
+            dioxus::core::Mutation::SetAttribute { name: "value", .. }
+        )),
+        "an older native render must never replace a newer browser draft: {:?}",
+        mutations.edits
+    );
+    assert_eq!(
+        f.log.borrow().text_inputs,
+        ["P", "Pr", "Profile é", "Profile été 🕹"]
+    );
+}
+#[test]
+fn numeric_typing_does_not_echo_partial_raw_drafts_to_the_webview() {
+    let mut f = Fixture::new();
+    for (index, values) in [(0, ["0", "0.", "0.37"]), (1, ["1", "10", "101"])] {
+        for raw in values {
+            form(&f.dom, index, raw);
+        }
+    }
+    let mutations = f.dom.render_immediate_to_vec();
+    assert!(
+        !mutations.edits.iter().any(|edit| matches!(
+            edit,
+            dioxus::core::Mutation::SetAttribute { name: "value", .. }
+        )),
+        "native numeric renders must retain the browser's newer draft: {:?}",
+        mutations.edits
+    );
+}
+#[test]
+fn delayed_text_acknowledgements_do_not_reset_typing_but_external_replacements_do() {
+    let mut f = Fixture::new();
+    f.values().acknowledge_text.set(false);
+    f.render();
+    for raw in ["P", "Pr", "Profile été 🕹"] {
+        form(&f.dom, 2, raw);
+    }
+    f.render();
+    for acknowledged in ["P", "Pr", "Profile été 🕹"] {
+        f.values().text.set(acknowledged.into());
+        f.render();
+        assert!(
+            f.text_resets().is_empty(),
+            "an acknowledgement overwrote the draft"
+        );
+    }
+    f.values().text.set("New \"context\" 🕹".into());
+    f.render();
+    assert_eq!(f.text_resets().len(), 1);
+    assert!(f.text_resets()[0].contains(r#"el.value = "New \"context\" 🕹""#));
+    f.values().text.set(String::new());
+    f.render();
+    assert_eq!(f.text_resets().len(), 2);
+    assert!(f.text_resets()[1].contains("el.value = \"\""));
+}
+#[test]
+fn repeated_ordered_text_acknowledgements_do_not_rewind_the_latest_draft() {
+    let mut f = Fixture::new();
+    f.values().acknowledge_text.set(false);
+    f.render();
+    for raw in ["a", "ab", "a"] {
+        form(&f.dom, 2, raw);
+    }
+    for acknowledged in ["a", "ab", "a"] {
+        f.values().text.set(acknowledged.into());
+        f.render();
+    }
+    assert!(
+        f.text_resets().is_empty(),
+        "an old acknowledgement replaced the current draft"
+    );
+}
+#[test]
+fn text_reset_before_the_next_render_restores_the_original_value() {
+    let mut f = Fixture::new();
+    form(&f.dom, 2, "Discard this draft");
+    f.values().text.set(String::new());
+    f.render();
+    assert_eq!(f.text_resets().len(), 1);
+    assert!(f.text_resets()[0].contains("el.value = \"\""));
+}
+#[test]
+fn switching_text_context_resets_the_draft_and_ignores_old_source_updates() {
+    let mut f = Fixture::new();
+    f.values().acknowledge_text.set(false);
+    f.render();
+    form(&f.dom, 2, "Belongs to the old profile");
+    f.values().other_text_context.set(true);
+    f.render();
+    f.render();
+    assert_eq!(
+        f.text_resets().len(),
+        1,
+        "{:?} {}",
+        f.text_resets(),
+        f.html()
+    );
+    assert!(f.text_resets()[0].contains("el.value = \"Next profile\""));
+    f.values().text.set("Late old profile name".into());
+    f.render();
+    assert_eq!(
+        f.text_resets().len(),
+        1,
+        "obsolete source reset the new field"
+    );
+}
+#[test]
 fn number_rejects_nonfinite_and_dispatches_enter_then_blur_once() {
     let mut f = Fixture::new();
     for raw in ["NaN", "inf", "", "broken"] {

@@ -164,8 +164,14 @@ pub(crate) fn Header(
         move |evt| send.call(crate::mapping_edits::ui::HeaderEvent::ArmMouse(evt));
     let on_input_keydown = move |evt| send.call(crate::mapping_edits::ui::HeaderEvent::Key(evt));
     let on_input_blur = move |_| send.call(crate::mapping_edits::ui::HeaderEvent::Blur);
-    let on_input_input =
-        move |evt: FormEvent| send.call(crate::mapping_edits::ui::HeaderEvent::Input(evt.value()));
+    let on_input_input = use_callback(move |evt: FormEvent| {
+        send.call(crate::mapping_edits::ui::HeaderEvent::Input(evt.value()));
+    });
+    let text = (crate::components::behavior().text)(crate::controls::TextProps {
+        value: local_name.into(),
+        disabled: false,
+        oninput: Some(on_input_input),
+    });
 
     let on_rebind = move |_: MouseEvent| capture.start.call(());
     let on_cancel_rebind = move |_: MouseEvent| capture.cancel.call(());
@@ -179,8 +185,9 @@ pub(crate) fn Header(
                     class: "if-editor__title-input",
                     "aria-label": "Edit mapping name",
                     "data-editor-focus": "true",
-                    value: "{local_name}",
-                    oninput: on_input_input,
+                    initial_value: "{local_name}",
+                    "data-if-text-owner": "{text.owner}",
+                    oninput: text.input,
                     onkeydown: on_input_keydown,
                     onblur: on_input_blur,
                     onmounted: move |evt: MountedEvent| {

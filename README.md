@@ -7,6 +7,8 @@ Remap physical joystick, pedal, and throttle inputs to virtual devices.
 - GNU Make, available as `make` on your PATH on Linux or Windows.
 - A current stable Rust toolchain with Cargo, rustfmt, and Clippy. The workspace
   declares Rust 1.99 as its minimum version; dependencies may require newer Rust.
+- Node.js 18 or newer, available as `node` on your PATH, for JavaScript listener
+  checks and the workspace tests that exercise real menu markup with those scripts.
 - Dioxus CLI (`dx`) for app launch, GUI examples, and packaging. The release
   workflow in [release.yml](.github/workflows/release.yml) records the CLI version
   used for packaging. It is not needed for Cargo-only checks and tests.

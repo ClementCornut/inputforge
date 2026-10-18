@@ -106,6 +106,7 @@ pub struct Bindings {
     pub rename_key: Callback<(u64, u64, KeyboardEvent)>,
     pub focus: Callback<(u64, u64, MountedEvent)>,
     pub open_panel: Callback<Signal<PanelSlot>>,
+    pub start: Callback<(Signal<PanelSlot>, Intent)>,
 }
 /// Profile rendering signals and their app callback owner.
 #[derive(Debug, Clone, Copy)]

@@ -7,11 +7,16 @@ use crate::{
 use dioxus::prelude::*;
 #[component]
 pub(super) fn DeviceInspector(row: DevicePanelRow, view: View, context: Context) -> Element {
-    let draft_value = view.draft.clone();
+    let draft_value = use_memo(move || context.view.read().draft.clone());
     let report = build_device_report(&row);
-    let oninput = move |event: FormEvent| {
+    let oninput = use_callback(move |event: FormEvent| {
         let _ = context.send(Intent::Input(event.value()));
-    };
+    });
+    let text = (crate::components::behavior().text)(crate::controls::TextProps {
+        value: draft_value.into(),
+        disabled: false,
+        oninput: Some(oninput),
+    });
     let save_click = move |_| {
         let _ = context.send(Intent::Save);
     };
@@ -38,8 +43,9 @@ pub(super) fn DeviceInspector(row: DevicePanelRow, view: View, context: Context)
                     input {
                         "aria-label": "Display name",
                         class: "if-device-inspector__input if-text-input if-text-input--inset",
-                        value: "{draft_value}",
-                        oninput,
+                        initial_value: "{draft_value}",
+                        "data-if-text-owner": "{text.owner}",
+                        oninput: text.input,
                         onkeydown,
                     }
                     Button {

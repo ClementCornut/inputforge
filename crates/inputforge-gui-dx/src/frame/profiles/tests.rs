@@ -73,6 +73,16 @@ fn ProfilesHarness() -> Element {
 
 #[component]
 fn EmptyHarness() -> Element {
+    let (commands, _rx) = mpsc::channel();
+    crate::test_support::provide_engine(Arc::new(RwLock::new(AppState::new())), commands);
+    let view = ViewState {
+        main_surface: use_signal(MainSurface::default),
+        editing_mode: use_signal(String::new),
+        panel_slot: use_signal(PanelSlot::default),
+        via_calibration: use_signal(|| false),
+        selected_mapping: use_signal(|| None),
+    };
+    use_context_provider(|| view);
     rsx! { EmptyState {} }
 }
 

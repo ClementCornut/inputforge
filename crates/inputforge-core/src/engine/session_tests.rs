@@ -436,6 +436,19 @@ fn output_failure_primary_and_secondary_cleanup_are_retained() {
             .iter()
             .any(|detail| detail.contains("native close cleanup"))
     );
+    assert!(
+        state
+            .warnings
+            .iter()
+            .all(|warning| !warning.contains("primary keyboard failure")
+                && !warning.contains("native close cleanup"))
+    );
+    assert!(
+        state
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("routing notice"))
+    );
 }
 
 #[test]

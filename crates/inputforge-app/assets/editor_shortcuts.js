@@ -1,16 +1,17 @@
 const key='__LISTENER_KEY__';
 let closed=false;
 const h=ev=>{
- if(closed||ev.defaultPrevented||window.__ifSortableDrag||document.querySelector('dialog[open], [role="dialog"], [role="menu"]'))return;
+ if(closed||ev.defaultPrevented||window.__ifSortableDrag||document.querySelector('dialog[open], [role="dialog"], [role="menu"]:not([aria-hidden="true"])'))return;
  const el=document.activeElement;
- const editor=el?.closest('.if-editor');if(!editor)return;
- const input=el.closest('input, textarea, select, [contenteditable], [role="textbox"]');
- const stage=el.closest('.if-stage[data-stage-id]');
+ const editor=el?.closest('.if-editor')??((el===document.body||el?.closest('.if-rail'))?document.querySelector('.if-editor'):null);if(!editor)return;
+ const field=el?.closest('input, textarea, select, [contenteditable], [role="textbox"]');
+ const input=field&&(field.isContentEditable||field.matches('textarea, [role="textbox"]')||(field.matches('input')&&!['checkbox','radio','range','button','submit','reset','file','color'].includes(field.type)));
+ const stage=el?.closest('.if-stage[data-stage-id]');
  const ctrl=Boolean(ev.ctrlKey||ev.metaKey);
  const undo=ctrl&&!ev.altKey&&!ev.shiftKey&&ev.key.toLowerCase()==='z'&&!input;
- const redo=ctrl&&!ev.altKey&&((ev.shiftKey&&ev.key.toLowerCase()==='z')||(!ev.shiftKey&&ev.key.toLowerCase()==='y'));
- const step=!input&&stage&&!ctrl&&!ev.shiftKey&&ev.altKey&&['ArrowUp','ArrowDown'].includes(ev.key);
- const menu=!input&&stage&&!ctrl&&!ev.altKey&&ev.shiftKey&&ev.key==='F10';
+ const redo=ctrl&&!ev.altKey&&!input&&((ev.shiftKey&&ev.key.toLowerCase()==='z')||(!ev.shiftKey&&ev.key.toLowerCase()==='y'));
+ const step=!field&&stage&&!ctrl&&!ev.shiftKey&&ev.altKey&&['ArrowUp','ArrowDown'].includes(ev.key);
+ const menu=!field&&stage&&!ctrl&&!ev.altKey&&ev.shiftKey&&ev.key==='F10';
  if(!undo&&!redo&&!step&&!menu)return;
  ev.preventDefault();
  const rect=stage?.getBoundingClientRect();

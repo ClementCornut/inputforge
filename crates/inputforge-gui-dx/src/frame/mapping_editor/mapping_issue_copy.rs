@@ -8,13 +8,29 @@ use inputforge_core::{
 
 pub(super) fn message(reason: &MappingIssueReason, config: &ConfigSnapshot) -> String {
     match reason {
-        MappingIssueReason::Input { address, role, problem } => input_message(address, *role, *problem, config),
-        MappingIssueReason::KeyboardUnavailable => "Keyboard output isn’t available here. Choose another output.".into(),
-        MappingIssueReason::MouseUnavailable => "Mouse output isn’t available here. Choose another output.".into(),
+        MappingIssueReason::Input {
+            address,
+            role,
+            problem,
+        } => input_message(address, *role, *problem, config),
+        MappingIssueReason::KeyboardUnavailable => {
+            "Keyboard output isn’t available here. Choose another output.".into()
+        }
+        MappingIssueReason::MouseUnavailable => {
+            "Mouse output isn’t available here. Choose another output.".into()
+        }
         MappingIssueReason::InjectionFailed { failure } => output_failure_message(failure),
-        MappingIssueReason::MissingMode { mode } => format!("Mode ‘{mode}’ no longer exists. Choose an available mode in the mode-change action."),
-        MappingIssueReason::InvalidCondition { input } => format!("The range for {} is invalid. Set its minimum at or below its maximum.", input_label(input, config)),
-        MappingIssueReason::InvalidActions { .. } => "This mapping contains an incompatible action. Check its gesture and processing steps; technical details are below.".into(),
+        MappingIssueReason::MissingMode { mode } => format!(
+            "Mode ‘{mode}’ no longer exists. Choose an available mode in the mode-change action."
+        ),
+        MappingIssueReason::InvalidCondition { input } => format!(
+            "The range for {} is invalid. Set its minimum at or below its maximum.",
+            input_label(input, config)
+        ),
+        MappingIssueReason::InvalidActions { .. } => {
+            "This mapping contains an incompatible action. Check its gesture and processing steps."
+                .into()
+        }
         MappingIssueReason::Output { address, problem } => {
             let slot = address.device;
             let control = match address.output {
@@ -23,9 +39,15 @@ pub(super) fn message(reason: &MappingIssueReason, config: &ConfigSnapshot) -> S
                 OutputId::Hat { id } => format!("Hat {id}"),
             };
             match problem {
-                OutputIssueKind::MissingController => format!("Virtual controller {slot} isn’t configured. Add it in Devices or choose another output."),
-                OutputIssueKind::MissingControl => format!("Virtual controller {slot} has no {control}. Choose an available output or change its layout in Devices."),
-                OutputIssueKind::Incompatible => format!("{control} on virtual controller {slot} doesn’t match this input type. Choose a compatible output."),
+                OutputIssueKind::MissingController => format!(
+                    "Virtual controller {slot} isn’t configured. Add it in Devices or choose another output."
+                ),
+                OutputIssueKind::MissingControl => format!(
+                    "Virtual controller {slot} has no {control}. Choose an available output or change its layout in Devices."
+                ),
+                OutputIssueKind::Incompatible => format!(
+                    "{control} on virtual controller {slot} doesn’t match this input type. Choose a compatible output."
+                ),
             }
         }
     }
@@ -38,41 +60,32 @@ pub(super) fn output_failure_message(failure: &OutputFailure) -> String {
     };
     match (failure.phase, failure.category) {
         (OutputPhase::Initialization, std::io::ErrorKind::PermissionDenied) => format!(
-            "{output} output could not start. Check `/dev/uinput` access for your user, then Retry."
+            "{output} output could not start. Allow virtual input access for InputForge, then Retry."
         ),
         (OutputPhase::Initialization, std::io::ErrorKind::NotFound) => format!(
-            "{output} output could not start because `/dev/uinput` is unavailable. Restore uinput availability, then Retry."
+            "{output} output could not start because virtual input is unavailable. Restore virtual input support, then Retry."
         ),
-        (OutputPhase::Readiness, std::io::ErrorKind::InvalidData) => format!(
-            "{output} output could not be verified. Review the technical details, then Retry."
-        ),
+        (OutputPhase::Readiness, std::io::ErrorKind::InvalidData) => {
+            format!("{output} output could not be verified. Restart InputForge, then Retry.")
+        }
         (OutputPhase::Readiness, _) => format!(
-            "{output} output was created but its system metadata is not ready. Check sysfs and udev availability, then Retry."
+            "{output} output was created but it is not ready yet. Reconnect your devices, then Retry."
         ),
         (OutputPhase::Emission, _) => format!(
-            "{output} output failed and routing stopped. Review the details, restore output access, then Retry."
+            "{output} output failed and routing stopped. Check virtual input access, then Retry."
         ),
         (OutputPhase::Release, _) => format!(
-            "{output} output could not be fully released. Routing stopped and its virtual device was closed. Review the details before Retry."
+            "{output} output could not be fully released. Routing stopped and its virtual device was closed. Restart InputForge before trying again."
         ),
-        (OutputPhase::Initialization, _) => format!(
-            "{output} output could not start. Review the technical details, restore output access, then Retry."
-        ),
+        (OutputPhase::Initialization, _) => {
+            format!("{output} output could not start. Check virtual input access, then Retry.")
+        }
     }
-}
-
-pub(super) fn technical_details(failure: &OutputFailure) -> String {
-    use std::fmt::Write as _;
-    let mut details = failure.details.clone();
-    for cleanup in &failure.cleanup {
-        let _ = write!(details, "\ncleanup: {cleanup}");
-    }
-    details
 }
 
 pub(super) fn cleanup_notice(failure: &OutputFailure) -> Option<&'static str> {
     (!failure.cleanup.is_empty())
-        .then_some("Cleanup also failed. Review the technical details before retrying.")
+        .then_some("Cleanup also failed. Restart InputForge before trying again.")
 }
 
 fn input_label(address: &InputAddress, config: &ConfigSnapshot) -> String {
@@ -181,7 +194,7 @@ mod tests {
                     io::ErrorKind::PermissionDenied,
                     &[],
                 ),
-                "Keyboard output could not start. Check `/dev/uinput` access for your user, then Retry.",
+                "Keyboard output could not start. Allow virtual input access for InputForge, then Retry.",
             ),
             (
                 injection(
@@ -190,7 +203,7 @@ mod tests {
                     io::ErrorKind::NotFound,
                     &[],
                 ),
-                "Keyboard output could not start because `/dev/uinput` is unavailable. Restore uinput availability, then Retry.",
+                "Keyboard output could not start because virtual input is unavailable. Restore virtual input support, then Retry.",
             ),
             (
                 injection(
@@ -199,7 +212,7 @@ mod tests {
                     io::ErrorKind::PermissionDenied,
                     &[],
                 ),
-                "Mouse output was created but its system metadata is not ready. Check sysfs and udev availability, then Retry.",
+                "Mouse output was created but it is not ready yet. Reconnect your devices, then Retry.",
             ),
             (
                 injection(
@@ -208,7 +221,7 @@ mod tests {
                     io::ErrorKind::InvalidData,
                     &[],
                 ),
-                "Mouse output could not be verified. Review the technical details, then Retry.",
+                "Mouse output could not be verified. Restart InputForge, then Retry.",
             ),
             (
                 injection(
@@ -217,7 +230,7 @@ mod tests {
                     io::ErrorKind::BrokenPipe,
                     &[],
                 ),
-                "Keyboard output failed and routing stopped. Review the details, restore output access, then Retry.",
+                "Keyboard output failed and routing stopped. Check virtual input access, then Retry.",
             ),
             (
                 injection(
@@ -226,7 +239,7 @@ mod tests {
                     io::ErrorKind::BrokenPipe,
                     &["secondary cleanup"],
                 ),
-                "Keyboard output could not be fully released. Routing stopped and its virtual device was closed. Review the details before Retry.",
+                "Keyboard output could not be fully released. Routing stopped and its virtual device was closed. Restart InputForge before trying again.",
             ),
         ];
 
@@ -236,7 +249,7 @@ mod tests {
     }
 
     #[test]
-    fn injection_technical_details_keep_cleanup_separate_from_default_copy() {
+    fn injection_guidance_omits_native_errors_and_requires_restart_after_failed_cleanup() {
         let reason = injection(
             OutputKind::Keyboard,
             OutputPhase::Release,
@@ -247,8 +260,15 @@ mod tests {
         let MappingIssueReason::InjectionFailed { failure } = reason else {
             unreachable!();
         };
-        assert!(technical_details(&failure).contains("opaque native details"));
-        assert!(technical_details(&failure).contains("secondary cleanup"));
+        assert!(
+            !message(
+                &MappingIssueReason::InjectionFailed {
+                    failure: failure.clone()
+                },
+                &ConfigSnapshot::default()
+            )
+            .contains("secondary cleanup")
+        );
         assert!(cleanup_notice(&failure).is_some());
     }
 }

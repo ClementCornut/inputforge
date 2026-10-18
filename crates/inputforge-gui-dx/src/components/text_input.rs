@@ -59,11 +59,12 @@ pub fn TextInput(
         size.class().to_owned()
     };
     let classes = merge_class("if-text-input", &variant_class, class.as_deref());
-    let input_handler = move |evt: FormEvent| {
-        if let Some(h) = &oninput {
-            h.call(evt);
-        }
-    };
+    let text = (super::behavior().text)(crate::controls::TextProps {
+        value,
+        disabled,
+        oninput,
+    });
+    let input_handler = text.input;
     let mounted_handler = move |evt: MountedEvent| {
         if let Some(handler) = &onmounted {
             handler.call(evt);
@@ -87,7 +88,8 @@ pub fn TextInput(
                 r#type: "text",
                 class: "{classes}",
                 id: "{id_val}",
-                value: "{value}",
+                initial_value: "{value}",
+                "data-if-text-owner": "{text.owner}",
                 placeholder: placeholder.as_deref().unwrap_or(""),
                 disabled,
                 "aria-describedby": described_by,
@@ -100,7 +102,8 @@ pub fn TextInput(
             input {
                 r#type: "text",
                 class: "{classes}",
-                value: "{value}",
+                initial_value: "{value}",
+                "data-if-text-owner": "{text.owner}",
                 placeholder: placeholder.as_deref().unwrap_or(""),
                 disabled,
                 "aria-describedby": described_by,

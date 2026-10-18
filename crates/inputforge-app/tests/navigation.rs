@@ -326,5 +326,7 @@ fn obsolete_or_closed_rail_events_cannot_request_focus() {
         assert_eq!(requests.borrow().len(), 1);
     });
 }
+#[path = "navigation/history_shortcuts.rs"]
+mod history_shortcuts;
 #[path = "navigation/stale.rs"]
 mod stale;

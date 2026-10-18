@@ -1,6 +1,7 @@
 //! Shared profile workflow policy and native picker lifecycle.
 mod dialog;
 mod dispatch;
+mod entry;
 mod events;
 mod forms;
 mod policy;
@@ -40,6 +41,7 @@ struct Session {
 /// Captured native picker ownership, invalidated by panel or profile replacement.
 #[derive(Debug, Clone)]
 pub struct Picker {
+    panel_scope: ScopeId,
     owner: u64,
     serial: u64,
     scope: Scope,
@@ -51,6 +53,8 @@ pub struct Controller {
     commands: mpsc::Sender<EngineCommand>,
     session: Rc<RefCell<Option<Session>>>,
     serial: Rc<RefCell<u64>>,
+    entry: Rc<RefCell<Option<Intent>>>,
+    picker: dialog::FilePicker,
     shortcut: Rc<RefCell<Option<shortcut::Session>>>,
 }
 impl Controller {
@@ -62,6 +66,8 @@ impl Controller {
             commands,
             session: Rc::default(),
             serial: Rc::default(),
+            entry: Rc::default(),
+            picker: dialog::native_picker,
             shortcut: Rc::default(),
         }
     }
@@ -81,6 +87,10 @@ impl Controller {
                 .unwrap_or_default(),
         });
         self.refresh(owner);
+        let entry = self.entry.borrow_mut().take();
+        if let Some(intent) = entry {
+            let _ = self.dispatch(owner, intent);
+        }
         owner
     }
     /// Dispose only the captured panel, leaving newer mounts intact.
@@ -97,6 +107,7 @@ impl Controller {
     /// Supply the profile panel's host callbacks.
     #[must_use]
     pub fn bindings(&self) -> Bindings {
+        let entry = self.clone();
         let shortcut = self.clone();
         let shortcut_unmount = self.clone();
         let mount = self.clone();
@@ -106,6 +117,7 @@ impl Controller {
         let key = self.clone();
         let focus = self.clone();
         Bindings {
+            start: Callback::new(move |(panel, intent)| entry.start(panel, intent)),
             shortcut_mount: Callback::new(move |error| shortcut.mount_shortcut(error)),
             shortcut_unmount: Callback::new(move |owner| shortcut_unmount.unmount_shortcut(owner)),
             mount: Callback::new(move |v| mount.mount(v)),
@@ -173,3 +185,6 @@ impl Controller {
         }
     }
 }
+
+#[cfg(test)]
+mod dialog_tests;

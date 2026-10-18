@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const handlers=new Set();const window={addEventListener(k,h,c){assert.equal(c,true);if(k==='keydown')handlers.add(h)},removeEventListener(k,h,c){if(k==='keydown')handlers.delete(h)}};
-class Element{constructor(kind='Outside',stage=null,parent=null){this.kind=kind;this.stage=stage;this.parentElement=parent;this.dataset={stageId:stage,navigationContext:'profile:mapping',navigationActions:'rendered actions'};}closest(s){if(s==='.if-editor')return this.kind==='Outside'?null:this;if(s.includes('.if-stage'))return this.stage===null?null:this;if(s.includes('input'))return this.kind==='Input'?this:null;return null}matches(s){return Boolean(this.closest(s))}getBoundingClientRect(){return {left:4,bottom:9}}}
+class Element{constructor(kind='Outside',stage=null,parent=null){this.kind=kind;this.stage=stage;this.parentElement=parent;this.type=kind==='Checkbox'?'checkbox':'text';this.dataset={stageId:stage,navigationContext:'profile:mapping',navigationActions:'rendered actions'};}closest(s){if(s==='.if-editor')return this.kind==='Outside'?null:this;if(s.includes('.if-stage'))return this.stage===null?null:this;if(s.includes('input'))return ['Input','Checkbox'].includes(this.kind)?this:null;return null}matches(s){if(s==='input')return ['Input','Checkbox'].includes(this.kind);if(s==='textarea, [role="textbox"]')return false;if(s.includes('[type='))return this.kind==='Checkbox';return Boolean(this.closest(s))}getBoundingClientRect(){return {left:4,bottom:9}}}
 const document={activeElement:new Element('Editor'),modal:false,querySelector(s){return this.modal?{}:null}};
 function install(name,key){const messages=[];let recv;const dioxus={send(v){messages.push(structuredClone(v))},recv(){return new Promise(r=>recv=r)}};vm.runInNewContext(readFileSync(`crates/inputforge-app/assets/${name}`,'utf8').replaceAll('__LISTENER_KEY__',key),{window,document,Element,dioxus});return{messages,stop(){window[key]?.();delete window[key];recv('__shutdown__')}}}
 function fire(key,opts={}){const ev={key,target:document.activeElement,ctrlKey:false,metaKey:false,shiftKey:false,altKey:false,defaultPrevented:false,preventDefault(){this.defaultPrevented=true},stopPropagation(){},stopImmediatePropagation(){this.immediate=true},...opts};for(const h of [...handlers]){h(ev);if(ev.immediate)break}return ev.defaultPrevented}
@@ -10,6 +10,16 @@ function fire(key,opts={}){const ev={key,target:document.activeElement,ctrlKey:f
 const editor=install('editor_shortcuts.js','editor');
 assert.equal(fire('z',{ctrlKey:true}),true);assert.equal(editor.messages.length,1);
 document.activeElement=new Element('Input');assert.equal(fire('z',{ctrlKey:true}),false);assert.equal(editor.messages.length,1);
+document.activeElement=new Element('Checkbox');
+assert.equal(fire('z',{ctrlKey:true}),true,'checkbox must undo the app edit');
+assert.equal(editor.messages.at(-1)[4],'Editor');
+assert.equal(fire('z',{ctrlKey:true,shiftKey:true}),true,'checkbox must redo the app edit');
+document.activeElement=new Element('Checkbox','0.T.1');
+assert.equal(fire('z',{ctrlKey:true}),true);
+assert.equal(editor.messages.at(-1)[4],'Stage');
+assert.equal(fire('ArrowUp',{altKey:true}),false,'checkbox focus must not reorder stages');
+assert.equal(fire('F10',{shiftKey:true}),false,'checkbox focus must not open stage menus');
+editor.messages.length=1;
 document.modal=true;document.activeElement=new Element('Editor');fire('y',{ctrlKey:true});assert.equal(editor.messages.length,1);document.modal=false;
 window.__ifSortableDrag={};fire('y',{ctrlKey:true});assert.equal(editor.messages.length,1);delete window.__ifSortableDrag;
 document.activeElement=new Element('Stage','0.T.1');fire('ArrowUp',{altKey:true});assert.equal(editor.messages.at(-1)[5],'0.T.1');assert.equal(editor.messages.at(-1)[9],'rendered actions');
@@ -23,3 +33,5 @@ document.activeElement=new Element('Stage','0.T.1');
 window.capture.arm(8);fire('z',{ctrlKey:true});assert.equal(capturedEditor.messages.length,0);assert.equal(capture.messages.length,1);
 window.capture.disarm();fire('z',{ctrlKey:true});assert.equal(capturedEditor.messages.length,1);
 capturedEditor.stop();capture.stop();await new Promise(r=>setImmediate(r));assert.equal(handlers.size,0);
+
+await import('./history.mjs');

@@ -16,7 +16,6 @@ use crate::{
 };
 use dioxus::prelude::*;
 use empty_state::NoVjoyEmptyState;
-const BULK_MAP_CSS: Asset = asset!("/assets/frame/bulk_map.css");
 #[component]
 pub(crate) fn BulkMapPanel() -> Element {
     let navigation = use_context::<ViewState>();
@@ -55,7 +54,6 @@ pub(crate) fn BulkMapPanel() -> Element {
     let count = view.counts.create + view.counts.replace;
     let ready = view.profile.is_some() && !view.targets.is_empty();
     rsx! {
-        Stylesheet { href: BULK_MAP_CSS }
         section { class: "if-bulk-map", "aria-label": "Batch map device inputs",
             if let Some(error) = &view.error { div { role: "alert", "{error}" } }
             if view.profile.is_none() {

@@ -11,9 +11,23 @@ pub struct Bindings {
     pub overlays: crate::overlays::Bindings,
     pub number: fn(&NumberProps) -> NumberView,
     pub integer: fn(&IntegerProps) -> InputView,
+    pub text: fn(TextProps) -> TextView,
     pub text_key: Callback<(KeyboardEvent, bool, Option<EventHandler<KeyboardEvent>>)>,
     pub segmented_click: Callback<(MouseEvent, bool, Option<EventHandler<MouseEvent>>)>,
     pub tabs: fn(TabsProps) -> TabsView,
+}
+/// Browser-owned draft observations and the consumer's input callback.
+#[derive(Clone, Copy, Debug)]
+pub struct TextProps {
+    pub value: ReadSignal<String>,
+    pub disabled: bool,
+    pub oninput: Option<EventHandler<FormEvent>>,
+}
+/// Stable mounted identity and app-owned input acknowledgement handling.
+#[derive(Clone, Debug)]
+pub struct TextView {
+    pub owner: String,
+    pub input: EventHandler<FormEvent>,
 }
 /// Numeric rendering observations and consumer callbacks.
 #[derive(Clone, Debug)]

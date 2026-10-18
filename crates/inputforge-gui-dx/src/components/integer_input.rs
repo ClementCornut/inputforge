@@ -60,7 +60,12 @@ pub fn IntegerInput(
         oninvalid,
     });
     let display_value = view.text;
-    let input_handler = view.input;
+    let text = (super::behavior().text)(crate::controls::TextProps {
+        value: display_value,
+        disabled,
+        oninput: Some(view.input),
+    });
+    let input_handler = text.input;
     let on_input_keydown = view.key;
     let on_input_blur = view.blur;
     let on_input_focus = view.focus;
@@ -73,7 +78,8 @@ pub fn IntegerInput(
                     inputmode: "numeric",
                     class: "if-integer-input__field",
                     id: "{id_val}",
-                    value: "{display_value}",
+                    initial_value: "{display_value}",
+                    "data-if-text-owner": "{text.owner}",
                     min: "{min}",
                     max: "{max}",
                     step: "1",
@@ -88,7 +94,8 @@ pub fn IntegerInput(
                     r#type: "number",
                     inputmode: "numeric",
                     class: "if-integer-input__field",
-                    value: "{display_value}",
+                    initial_value: "{display_value}",
+                    "data-if-text-owner": "{text.owner}",
                     min: "{min}",
                     max: "{max}",
                     step: "1",

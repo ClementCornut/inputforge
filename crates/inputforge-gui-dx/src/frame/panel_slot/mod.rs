@@ -29,11 +29,11 @@ pub(crate) fn PanelSlot() -> Element {
     let calib = *via_calib.read();
     let spec = match s {
         PanelSlotEnum::Devices if calib => PanelSpec {
-            body: "F12 owns content (calibration)",
+            body: "Calibration is not available yet.",
             aria: "Calibration panel",
         },
         PanelSlotEnum::Devices => PanelSpec {
-            body: "F12 owns content",
+            body: "Connect a controller to inspect its inputs.",
             aria: "Devices panel",
         },
         PanelSlotEnum::Profiles => PanelSpec {

@@ -128,8 +128,17 @@ impl Engine {
         }
         let mut state = self.state.write();
         state.engine_status = EngineStatus::Faulted;
-        state.session.error = Some(message.clone());
-        state.warnings.push(message);
+        tracing::error!(name: "routing.failure", error = %message, "routing failed");
+        let warning = if let EngineError::InjectionFailed { failure } = primary {
+            format!(
+                "The {} output stopped. Review the routing notice before trying again.",
+                failure.output
+            )
+        } else {
+            message.clone()
+        };
+        state.session.error = Some(message);
+        state.warnings.push(warning);
     }
 
     pub(super) fn remember_output_failure(&mut self, failure: &OutputFailure) {

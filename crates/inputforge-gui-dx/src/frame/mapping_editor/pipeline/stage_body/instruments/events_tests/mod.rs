@@ -2,6 +2,7 @@
 mod document;
 mod dom;
 mod fixture;
+mod undo;
 use dioxus::{html::SerializedHtmlEventConverter, prelude::*};
 use fixture::{fixture, settle};
 use inputforge_core::{

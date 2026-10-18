@@ -2,7 +2,20 @@ use super::{Controller, Picker, Scope, dispatch, policy};
 use dioxus::prelude::*;
 use inputforge_core::{engine::EngineCommand, settings::AppSettings};
 use inputforge_gui_dx::profiles::Mode;
-use std::path::PathBuf;
+use std::{path::PathBuf, pin::Pin};
+
+pub(super) type FilePicker = fn() -> Pin<Box<dyn Future<Output = Option<PathBuf>>>>;
+
+pub(super) fn native_picker() -> Pin<Box<dyn Future<Output = Option<PathBuf>>>> {
+    Box::pin(async {
+        rfd::AsyncFileDialog::new()
+            .add_filter("Profile (TOML)", &["toml"])
+            .set_title("Open profile")
+            .pick_file()
+            .await
+            .map(|handle| handle.path().to_path_buf())
+    })
+}
 
 impl Controller {
     /// Capture the current panel and profile before starting the OS picker.
@@ -16,6 +29,7 @@ impl Controller {
         let s = sessions.as_mut().filter(|s| s.owner == owner)?;
         s.picker += 1;
         Some(Picker {
+            panel_scope: s.view.origin_scope(),
             owner,
             serial: s.picker,
             scope: Scope::from_state(&state),
@@ -26,14 +40,13 @@ impl Controller {
             return false;
         };
         let c = self.clone();
-        spawn(async move {
-            let path = rfd::AsyncFileDialog::new()
-                .add_filter("Profile (TOML)", &["toml"])
-                .set_title("Open profile")
-                .pick_file()
-                .await
-                .map(|h| h.path().to_path_buf());
-            c.finish_pick(&request, path);
+        let picker = self.picker;
+        // Host callbacks run in the root scope; the panel owns this task.
+        dioxus::core::Runtime::current().in_scope(request.panel_scope, || {
+            spawn(async move {
+                let path = picker().await;
+                c.finish_pick(&request, path);
+            });
         });
         true
     }

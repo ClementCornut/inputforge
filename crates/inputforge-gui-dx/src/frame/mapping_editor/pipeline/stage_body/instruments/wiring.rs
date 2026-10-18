@@ -73,6 +73,7 @@ pub(crate) fn use_instrument(
     use_effect(move || {
         let _config = ctx.config.read();
         let _meta = ctx.meta.read();
+        let _history = editor.undo_log.read();
         send.call(Event::Refresh);
     });
     use_drop(move || bindings.close.call(id));

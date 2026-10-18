@@ -1,18 +1,16 @@
 use crate::{
     context::AppContext,
-    profiles::{Bindings, Context, Intent, Mode, View},
+    profiles::{Bindings, Context, Mode, View},
 };
 use dioxus::prelude::*;
 use library::ProfileLibrary;
 use new_profile_submode::NewProfileSubMode;
-use no_profile::NoProfileBar;
 use open_choice_submode::OpenChoiceSubMode;
 use snapshot_drawer::SnapshotDrawer;
 
 pub(crate) mod delete_dialog;
 pub(crate) mod library;
 pub(crate) mod new_profile_submode;
-pub(crate) mod no_profile;
 pub(crate) mod open_choice_submode;
 mod row;
 mod snapshot_confirm;
@@ -47,7 +45,6 @@ pub(crate) fn ProfilesPanel() -> Element {
         bindings,
     };
     use_context_provider(|| c);
-    let c = c.capture();
     let prepared = view.read().clone();
     let library_error = prepared.error.clone().filter(|_| {
         prepared.mode == Mode::Library
@@ -76,25 +73,7 @@ pub(crate) fn ProfilesPanel() -> Element {
                             path,
                         }
                     },
-                    Mode::Library => {
-                        if has_profile {
-                            rsx! {
-                                ProfileLibrary {
-                                }
-                            }
-                        } else {
-                            rsx! {
-                                NoProfileBar {
-                                    on_new_profile: move |_| {
-                                        let _ = c.send(Intent::New);
-                                    },
-                                    on_open_file: move |_| {
-                                        let _ = c.send(Intent::Pick);
-                                    },
-                                }
-                            }
-                        }
-                    }
+                    Mode::Library => rsx! { ProfileLibrary {} },
                 }
             }
             if let Some(error) = library_error {

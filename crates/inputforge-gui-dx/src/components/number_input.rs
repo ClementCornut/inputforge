@@ -57,7 +57,12 @@ pub fn NumberInput(
         onstep,
     });
     let display_value = view.input.text;
-    let input_handler = view.input.input;
+    let text = (super::behavior().text)(crate::controls::TextProps {
+        value: display_value,
+        disabled,
+        oninput: Some(view.input.input),
+    });
+    let input_handler = text.input;
     let on_input_keydown = view.input.key;
     let on_input_blur = view.input.blur;
     let on_input_focus = view.input.focus;
@@ -71,7 +76,8 @@ pub fn NumberInput(
                     r#type: "number",
                     class: "if-number-input__field",
                     id: "{id_val}",
-                    value: "{display_value}",
+                    initial_value: "{display_value}",
+                    "data-if-text-owner": "{text.owner}",
                     min: "{min}",
                     max: "{max}",
                     step: "{step}",
@@ -85,7 +91,8 @@ pub fn NumberInput(
                 input {
                     r#type: "number",
                     class: "if-number-input__field",
-                    value: "{display_value}",
+                    initial_value: "{display_value}",
+                    "data-if-text-owner": "{text.owner}",
                     min: "{min}",
                     max: "{max}",
                     step: "{step}",

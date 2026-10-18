@@ -22,6 +22,7 @@ pub(super) struct Fixture {
     pub state: Arc<RwLock<AppState>>,
     pub commands: mpsc::Sender<EngineCommand>,
     pub action: Action,
+    pub bindings: RefCell<Option<crate::mapping_edits::Bindings>>,
     pub editor: RefCell<Option<EditorState>>,
     pub visible: RefCell<Option<Signal<bool>>>,
     pub config: RefCell<Option<Signal<crate::context::ConfigSnapshot>>>,
@@ -50,6 +51,7 @@ fn harness() -> Element {
     use_hook(|| view.selected_mapping.set(Some(key())));
     use_context_provider(|| view);
     let editor = use_editor_state_provider();
+    *f.bindings.borrow_mut() = Some(use_context::<crate::mapping_edits::Bindings>());
     *f.editor.borrow_mut() = Some(editor);
     let visible = use_signal(|| true);
     *f.visible.borrow_mut() = Some(visible);
@@ -94,6 +96,7 @@ pub(super) fn fixture(
         state: Arc::new(RwLock::new(AppState::with_profile(profile))),
         commands,
         action,
+        bindings: RefCell::default(),
         editor: RefCell::default(),
         visible: RefCell::default(),
         config: RefCell::default(),

@@ -30,15 +30,7 @@ pub(super) fn MappingIssues(mapping_key: MappingKey) -> Element {
                             }
                         }
                     }
-                    details { summary { "Technical details" }
-                        code {
-                            if let MappingIssueReason::InjectionFailed { failure } = &issue.reason {
-                                "{super::mapping_issue_copy::technical_details(failure)}"
-                            } else {
-                                "{issue.reason:?}"
-                            }
-                        }
-                    }
+
                 }
             }
         }
@@ -173,9 +165,9 @@ mod tests {
         let html = dioxus_ssr::render(&dom);
         assert!(html.contains("Keyboard output could not be fully released"));
         assert!(html.contains("Cleanup also failed"));
-        assert!(html.contains("Technical details"));
-        assert!(html.contains("native release detail"));
-        assert!(html.contains("native cleanup detail"));
+        assert!(!html.contains("Technical details"));
+        assert!(!html.contains("native release detail"));
+        assert!(!html.contains("native cleanup detail"));
         assert!(html.contains("Save mapping"));
         assert!(!html.contains("disabled=true"));
     }

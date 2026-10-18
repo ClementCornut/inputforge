@@ -23,11 +23,11 @@ pub(crate) enum KbIntent {
 /// Classified by the JS focus probe in [`use_kb_listener`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FocusTarget {
-    /// Focus is inside an `<input>`, `<textarea>`, or `[contenteditable]`.
+    /// Focus is in a text/number field or editable content with native history.
     Input,
     /// Focus is on a `.if-stage` element carrying a `data-stage-id` attribute.
     Stage,
-    /// Focus is anywhere else inside `.if-editor` (but not in an input or stage).
+    /// Focus is on an editor control or the active editor's body/rail history scope.
     Editor,
     /// Focus is outside `.if-editor` entirely.
     Outside,
@@ -56,17 +56,13 @@ pub(crate) fn decide(
     alt: bool,
     focus: FocusTarget,
 ) -> KbIntent {
-    if focus == FocusTarget::Outside {
+    if matches!(focus, FocusTarget::Outside | FocusTarget::Input) {
         return KbIntent::PassThrough;
     }
     match (key, ctrl, shift, alt) {
-        // Ctrl+Z: editor undo unless inside <input> (browser native undo wins).
-        ("z" | "Z", true, false, false) => match focus {
-            FocusTarget::Input => KbIntent::PassThrough,
-            _ => KbIntent::Undo,
-        },
-        // Ctrl+Shift+Z: editor redo; browsers do not bind this inside inputs.
-        // Ctrl+Y: editor redo (Windows convention; browsers do not bind it).
+        // Text fields retain native history; other targets use mapping history.
+        ("z" | "Z", true, false, false) => KbIntent::Undo,
+        // Both common redo bindings restore the mapping.
         ("z" | "Z", true, true, false) | ("y" | "Y", true, false, false) => KbIntent::Redo,
         // Alt+Up / Alt+Down: stage reorder. Per spec line 393 + AC #21.
         // Only fires when a stage element is focused (NOT inside an input).
@@ -109,10 +105,18 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_shift_z_inside_input_drives_redo() {
+    fn ctrl_shift_z_inside_input_passes_through() {
         assert_eq!(
             decide("z", true, true, false, FocusTarget::Input),
-            KbIntent::Redo
+            KbIntent::PassThrough
+        );
+    }
+
+    #[test]
+    fn ctrl_y_inside_input_passes_through() {
+        assert_eq!(
+            decide("y", true, false, false, FocusTarget::Input),
+            KbIntent::PassThrough
         );
     }
 

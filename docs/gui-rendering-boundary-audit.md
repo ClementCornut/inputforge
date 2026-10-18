@@ -2647,3 +2647,183 @@ remain pending and are not implied by automated tests.
   current architecture: **SPEC PASS / QUALITY SHIP** after the scoped regression-first
   corrections above. All ten findings are resolved within the explicit rendering
   mechanics; no implementation part remains. Native acceptance limits above remain.
+
+## Native Wayland acceptance fixes — 2026-10-18
+
+The first native acceptance pass reported nine follow-up issues after the thirteen
+ownership parts. These fixes preserve the completed migration and the seven
+historical acceptance sections above; automated regression checks do not establish
+native visual, typing, portal or hardware acceptance.
+
+- Mapping and routing error banners no longer expose a **Technical details**
+  disclosure, debug enums or native output/cleanup payloads. Typed output failures
+  retain distinct recovery guidance, cleanup failure remains visible, and an
+  offline engine offers restart guidance rather than its panic/backend text.
+  Ordinary operation-specific session errors retain their existing meaning.
+  Injection-failure toasts also omit native payloads and direct the user to the
+  routing notice. Engine fault and failed-command logging retain diagnostic details.
+- Condition labels use **Button pressed**, **Button released**, **Axis in range**
+  and **Hat direction** without changing stored values or serialization.
+- Mounted curve/deadzone editors now observe the existing history publication as
+  well as configuration. An edit followed by undo before the next bridge frame
+  can leave configuration unchanged; history must still refresh the working plot.
+  Checkbox/radio focus allows app undo/redo while text fields retain native undo.
+- Shared text and numeric controls, mapping header rename and device alias use a
+  browser-owned native draft. The app recognizes local acknowledgements and writes
+  only external resets, avoiding stale per-keystroke value patches. Exact text,
+  invalid numeric drafts, cancellation and rejected-command retention remain.
+  No debounce, timer, listener, thread, channel or dependency was added.
+- Empty workspace New/Open buttons now enter the existing app profile workflow.
+  The profile panel owns picker startup and pending-task teardown, with cancelled
+  or obsolete results rejected by existing owner/serial/profile guards.
+  Profiles and Settings remain visible beside the workspace without a loaded
+  profile. Internal ownership captions are replaced with useful product copy.
+- Batch mapping CSS now mounts with the initial theme rather than being requested
+  only on the first batch visit. Initial document-head regression coverage proves
+  stylesheet registration before that visit; cold native first paint still needs
+  visual acceptance.
+
+Regression coverage includes [real no-profile layout and initial stylesheet
+registration](../crates/inputforge-gui-dx/src/frame/layout/acceptance_tests.rs),
+[profile picker callbacks and lifecycle](../crates/inputforge-app/src/profiles/dialog_tests.rs),
+[rendered instrument history](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/events_tests/undo.rs),
+[shared control events](../crates/inputforge-gui-dx/tests/controls.rs),
+[mapping-header typing](../crates/inputforge-gui-dx/src/frame/mapping_editor/typing_tests.rs),
+and [native diagnostic suppression](../crates/inputforge-gui-dx/src/frame/mapping_editor/engine_offline_banner.rs).
+Existing identity guards, queue/history barriers, capture behavior and the single
+immediate-first-sample/16 ms nonblocking bridge remain authoritative.
+
+### Follow-up native Wayland retest
+
+1. With no profile loaded, open Profiles and Settings. Use New profile and Open
+   file from the empty workspace. Cancel the picker, select a file, and close or
+   replace the panel while it is open: obsolete results must not change a new form.
+2. Type quickly, paste Unicode and backspace in profile/mapping/mode names, filters,
+   device aliases and numeric fields. Check Enter+blur, Escape, failed operations
+   and external undo/reset: no lost characters, cursor jumps or retained stale text.
+3. Change a curve by drag, keyboard and numeric controls; undo/redo immediately.
+   Toggle Symmetric and undo/redo while its switch still has focus. Shape, points
+   and switch must agree; cancelled or stale drags must not commit later.
+4. Change condition kinds and save/reload. Labels must read naturally. Check error
+   banners for useful recovery without internal/debug text or details disclosures.
+5. Restart the development app and switch to Batch map for the first time. Repeat
+   with a cold packaged build when available: no unstyled controls or layout flash.
+   Continue the existing Stop/edit/Apply/Start and capture/manual checks above.
+
+Automated verification and independent review are recorded in the follow-up report;
+native Wayland, separate Windows, compositor, accessibility and performance
+acceptance remain pending. Follow-up fixes are left uncommitted on `main`.
+
+### Follow-up automated verification
+
+- Final host `cargo test --workspace --locked --offline -j 2`: **2,257 passed,
+  0 failed, 10 existing ignored**, across 42 result blocks. Host local IPC is
+  required by existing single-instance tests; none were excluded.
+- Unchanged `bash .githooks/pre-commit` passed, including formatting and strict
+  all-target Clippy without exceptions. All seven existing JavaScript suites
+  passed, including instrument cancellation, capture, navigation, snapshots,
+  rail/overlays and all 19 sortable pointer/ghost cases.
+- All **500** local audit/plan/ownership links, seven preserved historical
+  acceptance hashes, focused production-module sizes and `git diff --check`
+  passed. `main` and the thirteen completed migration commits are unchanged.
+- The complete follow-up batch receives one independent read-only review;
+  findings and disposition are retained with its detailed follow-up report.
+  Automated results do not establish the native acceptance items above.
+
+## Undo shortcuts and unloaded profile library — 2026-10-18
+
+The next native retest reported that undo still appeared inactive and that the
+Profiles tab hid the library when no profile was loaded. The previous fixes above
+remain; these corrections address separate focus and presentation gates.
+
+- The document shortcut listener was already mounted, but its focus probe dropped
+  history shortcuts whenever the active element was the document body or mapping
+  rail, even with a selected editor. It also treated selects and ranges as text
+  fields. The existing listener now resolves those targets to the mounted editor;
+  unrelated side-panel controls remain excluded. Text/number fields retain native
+  undo **and redo**. Stage reorder/menu keys remain stage-only and field-excluded;
+  capture, modal/menu, sortable drag, current identity and history guards remain.
+- The Profiles panel mounted without an active profile, but replaced its already
+  populated library with a no-profile prompt. It now renders the same app-prepared
+  library in both cases, including filtering, New, Open file and row Open actions.
+  Snapshot actions still require an active profile. The obsolete prompt and CSS
+  are removed; no duplicate library, new profile or engine behavior is introduced.
+
+Test-first evidence covers [production shortcut transport with realistic DOM
+targets](../crates/inputforge-app/tests/navigation/history.mjs),
+[real app history delivery](../crates/inputforge-app/tests/navigation/history_shortcuts.rs),
+[initial mount, rerender, teardown and remount of the actual renderer hook](../crates/inputforge-gui-dx/src/frame/mapping_editor/keyboard_tests.rs),
+and [no-active-profile navigation, rows, filter, New and native-identity row Open](../crates/inputforge-gui-dx/src/frame/layout/library_tests.rs).
+The new transport cases are part of the existing navigation JavaScript suite.
+
+### Targeted native Wayland retest
+
+1. With a stopped mapping selected, edit its curve and symmetry; try Ctrl+Z,
+   Ctrl+Shift+Z and Ctrl+Y after clicking empty editor space or leaving focus on
+   the mapping rail, a switch, range or select. The shape, setting and mapping
+   should restore together. Repeat with a mapping rename and stage edit.
+2. In text/number fields, verify typing undo/redo remains native. Open a menu,
+   dialog or keyboard capture, or start sorting: history must not act behind it.
+   Leave and return to the editor: one keystroke must perform one action.
+3. With saved library profiles and none loaded, open Profiles. Check existing
+   rows, filtering, New, Open file and row menu Open; opening a row must load that
+   profile. Snapshot actions must remain unavailable until a profile is loaded.
+
+These regressions demonstrate the production script, app receiver and renderer
+contracts. No native WebKitGTK key event stream or OS picker was inspected;
+actual Wayland focus/key delivery, portal/file loading, hardware and performance
+acceptance remain pending. History remains scoped to the selected mapping.
+
+### Undo/library follow-up automated verification
+
+- Final host `cargo test --workspace --locked --offline -j 2`: **2,261 passed,
+  0 failed, 10 existing ignored**, across 42 result blocks; existing single-instance
+  regressions require host local IPC. No tests were excluded.
+- Unchanged strict pre-commit (fmt and all-target Clippy) and all seven existing
+  JavaScript suites passed, including new production shortcut DOM-shape cases.
+- All **503** local audit/plan/ownership links, seven historical acceptance hashes,
+  original 44-path batch preservation and unchanged main/HEAD/staging checks pass.
+  Changes remain uncommitted; native acceptance limits above still apply.
+- One independent read-only follow-up review found no actionable correctness or
+  specification issues: **SPEC PASS / QUALITY SHIP**. Native event/focus and file
+  loading acceptance remain unverified.
+
+## Native undo trace: closed menus blocking history — 2026-10-18
+
+The subsequent native report remained reproducible after the focus fixes above.
+The editor and rail listeners treated every `[role="menu"]` as an open overlay.
+The shared `MenuItems` renderer keeps closed menus mounted with
+`aria-hidden="true"` and `display: none`. Selecting a mapping therefore blocked
+Ctrl+Z even with valid selected-mapping history. The working Ctrl+S listener
+already excluded those hidden menus. Both affected listeners now use that same
+menu visibility condition; open menus, dialogs, capture and native text history
+retain their existing guards. No history, engine or bridge change was needed.
+
+Test-first regressions render actual closed/open `MenuRoot`/`MenuItems`, evaluate
+the production selectors with the existing HTML selector engine, and execute
+the production editor/rail/snapshot JavaScript. Closed-menu Ctrl+Z and Ctrl+F
+failed before the correction while Ctrl+S passed. All now pass; open-menu
+suppression remains covered. See the
+[rendered overlay regression](../crates/inputforge-gui-dx/tests/overlays/shortcuts.rs)
+and [production script runner](../crates/inputforge-gui-dx/tests/overlays/shortcuts.mjs).
+The runner uses the Node runtime already needed by the JavaScript suites.
+
+An isolated native Wayland/WebKitGTK session reproduced the mismatch and verified
+the correction through the real DOM, Dioxus IPC, selected-mapping identity,
+history, engine command acknowledgement and rendered state. Symmetry undo/redo,
+Bezier → Linear undo/redo, body focus, open-menu suppression and rail filter focus
+passed, with one listener per owner. Routing stayed stopped and all profile,
+snapshot and settings writes went to disposable `/tmp` state. Events were
+dispatched into the live DOM; physical keyboard/compositor delivery still needs
+the user retest below. Diagnostic sessions were closed afterward.
+
+Final automated checks: **2,263 passed, 0 failed, 10 existing ignored** in the
+complete locked/offline workspace suite; unchanged strict pre-commit and all
+seven JavaScript suites passed. Prior acceptance evidence is preserved and all
+changes remain uncommitted on `main`.
+
+Physical-key retest: launch the updated app, select a stopped mapping, change
+Symmetric, leave focus on its switch, press Ctrl+Z then Ctrl+Shift+Z. The switch
+and curve should restore and reapply. Repeat after closing the Add stage menu;
+an open menu must continue to block mapping history. Text fields retain native
+typing undo. History remains scoped to the selected mapping.

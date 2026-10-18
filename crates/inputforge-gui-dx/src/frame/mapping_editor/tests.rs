@@ -2,6 +2,9 @@
 
 //! SSR tests for the F9 mapping editor.
 
+#[path = "typing_tests.rs"]
+mod typing;
+
 use crate::test_support::Fixture;
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};

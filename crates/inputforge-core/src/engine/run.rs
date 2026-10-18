@@ -576,6 +576,7 @@ impl Engine {
             match self.commands.try_recv() {
                 Ok(cmd) => {
                     if let Err(error) = self.handle_command(cmd) {
+                        tracing::warn!(name: "engine.command.failed", %error, "engine command failed");
                         if matches!(
                             error,
                             crate::error::EngineError::InputFailed { .. }
