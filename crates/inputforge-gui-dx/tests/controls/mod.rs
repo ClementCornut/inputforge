@@ -84,8 +84,8 @@ fn root(props: Props) -> Element {
             NumberInput { id: "number".to_owned(), value: number, min: 0.0, max: 1.0, step: 0.25, precision: 2, disabled: disabled(),
                 oncommit: commit_enabled().then_some(number_commit), onstep: move |v| { s.borrow_mut().steps.push(v); if !commit_enabled() { number.set(v); } } }
         }
-        IntegerInput { value: integer, min: 1, max: 10, disabled: disabled(), oncommit: commit_enabled().then_some(integer_commit), oninvalid: move |e| inv.borrow_mut().invalid.push(e) }
-        TextInput { value: if other_text_context() { other_text } else { text }, aria_describedby: "text-error".to_owned(), oninput: move |event: FormEvent| { text_log.borrow_mut().text_inputs.push(event.value()); if acknowledge_text() { text.set(event.value()); } }, onkeydown: move |_| t.borrow_mut().text_keys += 1 }
+        IntegerInput { id: "integer", aria_label: "Integer", value: integer, min: 1, max: 10, disabled: disabled(), oncommit: commit_enabled().then_some(integer_commit), oninvalid: move |e| inv.borrow_mut().invalid.push(e) }
+        TextInput { id: "text", aria_label: "Text", value: if other_text_context() { other_text } else { text }, aria_describedby: "text-error".to_owned(), oninput: move |event: FormEvent| { text_log.borrow_mut().text_inputs.push(event.value()); if acknowledge_text() { text.set(event.value()); } }, onkeydown: move |_| t.borrow_mut().text_keys += 1 }
         span { id: "text-error", "Error" }
         SegmentedControlOption { value: "one".to_owned(), selected: false, disabled: disabled(), onclick: move |_| seg.borrow_mut().segments += 1, "One" }
         TabsRoot { value: tab, disabled: disabled(), onchange: move |id: String| { logs.borrow_mut().tabs.push(id.clone()); tab.set(id); },
@@ -119,8 +119,13 @@ impl Fixture {
         );
         dom.rebuild_in_place();
         dom.render_immediate_to_vec();
-        for index in 1..4 {
-            event(&dom, "mounted", index, ());
+        for id in ["tab-a", "tab-b", "tab-c"] {
+            send(
+                &dom,
+                "mounted",
+                named_control(&dom, dom.base_scope().root_node(), id).expect("mounted tab button"),
+                (),
+            );
         }
         dom.render_immediate_to_vec();
         Self {
@@ -177,20 +182,60 @@ fn listeners(dom: &VirtualDom, node: &VNode, name: &str, ids: &mut Vec<dioxus::c
         }
     }
 }
+fn named_control(dom: &VirtualDom, node: &VNode, name: &str) -> Option<dioxus::core::ElementId> {
+    use dioxus::core::{AttributeValue, DynamicNode};
+    for (index, attributes) in node.dynamic_attrs.iter().enumerate() {
+        if attributes.iter().any(|attribute| {
+            matches!(attribute.name, "id" | "aria-label")
+                && matches!(&attribute.value, AttributeValue::Text(value) if value == name)
+        }) && let Some(id) = node.mounted_dynamic_attribute(index, dom)
+        {
+            return Some(id);
+        }
+    }
+    node.dynamic_nodes
+        .iter()
+        .enumerate()
+        .find_map(|(index, child)| match child {
+            DynamicNode::Component(component) => component
+                .mounted_scope(index, node, dom)
+                .and_then(|scope| named_control(dom, scope.root_node(), name)),
+            DynamicNode::Fragment(nodes) => nodes
+                .iter()
+                .find_map(|child| named_control(dom, child, name)),
+            _ => None,
+        })
+}
+
+fn send<T: 'static>(
+    dom: &VirtualDom,
+    name: &str,
+    target: dioxus::core::ElementId,
+    data: T,
+) -> Event<dyn std::any::Any> {
+    let event = Event::new(
+        Rc::new(PlatformEventData::new(Box::new(data))) as Rc<dyn std::any::Any>,
+        true,
+    );
+    dom.runtime().handle_event(name, event.clone(), target);
+    event
+}
+
 pub(super) fn event<T: 'static>(
     dom: &VirtualDom,
     name: &str,
     index: usize,
     data: T,
 ) -> Event<dyn std::any::Any> {
-    let mut ids = vec![];
-    listeners(dom, dom.base_scope().root_node(), name, &mut ids);
-    let evt = Event::new(
-        Rc::new(PlatformEventData::new(Box::new(data))) as Rc<dyn std::any::Any>,
-        true,
-    );
-    dom.runtime().handle_event(name, evt.clone(), ids[index]);
-    evt
+    let target = if matches!(name, "input" | "blur" | "focus" | "keydown") {
+        let control = ["number", "integer", "text", "Control tabs"][index];
+        named_control(dom, dom.base_scope().root_node(), control).expect("named fixture control")
+    } else {
+        let mut ids = vec![];
+        listeners(dom, dom.base_scope().root_node(), name, &mut ids);
+        ids[index]
+    };
+    send(dom, name, target, data)
 }
 pub(super) fn form(dom: &VirtualDom, index: usize, text: &str) {
     event(

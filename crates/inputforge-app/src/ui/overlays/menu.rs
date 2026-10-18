@@ -1,22 +1,26 @@
 //! Menu policy shared by trigger and cursor anchored surfaces.
 use dioxus::prelude::*;
 use inputforge_gui_dx::overlays::{Activation, CloseReason, FocusAction, MenuProps, MenuView};
-fn focus(menu: &str, action: FocusAction) {
+fn focus_script(menu: &str, action: FocusAction) -> String {
     let action = match action {
         FocusAction::Next => "down",
         FocusAction::Prev => "up",
         FocusAction::First => "first",
         FocusAction::Last => "last",
     };
-    let _ = document::eval(&format!(
+    format!(
         "({})({menu:?}, {action:?});",
         include_str!("../../../assets/menu_focus.js")
-    ));
+    )
+}
+fn focus(menu: &str, action: FocusAction) {
+    let _ = document::eval(&focus_script(menu, action));
 }
 pub(super) fn use_focus(open: bool, ready: bool, id: String) {
     use_effect(use_reactive!(|(open, ready, id)| {
         if open && ready {
-            focus(&id, FocusAction::First);
+            let script = focus_script(&id, FocusAction::First);
+            let _ = document::eval(&format!("requestAnimationFrame(() => {{ {script} }});"));
         }
     }));
 }
@@ -24,15 +28,19 @@ pub(super) fn use_menu(props: MenuProps) -> MenuView {
     let mut open = props.open;
     let close = use_callback(move |reason| {
         if let Some(handler) = props.onclose {
-            handler.call(reason);
+            if !handler.call(reason) {
+                return;
+            }
         } else {
             open.set(false);
-            if matches!(reason, CloseReason::Escape) {
-                let _ = document::eval(&format!(
-                    "document.getElementById({:?})?.focus();",
-                    props.trigger
-                ));
-            }
+        }
+        if matches!(reason, CloseReason::Escape | CloseReason::ItemActivated)
+            && !props.trigger.is_empty()
+        {
+            let _ = document::eval(&format!(
+                "document.getElementById({:?})?.focus();",
+                props.trigger
+            ));
         }
     });
     MenuView {
@@ -85,3 +93,7 @@ pub(super) fn use_menu(props: MenuProps) -> MenuView {
         }),
     }
 }
+
+#[cfg(test)]
+#[path = "menu_tests.rs"]
+mod tests;

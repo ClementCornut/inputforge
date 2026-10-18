@@ -83,14 +83,14 @@ pub(crate) fn StageActionsMenu(mapping_key: MappingKey, root_actions: Vec<Action
     rsx! {
         AnchoredMenu {
             open: Some(MenuAnchor { x: menu.x, y: menu.y }),
-            class: "if-stage-menu".to_owned(),
             on_close: move |reason: CloseReason| {
                 bindings.ui.stage_close.call((editor.stage_menu,activation,reason));
+                editor.stage_menu.peek().is_none()
             },
             MenuItem { disabled: !up, onclick: activate(Some(false)), "Move up" }
             MenuItem { disabled: !down, onclick: activate(Some(true)), "Move down" }
-            MenuItem { class: "if-stage-menu__item--danger".to_owned(), onclick: activate(None), "Delete" }
-            if let Some(message) = editor.error.read().as_ref() { span { role: "alert", "{message}" } }
+            MenuItem { danger: true, onclick: activate(None), "Delete" }
+            if let Some(message) = editor.error.read().as_ref() { crate::components::InlineFeedback { tone: crate::components::FeedbackTone::Error, alert: true, "{message}" } }
         }
     }
 }

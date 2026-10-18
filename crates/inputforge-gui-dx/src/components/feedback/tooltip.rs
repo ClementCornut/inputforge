@@ -13,6 +13,10 @@ pub enum TooltipPlacement {
 #[component]
 pub fn Tooltip(
     content: String,
+    /// Bubble ID. Set the trigger's `aria_describedby` to this same stable ID.
+    /// The wrapper never mutates children or invents a trigger association.
+    #[props(default)]
+    id: Option<String>,
     #[props(default = TooltipPlacement::Top)] placement: TooltipPlacement,
     #[props(default)] class: Option<String>,
     children: Element,
@@ -27,7 +31,7 @@ pub fn Tooltip(
     rsx! {
         span { class: "{combined}",
             {children}
-            span { class: "if-tooltip__bubble", role: "tooltip", "{content}" }
+            span { id, class: "if-tooltip__bubble", role: "tooltip", "{content}" }
         }
     }
 }

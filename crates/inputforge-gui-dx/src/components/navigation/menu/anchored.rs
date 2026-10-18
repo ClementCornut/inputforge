@@ -1,35 +1,45 @@
-//! Menu rendering and app-supplied handlers.
+//! Cursor menu rendering, measurement and app-supplied handlers.
+use super::placement::{MenuPlacement, MenuSize, Viewport, cursor_placement};
 use super::{
     ClickAwayListener, CloseReason, MENU_ID_COUNTER, MenuAnchor, MenuState, Portal, merge_class,
 };
 use dioxus::prelude::*;
 use std::sync::atomic::Ordering;
-/// Render a cursor-anchored menu; the owning workflow acknowledges closure.
+
+/// Render a measured cursor menu; the owning workflow acknowledges closure.
 #[component]
-#[allow(
-    unused_qualifications,
-    reason = "Dioxus 0.7 RSX macro may emit redundant `dioxus_elements::*` qualifications \
-              on per-element event listeners with bound closures; defensive allow."
-)]
 pub fn AnchoredMenu(
     open: Option<MenuAnchor>,
-    on_close: EventHandler<CloseReason>,
+    on_close: Callback<CloseReason, bool>,
+    /// Optional menu ID for a trigger's `aria-controls` relationship.
+    #[props(default)]
+    id: Option<String>,
+    #[props(default)] return_focus: Option<String>,
     #[props(default)] aria_labelledby: Option<String>,
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
-    let menu_id = use_signal(|| {
-        format!(
-            "if-menu-{}",
-            MENU_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
-        )
+    let mut menu_id = use_signal(|| {
+        id.clone().unwrap_or_else(|| {
+            format!(
+                "if-menu-{}",
+                MENU_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+            )
+        })
     });
-
-    let open_signal = use_signal(|| true);
+    if let Some(id) = id
+        && *menu_id.peek() != id
+    {
+        menu_id.set(id);
+    }
+    let mut open_signal = use_signal(|| open.is_some());
+    if *open_signal.peek() != open.is_some() {
+        open_signal.set(open.is_some());
+    }
     let trigger_id = use_signal(String::new);
     let behavior = (crate::components::behavior().overlays.menu)(crate::overlays::MenuProps {
         open: open_signal,
-        trigger: String::new(),
+        trigger: return_focus.unwrap_or_default(),
         onclose: Some(on_close),
     });
     let state = MenuState {
@@ -39,43 +49,91 @@ pub fn AnchoredMenu(
         behavior,
     };
     use_context_provider(|| state);
-    (crate::components::behavior().overlays.focus)(open.is_some(), true, menu_id.read().clone());
-
-    let Some(coords) = open else {
+    let mut placement: Signal<Option<(MenuAnchor, MenuPlacement)>> = use_signal(|| None);
+    let mut mounted = use_signal(|| false);
+    use_effect(use_reactive!(|open| {
+        placement.set(None);
+        if open.is_none() {
+            if *mounted.peek() {
+                mounted.set(false);
+            }
+            return;
+        }
+        if !mounted() {
+            return;
+        }
+        if let Some(cursor) = open {
+            let id = menu_id.read().clone();
+            spawn(async move {
+                let mut eval = document::eval(&format!(
+                    "({})({id:?});",
+                    include_str!("../../../../assets/components/navigation/measure_cursor_menu.js")
+                ));
+                if let Ok([width, height, vp_width, vp_height]) = eval.recv::<[f64; 4]>().await
+                    && width > 0.0
+                    && height > 0.0
+                {
+                    placement.set(Some((
+                        cursor,
+                        cursor_placement(
+                            cursor,
+                            MenuSize { width, height },
+                            Viewport {
+                                width: vp_width,
+                                height: vp_height,
+                            },
+                        ),
+                    )));
+                }
+            });
+        }
+    }));
+    let measured = placement
+        .read()
+        .filter(|(cursor, _)| Some(*cursor) == open)
+        .map(|(_, position)| position);
+    (crate::components::behavior().overlays.focus)(
+        open.is_some(),
+        measured.is_some(),
+        menu_id.read().clone(),
+    );
+    let Some(_) = open else {
         return rsx! {};
     };
-
-    let menu_id_str = menu_id.read().clone();
-    let menu_id_for_keys = menu_id_str.clone();
-
-    let close = behavior.close;
-    let key = behavior.key;
-    let onkeydown = move |event| key.call((event, menu_id_for_keys.clone()));
-
-    let combined = merge_class("if-menu__list", "", class.as_deref());
-    let style = format!(
-        "position: fixed; left: {}px; top: {}px; z-index: 1001;",
-        coords.x, coords.y
-    );
-    let menu_id_for_caw = menu_id_str.clone();
-    let close_for_caw = close;
-
+    let id = menu_id.read().clone();
+    let key_id = id.clone();
+    let style = match measured {
+        Some(position) => format!(
+            "position: fixed; left: {}px; top: {}px; visibility: visible; z-index: var(--z-menu);",
+            position.left, position.top
+        ),
+        None => "position: fixed; left: 0; top: 0; visibility: hidden; z-index: var(--z-menu);"
+            .to_owned(),
+    };
+    let class = merge_class("if-menu__list", "", class.as_deref());
+    let onkeydown = move |event| behavior.key.call((event, key_id.clone()));
+    let onmounted = move |_| mounted.set(true);
     rsx! {
         Portal {
             ClickAwayListener {
-                target_id: menu_id_for_caw,
-                on_click_away: move |()| close_for_caw.call(CloseReason::ClickOutside),
+                target_id: id.clone(),
+                on_click_away: move |()| behavior.close.call(CloseReason::ClickOutside),
                 div {
-                    class: "{combined}",
-                    id: "{menu_id_str}",
+                    class,
+                    id,
                     role: "menu",
                     tabindex: "-1",
                     "aria-labelledby": aria_labelledby,
-                    style: "{style}",
+                    style,
                     onkeydown,
+                    onmounted,
                     {children}
                 }
             }
         }
     }
 }
+
+#[cfg(test)]
+#[path = "anchored_tests.rs"]
+mod tests;

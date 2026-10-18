@@ -19,7 +19,7 @@ fn duplicate_to_mode_delivers_actions_or_opens_current_collision() {
                 .set_mapping(&address(0), "Other", None, vec![]);
         }
         menu(&mut dom, "First");
-        click(&dom, "Other");
+        click(&dom, "Duplicate to mode Other");
         dom.render_immediate_to_vec();
         if collision {
             assert_eq!(*f.view.borrow().unwrap().editing_mode.peek(), "Other");
@@ -44,10 +44,10 @@ fn failed_duplicate_keeps_menu_and_exposes_feedback() {
     let (mut dom, _, rx) = mount();
     menu(&mut dom, "First");
     drop(rx);
-    click(&dom, "Other");
+    click(&dom, "Duplicate to mode Other");
     dom.render_immediate_to_vec();
     let html = dioxus_ssr::render(&dom);
-    assert!(html.contains("if-row-menu"));
+    assert!(html.contains("if-menu__list"));
     assert!(html.contains(r#"role="alert""#));
 }
 #[test]
@@ -229,10 +229,84 @@ fn an_open_menu_never_retargets_a_replaced_mapping_after_a_new_frame() {
     let next = inputforge_app::bridge::prepare(&f.state.read(), None).config;
     dom.in_runtime(|| f.config.borrow().unwrap().set(next));
     dom.render_immediate_to_vec();
-    click(&dom, "Other");
+    click(&dom, "Duplicate to mode Other");
     dom.render_immediate_to_vec();
     assert!(
         rx.try_recv().is_err(),
         "old menu must not target replacement mapping"
     );
+}
+
+#[test]
+fn adoption_rail_destinations_are_visible_named_grouped_actions() {
+    let (mut dom, _, _rx) = mount();
+    menu(&mut dom, "First");
+    let html = dioxus_ssr::render(&dom);
+    assert!(html.contains("if-menu__list"), "{html}");
+    assert!(
+        html.contains(r#"role="group" aria-label="Duplicate to mode""#)
+            || html.contains(r#"aria-label="Duplicate to mode""#),
+        "{html}"
+    );
+    assert!(html.contains("Duplicate to mode Other"), "{html}");
+    assert!(html.contains(r#"data-sortable-row="true""#), "{html}");
+}
+
+fn menu_key(dom: &VirtualDom, key: Key, code: Code) {
+    let elements = fixture::elements(dom, dom.base_scope().root_node(), "if-menu__list");
+    let id = *elements.first().expect("mounted shared rail menu");
+    dom.runtime().handle_event(
+        "keydown",
+        Event::new(
+            Rc::new(PlatformEventData::new(Box::new(
+                SerializedKeyboardData::new(
+                    key,
+                    code,
+                    Location::Standard,
+                    false,
+                    Modifiers::empty(),
+                    false,
+                ),
+            ))) as Rc<dyn std::any::Any>,
+            false,
+        ),
+        id,
+    );
+}
+
+#[test]
+fn adoption_grouped_menu_forwards_keyboard_and_acknowledges_focus_return() {
+    for rejected in [false, true] {
+        let document = Rc::new(document::Document::default());
+        let (mut dom, _, rx) =
+            fixture::mount_with_document(Rc::<document::Document>::clone(&document));
+        menu(&mut dom, "First");
+        menu_key(&dom, Key::ArrowDown, Code::ArrowDown);
+        assert!(document.menu_focus_requested("down"));
+        menu_key(&dom, Key::End, Code::End);
+        assert!(document.menu_focus_requested("last"));
+        let rx = if rejected {
+            drop(rx);
+            None
+        } else {
+            Some(rx)
+        };
+        click(&dom, "Duplicate to mode Other");
+        dom.render_immediate_to_vec();
+        let html = dioxus_ssr::render(&dom);
+        assert_eq!(html.contains("if-menu__list"), rejected, "{html}");
+        assert_eq!(document.row_focus_requests(), usize::from(!rejected));
+        if let Some(rx) = rx {
+            assert!(matches!(
+                rx.try_recv().unwrap(),
+                EngineCommand::SetMapping { .. }
+            ));
+        }
+        if rejected {
+            menu_key(&dom, Key::Escape, Code::Escape);
+            dom.render_immediate_to_vec();
+            assert!(!dioxus_ssr::render(&dom).contains("if-menu__list"));
+            assert_eq!(document.row_focus_requests(), 1);
+        }
+    }
 }

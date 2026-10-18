@@ -1,0 +1,15 @@
+.if-status-dot {
+    display: inline-block;
+    flex-shrink: 0;
+    width: var(--space-2);
+    height: var(--space-2);
+    border-radius: var(--radius-full);
+    border: 1px solid currentColor;
+    background: currentColor;
+}
+.if-status-dot--neutral { color: var(--color-text-subtle); }
+.if-status-dot--info { color: var(--color-info); }
+.if-status-dot--success { color: var(--color-live); }
+.if-status-dot--warning { color: var(--color-warning); }
+.if-status-dot--error { color: var(--color-error); }
+.if-status-dot--hollow { background: transparent; }

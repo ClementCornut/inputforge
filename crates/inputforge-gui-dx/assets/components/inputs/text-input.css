@@ -32,3 +32,18 @@
     box-shadow: inset 0 0 0 1px var(--color-border-focus);
     border-color: var(--color-border-focus);
 }
+
+.if-text-input.if-text-input--inline {
+    font-family: var(--font-sans);
+    background: var(--color-bg-sunken);
+}
+.if-text-input.if-text-input--title {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-base);
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+}

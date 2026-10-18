@@ -23,6 +23,9 @@
 //!
 
 use dioxus::prelude::*;
+#[path = "map_to_keyboard_dispatch.rs"]
+mod dispatch;
+use dispatch::{commit_capture_combo, dispatch_keyboard, format_key_combo, use_combo_sync};
 
 use inputforge_core::action::{Action, Mapping, OutputBehavior};
 use inputforge_core::types::KeyCombo;
@@ -31,9 +34,8 @@ use crate::components::{SegmentedControl, SegmentedControlOption};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::at_path;
+use crate::frame::mapping_editor::undo_log::StageId;
 use crate::frame::mapping_editor::undo_log::StageIdSegment;
-use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 use crate::keyboard_capture::Destination;
 use crate::patterns::keyboard_capture::{target, use_keyboard_capture};
 use inputforge_core::pipeline::ActionPathSegment;
@@ -121,11 +123,6 @@ pub(crate) fn MapToKeyboardBody(
     let key_label = format_key_combo(&current_combo);
     let capture_message = (*keyboard_capture.hint.read()).map(str::to_owned);
     let is_listening = *keyboard_capture.active.read();
-    let capture_class = if is_listening {
-        "if-key-capture__surface is-listening"
-    } else {
-        "if-key-capture__surface"
-    };
     let capture_aria_label = if is_listening {
         "Press keyboard shortcut"
     } else {
@@ -174,26 +171,26 @@ pub(crate) fn MapToKeyboardBody(
     rsx! {
         div { class: "if-stage__body-keyboard",
             div { class: "if-stage__body-field",
-                label { class: "if-stage__body-label", "Physical key" }
-                div { class: "if-key-capture",
-                    button {
-                        r#type: "button",
-                        class: "{capture_class}",
-                        "aria-label": "{capture_aria_label}",
-                        "data-key-capture": if is_listening { "active" } else { "idle" },
+                span { class: "if-stage__body-label", "Physical key" }
+                crate::components::Cluster {
+                    inline: true,
+                    nowrap: true,
+                    gap: "--space-2",
+                    crate::components::KeyCaptureButton {
+                        value: capture_text.to_owned(),
+                        aria_label: capture_aria_label,
+                        data_key_capture: if is_listening { "active" } else { "idle" },
+                        listening: is_listening,
+                        hint: capture_message,
                         onclick: on_capture_start,
-                        span { class: "if-key-capture__value", "{capture_text}" }
                     }
-                    if let Some(message) = capture_message {
-                        span { class: "if-key-capture__hint", "{message}" }
-                    }
-                    span { class: "if-key-capture__hint",
+                    crate::components::InlineFeedback {
                         "The desktop layout determines the character produced."
                     }
                 }
             }
             div { class: "if-stage__body-field",
-                label { class: "if-stage__body-label", "Behavior" }
+                span { class: "if-stage__body-label", "Behavior" }
                 SegmentedControl { aria_label: "Keyboard output behavior".to_owned(),
                     SegmentedControlOption {
                         value: "hold".to_owned(),
@@ -216,97 +213,6 @@ pub(crate) fn MapToKeyboardBody(
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
-
-fn use_combo_sync(combo: &KeyCombo, capturing: bool, local_combo: Signal<KeyCombo>) {
-    let previous = use_signal(|| combo.clone());
-    consume_context::<crate::mapping_edits::Bindings>()
-        .ui
-        .combo_sync
-        .call((combo.clone(), capturing, previous, local_combo));
-}
-
-fn format_key_combo(combo: &KeyCombo) -> String {
-    let mut parts: Vec<String> = combo
-        .modifiers
-        .iter()
-        .map(|modifier| modifier.display_label())
-        .map(str::to_owned)
-        .collect();
-    parts.push(combo.key.display_label().into_owned());
-    parts.join(" + ")
-}
-
-#[allow(
-    clippy::too_many_arguments,
-    reason = "Capture commit handling needs the same dispatch context as the field handlers."
-)]
-fn commit_capture_combo(
-    new_combo: KeyCombo,
-    behavior: OutputBehavior,
-    mut local_combo: Signal<KeyCombo>,
-    mapping_key: &MappingKey,
-    stage_id: &StageId,
-    root_actions: &[Action],
-    before: &Mapping,
-) {
-    if dispatch_keyboard(
-        new_combo.clone(),
-        behavior,
-        "key",
-        mapping_key,
-        stage_id,
-        root_actions,
-        before,
-    ) {
-        local_combo.set(new_combo);
-    }
-}
-
-/// Wire field values and their display label to app-owned dispatch and history.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "All arguments are logically distinct; grouping them into a struct \
-              would introduce indirection without simplifying call sites, which \
-              each already own the captured values independently."
-)]
-fn dispatch_keyboard(
-    new_combo: KeyCombo,
-    new_behavior: OutputBehavior,
-    field_label: &'static str,
-    mapping_key: &MappingKey,
-    stage_id: &StageId,
-    root_actions: &[Action],
-    before: &Mapping,
-) -> bool {
-    let Some(Action::MapToKeyboard { key, behavior }) = at_path(&before.actions, stage_id) else {
-        return false;
-    };
-    let (before_value, after_value) = if field_label == "key" {
-        (format_key_combo(key), format_key_combo(&new_combo))
-    } else {
-        (format!("{behavior:?}"), format!("{new_behavior:?}"))
-    };
-    let label = format_undo_label(
-        UndoKind::StageEdit,
-        LabelArgs {
-            stage_name: Some("Map to keyboard"),
-            field: Some(field_label),
-            before_after: Some((&before_value, &after_value)),
-            ..LabelArgs::default()
-        },
-    );
-    super::instruments::stage_dispatch::dispatch_field(
-        root_actions,
-        stage_id,
-        if field_label == "key" {
-            crate::mapping_edits::Field::Keyboard(new_combo)
-        } else {
-            crate::mapping_edits::Field::Behavior(new_behavior)
-        },
-        mapping_key,
-        label,
-    )
-}
 
 #[cfg(test)]
 mod tests {

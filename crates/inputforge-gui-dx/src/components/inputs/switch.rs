@@ -7,6 +7,11 @@ pub fn Switch(
     checked: ReadSignal<bool>,
     onchange: Option<EventHandler<FormEvent>>,
     #[props(default)] disabled: bool,
+    #[props(default)] aria_label: Option<String>,
+    #[props(default)] aria_labelledby: Option<String>,
+    #[props(default)] aria_describedby: Option<String>,
+    #[props(default)] aria_errormessage: Option<String>,
+    #[props(default)] invalid: bool,
     #[props(default)] id: Option<String>,
     #[props(default)] label: Option<String>,
     #[props(default)] class: Option<String>,
@@ -28,6 +33,11 @@ pub fn Switch(
                     id: "{id_val}",
                     checked: "{checked}",
                     disabled,
+                    "aria-label": aria_label.clone(),
+                    "aria-labelledby": aria_labelledby.clone(),
+                    "aria-describedby": aria_describedby.clone(),
+                    "aria-invalid": invalid.then_some("true"),
+                    "aria-errormessage": aria_errormessage.clone().filter(|_| invalid),
                     onchange: change_handler,
                 }
             } else {
@@ -36,6 +46,11 @@ pub fn Switch(
                     class: "if-switch__input",
                     checked: "{checked}",
                     disabled,
+                    "aria-label": aria_label.clone(),
+                    "aria-labelledby": aria_labelledby.clone(),
+                    "aria-describedby": aria_describedby.clone(),
+                    "aria-invalid": invalid.then_some("true"),
+                    "aria-errormessage": aria_errormessage.clone().filter(|_| invalid),
                     onchange: change_handler,
                 }
             }

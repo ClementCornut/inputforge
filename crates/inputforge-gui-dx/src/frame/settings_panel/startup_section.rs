@@ -1,6 +1,9 @@
 //! Startup settings render app-prepared switches.
-use super::{field_row::SettingsFieldRow, section::SettingsSection};
-use crate::{components::Switch, settings::Intent};
+use super::section::SettingsSection;
+use crate::{
+    components::{Field, Switch},
+    settings::Intent,
+};
 use dioxus::prelude::*;
 const LAUNCH_AT_STARTUP_ID: &str = "if-settings-startup-launch-at-startup";
 const START_MINIMIZED_ID: &str = "if-settings-startup-start-minimized";
@@ -18,29 +21,31 @@ pub(crate) fn StartupSection() -> Element {
     rsx! {
         SettingsSection {
             children: rsx! {
-                SettingsFieldRow {
+                Field {
+                    horizontal: true,
                     label: "Launch InputForge at startup".to_owned(),
                     helper: "Run automatically after sign-in.".to_owned(),
-                    control_id: LAUNCH_AT_STARTUP_ID.to_owned(),
-                    control: rsx! {
+                    for_id: LAUNCH_AT_STARTUP_ID.to_owned(),
+                    helper_id: format!("{}__helper", LAUNCH_AT_STARTUP_ID),
                         Switch {
                             id: Some(LAUNCH_AT_STARTUP_ID.to_owned()),
+                            aria_describedby: format!("{}__helper", LAUNCH_AT_STARTUP_ID),
                             checked: launch,
                             onchange: on_launch_change,
                         }
-                    },
                 }
-                SettingsFieldRow {
+                Field {
+                    horizontal: true,
                     label: "Start minimized to tray".to_owned(),
                     helper: "Open without showing the main window. Use the tray icon to bring it back.".to_owned(),
-                    control_id: START_MINIMIZED_ID.to_owned(),
-                    control: rsx! {
+                    for_id: START_MINIMIZED_ID.to_owned(),
+                    helper_id: format!("{}__helper", START_MINIMIZED_ID),
                         Switch {
                             id: Some(START_MINIMIZED_ID.to_owned()),
+                            aria_describedby: format!("{}__helper", START_MINIMIZED_ID),
                             checked: minimized,
                             onchange: on_start_min_change,
                         }
-                    },
                 }
             },
         }

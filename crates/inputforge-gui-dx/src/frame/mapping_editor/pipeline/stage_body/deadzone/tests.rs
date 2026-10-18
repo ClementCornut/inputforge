@@ -112,20 +112,43 @@ fn renders_toolbar_inputs() {
         }
     }
     let html = mount_stage_body_test(body);
+    assert!(html.contains(r#"-dz-low""#), "Low input id missing: {html}");
+    assert!(html.contains(r#"-dz-cl""#), "CL input id missing: {html}");
+    assert!(html.contains(r#"-dz-ch""#), "CH input id missing: {html}");
     assert!(
-        html.contains(r#"id="dz-low""#),
-        "Low input id missing: {html}"
-    );
-    assert!(
-        html.contains(r#"id="dz-cl""#),
-        "CL input id missing: {html}"
-    );
-    assert!(
-        html.contains(r#"id="dz-ch""#),
-        "CH input id missing: {html}"
-    );
-    assert!(
-        html.contains(r#"id="dz-high""#),
+        html.contains(r#"-dz-high""#),
         "High input id missing: {html}"
     );
+}
+
+#[test]
+fn adoption_two_expanded_deadzones_have_unique_associated_controls_and_named_plots() {
+    fn body() -> Element {
+        rsx! {
+            for index in 0..2 {
+                DeadzoneBody {
+                    mapping_key: ("default".to_owned(), InputAddress::Unbound),
+                    stage_id: StageId(vec![StageIdSegment::Index(index)]),
+                    config: DeadzoneConfig::default(),
+                    root_actions: vec![Action::Deadzone { config: DeadzoneConfig::default() }; 2],
+                }
+            }
+        }
+    }
+    let html = mount_stage_body_test(body);
+    let ids: Vec<_> = html
+        .split("id=\"")
+        .skip(1)
+        .map(|part| part.split('"').next().unwrap())
+        .collect();
+    let mut unique = std::collections::HashSet::new();
+    for id in ids {
+        assert!(unique.insert(id), "duplicate id {id}: {html}");
+    }
+    for label in html.split("for=\"").skip(1) {
+        let id = label.split('"').next().unwrap();
+        assert!(unique.contains(id), "label points to missing {id}: {html}");
+    }
+    assert_eq!(html.matches("if-plot-frame ").count(), 2, "{html}");
+    assert!(html.contains("aria-describedby="), "{html}");
 }

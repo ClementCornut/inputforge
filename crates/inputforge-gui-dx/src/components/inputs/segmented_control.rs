@@ -2,14 +2,14 @@ use dioxus::prelude::*;
 
 use crate::components::merge_class;
 
-/// Groups mutually exclusive pill options.
+/// Groups mutually exclusive options in equally sized segments.
 #[component]
 pub fn SegmentedControl(
     aria_label: String,
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
-    let combined = merge_class("if-stage__body-strategy", "", class.as_deref());
+    let combined = merge_class("if-segmented-control", "", class.as_deref());
     rsx! {
         div {
             class: "{combined}",
@@ -28,6 +28,7 @@ pub fn SegmentedControlOption(
     #[props(default)] disabled: bool,
     #[props(default)] tabindex: Option<String>,
     #[props(default)] data_strategy: Option<String>,
+    #[props(default)] aria_describedby: Option<String>,
     onclick: Option<EventHandler<MouseEvent>>,
     children: Element,
 ) -> Element {
@@ -47,11 +48,12 @@ pub fn SegmentedControlOption(
         rsx! {
             button {
                 r#type: "button",
-                class: "if-stage__body-strategy-pill",
+                class: "if-segmented-control__option",
                 "data-value": "{value}",
                 "data-strategy": "{strategy}",
                 "aria-pressed": "{aria_pressed}",
                 "aria-disabled": "{aria_disabled}",
+                "aria-describedby": aria_describedby,
                 tabindex: "{tabindex_value}",
                 onclick: click_handler,
                 {children}
@@ -61,10 +63,11 @@ pub fn SegmentedControlOption(
         rsx! {
             button {
                 r#type: "button",
-                class: "if-stage__body-strategy-pill",
+                class: "if-segmented-control__option",
                 "data-value": "{value}",
                 "aria-pressed": "{aria_pressed}",
                 "aria-disabled": "{aria_disabled}",
+                "aria-describedby": aria_describedby,
                 tabindex: "{tabindex_value}",
                 onclick: click_handler,
                 {children}
@@ -138,6 +141,49 @@ mod tests {
         assert!(
             pulse_slice.contains(r#"tabindex="-1""#),
             "disabled option must leave tab order: {pulse_slice}"
+        );
+    }
+    #[test]
+    fn option_description_reaches_each_native_option_branch() {
+        fn harness() -> Element {
+            rsx! {
+                SegmentedControl { aria_label: "Description forwarding",
+                    SegmentedControlOption {
+                        value: "hold",
+                        selected: true,
+                        data_strategy: "hold",
+                        aria_describedby: "hold-description",
+                        onclick: move |_| {},
+                        "Hold"
+                    }
+                    SegmentedControlOption {
+                        value: "pulse",
+                        selected: false,
+                        aria_describedby: "pulse-description",
+                        onclick: move |_| {},
+                        "Pulse"
+                    }
+                    SegmentedControlOption {
+                        value: "none",
+                        selected: false,
+                        onclick: move |_| {},
+                        "No description"
+                    }
+                }
+            }
+        }
+        let mut dom = VirtualDom::new(harness);
+        dom.rebuild_in_place();
+        let html = render(&dom);
+        let document = scraper::Html::parse_fragment(&html);
+        let buttons = scraper::Selector::parse("button[data-value]").unwrap();
+        let descriptions: Vec<_> = document
+            .select(&buttons)
+            .map(|button| button.value().attr("aria-describedby"))
+            .collect();
+        assert_eq!(
+            descriptions,
+            [Some("hold-description"), Some("pulse-description"), None]
         );
     }
 }

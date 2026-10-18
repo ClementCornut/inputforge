@@ -25,7 +25,7 @@ pub(crate) fn TopBar() -> Element {
         Stylesheet { href: TOP_BAR_CSS }
         div { class: "if-top-bar",
             EnginePill {}
-            div { class: "if-top-bar__divider" }
+            crate::components::Separator { orientation: crate::components::SeparatorOrientation::Vertical, decorative: true, strong: true, class: "if-top-bar__divider" }
             ProfileName {}
             PrimaryNav {}
             div { class: "if-top-bar__spacer" }

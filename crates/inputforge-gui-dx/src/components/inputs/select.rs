@@ -22,6 +22,11 @@ pub fn Select(
     onchange: Option<EventHandler<FormEvent>>,
     options: Vec<SelectOption>,
     #[props(default)] disabled: bool,
+    #[props(default)] aria_label: Option<String>,
+    #[props(default)] aria_labelledby: Option<String>,
+    #[props(default)] aria_describedby: Option<String>,
+    #[props(default)] aria_errormessage: Option<String>,
+    #[props(default)] invalid: bool,
     /// HTML `id` for label↔input coupling when wrapped in `Field`.
     #[props(default)]
     id: Option<String>,
@@ -53,6 +58,11 @@ pub fn Select(
                     id: "{id_val}",
                     value: "{selected_value}",
                     disabled,
+                    "aria-label": aria_label.clone(),
+                    "aria-labelledby": aria_labelledby.clone(),
+                    "aria-describedby": aria_describedby.clone(),
+                    "aria-invalid": invalid.then_some("true"),
+                    "aria-errormessage": aria_errormessage.clone().filter(|_| invalid),
                     onchange: change_handler,
                     for opt in options.iter() {
                         {render_option(opt, &selected_value)}
@@ -63,6 +73,11 @@ pub fn Select(
                     class: "{combined}",
                     value: "{selected_value}",
                     disabled,
+                    "aria-label": aria_label.clone(),
+                    "aria-labelledby": aria_labelledby.clone(),
+                    "aria-describedby": aria_describedby.clone(),
+                    "aria-invalid": invalid.then_some("true"),
+                    "aria-errormessage": aria_errormessage.clone().filter(|_| invalid),
                     onchange: change_handler,
                     for opt in options.iter() {
                         {render_option(opt, &selected_value)}

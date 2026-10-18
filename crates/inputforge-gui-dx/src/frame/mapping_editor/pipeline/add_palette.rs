@@ -24,6 +24,9 @@
 //! 5. App history is recorded only after successful dispatch.
 
 use dioxus::prelude::*;
+#[path = "palette_items.rs"]
+mod items;
+use items::{CONTROL_ITEMS, KeyboardCapturePrompt, OUTPUT_ITEMS, PROCESSING_ITEMS};
 
 use inputforge_core::action::Action;
 use inputforge_core::types::KeyCombo;
@@ -39,70 +42,6 @@ use crate::patterns::keyboard_capture::{target, use_keyboard_capture};
 
 use crate::icons::{Icon as IconKind, IconSize};
 use crate::mapping_edits::StageKind;
-
-struct PaletteItem {
-    label: &'static str,
-    kind: StageKind,
-}
-
-const PROCESSING_ITEMS: &[PaletteItem] = &[
-    PaletteItem {
-        label: "Invert",
-        kind: StageKind::Invert,
-    },
-    PaletteItem {
-        label: "Deadzone",
-        kind: StageKind::Deadzone,
-    },
-    PaletteItem {
-        label: "Response curve",
-        kind: StageKind::ResponseCurve,
-    },
-];
-
-const OUTPUT_ITEMS: &[PaletteItem] = &[
-    PaletteItem {
-        label: "Map to mouse",
-        kind: StageKind::Mouse,
-    },
-    PaletteItem {
-        label: "Merge axis",
-        kind: StageKind::MergeAxis,
-    },
-];
-
-const CONTROL_ITEMS: &[PaletteItem] = &[
-    PaletteItem {
-        label: "Conditional",
-        kind: StageKind::Conditional,
-    },
-    PaletteItem {
-        label: "Change mode",
-        kind: StageKind::ChangeMode,
-    },
-];
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
-#[component]
-fn KeyboardCapturePrompt(onclick: EventHandler<MouseEvent>) -> Element {
-    rsx! {
-        div { class: "if-key-capture", "aria-live": "polite",
-            button {
-                r#type: "button",
-                class: "if-key-capture__surface is-listening",
-                autofocus: true,
-                "aria-label": "Press the physical key or shortcut to map. Escape cancels.",
-                onclick,
-                span { class: "if-key-capture__value",
-                    "Press the physical key or shortcut to map. Esc cancels."
-                }
-            }
-        }
-    }
-}
 
 /// Categorized action add palette.
 ///
@@ -201,12 +140,6 @@ pub(crate) fn AddPalette(
         move |_: MouseEvent| insert.call(kind.clone())
     };
 
-    let trigger_class = if louder {
-        "if-add-palette__trigger if-add-palette__trigger--louder"
-    } else {
-        "if-add-palette__trigger"
-    };
-
     let compact_aria_label = if louder {
         None
     } else {
@@ -227,8 +160,10 @@ pub(crate) fn AddPalette(
     rsx! {
         MenuRoot { class: "if-add-palette if-menu--block".to_owned(),
             MenuTrigger {
-                class: trigger_class.to_owned(),
-                unstyled: true,
+                class: "if-add-palette__trigger",
+                presentation: crate::components::MenuTriggerPresentation::Create,
+                compact: !louder,
+                emphasized: louder,
                 aria_label: compact_aria_label,
                 if louder {
                     Icon { name: IconKind::Plus, size: IconSize::Sm }
@@ -242,7 +177,7 @@ pub(crate) fn AddPalette(
                     div { class: "if-add-palette__section-title", "Processing" }
                     for item in PROCESSING_ITEMS {
                         MenuItem {
-                            class: "if-add-palette__item".to_owned(),
+                            compact: true,
                             onactivate: make_insert_handler(item.kind.clone()),
                             "{item.label}"
                         }
@@ -251,13 +186,13 @@ pub(crate) fn AddPalette(
                 div { class: "if-add-palette__section is-output",
                     div { class: "if-add-palette__section-title", "Output" }
                     MenuItem {
-                        class: "if-add-palette__item".to_owned(),
+                        compact: true,
                         onactivate: make_insert_handler(StageKind::VirtualDevice),
                         "Map to virtual device"
                     }
                     MenuItem {
                         disabled: !availability.keyboard,
-                        class: "if-add-palette__item".to_owned(),
+                        compact: true,
                         onclick: start_keyboard_capture,
                         "Map to keyboard"
                     }
@@ -265,7 +200,7 @@ pub(crate) fn AddPalette(
                         MenuItem {
                             disabled: matches!(item.kind.clone(), StageKind::Mouse)
                                 && !availability.mouse,
-                            class: "if-add-palette__item".to_owned(),
+                            compact: true,
                             onactivate: make_insert_handler(item.kind.clone()),
                             "{item.label}"
                         }
@@ -275,19 +210,19 @@ pub(crate) fn AddPalette(
                     div { class: "if-add-palette__section-title", "Control" }
                     for item in CONTROL_ITEMS {
                         MenuItem {
-                            class: "if-add-palette__item".to_owned(),
+                            compact: true,
                             onactivate: make_insert_handler(item.kind.clone()),
                             "{item.label}"
                         }
                     }
                     if show_gestures {
                         MenuItem {
-                            class: "if-add-palette__item".to_owned(),
+                            compact: true,
                             onactivate: make_insert_handler(StageKind::Tap),
                             "Tap gesture"
                         }
                         MenuItem {
-                            class: "if-add-palette__item".to_owned(),
+                            compact: true,
                             onactivate: make_insert_handler(StageKind::Press),
                             "Press gesture"
                         }

@@ -2,6 +2,7 @@ mod logic;
 
 use dioxus::prelude::*;
 
+use crate::components::{Button, ButtonPresentation, ButtonSize, ButtonVariant};
 use crate::context::AppContext;
 use crate::frame::view_state::{PanelSlot, ViewState};
 
@@ -75,12 +76,13 @@ fn ToolButton(
 ) -> Element {
     let show_reason = disabled && !disabled_reason.is_empty();
     rsx! {
-        button {
-            r#type: "button",
-            class: "if-tools-cluster__button",
+        Button {
+            variant: ButtonVariant::Ghost,
+            presentation: ButtonPresentation::Compact,
+            size: ButtonSize::Sm,
             disabled,
-            "aria-pressed": "{active}",
-            title: if show_reason { disabled_reason.clone() } else { String::new() },
+            aria_pressed: active,
+            title: show_reason.then(|| disabled_reason.clone()),
             onclick,
             "{label}"
         }

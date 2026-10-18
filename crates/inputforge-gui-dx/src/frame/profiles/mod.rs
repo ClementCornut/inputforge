@@ -15,7 +15,8 @@ pub(crate) mod open_choice_submode;
 mod row;
 mod snapshot_confirm;
 pub(crate) mod snapshot_drawer;
-const PROFILES_CSS: Asset = asset!("/assets/frame/profiles.css");
+mod snapshot_row;
+mod source_options;
 
 /// Unit fixtures use the real app host, while desktop hosts supply bindings.
 pub(crate) fn use_bindings() -> Bindings {
@@ -55,9 +56,6 @@ pub(crate) fn ProfilesPanel() -> Element {
     let has_profile = meta.profile_name.is_some();
     let snapshot_count = meta.snapshot_rows.len();
     rsx! {
-        Stylesheet {
-            href: PROFILES_CSS,
-        }
         section {
             class: "profiles-panel",
             "data-testid": "profile-library",
@@ -77,11 +75,7 @@ pub(crate) fn ProfilesPanel() -> Element {
                 }
             }
             if let Some(error) = library_error {
-                div {
-                    class: "profiles-panel__submode-error",
-                    role: "alert",
-                    "{error}"
-                }
+                crate::components::InlineFeedback { tone: crate::components::FeedbackTone::Error, alert: true, "{error}" }
             }
             if has_profile {
                 SnapshotDrawer {}

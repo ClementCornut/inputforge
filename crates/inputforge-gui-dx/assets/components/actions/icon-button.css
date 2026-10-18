@@ -83,3 +83,11 @@
     transform: translateY(2px);
   }
 }
+
+.if-icon-button--ghost-danger,
+.if-icon-button--ghost-primary { background: transparent; border-color: transparent; }
+.if-icon-button--ghost-danger { color: var(--color-error-hover); }
+.if-icon-button--ghost-primary { color: var(--color-primary); }
+.if-icon-button--ghost-danger:hover:not(:disabled) { background: var(--color-error-bg); }
+.if-icon-button--ghost-primary:hover:not(:disabled) { background: var(--color-info-bg); }
+.if-icon-button[aria-pressed="true"] { color: var(--color-primary); border-color: var(--color-primary); background: var(--color-info-bg); }

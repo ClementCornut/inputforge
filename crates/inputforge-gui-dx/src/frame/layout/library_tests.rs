@@ -192,7 +192,7 @@ fn no_profile_navigation_lists_filters_and_opens_existing_library_profiles() {
         &dom,
         dom.base_scope().root_node(),
         "class",
-        "profile-row--create",
+        "if-button--create",
     )
     .unwrap();
     mouse(&dom, id);

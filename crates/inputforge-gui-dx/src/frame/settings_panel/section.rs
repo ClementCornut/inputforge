@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 pub(crate) fn SettingsSection(children: Element) -> Element {
     rsx! {
         section { class: "if-settings-section",
-            div { class: "if-settings-section__body", {children} }
+            {children}
         }
     }
 }
@@ -37,7 +37,7 @@ mod tests {
         let html = render(&vdom);
         assert!(html.contains("body content"), "expected body, got: {html}");
         assert!(
-            html.contains("if-settings-section__body"),
+            html.contains("if-settings-section"),
             "expected body class, got: {html}"
         );
         assert!(!html.contains("<h3"), "must not render any heading");

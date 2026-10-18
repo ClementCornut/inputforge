@@ -2,7 +2,6 @@
 
 use dioxus::prelude::*;
 
-mod field_row;
 mod gestures_section;
 mod prune_confirm;
 mod section;
@@ -13,8 +12,6 @@ pub(crate) use gestures_section::GesturesSection;
 pub(crate) use snapshots_section::SnapshotsSection;
 pub(crate) use startup_section::StartupSection;
 
-const SETTINGS_PANEL_CSS: Asset = asset!("/assets/frame/settings_panel.css");
-
 #[component]
 pub(crate) fn SettingsPanel() -> Element {
     tracing::trace!(target: "frame::render", region = "settings_panel");
@@ -22,9 +19,8 @@ pub(crate) fn SettingsPanel() -> Element {
     use_context_provider(|| c);
     let error = c.view.read().error.clone();
     rsx! {
-        Stylesheet { href: SETTINGS_PANEL_CSS }
         div { class: "if-settings-panel",
-            if let Some(error) = error { div { role: "alert", "{error}" } }
+            if let Some(error) = error { crate::components::InlineFeedback { tone: crate::components::FeedbackTone::Error, alert: true, "{error}" } }
             StartupSection {}
             GesturesSection {}
             SnapshotsSection {}

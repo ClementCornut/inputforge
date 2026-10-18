@@ -1,6 +1,7 @@
 //! Engine status presentation with app-owned routing actions.
 mod logic;
 use crate::{
+    components::{ActionTone, BadgeVariant, Button, ButtonPresentation, ButtonVariant, StatusDot},
     context::AppContext,
     routing::{Action, Context},
 };
@@ -8,10 +9,6 @@ use dioxus::prelude::*;
 use logic::{Variant, engine_pill_state};
 
 #[component]
-#[expect(
-    unused_qualifications,
-    reason = "Dioxus event attributes produce redundant qualifications"
-)]
 pub(crate) fn EnginePill() -> Element {
     tracing::trace!(target: "frame::render", region = "engine_pill");
     let ctx = use_context::<AppContext>();
@@ -19,10 +16,10 @@ pub(crate) fn EnginePill() -> Element {
     let status = use_memo(move || ctx.meta.read().engine_status);
     let (variant, label) = engine_pill_state(*status.read());
     let action = routing.view.read().toggle;
-    let class = format!("if-engine-pill if-engine-pill--{}", variant.class_suffix());
-    let aria_pressed = match variant {
-        Variant::Live => "true",
-        Variant::Warning | Variant::Error => "false",
+    let (tone, dot) = match variant {
+        Variant::Live => (ActionTone::Live, BadgeVariant::Success),
+        Variant::Warning => (ActionTone::Warning, BadgeVariant::Warning),
+        Variant::Error => (ActionTone::Error, BadgeVariant::Error),
     };
     let action_verb = match action {
         Some(Action::Start) => "Start routing",
@@ -34,15 +31,15 @@ pub(crate) fn EnginePill() -> Element {
     };
     let live_text = format!("Engine {}", label.to_lowercase());
     rsx! {
-        button {
-            r#type: "button",
-            class: "{class}",
+        Button {
+            variant: ButtonVariant::Ghost,
+            presentation: ButtonPresentation::Status, tone, class: "if-engine-pill",
             disabled: action.is_none(),
             title: action_verb,
-            "aria-label": action_verb,
-            "aria-pressed": aria_pressed,
+            aria_label: action_verb,
+            aria_pressed: variant == Variant::Live,
             onclick: move |_| { if let Some(action) = action { routing.dispatch.call(action); } },
-            span { class: "if-engine-pill__dot", "aria-hidden": "true" }
+            StatusDot { variant: dot, hollow: variant != Variant::Live }
             span { class: "if-engine-pill__label", "aria-hidden": "true", "{label}" }
         }
         span { class: "if-sr-only", role: "status", "aria-live": "polite", "{live_text}" }

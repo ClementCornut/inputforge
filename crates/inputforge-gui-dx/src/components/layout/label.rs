@@ -5,6 +5,7 @@ use crate::components::merge_class;
 #[component]
 pub fn Label(
     for_id: Option<String>,
+    #[props(default)] id: Option<String>,
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
@@ -14,12 +15,14 @@ pub fn Label(
         if let Some(ref for_val) = for_id {
             label {
                 class: "{combined}",
+                id: id.clone(),
                 r#for: "{for_val}",
                 {children}
             }
         } else {
             label {
                 class: "{combined}",
+                id: id.clone(),
                 {children}
             }
         }

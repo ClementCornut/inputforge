@@ -185,3 +185,63 @@ fn rendered_controls_forward_app_intents_without_engine_dispatch_or_parsing() {
     );
     assert_eq!(receiver.try_recv().unwrap_err(), mpsc::TryRecvError::Empty);
 }
+
+#[test]
+fn adoption_native_number_changes_keep_raw_values_and_native_change_timing() {
+    set_event_converter(Box::new(SerializedHtmlEventConverter));
+    let actions = Rc::new(RefCell::new(Vec::<Action>::new()));
+    let (commands, _) = mpsc::channel::<inputforge_core::engine::EngineCommand>();
+    let mut dom = VirtualDom::new(harness);
+    dom.provide_root_context(Rc::clone(&actions));
+    dom.provide_root_context(commands);
+    let mounted = dom.rebuild_to_vec();
+    let id = mounted
+        .edits
+        .iter()
+        .find_map(|edit| match edit {
+            Mutation::SetAttribute {
+                name: "aria-label",
+                value: dioxus::core::AttributeValue::Text(value),
+                id,
+                ..
+            } if value == "Buttons for virtual controller 3" => Some(*id),
+            _ => None,
+        })
+        .unwrap();
+    for raw in [
+        "",
+        "not-a-number",
+        "999999999999999999999999999999999999",
+        "-1",
+        "2.5",
+    ] {
+        let send = |name| {
+            dom.runtime().handle_event(
+                name,
+                Event::new(
+                    Rc::new(PlatformEventData::new(Box::new(SerializedFormData::new(
+                        raw.into(),
+                        vec![],
+                    )))) as Rc<dyn std::any::Any>,
+                    false,
+                ),
+                id,
+            );
+        };
+        let before = actions.borrow().len();
+        send("input");
+        assert_eq!(
+            actions.borrow().len(),
+            before,
+            "native input must not commit"
+        );
+        send("change");
+        assert_eq!(
+            actions.borrow().last(),
+            Some(&Action::Buttons {
+                slot: 3,
+                value: raw.into()
+            })
+        );
+    }
+}

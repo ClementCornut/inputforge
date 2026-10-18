@@ -1,0 +1,64 @@
+.if-segmented-control {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: stretch;
+  width: max-content;
+  max-width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-sunken);
+  min-height: var(--space-8);
+}
+
+/* Tooltip-wrapped options occupy the same segment as direct options. */
+.if-segmented-control > .if-tooltip {
+  min-width: 0;
+}
+
+.if-segmented-control__option {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--leading-base);
+  cursor: pointer;
+  /* Segmented toggle: instant state swap, no easing. */
+  transition: none;
+}
+
+.if-segmented-control__option:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.if-segmented-control__option:hover:not([aria-disabled="true"]) {
+  color: var(--color-text);
+}
+
+.if-segmented-control__option[aria-pressed="true"] {
+  color: var(--color-control-badge-text);
+  background: var(--color-control-bg);
+}
+
+.if-segmented-control__option[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Selected-but-disabled (Hold persisted then primary rebound to non-button).
+   Per DESIGN.md §7 Tabs disabled-active rule: keep the tint but desaturate. */
+.if-segmented-control__option[aria-pressed="true"][aria-disabled="true"] {
+  color: var(--color-control-badge-text);
+  background: var(--color-control-bg);
+  opacity: 0.5;
+}

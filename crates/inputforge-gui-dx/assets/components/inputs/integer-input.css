@@ -39,3 +39,6 @@
 .if-integer-input--inset .if-integer-input__field:focus {
   outline-offset: -1px;
 }
+
+.if-integer-input--invalid { border-color: var(--color-error); }
+.if-integer-input--invalid .if-integer-input__field:focus { outline-color: var(--color-error); }

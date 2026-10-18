@@ -48,7 +48,7 @@ use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
 use crate::frame::mapping_list::source_label;
-use crate::patterns::live_capture::{CAPTURE_PROMPT, rebind_composite_class, use_capture};
+use crate::patterns::live_capture::{CAPTURE_PROMPT, use_capture};
 
 /// Convert a [`MergeOp`] to its stable string key used as the Select value.
 const fn op_to_str(op: MergeOp) -> &'static str {
@@ -221,45 +221,32 @@ pub(crate) fn MergeAxisBody(
     // muted/italic when the secondary input is `Unbound`, and flips to the
     // listening treatment while this component owns a capture.
     let is_secondary_listening = *capture.listening.read();
-    let composite_class = rebind_composite_class(&second_input, is_secondary_listening);
 
+    let field_prefix =
+        use_hook(|| format!("if-stage-field-{}", dioxus::core::current_scope_id().0));
     rsx! {
         div { class: "if-stage__body-merge-axis",
             div { class: "if-stage__body-field",
-                label { class: "if-stage__body-label", "Operation" }
+                crate::components::Label { for_id: format!("{field_prefix}-merge"), "Operation" }
                 Select {
+                    aria_label: "Merge operation",
+                    id: format!("{field_prefix}-merge"),
                     value: op_value,
                     options: op_options,
                     onchange: on_op_change,
                 }
             }
             div { class: "if-stage__body-field",
-                label { class: "if-stage__body-label", "Secondary input" }
-                div { class: "{composite_class}",
-                    if is_secondary_listening {
-                        span {
-                            class: "if-rebind-composite__listening",
-                            role: "status",
-                            "aria-live": "polite",
-                            "{CAPTURE_PROMPT}"
-                        }
-                        button {
-                            class: "if-rebind-composite__action",
-                            r#type: "button",
-                            "aria-label": "Cancel secondary input capture",
-                            onclick: on_cancel_rebind,
-                            "Cancel"
-                        }
-                    } else {
-                        span { class: "if-rebind-composite__label", "{secondary_label}" }
-                        button {
-                            class: "if-rebind-composite__action",
-                            r#type: "button",
-                            "aria-label": "Rebind secondary input",
-                            onclick: on_rebind,
-                            "rebind"
-                        }
-                    }
+                span { class: "if-stage__body-label", "Secondary input" }
+                crate::components::RebindField {
+                    source_label: secondary_label,
+                    listening: is_secondary_listening,
+                    unbound: matches!(second_input, InputAddress::Unbound),
+                    prompt: CAPTURE_PROMPT,
+                    action_label: "Rebind secondary input",
+                    cancel_label: "Cancel secondary input capture",
+                    onclick: on_rebind,
+                    oncancel: on_cancel_rebind,
                 }
             }
         }

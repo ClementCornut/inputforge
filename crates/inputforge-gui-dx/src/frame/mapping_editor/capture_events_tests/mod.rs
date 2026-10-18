@@ -3,7 +3,7 @@ mod fixture;
 mod rail;
 mod rename;
 use dioxus::{
-    core::{DynamicNode, ElementId, TemplateAttribute, TemplateNode},
+    core::{AttributeValue, DynamicNode, ElementId, TemplateAttribute, TemplateNode},
     html::SerializedHtmlEventConverter,
     prelude::*,
 };
@@ -26,9 +26,13 @@ fn element(dom: &VirtualDom, node: &VNode, label: &str) -> Option<ElementId> {
                 element = &children[usize::from(*offset)];
             }
         }
-        if let TemplateNode::Element { attrs, .. } = element
-            && attrs.iter().any(|attr| matches!(attr, TemplateAttribute::Static { name: "aria-label", value, .. } if *value == label)) {
-            return node.mounted_dynamic_attribute(index, dom);
+        let named = matches!(element, TemplateNode::Element { attrs, .. } if attrs.iter().any(|attr| matches!(attr, TemplateAttribute::Static { name: "aria-label", value, .. } if *value == label)))
+            || node.dynamic_attrs[index].iter().any(|attr| {
+                attr.name == "aria-label"
+                    && matches!(&attr.value, AttributeValue::Text(value) if value == label)
+            });
+        if named && let Some(id) = node.mounted_dynamic_attribute(index, dom) {
+            return Some(id);
         }
     }
     for (index, child) in node.dynamic_nodes.iter().enumerate() {

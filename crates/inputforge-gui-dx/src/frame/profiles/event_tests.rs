@@ -78,14 +78,44 @@ pub(super) fn listeners(
         }
     }
 }
+fn named_control(dom: &VirtualDom, node: &VNode, name: &str) -> Option<dioxus::core::ElementId> {
+    use dioxus::core::{AttributeValue, DynamicNode};
+    for (index, attributes) in node.dynamic_attrs.iter().enumerate() {
+        if attributes.iter().any(|attribute| {
+            matches!(attribute.name, "id" | "aria-label")
+                && matches!(&attribute.value, AttributeValue::Text(value) if value == name)
+        }) && let Some(id) = node.mounted_dynamic_attribute(index, dom)
+        {
+            return Some(id);
+        }
+    }
+    node.dynamic_nodes
+        .iter()
+        .enumerate()
+        .find_map(|(index, child)| match child {
+            DynamicNode::Component(component) => component
+                .mounted_scope(index, node, dom)
+                .and_then(|scope| named_control(dom, scope.root_node(), name)),
+            DynamicNode::Fragment(nodes) => nodes
+                .iter()
+                .find_map(|child| named_control(dom, child, name)),
+            _ => None,
+        })
+}
+
+fn profile_name_input(dom: &VirtualDom) -> dioxus::core::ElementId {
+    named_control(dom, dom.base_scope().root_node(), "Profile name")
+        .expect("named profile rename input")
+}
+
 #[test]
 fn failed_create_keeps_text_and_renders_alert_through_real_handlers() {
     set_event_converter(Box::new(dioxus::html::SerializedHtmlEventConverter));
     let mut dom = VirtualDom::new(root);
     dom.rebuild_in_place();
-    let mut ids = vec![];
-    listeners(&dom, dom.base_scope().root_node(), "input", &mut ids);
-    for raw in ["R", "Retain", "Retain this profile"] {
+    let name_id = named_control(&dom, dom.base_scope().root_node(), "new-profile-name")
+        .expect("labelled new-profile text input");
+    for raw in ["R", "Retain", "Retain this profile été 🕹"] {
         dom.runtime().handle_event(
             "input",
             Event::new(
@@ -95,14 +125,14 @@ fn failed_create_keeps_text_and_renders_alert_through_real_handlers() {
                 )))) as Rc<dyn std::any::Any>,
                 false,
             ),
-            ids[0],
+            name_id,
         );
     }
     let mutations = dom.render_immediate_to_vec();
     assert!(
         !mutations.edits.iter().any(|edit| matches!(
             edit,
-            dioxus::core::Mutation::SetAttribute { name: "value", .. }
+            dioxus::core::Mutation::SetAttribute { name: "value", id, .. } if *id == name_id
         )),
         "profile typing echoed old native text: {:?}",
         mutations.edits
@@ -121,7 +151,7 @@ fn failed_create_keeps_text_and_renders_alert_through_real_handlers() {
     );
     dom.render_immediate_to_vec();
     let html = dioxus_ssr::render(&dom);
-    assert!(html.contains("Retain this profile"), "{html}");
+    assert!(html.contains("Retain this profile été 🕹"), "{html}");
     assert!(html.contains("role=\"alert\""), "{html}");
 }
 
@@ -175,8 +205,6 @@ fn row_root() -> Element {
     rsx! {super::ProfilesPanel {}}
 }
 fn keyboard(dom: &VirtualDom, key: Key, code: Code) {
-    let mut ids = vec![];
-    listeners(dom, dom.base_scope().root_node(), "keydown", &mut ids);
     let data = SerializedKeyboardData::new(
         key,
         code,
@@ -191,7 +219,7 @@ fn keyboard(dom: &VirtualDom, key: Key, code: Code) {
             Rc::new(PlatformEventData::new(Box::new(data))) as Rc<dyn std::any::Any>,
             false,
         ),
-        ids[1],
+        profile_name_input(dom),
     );
 }
 #[test]
@@ -222,8 +250,6 @@ fn failed_inline_rename_keeps_draft_after_same_path_replacement_and_escape_cance
     let mut dom = VirtualDom::new(row_root);
     dom.provide_root_context(Rc::clone(&f));
     dom.rebuild_in_place();
-    let mut ids = vec![];
-    listeners(&dom, dom.base_scope().root_node(), "input", &mut ids);
     dom.runtime().handle_event(
         "input",
         Event::new(
@@ -233,7 +259,7 @@ fn failed_inline_rename_keeps_draft_after_same_path_replacement_and_escape_cance
             )))) as Rc<dyn std::any::Any>,
             false,
         ),
-        ids[1],
+        profile_name_input(&dom),
     );
     dom.render_immediate_to_vec();
     keyboard(&dom, Key::Enter, Code::Enter);
@@ -249,9 +275,16 @@ fn failed_inline_rename_keeps_draft_after_same_path_replacement_and_escape_cance
         .refresh(f.owner.get());
     dom.render_immediate_to_vec();
     let html = dioxus_ssr::render(&dom);
-    assert!(html.contains("value=\"Retain rename\""), "{html}");
-    let mut ids = vec![];
-    listeners(&dom, dom.base_scope().root_node(), "blur", &mut ids);
+    let document = scraper::Html::parse_fragment(&html);
+    let rename = document
+        .select(&scraper::Selector::parse("input[aria-label='Profile name']").unwrap())
+        .next()
+        .unwrap();
+    assert_eq!(rename.value().attr("initial_value"), Some("Retain rename"));
+    assert!(
+        rename.value().attr("value").is_none(),
+        "rename must keep native draft ownership"
+    );
     dom.runtime().handle_event(
         "blur",
         Event::new(
@@ -259,7 +292,7 @@ fn failed_inline_rename_keeps_draft_after_same_path_replacement_and_escape_cance
                 as Rc<dyn std::any::Any>,
             false,
         ),
-        ids[1],
+        profile_name_input(&dom),
     );
     dom.render_immediate_to_vec();
     assert!(f.view.borrow().unwrap().peek().rename.is_some());

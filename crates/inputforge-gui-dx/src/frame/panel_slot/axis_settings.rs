@@ -1,6 +1,6 @@
 //! Render prepared global axis settings and wire app-owned callbacks.
 use crate::{
-    components::{Button, ButtonSize, ButtonVariant, Select, SelectOption},
+    components::{Button, ButtonSize, ButtonVariant, Disclosure, Field, Select, SelectOption},
     context::AppContext,
     controllers::{Action, Context},
     frame::mapping_list::source_label,
@@ -15,8 +15,8 @@ pub(super) fn AxisSettings() -> Element {
     let rows = controllers.view.read().axes.clone();
     let config = ctx.config.read();
     rsx! {
-        details {
-            summary { "Advanced axis settings" }
+        Disclosure {
+            summary: rsx! { "Advanced axis settings" },
             p { "Leave each axis at rest for automatic detection. These settings apply across profiles." }
             for row in rows {
                 { let label = source_label::format(&InputAddress::Bound { device: row.device.clone(), input: InputId::Axis { index: row.index } }, &config);
@@ -34,7 +34,7 @@ pub(super) fn AxisSettings() -> Element {
                   let dispatch = controllers.dispatch;
                   rsx! {
                     div { class: "if-controller-session__slot",
-                        label { "{label}"
+                        Field { label: label.clone(), for_id: format!("axis-polarity-{}-{}-{}", row.device.0, row.index, row.code),
                             Select {
                                 id: format!("axis-polarity-{}-{}-{}", row.device.0, row.index, row.code),
                                 value: value.to_owned(), disabled: !row.can_override,

@@ -29,6 +29,7 @@ use crate::context::{
 };
 use crate::frame::mapping_editor::{EditorState, MappingEditor, use_editor_state_provider};
 use crate::frame::view_state::use_view_state_provider;
+use crate::patterns::keyboard_capture::use_keyboard_capture_provider;
 use crate::patterns::live_capture::use_live_capture_provider;
 
 // ---------------------------------------------------------------------------
@@ -591,6 +592,7 @@ fn HarnessComponent(props: HarnessProps) -> Element {
         .replace(("Default".to_owned(), addr));
     use_context_provider(|| view);
     use_live_capture_provider();
+    use_keyboard_capture_provider();
     use_editor_state_provider();
     inputforge_app::notifications::use_provider();
     crate::routing::provide_fixture(crate::routing::View::default());
@@ -866,6 +868,7 @@ fn harness() -> Element {
     let view = use_view_state_provider(meta);
     use_context_provider(|| view);
     use_live_capture_provider();
+    use_keyboard_capture_provider();
     use_editor_state_provider();
     inputforge_app::notifications::use_provider();
 
@@ -944,6 +947,7 @@ fn editor_state_provider_mounts_and_reads_via_use_context() {
         use_context_provider(|| ctx);
 
         use_live_capture_provider();
+        use_keyboard_capture_provider();
         use_editor_state_provider();
         rsx! { Child {} }
     }
@@ -996,6 +1000,7 @@ fn stopped_routing_keeps_input_monitoring_available() {
         let view = use_view_state_provider(meta);
         use_context_provider(|| view);
         use_live_capture_provider();
+        use_keyboard_capture_provider();
         use_editor_state_provider();
         inputforge_app::notifications::use_provider();
         crate::routing::provide_fixture(crate::routing::View::default());
@@ -1153,6 +1158,7 @@ fn editor_undo_recap_shows_label_and_kbd_hint() {
             .replace(("Default".to_owned(), addr.clone()));
         use_context_provider(|| view);
         use_live_capture_provider();
+        use_keyboard_capture_provider();
 
         // Install EditorState and immediately seed one undo entry so that
         // UndoRecap has a label to display.
@@ -1353,7 +1359,7 @@ fn editor_live_readout_button_mapping_uses_binary_in_and_out_rows() {
 
     assert!(html.contains("Pressed"), "pressed button state: {html}");
     assert!(
-        html.contains("if-editor__readout-button-pill--live"),
+        (count_readout_elements(&html, ".if-editor__readout-button-cell .if-badge--success") > 0),
         "pressed buttons need the live state treatment: {html}"
     );
 }
@@ -1402,7 +1408,7 @@ fn editor_live_readout_tap_gesture_vjoy_button_uses_latched_activity() {
 
     assert!(html.contains("Pressed"), "latched gesture output: {html}");
     assert!(
-        html.contains("if-editor__readout-button-pill--live"),
+        (count_readout_elements(&html, ".if-editor__readout-button-cell .if-badge--success") > 0),
         "latched vJoy button should use live styling: {html}"
     );
     assert!(
@@ -1450,7 +1456,7 @@ fn editor_live_readout_tap_gesture_mouse_button_uses_latched_activity() {
 
     assert!(html.contains("Pressed"), "latched mouse output: {html}");
     assert!(
-        html.contains("if-editor__readout-button-pill--live"),
+        (count_readout_elements(&html, ".if-editor__readout-button-cell .if-badge--success") > 0),
         "latched mouse button should use live styling: {html}"
     );
 }
@@ -1497,7 +1503,7 @@ fn editor_live_readout_tap_gesture_keyboard_uses_latched_activity() {
     let html = render(&vdom);
 
     assert!(
-        html.contains("if-editor__readout-kb-chip--live"),
+        (count_readout_elements(&html, ".if-editor__readout-kb-cell .if-badge--success") > 0),
         "latched keyboard output should use live styling: {html}"
     );
 }
@@ -1746,10 +1752,7 @@ fn editor_live_readout_composite_all_predicate_renders_two_chips_and_and_combine
         &[],
     );
     assert_eq!(
-        count_substring(
-            &html,
-            "if-editor__readout-chip if-editor__readout-chip--live"
-        ),
+        count_readout_elements(&html, ".if-editor__readout-chips .if-badge--success"),
         2
     );
     assert_eq!(
@@ -1854,7 +1857,7 @@ fn editor_live_readout_hat_direction_predicate_chip_glyphs() {
 
     assert!(html.contains("\u{2191}"));
     assert!(html.contains("\u{2197}"));
-    assert!(html.contains("if-editor__readout-chip--live"));
+    assert!((count_readout_elements(&html, ".if-editor__readout-chips .if-badge--success") > 0));
 }
 
 #[test]
@@ -1873,7 +1876,7 @@ fn editor_live_readout_button_released_chip_suffix_and_inverted_dot() {
         &[],
     );
     assert!(html.contains("(released)"));
-    assert!(html.contains("if-editor__readout-chip--live"));
+    assert!((count_readout_elements(&html, ".if-editor__readout-chips .if-badge--success") > 0));
 
     let html = render_with_pipeline(
         &actions,
@@ -1882,7 +1885,9 @@ fn editor_live_readout_button_released_chip_suffix_and_inverted_dot() {
         &[],
     );
     assert!(html.contains("(released)"));
-    assert!(html.contains("if-editor__readout-chip-dot--hollow"));
+    assert!(
+        (count_readout_elements(&html, ".if-editor__readout-chips .if-status-dot--hollow") > 0)
+    );
 }
 
 #[test]
@@ -1939,7 +1944,7 @@ fn editor_live_readout_axis_in_range_chip_live_dot_when_in_range() {
         &[],
     );
     assert!(html.contains("[0.20..0.80]"));
-    assert!(html.contains("if-editor__readout-chip--live"));
+    assert!((count_readout_elements(&html, ".if-editor__readout-chips .if-badge--success") > 0));
 
     let html = render_with_pipeline(
         &actions,
@@ -1950,7 +1955,9 @@ fn editor_live_readout_axis_in_range_chip_live_dot_when_in_range() {
         &[],
         &[],
     );
-    assert!(html.contains("if-editor__readout-chip-dot--hollow"));
+    assert!(
+        (count_readout_elements(&html, ".if-editor__readout-chips .if-status-dot--hollow") > 0)
+    );
 }
 
 #[test]
@@ -2069,7 +2076,7 @@ fn editor_live_readout_keyboard_active_renders_live_chip() {
         &[],
     );
 
-    assert!(html.contains("if-editor__readout-kb-chip--live"));
+    assert!((count_readout_elements(&html, ".if-editor__readout-kb-cell .if-badge--success") > 0));
     assert!(html.contains("Ctrl + Space"));
 }
 
@@ -2096,7 +2103,7 @@ fn editor_live_readout_keyboard_active_below_threshold_renders_idle_chip() {
         &[],
     );
 
-    assert!(html.contains("if-editor__readout-kb-chip--idle"));
+    assert!((count_readout_elements(&html, ".if-editor__readout-kb-cell .if-badge--neutral") > 0));
     assert!(!html.contains(super::live_readout::FROZEN_ROW_CLASS));
 }
 
@@ -2123,7 +2130,7 @@ fn editor_live_readout_keyboard_inactive_renders_idle_chip() {
         &[],
     );
 
-    assert!(html.contains("if-editor__readout-kb-chip--idle"));
+    assert!((count_readout_elements(&html, ".if-editor__readout-kb-cell .if-badge--neutral") > 0));
     assert!(html.contains(super::live_readout::FROZEN_ROW_CLASS));
 }
 
@@ -2148,7 +2155,7 @@ fn editor_live_readout_predicate_chip_button_pressed_renders_live() {
         "expected predicate section label; got: {html}"
     );
     assert!(
-        html.contains("if-editor__readout-chip--live"),
+        (count_readout_elements(&html, ".if-editor__readout-chips .if-badge--success") > 0),
         "expected live predicate chip; got: {html}"
     );
     assert!(
@@ -2570,4 +2577,11 @@ fn stage_summary_mouse_wheel_omits_behavior() {
         !html.contains("Wheel up - Pulse"),
         "wheel summary should omit behavior: {html}"
     );
+}
+
+fn count_readout_elements(html: &str, selector: &str) -> usize {
+    let document = scraper::Html::parse_fragment(html);
+    document
+        .select(&scraper::Selector::parse(selector).expect("readout selector"))
+        .count()
 }

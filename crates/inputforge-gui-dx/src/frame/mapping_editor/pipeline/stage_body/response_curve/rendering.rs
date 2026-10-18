@@ -8,6 +8,14 @@
 //! labels render outside the flip so text is not mirrored.
 
 use dioxus::prelude::*;
+#[path = "render_decorations.rs"]
+mod render_decorations;
+use render_decorations::{
+    render_drag_halo, render_focus_ring, render_hover_ring, render_live, render_tick_labels,
+};
+#[path = "render_grid.rs"]
+mod render_grid;
+use render_grid::{render_axis_cross, render_grid_major, render_identity};
 
 use inputforge_core::processing::curves::ResponseCurve;
 
@@ -21,6 +29,7 @@ pub(crate) fn render_plot(
     state: &BodyState,
     live_value: Option<f64>,
     plot_size_px: f64,
+    glow_id: &str,
 ) -> Element {
     let bezier_handles = matches!(curve, ResponseCurve::CubicBezier { .. });
     let live_output = live_value.map(|v| (v, curve.evaluate(v)));
@@ -28,6 +37,7 @@ pub(crate) fn render_plot(
     rsx! {
         svg {
             class: "if-curve__plot",
+            style: format!("--instrument-glow: url(#{glow_id});"),
             view_box: "-1.05 -1.05 2.1 2.1",
             preserve_aspect_ratio: "xMidYMid meet",
             // aria-label lives on the focusable wrapper <div> (Task 12),
@@ -37,7 +47,7 @@ pub(crate) fn render_plot(
             // Filter defs.
             defs {
                 filter {
-                    id: "if-instr-glow",
+                    id: glow_id,
                     x: "-50%", y: "-50%", width: "200%", height: "200%",
                     feGaussianBlur { std_deviation: "{INSTR_GLOW_STDDEV}" }
                 }
@@ -68,56 +78,6 @@ pub(crate) fn render_plot(
             }
             // Tick labels: outside the flip so text is upright.
             {render_tick_labels()}
-        }
-    }
-}
-
-fn render_grid_major() -> Element {
-    // Origin (0.0) is excluded; render_axis_cross owns the x=0 and y=0
-    // lines with slightly stronger ink.
-    let majors = [-0.75_f64, -0.5, -0.25, 0.25, 0.5, 0.75];
-    rsx! {
-        g {
-            for v in majors.iter().copied() {
-                line {
-                    key: "vmaj-{v}",
-                    class: "if-curve__grid-major",
-                    x1: "{v}", y1: "-1.0", x2: "{v}", y2: "1.0",
-                }
-                line {
-                    class: "if-curve__grid-major",
-                    x1: "-1.0", y1: "{v}", x2: "1.0", y2: "{v}",
-                }
-            }
-        }
-    }
-}
-
-/// Single-line cross at the origin (x=0 and y=0). The bipolar response
-/// curve's origin is the most-referenced point: identity passes through it,
-/// dead-center sits there, symmetric curves mirror around it. A slightly
-/// stronger ink than the major grid earns its place by anchoring the eye
-/// without competing with the curve stroke.
-fn render_axis_cross() -> Element {
-    rsx! {
-        g {
-            line {
-                class: "if-curve__axis-cross",
-                x1: "0", y1: "-1.0", x2: "0", y2: "1.0",
-            }
-            line {
-                class: "if-curve__axis-cross",
-                x1: "-1.0", y1: "0", x2: "1.0", y2: "0",
-            }
-        }
-    }
-}
-
-fn render_identity() -> Element {
-    rsx! {
-        line {
-            class: "if-curve__identity",
-            x1: "-1.0", y1: "-1.0", x2: "1.0", y2: "1.0",
         }
     }
 }
@@ -207,113 +167,6 @@ fn render_handle_markers(curve: &ResponseCurve, state: &BodyState) -> Element {
                         width: "0.030", height: "0.030",
                         transform: "rotate(45 {x} {y})",
                     }
-                }
-            }
-        }
-    }
-}
-
-fn render_hover_ring(_curve: &ResponseCurve, state: &BodyState) -> Element {
-    let Some(idx) = state.hovered_point else {
-        return rsx! { g {} };
-    };
-    let Some(&(x, y)) = state.cached_anchors.get(idx) else {
-        return rsx! { g {} };
-    };
-    rsx! {
-        circle {
-            class: "if-curve__hover-ring",
-            cx: "{x}", cy: "{y}", r: "0.085",
-            fill: "none",
-        }
-    }
-}
-
-fn render_drag_halo(_curve: &ResponseCurve, state: &BodyState) -> Element {
-    let Some(drag) = state.dragging.as_ref() else {
-        return rsx! { g {} };
-    };
-    let Some(&(x, y)) = state.cached_anchors.get(drag.point_index) else {
-        return rsx! { g {} };
-    };
-    rsx! {
-        circle {
-            class: "if-curve__drag-halo",
-            cx: "{x}", cy: "{y}", r: "0.07",
-        }
-    }
-}
-
-fn render_focus_ring(_curve: &ResponseCurve, state: &BodyState) -> Element {
-    let Some(idx) = state.focused_point else {
-        return rsx! { g {} };
-    };
-    let Some(&(x, y)) = state.cached_anchors.get(idx) else {
-        return rsx! { g {} };
-    };
-    rsx! {
-        circle {
-            class: "if-curve__focus-ring",
-            cx: "{x}", cy: "{y}", r: "0.105",
-            fill: "none",
-        }
-    }
-}
-
-fn render_live(input: f64, output: f64) -> Element {
-    rsx! {
-        g {
-            line {
-                class: "if-curve__live-guide",
-                x1: "-1.0", y1: "{output}", x2: "{input}", y2: "{output}",
-            }
-            circle {
-                class: "if-curve__live-dot-halo",
-                cx: "{input}", cy: "{output}", r: "0.07",
-            }
-            circle {
-                class: "if-curve__live-dot",
-                cx: "{input}", cy: "{output}", r: "0.04",
-            }
-        }
-    }
-}
-
-fn render_tick_labels() -> Element {
-    let xs = [
-        (-1.0_f64, "-1"),
-        (-0.5, "-.5"),
-        (0.0, "0"),
-        (0.5, ".5"),
-        (1.0, "1"),
-    ];
-    let ys = [(-1.0_f64, "-1"), (0.0, "0"), (1.0, "1")];
-    // Y-axis labels render INSIDE the plot near the left axis. The original
-    // x="-1.04" + text-anchor="end" placed text at SVG pixel ~2 and grew it
-    // leftward, falling outside the SVG drawing area's overflow:hidden bounds.
-    // Anchoring at start with x=-1.0 + dx=0.015 nudges the text just inside
-    // the plot frame; dominant-baseline="central" centers the glyph on the y
-    // tick position so the "0" label sits on the y=0 grid line, not above it.
-    rsx! {
-        g {
-            class: "if-curve__ticks",
-            for (x, lbl) in xs.iter().copied() {
-                text {
-                    key: "tx-{x}",
-                    class: "if-curve__tick-label",
-                    x: "{x}", y: "1.04",
-                    text_anchor: "middle",
-                    "{lbl}"
-                }
-            }
-            for (y, lbl) in ys.iter().copied() {
-                text {
-                    key: "ty-{y}",
-                    class: "if-curve__tick-label",
-                    x: "-0.98", y: "{-y}",
-                    text_anchor: "start",
-                    dominant_baseline: "central",
-                    "{lbl}"
                 }
             }
         }

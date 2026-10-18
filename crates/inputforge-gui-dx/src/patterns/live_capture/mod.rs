@@ -5,17 +5,6 @@ use inputforge_core::types::InputAddress;
 
 pub(crate) const CAPTURE_PROMPT: &str = "Press an input\u{2026}";
 
-pub(crate) fn rebind_composite_class(input: &InputAddress, is_listening: bool) -> &'static str {
-    match (is_listening, input.is_unbound()) {
-        (true, true) => {
-            "if-rebind-composite if-rebind-composite--listening if-rebind-composite--unbound"
-        }
-        (true, false) => "if-rebind-composite if-rebind-composite--listening",
-        (false, true) => "if-rebind-composite if-rebind-composite--unbound",
-        (false, false) => "if-rebind-composite",
-    }
-}
-
 /// Prepared root state used by other rendered keyboard surfaces.
 #[derive(Debug, Clone, Copy)]
 pub struct LiveCapture {

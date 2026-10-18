@@ -154,7 +154,7 @@ fn element_in(dom: &VirtualDom, node: &VNode, label: &str, row: bool) -> Option<
         }
         if (matches!(current, TemplateNode::Element { tag: "button", .. }) && !row
             || row
-                && matches!(current, TemplateNode::Element { tag: "div", attrs, .. } if attrs.iter().any(|attr| matches!(attr, dioxus::core::TemplateAttribute::Static { name: "role", value: "button", .. }))))
+                && matches!(current, TemplateNode::Element { tag: "div", attrs, .. } if attrs.iter().any(|attr| matches!(attr, dioxus::core::TemplateAttribute::Static { name: "role", value: "group", .. }))))
             && (node.dynamic_attrs[index].iter().any(|a| {
                 a.name == "aria-label"
                     && matches!(&a.value, AttributeValue::Text(value) if value == label)

@@ -1,5 +1,5 @@
 //! Device ledger and prepared inspector rendering.
-use crate::components::{Badge, BadgeVariant};
+use crate::components::{Badge, BadgeVariant, Button, ButtonPresentation};
 use crate::context::DevicePanelRow;
 #[cfg(test)]
 use crate::controllers::inspector::Bindings;
@@ -80,10 +80,11 @@ fn DeviceLedgerRow(
     let row_for_select = row.clone();
     let onclick = move |_| onselect.call(row_for_select.clone());
     rsx! {
-        button {
-            r#type: "button",
-            class: if selected { "if-device-row if-device-row--selected" } else { "if-device-row" },
-            "aria-pressed": "{selected}",
+        Button {
+            presentation: ButtonPresentation::Row,
+            class: "if-device-row",
+            selected,
+            aria_pressed: selected,
             onclick,
             span { class: "if-device-row__names",
                 span { class: "if-device-row__headline",
@@ -253,6 +254,25 @@ mod tests {
     }
 
     #[test]
+    fn adoption_device_row_and_alias_use_shared_native_semantics() {
+        let html = render_device_panel(vec![panel_row("dev-1", "Wheel Base", true)]);
+        let document = scraper::Html::parse_fragment(&html);
+        let row = scraper::Selector::parse("button.if-button--row[aria-pressed=true]").unwrap();
+        assert_eq!(document.select(&row).count(), 1);
+        let input = scraper::Selector::parse("input.if-text-input[aria-label]").unwrap();
+        let input = document.select(&input).next().unwrap();
+        assert!(
+            input
+                .value()
+                .attr("aria-label")
+                .unwrap()
+                .contains("Wheel Base")
+        );
+        assert!(input.value().attr("data-if-text-owner").is_some());
+        assert!(input.value().attr("aria-invalid").is_none());
+    }
+
+    #[test]
     fn device_report_is_plain_text_and_device_only() {
         let row = panel_row("dev-1", "Wheel Base", true);
         let report = build_device_report(&row);
@@ -335,7 +355,7 @@ mod tests {
         assert!(!html.contains("Save name"));
         let document = scraper::Html::parse_fragment(&html);
         for selector in [
-            "button.if-device-inspector__save.if-button.if-button--primary.if-button--sm",
+            "button.if-device-inspector__save.if-button.if-button--primary.if-button--md",
             "button.if-device-inspector__copy.if-button.if-button--secondary.if-button--sm",
         ] {
             assert!(
@@ -361,7 +381,8 @@ mod tests {
     fn device_panel_marks_selected_row_for_interaction_state() {
         let html = render_device_panel(vec![panel_row("dev-1", "Wheel Base", true)]);
 
-        assert!(html.contains("if-device-row if-device-row--selected"));
+        assert!(html.contains("if-button--row"));
+        assert!(html.contains("data-selected=\"true\""));
     }
 
     #[test]
@@ -422,20 +443,15 @@ mod tests {
     }
 
     #[test]
-    fn panel_slot_css_defines_device_row_interaction_states() {
-        let css = include_str!("../../../../assets/frame/panel_slot.css");
-
-        for selector in [
-            ".if-device-row:hover:not(:disabled)",
-            ".if-device-row:focus-visible",
-            ".if-device-row:active:not(:disabled)",
-            ".if-device-row--selected:hover:not(:disabled)",
-        ] {
-            assert!(css.contains(selector), "missing selector {selector}");
-        }
-        assert!(css.contains("cursor: pointer;"));
-        assert!(css.contains("transform: translateY(1px);"));
-        assert!(css.contains("transform: translateY(2px);"));
+    fn adoption_device_row_chrome_is_owned_by_shared_action_surface() {
+        let feature = include_str!("../../../../assets/frame/panel_slot.css");
+        let shared = include_str!("../../../../assets/components/actions/button.css");
+        assert!(!feature.contains(".if-device-row:hover"));
+        assert!(!feature.contains(".if-device-row:active"));
+        assert!(!feature.contains(".if-device-row--selected"));
+        assert!(shared.contains(".if-action-row"));
+        assert!(shared.contains("var(--tint-selected)"));
+        assert!(shared.contains(":focus-visible"));
     }
 
     #[test]
@@ -474,20 +490,6 @@ mod tests {
     }
 
     #[test]
-    fn panel_slot_css_uses_documented_tokens_for_selected_row() {
-        let css = include_str!("../../../../assets/frame/panel_slot.css");
-
-        // The previous --color-accent name had no token definition; the
-        // selected-state surface is now anchored to the documented
-        // border-focus + primary pair, mirroring .profile-row--active.
-        assert!(!css.contains("--color-accent"));
-        assert!(css.contains(".if-device-row--selected {\n"));
-        assert!(css.contains(
-            "    border-color: var(--color-border-focus);\n    background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));"
-        ));
-    }
-
-    #[test]
     fn panel_slot_css_pins_device_inspector_on_panel_surface() {
         // DESIGN.md §6 "Pinned Inspector" contract: stays on the
         // panel surface, separated by a 1px strong-border-top and
@@ -510,28 +512,16 @@ mod tests {
     }
 
     #[test]
-    fn panel_slot_css_aligns_device_row_shape_with_profile_row() {
-        let css = include_str!("../../../../assets/frame/panel_slot.css");
-
-        // DESIGN.md §1: 4px is the default radius; 2px is reserved for
-        // checkbox-class controls. The Devices and Profiles rows share
-        // the same row-in-side-panel shape, so they share the same
-        // radius+padding tokens.
-        assert!(css.contains(".if-device-row {\n"));
-        assert!(css.contains("    padding: var(--space-3);\n"));
-        assert!(css.contains("    border-radius: var(--radius-md);\n"));
-        assert!(!css.contains("    border-radius: var(--radius-sm);\n"));
-    }
-
-    #[test]
     fn panel_slot_css_leaves_inspector_button_visuals_to_shared_button() {
         let css = include_str!("../../../../assets/frame/panel_slot.css");
-        let button_layout = ".if-device-inspector__save,\n.if-device-inspector__copy {\n    align-self: flex-start;\n}";
+        let button_layout = ".if-device-inspector__copy {\n    align-self: flex-start;\n}";
 
         assert!(css.contains(button_layout));
-        assert!(!css.contains(
-            ".if-device-inspector__save,\n.if-device-inspector__copy {\n    align-self: flex-start;\n    padding:"
-        ));
+        assert!(
+            !css.contains(
+                ".if-device-inspector__copy {\n    align-self: flex-start;\n    padding:"
+            )
+        );
     }
 
     #[test]

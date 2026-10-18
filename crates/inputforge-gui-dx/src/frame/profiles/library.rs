@@ -1,9 +1,8 @@
-#![expect(
-    unused_qualifications,
-    reason = "Dioxus RSX emits redundant qualifications for native event attributes"
-)]
 use crate::{
-    components::{ButtonSize, ButtonVariant, Icon, IconButton, InputSize, TextInput},
+    components::{
+        Button, ButtonPresentation, ButtonSize, ButtonVariant, Icon, IconButton, InputSize,
+        TextInput,
+    },
     icons::Icon as IconKind,
     profiles::{Context, Intent},
 };
@@ -23,6 +22,8 @@ pub(crate) fn ProfileLibrary() -> Element {
                 class: "profiles-panel__filter",
                 TextInput {
                     value: filter,
+                    aria_label: "Filter profiles",
+                    class: "profiles-panel__filter-input",
                     size: InputSize::Sm,
                     placeholder: "Filter profiles".to_owned(),
                     oninput: move |e: FormEvent| {
@@ -47,22 +48,15 @@ pub(crate) fn ProfileLibrary() -> Element {
                 }
             }
             if view.filtered_empty {
-                div {
-                    class: "profile-row__filtered-empty",
-                    "No matching profiles."
-                }
+                crate::components::InlineFeedback { class: "profile-row__filtered-empty", "No matching profiles." }
             }
-            button {
-                r#type: "button",
-                class: "profile-row profile-row--create",
+            Button {
+                presentation: ButtonPresentation::Create, variant: ButtonVariant::Ghost,
                 onclick: new_click,
                 Icon {
                     name: IconKind::Plus,
                 }
-                span {
-                    class: "profile-row--create__label",
-                    "New profile"
-                }
+                "New profile"
             }
         }
     }

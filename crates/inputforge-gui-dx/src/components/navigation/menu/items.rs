@@ -89,6 +89,7 @@ pub fn MenuItems(
                 class: "{combined}",
                 id: "{menu_id}",
                 role: "menu",
+                "aria-labelledby": trigger_id.clone(),
                 tabindex: "-1",
                 "aria-hidden": "true",
                 style: "display: none;",
@@ -98,9 +99,10 @@ pub fn MenuItems(
     }
 
     let style = match *placement.read() {
-        None => "position: fixed; left: 0; top: 0; visibility: hidden; z-index: 1001;".to_owned(),
+        None => "position: fixed; left: 0; top: 0; visibility: hidden; z-index: var(--z-menu);"
+            .to_owned(),
         Some(p) => format!(
-            "position: fixed; left: {left}px; top: {top}px; visibility: visible; z-index: 1001;",
+            "position: fixed; left: {left}px; top: {top}px; visibility: visible; z-index: var(--z-menu);",
             left = p.left,
             top = p.top,
         ),
@@ -119,6 +121,7 @@ pub fn MenuItems(
                     class: "{combined}",
                     id: "{menu_id}",
                     role: "menu",
+                    "aria-labelledby": trigger_id.clone(),
                     tabindex: "-1",
                     style: "{style}",
                     onkeydown,

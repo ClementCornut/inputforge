@@ -119,53 +119,6 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-1);
-    padding: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg);
-    color: var(--color-text);
-    text-align: left;
-    cursor: pointer;
-    transition:
-        background var(--duration-fast) var(--easing-fast),
-        border-color var(--duration-fast) var(--easing-fast),
-        color var(--duration-fast) var(--easing-fast);
-}
-
-.if-device-row:hover:not(:disabled) {
-    border-color: var(--color-border-strong);
-    background: var(--color-bg-elevated);
-}
-
-.if-device-row:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: -2px;
-}
-
-.if-device-row:active:not(:disabled) {
-    transform: translateY(1px);
-}
-
-@media (resolution < 2dppx) {
-    .if-device-row:active:not(:disabled) {
-        transform: translateY(2px);
-    }
-}
-
-/* Selected state matches the .profile-row--active pattern in
- * profiles.css so both side panels read as one design system: focus-cyan
- * border + an 8% primary tint mixed into the row's resting surface
- * (--color-bg). The previous selected-state used a token name that was
- * never defined in tokens/colors.css and rendered against an unset
- * variable. */
-.if-device-row--selected {
-    border-color: var(--color-border-focus);
-    background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
-}
-
-.if-device-row--selected:hover:not(:disabled) {
-    border-color: var(--color-border-focus);
-    background: color-mix(in srgb, var(--color-primary) 12%, var(--color-bg));
 }
 
 .if-device-row__names {
@@ -217,31 +170,20 @@
     border-top: 1px solid var(--color-border-strong);
 }
 
-.if-device-inspector__field {
-    display: grid;
-    gap: var(--space-1);
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
-}
-
 .if-device-inspector__input {
     min-width: 0;
     width: 100%;
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg-sunken);
-    color: var(--color-text);
 }
 
 .if-device-inspector__edit-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+    min-width: 0;
     gap: var(--space-2);
-    align-items: center;
+    align-items: stretch;
 }
 
-.if-device-inspector__save,
 .if-device-inspector__copy {
     align-self: flex-start;
 }
@@ -255,11 +197,6 @@
     margin: var(--space-2) 0 0;
     color: var(--color-text-muted);
     font-size: var(--text-xs);
-}
-
-.if-device-inspector__error {
-    color: var(--color-error);
-    font-size: var(--text-sm);
 }
 
 .if-device-inspector__meta,
@@ -296,17 +233,53 @@
     padding: var(--space-3);
 }
 
-.if-controller-session { display: grid; gap: var(--space-3, 12px); padding: var(--space-4, 16px); border-bottom: 1px solid var(--color-border); }
+.if-controller-session {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+}
 .if-controller-session h3, .if-controller-session h4, .if-controller-session p { margin: 0; }
-.if-controller-session p { color: var(--color-text-muted); font-size: 12px; }
-.if-controller-session fieldset { display: grid; gap: 8px; min-width: 0; border: 1px solid var(--color-border); }
-.if-controller-session label { display: flex; align-items: center; gap: 8px; }
-.if-controller-session input[type="number"] { width: 5em; }
-.if-controller-session__actions, .if-controller-session__axes { display: flex; gap: 8px; flex-wrap: wrap; }
-.if-controller-session__slot { display: grid; gap: 8px; }
-.if-controller-session input[type="number"] { font: inherit; color: inherit; background: var(--color-bg); border: 1px solid var(--color-border); padding: 4px 8px; }
+.if-controller-session p { color: var(--color-text-muted); font-size: var(--text-sm); }
+.if-controller-session__group {
+    display: grid;
+    gap: var(--space-3);
+    min-width: 0;
+    margin: 0;
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+}
+.if-controller-session__group > legend {
+    padding-inline: var(--space-1);
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+}
+.if-controller-session__actions, .if-controller-session__axes { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.if-controller-session__slot { display: grid; gap: var(--space-3); min-width: 0; }
+.if-controller-session__slot + .if-controller-session__slot {
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--color-border);
+}
+.if-controller-session__slot-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+.if-controller-session__slot-header h4 { font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.if-controller-session__counts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+}
+.if-controller-session__number { width: 100%; min-width: 0; }
+.if-controller-session__axis-group { display: grid; gap: var(--space-2); min-width: 0; }
 .if-controller-session fieldset:disabled { opacity: .6; }
-.if-controller-session input[type="number"]:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
 
-.if-controller-devices { min-height: 0; overflow-y: auto; }
+.if-controller-devices {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
 .if-controller-devices > .if-device-panel { height: auto; flex: none; min-height: 240px; }

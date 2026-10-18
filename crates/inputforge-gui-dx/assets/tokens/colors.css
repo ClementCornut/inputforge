@@ -101,6 +101,7 @@
        a tint there would compete with the canonical 3px primary
        underline. Keeping the percentages here means any future
        intensity tweak ships from one file. */
+    --tint-status: 14%;
     --tint-selected: 8%;
     --tint-create:   5%;
 }

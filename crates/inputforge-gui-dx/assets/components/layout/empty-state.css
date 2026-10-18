@@ -1,0 +1,25 @@
+.if-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    text-align: center;
+}
+.if-empty__heading {
+    font-size: var(--text-2xl);
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-tight);
+    color: var(--color-text);
+}
+.if-empty__description {
+    font-size: var(--text-base);
+    line-height: var(--leading-base);
+    color: var(--color-text-muted);
+    max-width: 36ch;
+}
+.if-empty__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-2);
+}

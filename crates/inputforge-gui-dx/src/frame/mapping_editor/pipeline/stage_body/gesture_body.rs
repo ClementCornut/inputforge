@@ -10,7 +10,10 @@
 
 use dioxus::prelude::*;
 
-use inputforge_core::action::{Action, ActionBranch};
+use inputforge_core::action::Action;
+#[path = "gesture_kind.rs"]
+mod kind;
+pub(crate) use kind::GestureKind;
 
 use crate::components::{InputSize, IntegerInput, Switch};
 use crate::frame::MappingKey;
@@ -20,88 +23,6 @@ use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, forma
 
 const THRESHOLD_MIN: usize = 1;
 const THRESHOLD_MAX: usize = 10_000;
-
-/// Discriminator carrying everything that differs between `TapGesture` and
-/// `PressGesture` rendering: action constructor, IDs, labels, branch tags.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GestureKind {
-    Tap,
-    Press,
-}
-
-impl GestureKind {
-    fn stage_name(self) -> &'static str {
-        match self {
-            Self::Tap => "Tap gesture",
-            Self::Press => "Press gesture",
-        }
-    }
-
-    fn threshold_id_suffix(self) -> &'static str {
-        match self {
-            Self::Tap => "tap-threshold",
-            Self::Press => "press-threshold",
-        }
-    }
-
-    fn toggle_id_suffix(self) -> &'static str {
-        match self {
-            Self::Tap => "tap-immediate",
-            Self::Press => "press-long-fire",
-        }
-    }
-
-    fn toggle_label(self) -> &'static str {
-        match self {
-            Self::Tap => "Fire single tap immediately",
-            Self::Press => "Fire long press when threshold is crossed",
-        }
-    }
-
-    fn edit_field_label(self) -> &'static str {
-        match self {
-            Self::Tap => "single timing",
-            Self::Press => "long timing",
-        }
-    }
-
-    fn timing_label(self, value: bool) -> String {
-        match (self, value) {
-            (Self::Tap, true) => "immediate single".to_owned(),
-            (Self::Tap, false) => "exclusive single/double".to_owned(),
-            (Self::Press, true) => "long fires while held".to_owned(),
-            (Self::Press, false) => "decide on release".to_owned(),
-        }
-    }
-
-    fn branch_a(self) -> ActionBranch {
-        match self {
-            Self::Tap => ActionBranch::TapSingle,
-            Self::Press => ActionBranch::PressShort,
-        }
-    }
-
-    fn branch_b(self) -> ActionBranch {
-        match self {
-            Self::Tap => ActionBranch::TapDouble,
-            Self::Press => ActionBranch::PressLong,
-        }
-    }
-
-    fn branch_a_label(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Tap => ("Single tap", "single tap branch"),
-            Self::Press => ("Short press", "short press branch"),
-        }
-    }
-
-    fn branch_b_label(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Tap => ("Double tap", "double tap branch"),
-            Self::Press => ("Long press", "long press branch"),
-        }
-    }
-}
 
 #[component]
 pub(crate) fn GestureBody(
@@ -207,8 +128,10 @@ pub(crate) fn GestureBody(
     rsx! {
         div { class: "if-stage__gesture-body",
             div { class: "if-stage__gesture-controls",
-                label { class: "if-stage__gesture-control",
-                    span { class: "if-stage__gesture-label", "Threshold" }
+                crate::components::Label {
+                    class: "if-stage__gesture-control",
+                    for_id: threshold_id.clone(),
+                    span { "Threshold" }
                     IntegerInput {
                         value: threshold_signal,
                         min: THRESHOLD_MIN,
@@ -217,7 +140,7 @@ pub(crate) fn GestureBody(
                         id: Some(threshold_id),
                         oncommit: on_threshold_commit,
                     }
-                    span { class: "if-stage__gesture-unit", "ms" }
+                    span { "ms" }
                 }
                 div { class: "if-stage__gesture-toggle",
                     Switch {

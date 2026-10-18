@@ -1,7 +1,8 @@
 //! Rendering and callback wiring for one prepared profile row.
 use crate::{
     components::{
-        Badge, BadgeVariant, Icon, InputSize, MenuItem, MenuItems, MenuRoot, MenuTrigger, TextInput,
+        Badge, BadgeVariant, FeedbackTone, Icon, InlineFeedback, InlineTextEditor, MenuItem,
+        MenuItems, MenuRoot, MenuTrigger, MenuTriggerPresentation,
     },
     icons::Icon as IconKind,
     profiles::{Context, Intent, Row},
@@ -28,6 +29,9 @@ pub(super) fn ProfileRow(row: Row) -> Element {
     let delete = t.clone();
     let snapshot = t.clone();
     let rename = t;
+    let editor_id = use_hook(|| format!("profile-name-{}", dioxus::core::current_scope_id().0));
+    let error_id = format!("{editor_id}-error");
+    let invalid = v.name_error.is_some();
     rsx! {
         article {
             class: if r.is_active { "profile-row profile-row--active" } else { "profile-row" },
@@ -72,9 +76,11 @@ pub(super) fn ProfileRow(row: Row) -> Element {
                 if renaming {
                     div {
                         class: "profile-row__rename",
-                        TextInput {
-                            value: name,
-                            size: InputSize::Sm,
+                        InlineTextEditor {
+                            value: name, id: editor_id, aria_label: "Profile name",
+                            class: "profile-row__rename-input",
+                            invalid, aria_describedby: invalid.then(|| error_id.clone()),
+                            aria_errormessage: invalid.then(|| error_id.clone()),
                             placeholder: "Profile name".to_owned(),
                             oninput: move |e: FormEvent| {
                                 let _ = c.send(Intent::Name(e.value()));
@@ -87,7 +93,7 @@ pub(super) fn ProfileRow(row: Row) -> Element {
                         }
                     }
                     if let Some(error) = v.name_error {
-                        div { class: "profile-row__rename-error", role: "alert", "{error}" }
+                        InlineFeedback { id: error_id, tone: FeedbackTone::Error, alert: true, "{error}" }
                     }
                 }
             }
@@ -95,13 +101,12 @@ pub(super) fn ProfileRow(row: Row) -> Element {
                 class: "profile-row__menu".to_owned(),
                 MenuTrigger {
                     class: "profile-row__menu-trigger".to_owned(),
+                    presentation: MenuTriggerPresentation::Icon,
+                    aria_label: format!("Profile actions for {}", r.name),
                     Icon {
                         name: IconKind::DotsVertical,
                     }
-                    span {
-                        class: "profile-row__menu-label",
-                        "Profile actions for {r.name}"
-                    }
+
                 }
                 MenuItems {
                     if r.can_open && !r.is_active {
@@ -143,7 +148,7 @@ pub(super) fn ProfileRow(row: Row) -> Element {
                     if r.can_delete {
                         MenuItem {
                             onactivate: move |_| c.send(Intent::BeginDelete(delete.clone())),
-                            class: "profile-row__danger-item".to_owned(),
+                            danger: true,
                             "Delete"
                         }
                     }

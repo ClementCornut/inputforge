@@ -30,53 +30,18 @@
 //!
 
 use dioxus::prelude::*;
+#[path = "vjoy_options.rs"]
+mod options;
+use options::{available_outputs, axis_label, output_id_key};
 
 use inputforge_core::action::Action;
-use inputforge_core::types::{OutputAddress, OutputId, VJoyAxis};
+use inputforge_core::types::{OutputAddress, OutputId};
 
 use crate::components::{Select, SelectOption};
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
 use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
-
-/// Human-readable label for a [`VJoyAxis`] variant.
-///
-/// Matches the canonical labels used in the egui UI (see `vjoy.rs`).
-fn axis_label(axis: VJoyAxis) -> &'static str {
-    match axis {
-        VJoyAxis::X => "X axis",
-        VJoyAxis::Y => "Y axis",
-        VJoyAxis::Z => "Z axis",
-        VJoyAxis::Rx => "Rx axis",
-        VJoyAxis::Ry => "Ry axis",
-        VJoyAxis::Rz => "Rz axis",
-        VJoyAxis::Slider0 => "Slider 0",
-        VJoyAxis::Slider1 => "Slider 1",
-    }
-}
-
-/// Stable string key for an [`OutputId`] used as a `Select` option value.
-fn output_id_key(id: &OutputId) -> String {
-    match id {
-        OutputId::Axis { id: axis } => format!("axis:{}", axis_label(*axis)),
-        OutputId::Button { id: n } => format!("button:{n}"),
-        OutputId::Hat { id: n } => format!("hat:{n}"),
-    }
-}
-
-/// Parse a `Select` option value back into an [`OutputId`]. Returns `None`
-/// when the key string does not match any known pattern (should not occur
-/// under normal operation).
-fn available_outputs(config: &inputforge_core::types::VirtualDeviceConfig) -> Vec<OutputId> {
-    config
-        .axes
-        .iter()
-        .map(|id| OutputId::Axis { id: *id })
-        .chain((1..=config.button_count).map(|id| OutputId::Button { id }))
-        .chain((1..=config.hat_count).map(|id| OutputId::Hat { id }))
-        .collect()
-}
 
 /// `MapToVJoy` body: device picker + axis/button/hat picker.
 #[component]
@@ -238,19 +203,25 @@ pub(crate) fn MapToVJoyBody(
         );
     };
 
+    let field_prefix =
+        use_hook(|| format!("if-stage-field-{}", dioxus::core::current_scope_id().0));
     rsx! {
         div { class: "if-stage__body-vjoy",
             div { class: "if-stage__body-field",
-                label { class: "if-stage__body-label", "Device" }
+                crate::components::Label { for_id: format!("{field_prefix}-device"), "Device" }
                 Select {
+                    aria_label: "Virtual device",
+                    id: format!("{field_prefix}-device"),
                     value: device_value_str,
                     options: device_options,
                     onchange: on_device_change,
                 }
             }
             div { class: "if-stage__body-field",
-                label { class: "if-stage__body-label", "Output" }
+                crate::components::Label { for_id: format!("{field_prefix}-output"), "Output" }
                 Select {
+                    aria_label: "Virtual output",
+                    id: format!("{field_prefix}-output"),
                     value: output_value_str,
                     options: output_options,
                     onchange: on_output_change,

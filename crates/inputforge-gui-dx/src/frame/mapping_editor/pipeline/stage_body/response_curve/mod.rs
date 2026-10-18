@@ -33,8 +33,7 @@ pub(crate) fn ResponseCurveBody(
         return rsx! {};
     };
     let live_value = instruments::live_axis::value(&stage_id, &mapping_key, &ctx);
-    let dragging_attr = snapshot.dragging.is_some().to_string();
-    let hovered_attr = snapshot.hovered.is_some().to_string();
+
     let on_key = move |evt: KeyboardEvent| {
         send.call(crate::instruments::Event::Key {
             key: evt.key().to_string(),
@@ -63,16 +62,37 @@ pub(crate) fn ResponseCurveBody(
         &snapshot.value,
         &ctx.config.read(),
     );
+    let glow_id = format!("{plot_dom_id}-glow");
+    let onfocusout = move |_| send.call(crate::instruments::Event::Blur);
     rsx! {
-        div{class:"if-curve",
-            "data-summary":"{summary}",
-            toolbar::Toolbar{view:snapshot.clone(),send}
-            div{class:"if-curve__plot-frame",id:"{plot_dom_id}",tabindex:"0","aria-label":"response curve",
-                "data-hovered":"{hovered_attr}","data-dragging":"{dragging_attr}",
-                onmounted:on_mounted,onkeydown:on_key,onfocusout:move |_|send.call(crate::instruments::Event::Blur),
-                {rendering::render_plot(curve,&body.read(),live_value,240.0)}
+        div {
+            class: "if-curve",
+            "data-summary": summary.clone(),
+            toolbar::Toolbar {
+                view: snapshot.clone(),
+                send,
             }
-            if let Some(error)=snapshot.error { div{class:"if-field__error",role:"alert","{error}"} }
+            crate::components::PlotFrame {
+                class: "if-curve__plot-frame",
+                id: plot_dom_id,
+                label: "response curve",
+                description: "Edit the response curve control points.",
+                instructions: "Use Tab to cycle handles and arrow keys to adjust. Hold Shift for larger adjustments.",
+                value_text: summary.clone(),
+                hovered: snapshot.hovered.is_some(),
+                dragging: snapshot.dragging.is_some(),
+                onmounted: on_mounted,
+                onkeydown: on_key,
+                onfocusout,
+                {rendering::render_plot(curve, &body.read(), live_value, 240.0, &glow_id)}
+            }
+            if let Some(error) = snapshot.error {
+                crate::components::InlineFeedback {
+                    tone: crate::components::FeedbackTone::Error,
+                    alert: true,
+                    "{error}"
+                }
+            }
         }
     }
 }

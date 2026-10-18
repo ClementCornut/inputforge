@@ -226,7 +226,11 @@ fn sample_snapshot_id() -> SnapshotId {
 }
 
 #[component]
-fn ProfilesHarnessWithMode(mode: Mode) -> Element {
+fn ProfilesHarnessWithMode(
+    mode: Mode,
+    #[props(default)] source: Option<crate::profiles::Source>,
+    #[props(default)] recorded: Option<std::rc::Rc<std::cell::RefCell<Vec<Intent>>>>,
+) -> Element {
     let app_state = sample_profiles_context();
     let initial_meta = inputforge_app::bridge::prepare(&app_state, None).meta;
     let state = Arc::new(RwLock::new(app_state));
@@ -243,11 +247,21 @@ fn ProfilesHarnessWithMode(mode: Mode) -> Element {
         inputforge_app::profiles::Controller::new(Arc::clone(&state), commands.clone())
     });
     let mut bindings = controller.bindings();
+    let dispatch = bindings.dispatch;
+    bindings.dispatch = Callback::new(move |request: (u64, u64, Intent)| {
+        if let Some(recorded) = &recorded {
+            recorded.borrow_mut().push(request.2.clone());
+        }
+        dispatch.call(request)
+    });
     bindings.mount = Callback::new(move |view| {
         let owner = controller.mount(view);
         match &mode {
             Mode::New => {
                 let _ = controller.dispatch(owner, Intent::New);
+                if let Some(source) = source.clone() {
+                    let _ = controller.dispatch(owner, Intent::Source(source));
+                }
             }
             Mode::Open { path } => {
                 let request = controller.begin_pick(owner).unwrap();
@@ -281,7 +295,11 @@ fn ProfilesHarnessWithMode(mode: Mode) -> Element {
 fn render_profiles_panel_with_mode(mode: Mode) -> String {
     let mut vdom = VirtualDom::new_with_props(
         ProfilesHarnessWithMode,
-        ProfilesHarnessWithModeProps { mode },
+        ProfilesHarnessWithModeProps {
+            mode,
+            source: None,
+            recorded: None,
+        },
     );
     vdom.rebuild_in_place();
     render(&vdom)
@@ -293,7 +311,7 @@ fn new_profile_submode_replaces_library_region() {
 
     assert!(html.contains("profiles-panel__submode"));
     assert!(html.contains("New profile"));
-    assert!(html.contains("profiles-panel__source-group"));
+    assert!(html.contains("if-radio-group"));
     assert!(html.contains("Blank"));
     assert!(html.contains("Copy active"));
     assert!(html.contains("Copy from library"));
@@ -418,14 +436,11 @@ fn profiles_library_appends_trailing_create_row() {
     // button. Locks both the rendering and its onclick affordance.
     let html = render_profiles_panel(sample_profiles_context());
 
-    assert!(html.contains("profile-row profile-row--create"));
-    assert!(html.contains("profile-row--create__label"));
+    assert!(html.contains("if-button--create"));
     assert!(html.contains(">New profile<"));
     // Order check: the create row is the LAST .profile-row in the list,
     // so its index must be greater than every other profile-row index.
-    let create_idx = html
-        .find("profile-row--create")
-        .expect("create row present");
+    let create_idx = html.find("if-button--create").expect("create row present");
     let active_idx = html
         .find("profile-row--active")
         .expect("active row present");
@@ -433,26 +448,6 @@ fn profiles_library_appends_trailing_create_row() {
         active_idx < create_idx,
         "create row must trail active/inactive rows"
     );
-}
-
-#[test]
-fn profiles_css_locks_create_row_dashed_contract() {
-    // The trailing create row uses .profile-row's shape but a dashed
-    // border + transparent surface so it reads as a creator, not a
-    // record. Hover/focus raise the border to the strong/focus tones
-    // the rest of the system uses for interactive intent.
-    let css = include_str!("../../../assets/frame/profiles.css");
-
-    let create_block = css
-        .split(".profile-row--create {")
-        .nth(1)
-        .expect(".profile-row--create rule present")
-        .split('}')
-        .next()
-        .expect(".profile-row--create rule closed");
-    assert!(create_block.contains("background: transparent;"));
-    assert!(create_block.contains("border-style: dashed;"));
-    assert!(create_block.contains("cursor: pointer;"));
 }
 
 #[test]
@@ -476,9 +471,17 @@ fn profiles_panel_uses_design_system_components() {
     assert!(html.contains("if-drawer"));
     assert!(html.contains("snapshot-drawer__bar"));
     assert!(html.contains("if-menu"));
-    assert!(html.contains("if-menu__trigger"));
+    let document = scraper::Html::parse_fragment(&html);
+    let trigger = scraper::Selector::parse(
+        "button.if-icon-button[aria-haspopup=menu][aria-label^='Profile actions for ']",
+    )
+    .unwrap();
+    assert!(
+        document.select(&trigger).next().is_some(),
+        "profile actions use the shared icon menu trigger"
+    );
     assert!(html.contains("if-menu__item"));
-    assert!(html.contains("aria-haspopup=\"true\""));
+    assert!(html.contains("aria-haspopup=\"menu\""));
     assert!(!html.contains("button button--primary"));
     assert!(!html.contains("class=\"button\""));
     assert!(!html.contains("class=\"icon-button\""));
@@ -717,19 +720,23 @@ fn snapshot_row_disables_delete_on_session_start() {
     // The Trash IconButton renders a `<button ... disabled>` for this
     // row. Walk the row's actions block to confirm the disabled
     // attribute is on the delete button.
-    let delete_marker =
-        "class=\"if-icon-button if-icon-button--ghost if-icon-button--sm snapshot-row__delete\"";
-    let after_class = html
-        .split(delete_marker)
-        .nth(1)
-        .expect("session start row must render the snapshot-row__delete button");
-    let inside_tag = after_class
-        .split('>')
+    let document = scraper::Html::parse_fragment(&html);
+    let selector =
+        scraper::Selector::parse("button.snapshot-row__delete[aria-label='Delete snapshot']")
+            .unwrap();
+    let delete = document
+        .select(&selector)
         .next()
-        .expect("button tag must close");
+        .expect("session-start snapshot delete action");
     assert!(
-        inside_tag.contains("disabled"),
-        "session-start row's Delete must be disabled; got tag: {inside_tag}"
+        delete
+            .value()
+            .classes()
+            .any(|class| class == "if-icon-button--ghost-danger")
+    );
+    assert!(
+        delete.value().attr("disabled").is_some(),
+        "session-start recovery anchor must not be deletable"
     );
 }
 
@@ -782,4 +789,99 @@ fn drawer_is_panel_scoped_not_global_drawer() {
     assert!(html.contains("if-drawer"));
     assert!(html.contains("snapshot-drawer"));
     assert!(!html.contains("app-global-drawer"));
+}
+
+#[test]
+fn adoption_new_profile_name_has_coupled_label() {
+    let html = render_profiles_panel_with_mode(Mode::New);
+    let doc = scraper::Html::parse_fragment(&html);
+    let input = doc
+        .select(&scraper::Selector::parse("input[type=text]").unwrap())
+        .next()
+        .unwrap();
+    let id = input.value().attr("id").expect("profile name id");
+    assert!(
+        doc.select(&scraper::Selector::parse(&format!("label[for='{id}']")).unwrap())
+            .any(|label| label.text().collect::<String>().contains("Name")),
+        "{html}"
+    );
+}
+
+#[test]
+fn adoption_source_details_are_siblings_of_native_radio_labels() {
+    for source in [
+        crate::profiles::Source::Library(None),
+        crate::profiles::Source::File,
+    ] {
+        let mut dom = VirtualDom::new_with_props(
+            ProfilesHarnessWithMode,
+            ProfilesHarnessWithModeProps {
+                mode: Mode::New,
+                source: Some(source),
+                recorded: None,
+            },
+        );
+        dom.rebuild_in_place();
+        let html = render(&dom);
+        let doc = scraper::Html::parse_fragment(&html);
+        assert_eq!(
+            doc.select(
+                &scraper::Selector::parse("input[type=radio][name=new-profile-source]").unwrap()
+            )
+            .count(),
+            4
+        );
+        assert_eq!(
+            doc.select(&scraper::Selector::parse("label select, label button").unwrap())
+                .count(),
+            0,
+            "source details nested in radio label: {html}"
+        );
+        assert_eq!(
+            doc.select(&scraper::Selector::parse("input[type=radio][checked]").unwrap())
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn adoption_native_source_choices_deliver_the_original_intents() {
+    use crate::profiles::Source;
+    use std::{cell::RefCell, rc::Rc};
+    set_event_converter(Box::new(dioxus::html::SerializedHtmlEventConverter));
+    for (index, expected) in [
+        Source::Blank,
+        Source::Active,
+        Source::Library(None),
+        Source::File,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let recorded = Rc::new(RefCell::new(Vec::new()));
+        let mut dom = VirtualDom::new_with_props(
+            ProfilesHarnessWithMode,
+            ProfilesHarnessWithModeProps {
+                mode: Mode::New,
+                source: None,
+                recorded: Some(Rc::clone(&recorded)),
+            },
+        );
+        dom.rebuild_in_place();
+        let mut ids = Vec::new();
+        super::event_tests::listeners(&dom, dom.base_scope().root_node(), "change", &mut ids);
+        dom.runtime().handle_event(
+            "change",
+            Event::new(
+                Rc::new(PlatformEventData::new(Box::new(SerializedFormData::new(
+                    "on".into(),
+                    vec![],
+                )))) as Rc<dyn std::any::Any>,
+                false,
+            ),
+            ids[index],
+        );
+        assert_eq!(*recorded.borrow(), vec![Intent::Source(expected)]);
+    }
 }

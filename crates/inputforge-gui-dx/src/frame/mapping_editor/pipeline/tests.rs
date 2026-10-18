@@ -8,6 +8,8 @@
 //! - SSR rendering tests for `Pipeline` and `Stage` (Task 20)
 
 use crate::test_support::Fixture;
+#[path = "stage_menu_document.rs"]
+mod stage_menu_document;
 use std::sync::{Arc, mpsc};
 
 use dioxus::prelude::*;
@@ -712,6 +714,7 @@ fn render_with_stage_menu(
     addr: InputAddress,
     pre_stage_menu: Option<crate::frame::mapping_editor::StageMenuState>,
 ) -> String {
+    let menu_open = pre_stage_menu.is_some();
     let mut vdom = VirtualDom::new_with_props(
         HarnessComponent,
         HarnessProps {
@@ -725,7 +728,16 @@ fn render_with_stage_menu(
             hints_capture: None,
         },
     );
+    let document: std::rc::Rc<dyn document::Document> =
+        std::rc::Rc::new(stage_menu_document::MeasuredDocument::default());
+    vdom.provide_root_context(document);
     vdom.rebuild_in_place();
+    if menu_open {
+        stage_menu_document::mount_menu(&vdom);
+    }
+    for _ in 0..4 {
+        vdom.render_immediate(&mut dioxus::core::NoOpMutations);
+    }
     render(&vdom)
 }
 
@@ -1141,7 +1153,7 @@ fn map_to_keyboard_body_renders_behavior_selector() {
         .expect("Hold behavior option must render");
     let hold_slice = &html[hold_idx..hold_idx + 220];
     assert!(
-        hold_slice.contains(r"if-stage__body-strategy-pill"),
+        hold_slice.contains(r"if-segmented-control__option"),
         "Hold behavior must reuse strategy pill styling: {hold_slice}"
     );
     assert!(
@@ -1174,7 +1186,7 @@ fn map_to_mouse_body_renders_targets_and_button_behavior() {
         .expect("Hold behavior option must render");
     let hold_slice = &html[hold_idx..hold_idx + 220];
     assert!(
-        hold_slice.contains(r"if-stage__body-strategy-pill"),
+        hold_slice.contains(r"if-segmented-control__option"),
         "Hold behavior must reuse strategy pill styling: {hold_slice}"
     );
     assert!(
@@ -1669,13 +1681,14 @@ fn map_to_keyboard_capture_has_css_contract_without_modifier_row() {
             && !css.contains(".if-stage__body-modifier-keycap"),
         "modifier-row CSS should be retired"
     );
+    let shared = include_str!("../../../../assets/components/inputs/capture.css");
     assert!(
-        css.contains(".if-key-capture")
-            && css.contains(".if-key-capture__surface")
-            && css.contains("appearance: none;")
-            && css.contains("min-height: 32px;")
-            && css.contains(".if-key-capture__surface.is-listening")
-            && css.contains(".if-key-capture__hint"),
+        shared.contains(".if-key-capture")
+            && shared.contains(".if-key-capture__surface")
+            && shared.contains("appearance: none;")
+            && shared.contains("min-height: var(--control-size-lg);")
+            && shared.contains(".if-key-capture__surface--listening")
+            && shared.contains(".if-key-capture__hint"),
         "keyboard capture needs styled idle/listening/hint states"
     );
 }
@@ -1689,7 +1702,7 @@ fn gesture_branch_css_aligns_body_and_branch_grid() {
         css_rule(css, ".if-stage__branch-label").expect("branch label CSS rule exists");
 
     assert!(
-        stage_body.contains("padding: 8px 12px 8px 22px;"),
+        stage_body.contains("padding: var(--space-2) var(--space-3) var(--space-2) 22px;"),
         "expanded stage bodies should align to the stage header title inset: {stage_body}"
     );
     assert!(
@@ -2097,7 +2110,7 @@ fn right_click_on_stage_opens_actions_menu() {
         html.contains("Delete"),
         "expected 'Delete' menu item in: {html}"
     );
-    // Menu must be anchored at cursor coordinates via inline style
+    // The shared menu measures before publishing cursor placement.
     assert!(
         html.contains("left: 100px"),
         "menu must be anchored at cursor x: {html}"
@@ -2668,7 +2681,7 @@ fn conditional_with_empty_if_true_renders_branch_with_add_first_stage() {
 // Task 7: --unbound CSS modifier on the rebind composite
 //
 // When a leaf predicate or `MergeAxis` secondary input is `Unbound`, the
-// rebind composite must carry the `if-rebind-composite--unbound` modifier
+// rebind composite must carry the `if-rebind-field--unbound` modifier
 // so the placeholder label can be styled muted/italic. Previously the
 // `Unbound` placeholder rendered with the same styling as a real source
 // label, leaving the user no visual cue that the field was empty.
@@ -2677,7 +2690,7 @@ fn conditional_with_empty_if_true_renders_branch_with_add_first_stage() {
 #[test]
 fn predicate_input_row_unbound_renders_unbound_modifier() {
     // Conditional whose predicate input is Unbound should render the
-    // `if-rebind-composite--unbound` modifier on the predicate's rebind
+    // `if-rebind-field--unbound` modifier on the predicate's rebind
     // composite, with the `Unbound` placeholder text inside the label and
     // no trace of the legacy `Btn 1` sentinel that older builds produced
     // for an empty-device address.
@@ -2697,7 +2710,7 @@ fn predicate_input_row_unbound_renders_unbound_modifier() {
     );
 
     assert!(
-        html.contains("if-rebind-composite--unbound"),
+        html.contains("if-rebind-field--unbound"),
         "unbound modifier missing on predicate input row: {html}"
     );
     assert!(
@@ -2732,7 +2745,7 @@ fn predicate_input_row_bound_omits_unbound_modifier() {
     );
 
     assert!(
-        !html.contains("if-rebind-composite--unbound"),
+        !html.contains("if-rebind-field--unbound"),
         "bound input must not carry unbound modifier: {html}"
     );
 }
@@ -2740,7 +2753,7 @@ fn predicate_input_row_bound_omits_unbound_modifier() {
 #[test]
 fn merge_axis_body_unbound_secondary_renders_unbound_modifier() {
     // MergeAxis stage with an Unbound secondary input must render the
-    // `if-rebind-composite--unbound` modifier on the secondary input's
+    // `if-rebind-field--unbound` modifier on the secondary input's
     // rebind composite, with the `Unbound` placeholder text in the label.
     let actions = vec![Action::MergeAxis {
         second_input: InputAddress::Unbound,
@@ -2755,7 +2768,7 @@ fn merge_axis_body_unbound_secondary_renders_unbound_modifier() {
     );
 
     assert!(
-        html.contains("if-rebind-composite--unbound"),
+        html.contains("if-rebind-field--unbound"),
         "unbound modifier missing on merge_axis secondary input: {html}"
     );
     assert!(
@@ -2785,7 +2798,7 @@ fn merge_axis_body_bound_secondary_omits_unbound_modifier() {
     );
 
     assert!(
-        !html.contains("if-rebind-composite--unbound"),
+        !html.contains("if-rebind-field--unbound"),
         "bound secondary must not carry unbound modifier: {html}"
     );
 }
@@ -2795,7 +2808,7 @@ fn header_subtitle_unbound_primary_renders_unbound_modifier() {
     // When the mapping's primary input is Unbound (operationally rare, but
     // representable since Task 4: e.g. a hand-edited profile or a future
     // legacy-migration walker), the header subtitle's rebind composite
-    // must carry the `if-rebind-composite--unbound` modifier so the
+    // must carry the `if-rebind-field--unbound` modifier so the
     // `Unbound` placeholder reads consistently with the predicate /
     // merge-axis call sites.
     let modes = Modes::new(vec!["Default".to_owned()]).unwrap();
@@ -2818,7 +2831,7 @@ fn header_subtitle_unbound_primary_renders_unbound_modifier() {
     let html = render_with(state, unbound);
 
     assert!(
-        html.contains("if-rebind-composite--unbound"),
+        html.contains("if-rebind-field--unbound"),
         "unbound modifier missing on header subtitle composite: {html}"
     );
     assert!(
@@ -3256,5 +3269,84 @@ fn dispatch_move(actions: &[Action], from: &StageId, to: &StageId) -> Option<Vec
     match rx.try_recv().unwrap() {
         inputforge_core::engine::EngineCommand::SetMapping { actions, .. } => Some(actions),
         other => panic!("unexpected {other:?}"),
+    }
+}
+
+#[test]
+fn adoption_stage_fields_reference_their_actual_native_controls() {
+    let output = OutputAddress {
+        device: 1,
+        output: OutputId::Axis { id: VJoyAxis::X },
+    };
+    let actions = vec![
+        Action::ChangeMode {
+            strategy: inputforge_core::action::ModeChangeStrategy::SwitchTo {
+                mode: "Default".into(),
+            },
+        },
+        Action::MapToMouse {
+            target: MouseTarget::LeftButton,
+            behavior: OutputBehavior::Hold,
+        },
+        Action::MergeAxis {
+            second_input: InputAddress::Unbound,
+            operation: MergeOp::Average,
+        },
+        Action::MapToVJoy { output },
+        Action::Conditional {
+            condition: Condition::AxisInRange {
+                input: InputAddress::Unbound,
+                min: -0.5,
+                max: 0.5,
+            },
+            if_true: vec![],
+            if_false: vec![],
+        },
+    ];
+    let (state, addr) = build_state(actions);
+    let expanded = (0..5)
+        .map(|index| StageId(vec![StageIdSegment::Index(index)]))
+        .collect();
+    let html = render_with_full(
+        state,
+        addr,
+        expanded,
+        vec![VirtualDeviceConfig {
+            device_id: 1,
+            axes: vec![VJoyAxis::X],
+            button_count: 0,
+            hat_count: 0,
+        }],
+        &["Default"],
+    );
+    for name in [
+        "Target mode",
+        "Mouse target",
+        "Merge operation",
+        "Virtual device",
+        "Virtual output",
+        "Predicate kind",
+        "Minimum axis value",
+        "Maximum axis value",
+    ] {
+        assert!(
+            html.contains(&format!("aria-label=\"{name}\"")),
+            "missing native field name {name}: {html}"
+        );
+    }
+    let targets: Vec<_> = html
+        .split("for=\"")
+        .skip(1)
+        .map(|part| part.split('"').next().unwrap())
+        .collect();
+    assert!(
+        targets.len() >= 7,
+        "missing visible label relationships: {html}"
+    );
+    for target in targets {
+        assert!(
+            html.contains(&format!("id=\"{target}\"")),
+            "label points to missing {target}: {html}"
+        );
     }
 }

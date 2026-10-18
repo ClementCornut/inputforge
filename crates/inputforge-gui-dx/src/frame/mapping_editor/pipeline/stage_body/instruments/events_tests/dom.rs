@@ -40,8 +40,22 @@ fn element(dom: &VirtualDom, node: &VNode, label: &str) -> Option<ElementId> {
                 current = &children[usize::from(*offset)];
             }
         }
-        let static_label = matches!(current,TemplateNode::Element{attrs,..} if attrs.iter().any(|a|matches!(a,TemplateAttribute::Static{name,value,..} if (*name=="aria-label" || *name=="id" || *name=="class") && *value==label)));
-        if static_label || node.dynamic_attrs[index].iter().any(|a|matches!(&a.value,AttributeValue::Text(value) if (a.name=="aria-label" || a.name=="id") && value==label)) || (matches!(current,TemplateNode::Element{tag:"button",..}) && text(node,current,label,dom)) {return node.mounted_dynamic_attribute(index,dom);}
+        let static_label = matches!(current, TemplateNode::Element { attrs, .. } if attrs.iter().any(|attribute| {
+            matches!(attribute, TemplateAttribute::Static { name, value, .. }
+                if (*name == "aria-label" || *name == "id" || *name == "class") && *value == label)
+        }));
+        let dynamic_label = node.dynamic_attrs[index].iter().any(|attribute| {
+            matches!(&attribute.value, AttributeValue::Text(value)
+                if (attribute.name == "aria-label" || attribute.name == "id")
+                    && (value == label || (attribute.name == "id" && label.starts_with("dz-") && value.ends_with(&format!("-{label}")))))
+        });
+        let button_text = matches!(current, TemplateNode::Element { tag: "button", .. })
+            && text(node, current, label, dom);
+        if (static_label || dynamic_label || button_text)
+            && let Some(id) = node.mounted_dynamic_attribute(index, dom)
+        {
+            return Some(id);
+        }
     }
     node.dynamic_nodes
         .iter()

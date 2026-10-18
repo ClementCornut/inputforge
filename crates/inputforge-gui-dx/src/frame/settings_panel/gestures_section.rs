@@ -1,7 +1,7 @@
 //! Gesture defaults render prepared values and forward commits.
-use super::{field_row::SettingsFieldRow, section::SettingsSection};
+use super::section::SettingsSection;
 use crate::{
-    components::{InputSize, IntegerInput},
+    components::{Field, InputSize, IntegerInput},
     settings::Intent,
 };
 use dioxus::prelude::*;
@@ -25,13 +25,15 @@ pub(crate) fn GesturesSection() -> Element {
     rsx! {
         SettingsSection {
             children: rsx! {
-                SettingsFieldRow {
+                Field {
+                    horizontal: true,
                     label: "Double-tap threshold".to_owned(),
                     helper: "Used when creating new Tap gesture stages.".to_owned(),
-                    control_id: DOUBLE_TAP_THRESHOLD_ID.to_owned(),
-                    control: rsx! {
+                    for_id: DOUBLE_TAP_THRESHOLD_ID.to_owned(),
+                    helper_id: format!("{}__helper", DOUBLE_TAP_THRESHOLD_ID),
                         IntegerInput {
                             id: Some(DOUBLE_TAP_THRESHOLD_ID.to_owned()),
+                            aria_describedby: format!("{}__helper", DOUBLE_TAP_THRESHOLD_ID),
                             value: double_tap_value,
                             min: 1,
                             max: 10_000,
@@ -39,15 +41,16 @@ pub(crate) fn GesturesSection() -> Element {
                             oncommit: on_double_tap_commit,
                             oninvalid: move |error| { let _ = c.send(Intent::InvalidGesture(error)); },
                         }
-                    },
                 }
-                SettingsFieldRow {
+                Field {
+                    horizontal: true,
                     label: "Long-press threshold".to_owned(),
                     helper: "Used when creating new Press gesture stages.".to_owned(),
-                    control_id: LONG_PRESS_THRESHOLD_ID.to_owned(),
-                    control: rsx! {
+                    for_id: LONG_PRESS_THRESHOLD_ID.to_owned(),
+                    helper_id: format!("{}__helper", LONG_PRESS_THRESHOLD_ID),
                         IntegerInput {
                             id: Some(LONG_PRESS_THRESHOLD_ID.to_owned()),
+                            aria_describedby: format!("{}__helper", LONG_PRESS_THRESHOLD_ID),
                             value: long_press_value,
                             min: 1,
                             max: 10_000,
@@ -55,7 +58,6 @@ pub(crate) fn GesturesSection() -> Element {
                             oncommit: on_long_press_commit,
                             oninvalid: move |error| { let _ = c.send(Intent::InvalidGesture(error)); },
                         }
-                    },
                 }
             },
         }

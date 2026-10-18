@@ -1,103 +1,86 @@
+//! Native action buttons with explicit accessibility and interaction hooks.
+use super::types::{ActionTone, ButtonPresentation};
+pub use super::types::{ButtonSize, ButtonVariant};
+use crate::components::merge_class;
 use dioxus::prelude::*;
 
-use crate::components::merge_class;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ButtonVariant {
-    Primary,
-    Secondary,
-    Ghost,
-    Danger,
-}
-
-impl ButtonVariant {
-    #[must_use]
-    pub(crate) fn modifier(self) -> &'static str {
-        match self {
-            ButtonVariant::Primary => "primary",
-            ButtonVariant::Secondary => "secondary",
-            ButtonVariant::Ghost => "ghost",
-            ButtonVariant::Danger => "danger",
-        }
-    }
-
-    /// Class string for any button-family component.
-    /// `prefix` is the BEM block (e.g. `"if-button"`, `"if-icon-button"`).
-    #[must_use]
-    pub(crate) fn class_for(self, prefix: &str) -> String {
-        format!("{prefix}--{}", self.modifier())
-    }
-
-    fn class(self) -> String {
-        self.class_for("if-button")
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ButtonSize {
-    Sm,
-    Md,
-    Lg,
-}
-
-impl ButtonSize {
-    #[must_use]
-    pub(crate) fn modifier(self) -> &'static str {
-        match self {
-            ButtonSize::Sm => "sm",
-            ButtonSize::Md => "md",
-            ButtonSize::Lg => "lg",
-        }
-    }
-
-    /// Class string for any button-family component.
-    /// `prefix` is the BEM block (e.g. `"if-button"`, `"if-icon-button"`).
-    #[must_use]
-    pub(crate) fn class_for(self, prefix: &str) -> String {
-        format!("{prefix}--{}", self.modifier())
-    }
-
-    fn class(self) -> String {
-        self.class_for("if-button")
-    }
-}
-
+/// Render a native button; keyboard activation remains browser-owned.
 #[component]
 pub fn Button(
     #[props(default = ButtonVariant::Primary)] variant: ButtonVariant,
     #[props(default = ButtonSize::Md)] size: ButtonSize,
+    #[props(default)] presentation: ButtonPresentation,
+    #[props(default)] tone: ActionTone,
+    #[props(default)] selected: bool,
     #[props(default)] disabled: bool,
     #[props(default)] class: Option<String>,
-    onclick: Option<EventHandler<MouseEvent>>,
-    /// Accessible action name when surrounding context is needed.
-    #[props(default)]
-    aria_label: Option<String>,
-    /// Forwarded to the inner <button>'s `onmounted` so callers can move
-    /// focus to it on mount. Used by the F4 confirm dialog to put initial
-    /// focus on Cancel (the safer default).
-    #[props(default)]
-    onmounted: Option<EventHandler<MountedEvent>>,
+    #[props(default = "button".to_owned())] button_type: String,
+    #[props(default)] id: Option<String>,
+    #[props(default)] title: Option<String>,
+    #[props(default)] aria_label: Option<String>,
+    #[props(default)] aria_labelledby: Option<String>,
+    #[props(default)] aria_describedby: Option<String>,
+    #[props(default)] aria_pressed: Option<bool>,
+    #[props(default)] aria_expanded: Option<bool>,
+    #[props(default)] aria_controls: Option<String>,
+    #[props(default)] aria_haspopup: Option<String>,
+    #[props(default)] aria_current: Option<String>,
+    #[props(default)] autofocus: bool,
+    #[props(default)] onclick: Option<EventHandler<MouseEvent>>,
+    #[props(default)] onkeydown: Option<EventHandler<KeyboardEvent>>,
+    #[props(default)] oncontextmenu: Option<EventHandler<MouseEvent>>,
+    #[props(default)] onmounted: Option<EventHandler<MountedEvent>>,
     children: Element,
 ) -> Element {
-    let variant_class = format!("{} {}", variant.class(), size.class());
-    let combined = merge_class("if-button", &variant_class, class.as_deref());
-    let click_handler = move |evt: MouseEvent| {
-        if let Some(handler) = &onclick {
-            handler.call(evt);
+    let variants = format!(
+        "{} {} {}",
+        variant.class(),
+        size.class(),
+        presentation.class()
+    );
+    let combined = merge_class("if-button", variants.trim(), class.as_deref());
+    let onclick = move |event| {
+        if !disabled && let Some(handler) = onclick {
+            handler.call(event);
         }
     };
-    let mounted_handler = move |evt: MountedEvent| {
-        if let Some(handler) = &onmounted {
-            handler.call(evt);
+    let onkeydown = move |event| {
+        if !disabled && let Some(handler) = onkeydown {
+            handler.call(event);
+        }
+    };
+    let oncontextmenu = move |event| {
+        if !disabled && let Some(handler) = oncontextmenu {
+            handler.call(event);
+        }
+    };
+    let onmounted = move |event| {
+        if let Some(handler) = onmounted {
+            handler.call(event);
         }
     };
     rsx! {
         button {
+            r#type: button_type,
+            id,
+            title,
             "aria-label": aria_label,
-            class: "{combined}",
+            "aria-labelledby": aria_labelledby,
+            "aria-describedby": aria_describedby,
+            "aria-pressed": aria_pressed.map(|value| value.to_string()),
+            "aria-expanded": aria_expanded.map(|value| value.to_string()),
+            "aria-controls": aria_controls,
+            "aria-haspopup": aria_haspopup,
+            "aria-current": aria_current,
+            "data-selected": selected.to_string(),
+            "data-tone": tone.name(),
+            class: combined,
             disabled,
-            onclick: click_handler,
-            onmounted: mounted_handler,
+            autofocus,
+            onclick,
+            onkeydown,
+            oncontextmenu,
+            onmounted,
             {children}
         }
     }

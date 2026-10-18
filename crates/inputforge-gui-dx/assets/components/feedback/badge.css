@@ -18,3 +18,9 @@
    at 3.9x against its own 14% tint. The border still uses canonical
    --color-error to anchor the chip's level identity. */
 .if-badge.if-badge--error   { background: var(--color-error-bg);    color: var(--color-error-hover); border-color: var(--color-error); }
+
+.if-badge--count {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+}

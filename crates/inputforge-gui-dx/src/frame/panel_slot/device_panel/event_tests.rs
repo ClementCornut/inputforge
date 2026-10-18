@@ -47,10 +47,15 @@ fn root() -> Element {
 }
 fn listeners(dom: &VirtualDom, node: &VNode, name: &str, ids: &mut Vec<dioxus::core::ElementId>) {
     use dioxus::core::DynamicNode;
+    let alias_input = node.dynamic_attrs.iter().flat_map(|attributes| attributes.iter()).any(|attribute| {
+        attribute.name == "aria-label"
+            && matches!(&attribute.value, dioxus::core::AttributeValue::Text(label) if label.starts_with("Display name for "))
+    });
     for (i, attrs) in node.dynamic_attrs.iter().enumerate() {
-        if attrs
-            .iter()
-            .any(|a| a.name == name || a.name == format!("on{name}"))
+        if (name != "keydown" || alias_input)
+            && attrs
+                .iter()
+                .any(|a| a.name == name || a.name == format!("on{name}"))
             && let Some(id) = node.mounted_dynamic_attribute(i, dom)
         {
             ids.push(id);

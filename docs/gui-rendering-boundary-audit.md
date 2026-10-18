@@ -26,6 +26,27 @@ covers every production GUI module and browser asset and records the final
 independent architecture review; historical open-finding prose is superseded
 only by that register, without rewriting dated acceptance reports.
 
+## Design-system adoption follow-up — 2026-10-18
+
+The [design-system adoption record](gui-design-system-adoption.md) maps all source-audit
+findings to current controls and styles. Shared primitives now own native actions,
+inputs, menus, feedback and reusable interaction surfaces. Feature modules retain
+prepared values, rendering geometry, supplied callbacks and result publication.
+
+Controlled menu closure now acknowledges the existing app outcome before restoring
+focus; rejected activation/dismissal retains its menu and feedback. Raw controller
+number changes and text-owner transport remain distinct from parsed numeric commits
+and controlled text values. No workflow/history/capture policy, engine access,
+poller or dependency was added to the renderer.
+
+The native-feedback follow-up also delays cursor-menu measurement until its DOM mount,
+registers conditional-panel styles at startup and aligns the shared control layouts.
+No dispatch/history policy or controller value transport changed.
+
+Current source/verification details and remaining native manual acceptance are in the
+linked adoption record and [ownership register](gui-rendering-boundary-ownership.md).
+Earlier dated acceptance evidence, including the user's native Apply retest, is retained.
+
 ## Resolved routing controls — 2026-10-12
 
 The first part of finding **#2** is resolved:

@@ -1,5 +1,7 @@
 # GUI design-system audit
 
+Current remediation: [design-system adoption and validation](gui-design-system-adoption.md). The findings below remain the historical audit snapshot.
+
 Source audit: 2026-10-18. Baseline: `242bd6114e555a350d564da1a940134dc54823d2`.
 
 The GUI does not yet satisfy the rule that interactive controls come from the design system. The three audit partitions found **42 native button/input/select declaration sites outside `src/components`**, plus a native disclosure and several custom interactive surfaces. Loop declarations count once; rendered device, axis, direction, mode and batch rows can create many instances. Existing shared components also receive private visual overrides or lack attributes needed for faithful adoption.

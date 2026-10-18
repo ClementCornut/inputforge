@@ -7,17 +7,10 @@
 .if-layout {
     display: flex;
     flex-direction: column;
-    /* Pin to viewport extents AND clip painted-overflow. The panel-slot
-       entrance keyframe starts at `transform: translateX(8px)`, which
-       extends the painted bounding box past the right edge of its parent.
-       Without `overflow: hidden` here, WebView2 spawns a 10px horizontal
-       scrollbar at the document root for the duration of the animation,
-       shrinking the body by 10px vertically and shifting every chrome
-       container, the visible "wiggle" the user reports on panel open.
-       Every layout child is already height/width-bounded by flex, so
-       this clip is purely defensive against transform paint overflow. */
-    width: 100vw;
-    height: 100vh;
+    /* The shell owns the viewport even before the global body reset loads.
+       A normal-flow 100vh box can still grow the document; only children scroll. */
+    position: fixed;
+    inset: 0;
     overflow: hidden;
     background: var(--color-bg);
     color: var(--color-text);
@@ -87,7 +80,8 @@
 }
 
 .if-layout__mode-strip {
-    flex: 0 0 40px;
+    flex: 0 0 auto;
+    min-height: 40px;
     display: flex;
     min-width: 0;
     background: var(--color-bg-sunken);
@@ -98,7 +92,6 @@
 
 .if-layout__mode-strip .if-mode-tabs-wrap {
     margin-left: 0;
-    padding-left: var(--space-2);
 }
 
 .if-layout__mapping-body {

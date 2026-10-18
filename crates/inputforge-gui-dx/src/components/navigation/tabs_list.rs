@@ -24,6 +24,8 @@ pub use inputforge_gui_dx::components::TabsOrientation;
 pub fn TabsList(
     #[props(default)] aria_label: Option<String>,
     #[props(default = TabsOrientation::Horizontal)] orientation: TabsOrientation,
+    #[props(default)] compact: bool,
+    #[props(default)] scrollable: bool,
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
@@ -74,6 +76,8 @@ pub fn TabsList(
     rsx! {
         div {
             class: "{combined}",
+            "data-compact": compact.to_string(),
+            "data-scrollable": scrollable.to_string(),
             role: "tablist",
             "aria-orientation": "{orientation_str}",
             "aria-label": aria_label.as_deref(),

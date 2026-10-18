@@ -31,7 +31,8 @@ pub struct Bindings {
 pub struct MenuProps {
     pub open: Signal<bool>,
     pub trigger: String,
-    pub onclose: Option<Callback<CloseReason>>,
+    /// False keeps the controlled menu open and prevents opener focus restoration.
+    pub onclose: Option<Callback<CloseReason, bool>>,
 }
 /// App-selected event handlers for menu rendering.
 #[derive(Clone, Copy, Debug)]

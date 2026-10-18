@@ -37,6 +37,11 @@ pub fn IntegerInput(
     oninvalid: Option<EventHandler<IntegerInputError>>,
     oninput: Option<EventHandler<FormEvent>>,
     #[props(default)] disabled: bool,
+    #[props(default)] aria_label: Option<String>,
+    #[props(default)] aria_labelledby: Option<String>,
+    #[props(default)] aria_describedby: Option<String>,
+    #[props(default)] aria_errormessage: Option<String>,
+    #[props(default)] invalid: bool,
     #[props(default)] id: Option<String>,
     #[props(default = InputSize::Md)] size: InputSize,
     #[props(default)] class: Option<String>,
@@ -47,6 +52,15 @@ pub fn IntegerInput(
         InputSize::Lg => "if-integer-input--lg",
     };
     let combined = merge_class("if-integer-input", size_class, class.as_deref());
+    let combined = merge_class(
+        &combined,
+        if invalid {
+            "if-integer-input--invalid"
+        } else {
+            ""
+        },
+        None,
+    );
     let display_value = format!("{}", value());
 
     let view = (crate::components::behavior().integer)(&crate::controls::IntegerProps {
@@ -84,6 +98,11 @@ pub fn IntegerInput(
                     max: "{max}",
                     step: "1",
                     disabled,
+                    "aria-label": aria_label.clone(),
+                    "aria-labelledby": aria_labelledby.clone(),
+                    "aria-describedby": aria_describedby.clone(),
+                    "aria-invalid": invalid.then_some("true"),
+                    "aria-errormessage": aria_errormessage.clone().filter(|_| invalid),
                     oninput: input_handler,
                     onkeydown: on_input_keydown,
                     onblur: on_input_blur,
@@ -100,6 +119,11 @@ pub fn IntegerInput(
                     max: "{max}",
                     step: "1",
                     disabled,
+                    "aria-label": aria_label.clone(),
+                    "aria-labelledby": aria_labelledby.clone(),
+                    "aria-describedby": aria_describedby.clone(),
+                    "aria-invalid": invalid.then_some("true"),
+                    "aria-errormessage": aria_errormessage.clone().filter(|_| invalid),
                     oninput: input_handler,
                     onkeydown: on_input_keydown,
                     onblur: on_input_blur,

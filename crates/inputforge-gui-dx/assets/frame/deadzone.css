@@ -20,24 +20,10 @@
   gap: var(--space-3);
 }
 
-.if-deadzone__toolbar-spacer { flex: 1; }
-
 .if-deadzone__plot-frame {
-  display: flex;
-  position: relative;
   width: clamp(240px, 100%, 480px);
   aspect-ratio: 1 / 1;
-  cursor: default;
-  outline: none;
-  user-select: none;
-  -webkit-user-select: none;
 }
-.if-deadzone__plot-frame:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
-}
-.if-deadzone__plot-frame[data-hovered="true"] { cursor: pointer; }
-.if-deadzone__plot-frame[data-dragging="true"] { cursor: grabbing; }
 
 .if-deadzone__plot {
   display: flex;
@@ -66,7 +52,7 @@
   stroke: var(--color-deadzone-curve);
   stroke-width: 1.75px;
   stroke-linejoin: round;
-  filter: url(#if-instr-glow);
+  filter: var(--instrument-glow);
   vector-effect: non-scaling-stroke;
   fill: none;
 }
@@ -105,7 +91,7 @@
 .if-deadzone__live-dot-halo { fill: var(--color-live); opacity: 0.18; }
 .if-deadzone__live-dot {
   fill: var(--color-live);
-  filter: url(#if-instr-glow);
+  filter: var(--instrument-glow);
 }
 .if-deadzone__tick-label {
   font-family: var(--font-mono);
@@ -115,11 +101,4 @@
      at response_curve.css:132. */
   font-size: 0.05;
   fill: var(--color-text-subtle);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .if-deadzone * {
-    transition-duration: 0ms !important;
-    animation-duration: 0ms !important;
-  }
 }

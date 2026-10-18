@@ -226,3 +226,51 @@ fn invalid_gesture_threshold_keeps_raw_value_and_shows_feedback() {
         assert!(dioxus_ssr::render(&dom).contains("Enter a whole number between 1 and 10000 ms"));
     }
 }
+
+#[test]
+fn adoption_native_settings_controls_reference_only_mounted_messages() {
+    set_event_converter(Box::new(dioxus::html::SerializedHtmlEventConverter));
+    let mut dom = VirtualDom::new(root);
+    dom.rebuild_in_place();
+    dom.render_immediate_to_vec();
+    let html = dioxus_ssr::render(&dom);
+    let doc = scraper::Html::parse_fragment(&html);
+    for input in doc.select(&scraper::Selector::parse("input[id]").unwrap()) {
+        let helper = input
+            .value()
+            .attr("aria-describedby")
+            .unwrap_or_else(|| panic!("native helper missing: {html}"));
+        assert_eq!(
+            doc.select(&scraper::Selector::parse(&format!("[id='{helper}']")).unwrap())
+                .count(),
+            1
+        );
+    }
+    event(
+        &dom,
+        "input",
+        2,
+        SerializedFormData::new("0".into(), vec![]),
+    );
+    dom.render_immediate_to_vec();
+    event(&dom, "blur", 2, SerializedFocusData {});
+    dom.render_immediate_to_vec();
+    let html = dioxus_ssr::render(&dom);
+    let doc = scraper::Html::parse_fragment(&html);
+    let input = doc
+        .select(&scraper::Selector::parse("#if-settings-snapshot-max-count").unwrap())
+        .next()
+        .unwrap();
+    assert_eq!(input.value().attr("aria-invalid"), Some("true"));
+    let error = input
+        .value()
+        .attr("aria-errormessage")
+        .expect("native error association");
+    assert_eq!(input.value().attr("aria-describedby"), Some(error));
+    assert_eq!(
+        doc.select(&scraper::Selector::parse(&format!("[id='{error}']")).unwrap())
+            .count(),
+        1
+    );
+    assert!(!html.contains("id=\"if-settings-snapshot-max-count__helper\""));
+}

@@ -52,67 +52,6 @@
     flex: 0 0 auto;
 }
 
-/* The wrapping button stays a click target. Visual chrome lives on the
- * inner Chip (.if-chip / .if-chip--outline). The button reset below
- * keeps it ARIA-correct without painting any chrome of its own. */
-.if-rail__device-chip {
-    background: transparent;
-    border: 0;
-    padding: 0;
-    cursor: pointer;
-    font: inherit;
-}
-
-/* Active extension: the wrapping button's `aria-pressed="true"` is the
- * single source of active-state truth (both for ARIA and for CSS via
- * the attribute selector). The treatment is the unified row-active
- * idiom (border-focus + primary-tinted parent surface), parameterized
- * to the rail's --color-bg-elevated since the chip strip sits on the
- * rail's elevated bar. */
-.if-rail__device-chip[aria-pressed="true"] > .if-chip {
-    border-color: var(--color-border-focus);
-    background: color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg-elevated));
-    color: var(--color-primary);
-}
-
-/* Recess idle chips one luminance tier below the rail
- * (--color-bg-elevated) so the chip body is visibly distinct from its
- * parent surface. Mirrors the .if-chip--output and
- * .if-add-inline__chip--listening idioms for chips on bg-elevated
- * rails. Without this, idle chips read as just a 1px hairline floating
- * on the rail and the hover tint (which mixes onto bg-elevated) has no
- * luminance contrast to push against.
- *
- * The transition lives on this base selector so hover-in / hover-out
- * and the pressed-active swap all animate via the canonical fast curve
- * (DESIGN.md section "Motion"), mirroring the .if-row idle declaration
- * below that drives both .if-row:hover and .if-row.is-active. */
-.if-rail__device-chip > .if-chip {
-    background: var(--color-bg-sunken);
-    transition:
-        background var(--duration-fast) var(--easing-fast),
-        border-color var(--duration-fast) var(--easing-fast);
-}
-
-/* Hover affordance on idle chips: lighter primary tint than the
- * active treatment (4% vs --tint-selected's 8%) so hover reads as a
- * transient cue distinct from the pressed commit. Border stays at
- * --color-border-strong (the outline-chip idle border) so :hover and
- * :focus-visible remain visually separable: focus paints the outer
- * button outline, hover paints the inner chip background. The
- * :not([aria-pressed="true"]) guard keeps the active treatment
- * dominant on pressed chips. */
-.if-rail__device-chip:not([aria-pressed="true"]):hover > .if-chip {
-    background: color-mix(in srgb, var(--color-primary) 4%, var(--color-bg-elevated));
-    border-color: var(--color-border-strong);
-}
-
-.if-rail__device-chip:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 2px;
-    border-radius: var(--radius-sm);
-}
-
 .if-rail__scroll {
     flex: 1 1 auto;
     min-height: 0;
@@ -137,8 +76,8 @@
     align-items: baseline;
     gap: var(--space-2);
     padding: var(--space-3) var(--space-3) var(--space-1);
-    font-size: 10px;
-    font-weight: 600;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
     letter-spacing: 0.08em;
     color: var(--color-text-muted);
     text-transform: uppercase;
@@ -146,7 +85,7 @@
 
 .if-rail__group-header__count {
     font-family: var(--font-mono);
-    font-weight: 500;
+    font-weight: var(--weight-medium);
     /* Same tier as the eyebrow label so the count reads as data
        inside the eyebrow. The mono family + lighter weight (500 vs
        label's 600) carry the differentiation; the previous
@@ -171,33 +110,11 @@
  * field; rows sit foveal). */
 .if-row {
     position: relative;
-    padding: var(--space-3);
-    /* `transparent` baseline (not `--color-border` like .if-device-row's
-       baseline in panel_slot.css) so rows reserve the geometry of the
-       hover/selected border without painting a resting hairline. The
-       rail's row-vs-row separation comes from the 2px row gap, not from
-       per-row borders. */
-    border: 1px solid transparent;
-    border-radius: var(--radius-md);
-    background: var(--color-bg);
-    cursor: pointer;
-    user-select: none;
-    transition:
-        background var(--duration-fast) var(--easing-fast),
-        border-color var(--duration-fast) var(--easing-fast),
-        color var(--duration-fast) var(--easing-fast);
-}
-
-.if-row:hover {
-    background: var(--color-bg-elevated);
-    border-color: var(--color-border-strong);
 }
 
 /* Halo behind the hover-revealed drag handle so it visually lifts
-   off the row content instead of reading as overlapping the labels.
-   Section E of the cohesion spec drops the reserved gutter for
-   density; the halo is the lightweight alternative that preserves
-   density while giving the handle its own surface layer. The handle
+   off the row content. Both text lines reserve a gutter beyond its
+   outer edge so the halo and mapping text remain separate. The handle
    is `position: absolute` (sortable.css:28-40), so growing its own
    padding does not reflow row siblings. Tokens-only: bg-elevated
    matches the row's hover background, radius-sm + 1px hairline are
@@ -222,38 +139,8 @@
     height: var(--space-2);
 }
 
-.if-row.is-active {
-    background: color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg));
-    border-color: var(--color-border-focus);
-}
-
-/* Ambient row-tint: signals that this row's bound input is currently
-   active. Painted as an inset 1 px ring in --color-live so it layers
-   under hover / .is-active / :focus-visible borders without clobbering
-   them. Intensity (0..1) carried by --row-live-intensity, written
-   inline by row.rs on every snapshot tick; idle rows drop the
-   modifier class entirely and pay nothing.
-
-   Token: --color-live is "this is the engine's truth"
-   (DESIGN.md sec.5). Existing precedents for tinted halos via
-   color-mix in srgb are at tabs.css:84 (running pip) and
-   top_bar.css:191-192 (engine pill); this is the first ambient row
-   surface for the token. */
-.if-row.is-live-active {
-    box-shadow: inset 0 0 0 1px
-        color-mix(in srgb,
-            var(--color-live)
-            calc(var(--row-live-intensity, 0) * 100%),
-            transparent);
-}
-
-.if-row.is-active .if-row__name {
-    font-weight: 700;
-}
-
-.if-row:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: -2px;
+.if-row[data-selected="true"] .if-row__name {
+    font-weight: var(--weight-bold);
 }
 
 .if-row__source-arrow {
@@ -264,7 +151,7 @@
        margin keeps neighbours close while letting the arrow breathe. */
     margin: 0 var(--space-1);
     color: var(--color-border-strong);
-    font-size: 11px;
+    font-size: var(--text-xs);
 }
 
 .if-row__output-chip {
@@ -282,21 +169,12 @@
 }
 
 .if-row__name {
-    font-size: 12px;
-    font-weight: 500;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
     color: var(--color-text);
-    line-height: 1.3;
-    /* Match the source line's left gutter (`.if-row__source` adds the
-       same padding-left) so the name lines up visually with the
-       device label below it, and the hover-revealed drag-handle halo
-       does not overlap the name on hover. */
-    padding-left: var(--space-2);
-}
-
-.if-row__name--unnamed {
-    color: var(--color-text-muted);
-    font-weight: 400;
-    font-style: italic;
+    line-height: var(--leading-base);
+    /* Align both text lines beyond the grip halo, with space-1 clearance. */
+    padding-left: var(--space-3);
 }
 
 /* Source area: two-line stack when qualifiers (merge/cond) exist, single
@@ -308,17 +186,13 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--color-text-muted);
-    line-height: 1.4;
+    line-height: var(--leading-base);
     overflow: hidden;
-    /* Source-line content gets an 8 px left gutter so the
-       hover-revealed drag-handle halo (handle absolute at left:4 +
-       1 px border + 1px 2px padding -> outer right at row-x=20)
-       no longer overlaps the labels (which previously started at the
-       row's 12 px content-edge, 8 px past the halo's outer right).
-       Now they meet edge-to-edge with zero overlap. */
-    padding-left: var(--space-2);
+    /* Shared row padding plus this gutter starts text at x=24;
+       the hovered grip ends at x=20, leaving a full space-1 gap. */
+    padding-left: var(--space-3);
 }
 
 /* Primary line: device name + input id. Two-cell layout so the input
@@ -360,27 +234,14 @@
     align-items: baseline;
     gap: var(--space-2);
     min-width: 0;
-    font-size: 10px;
+    font-size: var(--text-xs);
     overflow: hidden;
-}
-
-.if-row__qualifier {
-    /* Qualifier chips inherit Chip Outline base. Override only what
-       differs from a generic outline chip: smaller font-size, plus a
-       per-kind glyph hue carried by `.glyph-merge` / `.glyph-cond`.
-       Italic was the fourth differentiation channel from primary
-       chips but its forward-slant ink projected past the glyph
-       bounding-box right and read as a clipped trailing letter
-       inside the chip's hairline border; the leading `+` / `+`
-       glyph + Outline variant + 10 px font already differentiate
-       qualifier chips from output chips. */
-    font-size: 10px;
 }
 
 .if-row__qualifier .if-row__qualifier-glyph {
     flex: 0 0 auto;
     font-family: var(--font-mono);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     font-style: normal;
 }
 
@@ -404,13 +265,13 @@
 }
 
 .if-rail-empty__title {
-    font-size: 18px;
-    font-weight: 600;
+    font-size: var(--text-md);
+    font-weight: var(--weight-semibold);
     color: var(--color-text);
 }
 
 .if-rail-empty__helper {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
 }
 
@@ -429,34 +290,6 @@
     margin: 0 var(--space-3);
 }
 
-/* The dashed `+ Add mapping` row is a primary affordance, it's how the
- * user starts the core action of the rail. The previous styling matched
- * the panel-seam color (--color-border on --color-bg-elevated) so the
- * affordance read as a faint sketch. Bumped to --color-border-strong +
- * brighter copy + an explicit font-family so it doesn't fall through to
- * the browser default (Arial) on this surface. */
-.if-add-inline__dashed-row {
-    width: 100%;
-    border: 1px dashed var(--color-border-strong);
-    background: transparent;
-    color: var(--color-text);
-    font: inherit;
-    font-size: 12px;
-    font-weight: 500;
-    padding: var(--space-2);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition:
-        background var(--duration-fast) var(--easing-fast),
-        border-color var(--duration-fast) var(--easing-fast);
-}
-
-.if-add-inline__dashed-row:hover {
-    background: color-mix(in srgb, var(--color-primary) var(--tint-create), var(--color-bg));
-    border-color: var(--color-border-focus);
-    color: var(--color-text);
-}
-
 /* Unified pad shell, single container that hosts both the Capturing
  * and Captured phases. Phase flips never remount this shell so the
  * typed name and focus position carry through. */
@@ -468,15 +301,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
-}
-
-.if-add-inline--pad input {
-    font-size: 12px;
-    background: var(--color-bg);
-    color: var(--color-text);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1) var(--space-2);
 }
 
 /* Pad readout row: input-identity chip (left, fixed-width) + device
@@ -491,43 +315,11 @@
     min-width: 0;
 }
 
-@keyframes if-add-pulse-dot {
-    0%, 100% { opacity: 0.45; }
-    50%      { opacity: 1; }
-}
-
-/* Listening modifier on Chip Capture: neutral chip with a phosphor dot
-   pulsing inside. Reuses --color-live, the system's universal "this
-   surface is listening" signal. Overrides Chip Capture's currentColor
-   resolution so the chip stays neutral until capture commits the
-   taxonomy hue. */
-.if-chip.if-add-inline__chip--listening {
-    color: var(--color-text-muted);
-    background: var(--color-bg-sunken);
-    border-color: var(--color-border-strong);
-}
-
-.if-chip.if-add-inline__chip--listening::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--color-live);
-    animation: if-add-pulse-dot 1100ms ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .if-chip.if-add-inline__chip--listening::before {
-        animation: none;
-        opacity: 0.85;
-    }
-}
-
 .if-add-inline__device {
     flex: 1 1 auto;
     min-width: 0;
     color: var(--color-text-muted);
-    font-size: 12px;
+    font-size: var(--text-sm);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -565,93 +357,14 @@
 }
 
 .if-add-inline__collision-text {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--color-text);
+}
+
+.if-row__rename-wrapper {
+    padding-left: var(--space-3);
 }
 
 .if-row-rename {
-    font-size: 12px;
-    background: var(--color-bg);
-    color: var(--color-text);
-    border: 1px solid var(--color-border-focus);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1) var(--space-2);
     width: 100%;
-}
-
-.if-rail__filter input:focus-visible,
-.if-row-rename:focus-visible,
-.if-add-inline--captured input:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 1px;
-}
-
-.if-row-menu-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-}
-
-.if-row-menu {
-    z-index: 101;
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-3);
-    min-width: 180px;
-    padding: var(--space-1) 0;
-}
-
-.if-row-menu__item {
-    display: block;
-    width: 100%;
-    text-align: left;
-    border: none;
-    background: transparent;
-    color: var(--color-text);
-    padding: var(--space-2) var(--space-3);
-    font-size: 12px;
-    cursor: pointer;
-}
-
-.if-row-menu__item:hover {
-    background: var(--color-border);
-}
-
-/* Disabled menu items (boundary, filter-active, single-element-group)
-   render at half opacity with the canonical not-allowed cursor and no
-   hover affordance. Same idiom the F8 audit added to the
-   tools-cluster button (`disabled` attribute), translated to the
-   aria-disabled marker the menu items use. */
-.if-row-menu__item[aria-disabled="true"] {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.if-row-menu__item[aria-disabled="true"]:hover {
-    background: transparent;
-}
-
-.if-row-menu__item--danger {
-    color: var(--color-error);
-}
-
-.if-row-menu__item--submenu-host {
-    position: relative;
-}
-
-.if-row-menu__submenu {
-    display: none;
-    position: absolute;
-    top: 0;
-    left: 100%;
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    box-shadow: var(--shadow-3);
-    min-width: 160px;
-}
-
-.if-row-menu__item--submenu-host:hover .if-row-menu__submenu,
-.if-row-menu__item--submenu-host:focus-within .if-row-menu__submenu {
-    display: block;
 }

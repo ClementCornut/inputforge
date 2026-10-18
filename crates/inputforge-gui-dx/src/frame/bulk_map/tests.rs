@@ -326,9 +326,22 @@ fn panel_axis_row_renders_compact_bipolar_bar() {
 fn panel_button_row_renders_filled_or_stamped_dot() {
     let html = render_panel(Scenario::Full);
 
+    let document = scraper::Html::parse_fragment(&html);
+    let selector =
+        scraper::Selector::parse(".if-bulk-map__row--button .if-status-dot[aria-label='Released']")
+            .unwrap();
+    let dots: Vec<_> = document.select(&selector).collect();
+    assert_eq!(
+        dots.len(),
+        8,
+        "every released button row needs its own status: {html}"
+    );
     assert!(
-        html.contains("if-bulk-map__live--button"),
-        "button live cell class: {html}"
+        dots.iter().all(|dot| dot
+            .value()
+            .classes()
+            .any(|class| class == "if-status-dot--hollow")),
+        "released button rows must remain hollow: {html}"
     );
 }
 

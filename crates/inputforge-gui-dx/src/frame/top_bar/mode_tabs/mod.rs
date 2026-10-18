@@ -7,7 +7,10 @@ mod rename_inline;
 #[cfg(test)]
 mod tests;
 use crate::{
-    components::{TabButton, TabsList, TabsRoot},
+    components::{
+        ButtonSize, ButtonVariant, FeedbackTone, IconButton, InlineFeedback, TabButton, TabsList,
+        TabsRoot,
+    },
     context::AppContext,
     frame::view_state::ViewState,
     mode_management::{
@@ -57,7 +60,7 @@ pub(crate) fn ModeTabs() -> Element {
                 value:view.editing_mode,
                 onchange:move |name:String| {bindings.ui.call(Request {publication,scope:select_scope.clone(),event:UiEvent::Select(name)});},
                 focus_request:focus,
-                TabsList { class:"if-mode-tabs-wrap".to_owned(),aria_label:"Editing mode".to_owned(),
+                TabsList { compact: true, scrollable: true, class:"if-mode-tabs-wrap".to_owned(),aria_label:"Editing mode".to_owned(),
                     for (index,row) in model.rows.iter().enumerate() {
                         {
                             let name = row.name.clone();
@@ -68,11 +71,11 @@ pub(crate) fn ModeTabs() -> Element {
                             let tab_id = format!("mode-tab-{index}");
                             let key_id = tab_id.clone();
                             let open = menu.read().as_ref().is_some_and(|m| m.name == name);
-                            if let Some((rename_scope,from)) = renaming.read().as_ref().filter(|(_,n)| n == &name) {
-                                rsx! { rename_inline::RenameInline { key:"{name}",from:from.clone(),scope:rename_scope.clone(),publication } }
+                            if renaming.read().as_ref().is_some_and(|(_,n)| n == &name) {
+                                VNode::empty()
                             } else {
                                 rsx! { TabButton {
-                                    key:"{name}",id:name.clone(),label:name.clone(),dom_id:tab_id,title:name.clone(),data_mode:name.clone(),
+                                    truncate:true,key:"{name}",id:name.clone(),label:name.clone(),dom_id:tab_id,title:name.clone(),data_mode:name.clone(),
                                     running:row.running,running_sr_label:"Engine running".to_owned(),aria_haspopup:"menu".to_owned(),aria_expanded:open,
                                     aria_controls:open.then(|| format!("mode-tab-menu-{index}")),
                                     oncontextmenu:move |evt| {bindings.ui.call(Request {publication,scope:mouse_scope.clone(),event:UiEvent::Context(mouse_name.clone(),evt)});},
@@ -82,12 +85,17 @@ pub(crate) fn ModeTabs() -> Element {
                         }
                     }
                 }
+                if let Some((rename_scope,from)) = renaming.read().clone() {
+                    if let Some(index) = model.rows.iter().position(|row| row.name == from) {
+                        rename_inline::RenameInline {key:"{from}",from,editor_id:format!("mode-tab-{index}-name"),scope:rename_scope,publication}
+                    }
+                }
                 if let Some(scope) = adding.read().clone() {
                     add_inline::AddInline {scope,publication}
                 } else {
-                    button {r#type:"button",class:"if-mode-tab--add",disabled:!model.can_add,"aria-label":"Add mode",
-                        onclick:move |_| {bindings.ui.call(Request {publication,scope:add_scope.clone(),event:UiEvent::BeginAdd});
-                        },"+"
+                    IconButton { icon: crate::icons::Icon::Plus, label: "Add mode", variant: ButtonVariant::Ghost, size: ButtonSize::Sm,
+                        disabled: !model.can_add,
+                        onclick:move |_| {bindings.ui.call(Request {publication,scope:add_scope.clone(),event:UiEvent::BeginAdd});},
                     }
                 }
                 if let Some(target) = menu.read().clone() {
@@ -98,7 +106,7 @@ pub(crate) fn ModeTabs() -> Element {
                     }
                 }
             }
-            if let Some(message) = error.read().as_ref() { span {role:"alert",class:"if-mode-tab__error","{message}"} }
+            if let Some(message) = error.read().as_ref() { InlineFeedback {class:"if-mode-tabs__feedback",tone:FeedbackTone::Error,alert:true,"{message}"} }
         }
     }
 }

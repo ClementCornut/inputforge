@@ -116,3 +116,23 @@ impl document::Document for Document {
         }
     }
 }
+
+impl Document {
+    pub(super) fn row_focus_requests(&self) -> usize {
+        self.scripts
+            .borrow()
+            .iter()
+            .filter(|script| {
+                script.starts_with("document.getElementById(\"if-mapping-row-")
+                    && script.ends_with("?.focus();")
+            })
+            .count()
+    }
+
+    pub(super) fn menu_focus_requested(&self, direction: &str) -> bool {
+        self.scripts.borrow().iter().any(|script| {
+            script.contains("menu.querySelectorAll('[role=\"menuitem\"]')")
+                && script.ends_with(&format!(", {direction:?});"))
+        })
+    }
+}

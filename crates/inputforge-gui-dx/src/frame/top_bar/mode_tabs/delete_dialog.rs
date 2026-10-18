@@ -35,16 +35,17 @@ pub(crate) fn ModeDeleteDialog() -> Element {
     rsx! {
         crate::components::DialogRoot {open,onclose:move |()| cancel.call(()),
             crate::components::DialogTitle {"Delete mode"}
-            crate::components::DialogBody {"Delete '{name}'?"
-                div {class:"if-modetab-delete-confirm__counts",span {strong {"{modes}"}" {modes_label}"} span {strong {"{mappings}"}" {mappings_label}"}}
-                if let Some(message)=error.read().as_ref(){span {role:"alert",class:"if-mode-tab__error","{message}"}}
+            crate::components::DialogDescription {"Delete '{name}'?"}
+            crate::components::DialogBody {
+                crate::components::ReadoutCaption {class:"if-modetab-delete-confirm__counts",span {strong {"{modes}"}" {modes_label}"} span {strong {"{mappings}"}" {mappings_label}"}}
+                if let Some(message)=error.read().as_ref(){crate::components::InlineFeedback {tone:crate::components::FeedbackTone::Error,alert:true,"{message}"}}
             }
             crate::components::DialogFooter {
                 crate::components::Button {variant:crate::components::ButtonVariant::Ghost,
                     onmounted:move |evt:MountedEvent| {spawn(async move {let _=evt.data().set_focus(true).await;});},
                     onclick:move |_| { let _ = cancel.call(()); },"Cancel"
                 }
-                crate::components::Button {variant:crate::components::ButtonVariant::Secondary,
+                crate::components::Button {variant:crate::components::ButtonVariant::Danger,
                     onclick:move |_| {
                         bindings.delete.call(DeleteRequest {shell,error,confirm:true});
                     },"Confirm"

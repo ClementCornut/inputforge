@@ -86,11 +86,15 @@ pub(crate) fn MapToMouseBody(
         );
     };
 
+    let field_prefix =
+        use_hook(|| format!("if-stage-field-{}", dioxus::core::current_scope_id().0));
     rsx! {
         div { class: "if-stage__body-mouse",
             div { class: "if-stage__body-field",
-                label { class: "if-stage__body-label", "Target" }
+                crate::components::Label { for_id: format!("{field_prefix}-mouse"), "Target" }
                 Select {
+                    aria_label: "Mouse target",
+                    id: format!("{field_prefix}-mouse"),
                     value: target_signal,
                     options: target_options,
                     onchange: on_target_change,
@@ -98,7 +102,7 @@ pub(crate) fn MapToMouseBody(
             }
             if !target.is_wheel() {
                 div { class: "if-stage__body-field",
-                    label { class: "if-stage__body-label", "Behavior" }
+                    span { class: "if-stage__body-label", "Behavior" }
                     SegmentedControl { aria_label: "Mouse output behavior".to_owned(),
                         SegmentedControlOption {
                             value: "hold".to_owned(),

@@ -52,12 +52,19 @@ pub fn Stack(
 /// token-driven gap. Use for action rows, badge groups, breadcrumbs.
 #[component]
 pub fn Cluster(
+    #[props(default)] inline: bool,
+    #[props(default)] nowrap: bool,
     #[props(default)] gap: Option<String>,
     #[props(default)] padding: Option<String>,
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
-    let combined = merge_class("if-cluster", "", class.as_deref());
+    let variants = format!(
+        "{} {}",
+        if inline { "if-cluster--inline" } else { "" },
+        if nowrap { "if-cluster--nowrap" } else { "" }
+    );
+    let combined = merge_class("if-cluster", variants.trim(), class.as_deref());
     let style = format!(
         "--cluster-gap: {gap}; --cluster-padding: {padding};",
         gap = var_or_initial(gap.as_deref()),

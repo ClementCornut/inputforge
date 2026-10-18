@@ -9,23 +9,18 @@
 //! - Axis: bipolar bar (centered at 50%; fill grows toward the active edge).
 //! - Button: filled-or-stamped dot.
 //! - Hat: mono cardinal letter (N/E/S/W/NE/SE/SW/NW/centered dot).
-
-use dioxus::prelude::*;
-
-use inputforge_core::types::{HatDirection, InputAddress};
-
 use crate::batch_mapping::RowKind;
 use crate::context::AppContext;
 use crate::frame::mapping_editor::live_readout::{
     AxisPolarity, read_axis_display, read_button_pressed, read_hat_direction,
 };
-
+use dioxus::prelude::*;
+use inputforge_core::types::{HatDirection, InputAddress};
 #[component]
 pub(super) fn RowReadout(kind: RowKind, address: InputAddress) -> Element {
     let ctx = use_context::<AppContext>();
     let live = ctx.live.read();
     let cfg = ctx.config.read();
-
     match kind {
         RowKind::Axis => {
             let display = read_axis_display(&address, &live, &cfg);
@@ -44,19 +39,26 @@ pub(super) fn RowReadout(kind: RowKind, address: InputAddress) -> Element {
                 }
             };
             rsx! {
-                div { class: "if-bulk-map__live if-bulk-map__live--axis",
-                    div { class: "if-bulk-map__live-bar", style: "{style}" }
+                div {
+                    class: "if-bulk-map__live if-bulk-map__live--axis",
+                    div {
+                        class: "if-bulk-map__live-bar",
+                        style: "{style}",
+                    }
                 }
             }
         }
         RowKind::Button => {
             let pressed = read_button_pressed(&address, &live, &cfg);
-            let cls = if pressed {
-                "if-bulk-map__live if-bulk-map__live--button if-bulk-map__live--button-on"
-            } else {
-                "if-bulk-map__live if-bulk-map__live--button"
-            };
-            rsx! { div { class: "{cls}" } }
+            rsx! {
+                crate::components::StatusDot {
+                    label: if pressed { "Pressed" } else { "Released" },
+                    variant: if pressed { crate
+                                    ::components::BadgeVariant::Success } else { crate
+                                    ::components::BadgeVariant::Neutral },
+                    hollow: !pressed,
+                }
+            }
         }
         RowKind::Hat => {
             let direction = read_hat_direction(&address, &live, &cfg);
@@ -71,7 +73,12 @@ pub(super) fn RowReadout(kind: RowKind, address: InputAddress) -> Element {
                 HatDirection::W => "W",
                 HatDirection::NW => "NW",
             };
-            rsx! { div { class: "if-bulk-map__live if-bulk-map__live--hat", "{label}" } }
+            rsx! {
+                div {
+                    class: "if-bulk-map__live if-bulk-map__live--hat",
+                    "{label}"
+                }
+            }
         }
     }
 }

@@ -26,3 +26,5 @@
 }
 
 .if-slider:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 4px; }
+
+.if-slider[aria-invalid="true"] { outline-color: var(--color-error); }

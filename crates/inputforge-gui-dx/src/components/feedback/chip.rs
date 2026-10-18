@@ -26,6 +26,12 @@ pub fn Chip(
     #[props(default = ChipVariant::Outline)] variant: ChipVariant,
     #[props(default)] class: Option<String>,
     #[props(default)] title: Option<String>,
+    /// Input taxonomy for capture presentation (`axis`, `button`, or `hat`).
+    #[props(default)]
+    kind: Option<String>,
+    /// Show passive capture progress without adding an interactive control.
+    #[props(default)]
+    listening: bool,
     children: Element,
 ) -> Element {
     let v = match variant {
@@ -33,11 +39,17 @@ pub fn Chip(
         ChipVariant::Output => "if-chip--output",
         ChipVariant::Capture => "if-chip--capture",
     };
-    let combined = merge_class("if-chip", v, class.as_deref());
+    let variant_class = if listening {
+        format!("{v} if-chip--listening")
+    } else {
+        v.to_owned()
+    };
+    let combined = merge_class("if-chip", &variant_class, class.as_deref());
     rsx! {
         span {
             class: "{combined}",
             title: title.as_deref(),
+            "data-kind": kind,
             {children}
         }
     }
@@ -51,6 +63,21 @@ mod tests {
     use dioxus_ssr::render;
 
     use super::{Chip, ChipVariant};
+
+    #[test]
+    fn listening_chip_uses_shared_capture_presentation() {
+        fn listening() -> Element {
+            rsx! { Chip { variant: ChipVariant::Capture, listening: true, "Listening…" } }
+        }
+        let mut vdom = VirtualDom::new(listening);
+        vdom.rebuild_in_place();
+        let html = render(&vdom);
+        assert!(html.contains("if-chip--listening"), "{html}");
+        let css = include_str!("../../../assets/components/feedback/chip.css");
+        assert!(css.contains("var(--duration-capture-pulse)"));
+        assert!(css.contains("prefers-reduced-motion"));
+        assert!(!render_with(ChipVariant::Capture).contains("if-chip--listening"));
+    }
 
     fn render_with(variant: ChipVariant) -> String {
         fn make(variant: ChipVariant) -> Element {

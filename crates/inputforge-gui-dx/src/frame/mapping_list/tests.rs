@@ -441,7 +441,7 @@ fn row_active_class_when_selected() {
     vdom.rebuild_in_place();
     let html = render(&vdom);
     assert!(
-        html.contains("is-active"),
+        html.contains(r#"data-selected="true""#),
         "active row must carry is-active class: {html}"
     );
 }
@@ -874,7 +874,7 @@ fn add_inline_force_expanded_arms_capture() {
         "force_expanded=true must mount the pad shell; got: {html}",
     );
     assert!(
-        html.contains("if-add-inline__chip--listening"),
+        html.contains("if-chip--listening"),
         "Capturing phase must render the listening chip modifier; got: {html}",
     );
     assert!(
@@ -1368,7 +1368,7 @@ fn active_row_carries_is_active_class_in_full_rail() {
     vdom.rebuild_in_place();
     let html = render(&vdom);
     assert!(
-        html.contains("is-active"),
+        html.contains(r#"data-selected="true""#),
         "selected row must render is-active in the full rail; got: {html}",
     );
 }
@@ -1680,101 +1680,6 @@ fn mapping_list_css_aligns_group_header_gutter_with_row_padding() {
     );
 }
 
-#[test]
-fn mapping_list_css_locks_row_token_contract() {
-    let css = include_str!("../../../assets/frame/mapping_list.css");
-
-    // Row resting block. Padding is uniform var(--space-3) (the 10px
-    // drag-handle gutter is dropped in this pass; the SortableHandle is
-    // a 0-width hover-only overlay). Radius bumps to --radius-md to
-    // match .if-device-row and .profile-row.
-    let block = css
-        .split(".if-row {")
-        .nth(1)
-        .expect(".if-row rule present")
-        .split('}')
-        .next()
-        .expect(".if-row rule closed");
-    assert!(
-        block.contains("padding: var(--space-3);"),
-        ".if-row padding must be uniform var(--space-3): {block}",
-    );
-    assert!(
-        block.contains("border-radius: var(--radius-md);"),
-        ".if-row must use --radius-md (matches .if-device-row): {block}",
-    );
-    assert!(
-        block.contains("background: var(--color-bg);"),
-        ".if-row base must use --color-bg (rows sit on bg, not bg-elevated): {block}",
-    );
-    assert!(
-        block.contains("border: 1px solid transparent;"),
-        ".if-row must reserve a 1px transparent border so hover/selected swaps \
-         do not reflow geometry: {block}",
-    );
-
-    // Hover.
-    let hover = css
-        .split(".if-row:hover {")
-        .nth(1)
-        .expect(".if-row:hover rule present")
-        .split('}')
-        .next()
-        .expect(".if-row:hover rule closed");
-    assert!(
-        hover.contains("background: var(--color-bg-elevated);"),
-        ".if-row:hover background must be --color-bg-elevated (the \
-         --color-border substitution is dropped): {hover}",
-    );
-    assert!(
-        hover.contains("border-color: var(--color-border-strong);"),
-        ".if-row:hover border must be --color-border-strong (matches \
-         .if-device-row:hover): {hover}",
-    );
-
-    // Selected. The active row mixes --color-primary at --tint-selected
-    // into --color-bg, with a --color-border-focus border.
-    let selected = css
-        .split(".if-row.is-active {")
-        .nth(1)
-        .expect(".if-row.is-active rule present")
-        .split('}')
-        .next()
-        .expect(".if-row.is-active rule closed");
-    assert!(
-        selected.contains(
-            "background: color-mix(in srgb, var(--color-primary) var(--tint-selected), var(--color-bg));"
-        ),
-        ".if-row.is-active background must mix --color-primary at \
-         --tint-selected into --color-bg (no `transparent` parent): {selected}",
-    );
-    assert!(
-        selected.contains("border-color: var(--color-border-focus);"),
-        ".if-row.is-active must carry the focus border idiom: {selected}",
-    );
-
-    // Focus-visible. Inset 2px to match .if-device-row's offset:-2px.
-    assert!(
-        css.contains(".if-row:focus-visible {"),
-        ".if-row:focus-visible rule must exist: {css}",
-    );
-    let focus = css
-        .split(".if-row:focus-visible {")
-        .nth(1)
-        .expect(".if-row:focus-visible rule present")
-        .split('}')
-        .next()
-        .expect(".if-row:focus-visible rule closed");
-    assert!(
-        focus.contains("outline: 2px solid var(--color-border-focus);"),
-        "row focus ring must be 2px var(--color-border-focus): {focus}",
-    );
-    assert!(
-        focus.contains("outline-offset: -2px;"),
-        "row focus offset must be inset (-2px) per .if-device-row contract: {focus}",
-    );
-}
-
 /// Rounded row corners read symmetrically only when both inline edges
 /// reserve equal gutter space. Bare `scrollbar-gutter: stable` shipped
 /// rows flush left vs ~10px-inset right, making the radius read
@@ -1856,84 +1761,27 @@ fn mapping_list_css_locks_handle_halo_on_row_hover() {
     );
 }
 
-/// The handle halo (`mapping_list_css_locks_handle_halo_on_row_hover`)
-/// floats over the row at `left: 4px` with a 1 px border and 1px 2px
-/// inner padding, putting its outer right edge at row x ~ 20 px. The
-/// row pays no global left-padding (density), so the source-line cells
-/// (`.if-row__name` and `.if-row__source`) each carry a `--space-2`
-/// (8 px) `padding-left` to compensate, ensuring the halo no longer
-/// overlaps the labels on hover. A future "drop redundant padding"
-/// cleanup that strips either declaration would silently regress the
-/// overlap; this test pins both halves of the contract.
+/// Mapping display and rename content share the same clearance beyond the hover grip.
 #[test]
 fn mapping_list_css_locks_source_line_gutter() {
     let css = include_str!("../../../assets/frame/mapping_list.css");
-
-    // Split on a leading newline so we match the standalone
-    // `.if-row__name {` rule rather than the compound selector
-    // `.if-row.is-active .if-row__name { font-weight: 700; }`, which
-    // contains the same substring at its tail.
-    let name_block = css
-        .split("\n.if-row__name {")
-        .nth(1)
-        .expect("standalone .if-row__name rule present")
-        .split('}')
-        .next()
-        .expect(".if-row__name rule closed");
-    assert!(
-        name_block.contains("padding-left: var(--space-2);"),
-        ".if-row__name must declare padding-left: var(--space-2) so the \
-         hover-revealed drag-handle halo (outer right ~ 20 px) does not \
-         overlap the name label: {name_block}",
-    );
-
-    let source_block = css
-        .split("\n.if-row__source {")
-        .nth(1)
-        .expect("standalone .if-row__source rule present")
-        .split('}')
-        .next()
-        .expect(".if-row__source rule closed");
-    assert!(
-        source_block.contains("padding-left: var(--space-2);"),
-        ".if-row__source must declare padding-left: var(--space-2) so the \
-         hover-revealed drag-handle halo does not overlap the source line \
-         (device + input identity): {source_block}",
-    );
-}
-
-/// The live row-tint is layered as an inset 1 px shadow modulated by
-/// the inline `--row-live-intensity` custom property. Locking the
-/// token (--color-live) and the intensity formula
-/// (`calc(var(--row-live-intensity, 0) * 100%)`) prevents a regression
-/// from silently muting the signal or swapping the token tier.
-#[test]
-fn mapping_list_css_locks_row_live_active_uses_color_live() {
-    let css = include_str!("../../../assets/frame/mapping_list.css");
-    let block = css
-        .split(".if-row.is-live-active {")
-        .nth(1)
-        .expect(".if-row.is-live-active rule present")
-        .split('}')
-        .next()
-        .expect(".if-row.is-live-active rule closed");
-    assert!(
-        block.contains("var(--color-live)"),
-        ".if-row.is-live-active must paint with --color-live (the engine's \
-         truth signal); other tier swaps would dilute the semantic: {block}",
-    );
-    assert!(
-        block.contains("calc(var(--row-live-intensity, 0) * 100%)"),
-        ".if-row.is-live-active must modulate intensity via \
-         calc(var(--row-live-intensity, 0) * 100%); the inline custom \
-         property is the only way to carry continuous axis magnitude: {block}",
-    );
-    assert!(
-        block.contains("box-shadow: inset 0 0 0 1px"),
-        ".if-row.is-live-active must use inset 1 px box-shadow so the \
-         live signal layers under hover / .is-active / focus border \
-         states without clobbering them: {block}",
-    );
+    for selector in [
+        ".if-row__name",
+        ".if-row__source",
+        ".if-row__rename-wrapper",
+    ] {
+        let block = css
+            .split(&format!("\n{selector} {{"))
+            .nth(1)
+            .unwrap_or_else(|| panic!("standalone {selector} rule present"))
+            .split('}')
+            .next()
+            .expect("rule closed");
+        assert!(
+            block.contains("padding-left: var(--space-3);"),
+            "{selector} must keep the full text gutter beyond the hovered grip: {block}",
+        );
+    }
 }
 
 /// `row.rs:82` previously discarded `split_label`'s input half. Lock
@@ -2203,14 +2051,11 @@ fn device_filter_active_chip_emits_unified_active_class() {
     vdom.rebuild_in_place();
     let html = render(&vdom);
     assert!(
-        html.contains("if-chip"),
+        html.contains("if-toggle-chip"),
         "device filter chip must render the canonical .if-chip class \
          (Chip primitive): {html}",
     );
-    assert!(
-        html.contains("if-chip--outline"),
-        "idle device chip must use the Outline variant: {html}",
-    );
+    assert!(html.contains(r#"aria-pressed="false""#), "{html}");
     // The wrapping button keeps the .if-rail__device-chip class as a CSS
     // hook for the click target reset; the chip's visual chrome lives on
     // the inner .if-chip element. The legacy active-state class
@@ -2239,72 +2084,6 @@ fn mapping_list_css_wraps_device_filter_chips_into_multiple_rows() {
     assert!(
         !block.contains("overflow-x: auto;"),
         "device filter strip must NOT use overflow-x scrolling after the wrap migration; got: {block}",
-    );
-}
-
-/// Idle device-filter chips paint a 4% primary tint on hover (lighter
-/// than the 8% active commit), with the bg-color animated via the
-/// canonical fast curve. Locks the round-7 hover affordance so a
-/// future refactor cannot drop it silently or escalate the tint to
-/// the same intensity as the pressed-active state.
-#[test]
-fn mapping_list_css_locks_device_chip_hover_lighter_than_active() {
-    let css = include_str!("../../../assets/frame/mapping_list.css");
-
-    // Hover block: 4% primary tint over --color-bg-elevated.
-    let hover_block = css
-        .split(".if-rail__device-chip:not([aria-pressed=\"true\"]):hover > .if-chip {")
-        .nth(1)
-        .expect("device-chip hover block present")
-        .split('}')
-        .next()
-        .expect("device-chip hover block closed");
-    assert!(
-        hover_block
-            .contains("color-mix(in srgb, var(--color-primary) 4%, var(--color-bg-elevated))"),
-        "device-chip hover must paint a 4% primary tint over --color-bg-elevated, lighter than the 8% active commit: {hover_block}",
-    );
-
-    // Base transition: declared on the always-present inner chip
-    // selector so hover-in, hover-out, and the active-toggle all
-    // animate symmetrically (DESIGN.md section "Motion": fast curve
-    // for hover, focus, press, colour transitions).
-    let base_block = css
-        .split(".if-rail__device-chip > .if-chip {")
-        .nth(1)
-        .expect("device-chip base block present")
-        .split('}')
-        .next()
-        .expect("device-chip base block closed");
-    assert!(
-        base_block.contains("var(--duration-fast)"),
-        "device-chip base block must declare the canonical fast duration so hover/active swaps animate: {base_block}",
-    );
-    assert!(
-        base_block.contains("var(--easing-fast)"),
-        "device-chip base block must declare the canonical fast easing so hover/active swaps animate: {base_block}",
-    );
-}
-
-/// Idle device-filter chips paint --color-bg-sunken so the chip body
-/// sits one luminance tier below the rail's --color-bg-elevated.
-/// Mirrors the .if-chip--output and .if-add-inline__chip--listening
-/// idioms; without it the chip body reads as just a 1px hairline
-/// floating on the rail and hover tints (which mix onto bg-elevated)
-/// lose perceptual contrast.
-#[test]
-fn mapping_list_css_locks_device_chip_idle_recessed_to_bg_sunken() {
-    let css = include_str!("../../../assets/frame/mapping_list.css");
-    let block = css
-        .split(".if-rail__device-chip > .if-chip {")
-        .nth(1)
-        .expect("device-chip base block present")
-        .split('}')
-        .next()
-        .expect("device-chip base block closed");
-    assert!(
-        block.contains("background: var(--color-bg-sunken);"),
-        "idle device-filter chip must paint --color-bg-sunken so it sits one luminance tier below the rail's --color-bg-elevated: {block}",
     );
 }
 
@@ -2455,130 +2234,5 @@ fn row_output_chip_absent_when_no_vjoy() {
     assert!(
         !html.contains("\u{2192}"),
         "no arrow glyph U+2192 must paint when there is no output chip to separate to: {html}",
-    );
-}
-
-#[test]
-fn mapping_list_css_locks_dashed_add_row_cohesion() {
-    let css = include_str!("../../../assets/frame/mapping_list.css");
-
-    let block = css
-        .split(".if-add-inline__dashed-row {")
-        .nth(1)
-        .expect(".if-add-inline__dashed-row rule present")
-        .split('}')
-        .next()
-        .expect(".if-add-inline__dashed-row rule closed");
-    assert!(
-        block.contains("border: 1px dashed var(--color-border-strong);"),
-        "dashed footer must use --color-border-strong (matches profiles' + New profile): {block}",
-    );
-    assert!(
-        block.contains("border-radius: var(--radius-md);"),
-        "dashed footer must bump radius to --radius-md (parity with rows): {block}",
-    );
-
-    let hover = css
-        .split(".if-add-inline__dashed-row:hover {")
-        .nth(1)
-        .expect(".if-add-inline__dashed-row:hover rule present")
-        .split('}')
-        .next()
-        .expect(".if-add-inline__dashed-row:hover rule closed");
-    assert!(
-        hover.contains("border-color: var(--color-border-focus);"),
-        "dashed footer hover must use --color-border-focus (unified active border idiom): {hover}",
-    );
-    assert!(
-        hover.contains(
-            "background: color-mix(in srgb, var(--color-primary) var(--tint-create), var(--color-bg));"
-        ),
-        "dashed footer hover must mix primary at --tint-create into --color-bg \
-         (reads as create rather than selected): {hover}",
-    );
-}
-
-/// Border declaration shared by every active-treatment surface in the
-/// rail (row selected, device chip active, dashed-row hover). Encoded
-/// once so a future rename of `--color-border-focus` flows through every
-/// call site of this contract from a single source.
-const EXPECTED_ACTIVE_BORDER: &str = "border-color: var(--color-border-focus);";
-
-/// Build the expected `background:` declaration for the active treatment
-/// at a given (tint percent token, parent surface token) pair. Mirrors the
-/// rule documented in the spec section "Active treatment,
-/// parent-surface-relative".
-fn expected_active_tint_mix(tint: &str, surface: &str) -> String {
-    format!("background: color-mix(in srgb, var(--color-primary) {tint}, {surface});")
-}
-
-#[test]
-fn active_treatment_shape_is_unified_across_row_chip_and_create_row() {
-    // Encodes the spec contract: row-selected, chip-active, and the
-    // dashed create-row hover all share the same border + tint shape.
-    // Differences allowed: parent surface (--color-bg vs
-    // --color-bg-elevated) and tint percent (--tint-selected vs
-    // --tint-create). The shared constant + helper above are the single
-    // source of truth, so a rename in one block cannot drift past this
-    // test. Mode tabs are NOT part of this contract; they keep the
-    // canonical 3px primary bottom-underline asserted in
-    // mode_tabs_active_tab_renders_canonical_if_tab_active_class.
-    let css = include_str!("../../../assets/frame/mapping_list.css");
-
-    // Row selected (sits on --color-bg, tint = --tint-selected).
-    let row_active = css
-        .split(".if-row.is-active {")
-        .nth(1)
-        .expect(".if-row.is-active block")
-        .split('}')
-        .next()
-        .expect(".if-row.is-active closed");
-    let row_expected_bg = expected_active_tint_mix("var(--tint-selected)", "var(--color-bg)");
-    assert!(
-        row_active.contains(EXPECTED_ACTIVE_BORDER),
-        ".if-row.is-active must declare {EXPECTED_ACTIVE_BORDER}: {row_active}",
-    );
-    assert!(
-        row_active.contains(&row_expected_bg),
-        ".if-row.is-active must declare {row_expected_bg}: {row_active}",
-    );
-
-    // Device chip active (parent surface = --color-bg-elevated since the
-    // chip strip sits on the rail's elevated bar).
-    let chip_active = css
-        .split(".if-rail__device-chip[aria-pressed=\"true\"] > .if-chip {")
-        .nth(1)
-        .expect(".if-rail__device-chip pressed block")
-        .split('}')
-        .next()
-        .expect(".if-rail__device-chip pressed closed");
-    let chip_expected_bg =
-        expected_active_tint_mix("var(--tint-selected)", "var(--color-bg-elevated)");
-    assert!(
-        chip_active.contains(EXPECTED_ACTIVE_BORDER),
-        ".if-rail__device-chip[aria-pressed=true] must declare {EXPECTED_ACTIVE_BORDER}: {chip_active}",
-    );
-    assert!(
-        chip_active.contains(&chip_expected_bg),
-        ".if-rail__device-chip[aria-pressed=true] must declare {chip_expected_bg}: {chip_active}",
-    );
-
-    // Dashed footer hover (tint swaps to --tint-create so the affordance
-    // reads as `create` rather than `selected`; border idiom matches).
-    let dashed_hover = css
-        .split(".if-add-inline__dashed-row:hover {")
-        .nth(1)
-        .expect(".if-add-inline__dashed-row hover block")
-        .split('}')
-        .next()
-        .expect(".if-add-inline__dashed-row hover closed");
-    let dashed_expected_bg = expected_active_tint_mix("var(--tint-create)", "var(--color-bg)");
-    assert!(
-        dashed_hover.contains(EXPECTED_ACTIVE_BORDER),
-        ".if-add-inline__dashed-row:hover must declare {EXPECTED_ACTIVE_BORDER}: {dashed_hover}",
-    );
-    assert!(
-        dashed_hover.contains(&dashed_expected_bg),
-        ".if-add-inline__dashed-row:hover must declare {dashed_expected_bg}: {dashed_hover}",
     );
 }

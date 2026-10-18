@@ -1,4 +1,6 @@
 //! The real toast viewport preserves ARIA, interaction and gallery deadline behavior.
+#[path = "notifications/adoption.rs"]
+mod adoption;
 #[path = "notifications/events.rs"]
 mod events;
 use dioxus::prelude::*;

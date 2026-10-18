@@ -67,6 +67,7 @@ pub fn TabButton(
     /// `TabsRoot::disabled`; either being true marks this tab disabled.
     #[props(default)]
     disabled: bool,
+    #[props(default)] truncate: bool,
     #[props(default)] extra_class: Option<String>,
 ) -> Element {
     let ctx = use_context::<TabsContext>();
@@ -136,6 +137,7 @@ pub fn TabButton(
             id: "{dom_id_resolved}",
             r#type: "button",
             class: "{combined}",
+            "data-truncate": truncate.to_string(),
             role: "tab",
             "aria-selected": "{is_active}",
             "aria-controls": aria_controls.as_deref(),
@@ -158,7 +160,7 @@ pub fn TabButton(
                     span { class: "if-sr-only", "{label}" }
                 }
             }
-            "{label}"
+            span { class: "if-tab__label", "{label}" }
         }
     }
 }

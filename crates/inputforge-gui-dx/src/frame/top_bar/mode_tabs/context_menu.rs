@@ -1,6 +1,6 @@
 //! Mode menu rendering, anchor mechanics and app callback wiring.
 use crate::{
-    components::{AnchoredMenu, MenuAnchor, MenuItem},
+    components::{AnchoredMenu, FeedbackTone, InlineFeedback, MenuAnchor, MenuItem},
     mode_management::{
         Operation, Row, Transition,
         ui::{Event as UiEvent, MenuTarget, Publication, Request},
@@ -36,16 +36,18 @@ pub(crate) fn ModeTabContextMenu(
     let default = name.clone();
     rsx! {
         AnchoredMenu {
+            id:format!("mode-tab-menu-{tab_idx}"),
             open:Some(MenuAnchor {x:target.left,y:target.bottom}),
-            aria_labelledby:format!("mode-tab-{tab_idx}"),class:"if-modetab-context-menu".to_owned(),
+            return_focus:format!("mode-tab-{tab_idx}"),aria_labelledby:format!("mode-tab-{tab_idx}"),class:"if-modetab-context-menu".to_owned(),
             on_close:move |reason:CloseReason| {
                 bindings.ui.call(Request {publication,scope:target.scope.clone(),event:UiEvent::MenuClose {target:target.clone(),reason,activation,error}});
+                publication.menu.peek().is_none()
             },
             MenuItem {disabled:!row.can_activate,onclick:move |_| action.call(Operation::Activate(name.clone())),"Activate"}
             MenuItem {disabled:!row.can_rename,onclick:move |_| action.call(Operation::BeginRename(rename.clone())),"Rename"}
-            MenuItem {disabled:!row.can_delete,onclick:move |_| action.call(Operation::BeginDelete(delete.clone())),"Delete"}
+            MenuItem {danger:true,disabled:!row.can_delete,onclick:move |_| action.call(Operation::BeginDelete(delete.clone())),"Delete"}
             MenuItem {disabled:!row.can_default,onclick:move |_| action.call(Operation::Default(default.clone())),"Set as default"}
-            if let Some(message) = error.read().as_ref() {span {role:"alert",class:"if-mode-tab__error","{message}"}}
+            if let Some(message) = error.read().as_ref() {InlineFeedback {tone:FeedbackTone::Error,alert:true,"{message}"}}
         }
     }
 }

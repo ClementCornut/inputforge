@@ -86,3 +86,10 @@
     flex: 0 0 auto;
     align-self: center;
 }
+
+.if-tabs[data-compact="true"] { gap: 0; padding: 0; border-bottom: 0; }
+.if-tabs[data-compact="true"] .if-tab { padding: var(--space-1) var(--space-3); font-size: var(--text-sm); }
+.if-tabs[data-scrollable="true"] { min-width: 0; overflow-x: auto; overflow-y: hidden; }
+.if-tabs[data-scrollable="true"] .if-tab { flex: 0 0 auto; }
+.if-tab[data-truncate="true"] { min-width: 0; max-width: 180px; }
+.if-tab[data-truncate="true"] .if-tab__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

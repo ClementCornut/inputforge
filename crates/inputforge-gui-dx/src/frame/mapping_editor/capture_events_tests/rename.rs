@@ -91,3 +91,37 @@ fn retained_header_draft_rejects_same_key_replacement_after_props_rerender() {
     assert!(editor.error.peek().is_some());
     assert!(editor.undo_log.peek().stacks.is_empty());
 }
+
+#[test]
+fn adoption_header_unicode_draft_uses_named_title_editor_without_value_echo() {
+    set_event_converter(Box::new(SerializedHtmlEventConverter));
+    let (mut dom, _, _rx) = fixture(Surface::Header);
+    send(
+        &dom,
+        "keydown",
+        PlatformEventData::new(Box::new(SerializedKeyboardData::new(
+            Key::F2,
+            Code::F2,
+            Location::Standard,
+            false,
+            Modifiers::empty(),
+            false,
+        ))),
+    );
+    dom.render_immediate_to_vec();
+    send(
+        &dom,
+        "input",
+        PlatformEventData::new(Box::new(SerializedFormData::new(
+            "推力 café 🚀".into(),
+            vec![],
+        ))),
+    );
+    dom.render_immediate_to_vec();
+    let html = dioxus_ssr::render(&dom);
+    assert!(html.contains("if-text-input--title"), "{html}");
+    assert!(html.contains("推力 café 🚀"), "{html}");
+    assert!(!html.contains(" value=\""), "{html}");
+    assert!(html.contains("data-if-text-owner="), "{html}");
+    assert!(html.contains("data-editor-focus=\"true\""), "{html}");
+}

@@ -12,6 +12,11 @@
 //! so the user can recover both errors in one edit pass.
 
 use dioxus::prelude::*;
+#[path = "change_mode_dispatch.rs"]
+mod dispatch;
+pub(crate) use dispatch::{
+    StrategyTarget, TOOLTIP_HOLD_NOT_BUTTON, dispatch_strategy_change, dispatch_target_change,
+};
 
 use inputforge_core::action::{Action, ModeChangeStrategy};
 
@@ -21,97 +26,13 @@ use crate::components::{
 use crate::context::AppContext;
 use crate::frame::MappingKey;
 use crate::frame::mapping_editor::EditorState;
-use crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::dispatch_field;
-use crate::frame::mapping_editor::undo_log::{LabelArgs, StageId, UndoKind, format_undo_label};
+use crate::frame::mapping_editor::undo_log::StageId;
 
 /// Hint copy. Centralised so tests can grep these strings unchanged.
 #[cfg(test)]
 use crate::mapping_edits::hints::{
     HOLD_NOT_BUTTON as HINT_HOLD_NOT_BUTTON, TARGET_EMPTY as HINT_TARGET_EMPTY,
 };
-pub(crate) const TOOLTIP_HOLD_NOT_BUTTON: &str = "Hold requires a button input.";
-
-/// Which pill the user clicked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StrategyTarget {
-    Set,
-    Hold,
-}
-
-/// Wire a Set/Hold edit and its display label to the app controller.
-///
-/// The app preserves the effective target mode across strategy changes.
-pub(crate) fn dispatch_strategy_change(
-    target: StrategyTarget,
-    mapping_key: &MappingKey,
-    stage_id: &StageId,
-    root_actions: &[Action],
-) -> Option<String> {
-    let (before, after) = match target {
-        StrategyTarget::Set => ("Hold", "Set"),
-        StrategyTarget::Hold => ("Set", "Hold"),
-    };
-    let label = format_undo_label(
-        UndoKind::StageEdit,
-        LabelArgs {
-            stage_name: Some("Change mode"),
-            field: Some("strategy"),
-            before_after: Some((before, after)),
-            ..LabelArgs::default()
-        },
-    );
-    let delivered = dispatch_field(
-        root_actions,
-        stage_id,
-        crate::mapping_edits::Field::ModeHold(matches!(target, StrategyTarget::Hold)),
-        mapping_key,
-        label.clone(),
-    );
-    delivered.then_some(label)
-}
-
-/// Wire a target-mode change to the app controller.
-/// Returns the formatted undo label that was committed (`None` when the
-/// new mode equals the current mode, i.e. picking the same option twice).
-///
-/// The `<unset>` token in the undo label preserves the empty-mode signal
-/// to the user (prior strategy with `mode: ""` becomes `target <unset> -> X`).
-pub(crate) fn dispatch_target_change(
-    new_mode: &str,
-    current_strategy: &ModeChangeStrategy,
-    mapping_key: &MappingKey,
-    stage_id: &StageId,
-    root_actions: &[Action],
-) -> Option<String> {
-    let mode_before = match current_strategy {
-        ModeChangeStrategy::SwitchTo { mode } | ModeChangeStrategy::Temporary { mode } => {
-            mode.as_str()
-        }
-    };
-    let before_label = if mode_before.is_empty() {
-        "<unset>"
-    } else {
-        mode_before
-    };
-    let label = format_undo_label(
-        UndoKind::StageEdit,
-        LabelArgs {
-            stage_name: Some("Change mode"),
-            field: Some("target"),
-            before_after: Some((before_label, new_mode)),
-            ..LabelArgs::default()
-        },
-    );
-    let delivered = dispatch_field(
-        root_actions,
-        stage_id,
-        crate::mapping_edits::Field::ModeTarget(new_mode.into()),
-        mapping_key,
-        label.clone(),
-    );
-    delivered.then_some(label)
-}
-
 #[component]
 #[allow(
     unused_qualifications,
@@ -230,10 +151,14 @@ pub(crate) fn ChangeModeBody(
         );
     };
 
+    let field_prefix =
+        use_hook(|| format!("if-stage-field-{}", dioxus::core::current_scope_id().0));
+    let hold_description_id = format!("{field_prefix}-hold-description");
     let hold_pill = rsx! {
         SegmentedControlOption {
             value: "hold".to_owned(),
             data_strategy: Some("hold".to_owned()),
+            aria_describedby: hold_disabled.then(|| hold_description_id.clone()),
             selected: is_hold,
             disabled: hold_disabled,
             tabindex: Some(hold_tabindex.to_owned()),
@@ -245,7 +170,7 @@ pub(crate) fn ChangeModeBody(
     rsx! {
         div { class: "if-stage__body-change-mode",
             div { class: "if-stage__body-field",
-                label { class: "if-stage__body-label", "Strategy" }
+                span { class: "if-stage__body-label", "Strategy" }
                 SegmentedControl { aria_label: "Mode change strategy".to_owned(),
                     SegmentedControlOption {
                         value: "set".to_owned(),
@@ -256,6 +181,7 @@ pub(crate) fn ChangeModeBody(
                     }
                     if hold_disabled {
                         Tooltip {
+                            id: hold_description_id,
                             content: TOOLTIP_HOLD_NOT_BUTTON.to_owned(),
                             placement: TooltipPlacement::Top,
                             {hold_pill}
@@ -266,8 +192,10 @@ pub(crate) fn ChangeModeBody(
                 }
             }
             div { class: "if-stage__body-field",
-                label { class: "if-stage__body-label", "Target mode" }
+                crate::components::Label { for_id: format!("{field_prefix}-mode"), "Target mode" }
                 Select {
+                    aria_label: "Target mode",
+                    id: format!("{field_prefix}-mode"),
                     value: target_value,
                     options: target_options,
                     onchange: on_target_change,
@@ -301,7 +229,7 @@ mod tests {
 
         assert!(html.contains("if-stage__body-change-mode"));
         assert!(
-            html.contains("if-stage__body-strategy"),
+            html.contains("if-segmented-control"),
             "pill row missing: {html}"
         );
         assert!(
@@ -627,6 +555,37 @@ mod tests {
                 );
             }
             other => panic!("expected SetMapping, got {other:?}"),
+        }
+    }
+    #[test]
+    fn adoption_disabled_hold_references_its_mounted_tooltip() {
+        let hold = scraper::Selector::parse("button[data-strategy='hold']").unwrap();
+        let tooltip = scraper::Selector::parse("[role='tooltip']").unwrap();
+        for (primary, disabled) in [("axis0", true), ("btn0", false)] {
+            let (html, _) = render_change_mode_body_for_test(
+                ModeChangeStrategy::SwitchTo {
+                    mode: "Default".into(),
+                },
+                primary,
+                &["Default"],
+            );
+            let document = scraper::Html::parse_fragment(&html);
+            let trigger = document.select(&hold).next().expect("native Hold option");
+            let description = trigger.value().attr("aria-describedby");
+            if disabled {
+                let id = description.expect("disabled Hold must describe why it is unavailable");
+                let bubble = document
+                    .select(&tooltip)
+                    .find(|bubble| bubble.value().attr("id") == Some(id))
+                    .expect("description must reference the mounted tooltip bubble");
+                assert_eq!(bubble.text().collect::<String>(), TOOLTIP_HOLD_NOT_BUTTON);
+            } else {
+                assert!(
+                    description.is_none(),
+                    "enabled Hold must omit absent tooltip reference: {html}"
+                );
+                assert_eq!(document.select(&tooltip).count(), 0);
+            }
         }
     }
 }

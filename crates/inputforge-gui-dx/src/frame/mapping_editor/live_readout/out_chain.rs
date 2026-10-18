@@ -258,7 +258,10 @@ mod tests {
             (".if-editor__readout-chain-pct", "grid-column: 4;"),
             (".if-editor__readout-chain-outcome", "grid-column: 3 / 5;"),
             (".if-editor__readout-chain-step", "grid-column: 1;"),
-            (".if-editor__readout-chain-step", "padding-left: 8px;"),
+            (
+                ".if-editor__readout-chain-step",
+                "padding-left: var(--space-2);",
+            ),
             (".if-editor__readout-chain-step", "white-space: nowrap;"),
         ] {
             assert!(

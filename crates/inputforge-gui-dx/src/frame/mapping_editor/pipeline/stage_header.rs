@@ -74,12 +74,13 @@ pub(crate) fn StageHeader(
     };
 
     rsx! {
-        button {
-            r#type: "button",
+        crate::components::Button {
+            presentation: crate::components::ButtonPresentation::Disclosure,
+            variant: crate::components::ButtonVariant::Ghost,
             class: "if-stage__header",
-            "aria-expanded": if expanded { "true" } else { "false" },
-            "aria-controls": "{controls_id}",
-            "aria-label": aria_label_override,
+            aria_expanded: expanded,
+            aria_controls: controls_id,
+            aria_label: aria_label_override,
             onclick,
             div { class: "{title_class}", "{title}" }
             div { class: "if-stage__summary", "{summary}" }

@@ -25,7 +25,13 @@ struct RenderHarnessProps {
 
 #[component]
 fn RenderHarness(props: RenderHarnessProps) -> Element {
-    rendering::render_plot(&props.curve, &props.body, props.live, 240.0)
+    rendering::render_plot(
+        &props.curve,
+        &props.body,
+        props.live,
+        240.0,
+        "test-instr-glow",
+    )
 }
 
 fn seeded_body(curve: &ResponseCurve) -> BodyState {

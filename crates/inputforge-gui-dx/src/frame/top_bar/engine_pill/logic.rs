@@ -8,16 +8,6 @@ pub(crate) enum Variant {
     Error,
 }
 
-impl Variant {
-    pub(crate) fn class_suffix(self) -> &'static str {
-        match self {
-            Self::Live => "live",
-            Self::Warning => "warning",
-            Self::Error => "error",
-        }
-    }
-}
-
 pub(crate) fn engine_pill_state(status: EngineStatus) -> (Variant, &'static str) {
     match status {
         EngineStatus::Starting => (Variant::Warning, "Starting"),

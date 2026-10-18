@@ -114,7 +114,7 @@ pub(crate) fn AddInline(
         capture,
     );
     rsx! {
-        if let Some(error) = error { div { role: "alert", "{error}" } }
+        if let Some(error) = error { crate::components::InlineFeedback { tone: crate::components::FeedbackTone::Error, alert: true, "{error}" } }
         {body}
     }
 }

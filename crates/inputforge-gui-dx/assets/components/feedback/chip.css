@@ -5,12 +5,12 @@
 .if-chip {
     display: inline-flex;
     align-items: baseline;
-    gap: 4px;
+    gap: var(--space-1);
     padding: 1px var(--space-2);
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
-    font-size: 11px;
-    line-height: 1.4;
+    font-size: var(--text-xs);
+    line-height: var(--leading-base);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -33,23 +33,40 @@
 }
 
 .if-chip.if-chip--capture {
-    background: color-mix(in srgb, currentColor 14%, transparent);
+    background: color-mix(in srgb, currentColor var(--tint-status), transparent);
     border-color: currentColor;
     font-family: var(--font-mono);
-    font-weight: 500;
-    line-height: 1.15;
+    font-weight: var(--weight-medium);
+    line-height: var(--leading-tight);
     min-width: 32px;
     min-height: 20px;
     padding: 2px var(--space-1);
     justify-content: center;
 }
 
-/* Per-input-kind hue. Chip itself does not own a `data-kind` prop
-   (Capture is the only consumer that needs the taxonomy hook); the
-   call site wraps Chip in a parent span carrying `data-kind`, so the
-   selector keys off the parent attribute. Same taxonomy as the legacy
-   .if-add-inline__chip[data-kind=...] block in mapping_list.css; that
-   block is dropped in Task 15 once the Capture chip ships. */
+/* Explicit local taxonomy or an existing taxonomy-bearing parent. */
+.if-chip--capture[data-kind="axis"],
 [data-kind="axis"]   > .if-chip--capture { color: var(--color-output); }
+.if-chip--capture[data-kind="button"],
 [data-kind="button"] > .if-chip--capture { color: var(--color-control-badge-text); }
+.if-chip--capture[data-kind="hat"],
 [data-kind="hat"]    > .if-chip--capture { color: var(--color-processing); }
+
+.if-chip.if-chip--listening {
+    color: var(--color-text-muted);
+    background: var(--color-bg-sunken);
+    border-color: var(--color-border-strong);
+}
+
+.if-chip--listening::before {
+    content: "";
+    width: calc(var(--space-1) * 1.5);
+    height: calc(var(--space-1) * 1.5);
+    border-radius: var(--radius-full);
+    background: var(--color-live);
+    animation: if-capture-pulse var(--duration-capture-pulse) ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .if-chip--listening::before { animation: none; }
+}

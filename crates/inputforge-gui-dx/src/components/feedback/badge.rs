@@ -16,6 +16,11 @@ pub fn Badge(
     #[props(default = BadgeVariant::Neutral)] variant: BadgeVariant,
     #[props(default)] class: Option<String>,
     #[props(default)] title: Option<String>,
+    /// Monospaced count presentation; announcement remains explicit.
+    #[props(default)]
+    count: bool,
+    #[props(default)] aria_live: Option<String>,
+    #[props(default)] aria_label: Option<String>,
     children: Element,
 ) -> Element {
     let v = match variant {
@@ -25,11 +30,18 @@ pub fn Badge(
         BadgeVariant::Warning => "if-badge--warning",
         BadgeVariant::Error => "if-badge--error",
     };
-    let combined = merge_class("if-badge", v, class.as_deref());
+    let variants = if count {
+        format!("{v} if-badge--count")
+    } else {
+        v.to_owned()
+    };
+    let combined = merge_class("if-badge", &variants, class.as_deref());
     rsx! {
         span {
             class: "{combined}",
             title: title.as_deref(),
+            "aria-live": aria_live,
+            "aria-label": aria_label,
             {children}
         }
     }

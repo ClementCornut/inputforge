@@ -6,3 +6,12 @@ pub(super) mod icon;
 pub(super) mod spinner;
 pub(super) mod status_bar;
 pub(super) mod tooltip;
+
+pub(super) mod inline_feedback;
+pub(super) mod readout_caption;
+pub(super) mod status_dot;
+
+#[cfg(test)]
+mod contracts;
+#[cfg(test)]
+mod surface_tests;

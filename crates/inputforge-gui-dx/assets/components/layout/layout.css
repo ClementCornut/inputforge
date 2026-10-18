@@ -22,3 +22,6 @@
 .if-inset {
     padding: var(--inset-padding, var(--space-4));
 }
+
+.if-cluster--inline { display: inline-flex; }
+.if-cluster--nowrap { flex-wrap: nowrap; }

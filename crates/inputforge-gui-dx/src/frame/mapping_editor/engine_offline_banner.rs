@@ -2,12 +2,7 @@
 use crate::{context::AppContext, routing::Context};
 use dioxus::prelude::*;
 use inputforge_core::state::EngineStatus;
-
 #[component]
-#[expect(
-    unused_qualifications,
-    reason = "Dioxus RSX event attributes produce redundant qualifications"
-)]
 pub(crate) fn EngineOfflineBanner() -> Element {
     let ctx = use_context::<AppContext>();
     let meta = ctx.meta.read().clone();
@@ -37,26 +32,37 @@ pub(crate) fn EngineOfflineBanner() -> Element {
     let faulted = output_failure.is_some()
         || meta.session.error.is_some()
         || meta.engine_status == EngineStatus::Faulted;
-
     rsx! {
-        div { class: "if-editor__offline-banner", role: if faulted { "alert" } else { "status" },
+        div {
+            class: "if-editor__offline-banner",
+            role: if faulted { "alert" } else { "status" },
             "aria-live": "polite",
-            div { class: "if-editor__offline-text", "{message}" }
+            div {
+                class: "if-editor__offline-text",
+                "{message}"
+            }
             if output_failure.is_some() {
                 if meta.session.output_failures.iter().any(|failure| !failure.cleanup.is_empty()) {
-                    div { class: "if-editor__offline-text", "Cleanup also failed. Restart InputForge before trying again." }
+                    div {
+                        class: "if-editor__offline-text",
+                        "Cleanup also failed. Restart InputForge before trying again."
+                    }
                 }
-
             }
             if let Some(action) = routing_view.recovery {
-                button { r#type: "button", class: "if-editor__offline-action",
-                    onclick: move |_| routing.dispatch.call(action), "{action.label()}"
+                crate::components::Button {
+                    size: crate
+                            ::components::ButtonSize::Sm,
+                    variant: crate
+                            ::components::ButtonVariant::Secondary,
+                    onclick: move | _ | routing.dispatch
+                            .call(action),
+                    "{action.label()}"
                 }
             }
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,13 +75,11 @@ mod tests {
     };
     use parking_lot::RwLock;
     use std::sync::{Arc, mpsc};
-
     #[derive(Clone, Copy, Props, PartialEq)]
     struct Props {
         offline: bool,
         pending: bool,
     }
-
     fn harness(props: Props) -> Element {
         use crate::routing::{Action, View};
         crate::routing::provide_fixture(View {
@@ -134,9 +138,12 @@ mod tests {
                 live,
             }
         });
-        rsx! { EngineOfflineBanner {} }
-    }
+        rsx! {
+            EngineOfflineBanner {
 
+            }
+        }
+    }
     fn injection_harness() -> Element {
         crate::routing::provide_fixture(crate::routing::View {
             recovery: Some(crate::routing::Action::Retry),
@@ -183,9 +190,12 @@ mod tests {
                 live,
             }
         });
-        rsx! { EngineOfflineBanner {} }
-    }
+        rsx! {
+            EngineOfflineBanner {
 
+            }
+        }
+    }
     #[test]
     fn runtime_errors_remain_visible_and_offline_threads_offer_no_dispatch() {
         for offline in [false, true] {
@@ -223,7 +233,6 @@ mod tests {
         assert!(!html.contains(">Retry<"));
         assert!(!html.contains(">Start<"));
     }
-
     #[test]
     fn empty_profile_keeps_actionable_output_guidance_without_diagnostic_payloads() {
         let mut dom = VirtualDom::new(injection_harness);

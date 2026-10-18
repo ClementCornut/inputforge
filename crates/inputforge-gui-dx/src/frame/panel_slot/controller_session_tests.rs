@@ -374,3 +374,46 @@ fn controller_controls_use_prepared_availability_instead_of_snapshot_policy() {
         .unwrap();
     assert!(apply.value().attr("disabled").is_some());
 }
+
+#[test]
+fn adoption_controller_leaves_share_labels_native_numbers_and_disclosure() {
+    let html = render_session(true);
+    let document = scraper::Html::parse_fragment(&html);
+    let inputs = scraper::Selector::parse("input[type=checkbox]").unwrap();
+    for input in document.select(&inputs) {
+        let labels: Vec<_> = input
+            .ancestors()
+            .filter_map(scraper::ElementRef::wrap)
+            .filter(|ancestor| ancestor.value().name() == "label")
+            .collect();
+        assert_eq!(labels.len(), 1, "checkbox has exactly one native label");
+        assert!(
+            labels[0]
+                .value()
+                .classes()
+                .any(|class| class == "if-checkbox")
+        );
+        assert!(input.value().attr("aria-label").is_some());
+    }
+    let numbers = scraper::Selector::parse("input[type=number]").unwrap();
+    assert_eq!(document.select(&numbers).count(), 2);
+    for input in document.select(&numbers) {
+        assert!(
+            input
+                .value()
+                .classes()
+                .any(|class| class == "if-native-number")
+        );
+        assert_eq!(input.value().attr("step"), Some("1"));
+    }
+    let disclosure = scraper::Selector::parse("details.if-disclosure > summary").unwrap();
+    assert_eq!(
+        document
+            .select(&disclosure)
+            .next()
+            .unwrap()
+            .text()
+            .collect::<String>(),
+        "Advanced axis settings"
+    );
+}

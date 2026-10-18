@@ -1,9 +1,4 @@
-/* The top bar is the upper cockpit panel, same structural-seam
-   vocabulary as the rail and panel-slot (`border-strong` seam below,
-   `--shadow-1` inset top highlight, elevated surface). 32a established
-   that all panel boundaries read as instrument-cluster seams; the bar
-   above the working row inherits that language. The 40px height is
-   structural (matches the egui shell), not on the spacing scale. */
+/* Shell geometry; action, focus, status and tab chrome belongs to shared components. */
 .if-top-bar {
     display: flex;
     align-items: center;
@@ -14,510 +9,63 @@
     box-shadow: var(--shadow-1);
     height: 100%;
 }
-
-/* Sub-pixel DPR guard, at fractional Windows scaling (1.25 / 1.5 / 1.75)
-   the 1px CSS border-bottom can resolve to a partial device pixel and
-   render thin or fuzzy. Range syntax `(resolution < 2dppx)` is required
-   here: the colon-form `(resolution: < 2dppx)` parses as an equality
-   comparison against a malformed value and silently never matches -
-   button.css:37 and icon-button.css:55 carry the same latent bug.
-   At low DPR, escalate to a box-shadow so the seam paints as a
-   guaranteed device pixel. The border-color fades to transparent to
-   avoid double-painting; the layout 1px stays so the bar's height
-   accounting is unchanged. */
 @media (resolution < 2dppx) {
     .if-top-bar {
         border-bottom-color: transparent;
-        box-shadow:
-            var(--shadow-1),
-            0 1px 0 var(--color-border-strong);
+        box-shadow: var(--shadow-1), 0 1px 0 var(--color-border-strong);
     }
 }
-
-/* Structural seam between the context zone (engine pill + profile name)
-   and the editing zone (mode tabs). Full bar height + border-strong
-   background makes it read as a cockpit-panel seam rather than a
-   floating hairline. --space-2 breathing room on each side matches
-   the bar's --space-2 gap rhythm. */
-.if-top-bar__divider {
-    width: 1px;
-    height: 100%;
-    background: var(--color-border-strong);
-    margin: 0 var(--space-2);
-}
-
-.if-top-bar__spacer {
-    flex: 0 0 var(--space-3);
-}
-
+.if-top-bar__divider { margin: 0 var(--space-2); }
+.if-top-bar__spacer { flex: 0 0 var(--space-3); }
 .if-primary-nav {
     display: flex;
     flex: 1 1 auto;
-    align-items: center;
+    align-items: stretch;
     justify-content: center;
     gap: var(--space-3);
     height: 100%;
     min-width: 0;
 }
-
-.if-primary-nav__button {
-    position: relative;
-    align-self: stretch;
-    min-height: 40px;
-    padding: 0 var(--space-2);
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: var(--color-text-muted);
-    cursor: pointer;
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
-    transition:
-        color var(--duration-fast) var(--easing-fast);
-}
-
-.if-primary-nav__button::after {
-    content: "";
-    position: absolute;
-    left: var(--space-1);
-    right: var(--space-1);
-    bottom: -1px;
-    height: 3px;
-    background: transparent;
-    transition: background-color var(--duration-fast) var(--easing-fast);
-}
-
-.if-primary-nav__button:hover:not([disabled]) {
-    color: var(--color-text);
-}
-
-.if-primary-nav__button:hover:not([disabled])::after {
-    background: var(--color-border-strong);
-}
-
-.if-primary-nav__button.is-active {
-    color: var(--color-text);
-}
-
-.if-primary-nav__button.is-active::after {
-    background: var(--color-primary);
-}
-
-.if-primary-nav__button[disabled] {
-    opacity: 0.4;
-    cursor: not-allowed;
-    transition: none;
-}
-
-.if-primary-nav__button:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: -3px;
-}
-
-/* Engine pill, a cockpit readout chip. The 0.625rem horizontal padding
-   is the documented off-scale literal that gives the pill its rounded-
-   capsule proportions; the 0.05em letter-spacing is the same mono-uppercase
-   tracking 32a uses on eyebrow captions, scaled down for chip size. The
-   variant tints layer a low-alpha hue wash beneath the resting border so
-   the chip reads as a phosphor-lit indicator, not a flat outline. Color
-   transitions use the synchronous fast curve (state changes follow input
-   events: engine activation / a profile arriving). */
-.if-engine-pill {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.125rem 0.625rem;
-    /* WCAG 2.5.8, interactive controls clear a 24×24 CSS-pixel hit
-       area. The capsule's `0.125rem` vertical padding produces ~19px
-       at 12px label height; min-height absorbs the gap without
-       altering the documented `0.625rem` horizontal capsule
-       proportions or the centered-baseline dot positioning. */
-    min-height: 24px;
-    border-radius: var(--radius-full);
-    border: 1px solid var(--color-border);
-    background: transparent;
-    color: var(--color-text);
-    cursor: pointer;
-    font-size: var(--text-sm);
-    font-weight: var(--weight-semibold);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    transition:
-        color var(--duration-fast) var(--easing-fast),
-        background-color var(--duration-fast) var(--easing-fast),
-        border-color var(--duration-fast) var(--easing-fast);
-}
-
-.if-engine-pill[disabled] {
-    cursor: not-allowed;
-    opacity: 0.5;
-}
-
-/* WCAG 2.4.7, keyboard focus must be visible. Mirrors the canonical
-   ring used by .if-tools-cluster__button and .if-mode-tab; offset 0px
-   so the 2px ring sits flush outside the capsule's 1px border without
-   intruding on the LED-dot register inside. radius-full keeps the ring
-   matched to the pill geometry. */
-.if-engine-pill:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 0;
-    border-radius: var(--radius-full);
-}
-
-/* The dot is the LED face. `currentColor` carries the variant hue, and
-   the box-shadow is a 0/0/0 spread halo, no blur, just a flat ring at
-   the same hue at low alpha. Reads as light leaking around a panel-
-   mounted indicator, not a glow effect. */
-.if-engine-pill__dot {
-    width: var(--space-2);
-    height: var(--space-2);
-    border-radius: var(--radius-full);
-    background: currentColor;
-    box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 24%, transparent);
-    /* No translate: Inter's typo metrics are tuned so cap-midline
-       coincides with the em-square midpoint
-       ((typoAscender 1984 - |typoDescender 494| - sCapHeight 1490) / 2 = 0
-       in font units), which means flex `align-items: center` lands the
-       8x8 dot box dead-on the cap-midline at any line-height. The prior
-       0.5px push moved it _below_ that line, wrong direction. */
-}
-
-.if-engine-pill__label {
-    font-variant-numeric: tabular-nums;
-}
-
-.if-engine-pill--live {
-    color: var(--color-live);
-    background: color-mix(in srgb, var(--color-live) 10%, transparent);
-    border-color: color-mix(in srgb, var(--color-live) 40%, transparent);
-}
-.if-engine-pill--warning {
-    color: var(--color-warning);
-    background: color-mix(in srgb, var(--color-warning) 10%, transparent);
-    border-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
-}
-/* Stopped variant, text uses --color-error-hover (#FF6F6F), the
-   brighter ramp step. The canonical --color-error (#F25555) fails
-   WCAG AA at 4.1x against the resulting tinted bg-elevated; the
-   hover step clears AA at ~5.0x. Same idiom error badges already
-   use (see colors.css:86: "error badges use the brighter
-   --color-error-hover step (4.9x), same pattern as
-   --color-control-badge-text"). The 10%/40% tints stay on the
-   canonical hue so the chip surface keeps its identity. */
-.if-engine-pill--error {
-    color: var(--color-error-hover);
-    background: color-mix(in srgb, var(--color-error) 10%, transparent);
-    border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
-}
-
-/* Profile name, the loaded variant is a filesystem-flavoured readout
-   slot, so it picks up mono + tabular figures (matching the eyebrow
-   font family established in 32a). A 1px transparent border reserves
-   geometry so the hover/focus border doesn't cause a 1px reflow. The
-   empty variant drops italic, italic + tabular-nums fights the
-   instrument-cluster type system; uppercase + tracking reads as a
-   system status caption instead, same idiom as the engine pill. */
-.if-profile-name {
-    background: transparent;
-    border: 1px solid transparent;
-    color: var(--color-text);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
-    transition:
-        color var(--duration-fast) var(--easing-fast),
-        background-color var(--duration-fast) var(--easing-fast),
-        border-color var(--duration-fast) var(--easing-fast);
-}
-
-.if-profile-name--loaded:hover {
-    background: var(--color-border);
-    border-color: var(--color-border-strong);
-}
-
-/* WCAG 2.4.7, keyboard focus must be visible. Same ring as the
-   tools-cluster button (radius-sm + offset -1px so the ring sits inside
-   the 1px transparent border without causing reflow). */
-.if-profile-name:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: -1px;
-    border-radius: var(--radius-sm);
-}
-
-.if-profile-name--empty {
-    color: var(--color-text-subtle);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-regular);
-    text-transform: uppercase;
-    letter-spacing: 0.18em;
-    /* Interactive: clicking opens the Profiles panel. Cursor falls
-       through to the base `.if-profile-name` `pointer` since the
-       previous `default` override would have read as "static text"
-       on a button element. */
-}
-
-.if-profile-name--empty:hover {
-    color: var(--color-text);
-    background: var(--color-border);
-    border-color: var(--color-border-strong);
-}
-
-/* Eyebrow caption, mono uppercase role label matching the empty-state
-   and F4-counts idiom (font-mono + uppercase + 0.18em tracking). Stays
-   at --color-text-subtle in both states: it is the role label, not the
-   data. --space-1 gap between the role label and the name value. */
-.if-profile-name__role {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-regular);
-    color: var(--color-text-subtle);
-    text-transform: uppercase;
-    letter-spacing: 0.18em;
-    margin-right: var(--space-1);
-}
-
-/* Name value, inherits color and font from the parent .if-profile-name.
-   The --empty modifier makes the inherited color text-subtle and the
-   size text-xs via the parent rule above, so the value stays muted in
-   the empty state without an additional override here. */
-.if-profile-name__value {
-}
-
+.if-profile-name { min-width: 0; }
 .if-tools-cluster {
     display: flex;
     align-items: center;
     gap: var(--space-1);
     flex-shrink: 0;
 }
-
-/* Tools cluster button, resting reads as muted text on transparent
-   chrome, hover lifts to the hover surface, pressed (`aria-pressed`)
-   reads as a panel that has been latched on: elevated background, a
-   strong-border outline so the chip looks seated into the bar (matches
-   the cockpit-panel-seam vocabulary), plus the `--shadow-1` inset top
-   highlight so the chip catches light like the rail and panel-slot do.
-   0.625rem padding is the same off-scale literal used by the engine
-   pill, the two regions read as one chip family. Disabled has no
-   transition (animating disabled is a UX anti-pattern; 32b's polish
-   goal calls this out explicitly). */
-.if-tools-cluster__button {
-    background: transparent;
-    border: 1px solid transparent;
-    color: var(--color-text-muted);
-    padding: var(--space-1) 0.625rem;
-    /* WCAG 2.5.8, at `--space-1` (4px) vertical padding the chip
-       reads ~23px tall, one pixel below the 24×24 minimum. min-height
-       lifts the hit area without changing the resting padding rhythm
-       or the aria-pressed latched-on visual (which still anchors to
-       the existing padding box). */
-    min-height: 24px;
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition:
-        color var(--duration-fast) var(--easing-fast),
-        background-color var(--duration-fast) var(--easing-fast),
-        border-color var(--duration-fast) var(--easing-fast);
-}
-
-.if-tools-cluster__button:hover:not([disabled]) {
-    color: var(--color-text);
-    background: var(--color-border);
-}
-
-.if-tools-cluster__button[aria-pressed="true"] {
-    color: var(--color-text);
-    background: var(--color-bg-elevated);
-    border-color: var(--color-border-strong);
-    box-shadow: var(--shadow-1);
-}
-
-.if-tools-cluster__button[disabled] {
-    opacity: 0.4;
-    cursor: not-allowed;
-    transition: none;
-}
-
-.if-tools-cluster__button:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: -1px;
-    border-radius: var(--radius-sm);
-}
-
-/* Mode tabs strip. The canonical .if-tab / .if-tab--active visuals come
-   from assets/components/navigation/tabs.css (3px primary bottom-underline on
-   active, no fill); the wrapper class below adds bar-specific layout
-   (40px height inheritance, scroll-x at narrow viewports, ellipsis
-   truncation per tab, Webkit scrollbar styling). The .if-tabs base
-   class brings the bottom hairline that doubles as the bar's seam
-   anchor, so margin-bottom: -1px on .if-tab is not required here. */
 .if-mode-tabs-outer {
     display: flex;
+    flex-wrap: wrap;
     align-items: stretch;
     flex: 1 1 0;
     min-width: 0;
-    height: 100%;
 }
-
-/* `.if-tabs` already carries display:flex + flex-direction:row + gap.
-   This rule only adds the bar-specific layout: 40 px height (via 100%
-   inside the outer), gap 0 (override the canonical --space-1 gap so
-   tabs sit shoulder to shoulder under the underline), scroll-x, and
-   the bar's left margin. */
 .if-mode-tabs-wrap {
-    align-items: stretch;
-    gap: 0;
     margin-left: var(--space-2);
-    height: 100%;
     flex: 1 1 0;
     min-width: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-border-strong) transparent;
-    padding: 0;
 }
-
-.if-mode-tabs-wrap::-webkit-scrollbar          { height: 6px; }
-.if-mode-tabs-wrap::-webkit-scrollbar-track    { background: transparent; }
-.if-mode-tabs-wrap::-webkit-scrollbar-thumb    { background: var(--color-border-strong); border-radius: var(--radius-full); }
-
-/* Density compaction inside the bar. Canonical .if-tab uses
-   --space-2 / --space-3 padding; the bar tightens to keep label rhythm
-   with the engine pill and tools cluster at 40 px height, and pins
-   max-width per tab so long mode names truncate with ellipsis. */
-.if-mode-tabs-wrap > .if-tab {
-    padding: 0 0.875rem;
-    max-width: 14rem;
-    flex-shrink: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    align-items: center;
-    gap: 0.375rem;
-}
-
-/* Tail "+" add affordance, sibling of the tablist. Mirrors the resting
-   .if-tab visual (muted text raising on hover) so the bar reads as one
-   strip; padding tightened so the `+` sits flush after the last tab. */
-.if-mode-tab--add {
-    background: transparent;
-    border: 0;
-    color: var(--color-text-muted);
-    padding: 0 var(--space-2);
-    font: inherit;
-    font-weight: var(--weight-medium);
-    cursor: pointer;
-}
-
-.if-mode-tab--add:hover { color: var(--color-text); }
-
-.if-mode-tab--add:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: -3px;
-    border-radius: var(--radius-sm);
-}
-
-/* Mode-tab context menu, AnchoredMenu consumer. Surface and items
-   come from the shared primitive (.if-menu__list, .if-menu__item).
-   Click-outside dismissal is handled by ClickAwayListener (no
-   backdrop element). The 12rem min-width here documents the
-   structural constraint that the longest action label
-   ("Set as default") fits without per-locale recalculation. */
-.if-modetab-context-menu {
-    min-width: 12rem;
-}
-
-/* Inline editor slot, replaces a tab button (add) or a single tab
-   button (rename) with a TextInput + optional error span. The TextInput
-   primitive already supplies its own bg-sunken backplate and border, so
-   the wrapper stays transparent and only reserves geometry: gap matches
-   the mode-tab inter-element gap (0.375rem feels too tight for an input
-   with its own padding; --space-2 is the authored size that pairs the
-   input with its trailing error span without crowding). The
-   `margin-bottom: -1px` mirrors `.if-mode-tab` so the slot height stays
-   stable when an editor swaps in mid-tablist (no 1px reflow against
-   the top-bar's --color-border-strong seam below). The vertical 1px
-   padding reserves room for the input's focus ring without clipping
-   against the bar height. */
+.if-modetab-context-menu { min-width: 12rem; }
 .if-mode-tab--add-inline,
 .if-mode-tab--rename-inline {
-    position: relative;
     display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 1px var(--space-2);
-    margin-bottom: -1px;
-}
-
-/* Error caption, system-status idiom scaled to inline-error size.
-   The error hue carries the alert; weight-medium + 0.01em letter-
-   spacing pulls the caption into the instrument-cluster tracking
-   family so it reads as a structured readout, not a stray prose
-   string. Stays in --font-sans (not mono) because the message is
-   prose with apostrophes and quotes ("'Foo' already exists") that
-   the mono face would render with off-balance spacing.
-   Absolute-positioned beneath the input (top: 100%) so the message
-   overlays the bar bottom seam without forcing the inline editor
-   slot to grow horizontally, long error strings would previously
-   stretch the tablist and reflow the layout. `pointer-events: none`
-   keeps the caption out of the click target since it's a readout,
-   not an interaction surface. */
-.if-mode-tab__error {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    margin-top: var(--space-1);
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    min-width: 12rem;
     max-width: 24rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    pointer-events: none;
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
-    letter-spacing: 0.01em;
-    color: var(--color-error);
 }
-
-/* F4 destructive-confirm body, splits the prose question from the
-   numeric readout. The lead is plain prose ("Delete 'Foo'?") rendered
-   by the parent DialogBody primitive; the counts strip below is a mono
-   eyebrow caption following the cockpit-readout idiom (font-mono +
-   uppercase + 0.18em tracking + tabular-nums) that 32a established for
-   system-status text. The hairline rule above the counts mirrors the
-   instrument-panel separator from empty_state; reads as "this is the
-   blast radius of the action" rather than as an extension of the
-   sentence above. */
 .if-modetab-delete-confirm__counts {
     display: flex;
     gap: var(--space-3);
     margin-top: var(--space-3);
     padding-top: var(--space-3);
-    /* Seam register, partitions the prose question from the
-       blast-radius readout. --color-border (~1.19:1 on bg-elevated)
-       reads invisible; --color-border-strong (~1.74:1) actually
-       carries the divide. Same register correction as the dialog
-       footer divider. */
     border-top: 1px solid var(--color-border-strong);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-regular);
-    color: var(--color-text-subtle);
-    text-transform: uppercase;
-    letter-spacing: 0.18em;
-    font-variant-numeric: tabular-nums;
 }
-
-/* Number value in the count strip, bumps to bright text so the
-   numeric magnitudes read as the data, with the surrounding caption
-   reading as the legend. Same idiom as a real instrument-panel
-   readout: a small mono label beside a brighter mono number. */
 .if-modetab-delete-confirm__counts strong {
     color: var(--color-text);
     font-weight: var(--weight-medium);
 }
+
+.if-mode-tabs__feedback { flex-basis: 100%; padding: var(--space-1) var(--space-2); }

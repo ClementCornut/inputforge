@@ -8,15 +8,11 @@
 //! and `onfocusout`, this component wraps the input in a `<div>` and
 //! relies on event bubbling, same shape F7's `mode_tabs::rename_inline`
 //! uses.
-
-use dioxus::prelude::*;
-
-use inputforge_core::types::InputAddress;
-
 use crate::components::{InputSize, TextInput};
 use crate::context::MappingSummary;
 use crate::mapping_rail::{Lookup, Scope, Target};
-
+use dioxus::prelude::*;
+use inputforge_core::types::InputAddress;
 /// Capture the app-prepared mapping once, alongside the local draft text.
 pub(super) fn capture(summary: &MappingSummary) -> Option<Target> {
     let scope = Scope {
@@ -35,7 +31,6 @@ pub(super) fn capture(summary: &MappingSummary) -> Option<Target> {
         })
         .map(|menu| menu.target)
 }
-
 /// Exercise the same app-owned commit callback from isolated unit fixtures.
 #[cfg(test)]
 pub(super) fn run_commit(
@@ -54,7 +49,6 @@ pub(super) fn run_commit(
         .rename
         .call((publication, crate::mapping_edits::ui::RenameEvent::Commit))
 }
-
 /// Parent-driven inline rename editor for a mapping row. The parent owns
 /// `state: Signal<Option<InputAddress>>`, when this matches
 /// `summary.input`, the editor is open. The component closes by calling
@@ -71,12 +65,10 @@ pub(crate) fn RenameInline(
     summary: MappingSummary,
     state: Signal<Option<InputAddress>>,
 ) -> Element {
-    tracing::trace!(target: "frame::render", region = "mapping_list::rename_inline");
+    tracing::trace!(target : "frame::render", region = "mapping_list::rename_inline");
     crate::frame::mapping_editor::pipeline::stage_body::instruments::stage_dispatch::use_origin();
-
     let initial = summary.name.clone().unwrap_or_default();
     let value: Signal<String> = use_signal(|| initial);
-
     let error = use_signal(|| None::<String>);
     let target = use_hook(|| capture(&summary));
     let publication = crate::mapping_edits::ui::Rename {
@@ -88,16 +80,43 @@ pub(crate) fn RenameInline(
     let ui = use_context::<crate::mapping_edits::Bindings>().ui;
     let key_publication = publication.clone();
     let blur_publication = publication.clone();
-
+    let input_id = format!(
+        "{}-rename",
+        super::row::row_dom_id(&summary.mode, &summary.input)
+    );
+    let error_id = format!("{input_id}-error");
+    let has_error = error.read().is_some();
     rsx! {
         div {
             class: "if-row__rename-wrapper",
-            onkeydown:move |evt| {let _=ui.rename.call((key_publication.clone(),crate::mapping_edits::ui::RenameEvent::Key(evt)));},
-            onfocusout:move |_| {let _=ui.rename.call((blur_publication.clone(),crate::mapping_edits::ui::RenameEvent::Commit));},
+            onkeydown: move |evt| {
+                let _ = ui
+                    .rename
+                    .call((
+                        key_publication.clone(),
+                        crate::mapping_edits::ui::RenameEvent::Key(evt),
+                    ));
+            },
+            onfocusout: move |_| {
+                let _ = ui
+                    .rename
+                    .call((
+                        blur_publication.clone(),
+                        crate::mapping_edits::ui::RenameEvent::Commit,
+                    ));
+            },
             if let Some(message) = error.read().as_ref() {
-                span { role: "alert", "{message}" }
+                crate::components::InlineFeedback {
+                    id: error_id.clone(),
+                    tone: crate::components::FeedbackTone::Error,
+                    alert: true,
+                    "{message}"
+                }
             }
             TextInput {
+                aria_label: "Rename mapping",
+                id: input_id,
+                aria_describedby: has_error.then_some(error_id),
                 value: ReadSignal::from(value),
                 size: InputSize::Sm,
                 class: Some("if-row-rename".to_owned()),
@@ -107,7 +126,12 @@ pub(crate) fn RenameInline(
                     });
                 },
                 oninput: move |evt: FormEvent| {
-                    let _=ui.rename.call((publication.clone(),crate::mapping_edits::ui::RenameEvent::Input(evt.value())));
+                    let _ = ui
+                        .rename
+                        .call((
+                            publication.clone(),
+                            crate::mapping_edits::ui::RenameEvent::Input(evt.value()),
+                        ));
                 },
             }
         }

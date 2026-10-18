@@ -168,7 +168,9 @@ fn keyboard_buttons_dispatch_once_preserve_names_and_record_undo_after_delivery(
                         click(&dom, "Capture keyboard shortcut");
                     }
                     dom.render_immediate_to_vec();
-                    assert!(dioxus_ssr::render(&dom).contains("is-listening"));
+                    assert!(
+                        dioxus_ssr::render(&dom).contains("if-key-capture__surface--listening")
+                    );
                     document.key(0, "keydown", "F12", "F12");
                     document.key(0, "keydown", "F12", "F12");
                     for _ in 0..4 {
@@ -231,24 +233,31 @@ fn keyboard_buttons_dispatch_once_preserve_names_and_record_undo_after_delivery(
                             );
                         }
                     }
-                    assert!(!dioxus_ssr::render(&dom).contains("is-listening"));
-                    assert_eq!(
-                        f.state
-                            .read()
-                            .active_profile
-                            .as_ref()
-                            .unwrap()
-                            .find_mapping(&InputAddress::Unbound, "Default")
-                            .unwrap()
-                            .actions,
-                        vec![original()]
+                    assert!(
+                        !dioxus_ssr::render(&dom).contains("if-key-capture__surface--listening")
                     );
+                    assert_original_mapping_retained(&f);
                     drop(dom);
                     assert_eq!(document.shutdowns(), 1);
                     assert_eq!(document.cleanups(), 1);
                 }
             }
         });
+}
+
+fn assert_original_mapping_retained(fixture: &Fixture) {
+    assert_eq!(
+        fixture
+            .state
+            .read()
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .find_mapping(&InputAddress::Unbound, "Default")
+            .unwrap()
+            .actions,
+        vec![original()]
+    );
 }
 
 #[test]

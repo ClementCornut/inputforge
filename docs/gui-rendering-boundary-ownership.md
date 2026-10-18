@@ -37,6 +37,7 @@ No production fallback, compatibility engine context, sender or mutable state in
 
 | Source | Remaining responsibility |
 | --- | --- |
+| [src/frame/mapping_editor/pipeline/stage_body/gesture_kind.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/gesture_kind.rs) | Prepared gesture labels, branch tags and mounted control IDs |
 | [src/app.rs](../crates/inputforge-gui-dx/src/app.rs) | Root contract installation, prepared signal allocation or equality-gated publication |
 | [src/batch_mapping.rs](../crates/inputforge-gui-dx/src/batch_mapping.rs) | Prepared value, signal and callback contract; no engine or service access |
 | [src/bridge.rs](../crates/inputforge-gui-dx/src/bridge.rs) | Root contract installation, prepared signal allocation or equality-gated publication |
@@ -44,17 +45,26 @@ No production fallback, compatibility engine context, sender or mutable state in
 | [src/components/actions/button.rs](../crates/inputforge-gui-dx/src/components/actions/button.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/actions/icon_button.rs](../crates/inputforge-gui-dx/src/components/actions/icon_button.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/actions/mod.rs](../crates/inputforge-gui-dx/src/components/actions/mod.rs) | Design-system module organization and internal visibility |
+| [src/components/actions/surfaces.rs](../crates/inputforge-gui-dx/src/components/actions/surfaces.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/actions/types.rs](../crates/inputforge-gui-dx/src/components/actions/types.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/feedback/badge.rs](../crates/inputforge-gui-dx/src/components/feedback/badge.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/feedback/chip.rs](../crates/inputforge-gui-dx/src/components/feedback/chip.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/feedback/icon.rs](../crates/inputforge-gui-dx/src/components/feedback/icon.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/feedback/inline_feedback.rs](../crates/inputforge-gui-dx/src/components/feedback/inline_feedback.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/feedback/mod.rs](../crates/inputforge-gui-dx/src/components/feedback/mod.rs) | Design-system module organization and internal visibility |
+| [src/components/feedback/readout_caption.rs](../crates/inputforge-gui-dx/src/components/feedback/readout_caption.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/feedback/spinner.rs](../crates/inputforge-gui-dx/src/components/feedback/spinner.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/feedback/status_bar.rs](../crates/inputforge-gui-dx/src/components/feedback/status_bar.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/feedback/status_dot.rs](../crates/inputforge-gui-dx/src/components/feedback/status_dot.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/feedback/tooltip.rs](../crates/inputforge-gui-dx/src/components/feedback/tooltip.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/inputs/capture.rs](../crates/inputforge-gui-dx/src/components/inputs/capture.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/inputs/checkbox.rs](../crates/inputforge-gui-dx/src/components/inputs/checkbox.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/inputs/inline_text_editor.rs](../crates/inputforge-gui-dx/src/components/inputs/inline_text_editor.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/inputs/integer_input.rs](../crates/inputforge-gui-dx/src/components/inputs/integer_input.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/inputs/mod.rs](../crates/inputforge-gui-dx/src/components/inputs/mod.rs) | Design-system module organization and internal visibility |
+| [src/components/inputs/native_number.rs](../crates/inputforge-gui-dx/src/components/inputs/native_number.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/inputs/number_input.rs](../crates/inputforge-gui-dx/src/components/inputs/number_input.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/inputs/radio.rs](../crates/inputforge-gui-dx/src/components/inputs/radio.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/inputs/segmented_control.rs](../crates/inputforge-gui-dx/src/components/inputs/segmented_control.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/inputs/select.rs](../crates/inputforge-gui-dx/src/components/inputs/select.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/inputs/slider.rs](../crates/inputforge-gui-dx/src/components/inputs/slider.rs) | Markup, mounted references, placement and supplied interaction callbacks |
@@ -67,18 +77,24 @@ No production fallback, compatibility engine context, sender or mutable state in
 | [src/components/interaction/sortable/mod.rs](../crates/inputforge-gui-dx/src/components/interaction/sortable/mod.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/interaction/sortable/state.rs](../crates/inputforge-gui-dx/src/components/interaction/sortable/state.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/layout/card.rs](../crates/inputforge-gui-dx/src/components/layout/card.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/layout/disclosure.rs](../crates/inputforge-gui-dx/src/components/layout/disclosure.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/layout/drawer.rs](../crates/inputforge-gui-dx/src/components/layout/drawer.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/layout/empty_state.rs](../crates/inputforge-gui-dx/src/components/layout/empty_state.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/layout/field.rs](../crates/inputforge-gui-dx/src/components/layout/field.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/layout/label.rs](../crates/inputforge-gui-dx/src/components/layout/label.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/layout/mod.rs](../crates/inputforge-gui-dx/src/components/layout/mod.rs) | Design-system module organization and internal visibility |
+| [src/components/layout/plot_frame/mod.rs](../crates/inputforge-gui-dx/src/components/layout/plot_frame/mod.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/layout/separator.rs](../crates/inputforge-gui-dx/src/components/layout/separator.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/layout/spacing.rs](../crates/inputforge-gui-dx/src/components/layout/spacing.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/mod.rs](../crates/inputforge-gui-dx/src/components/mod.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [assets/components/navigation/measure_cursor_menu.js](../crates/inputforge-gui-dx/assets/components/navigation/measure_cursor_menu.js) | One-frame DOM geometry measurement after the native cursor-menu mount; no workflow policy or polling loop |
 | [src/components/navigation/menu/anchored.rs](../crates/inputforge-gui-dx/src/components/navigation/menu/anchored.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/navigation/menu/item.rs](../crates/inputforge-gui-dx/src/components/navigation/menu/item.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/navigation/menu/items.rs](../crates/inputforge-gui-dx/src/components/navigation/menu/items.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/navigation/menu/mod.rs](../crates/inputforge-gui-dx/src/components/navigation/menu/mod.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/navigation/menu/placement.rs](../crates/inputforge-gui-dx/src/components/navigation/menu/placement.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/navigation/menu/root.rs](../crates/inputforge-gui-dx/src/components/navigation/menu/root.rs) | Markup, mounted references, placement and supplied interaction callbacks |
+| [src/components/navigation/menu/trigger.rs](../crates/inputforge-gui-dx/src/components/navigation/menu/trigger.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/navigation/mod.rs](../crates/inputforge-gui-dx/src/components/navigation/mod.rs) | Design-system module organization and internal visibility |
 | [src/components/navigation/tab_button.rs](../crates/inputforge-gui-dx/src/components/navigation/tab_button.rs) | Markup, mounted references, placement and supplied interaction callbacks |
 | [src/components/navigation/tabs.rs](../crates/inputforge-gui-dx/src/components/navigation/tabs.rs) | Markup, mounted references, placement and supplied interaction callbacks |
@@ -93,6 +109,7 @@ No production fallback, compatibility engine context, sender or mutable state in
 | [src/controllers/mod.rs](../crates/inputforge-gui-dx/src/controllers/mod.rs) | Root contract installation, prepared signal allocation or equality-gated publication |
 | [src/controls.rs](../crates/inputforge-gui-dx/src/controls.rs) | Prepared value, signal and callback contract; no engine or service access |
 | [src/frame/bulk_map/empty_state.rs](../crates/inputforge-gui-dx/src/frame/bulk_map/empty_state.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/bulk_map/groups.rs](../crates/inputforge-gui-dx/src/frame/bulk_map/groups.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/bulk_map/labels.rs](../crates/inputforge-gui-dx/src/frame/bulk_map/labels.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/bulk_map/metadata.rs](../crates/inputforge-gui-dx/src/frame/bulk_map/metadata.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/bulk_map/mod.rs](../crates/inputforge-gui-dx/src/frame/bulk_map/mod.rs) | Prepared frame markup, labels/geometry and callback/result publication |
@@ -104,12 +121,16 @@ No production fallback, compatibility engine context, sender or mutable state in
 | [src/frame/mapping_editor/empty_state.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/empty_state.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/engine_offline_banner.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/engine_offline_banner.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/header.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/header.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/header_labels.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/header_labels.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/inactive_hint.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/inactive_hint.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/keyboard.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/keyboard.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/live_readout/in_block.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/in_block.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/live_readout/in_block_presentation.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/in_block_presentation.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/live_readout/mod.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/mod.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/live_readout/out_block.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/out_block.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/live_readout/out_block_presentation.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/out_block_presentation.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/live_readout/out_chain.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/out_chain.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/live_readout/output_row.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/output_row.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/live_readout/predicate.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/predicate.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/live_readout/value_helpers.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/live_readout/value_helpers.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/mapping_issue_copy.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/mapping_issue_copy.rs) | Prepared frame markup, labels/geometry and callback/result publication |
@@ -117,12 +138,15 @@ No production fallback, compatibility engine context, sender or mutable state in
 | [src/frame/mapping_editor/mod.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/mod.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/add_palette.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/add_palette.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/mod.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/mod.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/pipeline/palette_items.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/palette_items.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_actions_menu.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_actions_menu.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/branches.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/branches.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/change_mode.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/change_mode.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/pipeline/stage_body/change_mode_dispatch.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/change_mode_dispatch.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/conditional.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/conditional.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/deadzone/mod.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/deadzone/mod.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/pipeline/stage_body/deadzone/render_decorations.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/deadzone/render_decorations.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/deadzone/rendering.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/deadzone/rendering.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/deadzone/state.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/deadzone/state.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/deadzone/thumbnail.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/deadzone/thumbnail.rs) | Prepared frame markup, labels/geometry and callback/result publication |
@@ -136,29 +160,45 @@ No production fallback, compatibility engine context, sender or mutable state in
 | [src/frame/mapping_editor/pipeline/stage_body/instruments/wiring.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/instruments/wiring.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/invert.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/invert.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/map_to_keyboard.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/map_to_keyboard.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/pipeline/stage_body/map_to_keyboard_dispatch.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/map_to_keyboard_dispatch.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/map_to_mouse.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/map_to_mouse.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/map_to_vjoy.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/map_to_vjoy.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/merge_axis.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/merge_axis.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/mod.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/mod.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/predicate.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/predicate.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/pipeline/stage_body/predicate_hat.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/predicate_hat.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/pipeline/stage_body/predicate_input.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/predicate_input.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/pipeline/stage_body/predicate_operands.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/predicate_operands.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/pipeline/stage_body/predicate_range.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/predicate_range.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/press_gesture.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/press_gesture.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/response_curve/mod.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/mod.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/pipeline/stage_body/response_curve/render_decorations.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/render_decorations.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/pipeline/stage_body/response_curve/render_grid.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/render_grid.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/response_curve/rendering.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/rendering.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/response_curve/state.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/state.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/response_curve/thumbnail.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/thumbnail.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/response_curve/toolbar.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/response_curve/toolbar.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_body/tap_gesture.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/tap_gesture.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_editor/pipeline/stage_body/vjoy_options.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_body/vjoy_options.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/pipeline/stage_header.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/pipeline/stage_header.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/undo_log.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/undo_log.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_editor/undo_recap.rs](../crates/inputforge-gui-dx/src/frame/mapping_editor/undo_recap.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_list/add_captured.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/add_captured.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_list/add_inline.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/add_inline.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_list/add_inline_rendering.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/add_inline_rendering.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_list/context_menu.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/context_menu.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_list/controls.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/controls.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_list/delete_dialog.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/delete_dialog.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_list/empty.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/empty.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_list/empty_rail.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/empty_rail.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_list/filter.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/filter.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_list/group.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/group.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_list/mod.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/mod.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_list/rename_inline.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/rename_inline.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_list/row.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/row.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_list/row_labels.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/row_labels.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_list/row_qualifiers.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/row_qualifiers.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/mapping_list/rows.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/rows.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mapping_list/source_label.rs](../crates/inputforge-gui-dx/src/frame/mapping_list/source_label.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/mod.rs](../crates/inputforge-gui-dx/src/frame/mod.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/panel_slot/axis_settings.rs](../crates/inputforge-gui-dx/src/frame/panel_slot/axis_settings.rs) | Prepared frame markup, labels/geometry and callback/result publication |
@@ -177,7 +217,8 @@ No production fallback, compatibility engine context, sender or mutable state in
 | [src/frame/profiles/row.rs](../crates/inputforge-gui-dx/src/frame/profiles/row.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/profiles/snapshot_confirm.rs](../crates/inputforge-gui-dx/src/frame/profiles/snapshot_confirm.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/profiles/snapshot_drawer.rs](../crates/inputforge-gui-dx/src/frame/profiles/snapshot_drawer.rs) | Prepared frame markup, labels/geometry and callback/result publication |
-| [src/frame/settings_panel/field_row.rs](../crates/inputforge-gui-dx/src/frame/settings_panel/field_row.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/profiles/snapshot_row.rs](../crates/inputforge-gui-dx/src/frame/profiles/snapshot_row.rs) | Prepared frame markup, labels/geometry and callback/result publication |
+| [src/frame/profiles/source_options.rs](../crates/inputforge-gui-dx/src/frame/profiles/source_options.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/settings_panel/gestures_section.rs](../crates/inputforge-gui-dx/src/frame/settings_panel/gestures_section.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/settings_panel/mod.rs](../crates/inputforge-gui-dx/src/frame/settings_panel/mod.rs) | Prepared frame markup, labels/geometry and callback/result publication |
 | [src/frame/settings_panel/prune_confirm.rs](../crates/inputforge-gui-dx/src/frame/settings_panel/prune_confirm.rs) | Prepared frame markup, labels/geometry and callback/result publication |

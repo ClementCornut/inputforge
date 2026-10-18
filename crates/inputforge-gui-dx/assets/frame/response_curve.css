@@ -29,25 +29,9 @@
 }
 
 .if-curve__plot-frame {
-  display: flex;
-  position: relative;
   width: clamp(240px, 100%, 480px);
   aspect-ratio: 1 / 1;
-  cursor: default;
-  outline: none;
-  /* Drags occasionally pass over SVG <text> tick labels; without this the
-     browser starts a text selection on "0", ".5", "-1" etc. mid-drag. The
-     plot frame contains only the SVG (toolbar lives outside), so disabling
-     selection here is scoped to non-textual content. */
-  user-select: none;
-  -webkit-user-select: none;
 }
-.if-curve__plot-frame:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
-}
-.if-curve__plot-frame[data-hovered="true"] { cursor: pointer; }
-.if-curve__plot-frame[data-dragging="true"] { cursor: grabbing; }
 
 .if-curve__plot {
   display: flex;
@@ -82,7 +66,7 @@
   stroke-width: 1.75px;
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: url(#if-instr-glow);
+  filter: var(--instrument-glow);
   vector-effect: non-scaling-stroke;
   fill: none;
 }
@@ -120,7 +104,7 @@
 .if-curve__live-dot-halo { fill: var(--color-live); opacity: 0.18; }
 .if-curve__live-dot {
   fill: var(--color-live);
-  filter: url(#if-instr-glow);
+  filter: var(--instrument-glow);
 }
 .if-curve__tick-label {
   font-family: var(--font-mono);

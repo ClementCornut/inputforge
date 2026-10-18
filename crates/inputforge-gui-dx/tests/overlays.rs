@@ -1,4 +1,6 @@
 //! Real overlay handlers use the same app behavior as the editor.
+#[path = "overlays/acknowledged_menu.rs"]
+mod acknowledged_menu;
 #[path = "overlays/events.rs"]
 mod controls;
 #[path = "overlays/dialog.rs"]

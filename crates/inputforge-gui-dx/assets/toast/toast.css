@@ -34,7 +34,7 @@
     padding-left: calc(var(--space-3) + 3px);  /* room for accent bar */
     box-shadow:
         var(--shadow-3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04);  /* chamfer highlight */
+        var(--shadow-1);
     font-family: var(--font-sans);
     font-size: var(--text-base);
     line-height: var(--leading-tight);
@@ -139,58 +139,9 @@
     min-width: 0;
 }
 
-.if-toast__count {
-    /* Coalesce badge, instrument-cluster style: subtle bezel,
-       tabular figures, level-tinted color. */
-    display: inline-flex;
-    align-items: center;
-    padding: 2px var(--space-2);
-    border-radius: var(--radius-full);
-    background: color-mix(in oklch, currentColor 14%, transparent);
-    border: 1px solid color-mix(in oklch, currentColor 28%, transparent);
-    color: currentColor;
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-medium);
-    font-feature-settings: "tnum" 1;
-    letter-spacing: 0.02em;
-    line-height: 1;
-    flex-shrink: 0;
-}
-
-/* ── Close button ────────────────────────────────────────────── */
-
+.if-toast__count,
 .if-toast__close {
     flex-shrink: 0;
-    width: 22px;
-    height: 22px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm, 3px);
-    color: var(--color-text-subtle);
-    cursor: pointer;
-    font-size: 18px;
-    line-height: 1;
-    padding: 0;
-    transition:
-        color var(--duration-fast) var(--easing-fast),
-        background var(--duration-fast) var(--easing-fast),
-        border-color var(--duration-fast) var(--easing-fast);
-}
-.if-toast__close:hover {
-    color: var(--color-text);
-    background: color-mix(in oklch, currentColor 12%, transparent);
-    border-color: var(--color-border);
-}
-.if-toast__close:active {
-    background: color-mix(in oklch, currentColor 20%, transparent);
-}
-.if-toast__close:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 1px;
 }
 
 /* ── Reduced motion ─────────────────────────────────────────── */

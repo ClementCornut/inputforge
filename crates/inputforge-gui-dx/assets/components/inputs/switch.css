@@ -30,3 +30,5 @@
 .if-switch__input:disabled ~ .if-switch__track       { opacity: 0.5; cursor: not-allowed; }
 
 .if-switch__label { color: var(--color-text); font-size: var(--text-base); }
+
+.if-switch__input[aria-invalid="true"] ~ .if-switch__track { border-color: var(--color-error); }

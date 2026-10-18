@@ -15,6 +15,7 @@
 
    See DESIGN.md section 5. */
 :root {
+    --duration-capture-pulse: 1100ms; /* shared listening-state feedback cadence */
     --duration-fast: 100ms;   /* hover, focus, press, opacity fade, colour transition */
     --duration-base: 180ms;   /* tab indicator slide, toast entry transform */
     --duration-slow: 240ms;   /* dialog open scale + opacity, larger panel enter/exit */
@@ -46,6 +47,7 @@
        shorthands does not, keep all timing in tokens. */
 @media (prefers-reduced-motion: reduce) {
     :root {
+        --duration-capture-pulse: 0ms;
         --duration-fast: 0ms;
         --duration-base: 0ms;
         --duration-slow: 0ms;

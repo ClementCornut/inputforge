@@ -10,6 +10,11 @@ pub fn Slider(
     #[props(default = 1.0)] max: f64,
     #[props(default = 0.01)] step: f64,
     #[props(default)] disabled: bool,
+    #[props(default)] aria_label: Option<String>,
+    #[props(default)] aria_labelledby: Option<String>,
+    #[props(default)] aria_describedby: Option<String>,
+    #[props(default)] aria_errormessage: Option<String>,
+    #[props(default)] invalid: bool,
     /// HTML `id` for label↔input coupling when wrapped in `Field`.
     #[props(default)]
     id: Option<String>,
@@ -33,6 +38,11 @@ pub fn Slider(
                 max: "{max}",
                 step: "{step}",
                 disabled,
+                "aria-label": aria_label.clone(),
+                "aria-labelledby": aria_labelledby.clone(),
+                "aria-describedby": aria_describedby.clone(),
+                "aria-invalid": invalid.then_some("true"),
+                "aria-errormessage": aria_errormessage.clone().filter(|_| invalid),
                 oninput: input_handler,
             }
         } else {
@@ -44,6 +54,11 @@ pub fn Slider(
                 max: "{max}",
                 step: "{step}",
                 disabled,
+                "aria-label": aria_label.clone(),
+                "aria-labelledby": aria_labelledby.clone(),
+                "aria-describedby": aria_describedby.clone(),
+                "aria-invalid": invalid.then_some("true"),
+                "aria-errormessage": aria_errormessage.clone().filter(|_| invalid),
                 oninput: input_handler,
             }
         }

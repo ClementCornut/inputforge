@@ -1,6 +1,6 @@
-use dioxus::prelude::*;
-
+//! Text inputs preserve app-owned draft transport and forward native accessibility metadata.
 use crate::components::merge_class;
+use dioxus::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InputSize {
@@ -13,13 +13,25 @@ impl InputSize {
     #[must_use]
     pub(crate) fn class(self) -> &'static str {
         match self {
-            InputSize::Sm => "if-text-input--sm",
-            InputSize::Md => "if-text-input--md",
-            InputSize::Lg => "if-text-input--lg",
+            Self::Sm => "if-text-input--sm",
+            Self::Md => "if-text-input--md",
+            Self::Lg => "if-text-input--lg",
         }
     }
 }
 
+/// Text field appearance for ordinary forms and in-place editing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextInputVariant {
+    #[default]
+    Default,
+    Inline,
+    Title,
+}
+
+/// Native text field with app-owned text acknowledgement and browser-owned editing.
+///
+/// Pass IDREF metadata only while the corresponding label/helper/error is mounted.
 #[component]
 pub fn TextInput(
     value: ReadSignal<String>,
@@ -27,91 +39,73 @@ pub fn TextInput(
     #[props(default)] placeholder: Option<String>,
     #[props(default)] disabled: bool,
     #[props(default)] invalid: bool,
-    /// HTML `id` for label↔input coupling when wrapped in `Field`.
-    #[props(default)]
-    id: Option<String>,
+    #[props(default)] id: Option<String>,
+    #[props(default)] aria_label: Option<String>,
+    #[props(default)] aria_labelledby: Option<String>,
+    #[props(default)] aria_describedby: Option<String>,
+    #[props(default)] aria_errormessage: Option<String>,
+    #[props(default)] data_editor_focus: Option<String>,
     #[props(default = InputSize::Md)] size: InputSize,
+    #[props(default)] variant: TextInputVariant,
     #[props(default)] class: Option<String>,
-    /// Forwarded to the inner `<input>` as `aria-describedby` ONLY when
-    /// `Some`. HTML5 forbids empty IDREFs and dangling IDREFs, so callers
-    /// must omit the prop entirely (or pass `None`) until the described
-    /// element is actually mounted in the DOM. Inline editors should pass
-    /// `error_msg.read().is_some().then_some(error_id.to_owned())` so the
-    /// IDREF only appears alongside the error span it points at.
-    #[props(default)]
-    aria_describedby: Option<String>,
-    /// Forwarded to the inner <input>'s `onmounted` so callers can move
-    /// focus to it on appearance (e.g., inline-rename / inline-add open).
-    #[props(default)]
-    onmounted: Option<EventHandler<MountedEvent>>,
-    /// Forwarded to the inner <input>'s `onkeydown` so inline editors
-    /// (rename / new-profile) can implement Enter-commits and Esc-cancels.
-    #[props(default)]
-    onkeydown: Option<EventHandler<KeyboardEvent>>,
-    /// Forwarded to the inner <input>'s `onblur` so inline editors can
-    /// implement blur-commits.
-    #[props(default)]
-    onblur: Option<EventHandler<FocusEvent>>,
+    #[props(default)] onmounted: Option<EventHandler<MountedEvent>>,
+    #[props(default)] onkeydown: Option<EventHandler<KeyboardEvent>>,
+    #[props(default)] onblur: Option<EventHandler<FocusEvent>>,
+    #[props(default)] onfocus: Option<EventHandler<FocusEvent>>,
 ) -> Element {
-    let variant_class = if invalid {
-        format!("{} if-text-input--invalid", size.class())
-    } else {
-        size.class().to_owned()
+    let variant_class = match variant {
+        TextInputVariant::Default => "",
+        TextInputVariant::Inline => "if-text-input--inline",
+        TextInputVariant::Title => "if-text-input--title",
     };
-    let classes = merge_class("if-text-input", &variant_class, class.as_deref());
+    let variants = merge_class(
+        size.class(),
+        variant_class,
+        invalid.then_some("if-text-input--invalid"),
+    );
+    let classes = merge_class("if-text-input", &variants, class.as_deref());
     let text = (crate::components::behavior().text)(crate::controls::TextProps {
         value,
         disabled,
         oninput,
     });
-    let input_handler = text.input;
-    let mounted_handler = move |evt: MountedEvent| {
-        if let Some(handler) = &onmounted {
-            handler.call(evt);
-        }
-    };
     let behavior = crate::components::behavior();
-    let keydown_handler = move |evt| behavior.text_key.call((evt, disabled, onkeydown));
-    let blur_handler = move |evt: FocusEvent| {
-        if let Some(handler) = &onblur {
-            handler.call(evt);
+    let onmounted = move |event| {
+        if let Some(handler) = onmounted {
+            handler.call(event);
         }
     };
-    // Pass `Option<String>` directly so Dioxus omits the attribute when
-    // `None` (vs `""`). Same pattern as `id` below, both attributes have
-    // HTML5 IDREF/empty-string constraints that an unconditional template
-    // string would violate.
-    let described_by = aria_describedby.clone();
+    let onkeydown = move |event| behavior.text_key.call((event, disabled, onkeydown));
+    let onblur = move |event| {
+        if let Some(handler) = onblur {
+            handler.call(event);
+        }
+    };
+    let onfocus = move |event| {
+        if let Some(handler) = onfocus {
+            handler.call(event);
+        }
+    };
     rsx! {
-        if let Some(ref id_val) = id {
-            input {
-                r#type: "text",
-                class: "{classes}",
-                id: "{id_val}",
-                initial_value: "{value}",
-                "data-if-text-owner": "{text.owner}",
-                placeholder: placeholder.as_deref().unwrap_or(""),
-                disabled,
-                "aria-describedby": described_by,
-                oninput: input_handler,
-                onmounted: mounted_handler,
-                onkeydown: keydown_handler,
-                onblur: blur_handler,
-            }
-        } else {
-            input {
-                r#type: "text",
-                class: "{classes}",
-                initial_value: "{value}",
-                "data-if-text-owner": "{text.owner}",
-                placeholder: placeholder.as_deref().unwrap_or(""),
-                disabled,
-                "aria-describedby": described_by,
-                oninput: input_handler,
-                onmounted: mounted_handler,
-                onkeydown: keydown_handler,
-                onblur: blur_handler,
-            }
+        input {
+            r#type: "text",
+            class: classes,
+            id,
+            initial_value: "{value}",
+            "data-if-text-owner": "{text.owner}",
+            "data-editor-focus": data_editor_focus,
+            placeholder,
+            disabled,
+            "aria-label": aria_label,
+            "aria-labelledby": aria_labelledby,
+            "aria-describedby": aria_describedby,
+            "aria-invalid": invalid.then_some("true"),
+            "aria-errormessage": aria_errormessage.filter(|_| invalid),
+            oninput: text.input,
+            onmounted,
+            onkeydown,
+            onblur,
+            onfocus,
         }
     }
 }

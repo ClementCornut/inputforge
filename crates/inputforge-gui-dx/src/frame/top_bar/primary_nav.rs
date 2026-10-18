@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 
+use crate::components::{Button, ButtonPresentation, ButtonVariant};
 use crate::context::AppContext;
 use crate::frame::view_state::{MainSurface, ViewState};
 
@@ -46,20 +47,14 @@ fn PrimaryNavButton(
     disabled_reason: &'static str,
     onclick: EventHandler<MouseEvent>,
 ) -> Element {
-    let class = if active {
-        "if-primary-nav__button is-active"
-    } else {
-        "if-primary-nav__button"
-    };
-    let title = if disabled { disabled_reason } else { "" };
-
     rsx! {
-        button {
-            r#type: "button",
-            class,
+        Button {
+            presentation: ButtonPresentation::Navigation,
+            variant: ButtonVariant::Ghost,
+            selected: active,
             disabled,
-            "aria-current": if active { "page" } else { "false" },
-            title,
+            aria_current: active.then(|| "page".to_owned()),
+            title: disabled.then(|| disabled_reason.to_owned()),
             onclick,
             "{label}"
         }
@@ -143,7 +138,7 @@ mod tests {
         let html = render_nav(MainSurface::BulkMap);
 
         assert!(
-            html.contains(r#"class="if-primary-nav__button is-active""#)
+            html.contains(r#"data-selected="true""#)
                 && html.contains(r#"aria-current="page""#)
                 && html.contains(">Batch map</button>"),
             "Batch map must be the active primary destination: {html}"

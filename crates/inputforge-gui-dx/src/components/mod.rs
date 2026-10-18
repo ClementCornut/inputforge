@@ -10,17 +10,33 @@ mod layout;
 mod navigation;
 mod overlays;
 
+#[cfg(test)]
+#[path = "../../tests/overlays/events.rs"]
+mod test_events;
+
 #[doc(inline)]
 pub use actions::button::{Button, ButtonProps, ButtonSize, ButtonVariant};
 #[doc(inline)]
 pub use actions::icon_button::{IconButton, IconButtonProps};
+#[doc(inline)]
+pub use actions::surfaces::{SelectableRow, SelectableRowProps, ToggleChip, ToggleChipProps};
+#[doc(inline)]
+pub use actions::types::{ActionTone, ButtonPresentation};
 
+#[doc(inline)]
+pub use inputs::capture::{KeyCaptureButton, KeyCaptureButtonProps, RebindField, RebindFieldProps};
 #[doc(inline)]
 pub use inputs::checkbox::{Checkbox, CheckboxProps};
 #[doc(inline)]
+pub use inputs::inline_text_editor::{InlineTextEditor, InlineTextEditorProps};
+#[doc(inline)]
 pub use inputs::integer_input::{IntegerInput, IntegerInputError, IntegerInputProps};
 #[doc(inline)]
+pub use inputs::native_number::{NativeNumberInput, NativeNumberInputProps};
+#[doc(inline)]
 pub use inputs::number_input::{NumberInput, NumberInputProps};
+#[doc(inline)]
+pub use inputs::radio::{RadioGroup, RadioGroupProps, RadioOption, RadioOptionProps};
 #[doc(inline)]
 pub use inputs::segmented_control::{
     SegmentedControl, SegmentedControlOption, SegmentedControlOptionProps, SegmentedControlProps,
@@ -32,16 +48,22 @@ pub use inputs::slider::{Slider, SliderProps};
 #[doc(inline)]
 pub use inputs::switch::{Switch, SwitchProps};
 #[doc(inline)]
-pub use inputs::text_input::{InputSize, TextInput, TextInputProps};
+pub use inputs::text_input::{InputSize, TextInput, TextInputProps, TextInputVariant};
 
 #[doc(inline)]
 pub use layout::card::{Card, CardPadding, CardProps};
 #[doc(inline)]
+pub use layout::disclosure::{Disclosure, DisclosureProps};
+#[doc(inline)]
 pub use layout::drawer::{Drawer, DrawerAnchor, DrawerProps, DrawerVariant};
+#[doc(inline)]
+pub use layout::empty_state::{EmptyState, EmptyStateProps};
 #[doc(inline)]
 pub use layout::field::{Field, FieldProps};
 #[doc(inline)]
 pub use layout::label::{Label, LabelProps};
+#[doc(inline)]
+pub use layout::plot_frame::{PlotFrame, PlotFrameProps};
 #[doc(inline)]
 pub use layout::separator::{Separator, SeparatorOrientation, SeparatorProps};
 #[doc(inline)]
@@ -49,8 +71,9 @@ pub use layout::spacing::{Cluster, ClusterProps, Inset, InsetProps, Stack, Stack
 
 #[doc(inline)]
 pub use navigation::menu::{
-    Anchor, AnchoredMenu, AnchoredMenuProps, MenuAnchor, MenuItem, MenuItemProps, MenuItems,
-    MenuItemsProps, MenuRoot, MenuRootProps, MenuTrigger, MenuTriggerProps,
+    Anchor, AnchoredMenu, AnchoredMenuProps, MenuAnchor, MenuGroup, MenuGroupProps, MenuItem,
+    MenuItemProps, MenuItems, MenuItemsProps, MenuRoot, MenuRootProps, MenuTrigger,
+    MenuTriggerPresentation, MenuTriggerProps,
 };
 #[doc(inline)]
 pub use navigation::tab_button::{TabButton, TabButtonProps};
@@ -68,9 +91,15 @@ pub use feedback::chip::{Chip, ChipProps, ChipVariant};
 #[doc(inline)]
 pub use feedback::icon::{Icon, IconProps};
 #[doc(inline)]
+pub use feedback::inline_feedback::{FeedbackTone, InlineFeedback, InlineFeedbackProps};
+#[doc(inline)]
+pub use feedback::readout_caption::{ReadoutCaption, ReadoutCaptionProps};
+#[doc(inline)]
 pub use feedback::spinner::{Spinner, SpinnerProps, SpinnerSize};
 #[doc(inline)]
 pub use feedback::status_bar::{StatusBar, StatusBarProps};
+#[doc(inline)]
+pub use feedback::status_dot::{StatusDot, StatusDotProps};
 #[doc(inline)]
 pub use feedback::tooltip::{Tooltip, TooltipPlacement, TooltipProps};
 

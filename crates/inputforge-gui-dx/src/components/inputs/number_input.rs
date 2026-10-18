@@ -29,6 +29,11 @@ pub fn NumberInput(
     #[props(default)]
     precision: Option<usize>,
     #[props(default)] disabled: bool,
+    #[props(default)] aria_label: Option<String>,
+    #[props(default)] aria_labelledby: Option<String>,
+    #[props(default)] aria_describedby: Option<String>,
+    #[props(default)] aria_errormessage: Option<String>,
+    #[props(default)] invalid: bool,
     /// HTML `id` for label↔input coupling when wrapped in `Field`.
     #[props(default)]
     id: Option<String>,
@@ -41,6 +46,15 @@ pub fn NumberInput(
         InputSize::Lg => "if-number-input--lg",
     };
     let combined = merge_class("if-number-input", size_class, class.as_deref());
+    let combined = merge_class(
+        &combined,
+        if invalid {
+            "if-number-input--invalid"
+        } else {
+            ""
+        },
+        None,
+    );
     let display_value = match precision {
         Some(p) => format!("{:.*}", p, value()),
         None => format!("{}", value()),
@@ -82,6 +96,11 @@ pub fn NumberInput(
                     max: "{max}",
                     step: "{step}",
                     disabled,
+                    "aria-label": aria_label.clone(),
+                    "aria-labelledby": aria_labelledby.clone(),
+                    "aria-describedby": aria_describedby.clone(),
+                    "aria-invalid": invalid.then_some("true"),
+                    "aria-errormessage": aria_errormessage.clone().filter(|_| invalid),
                     oninput: input_handler,
                     onkeydown: on_input_keydown,
                     onblur: on_input_blur,
@@ -97,6 +116,11 @@ pub fn NumberInput(
                     max: "{max}",
                     step: "{step}",
                     disabled,
+                    "aria-label": aria_label.clone(),
+                    "aria-labelledby": aria_labelledby.clone(),
+                    "aria-describedby": aria_describedby.clone(),
+                    "aria-invalid": invalid.then_some("true"),
+                    "aria-errormessage": aria_errormessage.clone().filter(|_| invalid),
                     oninput: input_handler,
                     onkeydown: on_input_keydown,
                     onblur: on_input_blur,

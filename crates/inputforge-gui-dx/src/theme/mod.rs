@@ -45,11 +45,23 @@ const LAYOUT_CSS: Asset = asset!("/assets/components/layout/layout.css");
 const TABS_CSS: Asset = asset!("/assets/components/navigation/tabs.css");
 const STATUS_BAR_CSS: Asset = asset!("/assets/components/feedback/status-bar.css");
 const SORTABLE_CSS: Asset = asset!("/assets/components/interaction/sortable.css");
+const INLINE_FEEDBACK_CSS: Asset = asset!("/assets/components/feedback/inline-feedback.css");
+const READOUT_CAPTION_CSS: Asset = asset!("/assets/components/feedback/readout-caption.css");
+const STATUS_DOT_CSS: Asset = asset!("/assets/components/feedback/status-dot.css");
+const DISCLOSURE_CSS: Asset = asset!("/assets/components/layout/disclosure.css");
+const EMPTY_STATE_CSS: Asset = asset!("/assets/components/layout/empty-state.css");
+const PLOT_FRAME_CSS: Asset = asset!("/assets/components/layout/plot-frame.css");
+const NATIVE_NUMBER_CSS: Asset = asset!("/assets/components/inputs/native-number.css");
+const RADIO_CSS: Asset = asset!("/assets/components/inputs/radio.css");
+const CAPTURE_CSS: Asset = asset!("/assets/components/inputs/capture.css");
+const SEGMENTED_CONTROL_CSS: Asset = asset!("/assets/components/inputs/segmented-control.css");
 const TOAST_CSS: Asset = asset!("/assets/toast/toast.css");
 
 const RESPONSE_CURVE_CSS: Asset = asset!("/assets/frame/response_curve.css");
 const DEADZONE_CSS: Asset = asset!("/assets/frame/deadzone.css");
 const BULK_MAP_CSS: Asset = asset!("/assets/frame/bulk_map.css");
+const PROFILES_CSS: Asset = asset!("/assets/frame/profiles.css");
+const SETTINGS_PANEL_CSS: Asset = asset!("/assets/frame/settings_panel.css");
 
 #[component]
 pub fn ThemeProvider(children: Element) -> Element {
@@ -106,11 +118,34 @@ pub fn ThemeProvider(children: Element) -> Element {
         Stylesheet { href: STATUS_BAR_CSS }
         Stylesheet { href: SORTABLE_CSS }
 
+        Stylesheet { href: INLINE_FEEDBACK_CSS }
+
+        Stylesheet { href: READOUT_CAPTION_CSS }
+
+        Stylesheet { href: STATUS_DOT_CSS }
+
+        Stylesheet { href: DISCLOSURE_CSS }
+
+        Stylesheet { href: EMPTY_STATE_CSS }
+
+        Stylesheet { href: PLOT_FRAME_CSS }
+
+        Stylesheet { href: NATIVE_NUMBER_CSS }
+
+        Stylesheet { href: RADIO_CSS }
+
+        Stylesheet { href: CAPTURE_CSS }
+
+        Stylesheet { href: SEGMENTED_CONTROL_CSS }
+
         // Frame stylesheets (editor panels, curve editor, etc.).
         Stylesheet { href: RESPONSE_CURVE_CSS }
         Stylesheet { href: DEADZONE_CSS }
         // Load before the first batch visit to avoid an unstyled workspace.
         Stylesheet { href: BULK_MAP_CSS }
+        // Conditional panels need their styles before the first navigation.
+        Stylesheet { href: PROFILES_CSS }
+        Stylesheet { href: SETTINGS_PANEL_CSS }
 
         // Toast overlay, last so its z-index cascade wins.
         Stylesheet { href: TOAST_CSS }
@@ -118,3 +153,6 @@ pub fn ThemeProvider(children: Element) -> Element {
         {children}
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -94,7 +94,7 @@ pub(crate) fn MappingEditor() -> Element {
         div { class: "if-editor", "data-navigation-context":context,"data-navigation-actions":actions_context,
             EngineOfflineBanner {}
             if let Some(message) = editor.error.read().as_ref() {
-                div { role: "alert", "{message}" }
+                crate::components::InlineFeedback { id: "mapping-editor-error", tone: crate::components::FeedbackTone::Error, alert: true, "{message}" }
             }
             SortableLiveRegion { state: sortable_for_live }
             if let Some((mode, input)) = view_state_for_render {

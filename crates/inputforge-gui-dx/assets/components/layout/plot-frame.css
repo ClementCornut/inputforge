@@ -1,0 +1,14 @@
+.if-plot-frame {
+    display: flex;
+    position: relative;
+    cursor: default;
+    /* Plot dragging crosses tick labels; text selection would interrupt it. */
+    user-select: none;
+    -webkit-user-select: none;
+}
+.if-plot-frame:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+.if-plot-frame[data-hovered="true"] { cursor: pointer; }
+.if-plot-frame[data-dragging="true"] { cursor: grabbing; }

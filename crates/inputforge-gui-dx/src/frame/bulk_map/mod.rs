@@ -55,7 +55,7 @@ pub(crate) fn BulkMapPanel() -> Element {
     let ready = view.profile.is_some() && !view.targets.is_empty();
     rsx! {
         section { class: "if-bulk-map", "aria-label": "Batch map device inputs",
-            if let Some(error) = &view.error { div { role: "alert", "{error}" } }
+            if let Some(error) = &view.error { crate::components::InlineFeedback { tone: crate::components::FeedbackTone::Error, alert: true, "{error}" } }
             if view.profile.is_none() {
                 NoVjoyEmptyState { title: "No profile loaded".to_owned(), caption: "Load or create a profile, then reopen.".to_owned() }
             } else if view.targets.is_empty() { NoVjoyEmptyState {} }

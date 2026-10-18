@@ -33,8 +33,7 @@ pub(crate) fn DeadzoneBody(
         return rsx! {};
     };
     let live_value = instruments::live_axis::value(&stage_id, &mapping_key, &ctx);
-    let dragging_attr = snapshot.dragging.is_some().to_string();
-    let hovered_attr = snapshot.hovered.is_some().to_string();
+
     let on_key = move |evt: KeyboardEvent| {
         send.call(crate::instruments::Event::Key {
             key: evt.key().to_string(),
@@ -52,15 +51,37 @@ pub(crate) fn DeadzoneBody(
         focused_handle: snapshot.focused,
         pending_split: snapshot.split.then_some((1, 2)),
     };
+    let glow_id = format!("{plot_dom_id}-glow");
+    let onfocusout = move |_| send.call(crate::instruments::Event::Blur);
     rsx! {
-        div{class:"if-deadzone",
-            toolbar::Toolbar{view:snapshot.clone(),send}
-            div{class:"if-deadzone__plot-frame",id:"{plot_dom_id}",tabindex:"0","aria-label":"deadzone curve",
-                "data-hovered":"{hovered_attr}","data-dragging":"{dragging_attr}",
-                onmounted:on_mounted,onkeydown:on_key,onfocusout:move |_|send.call(crate::instruments::Event::Blur),
-                {rendering::render_plot(config,&body,live_value)}
+        div {
+            class: "if-deadzone",
+            toolbar::Toolbar {
+                view: snapshot.clone(),
+                send,
+                id_prefix: plot_dom_id.clone(),
             }
-            if let Some(error)=snapshot.error { div{class:"if-field__error",role:"alert","{error}"} }
+            crate::components::PlotFrame {
+                class: "if-deadzone__plot-frame",
+                id: plot_dom_id,
+                label: "deadzone curve",
+                description: "Edit saturation and deadzone boundaries.",
+                instructions: "Use Tab to cycle handles and Left/Right arrows to adjust. Hold Shift for larger adjustments.",
+                value_text: format!("Low {:.2}, center low {:.2}, center high {:.2}, high {:.2}", config.low(), config.center_low(), config.center_high(), config.high()),
+                hovered: snapshot.hovered.is_some(),
+                dragging: snapshot.dragging.is_some(),
+                onmounted: on_mounted,
+                onkeydown: on_key,
+                onfocusout,
+                {rendering::render_plot(config, &body, live_value, &glow_id)}
+            }
+            if let Some(error) = snapshot.error {
+                crate::components::InlineFeedback {
+                    tone: crate::components::FeedbackTone::Error,
+                    alert: true,
+                    "{error}"
+                }
+            }
         }
     }
 }

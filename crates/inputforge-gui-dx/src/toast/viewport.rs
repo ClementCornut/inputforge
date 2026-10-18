@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::components::Icon;
+use crate::components::{Badge, BadgeVariant, ButtonSize, ButtonVariant, Icon, IconButton};
 use crate::icons::{Icon as IconKind, IconSize};
 use crate::toast::state::{Toast, ToastLevel};
 use crate::toast::{Interaction, ToastQueue};
@@ -38,11 +38,15 @@ pub fn ToastViewport() -> Element {
 fn ToastItem(toast: Toast) -> Element {
     let queue = use_context::<ToastQueue>();
     let id = toast.id;
-    let (level_class, icon_kind) = match toast.level {
-        ToastLevel::Info => ("if-toast--info", IconKind::Info),
-        ToastLevel::Success => ("if-toast--success", IconKind::Check),
-        ToastLevel::Warning => ("if-toast--warning", IconKind::Warning),
-        ToastLevel::Error => ("if-toast--error", IconKind::Error),
+    let (level_class, icon_kind, badge_variant) = match toast.level {
+        ToastLevel::Info => ("if-toast--info", IconKind::Info, BadgeVariant::Info),
+        ToastLevel::Success => ("if-toast--success", IconKind::Check, BadgeVariant::Success),
+        ToastLevel::Warning => (
+            "if-toast--warning",
+            IconKind::Warning,
+            BadgeVariant::Warning,
+        ),
+        ToastLevel::Error => ("if-toast--error", IconKind::Error, BadgeVariant::Error),
     };
     // Per-item role override: Warning/Error get `role="alert"` so AT
     // announces them assertively even though the stack container is
@@ -76,13 +80,12 @@ fn ToastItem(toast: Toast) -> Element {
             Icon { name: icon_kind, size: IconSize::Sm }
             span { class: "if-toast__message", "{message}" }
             if count > 1 {
-                span { class: "if-toast__count", "×{count}" }
+                Badge { class: "if-toast__count", variant: badge_variant, count: true, "×{count}" }
             }
-            button {
-                class: "if-toast__close",
-                "aria-label": "Dismiss",
+            IconButton {
+                class: "if-toast__close", icon: IconKind::X, label: "Dismiss",
+                size: ButtonSize::Sm, variant: ButtonVariant::Ghost,
                 onclick,
-                "×"
             }
         }
     }

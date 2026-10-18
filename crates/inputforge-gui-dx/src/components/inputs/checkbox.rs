@@ -14,6 +14,11 @@ pub fn Checkbox(
     checked: ReadSignal<bool>,
     onchange: Option<EventHandler<FormEvent>>,
     #[props(default)] disabled: bool,
+    #[props(default)] aria_label: Option<String>,
+    #[props(default)] aria_labelledby: Option<String>,
+    #[props(default)] aria_describedby: Option<String>,
+    #[props(default)] aria_errormessage: Option<String>,
+    #[props(default)] invalid: bool,
     #[props(default)] indeterminate: bool,
     /// HTML `id` for label↔input coupling when wrapped in `Field`.
     /// If omitted, an internal stable ID is generated so the indeterminate
@@ -21,6 +26,9 @@ pub fn Checkbox(
     #[props(default)]
     id: Option<String>,
     #[props(default)] class: Option<String>,
+    /// Optional inline label; external labels must be separate siblings linked by `id`.
+    #[props(default)]
+    children: Element,
 ) -> Element {
     let variant_class = if indeterminate {
         "if-checkbox--indeterminate"
@@ -77,9 +85,15 @@ pub fn Checkbox(
                 "aria-checked": "{aria_checked}",
                 checked: "{checked}",
                 disabled,
+                "aria-label": aria_label.clone(),
+                "aria-labelledby": aria_labelledby.clone(),
+                "aria-describedby": aria_describedby.clone(),
+                "aria-invalid": invalid.then_some("true"),
+                "aria-errormessage": aria_errormessage.clone().filter(|_| invalid),
                 onchange: change_handler,
             }
-            span { class: "if-checkbox__box" }
+            span { class: "if-checkbox__box", "aria-hidden": "true" }
+            {children}
         }
     }
 }

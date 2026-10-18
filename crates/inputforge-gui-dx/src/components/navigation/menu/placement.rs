@@ -81,3 +81,64 @@ pub(super) fn compute_placement(
 
     MenuPlacement { left, top }
 }
+
+/// Keep a cursor-opened menu within the same padded viewport as trigger menus.
+pub(super) fn cursor_placement(
+    cursor: MenuAnchor,
+    menu: MenuSize,
+    viewport: Viewport,
+) -> MenuPlacement {
+    MenuPlacement {
+        left: cursor.x.clamp(
+            VIEWPORT_PADDING,
+            (viewport.width - menu.width - VIEWPORT_PADDING).max(VIEWPORT_PADDING),
+        ),
+        top: cursor.y.clamp(
+            VIEWPORT_PADDING,
+            (viewport.height - menu.height - VIEWPORT_PADDING).max(VIEWPORT_PADDING),
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cursor_menu_clamps_both_edges_and_oversized_content() {
+        let viewport = Viewport {
+            width: 500.0,
+            height: 400.0,
+        };
+        let placement = cursor_placement(
+            MenuAnchor { x: 490.0, y: 390.0 },
+            MenuSize {
+                width: 100.0,
+                height: 100.0,
+            },
+            viewport,
+        );
+        assert_eq!(
+            placement,
+            MenuPlacement {
+                left: 396.0,
+                top: 296.0
+            }
+        );
+        let placement = cursor_placement(
+            MenuAnchor { x: -20.0, y: -10.0 },
+            MenuSize {
+                width: 900.0,
+                height: 800.0,
+            },
+            viewport,
+        );
+        assert_eq!(
+            placement,
+            MenuPlacement {
+                left: 4.0,
+                top: 4.0
+            }
+        );
+    }
+}

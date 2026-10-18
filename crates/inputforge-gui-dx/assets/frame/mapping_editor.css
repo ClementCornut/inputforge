@@ -13,32 +13,32 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-2);
   height: 100%;
-  padding: 32px;
+  padding: var(--space-8);
   text-align: center;
 }
 
 .if-editor__empty-title {
   font-family: var(--font-sans);
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
 
 .if-editor__empty-helper {
   font-family: var(--font-sans);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--text-sm);
+  line-height: var(--leading-base);
   color: var(--color-text-muted);
   max-width: 360px;
 }
 
 .if-editor__kbd {
   font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
+  font-size: var(--text-xs);
+  padding: calc(var(--space-1) / 2) calc(var(--space-1) * 1.5);
+  border-radius: var(--radius-md);
   background: var(--color-bg-sunken);
   border: 1px solid var(--color-border);
 }
@@ -52,8 +52,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 8px 16px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
   /* Flat full-width strip at the top of the editor pane: opaque bg
        so scrolled content disappears under it cleanly, no margin or
        border-radius so the strip reads as page chrome rather than a
@@ -62,25 +62,14 @@
        sticky banner. rgb(242, 85, 85) is the spec-mandated error red;
        the dark mix below is the same hue at 18% over the editor bg so
        the banner stays unmistakably a warning while occluding content. */
-  background: #3a1f24;
-  border-bottom: 1px solid rgba(242, 85, 85, 0.32);
+  background: color-mix(in srgb, var(--color-error) var(--tint-status), var(--color-bg));
+  border-bottom: 1px solid color-mix(in srgb, var(--color-error) 32%, transparent);
 }
 
 .if-editor__offline-text {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-error);
-}
-
-.if-editor__offline-action {
-  font-family: var(--font-sans);
-  font-size: 12px;
-  background: transparent;
-  color: var(--color-error);
-  border: 1px solid rgba(242, 85, 85, 0.32);
-  border-radius: 4px;
-  padding: 4px 10px;
-  cursor: pointer;
 }
 
 /* Editor header.
@@ -96,16 +85,16 @@
 .if-editor__header {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 12px 16px;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border);
 }
 
 .if-editor__title {
   font-family: var(--font-sans);
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 28px;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-base);
   margin: 0;
   color: var(--color-text);
   overflow: hidden;
@@ -116,28 +105,13 @@
 .if-editor__title:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 /* Inline rename editor. Inherits the h2 visual size + weight so the
    swap from display to edit produces no layout jitter. */
 .if-editor__title-input {
   width: 100%;
-  font-family: var(--font-sans);
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 28px;
-  margin: 0;
-  padding: 0;
-  color: var(--color-text);
-  background: transparent;
-  border: 0;
-}
-
-.if-editor__title-input:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
-  border-radius: 2px;
 }
 
 .if-editor__subtitle {
@@ -149,10 +123,10 @@
      * the row's vertical centerline. Baseline alignment shifted the
      * button up by ~2.6px and the listening span by ~1.3px. */
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--text-sm);
+  line-height: var(--leading-base);
   color: var(--color-text-muted);
   overflow-wrap: anywhere;
 }
@@ -166,169 +140,6 @@
 
 .if-editor__subtitle-arrow {
   color: var(--color-text-subtle);
-}
-
-/* Rebind composite: bordered cluster wrapping a value (source label or
- * listening cue) and an inline rebind / cancel action. The cluster owns
- * the chrome (border, bg, radius) so the action button can be plain
- * mono text and still read as a real button, since the entire cluster
- * reads as one form control with value | action. Used in the editor
- * header subtitle and in the MergeAxis Secondary input row.
- *
- * Listening state inverts the border color and replaces the value text
- * with a pulse-dot cue. The dot reuses --color-live and the
- * `if-add-pulse-dot` keyframes (defined in `mapping_list.css`) so the
- * cue's meaning stays consistent with the AddInline create-mapping cue.
- */
-
-.if-rebind-composite {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-sunken);
-  overflow: hidden;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.if-rebind-composite__label {
-  padding: 4px 10px;
-  color: var(--color-text);
-}
-
-.if-rebind-composite__listening {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  color: var(--color-control-badge-text);
-}
-
-.if-rebind-composite__listening::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-live);
-  animation: if-add-pulse-dot 1100ms ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .if-rebind-composite__listening::before {
-    animation: none;
-    opacity: 0.85;
-  }
-}
-
-.if-rebind-composite__action {
-  appearance: none;
-  border: 0;
-  border-left: 1px solid var(--color-border);
-  background: transparent;
-  padding: 4px 10px;
-  color: var(--color-text-muted);
-  font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
-  cursor: pointer;
-  transition:
-    background var(--duration-fast) var(--easing-fast),
-    color var(--duration-fast) var(--easing-fast);
-}
-
-.if-rebind-composite__action:hover {
-  background: var(--color-bg-elevated);
-  color: var(--color-text);
-}
-
-.if-rebind-composite__action:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: -2px;
-}
-
-.if-rebind-composite--listening {
-  border-color: var(--color-control-badge-text);
-}
-
-.if-rebind-composite--listening .if-rebind-composite__action {
-  border-left-color: var(--color-control-badge-text);
-}
-
-/* Unbound placeholder treatment: when the rebind composite carries the
-   `--unbound` modifier (set by `PredicateInputRow` and `MergeAxisBody`
-   when their input is `InputAddress::Unbound`), tone the label down so the
-   placeholder text reads as "no value yet" instead of impersonating a real
-   binding. Italic + muted color keeps the label legible while making the
-   empty state visually distinct from a bound source label. */
-.if-rebind-composite--unbound .if-rebind-composite__label {
-  color: var(--color-text-muted);
-  font-style: italic;
-}
-
-.if-key-capture {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-}
-
-.if-key-capture__surface {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 112px;
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-sunken);
-  color: var(--color-text);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-text) 5%, transparent);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1;
-  letter-spacing: 0;
-  cursor: pointer;
-}
-
-.if-key-capture__surface:hover {
-  border-color: var(--color-border-strong);
-  background: var(--color-bg-elevated);
-}
-
-.if-key-capture__surface:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
-}
-
-.if-key-capture__surface.is-listening {
-  border-color: var(--color-control);
-  background: var(--color-control-bg);
-  color: var(--color-control-badge-text);
-}
-
-.if-key-capture__surface.is-listening::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  margin-right: 8px;
-  border-radius: 50%;
-  background: var(--color-live);
-  animation: if-add-pulse-dot 1100ms ease-in-out infinite;
-}
-
-.if-key-capture__hint {
-  color: var(--color-text-muted);
-  font-size: 12px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .if-key-capture__surface.is-listening::before {
-    animation: none;
-  }
 }
 
 /* Stage-body form layout: 2-column grid (label, control). Each body
@@ -349,8 +160,8 @@
 .if-stage__body-change-mode {
   display: grid;
   grid-template-columns: max-content 1fr;
-  column-gap: 16px;
-  row-gap: 8px;
+  column-gap: var(--space-4);
+  row-gap: var(--space-2);
   align-items: center;
   justify-items: start;
 }
@@ -361,71 +172,8 @@
 
 .if-stage__body-label {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
-}
-
-/* SegmentedControl primitive. Active pill carries the control-violet badge
-   tint pattern; inactive pills are muted text on a hairline border. The row
-   sits on bg-elevated; active-pill contrast tested per DESIGN.md §2. */
-
-.if-stage__body-strategy {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  background: var(--color-bg-elevated);
-  /* Match Select baseline (32px) on the second row of the change-mode
-       grid. The pill itself stays at 24px; the row absorbs the padding. */
-  min-height: 32px;
-}
-
-.if-stage__body-strategy-pill {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 12px;
-  border-radius: var(--radius-full);
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--color-text-muted);
-  font-family: var(--font-sans);
-  font-size: 13px;
-  cursor: pointer;
-  /* Segmented toggle: instant state swap, no easing. */
-  transition: none;
-}
-
-.if-stage__body-strategy-pill:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
-}
-
-.if-stage__body-strategy-pill:hover:not([aria-disabled="true"]) {
-  color: var(--color-text);
-}
-
-.if-stage__body-strategy-pill[aria-pressed="true"] {
-  color: var(--color-control-badge-text);
-  background: var(--color-control-bg);
-  border-color: var(--color-control);
-}
-
-.if-stage__body-strategy-pill[aria-disabled="true"] {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Selected-but-disabled (Hold persisted then primary rebound to non-button).
-   Per DESIGN.md §7 Tabs disabled-active rule: keep the tint but desaturate. */
-.if-stage__body-strategy-pill[aria-pressed="true"][aria-disabled="true"] {
-  color: var(--color-control-badge-text);
-  background: var(--color-control-bg);
-  border-color: var(--color-control);
-  opacity: 0.5;
 }
 
 /* Orphaned mode option in the target Select dropdown (hint priority 2).
@@ -442,35 +190,32 @@
 .if-predicate {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 0;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
 }
 
 .if-predicate__input-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .if-predicate__range-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .if-predicate__range-label {
-  font-family: var(--font-sans);
-  font-size: 12px;
-  color: var(--color-text-muted);
-  min-width: 24px;
+  min-width: var(--space-6);
 }
 
 /* Nested condition list for All / Any / Not. */
 .if-predicate__nested-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding-left: 16px;
+  gap: calc(var(--space-1) * 1.5);
+  padding-left: var(--space-4);
   border-left: 2px solid var(--color-border);
 }
 
@@ -481,7 +226,7 @@
 
 .if-predicate__nested-empty {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   font-style: italic;
 }
@@ -491,16 +236,16 @@
 .if-hat-direction-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
+  gap: var(--space-1);
   width: 120px;
 }
 
 .if-hat-direction-grid__cell {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text);
   cursor: pointer;
 }
@@ -515,8 +260,8 @@
 
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 16px;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -530,8 +275,8 @@
   grid-template-columns: var(--if-editor__readout-label-col) var(--if-editor__readout-tag-col) minmax(0, 1fr) var(
       --if-editor__readout-pct-col
     ) var(--if-editor__readout-chevron-col);
-  column-gap: 12px;
-  row-gap: 8px;
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
   align-items: center;
 }
 
@@ -542,16 +287,16 @@
 .if-editor__readout-label {
   grid-column: 1;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--color-text-subtle);
 }
 
 .if-editor__readout-tag {
   grid-column: 2;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
   min-width: 0;
   overflow: hidden;
@@ -567,7 +312,7 @@
        inset shadow gives a 1px border without affecting layout so the
        8px fill area is preserved. */
   background: var(--color-bg-elevated);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   box-shadow: inset 0 0 0 1px var(--color-border);
   /* Clip the absolutely-positioned fill so any math regression (off-by
      * one, a polled value escaping [-1, 1] from a calibration bug, etc)
@@ -597,13 +342,13 @@
   top: 0;
   height: 100%;
   background: var(--color-live);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .if-editor__readout-pct {
   grid-column: 4;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
   text-align: right;
   color: var(--color-text);
@@ -625,7 +370,7 @@
    output chain expansion lives on each row's chevron so the divider does
    not compete with the live readout controls. */
 .if-editor__readout-divider {
-  margin: 8px 0;
+  margin: var(--space-2) 0;
   border-top: 1px dashed var(--color-border-strong);
 }
 
@@ -636,7 +381,7 @@
 
 .if-editor__readout-divider-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   color: var(--color-text-subtle);
 }
@@ -646,18 +391,18 @@
 .if-editor__readout-section {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .if-editor__readout-section-label {
   font-family: var(--font-sans);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.45;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-base);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--color-text-subtle);
-  margin: 8px 0 2px;
+  margin: var(--space-2) 0 2px;
 }
 
 .if-editor__readout-predicate-row {
@@ -667,9 +412,9 @@
 .if-editor__readout-predicate-label {
   grid-column: 1;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--color-text-subtle);
 }
 
@@ -677,116 +422,24 @@
   grid-column: 2 / -1;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: calc(var(--space-1) * 1.5);
   min-width: 0;
-}
-
-.if-editor__readout-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-subtle);
-}
-
-.if-editor__readout-chip--live {
-  color: var(--color-live);
-  border-color: var(--color-live);
-  background: rgba(46, 224, 160, 0.1);
-}
-
-.if-editor__readout-chip-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.if-editor__readout-chip-dot--hollow {
-  background: transparent;
-  border: 1.5px solid currentColor;
 }
 
 .if-editor__readout-chip-label {
   color: inherit;
 }
 
-.if-editor__readout-hat-glyph {
-  grid-column: 3;
-}
-
-.if-editor__readout-row--hat .if-editor__readout-hat-glyph {
-  font-family: var(--font-mono);
-  font-size: 16px;
-  text-align: center;
-  color: var(--color-text);
-}
-
-.if-editor__readout-row-wrap--frozen .if-editor__readout-row--hat .if-editor__readout-hat-glyph {
-  color: var(--color-text-muted);
-}
-
 .if-editor__readout-button-cell {
   grid-column: 3;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
-}
-
-.if-editor__readout-button-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  border: 1px solid var(--color-border-strong);
-  background: transparent;
-  flex: 0 0 auto;
-}
-
-.if-editor__readout-button-dot--live {
-  border-color: var(--color-live);
-  background: var(--color-live);
-}
-
-.if-editor__readout-button-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 72px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.2;
-  color: var(--color-text-subtle);
-  background: transparent;
-}
-
-.if-editor__readout-button-pill--live {
-  color: var(--color-live);
-  border-color: var(--color-live);
-  background: rgba(46, 224, 160, 0.1);
 }
 
 .if-editor__readout-button-cell--frozen {
   opacity: 0.7;
-}
-
-.if-editor__readout-button-cell--frozen .if-editor__readout-button-dot--live {
-  border-color: var(--color-text-muted);
-  background: var(--color-text-muted);
-}
-
-.if-editor__readout-button-cell--frozen .if-editor__readout-button-pill--live {
-  color: var(--color-text-muted);
-  border-color: var(--color-border-strong);
-  background: transparent;
 }
 
 .if-editor__readout-hat-compass {
@@ -794,7 +447,7 @@
   display: grid;
   grid-template-columns: repeat(3, 20px) max-content;
   grid-template-rows: repeat(3, 18px);
-  column-gap: 4px;
+  column-gap: var(--space-1);
   row-gap: 2px;
   align-items: center;
   justify-content: start;
@@ -807,10 +460,10 @@
   justify-content: center;
   width: 20px;
   height: 18px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1;
   color: var(--color-text-subtle);
   background: var(--color-bg-sunken);
@@ -819,16 +472,16 @@
 .if-editor__readout-hat-spoke--live {
   color: var(--color-live);
   border-color: var(--color-live);
-  background: rgba(46, 224, 160, 0.1);
+  background: color-mix(in srgb, var(--color-live) 10%, transparent);
 }
 
 .if-editor__readout-hat-state {
   grid-column: 4;
   grid-row: 1 / -1;
   align-self: center;
-  padding-left: 4px;
+  padding-left: var(--space-1);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text);
   white-space: nowrap;
 }
@@ -856,24 +509,6 @@
   align-items: center;
 }
 
-.if-editor__readout-kb-chip {
-  display: inline-flex;
-  align-items: center;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--color-control);
-  color: var(--color-control-badge-text);
-  background: var(--color-control-bg);
-}
-
-.if-editor__readout-kb-chip--idle {
-  color: var(--color-text-subtle);
-  border-color: var(--color-border);
-  background: transparent;
-}
-
 .if-editor__readout-row-wrap {
   display: contents;
 }
@@ -896,28 +531,6 @@
 
 .if-editor__readout-chevron {
   grid-column: 5;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  background: transparent;
-  border: 0;
-  color: var(--color-text-subtle);
-  cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 0;
-  border-radius: 2px;
-}
-
-.if-editor__readout-chevron:hover {
-  color: var(--color-text);
-}
-
-.if-editor__readout-chevron:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
 }
 
 .if-editor__readout-chevron-spacer {
@@ -933,17 +546,17 @@
   grid-template-columns: var(--if-editor__readout-label-col) var(--if-editor__readout-tag-col) minmax(0, 1fr) var(
       --if-editor__readout-pct-col
     ) var(--if-editor__readout-chevron-col);
-  column-gap: 12px;
+  column-gap: var(--space-3);
   row-gap: 2px;
   align-items: center;
   background: var(--color-bg-sunken);
-  padding: 6px 0;
+  padding: calc(var(--space-1) * 1.5) 0;
   margin: 0;
 }
 
 .if-editor__readout-chain-row {
   display: contents;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
@@ -957,13 +570,13 @@
 
 .if-editor__readout-chain-step {
   grid-column: 1;
-  padding-left: 8px;
+  padding-left: var(--space-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--color-output);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   white-space: nowrap;
 }
 
@@ -985,7 +598,7 @@
   position: relative;
   height: 4px;
   background: var(--color-bg-elevated);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
@@ -1004,13 +617,13 @@
   top: 0;
   height: 100%;
   background: var(--color-processing);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .if-editor__readout-chain-pct {
   grid-column: 4;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
   text-align: right;
 }
@@ -1019,7 +632,7 @@
   grid-column: 3 / 5;
   justify-self: end;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
   text-align: right;
 }
@@ -1031,15 +644,15 @@
 /* Task 18: inactive-runtime hint banner */
 
 .if-editor__inactive-hint {
-  margin: 8px 16px;
-  padding: 8px 12px;
-  background: rgba(154, 120, 214, 0.08);
-  border: 1px solid rgba(154, 120, 214, 0.22);
-  border-radius: 6px;
+  margin: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  background: color-mix(in srgb, var(--color-control) 8%, var(--color-bg));
+  border: 1px solid color-mix(in srgb, var(--color-control) 22%, transparent);
+  border-radius: calc(var(--radius-md) * 1.5);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-control-badge-text);
-  transition: opacity 150ms ease-out;
+  transition: opacity var(--duration-fast) var(--easing-fast);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1051,14 +664,14 @@
 /* Task 19: undo recap footer */
 
 .if-editor__footer {
-  padding: 6px 16px;
+  padding: calc(var(--space-1) * 1.5) var(--space-4);
   border-top: 1px solid var(--color-border);
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .if-editor__footer-label {
@@ -1069,7 +682,7 @@
 
 .if-pipeline {
   list-style: none;
-  padding: 0px 8px 16px;
+  padding: 0 var(--space-2) var(--space-4);
   margin: 0;
   display: flex;
   flex-direction: column;
@@ -1081,7 +694,7 @@
 }
 
 .if-pipeline--empty {
-  padding: 0px 8px 16px;
+  padding: 0 var(--space-2) var(--space-4);
 }
 
 .if-pipeline__add-end {
@@ -1103,7 +716,7 @@
        insertion bars) to the stage box rather than a higher ancestor. */
   position: relative;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: calc(var(--radius-md) * 1.5);
   overflow: hidden;
 }
 
@@ -1138,20 +751,17 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, auto) 32px;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px 8px 22px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2) 22px;
 }
 
 .if-stage__title {
   min-width: 0;
   overflow-wrap: anywhere;
   font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 16px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-base);
   color: var(--color-text);
   text-align: left;
 }
@@ -1163,7 +773,7 @@
 
 .if-stage__summary {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   text-align: right;
   /* Defense-in-depth for any stage body that has not adopted the
@@ -1189,7 +799,7 @@
 }
 
 .if-stage__chevron {
-  transition: transform 180ms ease-out;
+  transition: transform var(--duration-base) var(--easing-fast);
 }
 
 .if-stage__chevron--collapsed {
@@ -1202,13 +812,8 @@
   }
 }
 
-.if-stage__header:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
-}
-
 .if-stage__body {
-  padding: 8px 12px 8px 22px;
+  padding: var(--space-2) var(--space-3) var(--space-2) 22px;
   border-top: 1px solid var(--color-border);
 }
 
@@ -1219,7 +824,7 @@
 .if-stage__conditional-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .if-stage__branches {
@@ -1246,79 +851,19 @@
   gap: var(--space-2);
 }
 
-.if-stage__gesture-label,
-.if-stage__gesture-unit {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-label);
-  font-weight: var(--font-weight-medium);
-}
 
 .if-stage__branch-label {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--color-control-badge-text);
 }
 
-/* Task 28: categorized add palette. Now built on the shared MenuRoot
-   primitive (components/menu); local rules style only the trigger
-   surface (dashed-violet next-slot treatment) and the section / item
-   chrome inside the menu list. Open-state, backdrop, ESC, arrow-key
-   navigation, ARIA, and centered-anchor positioning come from the
-   primitive. */
-
-/* The MenuRoot wrapper carries `if-add-palette if-menu--block`; the
-   if-menu--block modifier (defined in components/navigation/menu.css) flips
-   .if-menu from inline-flex to block so the trigger row fills its
-   parent column. No additional positioning rule is needed here. */
-
-/* End-of-pipeline trigger: full-width "next slot" row. Same dashed-
-   violet family as the louder empty-state placeholder. unstyled=true
-   on MenuTrigger means we own the surface entirely; the .if-menu__trigger
-   defaults are skipped. */
-.if-add-palette__trigger {
+/* Palette category layout; shared Create trigger and compact MenuItems own chrome. */
+.if-add-palette__trigger.if-button--create {
   width: 100%;
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-height: 28px;
-  background: rgba(154, 120, 214, 0.03);
-  border: 1px dashed rgba(184, 155, 234, 0.2);
-  border-radius: 6px;
-  padding: 6px 12px;
-  color: var(--color-control-badge-text);
-  font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1;
-  cursor: pointer;
-  transition:
-    background var(--duration-fast) var(--easing-fast),
-    border-color var(--duration-fast) var(--easing-fast);
-}
-
-.if-add-palette__trigger:hover {
-  background: rgba(154, 120, 214, 0.06);
-  border-color: rgba(184, 155, 234, 0.4);
-}
-
-.if-add-palette__trigger:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
-}
-
-.if-add-palette__trigger--louder {
-  background: rgba(154, 120, 214, 0.06);
-  border-color: rgba(184, 155, 234, 0.4);
-  padding: 10px 12px;
-  line-height: 1.45;
-}
-
-.if-add-palette__trigger--louder:hover {
-  background: rgba(154, 120, 214, 0.1);
-  border-color: rgba(184, 155, 234, 0.6);
 }
 
 /* Menu list: extends .if-menu__list with palette-specific min-width.
@@ -1330,16 +875,16 @@
 }
 
 .if-add-palette__section {
-  padding: 4px;
+  padding: var(--space-1);
 }
 
 .if-add-palette__section-title {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--color-text-subtle);
-  padding: 2px 8px;
+  padding: calc(var(--space-1) / 2) var(--space-2);
 }
 
 .if-add-palette__section.is-processing {
@@ -1364,27 +909,4 @@
 
 .if-add-palette__section.is-control .if-add-palette__section-title {
   color: var(--color-control-badge-text);
-}
-
-/* Per-item modifier: tightens MenuItem's default padding to keep the
-   palette dense. The base .if-menu__item supplies hover bg, focus ring,
-   and disabled state. Equal-specificity override wins by source order
-   because MAPPING_EDITOR_CSS is loaded after MENU_CSS (theme/mod.rs). */
-.if-add-palette__item {
-  padding: 4px 8px;
-  font-size: 12px;
-}
-
-/* Task 29: right-click stage actions menu. Built on AnchoredMenu
-   (components/menu); local rules style the danger item only. The
-   menu's surface, backdrop, positioning, and keyboard handling all
-   come from the shared primitive. The `class: "if-stage-menu"` on
-   the AnchoredMenu invocation is a no-op pass-through (no rule
-   matches it today); kept on the Rust side so future palette tuning
-   has a hook to land on. */
-
-.if-stage-menu__item--danger {
-  /* Hex fallback protects against silent invisible-text in any
-       partially-loaded theme where --color-error is undefined. */
-  color: var(--color-error, #f25555);
 }
